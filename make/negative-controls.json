@@ -1211,7 +1211,7 @@
     {
       "name": "release-refuses-on-differential",
       "when": "nightly",
-      "why": "the release path's own gate (docs/VERSIONING.md, #463): `make release` dry-run twice against a version past every tag, the clean compiler against itself (must reach its tag decision) and against one whose Go engine writes a true bool as 2 (must stop at the previous-release differential, tagging nothing), then the same test over a Makefile copy whose `release` no longer runs the differential, which must go red. Four full differential runs, each building the three C++ packet drivers twice: about four minutes on a six-core bench, past the pull-request rule, so it runs nightly. The differential itself keeps its pull-request control (release-differential).",
+      "why": "the release path's own gate (docs/VERSIONING.md, #463): `make release` dry-run twice against a version past every tag, the clean compiler against itself (must reach its tag decision) and against one whose Go engine writes a true bool as 2 (must stop at the previous-release differential, tagging nothing), then the same test over a Makefile copy whose `release` no longer runs the differential, which must go red. Four full differential runs, each building the three C++ packet drivers twice: 1m33s at -j6 on the intel bench (measured 2026-10-31), so on a hosted runner past the pull-request rule, and it runs nightly. The differential itself keeps its pull-request control (release-differential).",
       "targets": [
         "release-refuses-on-differential-negative-control"
       ]
