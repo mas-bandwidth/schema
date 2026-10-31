@@ -889,7 +889,9 @@ static void test_message_form_pad()
     static uint8_t message[256];
     backenddemo::TableReport report;
     const int64_t bytes = backenddemo::StorePurchaseSaveMessages( &value, 1, message, sizeof( message ), &report );
-    CHECK( bytes == 41 ); printf( "PROBE store body bits %lld\n", (long long) backenddemo::StorePurchaseMeasureMessageBody( 8, value ) );
+    CHECK( bytes == 41 );
+    { static backenddemo::LoginRequest l; build_backend_login( l ); static backenddemo::MatchResult m; build_backend_match( m ); static backenddemo::MatchResult md; static backenddemo::LoginRequest ld;
+      printf( "PROBE login %lld match %lld matchdef %lld logindef %lld\n", (long long) backenddemo::LoginRequestMeasureMessageBody( 8, l ), (long long) backenddemo::MatchResultMeasureMessageBody( 8, m ), (long long) backenddemo::MatchResultMeasureMessageBody( 8, md ), (long long) backenddemo::LoginRequestMeasureMessageBody( 8, ld ) ); }
     // a pad bit that is not zero
     {
         static uint8_t bad_pad[256];
