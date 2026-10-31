@@ -169,6 +169,61 @@ func TestProofPortingCells(t *testing.T) {
 	}
 }
 
+// TestProofDashCellCitesItsExemption: a `—` cell is n/a when the clause it
+// quotes is in the file it names, and red when the file does not carry it (the
+// negative control: an invented exemption), when the quote is a word rather
+// than a clause, or when the quote is only in the register's own table.
+func TestProofDashCellCitesItsExemption(t *testing.T) {
+	in := fixture()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	porting := "### M10 — Hooks\n\n**Method.** Who calls the allocator is per form:\na managed backend allocates inside its runtime and says so.\n\n" +
+		"| aa | bb |\n|---|---|\n| — \"a cell that only quotes its own row\" (docs/PORTING.md M10) | — |\n"
+	spec := "§3.3 Every read refuses a NaN on its raw bits as non_finite_float.\n"
+	for p, text := range map[string]string{portingPath: porting, "docs/SPEC-TABLES.md": spec} {
+		if err := os.WriteFile(filepath.Join(dir, p), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	docs, err := LoadCitable(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Docs = docs
+	in.Porting = map[string]map[string]string{"M10": {
+		"aa": "— the runtime allocates: \"a managed backend allocates\ninside its runtime and says so\" (docs/PORTING.md M10, Method)",
+		"bb": "— \"a managed backend never allocates at all, by design\" (docs/PORTING.md M10)",
+	}, "M21": {
+		"aa": "— retired: \"Every read refuses a NaN on its raw bits\" (docs/SPEC-TABLES.md §3.3)",
+		"bb": "— \"refuses\" (docs/SPEC-TABLES.md §3.3)",
+	}, "M17": {
+		"aa": "— \"a cell that only quotes its own row\" (docs/PORTING.md M10)",
+		"bb": "— \"Every read refuses a NaN on its raw bits\" (docs/PORTING.md M10)",
+	}}
+	p := Compute(in)
+	want := map[[2]string]string{
+		{"porting M10", "aa"}: StatusNA,
+		{"porting M10", "bb"}: StatusRed, // the text is invented
+		{"porting M21", "aa"}: StatusNA,
+		{"porting M21", "bb"}: StatusRed, // a word, not a clause
+		{"porting M17", "aa"}: StatusRed, // only the register's table carries it
+		{"porting M17", "bb"}: StatusRed, // the right words, the wrong file
+	}
+	for k, w := range want {
+		if c := mustCell(t, p, k[0], k[1]); c.Status != w {
+			t.Errorf("%s / %s = %+v, want %s", k[0], k[1], c, w)
+		}
+	}
+	if c := mustCell(t, p, "porting M10", "aa"); !strings.Contains(c.Cites, "docs/PORTING.md") {
+		t.Errorf("M10 / aa cites = %q", c.Cites)
+	}
+	if c := mustCell(t, p, "porting M10", "bb"); !strings.Contains(c.Why, "does not carry") {
+		t.Errorf("M10 / bb why = %q, want the missing clause named", c.Why)
+	}
+}
+
 // TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit is the release lock.
 func TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit(t *testing.T) {
 	green := Report{Commit: "abc", Cells: 10}
