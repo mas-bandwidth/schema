@@ -389,7 +389,11 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	// DECLARED default (docs/SPEC-TABLES.md §4.2): a retaining save that tested
 	// against zero instead wrote `build int32 = 1` at 1 where the engine elides it.
 	_, isEnum := f.Type.Ref.(*ir.Enum)
-	scalar := f.Array == ir.ArrayNone && (f.Type.Kind == ir.TBool || f.Type.Kind == ir.TInt || isEnum ||
+	// a FLAGS field is a scalar leaf too: the switch below has no arm for it,
+	// so a retaining save that fell through wrote nothing for a set of flags
+	// off its declared default
+	_, isFlags := f.Type.Ref.(*ir.Flags)
+	scalar := f.Array == ir.ArrayNone && (f.Type.Kind == ir.TBool || f.Type.Kind == ir.TInt || isEnum || isFlags ||
 		(f.Type.Kind == ir.TString && !f.Type.Blob()))
 	if scalar || (!isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f)) {
 		var body strings.Builder
