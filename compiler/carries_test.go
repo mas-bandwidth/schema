@@ -19,6 +19,9 @@ var nonGoCarriers = map[string][]string{
 	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 	"dart": {carryOptionalVariableClosure},
 	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
+	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
+	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine
+	"moo": {carryTimestamp, carryIntegrity, carryTextList, carryTextListTotal, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 }
 
 func TestEachTargetDeclaresWhatItCarries(t *testing.T) {

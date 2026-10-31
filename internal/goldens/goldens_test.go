@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -331,6 +332,15 @@ func TestGoldenPacketWideSource(t *testing.T) {
 			t.Errorf("%s must refuse unported packet wide text by name: %v", target, err)
 		}
 	}
+	// moo carries packet wide text in its emitter (test/packet-wide/moo); its
+	// compiler target stays behind the schema_leg_moo tag until the port joins
+	// the builtins, so its pin comes from the emitter. Only the schema's own
+	// module: the runtime beside it is SERIALIZE_PIN's (internal/codegen/moo).
+	mooFiles, err := moo.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "packet-wide", "moo"), map[string][]byte{"WideText.moo": mooFiles["WideText.moo"]})
 	pinDir(t, filepath.Join(goldenDir, "packet-wide", "identity"), map[string][]byte{"id.txt": []byte(fmt.Sprintf("0x%016x\n", u.ProtocolId))})
 }
 

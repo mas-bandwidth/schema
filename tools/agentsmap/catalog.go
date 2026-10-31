@@ -124,6 +124,8 @@ var catalog = []Entry{
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
 	e("internal/codegen/luau", "Luau type emitter (docs/PORT-LUAU.md)", "go test ./internal/codegen/luau", "go test ./internal/codegen/luau/..."),
 	e("internal/codegen/luautable", "Luau table emitter (docs/PORT-LUAU.md)", "go test ./internal/codegen/luautable", "go test ./internal/codegen/luautable"),
+	e("internal/codegen/moo", "moo packet emitter", "make test-moo", "make test-moo"),
+	e("internal/codegen/mootable", "moo table emitter", "make test-moo-tables", "make test-moo-tables"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
 

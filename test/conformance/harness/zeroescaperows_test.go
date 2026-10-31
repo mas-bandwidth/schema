@@ -37,8 +37,8 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if strings.Join(row.CarriedBy, ",") != "go,c,rust,dart,luau" {
-			t.Fatalf("%s: carried-by=%v; Go held the rule first, C, Rust, Dart and Luau carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
+		if strings.Join(row.CarriedBy, ",") != "go,c,rust,dart,moo,luau" {
+			t.Fatalf("%s: carried-by=%v; Go held the rule first, C, Rust, Dart, moo and Luau carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)
