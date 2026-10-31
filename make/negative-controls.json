@@ -1501,6 +1501,7 @@
         "tables-squirrel-load-negative-control",
         "tables-squirrel-message-form-negative-control",
         "tables-squirrel-damage-discard-negative-control",
+        "tables-squirrel-arms-negative-control",
         "tables-squirrel-save-negative-control",
         "tables-squirrel-base64-text-negative-control",
         "tables-squirrel-keyed-negative-control",
