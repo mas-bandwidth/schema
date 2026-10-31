@@ -12,15 +12,19 @@
 # no-text instance, each held to the reference outputs taken once at the start.
 #
 # THE GATE IS THE ALLOCATION COUNT, RE-MEASURED EVERY SAMPLE. The passes are cut
-# into sixteen samples, and each sample gives every case its share of the
-# passes back to back and measures the audit's two counters over that window
-# in ONE long-lived process: heap words (the words this process's collections
+# into samples of 200, the audit's own window: in a sample every case runs 200
+# times back to back and the audit's two counters are read over that window in
+# ONE long-lived process: heap words (the words this process's collections
 # reclaimed, traced with :erlang.trace/3 on :garbage_collection, plus the live
 # change across the window) and binary calls (binary_alloc's VM-wide call
-# counter). Every case's per-pass figure must sit inside its pinned budget in
-# test/conformance/elixir/alloc-budget.txt with the audit's own slack, at every
-# sample: a path that allocates and frees the same bytes every pass reds here
-# at the first sample and at every sample after it, naming the case.
+# counter). The window is the audit's because a collection's heap resizing is
+# a cost per window, so a figure averaged over another length is a different
+# measurement than the budget. Every case's per-pass figure must sit inside its
+# pinned budget in test/conformance/elixir/alloc-budget.txt with the audit's
+# own slack, at every sample: a path that allocates and frees the same bytes
+# every pass reds at the first sample and at every one after it, naming the
+# case. ELIXIR_SOAK_CASES, a comma-separated list of case names, narrows the
+# soak to those cases (the negative control's short run).
 #
 # DRIFT IS THE WEAKER INSTRUMENT, KEPT BESIDE IT: the live heap words after a
 # full collection and the VM's binary memory, read at the first sample and at
@@ -39,7 +43,10 @@ end
 runtime_pin.(System.argv())
 
 defmodule Soak do
-  @samples 16
+  # a sample is the audit's own window: every case run this many times back to
+  # back, the length its pinned per-iteration budget is averaged over, so a
+  # sample's figure and the budget are the same measurement
+  @window 200
   # the audit's slack per case and per iteration (test/elixir-alloc/main.exs)
   @heap_slack 64
   @binary_slack 8
@@ -55,13 +62,20 @@ defmodule Soak do
     Code.prepend_path(ebin)
     passes = String.to_integer(passes)
 
-    if passes < @samples do
-      IO.puts("SOAK FAILED: #{passes} passes cannot fill #{@samples} samples")
+    if passes < @window do
+      IO.puts("SOAK FAILED: #{passes} passes cannot fill one sample of #{@window}")
       System.halt(1)
     end
 
     budget = read_budget(budget_path)
     cases = cases(parse(File.read!(manifest)), budget)
+
+    cases =
+      case System.get_env("ELIXIR_SOAK_CASES") do
+        nil -> cases
+        "" -> cases
+        names -> Enum.filter(cases, &(&1.name in String.split(names, ",")))
+      end
 
     if cases == [] do
       IO.puts(
@@ -71,12 +85,12 @@ defmodule Soak do
       System.halt(1)
     end
 
-    window = div(passes, @samples)
-    lead = passes - window * @samples
+    samples = div(passes, @window)
+    lead = passes - samples * @window
 
     IO.puts(
-      "soak: #{passes} passes over #{length(cases)} pinned cases, #{@samples} samples of " <>
-        "#{window} passes, each case held to its pinned budget at every sample"
+      "soak: #{passes} passes over #{length(cases)} pinned cases, #{samples} samples of " <>
+        "#{@window} passes, each case held to its pinned budget at every sample"
     )
 
     parent = self()
@@ -171,7 +185,7 @@ defmodule Soak do
 
   # ---- the soaking process ----
 
-  defp run(parent, cases, lead, window) do
+  defp run(parent, cases, lead, samples) do
     cases = Enum.map(cases, &Map.put(&1, :ref, reference(&1)))
     pass(cases)
     spin(cases, lead)
@@ -181,34 +195,26 @@ defmodule Soak do
 
     # each sample's figures go to the driver as they are taken, so nothing the
     # soak itself keeps grows the live heap the drift line reads
-    for i <- 1..@samples do
-      send(parent, {:sample, self(), i, Enum.map(cases, &{&1.name, window(&1, window)})})
+    for i <- 1..samples do
+      send(parent, {:sample, self(), i, Enum.map(cases, &{&1.name, window(&1)})})
     end
 
     :erlang.garbage_collect()
     drift = {used() - live_first, :erlang.memory(:binary) - binary_first}
-    {lead + window * @samples, drift}
+    {lead + samples * @window, drift}
   end
 
-  # ONE CASE'S WINDOW in a sample: its share of the sample's passes, run back to
-  # back and measured on its own, so the count names the case that moved. The
-  # instrument's own cost (the trace, its tracer and the reads around it) is
-  # measured over an empty window beside it and taken off, so a window of a
-  # few iterations reads what the codec allocates and not what the window does.
-  defp window(c, n) do
-    {empty_words, empty_binary} = counted(fn -> :ok end)
-    {words, binary} = counted(fn -> repeat(c, n) end)
-    {div(max(words - empty_words, 0), n), div(max(binary - empty_binary, 0), n)}
-  end
-
-  defp counted(work) do
+  # ONE CASE'S WINDOW in a sample: @window iterations back to back, measured
+  # on their own exactly as the audit measures them, so the count names the
+  # case that moved
+  defp window(c) do
     binary0 = binary_calls()
     :erlang.garbage_collect()
     live0 = used()
-    reclaimed = traced(work)
+    reclaimed = traced(fn -> repeat(c, @window) end)
     live1 = used()
     binary1 = binary_calls()
-    {reclaimed + (live1 - live0), binary1 - binary0}
+    {div(reclaimed + (live1 - live0), @window), div(binary1 - binary0, @window)}
   end
 
   defp repeat(_c, 0), do: :ok
