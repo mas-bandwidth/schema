@@ -291,9 +291,8 @@ func (g *cookGen) emitCookForm1Union(f *ir.Field, un *ir.Union, offset int64, ex
 	g.pf("%s}\n", ind)
 }
 
-// emitCookForm1UnionElement writes one union array element where it lies,
-// through the union's element writer, and queues that writer (§2.6, §7.2).
-func (g *cookGen) emitCookForm1UnionElement(un *ir.Union, expr, addr, ind string) {
+// queueForm1Union queues a union's element writer, once.
+func (g *cookGen) queueForm1Union(un *ir.Union) {
 	if g.form1UnionsSeen == nil {
 		g.form1UnionsSeen = map[*ir.Union]bool{}
 	}
@@ -301,6 +300,12 @@ func (g *cookGen) emitCookForm1UnionElement(un *ir.Union, expr, addr, ind string
 		g.form1UnionsSeen[un] = true
 		g.form1Unions = append(g.form1Unions, un)
 	}
+}
+
+// emitCookForm1UnionElement writes one union array element where it lies,
+// through the union's element writer, and queues that writer (§2.6, §7.2).
+func (g *cookGen) emitCookForm1UnionElement(un *ir.Union, expr, addr, ind string) {
+	g.queueForm1Union(un)
 	if line := fmt.Sprintf("%sif (!_cook%s(%s, c, %s)) return false;", ind, un.Name, expr, addr); len(line) <= 80 {
 		g.pf("%s\n", line)
 	} else if head := fmt.Sprintf("%sif (!_cook%s(%s, c, %s))", ind, un.Name, expr, addr); len(head) <= 80 {
