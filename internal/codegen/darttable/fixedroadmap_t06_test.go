@@ -90,10 +90,13 @@ func t06C7(t *testing.T) {
 func t06R30(t *testing.T) {
 	src := t06Generated(t, "VNEW_cfloat_range_widen")
 	body := t02Block(t, src, "void cfloatRangeWidenFixedDecode(", "\n}\n")
-	// (1) IT RIDES AS THE FLOAT: the f32 cell's own four bytes, widened
-	// bit-exact (a NaN keeps its payload, dart/R27), never a quantized index.
-	t02Has(t, body, "value.aim = TableFixedLayout.float32Value(\n    view.getUint32(at + 4, Endian.little),\n  );",
+	// (1) IT RIDES AS THE FLOAT: the f32 cell's own four bytes, tested finite
+	// on the raw bits (docs/SPEC-TABLES.md §3.3) and widened exactly, never a
+	// quantized index.
+	t02Has(t, body, "final bits = view.getUint32(at + 4, Endian.little);",
 		"R30 the compressed float rides as the float itself")
+	t02Has(t, body, "value.aim = TableFixedLayout.float32Value(bits);",
+		"R30 the compressed float lands as the float itself")
 	// (2) THE BOUNDS ARE THE READER'S OWN (schema#1164 statement B), stated on
 	// the widened reader's -2..2.
 	t02Has(t, body, "if (value.aim < -2.0) {", "R30 clamps to the reader's own min")

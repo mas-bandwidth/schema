@@ -181,7 +181,7 @@ func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) 
  case k==14||k==16:if k==14 {n,ok:=r.Leb();if !ok||n>math.MaxUint32{return s,false};s.Min=int64(n)};n,ok:=r.Leb();if !ok||n>math.MaxUint32||int64(n)<s.Min{return s,false};s.Max=int64(n)
  };return s,true
 }
-func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.ID=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem)||elem==12||elem==33{return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false};if elem==14||elem==16 {if !r.Has(1){return e,false};inner:=r.Get8();if !tableMessageKnownKind(inner)||inner==12||inner==33{return e,false}}};return e,true}
+func tableMessageEntryRead(r *TableReader)(e TableMessageEntry,ok bool){if !r.Has(9){return e,false};e.ID=r.Get64();kind:=r.Get8();if !tableMessageKnownKind(kind){return e,false};e.Shape,ok=tableMessageShapeRead(r,kind);if !ok{return e,false};if kind==14||kind==16 {if !r.Has(1){return e,false};elem:=r.Get8();if !tableMessageKnownKind(elem){return e,false};e.Element,ok=tableMessageShapeRead(r,elem);if !ok{return e,false};if elem==14||elem==16 {if !r.Has(1){return e,false};inner:=r.Get8();if !tableMessageKnownKind(inner){return e,false}}};return e,true}
 func tableMessageCount(r *TableBitReader,s TableMessageShape)(uint64,bool){raw,ok:=r.Get(tableMessageBits(uint64(s.Max-s.Min)));return raw+uint64(s.Min),ok}
 func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e TableMessageEntry,depth int)bool {
  if depth>128{return false};s:=e.Shape;switch s.Kind {

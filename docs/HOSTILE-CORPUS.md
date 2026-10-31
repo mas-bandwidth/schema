@@ -84,11 +84,15 @@ case and fails if any verdict differs from the committed manifest. A per-port
 card (`schema-<port>-runs-hostile-corpus`) follows the same shape with that
 port's decoder and the same manifest.
 
-The Java port's card is `make schema-java-runs-hostile-corpus`: it generates the
-units the manifest names, compiles them with `javac --release 17 -Xlint:all
--Werror`, and runs `test/java-hostile/Runner.java`. A disagreement the port owes
-is carried by name in `test/java-hostile/known-findings.tsv` and printed as a
-`FIX-CARD`; an unnamed disagreement, or a FIX-CARD gone green, fails.
+Three ports carry one today. Java: `make schema-java-runs-hostile-corpus`
+(`test/java-hostile/Runner.java`, the units the manifest names compiled with
+`javac --release 17 -Xlint:all -Werror`). Elixir: `make schema-elixir-runs-hostile-corpus`
+(`test/elixir-hostile/runner.exs`). Dart: `make schema-dart-runs-hostile-corpus`
+(`test/dart-hostile/runner.dart`, the generated `<Package>Wire.dart` and
+`<Package>Fixed.dart` readers, every carrier). Each carries the disagreements
+its port still owes in a `known-findings.tsv` beside the runner and prints them
+as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
+FIX-CARD whose case has gone green.
 
 ## Reasons
 

@@ -319,6 +319,7 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 		for _, st := range closure {
 			g.gen.emitWriteBody(st)
 			g.gen.emitDecodeBody(st)
+			g.gen.emitFiniteBody(st)
 		}
 		for _, st := range closure {
 			g.emitMessageBody(st)
@@ -358,6 +359,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"TableFixedLineagePlan", "TableFixedLimits", "TableFixedPlan",
 		"TableFixedRefusal", "TableFixedReport", "TableFixedView")
 	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode")
+	finite := fixedHoldsFloat(st, map[string]bool{})
+	if finite {
+		g.needHome(lower+"FixedFiniteBody", "init"+capitalize(st.Name))
+	}
 
 	g.pf("// ---- %s, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----\n//\n", st.Name)
 	g.pf("// A record is an eight-byte hash of the writer's LAYOUT and then the values\n")
@@ -567,6 +572,14 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "int count", "Uint8List bytes"})
 	g.pf("  final need = %sFixedMeasure(count);\n", lower)
 	g.pf("  if (count < 0 || bytes.length < need) {\n    return -1;\n  }\n")
+	if finite {
+		g.pf("  // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every\n")
+		g.pf("  // record is asked before the first byte is written, so a refusal\n")
+		g.pf("  // leaves the caller's bytes as they were.\n")
+		g.pf("  for (var k = 0; k < count; k++) {\n")
+		g.pf("    if (%sFixedFiniteBody(values[k]).isNotEmpty) return -1;\n", lower)
+		g.pf("  }\n")
+	}
 	g.pf("  final view = %sFixedSaveView.of(bytes);\n", lower)
 	g.pf("  // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven\n")
 	g.pf("  // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.\n")
@@ -738,6 +751,22 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      report.refused = runWhy;\n      return -1;\n    }\n")
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
+	if finite {
+		g.pf("    // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each\n")
+		g.pf("    // float's raw bits before it landed, and a NaN or an infinity refuses\n")
+		g.pf("    // the whole batch by name, the tolerant read included. Nothing of it is\n")
+		g.pf("    // kept: every record this call wrote goes back to its defaults.\n")
+		g.pf("    if (report.nonFiniteFloat.isNotEmpty) {\n")
+		g.pf("      final field = report.nonFiniteFloat;\n")
+		g.pf("      for (var j = 0; j <= k; j++) {\n")
+		g.pf("        init%s(values[j]);\n", capitalize(st.Name))
+		g.pf("      }\n")
+		g.pf("      report.reset();\n")
+		g.pf("      report.nonFiniteFloat = field;\n")
+		g.pf("      report.refused = TableFixedRefusal.nonFiniteFloat;\n")
+		g.pf("      return -1;\n")
+		g.pf("    }\n")
+	}
 	g.pf("    at += recordBytes;\n")
 	g.pf("  }\n")
 	g.pf("  // THE CENSUS LANDS ONCE, HERE, on a read that returns (§5.4, §5.9 #6).\n")
