@@ -15,7 +15,7 @@ import (
 // packet type a table reaches by value is built by its packet constructor and
 // read and written here without a second shape — and adds the table
 // constructs of docs/SPEC-TABLES.md §2: a pointer is T? (nil is null), a blob
-// *string is string? and *bytes buffer?, an unbounded string is string?, a
+// *string and *bytes are buffer? (a blob is a node of identity), an unbounded string is string?, a
 // []T and a map are plain arrays born empty, and ?T carries <Name>Present.
 //
 // fixedIsNumber and wideClass are the packet generator's own rules
