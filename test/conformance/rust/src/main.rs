@@ -1324,6 +1324,7 @@ macro_rules! with_cook_root {
             ("blobdemo", "Catalog") => { use blobdemo::{catalog_load as $load, catalog_cook_write as $cook}; Some($body) }
             ("streamdemo", "Feed") => { use streamdemo::{feed_load as $load, feed_cook_write as $cook}; Some($body) }
             ("messagedemo", "ToolMessage") => { use messagedemo::{tool_message_load as $load, tool_message_cook_write as $cook}; Some($body) }
+            ("scalars", "SimState") => { use scalars::{sim_state_load as $load, sim_state_cook_write as $cook}; Some($body) }
             _ => None,
         }
     }};
