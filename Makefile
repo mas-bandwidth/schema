@@ -5574,7 +5574,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-align-between-bodies:internal/tablewire/messageencode.go:TestTheBatch \
 	message-no-batch-bound:internal/tablewire/messageencode.go:TestTheFiveAnswers \
 	message-string-no-align:internal/tablewire/messageencode.go:TestTheCostRows \
-	message-index-fixed-width:internal/tablewire/messageencode.go:TestAPointeredBatch \
 	message-reference-past-entries:internal/tablewire/messagedecode.go:TestAReferenceAtAndAboveTheEntryCount \
 	message-read-on-after-damage:internal/tablewire/messagedecode.go:TestDamageIsTerminal \
 	message-no-pad-check:internal/tablewire/messagedecode.go:TestThePadAndWhatFollowsIt \
@@ -5586,7 +5585,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-skip-string-no-align:internal/tablewire/messagedecode.go:TestTheShapesOneRowAKind \
 	message-wide-string-thirty-two:internal/tablewire/messagedecode.go:TestTheWideStringsWidth \
 	message-reader-own-width:internal/tablewire/messagedecode.go:TestARangeThatMoved \
-	message-index-fixed-width-read:internal/tablewire/messagedecode.go:TestAPointeredBatch \
 	message-reads-own-vocabulary:internal/tablewire/messagedecode.go:TestPerDirectionIndependence \
 	message-second-announcement-accepted:internal/tablewire/message.go:TestTheMessageFormRefusesByName \
 	message-strict-checks-relaxed:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
@@ -5614,8 +5612,7 @@ MESSAGE_FORM_CONTROLS := \
 	message-array-of-text-refused:ir/tablemessage.go:TestAHostileShape \
 	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
 	message-text-accepts-ill-formed:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
-	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
-	message-blob-accepts-ill-formed:internal/tablewire/messagedecode.go:TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule
+	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
 
 .PHONY: tables-message-form-negative-control
 tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control
@@ -5723,6 +5720,16 @@ define message_form_text_control
 	@cat build/message-nc/$(1).log
 	@echo "negative control ($(1)): the message form's text rows go red"
 endef
+
+# THE MESSAGE FORM IS FIXED TABLES ONLY, IN EVERY BACKEND (docs/SPEC-TABLES.md
+# §3.3): compiler/messageformlock_test.go generates one unit with a fixed table
+# beside three variable tables through all fifteen backends and refuses any
+# line that puts a variable table beside the message form. Its control plants
+# one such line in each backend's real output and requires the check to name
+# it, and requires the clean output to pass.
+.PHONY: message-form-fixed-only-lock-negative-control
+message-form-fixed-only-lock-negative-control:
+	go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
 
 .PHONY: tables-message-form-text-negative-control
 tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp

@@ -223,6 +223,9 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 		t.Fatal("the manifest names no message")
 	}
 	for _, msg := range m.Messages {
+		if msg.Refused() {
+			continue // a variable table: TestAMessageRowOverAVariableTableIsARefusal holds it
+		}
 		c, err := m.LookupConnection(msg.Connection)
 		if err != nil {
 			t.Errorf("%s: %v", msg.Name, err)

@@ -5,6 +5,10 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // THE MESSAGE FORM IS FIXED TABLES ONLY, IN EVERY BACKEND (docs/SPEC-TABLES.md
@@ -106,17 +110,33 @@ func generateMessageFormLock(t *testing.T) (map[string]map[string][]byte, []stri
 	t.Helper()
 	c := New()
 	u := unitFromSource(t, messageFormLockSource)
-	targets := c.Targets()
-	if len(targets) < 15 {
-		t.Fatalf("%d targets are registered (%v); the lock holds all fifteen backends", len(targets), targets)
-	}
 	out := map[string]map[string][]byte{}
-	for _, target := range targets {
+	for _, target := range c.Targets() {
 		files, err := c.Generate(u, target, Options{})
 		if err != nil {
 			t.Fatalf("%s refused the lock's unit: %v", target, err)
 		}
 		out[target] = files
+	}
+	// THE TWO TAGGED LEGS (compiler/target_moo.go, target_goose.go build only
+	// under their schema_leg_* tags), through their table emitters directly
+	for target, generate := range map[string]func(*ir.Unit) (map[string][]byte, error){"moo": mootable.Generate, "goose": goosetable.Generate} {
+		if _, ok := out[target]; ok {
+			continue
+		}
+		files, err := generate(u)
+		if err != nil {
+			t.Fatalf("%s refused the lock's unit: %v", target, err)
+		}
+		out[target] = files
+	}
+	targets := make([]string, 0, len(out))
+	for target := range out {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+	if len(targets) != 15 {
+		t.Fatalf("%d backends generated (%v); the lock holds all fifteen", len(targets), targets)
 	}
 	return out, targets
 }
