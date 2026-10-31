@@ -308,12 +308,12 @@ IO.puts("ok")
 	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
 		t.Fatalf("the Elixir reader misses a nested body that ends early: %v\n%s", err, out)
 	}
-	const check = "if ends_early?(sub, ids) do"
+	const check = "if ends_early?(sub, ids),"
 	planted := map[string][]byte{}
 	k := 0
 	for name, data := range files {
 		k += strings.Count(string(data), check)
-		planted[name] = []byte(strings.ReplaceAll(string(data), check, "if false do"))
+		planted[name] = []byte(strings.ReplaceAll(string(data), check, "if false,"))
 	}
 	if k == 0 {
 		t.Fatal("the witness found no early-terminator check in the generated reader")
