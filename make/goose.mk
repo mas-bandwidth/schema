@@ -110,3 +110,12 @@ GOLDENS_LEGS      += update-goldens-goose
 conformance-negative-control-goose: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control load
+
+# Whole-load discard (§4), including retaining reads. The control removes
+# the emitted runtime's discard and requires the damaged roots to escape.
+.PHONY: tables-goose-damage tables-goose-damage-negative-control
+tables-goose-damage: toolchain-goose
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadReturnsNoRoot$$'
+tables-goose-damage-negative-control: toolchain-goose
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadNegativeControl$$'
+test-goose: tables-goose-damage tables-goose-damage-negative-control
