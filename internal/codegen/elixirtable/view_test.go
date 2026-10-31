@@ -134,6 +134,7 @@ var wantExamplesDescriptorLines = []string{
 	`      align: 4,`,
 	`      type_id: 0x0577780D86C4B0C3,`,
 	`      record: 28,`,
+	`      node_align: 4,`,
 	`      has_extent: false,`,
 	`      string_blob: false,`,
 	`      variable: false,`,
