@@ -148,10 +148,13 @@ func TestCaseIndexCoversTheCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	set, err := buildClaims(m, []string{"go", "cpp", "squirrel"})
+	set, err := buildClaims(m, []string{"go", "cpp"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// every registered target now carries some construct, so the leg that
+	// carries none is a stand-in registered here
+	set.carried["carries-none"] = map[string]bool{}
 	unitless := []string{"forgery", "cook-forgery", "cook-reason", "block-reason"}
 	claimedSomewhere := 0
 	for _, s := range surfaces {
@@ -179,9 +182,9 @@ func TestCaseIndexCoversTheCorpus(t *testing.T) {
 			if claimed, _ := set.claims("go", s, e.name); !claimed {
 				t.Errorf("%s / %s uses %v and Go does not claim it", s, e.name, info.uses)
 			}
-			// Squirrel registers none, so it claims none
-			if claimed, _ := set.claims("squirrel", s, e.name); claimed {
-				t.Errorf("%s / %s: Squirrel registers no construct and claims it", s, e.name)
+			// a leg that carries no construct claims no case that uses one
+			if claimed, _ := set.claims("carries-none", s, e.name); claimed {
+				t.Errorf("%s / %s: a leg that carries nothing claims it", s, e.name)
 			}
 		}
 	}
