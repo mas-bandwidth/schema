@@ -321,6 +321,9 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	if len < 9 then report.malformed = true; return false end
 	local count = integer.tonumber(buffer.readinteger(data, len - 8))
 	if count > math.floor((len - 9) / 8) then report.malformed = true; return false end
+	-- the id table holds at most 4096 entries (docs/SPEC-TABLES.md §3,
+	-- ir.TableWireIdTableBound), whatever the buffer would hold
+	if count > 4096 then report.malformed = true; return false end
 	local start = len - 8 - count * 8
 	local ids = {}
 	for i = 0, count - 1 do

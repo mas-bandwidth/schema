@@ -181,4 +181,4 @@ tables-luau-arms-negative-control: toolchain-luau
 	go test ./internal/codegen/luautable/ -run '^TestLuauArmFieldLineNegativeControl$$' -count=1 -timeout 600s
 
 test-luau: tables-luau-arms tables-luau-arms-negative-control
-test-luau: conformance-negative-control-luau conformance-negative-control-luau-emitter conformance-negative-control-luau-walk
+test-luau: conformance-negative-control-luau conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing

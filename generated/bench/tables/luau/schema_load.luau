@@ -238,6 +238,9 @@ local function wide_ok(b: buffer, at: number, n: number): boolean
 	return true
 end
 
+-- ir.TableWireIdTableBound: the most entries an id table may hold (§3)
+local ID_TABLE_BOUND = 4096
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed.
 local function open(bytes: buffer, report: any): any
@@ -249,6 +252,10 @@ local function open(bytes: buffer, report: any): any
 	-- integer: a high-bit count is huge, never negative, and refuses here
 	local count = integer.tonumber(buffer.readinteger(bytes, len - 8))
 	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return nil end
+	-- THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+	-- CHECK): a table of more than ID_TABLE_BOUND entries is malformed on the
+	-- whole-wire rule, whatever the buffer would hold
+	if count > ID_TABLE_BOUND then report.malformed = true; return nil end
 	local endpos = len - 8 - count * 8
 	local ids = {}
 	local seen: { [integer]: boolean } = {}
