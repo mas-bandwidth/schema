@@ -1918,3 +1918,64 @@ conformance-negative-control-elixir-framing: build/conformance-harness
 	@grep -q "elixir / framing: frame_entries_4097:" build/elixir-conformance-negative-framing/log || \
 		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on frame_entries_4097"; exit 1; }
 test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing
+
+# THE MAP AND LIST COOK (docs/PORTING.md M19, docs/SPEC-TABLES.md §2.8, §2.9,
+# §7.6). TestCookWriteMapsAndListsElixir cooks every map_*, list_* and
+# widelist_* cook-write row of the conformance manifest from its wire in both
+# byte orders and holds each to the C++ reference's cook, a row answered absent
+# being a failure; TestCookMapWriterHoldsTheSortElixir hands the writer maps
+# whose keys come out of order (past thirty-two keys, and integer keys spelled
+# as strings), reads the cook back through the holder's span and <field>_find,
+# and requires the entries ascending and every key found where it lies. Both
+# run the leg's own toolchain, so SCHEMA_REQUIRE_CORPUS=1 turns a missing one
+# into a failure.
+.PHONY: tables-elixir-cook-map
+tables-elixir-cook-map:
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+		-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$'
+
+test-elixir: tables-elixir-cook-map
+
+# Its control plants the two faults the layout model's reversed witnesses name
+# (tla/NodeExtent.tla), each through a Go overlay of the cook writer's emitter:
+#   unsorted   the cook lays a map's entries DESCENDING: map_full (and every
+#              map row with two entries) and the sort test go red.
+#   misaligned the extent begins at sizeof rounded to the floor of eight and
+#              the node aligns to its record alone: widelist_wide goes red,
+#              and no other row, because no other row holds an element that
+#              asks for more than eight.
+ELIXIR_COOK_MAP_UNSORTED_SED := -e 's|Enum.map_reduce(map_entries(f, v), acc,|Enum.map_reduce(Enum.reverse(map_entries(f, v)), acc,|'
+ELIXIR_COOK_MAP_MISALIGNED_SED := \
+	-e 's|	return ir.CookExtentStart(u, st)|	return (ir.RecordLayout(u, st).Size + ir.RegionAlignFloor - 1) \& ^(ir.RegionAlignFloor - 1)|' \
+	-e 's|	return ir.CookNodeAlign(u, st)|	return ir.RecordLayout(u, st).Align|'
+
+# $(call ELIXIR_COOK_MAP_CONTROL,name,sedvar,red pattern,what,only)
+define ELIXIR_COOK_MAP_CONTROL
+	@rm -rf build/elixir-cook-map-nc-$(1) && mkdir -p build/elixir-cook-map-nc-$(1)
+	@sed $($(2)) internal/codegen/elixirtable/cookwrite.go > build/elixir-cook-map-nc-$(1)/cookwrite.go.txt
+	@cmp -s internal/codegen/elixirtable/cookwrite.go build/elixir-cook-map-nc-$(1)/cookwrite.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: $(2) matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-map-nc-$(1)/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-map-nc-$(1)/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+			go test -overlay build/elixir-cook-map-nc-$(1)/overlay.json ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
+			-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$' \
+			> build/elixir-cook-map-nc-$(1)/log 2>&1; then \
+		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) left the map and list cook gate green"; exit 1; \
+	fi
+	@for p in $(3); do \
+		grep -q "FAIL $$p" build/elixir-cook-map-nc-$(1)/log || \
+			{ cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) did not red $$p"; exit 1; }; \
+	done
+	@if [ -n "$(5)" ] && grep '^FAIL [a-z_-]*:' build/elixir-cook-map-nc-$(1)/log | grep -v -q 'FAIL $(5)'; then \
+		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) red more than $(5)"; exit 1; \
+	fi
+	@echo "elixir cook map negative control: $(4) reds [$(3)]"
+endef
+
+.PHONY: tables-elixir-cook-map-negative-control
+tables-elixir-cook-map-negative-control:
+	$(call ELIXIR_COOK_MAP_CONTROL,unsorted,ELIXIR_COOK_MAP_UNSORTED_SED,map_full: map_full-be: tiers:,a cook that lays a map's entries descending,)
+	$(call ELIXIR_COOK_MAP_CONTROL,misaligned,ELIXIR_COOK_MAP_MISALIGNED_SED,widelist_wide: widelist_wide-be:,an extent begun at the floor of eight in a node aligned to its record,widelist_wide)
+
+test-elixir: tables-elixir-cook-map-negative-control
