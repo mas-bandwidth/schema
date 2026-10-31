@@ -103,9 +103,15 @@ func identNewLeg(lang string) error {
 	return nil
 }
 
+// newLegRecipe is a language's file extension and line comment. The default
+// `#` is no comment in Lua or in Goose: lua names `--`, and goose names `//`
+// (its files are .goose: docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
 func newLegRecipe(lang string) (ext, comment string) {
 	if lang == "lua" {
 		return "lua", "--"
+	}
+	if lang == "goose" {
+		return "goose", "//"
 	}
 	return lang, "#"
 }
