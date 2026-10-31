@@ -920,12 +920,12 @@ tables-c-blob-span-negative-control: test/c-tables/blob_span_main.c
 define c_wire_probe_control
 	@rm -rf $(1) && mkdir -p $(1)
 	@sed -e '$(3)' internal/codegen/ctable/$(2) > $(1)/emitter.go.txt
-	@test "$$$$(grep -c '$(4)' $(1)/emitter.go.txt)" -ge 1 || \
+	@test "$$(grep -c '$(4)' $(1)/emitter.go.txt)" -ge 1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/$(2)":"%s/$(1)/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(1)/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -overlay $(1)/overlay.json -count=1 ./compiler \
-			-run '^$(5)$$$$' > $(1)/log 2>&1; then \
+			-run '^$(5)$$' > $(1)/log 2>&1; then \
 		if grep -q -- '--- SKIP' $(1)/log || ! grep -q -- '--- PASS' $(1)/log; then \
 			echo "NEGATIVE CONTROL FAILED: $(5) did not run (skipped), so this control is watching nothing"; \
 			cat $(1)/log; exit 1; \
@@ -1475,8 +1475,10 @@ test-c: tables-c-clean
 # emitter (tools/sabotage c-clean-format-drift), whose output the gate holds to
 # zero drift, built under `go build -overlay`; the examples corpus generated
 # with it must turn the gate's own engine red naming Types.h. The guard comes
-# first: the unsabotaged emitter's output is green under the same engine, or
-# the control would be watching a tree that was red anyway. It needs the
+# first: the unsabotaged emitter's Types.h is green under the same engine, or
+# the control would be watching a file that was red anyway. The engine runs
+# over Types.h alone, the one file the plant reaches, so a drift elsewhere in
+# the packet output (ExampleView.h is not clean) cannot answer for it. It needs the
 # pinned clang-format, and refuses by name where that does not resolve.
 C_CLEAN_CONTROL := build/c-clean-control
 .PHONY: tables-c-format-negative-control
@@ -1484,13 +1486,15 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 	@command -v $(CLANG_FORMAT) >/dev/null 2>&1 && [ "$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p')" = "$(CLANG_FORMAT_MAJOR)" ] || \
 		{ echo "NEGATIVE CONTROL CANNOT RUN: clang-format $(CLANG_FORMAT_PIN) does not resolve (CLANG_FORMAT = $(CLANG_FORMAT)), and a drift control without the formatter proves nothing"; exit 1; }
 	@rm -rf $(C_CLEAN_CONTROL) && mkdir -p $(C_CLEAN_CONTROL) && : > $(C_CLEAN_CONTROL)/empty.txt
-	./bin/schema generate --lang c --out $(C_CLEAN_CONTROL)/clean examples
+	./bin/schema generate --lang c --out $(C_CLEAN_CONTROL)/clean-all examples
+	@mkdir -p $(C_CLEAN_CONTROL)/clean && cp $(C_CLEAN_CONTROL)/clean-all/Types.h $(C_CLEAN_CONTROL)/clean/
 	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged C packet emitter's output is not format-clean, so this control would watch a tree that was red anyway"; cat $(C_CLEAN_CONTROL)/guard.out; exit 1; }
 	go run ./tools/sabotage -name c-clean-format-drift -out $(C_CLEAN_CONTROL)/c.gotext internal/codegen/c/c.go
 	@printf '{"Replace":{"%s/internal/codegen/c/c.go":"%s/$(C_CLEAN_CONTROL)/c.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(C_CLEAN_CONTROL)/overlay.json
 	go build -overlay $(C_CLEAN_CONTROL)/overlay.json -o $(C_CLEAN_CONTROL)/schema ./cmd/schema
-	$(C_CLEAN_CONTROL)/schema generate --lang c --out $(C_CLEAN_CONTROL)/sabotaged examples
+	$(C_CLEAN_CONTROL)/schema generate --lang c --out $(C_CLEAN_CONTROL)/sabotaged-all examples
+	@mkdir -p $(C_CLEAN_CONTROL)/sabotaged && cp $(C_CLEAN_CONTROL)/sabotaged-all/Types.h $(C_CLEAN_CONTROL)/sabotaged/
 	@grep -q '^typedef struct [A-Za-z0-9_]* {$$' $(C_CLEAN_CONTROL)/sabotaged/Types.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no K&R brace"; exit 1; }
 	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
