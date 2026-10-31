@@ -310,7 +310,9 @@ jobs:
       - id: list
         name: the tables-<lang>-release targets the Makefile and make/*.mk carry
         run: |
-          targets=$(grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//' | sort -u | jq -R . | jq -sc .)
+          # and every leg's release wire-fuzz gate, from the leg list
+          # make/wire-fuzz-release.mk holds (tables-wire-fuzz-release-<leg>)
+          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; } | sort -u | jq -R . | jq -sc .)
           echo "$targets"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
@@ -383,7 +385,7 @@ jobs:
       # refuses by name without it, and dist-lua builds it from source at the
       # sha256 make/lua.mk names.
       - name: install the Lua pin
-        if: matrix.target == 'tables-lua-release'
+        if: matrix.target == 'tables-lua-release' || matrix.target == 'tables-wire-fuzz-release-lua'
         run: make dist-lua
 
       # THE LOBSTER PIN for tables-lobster-release: its wire fuzz runs the
@@ -393,7 +395,7 @@ jobs:
       # fails to load and the harness reads EOF from the leg (#2370 installs
       # the same two packages for ci-full.yml's lobster rows).
       - name: install the Lobster pin
-        if: matrix.target == 'tables-lobster-release'
+        if: matrix.target == 'tables-lobster-release' || matrix.target == 'tables-wire-fuzz-release-lobster'
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -404,7 +406,7 @@ jobs:
       # wire fuzz and controls refuse by name without it (toolchain-squirrel),
       # and dist-squirrel builds it from source at the sha256 it names.
       - name: install the Squirrel pin
-        if: matrix.target == 'tables-squirrel-release'
+        if: matrix.target == 'tables-squirrel-release' || matrix.target == 'tables-wire-fuzz-release-squirrel'
         run: make dist-squirrel
 
       # The Goose leg's pinned compiler (make/goose.mk), linux-x64, which this
@@ -413,8 +415,22 @@ jobs:
         if: matrix.target == 'tables-goose-release'
         run: make dist-goose
 
+      # The Luau leg's pinned interpreter (make/luau.mk dist-luau), for its
+      # release wire-fuzz gate: the driver runs generated Luau under it.
+      - name: install the Luau pin
+        if: matrix.target == 'tables-wire-fuzz-release-luau'
+        run: make dist-luau
+
       - name: ${{ matrix.target }}
+        if: '!startsWith(matrix.target, ''tables-wire-fuzz-release-'')'
         run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+
+      # THE RELEASE WIRE-FUZZ GATE (make/wire-fuzz-release.mk): one leg's six
+      # independent runs (both arms, seeds 1-3, at WIRE_FUZZ_RELEASE_N), side
+      # by side on every core, each a row of the table the job prints.
+      - name: ${{ matrix.target }} (both arms, seeds 1-3)
+        if: startsWith(matrix.target, 'tables-wire-fuzz-release-')
+        run: make -j"$(nproc)" "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of

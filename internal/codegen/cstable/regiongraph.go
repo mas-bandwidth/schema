@@ -28,6 +28,10 @@ const tableRegionGraphSource = `
         public int* Hash;
         public int Count, Capacity;
         public bool Valid;
+        // A blob is owned by ONE slot (docs/SPEC-TABLES.md §2.5): a writer
+        // refuses a blob a second slot names (blob_shared), while Pack and
+        // Cook place the graph as they find it.
+        public bool RefuseSharedBlobs;
         public TableAllocator Allocator;
         public ReadOnlySpan<RegionNode> Nodes { get { return new ReadOnlySpan<RegionNode>(Entries, Count); } }
         static uint Mix(long at)
@@ -81,9 +85,9 @@ const tableRegionGraphSource = `
         public bool Add(ulong id)
         { if (Reference(id) != 0) { return true; } if (Count == Values.Length) { return false; } Values[Count++] = id; return true; }
     }
-    static RegionGraph RegionNumber(NativeValue root, TableTypeInfo type, TableAllocator allocator = default)
+    static RegionGraph RegionNumber(NativeValue root, TableTypeInfo type, TableAllocator allocator = default, bool refuseSharedBlobs = false)
     {
-        RegionGraph graph = new RegionGraph { Valid = true, Allocator = allocator };
+        RegionGraph graph = new RegionGraph { Valid = true, Allocator = allocator, RefuseSharedBlobs = refuseSharedBlobs };
         if (!RegionVisit(root, type, ref graph)) { graph.Dispose(); return default; }
         return graph;
     }
@@ -119,7 +123,11 @@ const tableRegionGraphSource = `
                 int index = graph.Find(at);
                 if (index == 1 || index >= 2 && graph.Entries[index - 2].Open) { return false; }
                 if (index >= 2)
-                { if (graph.Entries[index - 2].TypeId != f.PointerTypeId) { return false; } continue; }
+                {
+                    if (graph.Entries[index - 2].TypeId != f.PointerTypeId) { return false; }
+                    if (f.BlobKind != 0 && graph.RefuseSharedBlobs) { return false; }
+                    continue;
+                }
                 var child = new NativeValue(value.Base, at) { Mutable = value.Mutable };
                 if (f.BlobKind != 0 && NativeWord(child.Base + at, 4) > int.MaxValue) { return false; }
                 int entry = graph.Count;

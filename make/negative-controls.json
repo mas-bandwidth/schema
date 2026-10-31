@@ -1040,6 +1040,15 @@
       "dart": "3.13.2"
     },
     {
+      "name": "wire-fuzz-release",
+      "when": "nightly",
+      "why": "the release wire-fuzz gate's control (make/wire-fuzz-release.mk): #2400's Dart map-header fix reverted in an emitter overlay, the Dart driver rebuilt on the regenerated units, and the gate's own plain-arm runs at its seeds and release count required to go red on the report. It runs at the release count, which is certification cost, so it is nightly.",
+      "targets": [
+        "tables-wire-fuzz-release-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
       "name": "lobster-fuzz",
       "when": "pull-request",
       "why": "the Lobster leg's hostile-corpus control (a load that calls a clean wire damaged reds the corpus) and its wire-fuzz control (a dropped unknown count reds the fuzz; descriptors without their guards red the pinned guard-false-pointer vector). Both run the pinned v2026.8 toolchain, which the row installs (with the two GL libraries its release binary links) through its lobster field. Measured on the studio off one warm build: 2.3 s and 4.4 s.",
