@@ -565,6 +565,14 @@ func cMessageManifestRows(t *testing.T) {
 			if row[0] == "connection" {
 				// "The announcement is a compile-time constant byte array with a length." (§3.3)
 				source += "int main(void){uint8_t out[sizeof(expected)];return announce(out,sizeof(out))!=sizeof(expected)||memcmp(out,expected,sizeof(out));}\n"
+			} else if row[5] == "-" {
+				// a NAMED REFUSAL row: its root must be a variable table, which
+				// carries no message form (docs/SPEC-TABLES.md §3.3); that no
+				// backend emits one is compiler/messageformlock_test.go's
+				if st := unit.Tables[row[3]]; st == nil || st.FixedDeclared {
+					t.Fatalf("message row %s is a refusal row over %s, which is not a variable table", row[1], row[3])
+				}
+				return
 			} else {
 				wire, err := os.ReadFile(filepath.Join(root, row[5]))
 				if err != nil {

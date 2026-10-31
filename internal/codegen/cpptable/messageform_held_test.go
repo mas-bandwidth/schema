@@ -644,8 +644,16 @@ func TestMessageFormHeldCPP(t *testing.T) {
 			switch {
 			case row.connectionRow:
 				body = cppConnectionBody(filepath.Join(root, conn.path))
+			case row.batch == "-":
+				// a NAMED REFUSAL row: its root must be a variable table, which
+				// carries no message form (docs/SPEC-TABLES.md §3.3); that no
+				// backend emits one is compiler/messageformlock_test.go's
+				if !ir.VariableTables(u)[row.root] {
+					t.Fatalf("manifest row %q is a refusal row over %s, a fixed table", row.name, row.root)
+				}
+				return
 			case ir.VariableTables(u)[row.root]:
-				t.Fatalf("manifest row %q names %s, a variable table: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)", row.name, row.root)
+				t.Fatalf("manifest row %q names %s, a variable table, and pins message bytes: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)", row.name, row.root)
 			default:
 				body = cppMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}
