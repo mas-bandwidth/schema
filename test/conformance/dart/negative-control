@@ -40,7 +40,7 @@
 # `dart / forgery` and `dart / block-reason` on that row alone; `block` and `block-dump` read the two
 # valid images, which carry this build's pitch, and stay green.
 #
-# usage: negative-control <walk|zero|share|wire|block> [dart]     (run from the repository root)
+# usage: negative-control <walk|zero|share|wire|block|absent> [dart]     (run from the repository root)
 set -eu
 
 mode=${1:-walk}
@@ -52,10 +52,46 @@ case "$mode" in
     wire) sabotage=table-dart-wire-widen; marker='SABOTAGED: the widened count is gone' ;;
     mapheader) sabotage=table-dart-map-header-bounded; marker='SABOTAGED: the map header is bounded by L' ;;
     block) sabotage=table-dart-block-pitch; marker='SABOTAGED: the pitch check is gone' ;;
+    absent) ;;
     *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
 out=build/conformance-dart-negative-$mode
 root=$(pwd)
+
+if [ "$mode" = absent ]; then
+    # PER-CASE ABSENT (docs/PORTING.md I4): the driver's every `<case>.absent`
+    # write is renamed out of the harness's sight, over the tree `make
+    # build/conformance-dart` generated, so each row the leg cannot carry is a
+    # row it wrote nothing for. The matrix must go red on exactly those rows,
+    # each as "wrote nothing", and every answered row must stay green.
+    rm -rf "$out"
+    mkdir -p "$out/build" "$out/test/conformance/dart"
+    ln -s "$root/build/tables-generated-dart" "$out/build/tables-generated-dart"
+    ln -s "$root/build/tables-generated-dart-scalars" "$out/build/tables-generated-dart-scalars"
+    for d in "$root"/build/*; do
+        [ -e "$out/build/$(basename "$d")" ] || ln -s "$d" "$out/build/$(basename "$d")"
+    done
+    sed "s/\.absent')/.absent.gone')/g" test/conformance/dart/main.dart > "$out/test/conformance/dart/main.dart"
+    n=$(grep -c "\.absent\.gone')" "$out/test/conformance/dart/main.dart")
+    [ "$n" -ge 3 ] || { echo "negative control: the absent writes matched $n sites, want at least 3 — the driver moved" >&2; exit 1; }
+    "$dart" compile exe -o "$out/conformance-dart" "$out/test/conformance/dart/main.dart" >/dev/null
+    printf 'dart %s/%s/conformance-dart\n' "$root" "$out" > "$out/drivers.txt"
+    if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+        cat "$out/log"
+        echo "NEGATIVE CONTROL FAILED: absent (the .absent writes renamed) left dart conformance green" >&2
+        exit 1
+    fi
+    if grep '^  dart / ' "$out/log" | grep -Ev 'wrote nothing' >/dev/null; then
+        cat "$out/log"; echo "absent control turned a row red for another reason" >&2; exit 1
+    fi
+    grep -q '^  dart / ' "$out/log" || { cat "$out/log"; exit 1; }
+    for surface in report json-read json-write json-hostile cook cook-write block forgery; do
+        grep -Eq "^$surface +pass " "$out/log" || { cat "$out/log"; echo "surface $surface did not stay green" >&2; exit 1; }
+    done
+    grep '^  dart / ' "$out/log" | head -3
+    echo "Dart absent negative control: with the .absent writes gone, exactly the rows the leg cannot carry go red as wrote nothing"
+    exit 0
+fi
 
 rm -rf "$out"
 mkdir -p "$out/build" "$out/test/conformance/dart"

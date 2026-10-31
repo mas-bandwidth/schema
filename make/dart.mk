@@ -1635,6 +1635,12 @@ conformance-negative-control-dart-zero: build/conformance-harness
 conformance-negative-control-dart-share: build/conformance-harness
 	sh test/conformance/dart/negative-control share "$(DART)"
 
+# PER-CASE ABSENT (I4): the driver's `<case>.absent` writes renamed away, so
+# the rows the leg cannot carry go red as "wrote nothing" and no other row does.
+.PHONY: conformance-negative-control-dart-absent
+conformance-negative-control-dart-absent: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control absent "$(DART)"
+
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.
 .PHONY: conformance-negative-control-dart-block
@@ -1643,7 +1649,7 @@ conformance-negative-control-dart-block: build/conformance-harness
 
 test-dart: conformance-negative-control-dart-block
 
-test-dart: conformance-negative-control-dart-walk conformance-negative-control-dart-zero conformance-negative-control-dart-share
+test-dart: conformance-negative-control-dart-walk conformance-negative-control-dart-zero conformance-negative-control-dart-share conformance-negative-control-dart-absent
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Dart side:
 # docs/USAGE.md's dart-table-usage fragment, generated against tables/pointers
