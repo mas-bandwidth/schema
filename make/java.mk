@@ -1643,34 +1643,30 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # retention arm's pair. The harness owns the mutants and the oracle
 # (internal/tablewire, the compiler's own engine).
 #
-# The gate runs every ENUMERATED pass and every pinned vector over the plain
-# pair, and REPLAYS the retention arm's pinned vectors through the retaining
-# pair (--retain, §6.6). Two halves are OWED (roadmap
-# java/java-wire-fuzz-every-root), and each still finds a divergence:
-#   - the seeded RANDOM pass: at the shared N and SEED, a stream_arm_first
-#     mutant whose arm body the Java leg counts one kind_mismatch fewer than
-#     the engine (random #22918, run seed 24845619678). Both reports are
-#     malformed: it is damaged input, parked under the discard-on-damage
-#     ruling, and it stops the random pass before it reaches undamaged ones;
-#   - the whole RETENTION ARM: Java's retention does not reach a pointer
-#     node's body, so an unknown field there is counted and not retained
-#     (graph_tree, enumerated pass reference #43, where the engine retains it).
-# JAVA_WIRE_FUZZ_N stays 0 and the retention arm runs its vectors alone until
-# those close; raising N to $(N) and running --retain whole closes the card.
+# The gate runs every ENUMERATED pass and every pinned vector over BOTH
+# arms: the plain pair, and the retaining pair (--retain, §6.6), whose own
+# pinned vectors it also replays. The seeded RANDOM pass stays at N = 0: at
+# the shared SEED its first finding in each arm is DAMAGED input (both
+# reports malformed, or the oracle discarding a damaged load the leg reads
+# clean: stream_arm_first random #22918 on the plain arm, parts_count_past_bound
+# random #4485 on the retaining arm), parked under the discard-on-damage
+# ruling, and each stops its pass before it reaches the mutants behind it.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene
-# THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header whose foreign element kind
-# carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army
+# THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
+# element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
-# no damage. It joins INDEX.txt, which every leg replays, when every leg reads a
-# keyed header against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig
+# no damage. They join INDEX.txt, which every leg replays, when every leg reads
+# these headers against the parent.
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
+		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java-retain.bin
 	@set -e; for v in $(JAVA_PLAIN_VECTORS); do \
 		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
 		./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
@@ -1736,30 +1732,62 @@ tables-java-retain-fuzz-negative-control: tables-java-wire-fuzz
 	@grep -q 'the decoded value differs' $(JAVA_RETAIN_FUZZ_SABOTAGE)/log || { cat $(JAVA_RETAIN_FUZZ_SABOTAGE)/log; exit 1; }
 	@echo 'Java retain negative control: a retaining save that ignores a declared default changes the saved bytes'
 
+# THE NODE-RECORD RETENTION CONTROL (docs/SPEC-TABLES.md §6.6: retained "in the
+# root body and in every node record"): a scratch copy whose retaining load
+# keys no node record, so the save cannot find the node's retained fields and
+# writes its body without them. The retaining replay of
+# retain_node_record_unknown must go red.
+JAVA_RETAIN_NODE_SABOTAGE := build/java-retain-node-sabotage
+.PHONY: tables-java-retain-node-negative-control
+tables-java-retain-node-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_RETAIN_NODE_SABOTAGE) && mkdir -p $(JAVA_RETAIN_NODE_SABOTAGE)/generated $(JAVA_RETAIN_NODE_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_RETAIN_NODE_SABOTAGE)/generated/$$u || exit 1; done
+	sed 's/retain\.nodeKeys\.put(rec\.table, i);/\/\/ SABOTAGED no node key/' \
+		build/tables-generated-java/pointers/SceneRetain.java > $(JAVA_RETAIN_NODE_SABOTAGE)/generated/pointers/SceneRetain.java
+	@grep -q 'SABOTAGED no node key' $(JAVA_RETAIN_NODE_SABOTAGE)/generated/pointers/SceneRetain.java || \
+		{ echo 'NEGATIVE CONTROL: the Java node-record retention sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_RETAIN_NODE_SABOTAGE)/classes \
+		$(JAVA_RETAIN_NODE_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@if ./build/conformance-harness wire-fuzz --retain \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_RETAIN_NODE_SABOTAGE)/classes TablesWireFuzz" \
+			--replay testdata/wire/tables/fuzz-vectors/retain_node_record_unknown.bin --unit graphdemo --root Scene \
+			> $(JAVA_RETAIN_NODE_SABOTAGE)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a save that cannot find a node record'"'"'s retained fields left the pinned vector green'; exit 1; \
+	fi
+	@grep -q 'FAILED after' $(JAVA_RETAIN_NODE_SABOTAGE)/log || { cat $(JAVA_RETAIN_NODE_SABOTAGE)/log; exit 1; }
+	@grep -m1 'differs' $(JAVA_RETAIN_NODE_SABOTAGE)/log
+	@echo 'Java node-record retention control: a save that keys no node record drops its retained field'
+
+test-java: tables-java-retain-node-negative-control
+
 test-java: tables-java-retain-fuzz-negative-control
 
 # THE FOREIGN-KIND MAP COUNT'S CONTROL (docs/SPEC-TABLES.md §2.8, §4): a scratch
 # copy whose map reader reads a foreign element kind's count inside the map's
-# own L again, the fault the pinned vector map_foreign_kind_count_past_body was
-# found on. The plain arm must go red on listdemo.Army.
+# own L again. Its replay is map_header_count_past_length (mapdemo.Slots): the
+# oracle reads that map as one kind_mismatch with NO damage, so the counters are
+# compared. (map_foreign_kind_count_past_body, the vector the fault was found
+# on, is damaged elsewhere, and under the discard-on-damage ruling the harness
+# no longer compares a damaged load's counters, so it cannot see this fault.)
 JAVA_MAP_COUNT_SABOTAGE := build/java-map-count-sabotage
 .PHONY: tables-java-map-count-negative-control
 tables-java-map-count-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_MAP_COUNT_SABOTAGE) && mkdir -p $(JAVA_MAP_COUNT_SABOTAGE)/generated $(JAVA_MAP_COUNT_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_COUNT_SABOTAGE)/generated/$$u || exit 1; done
-	@for f in $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/*Variable.java; do \
+	@for f in $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/*Variable.java $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/*Variable.java; do \
 		sed 's/long n = ek != 13 ? ar\.count(r\.limit) : ar\.leb();/long n = ar.leb(); \/\/ SABOTAGED map count/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
-	@grep -q 'SABOTAGED map count' $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/SquadVariable.java || \
+	@grep -q 'SABOTAGED map count' $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/SlotsVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java map-count sabotage did not apply'; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_MAP_COUNT_SABOTAGE)/classes \
 		$(JAVA_MAP_COUNT_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
-			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_COUNT_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
+	@if ./build/conformance-harness wire-fuzz \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_COUNT_SABOTAGE)/classes TablesWireFuzz" \
+			--replay testdata/wire/tables/fuzz-vectors/map_header_count_past_length.bin --unit mapdemo --root Slots \
 			--failed $(JAVA_MAP_COUNT_SABOTAGE)/failed.bin > $(JAVA_MAP_COUNT_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a map reader that reads a foreign kind'"'"'s count inside L left the differential green'; exit 1; \
 	fi
-	@grep -q 'listdemo.Army' $(JAVA_MAP_COUNT_SABOTAGE)/log || { cat $(JAVA_MAP_COUNT_SABOTAGE)/log; exit 1; }
+	@grep -q 'the report differs' $(JAVA_MAP_COUNT_SABOTAGE)/log || { cat $(JAVA_MAP_COUNT_SABOTAGE)/log; exit 1; }
 	@echo 'Java map-count negative control: reading a foreign kind'"'"'s count inside L loses the kind mismatch'
 
 test-java: tables-java-map-count-negative-control

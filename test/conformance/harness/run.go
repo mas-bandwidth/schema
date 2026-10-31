@@ -48,6 +48,19 @@ type result struct {
 	// leg may give it.
 	named    int
 	failures []string
+	// cases is each case's verdict, by the file name the driver writes: pass,
+	// named (the row's named writer refusal), absent or fail. The proof table
+	// (tools/matrix proof) reads it from the --results file, so a cell can name
+	// the exact case that holds it and the exact case that is still absent.
+	cases map[string]string
+}
+
+// verdict records one case's verdict.
+func (r *result) verdict(name, v string) {
+	if r.cases == nil {
+		r.cases = map[string]string{}
+	}
+	r.cases[name] = v
 }
 
 // materialise writes the fixtures a driver cannot be handed as committed text:
@@ -450,6 +463,12 @@ func skipSet(list string) (map[string]bool, error) {
 }
 
 func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string) (bool, error) {
+	return runResults(w, m, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip, "")
+}
+
+// runResults is run, and when resultsPath is set it also writes every case'"'"'s
+// verdict there (writeResults), the input tools/matrix proof reads.
+func runResults(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip, resultsPath string) (bool, error) {
 	drivers, discovered, err := loadDrivers(driversPath)
 	if err != nil {
 		return false, err
@@ -525,6 +544,9 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 			results[d.lang][s] = r
 			if !listed[s] {
 				r.absent = true
+				for _, e := range legWant {
+					r.verdict(e.name, "absent")
+				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "`list` does not name it"))
 				}
@@ -543,12 +565,18 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 			}
 			if code == 2 {
 				r.absent = true
+				for _, e := range legWant {
+					r.verdict(e.name, "absent")
+				}
 				if reference {
 					r.failures = append(r.failures, absentReference(s, "the driver exited 2"))
 				}
 				continue
 			}
 			if code != 0 {
+				for _, e := range legWant {
+					r.verdict(e.name, "fail")
+				}
 				r.failures = append(r.failures, fmt.Sprintf("the driver exited %d\n%s", code, indent(stderr, "    ")))
 				continue
 			}
@@ -556,7 +584,18 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			for _, e := range legWant {
+				pass, named, missing := r.pass, r.named, r.missing
 				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+				switch {
+				case r.pass > pass:
+					r.verdict(e.name, "pass")
+				case r.named > named:
+					r.verdict(e.name, "named")
+				case r.missing > missing:
+					r.verdict(e.name, "absent")
+				default:
+					r.verdict(e.name, "fail")
+				}
 			}
 			if reference && r.missing > r.named {
 				r.failures = append(r.failures, fmt.Sprintf(
@@ -567,6 +606,11 @@ func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPa
 		}
 	}
 
+	if resultsPath != "" {
+		if err := writeResults(resultsPath, langs, results); err != nil {
+			return false, err
+		}
+	}
 	return report(w, langs, results), nil
 }
 
