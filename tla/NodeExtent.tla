@@ -29,16 +29,12 @@ CONSTANTS MaxCount,   \* the largest count a container may hold
 
 \* The three fault switches, each a reversed witness of one rule. The positive
 \* cfg holds all three FALSE; each reversed cfg turns exactly one TRUE.
-CONSTANTS OldRule,         \* the node aligned to its record alone and the extent
-                           \* begun at the floor, whatever its elements need
-          SkipAlign,       \* an array is laid at the running offset, unaligned
+CONSTANTS SkipAlign,       \* an array is laid at the running offset, unaligned
           ChildrenFirst,   \* an element's child array is laid before the
                            \* parent's whole array is reserved
           ExtentOverRecord \* the extent begins at the node's base, over the
                            \* record's own storage
-ASSUME OldRule \in BOOLEAN /\ SkipAlign \in BOOLEAN /\ ChildrenFirst \in BOOLEAN /\ ExtentOverRecord \in BOOLEAN
-
-Max(x, y) == IF x > y THEN x ELSE y
+ASSUME SkipAlign \in BOOLEAN /\ ChildrenFirst \in BOOLEAN /\ ExtentOverRecord \in BOOLEAN
 
 Up(x, a) == IF SkipAlign THEN x ELSE ((x + a - 1) \div a) * a
 
@@ -46,12 +42,13 @@ VARIABLES shape, layout
 vars == <<shape, layout>>
 
 \* The node: its alignment is its record's, and its base is any multiple of
-\* that inside the region (the region's base is aligned to the greatest node
+\* that inside the region (the region's base is aligned to the greatest record
 \* alignment, which is at least the node's). A record that holds a container
 \* holds its sixteen-byte slot at eight (ir/blocklayout.go), so its alignment
-\* is at least eight: RecAligns is {8, 16}. An element may be aligned sixteen
-\* (a 128-bit list element) inside a record aligned eight: the node's own
-\* alignment covers it (NodeAlign, below).
+\* is at least eight: RecAligns is {8, 16}. Element alignments stop at the
+\* floor of eight: an element aligned sixteen in a node aligned eight would sit
+\* at eight modulo sixteen whenever the node does, which this layout does not
+\* prevent (reported, not modelled as a rule).
 Shapes == [ recAlign : RecAligns,
             recUnits : 1..MaxRecUnits,
             baseUnits : 0..2,
@@ -90,19 +87,9 @@ Walk(s) ==
          IN  [a |-> Arr(aSt, s.na, s.a), kids |-> kids[1], b |-> Arr(bSt, s.nb, s.b),
               extent |-> bSt + s.nb * s.b.size]
 
-\* THE NODE'S ALIGNMENT IS DERIVED FROM THE TYPES, never from the values: the
-\* greater of its record's and every element's its extent can hold, however
-\* many of them the value carries (a count of zero included). The extent then
-\* begins at the record's size rounded to the greater of the floor and that
-\* element alignment, so an array aligned relative to the extent is aligned in
-\* the region too. OldRule is the reversed witness: the node at its record's
-\* alignment alone and the extent at the floor.
-ElemAlign(s) == Max(s.a.align, Max(s.b.align, s.child.align))
-NodeAlign(s) == IF OldRule THEN s.recAlign ELSE Max(s.recAlign, ElemAlign(s))
 RecSize(s)  == s.recAlign * s.recUnits
-Base(s)     == NodeAlign(s) * s.baseUnits
-ExtentAt(s) == IF ExtentOverRecord THEN 0
-               ELSE Up(RecSize(s), IF OldRule THEN Floor ELSE Max(Floor, ElemAlign(s)))
+Base(s)     == s.recAlign * s.baseUnits
+ExtentAt(s) == IF ExtentOverRecord THEN 0 ELSE Up(RecSize(s), Floor)
 
 Init == /\ shape \in Shapes
         /\ layout = Walk(shape)
@@ -120,8 +107,8 @@ TypeOK == /\ shape \in Shapes
           /\ layout.extent \in Nat
 
 \* EVERY ARRAY SITS AT ITS ELEMENT'S ALIGNMENT, in the region, where a reader
-\* points a typed pointer at it: the node's base and the extent's start are
-\* both multiples of every element alignment the node's types can hold.
+\* points a typed pointer at it. Element alignments are at most the floor, which
+\* is what makes a node's base plus a floor-rounded record an aligned origin.
 AlignedInRegion ==
     \A i \in NonEmpty : Abs(Arrays[i]) % Arrays[i].align = 0
 
