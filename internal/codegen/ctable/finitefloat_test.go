@@ -384,9 +384,9 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 	defer cancel()
 	output, _ := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput()
 	var fails []string
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.HasPrefix(line, "FAIL: ") {
-			fails = append(fails, strings.TrimPrefix(line, "FAIL: "))
+	for line := range strings.SplitSeq(string(output), "\n") {
+		if rest, ok := strings.CutPrefix(line, "FAIL: "); ok {
+			fails = append(fails, rest)
 		}
 	}
 	if strings.Contains(string(output), "ERROR: AddressSanitizer") || strings.Contains(string(output), "runtime error:") {
