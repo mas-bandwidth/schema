@@ -177,19 +177,15 @@ func cookField(g *lobster.Gen, f *ir.Field, off int64) string {
 	pieces := ir.FieldPieces(u, f, off)
 	parts := []string{fmt.Sprintf("off: %d", off)}
 	size := int64(0)
-	count := int64(-1)
 	if len(pieces) > 0 {
 		size = pieces[0].Size
 		parts = append(parts, fmt.Sprintf("size: %d", size))
 		if len(pieces) > 1 && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted || f.IsMap()) {
-			count = pieces[1].Offset - off
-			parts = append(parts, fmt.Sprintf("count: %d", count))
+			parts = append(parts, fmt.Sprintf("count: %d", pieces[1].Offset-off))
 		}
 	}
-	present := int64(-1)
 	if f.Type.Optional && len(pieces) > 0 {
-		present = pieces[len(pieces)-1].Offset - off
-		parts = append(parts, fmt.Sprintf("present: %d", present))
+		parts = append(parts, fmt.Sprintf("present: %d", pieces[len(pieces)-1].Offset-off))
 	}
 	// The element's own pieces: an array's stride and a list's element bytes.
 	ef := *f

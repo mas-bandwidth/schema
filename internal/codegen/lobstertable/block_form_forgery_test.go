@@ -127,7 +127,7 @@ func openReasons(t *testing.T, dir string, imports []string, rows []forgeryRow, 
 		t.Fatal(err)
 	}
 	out := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", inputs))), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", inputs))), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 2 {
 			out[f[0]] = f[1]

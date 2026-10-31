@@ -208,7 +208,7 @@ func runProbe(t *testing.T, g *loadUnit, rows []loadRow) (string, [][2]string, [
 	var first, again [][2]string
 	var saves []saveRound
 	for ri := range rows {
-		for pass := 0; pass < 2; pass++ {
+		for pass := range 2 {
 			if len(out) < 2 {
 				t.Fatalf("unit %s row %d pass %d: the program's output ends early (have %d lines)", rows[0].unit, ri, pass, len(out))
 			}

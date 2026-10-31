@@ -28,7 +28,7 @@ func runArmDefaults(t *testing.T, sabotage bool) string {
 		text := string(files["ArmDefaults.lobster"])
 		var kept []string
 		removed := 0
-		for _, line := range strings.Split(text, "\n") {
+		for line := range strings.SplitSeq(text, "\n") {
 			if strings.Contains(line, "// a fresh payload on every selection (SPEC §4.8)") {
 				removed++
 				continue

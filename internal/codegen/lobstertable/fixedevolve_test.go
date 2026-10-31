@@ -106,7 +106,6 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 
 	t.Run("new_reads_old", func(t *testing.T) {
 		for _, r := range lobsterVersionRows {
-			r := r
 			t.Run(r.row, func(t *testing.T) {
 				t.Parallel()
 				newer := lobsterReadSchema(t, "VNEW_"+r.row)
@@ -179,7 +178,6 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 
 	t.Run("old_refuses_new", func(t *testing.T) {
 		for _, r := range lobsterVersionRows {
-			r := r
 			t.Run(r.row, func(t *testing.T) {
 				t.Parallel()
 				older := lobsterReadSchema(t, "VOLD_"+r.row)
@@ -1251,12 +1249,12 @@ func corpusNonFinite(t *testing.T, corpus, file string) (string, bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if !strings.HasPrefix(line, "file="+file+" ") {
 			continue
 		}
 		_, values, _ := strings.Cut(line, " values=")
-		for _, kv := range strings.Split(values, ",") {
+		for kv := range strings.SplitSeq(values, ",") {
 			k, v, _ := strings.Cut(kv, "=")
 			if strings.HasPrefix(v, "nan|") || strings.HasPrefix(v, "inf|") || strings.HasPrefix(v, "-inf|") || strings.HasPrefix(v, "+inf|") {
 				if i := strings.LastIndex(k, "."); i >= 0 {

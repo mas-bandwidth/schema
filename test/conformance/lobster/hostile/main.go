@@ -132,7 +132,7 @@ func run(units, corpus, schema string) (map[string][]string, error) {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("%s: %v\n%s", schema, err, out)
+		return nil, fmt.Errorf("%s: %w\n%s", schema, err, out)
 	}
 	if len(out) != 0 {
 		// a compiler warning is printed on stdout: generated Lobster compiles
@@ -144,7 +144,7 @@ func run(units, corpus, schema string) (map[string][]string, error) {
 		return nil, err
 	}
 	got := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(data), "\n"), "\n") {
 		f := strings.SplitN(line, " ", 3)
 		if len(f) != 3 {
 			return nil, fmt.Errorf("%s: not an answer line: %q", schema, line)
@@ -178,7 +178,7 @@ func readFindings(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}

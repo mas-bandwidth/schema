@@ -70,7 +70,7 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 	// make's test line is every registered leg in make/*.mk order; zz sorts
 	// last, so the planted tree's line is the unplanted one plus test-zz.
 	var testLine string
-	for _, line := range strings.Split(before["make"], "\n") {
+	for line := range strings.SplitSeq(before["make"], "\n") {
 		if strings.HasPrefix(line, "test:") {
 			testLine = strings.TrimRight(line, " ")
 		}

@@ -19,8 +19,10 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -130,10 +132,8 @@ func narrowOracle(wire []byte) string {
 		return "REFUSE"
 	}
 	payload := wire[1 : 1+n]
-	for _, c := range payload {
-		if c == 0 {
-			return "REFUSE"
-		}
+	if slices.Contains(payload, 0) {
+		return "REFUSE"
 	}
 	if !utf8.Valid(payload) {
 		return "REFUSE"
@@ -278,9 +278,7 @@ func generateText(t *testing.T) map[string][]byte {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for k, v := range out {
-			files[k] = v
-		}
+		maps.Copy(files, out)
 	}
 	return files
 }

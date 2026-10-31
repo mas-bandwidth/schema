@@ -153,7 +153,7 @@ func runLobsterReadProbe(t *testing.T, files map[string][]byte) map[string]strin
 	writeFile(t, dir, "main.lobster", lobsterReadProbe)
 	out := string(lobsterrun.Run(t, dir, "main.lobster", inputs))
 	rows := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		i := strings.LastIndexByte(line, ' ')
 		if i < 0 {
 			t.Fatalf("read probe printed %q, not a row:\n%s", line, out)

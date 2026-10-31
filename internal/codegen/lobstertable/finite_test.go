@@ -51,7 +51,7 @@ fixed table Row
 }
 `
 
-// the sentinels the clean wire carries, one unique bit pattern per site
+// the sentinels the clean wire carries, one unique bit pattern per site.
 const (
 	sentA     = uint32(0x3FE00000)         // a = 1.75
 	sentB     = uint64(0x3FF4000000000000) // b = 1.25

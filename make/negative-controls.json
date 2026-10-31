@@ -850,11 +850,12 @@
     {
       "name": "lobster-fuzz",
       "when": "pull-request",
-      "why": "the Lobster leg's hostile-corpus control (a load that calls a clean wire damaged reds the corpus) and its wire-fuzz control (a dropped unknown count reds the fuzz; descriptors without their guards red the pinned guard-false-pointer vector). Both fetch the pinned Lobster toolchain where none resolves (make lobster-dist-present), so the row needs no toolchain field. Measured on the studio off one warm build: 2.3 s and 4.4 s.",
+      "why": "the Lobster leg's hostile-corpus control (a load that calls a clean wire damaged reds the corpus) and its wire-fuzz control (a dropped unknown count reds the fuzz; descriptors without their guards red the pinned guard-false-pointer vector). Both run the pinned v2026.8 toolchain, which the row installs (with the two GL libraries its release binary links) through its lobster field. Measured on the studio off one warm build: 2.3 s and 4.4 s.",
       "targets": [
         "schema-lobster-runs-hostile-corpus-negative-control",
         "tables-lobster-wire-fuzz-negative-control"
-      ]
+      ],
+      "lobster": "v2026.8"
     },
     {
       "name": "go-containers",

@@ -174,7 +174,7 @@ func cookDumpRun(t *testing.T, sabotage func(string) string) []string {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs))), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs))), "\n") {
 		name, h, _ := strings.Cut(line, " ")
 		got[name] = h
 	}

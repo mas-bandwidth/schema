@@ -184,7 +184,7 @@ func runFinite(t *testing.T, files map[string][]byte) []string {
 	writeFile(t, dir, "main.lobster", finiteProgram())
 	out := string(lobsterrun.Run(t, dir, "main.lobster", nil))
 	var failed []string
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if rest, ok := strings.CutPrefix(line, "FAILED: "); ok {
 			name, _, _ := strings.Cut(rest, ":")
 			failed = append(failed, name)

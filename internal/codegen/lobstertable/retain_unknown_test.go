@@ -278,7 +278,7 @@ func TestLobsterRetainUnknown(t *testing.T) {
 				t.Errorf("%s: the save lost %d records, the manifest says %d", row.name, saveLost-loadLost, row.saveLost)
 			}
 			if row.saves != "-" {
-				for _, pinned := range strings.Split(row.saves, ",") {
+				for pinned := range strings.SplitSeq(row.saves, ",") {
 					data, err := os.ReadFile(filepath.Join(root, pinned))
 					if err != nil {
 						t.Fatalf("%s: %v", row.name, err)

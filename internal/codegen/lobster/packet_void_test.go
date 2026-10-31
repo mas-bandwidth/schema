@@ -56,7 +56,7 @@ func runVoid(t *testing.T, patch func(map[string][]byte)) map[string]string {
 	writeFile(t, dir, "main.lobster", packetVoidProbe)
 	out := string(lobsterrun.Run(t, dir, "main.lobster", nil))
 	rows := map[string]string{}
-	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		i := strings.LastIndexByte(line, ' ')
 		if i < 0 {
 			t.Fatalf("void probe printed %q:\n%s", line, out)

@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -300,8 +301,8 @@ func emitResetPayload(g *lobster.Gen, f *ir.Field, expr, ind string) {
 
 func emitResetElement(g *lobster.Gen, f *ir.Field, expr, ind string) {
 	t := f.Type
-	switch {
-	case t.Kind == ir.TNamed:
+	switch t.Kind {
+	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Struct:
 			requireHome(g, r.Name)
@@ -337,7 +338,7 @@ func emitResetElement(g *lobster.Gen, f *ir.Field, expr, ind string) {
 			g.Pf("%s%s = %s\n", ind, expr, lobster.IntLit(val))
 			return
 		}
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case ir.TString, ir.TBytes, ir.TWString:
 		unit := int64(1)
 		if t.Kind == ir.TWString {
 			unit = 2
@@ -351,10 +352,10 @@ func emitResetElement(g *lobster.Gen, f *ir.Field, expr, ind string) {
 			g.Pf("%s%s = 0\n", ind, length)
 		}
 		return
-	case t.Kind == ir.TBool:
+	case ir.TBool:
 		g.Pf("%s%s = %s\n", ind, expr, strconv.FormatBool(f.HasDefault && f.DefBool))
 		return
-	case t.Kind == ir.TFloat32:
+	case ir.TFloat32:
 		if f.HasDefault {
 			if !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
 				g.Pf("%s%s = schema_rt.f64frombits(0x8000000000000000)\n", ind, expr)
@@ -365,7 +366,7 @@ func emitResetElement(g *lobster.Gen, f *ir.Field, expr, ind string) {
 			g.Pf("%s%s = 0.0\n", ind, expr)
 		}
 		return
-	case t.Kind == ir.TFloat64:
+	case ir.TFloat64:
 		if f.HasDefault {
 			if !f.HasFloatRange && f.DefFloat == 0 && math.Signbit(f.DefFloat) {
 				g.Pf("%s%s = schema_rt.f64frombits(0x8000000000000000)\n", ind, expr)
@@ -376,7 +377,7 @@ func emitResetElement(g *lobster.Gen, f *ir.Field, expr, ind string) {
 			g.Pf("%s%s = 0.0\n", ind, expr)
 		}
 		return
-	case t.Kind == ir.TInt || t.Kind == ir.TBits || t.Kind == ir.TFixed:
+	case ir.TInt, ir.TBits, ir.TFixed:
 		val := new(big.Int)
 		if f.HasDefault && f.DefInt != nil {
 			val = f.DefInt
@@ -563,8 +564,8 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 		at = fmt.Sprintf("%s + %d + %s * %d", base, off, idx, stride)
 	}
 	t := f.Type
-	switch {
-	case t.Kind == ir.TNamed:
+	switch t.Kind {
+	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Struct:
 			requireHome(g, r.Name)
@@ -583,16 +584,16 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 			g.Pf("%s%s = read_uint64_le(data, %s)\n", ind, expr, at)
 			return
 		}
-	case t.Kind == ir.TBool:
+	case ir.TBool:
 		g.Pf("%s%s = read_uint8_le(data, %s) != 0\n", ind, expr, at)
 		return
-	case t.Kind == ir.TFloat32:
+	case ir.TFloat32:
 		g.Pf("%s%s = read_float32_le(data, %s)\n", ind, expr, at)
 		return
-	case t.Kind == ir.TFloat64:
+	case ir.TFloat64:
 		g.Pf("%s%s = read_float64_le(data, %s)\n", ind, expr, at)
 		return
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case ir.TString, ir.TBytes, ir.TWString:
 		unit := int64(1)
 		if t.Kind == ir.TWString {
 			unit = 2
@@ -601,12 +602,12 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 		tmp := fmt.Sprintf("sbuf_%s_%d", ir.GoExportName(f.Name), off)
 		jv := fmt.Sprintf("j_sc_%s_%d", ir.GoExportName(f.Name), off)
 		g.Pf("%s%s = read_int32_le(data, %s)\n", ind, length, at)
-		g.Pf("%svar %s = schema_rt.zeros(%d)\n", ind, tmp, unit*int64(t.Size))
+		g.Pf("%svar %s = schema_rt.zeros(%d)\n", ind, tmp, unit*t.Size)
 		g.Pf("%sfor(%s * %d) %s: %s = write_int8_le(%s, %s, read_uint8_le(data, %s + 4 + %s))\n",
 			ind, length, unit, jv, tmp, tmp, jv, at, jv)
 		g.Pf("%s%s = %s\n", ind, expr, tmp)
 		return
-	case t.Kind == ir.TInt || t.Kind == ir.TFixed || t.Kind == ir.TBits:
+	case ir.TInt, ir.TFixed, ir.TBits:
 		if t.Kind == ir.TBits {
 			w := 8
 			if t.Width <= 32 {
@@ -950,10 +951,7 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 		}
 	}
 
-	emitted := false
-	if applyBounds(lobsterScalarRangeBounds(f, expr)) {
-		emitted = true
-	}
+	emitted := applyBounds(lobsterScalarRangeBounds(f, expr))
 	if b, ok := lobsterScalarWidthBound(f, expr); ok {
 		if applyBounds([]lobsterScalarBound{b}) {
 			emitted = true
@@ -975,12 +973,7 @@ func enumVariantDeprecated(e *ir.Enum, i int) bool {
 	if i < 0 || i >= len(e.VariantTags) {
 		return false
 	}
-	for _, tag := range e.VariantTags[i] {
-		if tag == "deprecated" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(e.VariantTags[i], "deprecated")
 }
 
 func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
@@ -1099,9 +1092,8 @@ func buildLobsterFixedDst(st *ir.Struct) []lobsterFixedDstSpec {
 	var walkField func(f *ir.Field, off int64)
 	var walkPayload func(f *ir.Field, off int64, dep bool, note string)
 	var walkElement func(f *ir.Field, off int64, dep bool, note string)
-	var walkEnum func(e *ir.Enum, off int64, dep bool, note string)
 
-	walkEnum = func(e *ir.Enum, off int64, dep bool, note string) {
+	walkEnum := func(e *ir.Enum, off int64, dep bool, note string) {
 		a := fixedDstArg(0, dep)
 		push(lobsterFixedDstSpec{Dst: off, Arg: a, Meta: a, Note: note})
 		for _, v := range e.Variants {
