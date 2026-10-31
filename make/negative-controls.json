@@ -1085,8 +1085,8 @@
     },
     {
       "name": "lobster-forgery",
-      "when": "pull-request",
-      "why": "the Lobster forgery fuzz oracle's control (docs/PORTING.md I3; internal/codegen/lobstertable/forgeryfuzz_test.go): the block reader's extent bounds, the read's used-length check and Open's reserved-word check each removed in turn, and the oracle required red on each, over the pinned v2026.8 toolchain the row installs through its lobster field. MEASURE_PENDING",
+      "when": "nightly",
+      "why": "the Lobster forgery fuzz oracle's control (docs/PORTING.md I3; internal/codegen/lobstertable/forgeryfuzz_test.go): the block reader's extent bounds, the read's used-length check and Open's reserved-word check each removed in turn, and the oracle required red on each, over the pinned v2026.8 toolchain the row installs through its lobster field. Measured on hulk off one warm build: 159 s for the three subtests at the default 300 mutants per image, past the per-commit rule on its own, so it is the nightly tier's.",
       "targets": [
         "tables-lobster-fuzz-negative-control"
       ],
