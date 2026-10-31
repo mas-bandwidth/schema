@@ -180,6 +180,11 @@ abstract final class TableFixedRefusal {
   /// disagree). Both text kinds and the compiled plan's text op answer it.
   static const int textIllFormed = 17; // ill-formed text in the USED units
 
+  /// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as packets):
+  /// a NaN or an infinity in a record refuses the whole
+  /// read by name, the report naming the field, and nothing lands.
+  static const int nonFiniteFloat = 18;
+
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
     switch (refusal) {
@@ -219,6 +224,8 @@ abstract final class TableFixedRefusal {
         return 'layout_unsupported';
       case textIllFormed:
         return 'text_ill_formed';
+      case nonFiniteFloat:
+        return 'non_finite_float';
       default:
         return '???';
     }
@@ -240,6 +247,11 @@ final class TableFixedReport {
   /// the layout a 'no_layout' refusal names
   int hash = 0;
 
+  /// THE FLOAT a 'non_finite_float' refusal names, as <Table>.<field>: the
+  /// first cell whose raw bits the read found to be a NaN or an infinity
+  /// (docs/SPEC-TABLES.md §3.3), '' on every other path.
+  String nonFiniteFloat = '';
+
   /// THE FILE'S HASH, and the LAST member of the report: it is set by the two
   /// LAYOUT refusals — 'layout_newer' and 'layout_unsupported' — and is zero on
   /// every other path (§5.9 #15). An operator deciding between "ship the
@@ -256,6 +268,12 @@ final class TableFixedReport {
     duplicate = 0;
     hash = 0;
     layoutHash = 0;
+    nonFiniteFloat = '';
+  }
+
+  /// Names the first non-finite float a decode met; the load then refuses.
+  void refuseNonFiniteFloat(String field) {
+    if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
   }
 }
 
@@ -341,50 +359,25 @@ final class TableFixedLayout {
 
   /// A FLOAT32 CELL RIDES AS ITS BITS (docs/FIXED-FORM-ALGORITHM.md §3.1: the
   /// cell stores what the record held; SPEC-TABLES §3: no canonicalisation of
-  /// a float). A Dart double is a float64, and the hardware float32<->float64
-  /// conversion QUIETS a signalling NaN on the way in, so a reference file
-  /// holding 0x7F800001 would rewrite as 0x7FC00001. Every exponent but the
-  /// all-ones one converts exactly; a NaN is assembled by hand, the f32
-  /// mantissa's 23 bits shifted up by 29 into the f64 one and back, the quiet
-  /// bit carried as the writer wrote it: the same surgery the plan's
-  /// widenFloat rung and the packet emitter's float32 helpers do. A generated
-  /// float32 store or load converts through these two and nowhere else
-  /// (TestFixedFloat32CellsStoreBitsNotDoubles).
-  static final Float32List _f32 = Float32List(2);
+  /// a float). A table float is FINITE (docs/SPEC-TABLES.md §3.3): the save's
+  /// finite pass refuses a NaN or an infinity before the first byte and every
+  /// read refuses one on its raw bits before it reaches these, so both are the
+  /// ordinary conversion, exact for every finite value, -0 and the subnormals
+  /// included. A generated float32 store or load converts through these two
+  /// and nowhere else (TestFixedFloat32CellsStoreBitsNotDoubles).
+  static final Float32List _f32 = Float32List(1);
   static final Uint32List _f32Words = _f32.buffer.asUint32List();
-  static final Float64List _f64 = _f32.buffer.asFloat64List();
-  static final Uint64List _f64Words = _f32.buffer.asUint64List();
 
-  /// the float32 bits a double holding a float32 value carries, a NaN's
-  /// payload and signalling bit included
+  /// the float32 bits of a finite double holding a float32 value
   @pragma('vm:prefer-inline')
   static int float32Bits(double value) {
-    if (!value.isNaN) {
-      _f32[0] = value;
-      return _f32Words[0];
-    }
-    _f64[0] = value;
-    final bits = _f64Words[0];
-    var mantissa = (bits >>> 29) & 0x7fffff;
-    if (mantissa == 0) {
-      // a float64 NaN whose payload lies only below float32's 23 bits has no
-      // float32 spelling; it stays a NaN, quiet
-      mantissa = 0x400000;
-    }
-    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+    _f32[0] = value;
+    return _f32Words[0];
   }
 
-  /// the double a float32 cell's bits widen to, exactly: a NaN keeps its
-  /// payload and its signalling bit
+  /// the double a finite float32 cell's bits widen to, exactly
   @pragma('vm:prefer-inline')
   static double float32Value(int bits) {
-    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-      _f64Words[0] =
-          ((bits >>> 31) << 63) |
-          0x7ff0000000000000 |
-          ((bits & 0x7fffff) << 29);
-      return _f64[0];
-    }
     _f32Words[0] = bits;
     return _f32[0];
   }
@@ -1183,26 +1176,15 @@ int tableFixedRun(
         report.widened++;
         break;
       case TableFixedOp.widenFloat:
-        // widenF IS THE BIT-EXACT WIDENING (§4's float rung, §5.2's table):
-        // a plain conversion is exact for every exponent but the all-ones
-        // one. The hardware conversion QUIETS a signalling NaN and can drop a
-        // payload bit, so an all-ones exponent with a non-zero payload is
-        // assembled by hand — f64's all-ones exponent, and the f32 mantissa's
-        // 23 bits shifted up by 29 — and the quiet bit is carried as the
-        // writer wrote it. Every other exponent converts exactly.
-        final bits = sourceView.getUint32(s, Endian.little);
-        if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x007fffff) != 0) {
-          final sign = (bits & 0x80000000) << 32; // the f64 sign bit
-          final exp = 0x7ff0000000000000; // f64's all-ones exponent
-          final mant = (bits & 0x007fffff) << 29; // 23 bits up to 52
-          conv.setUint64(0, sign | exp | mant, Endian.little);
-        } else {
-          conv.setFloat64(
-            0,
-            sourceView.getFloat32(s, Endian.little),
-            Endian.little,
-          );
-        }
+        // widenF IS THE ORDINARY CONVERSION (§4's float rung, §5.2's table;
+        // docs/SPEC-TABLES.md §3.3): exact for every finite float32. A NaN
+        // stays a NaN and an infinity an infinity, and the decode's raw-bits
+        // test on the widened cell refuses either as non_finite_float.
+        conv.setFloat64(
+          0,
+          sourceView.getFloat32(s, Endian.little),
+          Endian.little,
+        );
         for (var k = 0; k < 8; k++) {
           image[d + k] = conv.getUint8(k);
         }
@@ -2202,6 +2184,9 @@ class TableReport {
   int buildVersionRemote = 0;
   int buildVersionOwn = 0;
   String reason = '';
+  /// The float whose raw bits a read found to be a NaN or an infinity, as
+  /// <Table>.<field>, '' when it found none (docs/SPEC-TABLES.md §3.3).
+  String nonFiniteFloat = '';
 
   void Damage() {
     malformed = true;
@@ -2212,6 +2197,14 @@ class TableReport {
     refused = true;
     reason = why;
     return false;
+  }
+
+  /// EVERY READ REFUSES A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3), the
+  /// tolerant batch read included: the reason names the field, and the batch
+  /// lands nothing.
+  bool RefuseNonFiniteFloat(String field) {
+    nonFiniteFloat = field;
+    return Refuse('non_finite_float: $field');
   }
 }
 
@@ -2741,10 +2734,11 @@ const int tableBuildVersion = 3224074231052672865;
 /// The batch's bit writer: low-bit-first, the packet wire's order (§3.3).
 /// Measuring walks the identical stream without touching a buffer.
 class TableBitWriter {
-  static final Float32List _float32Cell = Float32List(2);
+  static final Float32List _float32Cell = Float32List(1);
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
-  static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
-  static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
+
+  static final Float64List _float64Cell = Float64List(1);
+  static final Uint64List _float64Words = _float64Cell.buffer.asUint64List();
 
   Uint8List buffer;
   int bits = 0;
@@ -2832,6 +2826,7 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }
   if (!vocabulary.announced) { report.Refuse('no_vocabulary'); return -1; }
@@ -3703,10 +3698,11 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     w.put(29, tableMessageRefBits);
     w.put(value.frameTick - 0, 48);
   }
-  if (value.serverTime != 0.0) {
+  if (value.serverTime != 0 || value.serverTime.isNegative) {
     w.put(30, tableMessageRefBits);
     {
       final f = value.serverTime;
+      if (!f.isFinite) return false;
       TableBitWriter._float32Cell[0] = f;
       final f32 = TableBitWriter._float32Cell[0];
       TableBitWriter._float32Cell[0] = f32 - 0.0;
@@ -3774,10 +3770,11 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     w.align();
     w.raw(Uint8List.sublistView(value.payload, 0, value.payloadLength));
   }
-  if (value.aimX != 0.0) {
+  if (value.aimX != 0 || value.aimX.isNegative) {
     w.put(37, tableMessageRefBits);
     {
       final f = value.aimX;
+      if (!f.isFinite) return false;
       TableBitWriter._float32Cell[0] = f;
       final f32 = TableBitWriter._float32Cell[0];
       TableBitWriter._float32Cell[0] = f32 - -1.0;
@@ -3795,10 +3792,11 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.aimY != 0.0) {
+  if (value.aimY != 0 || value.aimY.isNegative) {
     w.put(38, tableMessageRefBits);
     {
       final f = value.aimY;
+      if (!f.isFinite) return false;
       TableBitWriter._float32Cell[0] = f;
       final f32 = TableBitWriter._float32Cell[0];
       TableBitWriter._float32Cell[0] = f32 - -1.0;
@@ -3816,10 +3814,11 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.aimZ != 0.0) {
+  if (value.aimZ != 0 || value.aimZ.isNegative) {
     w.put(39, tableMessageRefBits);
     {
       final f = value.aimZ;
+      if (!f.isFinite) return false;
       TableBitWriter._float32Cell[0] = f;
       final f32 = TableBitWriter._float32Cell[0];
       TableBitWriter._float32Cell[0] = f32 - -1.0;
@@ -3837,27 +3836,23 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.recoil != 0.0) {
+  if (value.recoil != 0 || value.recoil.isNegative) {
     w.put(40, tableMessageRefBits);
     {
       final f = value.recoil;
-      if (!f.isNaN) {
-        TableBitWriter._float32Cell[0] = f;
-        w.put(TableBitWriter._float32Words[0], 32);
-      } else {
-        TableBitWriter._float64Cell[0] = f;
-        final b = TableBitWriter._float64Words[0];
-        var m = (b >>> 29) & 0x7fffff;
-        if (m == 0) {
-          m = 0x400000;
-        }
-        w.put(((b >>> 63) << 31) | 0x7f800000 | m, 32);
-      }
+      if (!f.isFinite) return false;
+      TableBitWriter._float32Cell[0] = f;
+      w.put(TableBitWriter._float32Words[0], 32);
     }
   }
-  if (value.drift != 0.0) {
+  if (value.drift != 0 || value.drift.isNegative) {
     w.put(41, tableMessageRefBits);
-    w.put((ByteData(8)..setFloat64(0, value.drift, Endian.little)).getUint64(0, Endian.little), 64);
+    {
+      final f = value.drift;
+      if (!f.isFinite) return false;
+      TableBitWriter._float64Cell[0] = f;
+      w.put(TableBitWriter._float64Words[0], 64);
+    }
   }
   if (value.wideKey != 0) {
     w.put(42, tableMessageRefBits);
@@ -3867,10 +3862,11 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     w.put(43, tableMessageRefBits);
     w.put(value.flux - -1000000000000000000, 61);
   }
-  if (value.ping != 0.0) {
+  if (value.ping != 0 || value.ping.isNegative) {
     w.put(44, tableMessageRefBits);
     {
       final f = value.ping;
+      if (!f.isFinite) return false;
       TableBitWriter._float32Cell[0] = f;
       final f32 = TableBitWriter._float32Cell[0];
       TableBitWriter._float32Cell[0] = f32 - 0.0;
@@ -4175,14 +4171,9 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         {
           final b = r.bits.get(32);
           if (r.bits.failed) { r.report.Damage(); return false; }
-          if ((b & 0x7fffffff) <= 0x7f800000) {
-            TableBitWriter._float32Words[0] = b;
-            value.recoil = TableBitWriter._float32Cell[0];
-          } else {
-            final w64 = ((b >>> 31) << 63) | ((b & 0x7fffff) << 29);
-            TableBitWriter._float64Words[0] = w64 | 0x7ff0000000000000;
-            value.recoil = TableBitWriter._float64Cell[0];
-          }
+          if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('TableMixed.recoil');
+          TableBitWriter._float32Words[0] = b;
+          value.recoil = TableBitWriter._float32Cell[0];
         }
         if (r.bits.failed) { r.report.Damage(); return false; }
         break;
@@ -4190,7 +4181,9 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
         {
           final b = r.bits.get(64);
           if (r.bits.failed) { r.report.Damage(); return false; }
-          value.drift = (ByteData(8)..setUint64(0, b, Endian.little)).getFloat64(0, Endian.little);
+          if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) return r.report.RefuseNonFiniteFloat('TableMixed.drift');
+          TableBitWriter._float64Words[0] = b;
+          value.drift = TableBitWriter._float64Cell[0];
         }
         break;
       case 42:
@@ -4886,15 +4879,22 @@ void tableMixedFixedDecode(
     value.frameTick = 281474976710655;
     report.clamped++;
   }
-  value.serverTime = TableFixedLayout.float32Value(
-    view.getUint32(at + 50, Endian.little),
-  );
-  if (value.serverTime < 0.0) {
-    value.serverTime = 0.0;
-    report.clamped++;
-  } else if (value.serverTime > 65535.0) {
-    value.serverTime = 65535.0;
-    report.clamped++;
+  {
+    final bits = view.getUint32(at + 50, Endian.little);
+    if ((bits & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat('TableMixed.server_time');
+    } else {
+      value.serverTime = TableFixedLayout.float32Value(bits);
+      if (value.serverTime < 0.0) {
+        value.serverTime = 0.0;
+        report.clamped++;
+      } else if (value.serverTime > 65535.0) {
+        value.serverTime = 65535.0;
+        report.clamped++;
+      } else if (value.serverTime == 0) {
+        value.serverTime = 0.0;
+      }
+    }
   }
   value.entitiesCount = view.getInt32(at + 54, Endian.little);
   for (var i = 0; i < value.entitiesCount; i++) {
@@ -4965,40 +4965,73 @@ void tableMixedFixedDecode(
     report.clamped++;
   }
   value.payload.setRange(0, 16, image, at + 1151);
-  value.aimX = TableFixedLayout.float32Value(
-    view.getUint32(at + 1167, Endian.little),
-  );
-  if (value.aimX < -1.0) {
-    value.aimX = -1.0;
-    report.clamped++;
-  } else if (value.aimX > 1.0) {
-    value.aimX = 1.0;
-    report.clamped++;
+  {
+    final bits = view.getUint32(at + 1167, Endian.little);
+    if ((bits & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat('TableMixed.aim_x');
+    } else {
+      value.aimX = TableFixedLayout.float32Value(bits);
+      if (value.aimX < -1.0) {
+        value.aimX = -1.0;
+        report.clamped++;
+      } else if (value.aimX > 1.0) {
+        value.aimX = 1.0;
+        report.clamped++;
+      } else if (value.aimX == 0) {
+        value.aimX = 0.0;
+      }
+    }
   }
-  value.aimY = TableFixedLayout.float32Value(
-    view.getUint32(at + 1171, Endian.little),
-  );
-  if (value.aimY < -1.0) {
-    value.aimY = -1.0;
-    report.clamped++;
-  } else if (value.aimY > 1.0) {
-    value.aimY = 1.0;
-    report.clamped++;
+  {
+    final bits = view.getUint32(at + 1171, Endian.little);
+    if ((bits & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat('TableMixed.aim_y');
+    } else {
+      value.aimY = TableFixedLayout.float32Value(bits);
+      if (value.aimY < -1.0) {
+        value.aimY = -1.0;
+        report.clamped++;
+      } else if (value.aimY > 1.0) {
+        value.aimY = 1.0;
+        report.clamped++;
+      } else if (value.aimY == 0) {
+        value.aimY = 0.0;
+      }
+    }
   }
-  value.aimZ = TableFixedLayout.float32Value(
-    view.getUint32(at + 1175, Endian.little),
-  );
-  if (value.aimZ < -1.0) {
-    value.aimZ = -1.0;
-    report.clamped++;
-  } else if (value.aimZ > 1.0) {
-    value.aimZ = 1.0;
-    report.clamped++;
+  {
+    final bits = view.getUint32(at + 1175, Endian.little);
+    if ((bits & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat('TableMixed.aim_z');
+    } else {
+      value.aimZ = TableFixedLayout.float32Value(bits);
+      if (value.aimZ < -1.0) {
+        value.aimZ = -1.0;
+        report.clamped++;
+      } else if (value.aimZ > 1.0) {
+        value.aimZ = 1.0;
+        report.clamped++;
+      } else if (value.aimZ == 0) {
+        value.aimZ = 0.0;
+      }
+    }
   }
-  value.recoil = TableFixedLayout.float32Value(
-    view.getUint32(at + 1179, Endian.little),
-  );
-  value.drift = view.getFloat64(at + 1183, Endian.little);
+  {
+    final bits = view.getUint32(at + 1179, Endian.little);
+    if ((bits & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat('TableMixed.recoil');
+    } else {
+      value.recoil = TableFixedLayout.float32Value(bits);
+    }
+  }
+  {
+    final bits = view.getUint64(at + 1183, Endian.little);
+    if ((bits & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      report.refuseNonFiniteFloat('TableMixed.drift');
+    } else {
+      value.drift = view.getFloat64(at + 1183, Endian.little);
+    }
+  }
   value.wideKey = view.getUint64(at + 1191, Endian.little);
   value.flux = view.getInt64(at + 1199, Endian.little);
   if (value.flux < -1000000000000000000) {
@@ -5008,15 +5041,22 @@ void tableMixedFixedDecode(
     value.flux = 1000000000000000000;
     report.clamped++;
   }
-  value.ping = TableFixedLayout.float32Value(
-    view.getUint32(at + 1207, Endian.little),
-  );
-  if (value.ping < 0.0) {
-    value.ping = 0.0;
-    report.clamped++;
-  } else if (value.ping > 250.0) {
-    value.ping = 250.0;
-    report.clamped++;
+  {
+    final bits = view.getUint32(at + 1207, Endian.little);
+    if ((bits & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat('TableMixed.ping');
+    } else {
+      value.ping = TableFixedLayout.float32Value(bits);
+      if (value.ping < 0.0) {
+        value.ping = 0.0;
+        report.clamped++;
+      } else if (value.ping > 250.0) {
+        value.ping = 250.0;
+        report.clamped++;
+      } else if (value.ping == 0) {
+        value.ping = 0.0;
+      }
+    }
   }
   value.crcHint = view.getUint32(at + 1211, Endian.little);
   if (value.crcHint > 16777215) {
@@ -5041,6 +5081,19 @@ void tableMixedFixedDecode(
     value.idleTicks = 15;
     report.clamped++;
   }
+}
+
+/// TableMixed's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or
+/// infinity a save would carry, as <Owner>.<field>, or '' for none.
+String tableMixedFixedFiniteBody(TableMixed value) {
+  if (!value.serverTime.isFinite) return 'TableMixed.server_time';
+  if (!value.aimX.isFinite) return 'TableMixed.aim_x';
+  if (!value.aimY.isFinite) return 'TableMixed.aim_y';
+  if (!value.aimZ.isFinite) return 'TableMixed.aim_z';
+  if (!value.recoil.isFinite) return 'TableMixed.recoil';
+  if (!value.drift.isFinite) return 'TableMixed.drift';
+  if (!value.ping.isFinite) return 'TableMixed.ping';
+  return '';
 }
 
 // ---- TableEntity, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
@@ -5586,7 +5639,13 @@ int tableEntityLoadMessages(
     return count;
   }
   for (var i = 0; i < count; i++) {
-    if (!tableEntityLoadMessageBody(r, values[i])) return i;
+    if (!tableEntityLoadMessageBody(r, values[i])) {
+      if (report.nonFiniteFloat.isEmpty) return i;
+      for (var j = 0; j <= i; j++) {
+        initTableEntity(values[j]);
+      }
+      return 0;
+    }
   }
   if (!tableMessageBatchClose(r)) return count;
   return count;
@@ -6024,7 +6083,13 @@ int tableStatLoadMessages(
     return count;
   }
   for (var i = 0; i < count; i++) {
-    if (!tableStatLoadMessageBody(r, values[i])) return i;
+    if (!tableStatLoadMessageBody(r, values[i])) {
+      if (report.nonFiniteFloat.isEmpty) return i;
+      for (var j = 0; j <= i; j++) {
+        initTableStat(values[j]);
+      }
+      return 0;
+    }
   }
   if (!tableMessageBatchClose(r)) return count;
   return count;
@@ -6581,6 +6646,12 @@ int tableMixedFixedSave(List<TableMixed> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
+  // record is asked before the first byte is written, so a refusal
+  // leaves the caller's bytes as they were.
+  for (var k = 0; k < count; k++) {
+    if (tableMixedFixedFiniteBody(values[k]).isNotEmpty) return -1;
+  }
   final view = tableMixedFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -6787,6 +6858,20 @@ int tableMixedFixedLoad(
       return -1;
     }
     tableMixedFixedDecode(values[k], plan.image, plan.imageView, 0, report);
+    // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each
+    // float's raw bits before it landed, and a NaN or an infinity refuses
+    // the whole batch by name, the tolerant read included. Nothing of it is
+    // kept: every record this call wrote goes back to its defaults.
+    if (report.nonFiniteFloat.isNotEmpty) {
+      final field = report.nonFiniteFloat;
+      for (var j = 0; j <= k; j++) {
+        initTableMixed(values[j]);
+      }
+      report.reset();
+      report.nonFiniteFloat = field;
+      report.refused = TableFixedRefusal.nonFiniteFloat;
+      return -1;
+    }
     at += recordBytes;
   }
   // THE CENSUS LANDS ONCE, HERE, on a read that returns (§5.4, §5.9 #6).
@@ -6851,7 +6936,13 @@ int tableMixedLoadMessages(
     return count;
   }
   for (var i = 0; i < count; i++) {
-    if (!tableMixedLoadMessageBody(r, values[i])) return i;
+    if (!tableMixedLoadMessageBody(r, values[i])) {
+      if (report.nonFiniteFloat.isEmpty) return i;
+      for (var j = 0; j <= i; j++) {
+        initTableMixed(values[j]);
+      }
+      return 0;
+    }
   }
   if (!tableMessageBatchClose(r)) return count;
   return count;

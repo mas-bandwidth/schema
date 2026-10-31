@@ -38,15 +38,30 @@ final class TableWireReport {
   int retained = 0;
   int retainLost = 0;
 
+  // nonFiniteFloat is the STORED refusal of a float whose raw bits are a NaN
+  // or an infinity (docs/SPEC-TABLES.md §3.3): the <Table>.<field> the read
+  // met first, '' when it met none. Every read refuses one, the tolerant one
+  // too: refused rises with it and the load lands nothing, answering the
+  // type's defaults.
+  String nonFiniteFloat = '';
+
+  void refuseNonFiniteFloat(String field) {
+    if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
+    refused = true;
+  }
+
   // reason is the read's refusal BY NAME, in the reference leg's vocabulary
   // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
-  // docs/SPEC-TABLES.md §3, §4): a form byte this reader does not carry is
-  // unknown_form, framing the reader cannot follow is wire_damaged, and a read
-  // that kept its verdict is ok — the mapping the Go leg's measure gives its
-  // two verdicts. It is DERIVED from the two flags rather than stored beside
-  // them, so the verdict and its reason can never disagree. A widened, clamped
-  // or unknown field is not a refusal: the read still answers ok.
+  // docs/SPEC-TABLES.md §3, §4): a non-finite float is non_finite_float naming
+  // the field, and it outranks every later verdict; a form byte this reader
+  // does not carry is unknown_form, framing the reader cannot follow is
+  // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
+  // leg's measure gives its two verdicts. It is DERIVED from the flags and the
+  // stored field rather than kept beside them, so the verdict and its reason
+  // can never disagree. A widened, clamped or unknown field is not a refusal:
+  // the read still answers ok.
   String get reason {
+    if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
@@ -542,6 +557,31 @@ final class TableWireReader {
     final v = data[pos];
     pos++;
     return v;
+  }
+
+  // readF32/readF64 read one float payload at an offset the caller has bounded,
+  // TESTING THE RAW BITS FIRST (docs/SPEC-TABLES.md §3.3, a plain float's
+  // special values, the same rule as packets): a NaN or an
+  // infinity never becomes a double. The read is refused as non_finite_float,
+  // naming the field, and 0 stands in for the value the load then discards.
+  // Every finite float32 widens to a double exactly, so the float rung (kind 10
+  // into a float64 field) is the ordinary conversion.
+  double readF32(int at, String field) {
+    final b = readU32(data, at);
+    if ((b & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat(field);
+      return 0.0;
+    }
+    return _f32FromBits(b);
+  }
+
+  double readF64(int at, String field) {
+    final b = readU64(data, at);
+    if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      report.refuseNonFiniteFloat(field);
+      return 0.0;
+    }
+    return _f64FromBits(b);
   }
 
   // readBool reads a bool payload: any nonzero byte reads true, and a byte
@@ -1077,6 +1117,38 @@ double _f64FromBits(int b) {
   final bd = ByteData(8);
   bd.setUint64(0, b, Endian.little);
   return bd.getFloat64(0, Endian.little);
+}
+
+// _f32Write/_f64Write are every save's float payload: a NaN or an infinity is
+// REFUSED, never written (docs/SPEC-TABLES.md §3.3, a plain float's special
+// values: no binary form carries one), and the save throws naming the field,
+// as it refuses a data cycle. A finite value rides as its bits.
+int _f32Write(double d, String field) {
+  if (!d.isFinite) _refuseNonFiniteFloat(field);
+  return _f32Bits(d);
+}
+
+int _f64Write(double d, String field) {
+  if (!d.isFinite) _refuseNonFiniteFloat(field);
+  return _f64Bits(d);
+}
+
+Never _refuseNonFiniteFloat(String field) => throw StateError(
+  'non_finite_float: $field — a NaN or an infinity (docs/SPEC-TABLES.md §3.3)',
+);
+
+// _retainedFloatName names a retained unknown float for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3, §6.6): the body's table and the id it
+// cannot name, as sixteen hex digits.
+String _retainedFloatName(String owner, int id) {
+  const digits = '0123456789abcdef';
+  final hex = List<String>.filled(16, '0');
+  var v = id;
+  for (var i = 15; i >= 0; i--) {
+    hex[i] = digits[v & 0xf];
+    v >>>= 4;
+  }
+  return '$owner.0x${hex.join()}';
 }
 
 // ---- retain-unknown (docs/SPEC-TABLES.md §6.6) ----
@@ -2082,10 +2154,10 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(9);
     w.putU64(v.frameTick);
   }
-  if (v.serverTime != 0.0) {
+  if (v.serverTime != 0 || v.serverTime.isNegative) {
     w.putLeb(w.refFor(4343163795393112518));
     w.putByte(10);
-    w.putU32(_f32Bits(v.serverTime));
+    w.putU32(_f32Write(v.serverTime, 'TableMixed.server_time'));
   }
   if (v.entities.isNotEmpty) {
     final ref = w.refFor(-7828083326636031446);
@@ -2160,30 +2232,30 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
-  if (v.aimX != 0.0) {
+  if (v.aimX != 0 || v.aimX.isNegative) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
-    w.putU32(_f32Bits(v.aimX));
+    w.putU32(_f32Write(v.aimX, 'TableMixed.aim_x'));
   }
-  if (v.aimY != 0.0) {
+  if (v.aimY != 0 || v.aimY.isNegative) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
-    w.putU32(_f32Bits(v.aimY));
+    w.putU32(_f32Write(v.aimY, 'TableMixed.aim_y'));
   }
-  if (v.aimZ != 0.0) {
+  if (v.aimZ != 0 || v.aimZ.isNegative) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
-    w.putU32(_f32Bits(v.aimZ));
+    w.putU32(_f32Write(v.aimZ, 'TableMixed.aim_z'));
   }
-  if (v.recoil != 0.0) {
+  if (v.recoil != 0 || v.recoil.isNegative) {
     w.putLeb(w.refFor(-7138431908913683369));
     w.putByte(10);
-    w.putU32(_f32Bits(v.recoil));
+    w.putU32(_f32Write(v.recoil, 'TableMixed.recoil'));
   }
-  if (v.drift != 0.0) {
+  if (v.drift != 0 || v.drift.isNegative) {
     w.putLeb(w.refFor(6535842126802938884));
     w.putByte(11);
-    w.putU64(_f64Bits(v.drift));
+    w.putU64(_f64Write(v.drift, 'TableMixed.drift'));
   }
   if (v.wideKey != 0) {
     w.putLeb(w.refFor(-6686572760759554282));
@@ -2195,10 +2267,10 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(5);
     w.putU64(v.flux);
   }
-  if (v.ping != 0.0) {
+  if (v.ping != 0 || v.ping.isNegative) {
     w.putLeb(w.refFor(-4669986463835551831));
     w.putByte(10);
-    w.putU32(_f32Bits(v.ping));
+    w.putU32(_f32Write(v.ping, 'TableMixed.ping'));
   }
   if (v.crcHint != 0) {
     w.putLeb(w.refFor(6200723483573899615));
@@ -2636,7 +2708,10 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('TableEntity', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -2728,7 +2803,10 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('TableStat', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -2868,7 +2946,10 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('TableHitEvent', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -2970,7 +3051,10 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('TableChatEvent', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -3072,7 +3156,10 @@ void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool ne
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('TablePickupEvent', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -3451,15 +3538,17 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'TableMixed.server_time'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < 0) { d = 0; r.report.clamped++; }
           if (d > 65535) { d = 65535; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.serverTime = d;
         }
         break;
@@ -3578,15 +3667,17 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'TableMixed.aim_x'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < -1) { d = -1; r.report.clamped++; }
           if (d > 1) { d = 1; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.aimX = d;
         }
         break;
@@ -3596,15 +3687,17 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'TableMixed.aim_y'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < -1) { d = -1; r.report.clamped++; }
           if (d > 1) { d = 1; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.aimY = d;
         }
         break;
@@ -3614,15 +3707,17 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'TableMixed.aim_z'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < -1) { d = -1; r.report.clamped++; }
           if (d > 1) { d = 1; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.aimZ = d;
         }
         break;
@@ -3632,13 +3727,14 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'TableMixed.recoil'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           v.recoil = d;
         }
         break;
@@ -3648,11 +3744,11 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           switch (kind) {
             case 11:
               if (!r.has(8)) { r.report.malformed = true; return; }
-              d = _f64FromBits(readU64(r.data, r.pos)); r.pos += 8;
+              d = r.readF64(r.pos, 'TableMixed.drift'); r.pos += 8;
               break;
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'TableMixed.drift'); r.pos += 4;
               r.report.widened++;
               break;
             default:
@@ -3660,6 +3756,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           v.drift = d;
         }
         break;
@@ -3753,15 +3850,17 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'TableMixed.ping'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < 0) { d = 0; r.report.clamped++; }
           if (d > 250) { d = 250; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.ping = d;
         }
         break;
@@ -3873,7 +3972,10 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('TableMixed', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -3947,11 +4049,13 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   r.rootObj = v;
   r.rootType = _kTypeTableEntity;
   if (report != null) r.report = report;
+  r.report.nonFiniteFloat = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   r.pos = 1;
   tableEntityWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) return TableEntity();
   return v;
 }
 
@@ -4063,6 +4167,7 @@ TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableW
   final v = TableEntity();
   final r = TableWireReader(data, data.length);
   r.report = report;
+  r.report.nonFiniteFloat = '';
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4074,6 +4179,10 @@ TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableW
   r.scanNodeTable();
   r.pos = 1;
   tableEntityWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) {
+    retain.reset();
+    return TableEntity();
+  }
   return v;
 }
 
@@ -4125,11 +4234,13 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   r.rootObj = v;
   r.rootType = _kTypeTableStat;
   if (report != null) r.report = report;
+  r.report.nonFiniteFloat = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   r.pos = 1;
   tableStatWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) return TableStat();
   return v;
 }
 
@@ -4229,6 +4340,7 @@ TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireR
   final v = TableStat();
   final r = TableWireReader(data, data.length);
   r.report = report;
+  r.report.nonFiniteFloat = '';
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4240,6 +4352,10 @@ TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireR
   r.scanNodeTable();
   r.pos = 1;
   tableStatWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) {
+    retain.reset();
+    return TableStat();
+  }
   return v;
 }
 
@@ -4291,11 +4407,13 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   r.rootObj = v;
   r.rootType = _kTypeTableMixed;
   if (report != null) r.report = report;
+  r.report.nonFiniteFloat = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   r.pos = 1;
   tableMixedWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) return TableMixed();
   return v;
 }
 
@@ -4466,6 +4584,7 @@ TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   final v = TableMixed();
   final r = TableWireReader(data, data.length);
   r.report = report;
+  r.report.nonFiniteFloat = '';
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4477,6 +4596,10 @@ TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   r.scanNodeTable();
   r.pos = 1;
   tableMixedWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) {
+    retain.reset();
+    return TableMixed();
+  }
   return v;
 }
 
