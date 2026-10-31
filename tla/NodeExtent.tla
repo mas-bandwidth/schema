@@ -32,8 +32,9 @@ CONSTANTS MaxCount,   \* the largest count a container may hold
 CONSTANTS SkipAlign,       \* an array is laid at the running offset, unaligned
           ChildrenFirst,   \* an element's child array is laid before the
                            \* parent's whole array is reserved
-          UnroundedRecord  \* the extent begins at sizeof, not rounded to Floor
-ASSUME SkipAlign \in BOOLEAN /\ ChildrenFirst \in BOOLEAN /\ UnroundedRecord \in BOOLEAN
+          ExtentOverRecord \* the extent begins at the node's base, over the
+                           \* record's own storage
+ASSUME SkipAlign \in BOOLEAN /\ ChildrenFirst \in BOOLEAN /\ ExtentOverRecord \in BOOLEAN
 
 Up(x, a) == IF SkipAlign THEN x ELSE ((x + a - 1) \div a) * a
 
@@ -42,7 +43,12 @@ vars == <<shape, layout>>
 
 \* The node: its alignment is its record's, and its base is any multiple of
 \* that inside the region (the region's base is aligned to the greatest record
-\* alignment, which is at least the node's).
+\* alignment, which is at least the node's). A record that holds a container
+\* holds its sixteen-byte slot at eight (ir/blocklayout.go), so its alignment
+\* is at least eight: RecAligns is {8, 16}. Element alignments stop at the
+\* floor of eight: an element aligned sixteen in a node aligned eight would sit
+\* at eight modulo sixteen whenever the node does, which this layout does not
+\* prevent (reported, not modelled as a rule).
 Shapes == [ recAlign : RecAligns,
             recUnits : 1..MaxRecUnits,
             baseUnits : 0..2,
@@ -83,7 +89,7 @@ Walk(s) ==
 
 RecSize(s)  == s.recAlign * s.recUnits
 Base(s)     == s.recAlign * s.baseUnits
-ExtentAt(s) == IF UnroundedRecord THEN RecSize(s) ELSE Up(RecSize(s), Floor)
+ExtentAt(s) == IF ExtentOverRecord THEN 0 ELSE Up(RecSize(s), Floor)
 
 Init == /\ shape \in Shapes
         /\ layout = Walk(shape)
@@ -115,6 +121,10 @@ NoOverlap ==
 \* record's own storage: the measure and the write are one walk.
 Contained ==
     \A i \in NonEmpty : End(Arrays[i]) <= layout.extent
+
+\* NO ARRAY TOUCHES THE RECORD'S OWN STORAGE.
+OutsideRecord ==
+    \A i \in NonEmpty : Abs(Arrays[i]) >= Base(shape) + RecSize(shape)
 
 \* PRE-ORDER: a container's whole array before the arrays its elements hold.
 PreOrder ==
