@@ -4606,7 +4606,11 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_target_lock = blockdemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = blockdemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->has_target_lock = bool_byte != 0;
+                }
                 break;
             }
             case 0x4d5be97ba1b9cb81ull: /* predicted_explode */
@@ -4618,7 +4622,11 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->predicted_explode = blockdemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = blockdemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->predicted_explode = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -5470,7 +5478,11 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_target_lock = blockdemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = blockdemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->has_target_lock = bool_byte != 0;
+                }
                 break;
             }
             default:
