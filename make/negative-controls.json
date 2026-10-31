@@ -213,6 +213,14 @@
       ]
     },
     {
+      "name": "base-c-skip-timestamp",
+      "when": "pull-request",
+      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and the pinned root_full mutant replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "tables-c-skip-timestamp-kind-negative-control"
+      ]
+    },
+    {
       "name": "base-c-foreign",
       "when": "pull-request",
       "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
@@ -1385,6 +1393,7 @@
         "tables-lobster-order-negative-control",
         "tables-lobster-names-negative-control",
         "tables-lobster-json-differential-negative-control",
+        "tables-lobster-json-walk-negative-control",
         "tables-lobster-runtime-home-negative-control",
         "tables-lobster-usage-negative-control"
       ],
@@ -1505,6 +1514,7 @@
         "tables-squirrel-message-form-negative-control",
         "tables-squirrel-damage-discard-negative-control",
         "tables-squirrel-arms-negative-control",
+        "tables-squirrel-slot-negative-control",
         "tables-squirrel-save-negative-control",
         "tables-squirrel-base64-text-negative-control",
         "tables-squirrel-keyed-negative-control",
@@ -1576,6 +1586,17 @@
       "luau": "0.741"
     },
     {
+      "name": "luau-cards",
+      "when": "pull-request",
+      "why": "Native Luau card facade: unit checks and all 43 shared cases across nine surfaces precede three actual source sabotages (render separator, retained-field save, and task-hash length framing). Each sabotage must red its own surface while the other eight remain green. The pinned Luau CLI uses a Go file-IO host; all card behavior runs in Luau. The complete warm-cache group took 4.21 seconds on hetzner1 at GOMAXPROCS=4.",
+      "targets": [
+        "cards-luau-conformance-negative-control",
+        "cards-luau-conformance-upgrade-negative-control",
+        "cards-luau-conformance-hash-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
       "name": "lobster",
       "when": "pull-request",
       "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio. The bench legs' control (bench/lobster/negative-control.sh) flips each leg's golden, plants a compiler warning under the packet runner and a seconds_elapsed() clock and a corpus name in .lobster files under a copy of bench/, and requires each refused by name beside clean baselines; about 3 s. Both fit the per-commit rule with room.",
@@ -1584,6 +1605,17 @@
         "schema-lobster-generated-strict-gate-negative-control"
       ],
       "lobster": "v2026.8"
+    },
+    {
+      "name": "moo-cards",
+      "when": "pull-request",
+      "why": "Native moo owning cards: analyzer and unit checks plus all 43 shared cases across nine surfaces precede three real facade-source sabotages (render separator, retaining save and task-hash length frame). Each must red only its target surface. The IO-only Go host runs the pinned moo CLI; card behavior never runs in the host. The complete group, including the tagged compiler rebuild, took 3.19 seconds on Studio at GOMAXPROCS=4.",
+      "targets": [
+        "cards-moo-conformance-negative-control",
+        "cards-moo-conformance-upgrade-negative-control",
+        "cards-moo-conformance-hash-negative-control"
+      ],
+      "moo": "pin"
     },
     {
       "name": "moo",

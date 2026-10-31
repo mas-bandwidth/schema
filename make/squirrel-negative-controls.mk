@@ -86,3 +86,14 @@ tables-squirrel-arms: toolchain-squirrel
 	sh test/slowgate/proof $@ 'TestSquirrelArmIsAFieldLine TestSquirrelTableLoadMatchesTheReports TestSquirrelWideTextMatchesTheWire' ./internal/codegen/squirreltable -run '^TestSquirrel(ArmIsAFieldLine|TableLoadMatchesTheReports|WideTextMatchesTheWire)$$' -count=1
 tables-squirrel-arms-negative-control:
 	sh test/slowgate/proof $@ 'TestSquirrelArmFieldLineNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelArmFieldLineNegativeControl$$' -count=1
+
+# J1: the reflective block/cook path agrees with the compiler layout model.
+.PHONY: tables-squirrel-descriptor-layout-agreement tables-squirrel-slot-negative-control
+tables-squirrel-descriptor-layout-agreement: toolchain-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelDescriptorLayoutAgreement TestSquirrelBlockReadMatchesTheCorpus TestSquirrelCookReadMatchesTheCorpus' ./internal/codegen/squirreltable -run '^TestSquirrel(DescriptorLayoutAgreement|BlockReadMatchesTheCorpus|CookReadMatchesTheCorpus)$$' -count=1
+tables-squirrel-slot-negative-control: toolchain-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelDescriptorLayoutNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelDescriptorLayoutNegativeControl$$' -count=1
+test-squirrel: tables-squirrel-descriptor-layout-agreement tables-squirrel-slot-negative-control
+
+# The registered M18 proof runs through the normal language test entry.
+test-squirrel: tables-squirrel-arms tables-squirrel-arms-negative-control
