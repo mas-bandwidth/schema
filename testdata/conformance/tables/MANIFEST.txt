@@ -700,7 +700,7 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
 # HELD FIRST IN GO (§16.3): Go and C carry the rule, every other port keeps the
 # counters it answered before the ruling until its port.
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c uncarried=0,0,0,1,0,false,read
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,moo uncarried=0,0,0,1,0,false,read
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
@@ -714,8 +714,8 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # 0,0,0,0,0,false,read, until its port. The map-key row uses the existing
 # `mapdemo` unit's Text root, whose names field is map[string(8)]string(16);
 # tabledemo's RootConfig has no string-keyed map.
-json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,moo uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c,moo uncarried=0,0,0,0,0,false,read
 json-hostile str-zero-escape-unknown-key  tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key   1,0,0,0,0,false,read
 json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,0,false,read
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
