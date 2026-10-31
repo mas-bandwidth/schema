@@ -1482,9 +1482,84 @@ func tableEnumsModule(u *ir.Unit, vc *variableClass) []byte {
 	b.WriteString(header(runtimeSourceName(u), u.Package, "the table layer's enums and their JSON names, once per crate (docs/SPEC-TABLES.md §3, §16.2)"))
 	b.WriteString("\n")
 	emitVariableEnums(&b, enums)
+	emitKeyedAccessors(&b, enums)
 	b.WriteString("// ---- the JSON text form's names (docs/SPEC-TABLES.md §16.2) ----\n\n")
 	for _, e := range enums {
 		emitEnumText(&b, e)
 	}
 	return []byte(b.String())
+}
+
+// emitKeyedAccessors emits the keyed array's accessor (docs/PORTING.md M5,
+// docs/SPEC-TABLES.md §2.3): key 1 lives in slot 0 and E.Max in the last, and
+// None (key 0) and any key past E.Max are REFUSED in every build by one
+// unsigned compare covering both ends, then a panic that names the KEY. The
+// slice's own bounds check is not the technique: it names an index, and the
+// shift would be the caller's to spell. Every keyed array is a slice of its
+// slots, a `Vec` on the variable struct and an array on a fixed row, so the
+// runtime is generic over the slice; each enum gets the typed spelling, and
+// iteration yields the key beside the element.
+func emitKeyedAccessors(b *strings.Builder, enums []*ir.Enum) {
+	b.WriteString(`// ---- keyed arrays index by KEY, refused at both ends (docs/SPEC-TABLES.md §2.3) ----
+
+/// The slot a key owns in a keyed array of that many slots: key 1 in slot 0, E.Max
+/// in the last. None (key 0) and every key past E.Max are refused in every
+/// build: one unsigned compare covers both ends.
+#[inline(always)]
+pub fn table_key_slot(key: usize, slots: usize) -> usize {
+    let slot = key.wrapping_sub(1);
+    if slot >= slots {
+        table_key_refused(key, slots);
+    }
+    slot
+}
+
+/// The refusal: a panic naming the key, never an index.
+#[cold]
+#[inline(never)]
+#[track_caller]
+pub fn table_key_refused(key: usize, slots: usize) -> ! {
+    panic!("keyed array: key {key} names no slot (keys are 1 to {slots}; None is 0) (docs/SPEC-TABLES.md §2.3)")
+}
+
+/// The slot the key owns.
+#[inline(always)]
+#[track_caller]
+pub fn table_keyed<T>(slots: &[T], key: usize) -> &T {
+    &slots[table_key_slot(key, slots.len())]
+}
+
+/// The slot the key owns, to write.
+#[inline(always)]
+#[track_caller]
+pub fn table_keyed_mut<T>(slots: &mut [T], key: usize) -> &mut T {
+    let slot = table_key_slot(key, slots.len());
+    &mut slots[slot]
+}
+
+/// Every slot beside the key that owns it, in key order.
+pub fn table_keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (usize, &T)> {
+    slots.iter().enumerate().map(|(i, x)| (i + 1, x))
+}
+
+`)
+	for _, e := range enums {
+		fmt.Fprintf(b, "impl %s {\n", e.Name)
+		fmt.Fprintf(b, "    /// The slot of a `[%s]T` keyed array this key owns; None is refused.\n", e.Name)
+		b.WriteString("    #[inline(always)]\n    #[track_caller]\n")
+		b.WriteString("    pub fn keyed<T>(self, slots: &[T]) -> &T {\n        table_keyed(slots, self as usize)\n    }\n\n")
+		fmt.Fprintf(b, "    /// The slot of a `[%s]T` keyed array this key owns, to write; None is refused.\n", e.Name)
+		b.WriteString("    #[inline(always)]\n    #[track_caller]\n")
+		b.WriteString("    pub fn keyed_mut<T>(self, slots: &mut [T]) -> &mut T {\n        table_keyed_mut(slots, self as usize)\n    }\n\n")
+		fmt.Fprintf(b, "    /// Every slot of a `[%s]T` keyed array beside the key that owns it.\n", e.Name)
+		fmt.Fprintf(b, "    pub fn keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (%s, &T)> {\n", e.Name)
+		fmt.Fprintf(b, "        const KEYS: [%s; %d] = [", e.Name, len(e.Variants))
+		for i, v := range e.Variants {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(b, "%s::%s", e.Name, rustVariant(v))
+		}
+		b.WriteString("];\n        KEYS.iter().copied().zip(slots.iter())\n    }\n}\n\n")
+	}
 }

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Prove the restored Go gates detect a changed wire, a changed message batch,
-# a missing text event, and a noncanonical integer accepted by the generated
-# wire reader.
+# a missing text event, a noncanonical integer accepted by the generated
+# wire reader, and an absent case that writes no `.absent` answer.
 set -eu
 
 mode=$1
@@ -24,9 +24,20 @@ walk)
     source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)
     sed 's/in.report.Clamped++/in.report.Clamped += 0/g' "$source" > "$out/source.gotext"
     ;;
-leb)
+leb|leb-driver)
     source=$(grep -l 'if i > 0 && b == 0' build/tables-generated-go/examples/*Table.go)
     sed 's/if i > 0 \&\& b == 0/if false/' "$source" > "$out/source.gotext"
+    ;;
+absent)
+    # both writers of the marker: the bare one and the one carrying a reason
+    source=test/conformance/go/main.go
+    sed 's|return os.WriteFile(filepath.Join(dir, name+".absent"), nil, 0o644)|return nil // SABOTAGED: an absent case writes nothing|' "$source" > "$out/source.gotext"
+    source2=test/conformance/go/messages.go
+    sed 's|return os.WriteFile(filepath.Join(dir, name+".absent"), \[\]byte(reason), 0o644)|_ = filepath.Join; return nil // SABOTAGED: an absent case writes nothing|' "$source2" > "$out/source2.gotext"
+    if cmp -s "$source2" "$out/source2.gotext"; then
+        echo "negative control patched nothing: $mode ($source2)" >&2
+        exit 1
+    fi
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -35,10 +46,19 @@ if cmp -s "$source" "$out/source.gotext"; then
     exit 1
 fi
 root=$(pwd)
-printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+if [ -n "${source2:-}" ]; then
+    printf '{"Replace":{"%s/%s":"%s/%s/source.gotext","%s/%s":"%s/%s/source2.gotext"}}\n' "$root" "$source" "$root" "$out" "$root" "$source2" "$root" "$out" > "$out/overlay.json"
+else
+    printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+fi
 (cd test/conformance/go && go build -overlay "$root/$out/overlay.json" -o "$root/$out/driver-bin" .)
 
-if [ "$mode" = leb ]; then
+if [ "$mode" = leb-driver ]; then
+    # the sabotaged driver alone, for a gate that drives it itself
+    # (tables-go-release-negative-control)
+    echo "Go table negative control: $mode built $out/driver-bin"
+    exit 0
+elif [ "$mode" = leb ]; then
     if build/conformance-harness wire-fuzz --driver "$out/driver-bin wire-fuzz" --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
         echo 'negative control failed: noncanonical integers were accepted unnoticed' >&2
         exit 1
@@ -58,6 +78,10 @@ else
     elif [ "$mode" = message ]; then
         grep -q 'go / message: login_full' "$out/log"
         grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = absent ]; then
+        grep -q 'go / wire: blob_shared: .*driver wrote nothing' "$out/log"
+        grep -q 'go / framing: .*: the driver wrote nothing' "$out/log"
+        grep -q 'json-read     pass' "$out/log"
     else
         grep -q 'go / json-hostile:' "$out/log"
         grep -q 'wire          pass' "$out/log"

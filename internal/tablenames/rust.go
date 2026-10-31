@@ -50,6 +50,13 @@ func init() {
 		Name{Name: "TableFixedTag", What: "a union tag read at its OWN width, which is what keeps a foreign 0x0101 from firing arm 1", Scoped: true},
 		Name{Name: "TableUtf8Valid", What: "§3's one content rule for a string(N): well-formed UTF-8 with no zero among the used bytes", Scoped: true},
 		Name{Name: "TableUtf16Valid", What: "§3's one content rule for a wstring(N): paired UTF-16 with no zero among the used units", Scoped: true},
+		// THE KEYED ARRAY'S ACCESSOR (docs/PORTING.md M5, docs/SPEC-TABLES.md
+		// §2.3), in table_enums.rs beside the enums that key it.
+		Name{Name: "TableKeySlot", What: "the slot a key owns in a keyed array: key 1 in slot 0, E.Max in the last, None and past E.Max refused by one unsigned compare"},
+		Name{Name: "TableKeyRefused", What: "the keyed accessor's refusal, a panic naming the key"},
+		Name{Name: "TableKeyed", What: "a keyed array's slot by key, refused at both ends"},
+		Name{Name: "TableKeyedMut", What: "a keyed array's slot by key, to write, refused at both ends"},
+		Name{Name: "TableKeyedIter", What: "a keyed array's slots beside the keys that own them"},
 		Name{Name: "TableU128", What: "an unsigned 128-bit ROW SLOT, sixteen bytes aligned SIXTEEN on every target — Rust's own u128 takes the target's C alignment, which is eight on s390x"},
 		Name{Name: "TableI128", What: "a signed 128-bit ROW SLOT, sixteen bytes aligned SIXTEEN on every target"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},

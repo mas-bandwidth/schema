@@ -17,6 +17,7 @@ import (
 	"embed"
 	"fmt"
 	"math/big"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -67,6 +68,9 @@ type Module struct {
 
 	body     strings.Builder
 	runtimes map[string]bool
+	// viewNone is set once the view surface has written TableDocNone and
+	// TableTagsNone, which the module assigns exactly once
+	viewNone bool
 }
 
 // Printf appends to the module body.
@@ -135,6 +139,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	m.Printf("_M.Roots <- [%s];\n", strings.Join(roots, ", "))
 	m.Printf("%s.link(_M);\n\n", desc)
+	if closureHasKeyed(m.Closure) {
+		m.Printf("// THE KEYED ACCESSOR (docs/PORTING.md M5): Keyed(table, field) refuses None\n")
+		m.Printf("// and any key past the enum's last variant by name, in every build.\n")
+		m.Printf("_M.Keyed <- function(table, field) { return %s.keyed(_M, table, field); };\n\n", desc)
+	}
 	for _, s := range surfaces {
 		if !unitCarriesSurface(u, s.Name) {
 			continue
@@ -142,6 +151,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		if s.Module != nil {
 			s.Module(m)
 		}
+	}
+	if err := refuseKeyCollisions(m.body.String(), name); err != nil {
+		return nil, err
 	}
 	out := Runtime()
 	out[name+".nut"] = assemble(m, name)
@@ -866,4 +878,49 @@ func FloatOwner(u *ir.Unit, f *ir.Field) string {
 		}
 	}
 	return f.Name
+}
+
+// closureHasKeyed reports whether a table or type the module emits declares
+// an enum-keyed array, the field shape the Keyed accessor serves.
+func closureHasKeyed(closure []*ir.Struct) bool {
+	for _, st := range closure {
+		for _, f := range st.Fields {
+			if f.KeyEnumRef != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// moduleKey is one key the unit's table module assigns at column zero, the
+// only place it defines a name (`_M.<key> <- ...`).
+var moduleKey = regexp.MustCompile(`(?m)^_M\.([A-Za-z_]\w*) <-`)
+
+// ModuleKeys is every key the unit's table module text assigns, in order,
+// with repeats: a key two declarations land on is spelled twice.
+func ModuleKeys(text string) []string {
+	var keys []string
+	for _, m := range moduleKey.FindAllStringSubmatch(text, -1) {
+		keys = append(keys, m[1])
+	}
+	return keys
+}
+
+// refuseKeyCollisions refuses a unit whose table module would assign one key
+// twice (docs/SPEC-TABLES.md §11; docs/PORTING.md I6). Every class, function
+// and table the module defines lives on its one exports table, so a
+// declaration named for a name the module already defines (`Roots`,
+// `Descriptors`, `Package`, `Keyed`, ...) or for another declaration's
+// generated function (`ShipSave` beside a table `Ship`) would silently replace
+// it: the later assignment wins and the earlier name answers the wrong thing.
+func refuseKeyCollisions(text, module string) error {
+	seen := map[string]bool{}
+	for _, k := range ModuleKeys(text) {
+		if seen[k] {
+			return fmt.Errorf("the Squirrel table module %s.nut would define %s twice: a declaration is named for a name the table module already spells (docs/SPEC-TABLES.md §11, docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT); rename the declaration", module, k)
+		}
+		seen[k] = true
+	}
+	return nil
 }
