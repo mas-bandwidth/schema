@@ -75,10 +75,12 @@ public final class TableVariable {
         public String reason;
         public int retained;
         public int retainLost;
-        // THE NUMBERING'S SIZE for this load, set when the node table is read:
-        // the records it holds, or -1 when there is no good numbering to check
-        // against (a damaged table resolves nothing, §3.1).
-        int nodeLimit = -1;
+        // THE NUMBERING this load reads against, set when the node table is
+        // read, and the root's type: every node reference is JUDGED as it is
+        // read (judge, below), and a damaged table resolves nothing (§3.1).
+        NodeRecord[] nodeRecs;
+        boolean nodesGood;
+        long rootTypeId;
 
         // reset puts every counter back to its start, so one Report can serve
         // call after call (a reused Measure) without a fresh object per call.
@@ -92,7 +94,9 @@ public final class TableVariable {
             reason = null;
             retained = 0;
             retainLost = 0;
-            nodeLimit = -1;
+            nodeRecs = null;
+            nodesGood = false;
+            rootTypeId = 0;
         }
     }
 
@@ -1349,35 +1353,61 @@ public final class TableVariable {
         // (internal/tablewire/decodenodes.go). An ABSENT field is an empty but
         // valid numbering, and a whole read carries the records.
         NodeTable nt = new NodeTable();
-        report.nodeLimit = -1;
+        report.nodeRecs = null;
+        report.nodesGood = false;
         if (bad) {
             nt.bad = true;
             return nt;
         }
         if (payload == null) {
-            report.nodeLimit = 0;
+            report.nodesGood = true;
             return nt;
         }
         nt.recs = nodes(payload, retain);
         if (nt.recs == null) {
             nt.bad = true;
         } else {
-            report.nodeLimit = nt.recs.length;
+            report.nodeRecs = nt.recs;
+            report.nodesGood = true;
         }
         return nt;
     }
 
-    // checkIndex is the numbering's bound on one node reference AS IT IS READ
-    // (§3.1, §4; internal/tablewire/decodenodes.go resolveCell): a reference
-    // ABOVE the entry count (past node_count + 1) is an unreadable reference,
-    // damage in every occurrence that carries it, an occurrence a later one
-    // replaces included, so it is judged here and not only when the surviving
-    // value resolves. Only the slots a field keeps are read: a clamped array's
-    // tail past its bound is stepped over by the field's length, unread.
-    static void checkIndex(long index, Report report) {
-        if (index >= 2 && report.nodeLimit >= 0 && index - 2 >= report.nodeLimit) {
-            report.malformed = true;
+    // THE RESOLUTION'S COUNTERS ARE NOT COUNTED TWICE: every reference was
+    // judged as it was read, so the pass that places the surviving values
+    // reports into this one, which nothing reads.
+    static final Report QUIET = new Report();
+
+    // judge is §3.1's verdict on one node reference AS IT IS READ, in every
+    // occurrence that carries it, an occurrence a later one replaces included
+    // (internal/tablewire/decodenodes.go resolveCell): 0 is null; 1 is the
+    // root, a kind mismatch unless the slot names the root's own type; a
+    // reference ABOVE the entry count is an unreadable reference, which is
+    // damage (§4); a record this reader cannot name reads null, counted once
+    // at the scan; and a record of another type is a kind mismatch. target is
+    // the slot's table type id, or STRING_ID / BYTES_ID for a byte buffer.
+    // Only the slots a field keeps are read: a clamped array's tail past its
+    // bound is stepped over by the field's length, unread.
+    static void judge(long index, Report report, long target) {
+        if (!report.nodesGood || index == 0) {
+            return;
         }
+        if (index == 1) {
+            if (target == STRING_ID || target == BYTES_ID || target != report.rootTypeId) {
+                report.kindMismatch++;
+            }
+            return;
+        }
+        NodeRecord[] recs = report.nodeRecs;
+        if (index - 2 >= (recs == null ? 0 : recs.length)) {
+            report.malformed = true;
+            return;
+        }
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId != 0 && rec.typeId != target) {
+            report.kindMismatch++;
+        }
+    }
     }
 
     // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
@@ -3141,6 +3171,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	} else {
+		fmt.Fprintf(&b, "        report.rootTypeId = TYPE_ID;\n")
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
@@ -4317,7 +4348,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
-			fmt.Fprintf(b, "                                    TableVariable.checkIndex(idx, report);\n")
+			fmt.Fprintf(b, "                                    TableVariable.judge(idx, report, %sVariable.TYPE_ID);\n", f.Type.Ref.(*ir.Struct).Name)
 			for _, member := range []string{m, m + "Idx"} {
 				if f.Array == ir.ArrayFixed {
 					fmt.Fprintf(b, "                                    TableVariable.put(v.%s, (int) i, %s);\n", member, map[bool]string{true: "null", false: "idx"}[member == m])
@@ -4334,7 +4365,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
-			fmt.Fprintf(b, "                                    TableVariable.checkIndex(idx, report);\n")
+			fmt.Fprintf(b, "                                    TableVariable.judge(idx, report, %sVariable.TYPE_ID);\n", f.Type.Ref.(*ir.Struct).Name)
 			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
@@ -4395,7 +4426,14 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	case isScalarArray(f):
 		writeArrayFieldRead(b, u, st, f)
 	case f.Type.Blob() || (f.Type.Pointer && isStruct(f)):
-		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); TableVariable.checkIndex(v.%sIdx, report); }\n", m, m)
+		target := "TableVariable.BYTES_ID"
+		switch {
+		case f.Type.Kind == ir.TString:
+			target = "TableVariable.STRING_ID"
+		case isStruct(f):
+			target = f.Type.Ref.(*ir.Struct).Name + "Variable.TYPE_ID"
+		}
+		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); TableVariable.judge(v.%sIdx, report, %s); }\n", m, m, target)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
@@ -4953,20 +4991,20 @@ func writeVariableResolveField(b *strings.Builder, f *ir.Field) {
 	}
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, report); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, TableVariable.QUIET); }\n", m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, report); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, TableVariable.QUIET); }\n", m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (!v.%sIdx.isEmpty()) {\n", m)
 		fmt.Fprintf(b, "            v.%s.clear();\n", m)
 		fmt.Fprintf(b, "            for (Long idx : v.%sIdx) {\n", m)
-		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt.recs, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, report));\n", m, target.Name, target.Name)
+		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt.recs, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, TableVariable.QUIET));\n", m, target.Name, target.Name)
 		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, report); }\n", m, m, target.Name, m, target.Name)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, TableVariable.QUIET); }\n", m, m, target.Name, m, target.Name)
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        for (%sVariable.Value elem : v.%s) { if (elem != null) %sVariable.resolveNodes(elem, nt, root, rootTypeId, report); }\n", target.Name, m, target.Name)

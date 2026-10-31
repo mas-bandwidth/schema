@@ -1651,13 +1651,13 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # ruling, and it stops the pass before it reaches the mutants behind it.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
@@ -1830,7 +1830,7 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_NODE_INDEX_SABOTAGE) && mkdir -p $(JAVA_NODE_INDEX_SABOTAGE)/generated $(JAVA_NODE_INDEX_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_NODE_INDEX_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_NODE_INDEX_SABOTAGE)/generated/*/TableVariable.java; do \
-		sed 's/if (index >= 2 \&\& report\.nodeLimit >= 0 \&\& index - 2 >= report\.nodeLimit) {/if (false) { \/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed 's/if (index - 2 >= (recs == null ? 0 : recs\.length)) {/if (false) { \/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED node index check' $(JAVA_NODE_INDEX_SABOTAGE)/generated/stream/TableVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java node-index sabotage did not apply'; exit 1; }
