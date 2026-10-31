@@ -69,7 +69,8 @@ for pair in \
     r1:test/tables/R1.schema r2:test/tables/R2.schema \
     p1:test/tables/P1.schema p2:test/tables/P2.schema p3:test/tables/P3.schema \
     g1:test/tables/G1.schema m1:test/tables/M1.schema m2:test/tables/M2.schema \
-    k1:test/tables/K1.schema k2:test/tables/K2.schema a2:test/tables/A2.schema; do
+    k1:test/tables/K1.schema k2:test/tables/K2.schema a2:test/tables/A2.schema \
+    rt1:test/tables/RT1.schema; do
     unit=${pair%%:*}
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart/$unit" "$input" >/dev/null
