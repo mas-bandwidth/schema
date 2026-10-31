@@ -14,3 +14,4 @@ path = "src/main.rs"
 [dependencies]
 mapdemo = { path = "../../build/tables-generated-rust/mapdemo" }
 listdemo = { path = "../../build/tables-generated-rust/listdemo" }
+widelistdemo = { path = "../../build/tables-generated-rust/widelistdemo" }

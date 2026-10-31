@@ -1389,6 +1389,7 @@ macro_rules! with_cook_root {
             ("listdemo", "Sheet") => { use listdemo::{sheet_load as $load, sheet_cook_write as $cook}; Some($body) }
             ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook}; Some($body) }
             ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook}; Some($body) }
+            ("widelist", "Wide") => { use widelistdemo::{wide_load as $load, wide_cook_write as $cook}; Some($body) }
             _ => None,
         }
     }};

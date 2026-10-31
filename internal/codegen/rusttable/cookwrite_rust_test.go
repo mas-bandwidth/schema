@@ -38,6 +38,7 @@ var cookWriteUnits = map[string]string{
 	"tblm2":       "test/tables/M2.schema",
 	"mapdemo":     "tables/maps",
 	"listdemo":    "tables/lists",
+	"widelist":    "tables/widelist",
 }
 
 // cookWriteOwed is every root a cook-write row names that has NO FORM-1 READER
