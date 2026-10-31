@@ -58,7 +58,10 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
-	// Moo names the moo pin (make/moo.mk); .github/actions/moo builds it.
+	// Moo says the row needs the moo pin (make/moo.mk's MOO_PIN, a commit of
+	// mas-bandwidth/moo), which .github/actions/moo restores or builds into
+	// dist/moo. Like dotnet it is a marker, "pin", and never a version: the
+	// commit lives in make/moo.mk alone.
 	Moo string `json:"moo,omitempty"`
 }
 

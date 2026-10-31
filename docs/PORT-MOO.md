@@ -158,6 +158,35 @@ over a table's Save and strict read). It is not `text.moo` because
 | the base64 carrier (§16.8) | `TestMooTextCarrier`, control `TestMooTextCarrierNegativeControl`; the generated `<Name>SaveText` / `<Name>LoadText` over the moo wire, `TestMooTextCarrierSurface` |
 | json-read and json-write over the moo table wire (the conformance surfaces) | `TestMooJsonWireSurfaces` |
 
+## THE FUZZ DIFFERENTIAL (layer 6)
+
+`internal/codegen/moo/fuzz_test.go` holds the generated moo codecs against the
+Go target's, over every packet corpus the leg generates (the analyzer gate's
+list: `examples`, `examples128`, `test/packet-*`), the way serialize.moo's
+`fuzz/differential_test.go` holds the runtime against serialize.go. Each round
+draws random instances of every packet type and union inside their declared
+contracts (`fuzzvalue_test.go`), builds each one in both languages from the one
+draw, and requires the two writers to emit identical bytes; then both readers
+read the Go image and mutants of it (bit flips, overwritten bytes, truncation,
+trailing bytes, padding bits, random images), each followed by
+`serializeEnd`, and must agree on accept or refuse, on the latched refusal
+reason, and on the bytes each writes back. Two reason differences are the
+targets' and not the port's, and are not counted: a schema rule's refusal
+(Go's `ErrValidation`, moo's unlatched `false`) names no runtime reason, and a
+Go flat run reads its whole run before checking any value, so its `past_end`
+may stand where moo, field by field, refuses the first bad value.
+
+| gate | test / target |
+|---|---|
+| a seeded round, every root drawn, every refusal reached | `TestMooWireFuzzAgreesWithTheGoTarget`, `make moo-wire-fuzz` (in `make test-moo`) |
+| a planted writer bug (an 8-bit field's top bit dropped) goes red | `TestMooWireFuzzWriteNegativeControl` |
+| a planted reader bug (a union tag's bound dropped) goes red | `TestMooWireFuzzReadNegativeControl` |
+| the long run: 100 rounds of 2000 instances a unit, seeded by the run id | `make schema-moo-nightly-fuzz`, `.github/workflows/schema-moo-nightly-fuzz.yml` |
+| the nightly's wiring | `TestSchemaMooNightlyFuzzWiring` and its control |
+
+The shared hostile corpus (`internal/ci/hostilecorpus`) and the table-wire
+fuzz are table surfaces; they join this layer when the table layer lands.
+
 ## THE LAYERS
 
 The port lands in layers, each green on main before the layer that depends on
@@ -183,3 +212,38 @@ stacked on layer 1, landed one at a time against current main.
 Each layer flips its cells in the register (docs/PORTING.md, the `moo` column)
 and the roadmap (`port/moo/*`). A runtime gap found on the way is fixed in
 serialize.moo, never worked around here.
+
+## RETAIN-UNKNOWN (layer 3, docs/SPEC-TABLES.md §6.6)
+
+`runtime/table_retain.moo` carries the opt-in. The surface is the runtime's,
+beside `ReadStrict` and `SaveMessages`, taking the root by name:
+
+- `R.newStore(capacity, idCapacity)` is the caller's two stores, by capacity;
+  `R.used(store)` and `R.ids(store)` read them back.
+- `R.LoadRetain(root, bytes, report, store)` is the tolerant load into a
+  region with the store on, `R.MeasureRetain(root, value, store)` and
+  `R.SaveRetain(root, value, store, report)` write the retained fields back at
+  the end of their own body. The report accumulates across the pair
+  (`report.retained`, `report.retainLost`), `SaveRetain` refuses a nil report
+  (`retain_needs_report`), and all three refuse a fixed-class root by name
+  (`fixed_class_root`).
+- `R.LoadRetainMessages(vocabulary, root, data, capacity, stores, report)` is a
+  form-2 batch with a store a body; each body is saved as a FILE, the one
+  direction retention crosses the forms.
+
+A retained record is reader-private: the field's id and kind and its payload
+with every reference resolved, lengths at eight bytes written after their
+content, cost nine bytes plus the payload (the Go engine's own layout, so the
+`short` capacity rows drop the same record). It belongs to the table instance
+the load filled, so the walks that build a body also say what a later legal
+occurrence supersedes: `table_load.moo`, `table_save.moo` and
+`table_message.moo` carry hooks that are nil on every plain read and save. The
+ids the unit can spell (`ir.TableWireIds`) are registered by every table
+module (`retainform.go`), and decide which store an id takes at save.
+
+Held by `retain_test.go` (the manifest's `retain` rows, the evolved pairs read
+through the variable class, the pair's promises), `retain_occurrence_test.go`
+(the occurrence rules against hand-built wires), `retain_message_test.go` (the
+`retain-message` rows and every construct as sender, read by a reader that
+names none of its fields), each against the Go engine's store bytes, counters
+and saved bytes; each gate has a negative control.

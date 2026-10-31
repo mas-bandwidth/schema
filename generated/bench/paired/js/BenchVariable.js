@@ -1463,7 +1463,13 @@ function TableVariableScalar(r, d, kind, report) {
   if (r.at + width > r.end) { report.malformed = true; return undefined; }
   let x;
   switch (kind) {
-    case 1: return r.u8() !== 0;
+    case 1: {
+      // A BOOL BYTE IS 0 OR 1 (§3): any other byte reads true, counts one
+      // malformed and the body reads on (decode.go scalarAt)
+      const b = r.u8();
+      if (b > 1) { report.malformed = true; }
+      return b !== 0;
+    }
     case 10: {
       let v = TableVariableWidenF32(r.u32());
       if (v === v && d.f32 && d.lo !== null) {

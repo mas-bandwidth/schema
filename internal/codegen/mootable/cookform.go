@@ -54,7 +54,9 @@ func emitCookForm(g *Gen) error {
 // cookPieces is one field's storage: the absolute offset of each contiguous
 // piece from `at` (the value first, then a used length or count, then the
 // presence bool), and the size of ONE element where the field holds several
-// (a fixed or counted array's slot, a list's or a map's element record).
+// (a fixed or counted array's slot, a list's or a map's element record), and
+// for a list or a map the element's alignment, which the write side's extent
+// carve places the array at (§2.9, §7.6).
 func cookPieces(g *Gen, f *ir.Field, at int64) string {
 	var offs []string
 	width := int64(0)
@@ -64,10 +66,15 @@ func cookPieces(g *Gen, f *ir.Field, at int64) string {
 			width = p.Size
 		}
 	}
-	elem := int64(0)
+	elem, ealign := int64(0), int64(0)
 	switch {
 	case f.IsMap():
-		elem = ir.RecordLayout(g.Unit, f.MapEntry).Size
+		ml := ir.RecordLayout(g.Unit, f.MapEntry)
+		elem, ealign = ml.Size, ml.Align
+	case f.IsList():
+		// an unbounded array's elements ride in the holder's extent (§2.9),
+		// at the element's own size and alignment: the write side carves them
+		elem, ealign = ir.ListElementLayout(g.Unit, f)
 	case f.Array != ir.ArrayNone:
 		one := *f
 		one.Array = ir.ArrayFixed
@@ -79,6 +86,9 @@ func cookPieces(g *Gen, f *ir.Field, at int64) string {
 		if len(ps) > 0 {
 			elem = ps[0].Size
 		}
+	}
+	if ealign != 0 {
+		return fmt.Sprintf("{ p = { %s }, w = %d, elem = %d, ealign = %d }", strings.Join(offs, ", "), width, elem, ealign)
 	}
 	return fmt.Sprintf("{ p = { %s }, w = %d, elem = %d }", strings.Join(offs, ", "), width, elem)
 }

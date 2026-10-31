@@ -2,6 +2,7 @@ package mootable
 
 import (
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,12 +24,8 @@ func jsonProbeDir(t *testing.T, main string, runtime map[string][]byte) string {
 	t.Helper()
 	dir := t.TempDir()
 	files := moo.Runtime()
-	for name, data := range Runtime() {
-		files[name] = data
-	}
-	for name, data := range runtime {
-		files[name] = data
-	}
+	maps.Copy(files, Runtime())
+	maps.Copy(files, runtime)
 	files["main.moo"] = []byte(main)
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
@@ -54,7 +51,7 @@ func decodeHexLines(t *testing.T, out []byte) []string {
 		return nil
 	}
 	var lines []string
-	for _, l := range strings.Split(text, "\n") {
+	for l := range strings.SplitSeq(text, "\n") {
 		b, err := hex.DecodeString(l)
 		if err != nil {
 			t.Fatalf("probe output line %q is not hex: %v\n%s", l, err, out)
