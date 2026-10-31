@@ -1214,6 +1214,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-framing",
+      "when": "pull-request",
+      "why": "the Elixir framing control (docs/LAYERS/1-framing.md, F6): the emitter's open loses the id table's 4096-entry cap, and the matrix must go red on framing, at frame_entries_4097, while report stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-mapsort is.",
+      "targets": [
+        "conformance-negative-control-elixir-framing"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-hostile",
       "when": "pull-request",
       "why": "the Elixir json-hostile rows' two controls (docs/SPEC-TABLES.md §16.2): an uncounted repeated enum-keyed slot and a float32 stored past its rounding midpoint, each required to red exactly its own rows of the json-hostile surface. Each is a sabotaged corpus compile, about 60 s on the studio.",
