@@ -163,6 +163,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes | the message-form golden |
 | `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n` | `reports.txt` |
+| `framing` | `framing` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value unless the row says `no-value` or the read was refused | the verdict and the value file on the row (docs/LAYERS/1-framing.md) |
 | `retain` | `retain`, `retain-message` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES, one body after another | the pinned saves, back to back |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
