@@ -613,19 +613,14 @@ static void test_reader()
         CHECK_EQ( v.past, 777 ); // the PARENT read on past the field's length
     }
     {
-        // CONTROL: the duplicate rule is dropped, first wins or both kept. The
-        // repeat ELIDES a field the first occurrence set, so a reader that
-        // overlays instead of resetting reads 11 where the rule reads 0 — and
-        // it agrees with the rule on every other body.
+        // CONTROL: one key twice is damage (§2.8, §4), because a writer puts
+        // each key down once: a reader that lands the repeat goes red here
         RowSpec spec = ascending_spec();
         spec.entries[2] = spec.entries[1]; // a second `bb`
         spec.entries[2].count = 0;         // at its default, so the field elides
         const Verdict v = read_row( build_row( spec ) );
-        CHECK( !v.malformed );
-        CHECK_EQ( v.count, 2 );      // the map's count EXCLUDES the repeat
-        CHECK_EQ( v.duplicate, 1 );
-        CHECK_EQ( v.decoded[1], 0 ); // LAST WINS WHOLE
-        CHECK_EQ( v.past, 777 );
+        CHECK( v.malformed );
+        CHECK_EQ( v.duplicate, 0 );
     }
     {
         // CONTROL: the reader CLAMPS a key instead of dropping its entry. The
@@ -966,17 +961,16 @@ static void test_text()
     free( again );
     free( text );
 
-    // A REPEATED KEY is LAST-WINS and counted duplicate, the object rule
-    // applied inside the map; an EMPTY OBJECT is an empty map; a key past the
-    // bound drops its entry and counts clamped; a key outside the key kind's
-    // range is kind_mismatch for that entry, dropped and never clamped.
+    // A REPEATED KEY is damage, the object rule applied inside the map (§16.2);
+    // an EMPTY OBJECT is an empty map; a key past the bound drops its entry and
+    // counts clamped; a key outside the key kind's range is kind_mismatch for
+    // that entry, dropped and never clamped.
     struct Row { const char * text; int32_t count; int32_t dup; int32_t clamp; int32_t mismatch; };
     const Row rows[] = {
         { "{\"entries\":{},\"past\":5}", 0, 0, 0, 0 },
-        { "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{\"count\":2}},\"past\":5}", 1, 1, 0, 0 },
         { "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1}},\"past\":5}", 0, 0, 1, 0 },
     };
-    for ( int i = 0; i < 3; i++ )
+    for ( int i = 0; i < 2; i++ )
     {
         RowBuilder rb;
         TableReport r;
@@ -988,13 +982,18 @@ static void test_text()
         CHECK_EQ( rb.GetRoot()->past, 5 );
     }
     {
-        // the duplicate's value is the LAST one, whole
-        const char * t = "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{}}}";
-        RowBuilder rb;
-        TableReport r;
-        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
-        CHECK_EQ( RowEntriesFind( rb.arena, rb.GetRoot()->entries, "aa" )->count, 0 );
+        // one key twice, whether it lands or is dropped, is damage (§16.2)
+        const char * texts[] = {
+            "{\"entries\":{\"aa\":{\"count\":1},\"aa\":{}}}",
+            "{\"entries\":{\"aaaaaaaaaaaa\":{\"count\":1},\"aaaaaaaaaaaa\":{}}}",
+        };
+        for ( const char * t : texts )
+        {
+            RowBuilder rb;
+            TableReport r;
+            CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+            CHECK( r.malformed );
+        }
     }
     {
         // AN INTEGER KEY IS READ BY §16.2's RULE AND BY NOTHING ELSE: "2.0" is
@@ -1033,14 +1032,12 @@ static void test_text()
         CHECK_EQ( r.clamped, 0 );
     }
     {
-        // and the SAME interior-zero key twice IS one key: one entry, counted
-        // duplicate, never a second entry wearing an identity the map holds
+        // and the SAME interior-zero key twice IS one key, given twice: damage
         const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
-        CHECK_EQ( r.duplicate, 1 );
+        CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
         // A KEY THE WALKER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY
@@ -1144,21 +1141,15 @@ static void test_text()
         // THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (§16.2): 2 and 2.0
         // are the integer 2 wherever an integer is read, and that holds at the
         // top of the uint64 domain as well as at the bottom. Read through a
-        // double, 18446744073709551615.0 rounds UP to 2^64 and is dropped as
-        // outside the kind, where the digits alone are exactly the key the kind
-        // holds.
+        // double, 18446744073709551615.0 rounds UP to 2^64 and would be dropped
+        // as outside the kind; read by its digits it is the key the first
+        // spelling names, so the object names one key twice: damage.
         const char * t = "{\"ids\":{\"18446744073709551615\":{\"count\":1},"
                          "\"18446744073709551615.0\":{\"count\":2}}}";
         EdgeRowBuilder eb;
         TableReport r;
-        CHECK( EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( eb.GetRoot()->ids.count, 1 );
-        CHECK_EQ( r.kind_mismatch, 0 );
-        CHECK_EQ( r.clamped, 0 );
-        CHECK_EQ( r.duplicate, 1 ); // the two spellings are one key
-        const Item * item = EdgeRowIdsFind( eb.arena, eb.GetRoot()->ids, 18446744073709551615ull );
-        CHECK( item != NULL );
-        if ( item != NULL ) { CHECK_EQ( item->count, 2 ); } // last wins
+        CHECK( !EdgeRowFromJsonTolerant( eb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
         // AN INTEGER KEY PAST THE SCAN'S BUFFER DROPS AS kind_mismatch, in this

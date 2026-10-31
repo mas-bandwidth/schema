@@ -657,14 +657,6 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
     return fill;
 }
 
-// the entry that last LANDED — NULL before the first
-template <typename Entry> inline Entry * TableMapFillLast( TableMapFill<Entry> & fill )
-{
-    if ( fill.map->count <= 0 ) { return NULL; }
-    if ( fill.array != NULL ) { return fill.array + ( fill.map->count - 1 ); }
-    return TableMapLive( *fill.worker->arena, *fill.map, fill.map->count - 1 );
-}
-
 // the next slot, at the entry type's declared defaults
 template <typename Entry> inline Entry * TableMapFillNext( TableMapFill<Entry> & fill )
 {
@@ -1211,8 +1203,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 
 // emitMapReadField decodes one map field, and it is where every reader rule
 // §2.8 states lands: the key before the slot, ascending against the key of the
-// last entry that LANDED, a duplicate that resets the slot it took, a
-// descending key that stops the map and lets the parent read on, a key that
+// last entry that LANDED, a repeated or descending key that is damage, a key that
 // does not fit skipped by its L and counted clamped, and a key kind the
 // reader does not declare emptying the map for one kind_mismatch.
 func (g *tableGen) emitMapReadField(f *ir.Field) {
@@ -1274,23 +1265,14 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 		ord := mapKeyOrderType(f)
 		g.pf("%s        const int order = landed ? TableKeyOrder( (%s) last_key, (%s) read.key ) : -1;\n", ind, ord, ord)
 	}
-	g.pf("%s        if ( order > 0 )\n%s        {\n", ind, ind)
-	g.pf("%s            // DESCENDING: not a body any conforming writer produced. It is\n", ind)
-	g.pf("%s            // damage, and damage discards the whole load (§4).\n", ind)
+	g.pf("%s        if ( order >= 0 )\n%s        {\n", ind, ind)
+	g.pf("%s            // DESCENDING or EQUAL: not a body any conforming writer\n", ind)
+	g.pf("%s            // produced, since a writer puts each key down once and in\n", ind)
+	g.pf("%s            // order. It is damage, and damage discards the whole load (§4).\n", ind)
 	g.pf("%s            r.report->malformed = true;\n", ind)
 	g.pf("%s            break;\n", ind)
 	g.pf("%s        }\n", ind)
-	g.pf("%s        %s * slot = NULL;\n", ind, n)
-	g.pf("%s        if ( order == 0 )\n%s        {\n", ind, ind)
-	g.pf("%s            // EQUAL: a DUPLICATE. The slot that entry took is reset to the\n", ind)
-	g.pf("%s            // entry's defaults by the decode below, so LAST WINS WHOLE and an\n", ind)
-	g.pf("%s            // elided field of the repeat reads as its default. The map's\n", ind)
-	g.pf("%s            // count excludes it.\n", ind)
-	g.pf("%s            slot = TableMapFillLast( fill );\n", ind)
-	g.pf("%s            r.report->duplicate++;\n", ind)
-	g.pf("%s        }\n%s        else\n%s        {\n", ind, ind, ind)
-	g.pf("%s            slot = TableMapFillNext( fill ); // ASCENDING: the next slot\n", ind)
-	g.pf("%s        }\n", ind)
+	g.pf("%s        %s * slot = TableMapFillNext( fill ); // ASCENDING: the next slot\n", ind, n)
 	g.pf("%s        if ( slot == NULL ) { r.report->malformed = true; break; }\n", ind)
 	g.pf("%s        {\n", ind)
 	g.pf("%s            TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );\n", ind)

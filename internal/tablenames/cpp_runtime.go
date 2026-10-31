@@ -25,6 +25,9 @@ func cppRuntimeNames() []Name {
 		{what: "a bound of the text form's JSON walk (§16)", names: []string{
 			"kTableJsonDecimalBand",
 		}},
+		{what: "the text form's one-name-per-object check (§16.2)", names: []string{
+			"TableJsonNameAdd", "TableJsonNameEqual", "TableJsonNamePrint", "TableJsonNames", "TableJsonNamesGrow",
+		}},
 		{what: "a file's open verdict and the refusal path (docs/SPEC-TABLES.md §6.5, §7)", names: []string{
 			"TableBlockConstSpan", "TableBodyEndsEarly", "TableOpen",
 		}},
@@ -77,7 +80,7 @@ func cppRuntimeNames() []Name {
 		}},
 		{what: "the map's storage, cursors, segments and sort (docs/SPEC-TABLES.md §2.8)", names: []string{
 			"TableMapAppend", "TableMapCursor", "TableMapEach", "TableMapEachOf", "TableMapErase", "TableMapFill",
-			"TableMapFillBegin", "TableMapFillEnd", "TableMapFillLast", "TableMapFillNext", "TableMapFillReset",
+			"TableMapFillBegin", "TableMapFillEnd", "TableMapFillNext", "TableMapFillReset",
 			"TableMapHash", "TableMapHead", "TableMapIndexSlots", "TableMapKeyRef", "TableMapLive", "TableMapOrder",
 			"TableMapPlace", "TableMapReach", "TableMapRelease", "TableMapScan", "TableMapSegment",
 			"TableMapSegmentDead", "TableMapSort", "TableMapWireExtent", "kTableMapEntryFloor",
@@ -107,8 +110,8 @@ func cppRuntimeNames() []Name {
 			"TableJsonGraphMapShutdown", "TableJsonGraphMapSlot",
 		}},
 		{what: "the retain-unknown surface: caller-owned storage, the record walk and the framed copy (docs/SPEC-TABLES.md §6.6)", names: []string{
-			"TableRetainCapture", "TableRetainClearPlaced", "TableRetainCountLost", "TableRetainDiscard",
-			"TableRetainDiscardBody", "TableRetainDiscardField", "TableRetainIdsBytes", "TableRetainIdsWrite",
+			"TableRetainCapture", "TableRetainClearPlaced", "TableRetainCountLost",
+			"TableRetainIdsBytes", "TableRetainIdsWrite",
 			"TableRetainInContent", "TableRetainInFramed", "TableRetainInId", "TableRetainInLeb",
 			"TableRetainInLebRead", "TableRetainInPatch", "TableRetainInPayload", "TableRetainInRaw",
 			"TableRetainInRef", "TableRetainInSlot", "TableRetainNameable", "TableRetainOutContent",

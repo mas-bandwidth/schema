@@ -1384,9 +1384,8 @@ static void test_text()
         { "{\"values\":[],\"past\":5}", 0, 0, 5 },
         { "{\"values\":null,\"past\":5}", 0, 1, 5 },
         { "{\"values\":[1,\"x\",3],\"past\":5}", 3, 1, 5 },
-        { "{\"values\":[1,2],\"values\":[9],\"past\":5}", 1, 0, 5 }, // LAST WINS, whole
     };
-    for ( int i = 0; i < 4; i++ )
+    for ( int i = 0; i < 3; i++ )
     {
         IntsBuilder rb;
         TableReport r;
@@ -1395,6 +1394,14 @@ static void test_text()
         CHECK_EQ( r.kind_mismatch, rows[i].mismatch );
         CHECK_EQ( r.clamped, 0 );
         CHECK_EQ( rb.GetRoot()->past, rows[i].past );
+    }
+    {
+        // a list key given twice is one name twice, which is damage (§16.2)
+        const char * t = "{\"values\":[1,2],\"values\":[9],\"past\":5}";
+        IntsBuilder rb;
+        TableReport r;
+        CHECK( !IntsFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
         static char many[8192];

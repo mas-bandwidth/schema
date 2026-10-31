@@ -3914,15 +3914,14 @@ tables-maps-dead-entry-negative-control: bin/schema build/tables-generated/.stam
 # and the row's `malformed` flag goes red.
 .PHONY: tables-maps-ascending-negative-control
 tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,ascending,'s@if ( order > 0 )@if ( order > 0 \&\& false )@',internal/codegen/cpptable/maps.go,a shuffled map left the map gate GREEN)
+	$(call map_negative_control,ascending,'s@if ( order >= 0 )@if ( order == 0 )@',internal/codegen/cpptable/maps.go,a shuffled map left the map gate GREEN)
 
-# THE DUPLICATE RULE IS DROPPED, first wins or both kept. The row whose
-# DUPLICATE entry ELIDES a field the first occurrence set meets it, and the
-# decoded value goes red — a reader that overlays instead of resetting agrees
-# with the rule on every other body.
+# ONE KEY TWICE IS DAMAGE (docs/SPEC-TABLES.md §2.8, §4). The reader's refusal of
+# an EQUAL key is dropped, so the repeat lands as a second entry; the row
+# carrying `bb` twice meets it and its `malformed` flag goes red.
 .PHONY: tables-maps-duplicate-negative-control
 tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,duplicate,'s@slot = TableMapFillLast( fill );@slot = TableMapFillNext( fill ); // SABOTAGED@',internal/codegen/cpptable/maps.go,keeping both occurrences of a duplicate left the map gate GREEN)
+	$(call map_negative_control,duplicate,'s@if ( order >= 0 )@if ( order > 0 )@',internal/codegen/cpptable/maps.go,landing a repeated key left the map gate GREEN)
 
 # THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
 # meets it, and its five counters go red, because an entry lands under a

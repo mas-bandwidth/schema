@@ -3805,11 +3805,11 @@ static void test_json_dialect()
     CHECK( value.slot == 4 );
     CHECK( unknown.unknown == 2 && !unknown.malformed );
 
-    // a duplicate key is LAST WINS, and the repeat is counted
+    // a repeated key is damage: no writer names one member twice (§16.2)
     tabledemo::TableReport duplicate;
     const char * repeated = "{ \"slot\": 1, \"slot\": 6, \"slot\": 2 }";
-    CHECK( tabledemo::AttachmentFromJsonTolerant( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
-    CHECK( value.slot == 2 && duplicate.duplicate == 2 );
+    CHECK( !tabledemo::AttachmentFromJsonTolerant( value, repeated, (int64_t) strlen( repeated ), &duplicate ) );
+    CHECK( duplicate.malformed && duplicate.duplicate == 0 );
 
     // A KIND 12 PAYLOAD IS WELL-FORMED UTF-8 (docs/SPEC-TABLES.md §3), so a
     // byte in a string body that is not part of a well-formed sequence is not
@@ -4157,14 +4157,12 @@ static void test_json_hostile_unions()
     CHECK( !tabledemo::WeaponConfigFromJsonTolerant( value, both, (int64_t) strlen( both ), &two ) );
     CHECK( two.malformed );
 
-    // a selected arm is RE-ESTABLISHED, never overlaid on the last one: a
-    // repeated key that names a different arm leaves nothing of the first
+    // a union key given twice is one key twice, which is damage (§16.2)
     tabledemo::TableReport repeat;
     const char * again = "{ \"effect\": { \"buff\": { \"multiplier\": 9.0 } }, "
                          "\"effect\": { \"debuff\": { \"amount\": 4 } } }";
-    CHECK( tabledemo::WeaponConfigFromJsonTolerant( value, again, (int64_t) strlen( again ), &repeat ) );
-    CHECK( value.effect.type == tabledemo::EffectType::Debuff && value.effect.debuff.amount == 4 );
-    CHECK( repeat.duplicate == 1 );
+    CHECK( !tabledemo::WeaponConfigFromJsonTolerant( value, again, (int64_t) strlen( again ), &repeat ) );
+    CHECK( repeat.malformed );
 }
 
 static void test_json_hostile_framing()
@@ -4780,61 +4778,34 @@ static void test_json_no_infinity_reaches_storage()
     }
 }
 
-static void test_json_duplicate_arrays_last_wins()
+static void test_json_duplicate_arrays_refused()
 {
-    // "last wins" has to be true of an ARRAY key too, and it is wire-visible:
-    // a fixed array writes every slot, so a second, shorter occurrence must
-    // not leave the first occurrence's tail standing.
+    // ONE NAME, ONCE PER OBJECT (§16.2): an array key, a counted array, an
+    // array of tables, a bytes field and a float array given twice are each
+    // damage, and the read is refused whole
+    struct Row { const char * text; int which; };
+    const Row rows[] = {
+        { "{ \"podium\": [ \"Bronze\", \"Silver\", \"Gold\" ], \"podium\": [ \"Gold\" ] }", 0 },
+        { "{ \"grades\": [ \"Gold\" ], \"grades\": [ \"Bronze\" ] }", 0 },
+        { "{ \"backups\": [ { \"damage\": 1 } ], \"backups\": [ { \"damage\": 3 } ] }", 0 },
+        { "{ \"icon\": \"AQIDBAUG\", \"icon\": \"/w==\" }", 1 },
+        { "{ \"ratings\": [ 1.5 ], \"ratings\": [ 9.5 ] }", 1 },
+    };
+    for ( const Row & row : rows )
     {
-        tabledemo::LoadoutConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"podium\": [ \"Bronze\", \"Silver\", \"Gold\" ], \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.podium[0] == tabledemo::Grade::Gold );
-        CHECK( value.podium[1] == tabledemo::Grade::None );
-        CHECK( value.podium[2] == tabledemo::Grade::None );
-        CHECK( report.duplicate == 1 );
-
-        // and it matches the instance the SECOND occurrence alone describes
-        tabledemo::LoadoutConfig once;
-        const char * single = "{ \"podium\": [ \"Gold\" ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( once, single, (int64_t) strlen( single ), &report ) );
-        uint8_t a[1024], b[1024];
-        int64_t na = tabledemo::LoadoutConfigSave( value, a, sizeof( a ) );
-        int64_t nb = tabledemo::LoadoutConfigSave( once, b, sizeof( b ) );
-        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
-    }
-    {
-        // a counted array, and a fixed array of TABLES (whose elements go back
-        // to their own declared defaults, not to zero)
-        tabledemo::LoadoutConfig value;
-        tabledemo::TableReport report;
-        const char * text =
-            "{ \"grades\": [ \"Gold\", \"Bronze\", \"Silver\" ], \"grades\": [ \"Bronze\" ],"
-            "  \"backups\": [ { \"damage\": 1 }, { \"damage\": 2 } ], \"backups\": [ { \"damage\": 3 } ] }";
-        CHECK( tabledemo::LoadoutConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.grades_count == 1 && value.grades[0] == tabledemo::Grade::Bronze );
-        CHECK( value.backups[0].damage == 3 );     // the SECOND occurrence's element
-        CHECK( value.backups[1].damage == 21.0f ); // the DECLARED default, not 2
-        CHECK( report.duplicate == 2 );
-    }
-    {
-        // bytes too
-        tabledemo::ProfileConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"icon\": \"AQIDBAUG\", \"icon\": \"/w==\" }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.icon_length == 1 && value.icon[0] == 0xff );
-        CHECK( report.duplicate == 1 );
-    }
-    {
-        // and a float array, the review's own repro
-        tabledemo::ProfileConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"ratings\": [ 1.5, 2.5, 3.5, 4.5 ], \"ratings\": [ 9.5 ] }";
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.ratings[0] == 9.5f && value.ratings[1] == 0.0f &&
-               value.ratings[2] == 0.0f && value.ratings[3] == 0.0f );
+        bool ok = false;
+        if ( row.which == 0 )
+        {
+            tabledemo::LoadoutConfig value;
+            ok = tabledemo::LoadoutConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
+        }
+        else
+        {
+            tabledemo::ProfileConfig value;
+            ok = tabledemo::ProfileConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
+        }
+        CHECK( !ok && report.malformed );
     }
 }
 
@@ -5089,14 +5060,13 @@ static void test_json_optional_presence()
         CHECK( value.damage == 10.0f );           // the declared default
     }
 
-    // last wins, and a null LAST leaves nothing of the value before it
+    // a key given twice, the second null, is still one name twice: damage
     {
         tabledemo::TurretConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"gunner\": { \"reaction\": 9.5 }, \"gunner\": null }";
-        CHECK( tabledemo::TurretConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( !value.gunner_present && report.duplicate == 1 );
-        CHECK( value.gunner.reaction == 0.2f );   // back at its declared default
+        CHECK( !tabledemo::TurretConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.malformed && !value.gunner_present );
     }
 
     // an absent optional and a present-all-default one are DIFFERENT wires,
@@ -5173,17 +5143,14 @@ static void test_json_keyed_arrays()
         CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 );
     }
 
-    // last wins for a repeated keyed field: the second object replaces the
-    // first outright rather than overlaying it
+    // a keyed field given twice is one name twice: damage
     {
         tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
         const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Blue\": { \"spawn_count\": 6 } },"
                             "  \"teams\": { \"Blue\": { \"spawn_count\": 7 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.teams[tabledemo::Team::Blue].spawn_count == 7 );
-        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 4 ); // back at its default
-        CHECK( report.duplicate == 1 );
+        CHECK( !tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
+        CHECK( report.malformed );
     }
 
     // trailing commas inside a keyed object, like everywhere else
@@ -5896,124 +5863,40 @@ static void test_json_variable_class()
 
 // ---- a keyed object's keys ARE keys (docs/SPEC-TABLES.md §16.2) ---------------
 //
-// Last-wins inside a keyed object was always true — each placement
-// re-establishes the slot — so the VALUE was right and only the ledger was
-// wrong, which is precisely why no round-trip test could see the repeat go
-// uncounted. It took the pack engine's two-sided gate to find it.
+// ONE NAME, ONCE PER OBJECT: a variant named twice, a name no slot answers to
+// named twice, and a repeat one keyed object down are each damage, and the
+// read is refused whole. Distinct variants are not a repeat.
 
 static void test_json_keyed_duplicate_keys()
 {
-    // one variant named twice: last wins, and the repeat is COUNTED
+    struct Row { const char * text; bool damaged; bool scores; };
+    const Row rows[] = {
+        { "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Red\": { \"spawn_count\": 9 } } }", true, false },
+        { "{ \"teams\": { \"Red\": {}, \"Blue\": {}, \"Green\": {} } }", false, false },
+        { "{ \"teams\": { \"Violet\": {}, \"Violet\": {} } }", true, false },
+        { "{ \"teams\": { \"None\": {}, \"None\": {} } }", true, false },
+        { "{ \"hulls\": { \"Gunship\": { \"turrets\": {"
+          "   \"Missile\": { \"damage\": 1 }, \"Missile\": { \"damage\": 2 } } } } }", true, false },
+        { "{ \"per_team\": { \"Blue\": 1, \"Blue\": 2 } }", true, true },
+        { "{ \"per_team\": { \"Red\": 4, \"Green\": 7 } }", false, true },
+    };
+    for ( const Row & row : rows )
     {
-        tabledemo::KeyedConfig value;
         tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 5 }, \"Red\": { \"spawn_count\": 9 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 9 );
-        CHECK( report.duplicate == 1 );
-        CHECK( report.unknown == 0 && report.kind_mismatch == 0 && !report.malformed );
-    }
-
-    // every repeat past the first counts, across variants
-    {
-        tabledemo::KeyedConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Red\": {}, \"Red\": {}, \"Red\": {}, \"Blue\": {}, \"Blue\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.duplicate == 3 ); // two extra Reds, one extra Blue
-    }
-
-    // DISTINCT variants are not duplicates — the whole point of the key
-    {
-        tabledemo::KeyedConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Red\": {}, \"Blue\": {}, \"Green\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.duplicate == 0 );
-    }
-
-    // a repeated key that names NO slot is unknown twice, never a duplicate:
-    // it was never placed, so there is nothing for a second one to replace
-    {
-        tabledemo::KeyedConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Violet\": {}, \"Violet\": {}, \"None\": {}, \"None\": {} } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.unknown == 4 && report.duplicate == 0 );
-    }
-
-    // last-wins is a WHOLE-VALUE replacement here too: the second occurrence
-    // does not overlay the first, it re-establishes the slot
-    {
-        tabledemo::KeyedConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"teams\": { \"Red\": { \"spawn_count\": 9, \"banner\": \"first\" },"
-                            "              \"Red\": { \"spawn_count\": 2 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.teams[tabledemo::Team::Red].spawn_count == 2 );
-        CHECK( value.teams[tabledemo::Team::Red].banner_length == 0 ); // nothing of the first survives
-        CHECK( report.duplicate == 1 );
-
-        // and the instance is the one the SECOND occurrence alone describes
-        tabledemo::KeyedConfig once;
-        const char * single = "{ \"teams\": { \"Red\": { \"spawn_count\": 2 } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( once, single, (int64_t) strlen( single ), &report ) );
-        uint8_t a[4096], b[4096];
-        int64_t na = tabledemo::KeyedConfigSave( value, a, sizeof( a ) );
-        int64_t nb = tabledemo::KeyedConfigSave( once, b, sizeof( b ) );
-        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
-    }
-
-    // a keyed array of SCALARS counts the same way
-    {
-        tabledemo::ScoreBoard value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"per_team\": { \"Blue\": 1, \"Blue\": 2, \"Blue\": 3 } }";
-        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.per_team[keyed_index( tabledemo::Team::Blue )] == 3 );
-        CHECK( report.duplicate == 2 );
-    }
-
-    // a repeat NESTED one keyed object down still counts
-    {
-        tabledemo::KeyedConfig value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"hulls\": { \"Gunship\": { \"turrets\": {"
-                            "   \"Missile\": { \"damage\": 1 }, \"Missile\": { \"damage\": 2 } } } } }";
-        CHECK( tabledemo::KeyedConfigFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.hulls[tabledemo::Hull::Gunship].turrets[tabledemo::Weapon::Missile].damage == 2.0f );
-        CHECK( report.duplicate == 1 );
-    }
-
-    // the PINNED TEXT: a repeated key is a READ-side event only, so what the
-    // writer emits for the instance it lands on carries each variant exactly
-    // once — the repeat leaves no trace in the text, only in the ledger
-    {
-        tabledemo::ScoreBoard value;
-        tabledemo::TableReport report;
-        const char * text = "{ \"per_team\": { \"Red\": 4, \"Green\": 7, \"Green\": 9 } }";
-        CHECK( tabledemo::ScoreBoardFromJsonTolerant( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( report.duplicate == 1 );
-
-        static const char * expected =
-            "{\n"
-            "  \"per_team\": {\n"
-            "    \"Red\": 4,\n"
-            "    \"Blue\": 0,\n"
-            "    \"Green\": 9\n"
-            "  }\n"
-            "}\n";
-        int64_t size = tabledemo::ScoreBoardToJsonMeasure( value );
-        if ( size < 0 ) { printf( "FAIL json keyed duplicate pinned text: refused\n" ); failures++; return; }
-        std::vector<char> out( (size_t) size + 1 );
-        CHECK( tabledemo::ScoreBoardToJson( value, out.data(), size ) == size );
-        out[(size_t) size] = 0;
-        if ( strcmp( out.data(), expected ) != 0 )
+        bool ok = false;
+        if ( row.scores )
         {
-            printf( "FAIL json keyed duplicate pinned text\n--- got ---\n%s\n--- want ---\n%s\n",
-                    out.data(), expected );
-            failures++;
+            tabledemo::ScoreBoard value;
+            ok = tabledemo::ScoreBoardFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
         }
+        else
+        {
+            tabledemo::KeyedConfig value;
+            ok = tabledemo::KeyedConfigFromJsonTolerant( value, row.text, (int64_t) strlen( row.text ), &report );
+        }
+        CHECK( ok != row.damaged );
+        CHECK( report.malformed == row.damaged );
+        CHECK( report.duplicate == 0 );
     }
 }
 
@@ -9431,7 +9314,7 @@ int main()
     test_json_number_grammar();
     test_json_integral_spellings();
     test_json_no_infinity_reaches_storage();
-    test_json_duplicate_arrays_last_wins();
+    test_json_duplicate_arrays_refused();
     test_json_null_is_a_kind_mismatch();
     test_json_nested_guards();
     test_json_keyed_and_optional_round_trip();

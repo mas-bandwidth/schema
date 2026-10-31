@@ -69,6 +69,7 @@ func init() {
 		{Name: "AnnounceRead", What: "read an announcement into one direction's table"},
 		{Name: "TableWriter", What: "the wire writer over the caller's buffer"},
 		{Name: "TableReader", What: "the wire reader over the caller's buffer"},
+		{Name: "TableBodySeen", What: "the ids one body has carried, so a second is refused as damage"},
 		// THE DESCRIPTOR SURFACE, and the one part of this registry a VIEW
 		// FILE carries itself (docs/SPEC-TABLES.md §8.2): the vocabulary
 		// keeps its Table spellings "in a unit that declares no table at

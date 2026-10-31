@@ -812,9 +812,9 @@ struct TableReport
     // and the number survived.
     int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
+    // RETIRED, and always zero: a repeated id, map key or JSON member name is
+    // damage (docs/SPEC-TABLES.md §4, §16.2), so nothing counts a repeat. The
+    // member stays while every leg's report and the conformance line carry it.
     int32_t duplicate = 0;
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
@@ -835,8 +835,8 @@ struct TableReport
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
     // when malformed is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
-    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct as
+    // the counters, because a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -1976,7 +1976,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n")
 			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
-			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")
+			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n")
+			// the text form allocates by design (§16): an object that names
+			// more than eight members holds its names in a table it allocates
+			c.WriteString(tableAllocatorHook + "\n")
 			c.WriteString(tableJsonWalk(u.Package, anyVariable, anyMap, anyList))
 			c.WriteString(tableTextFormWalk(u.Package))
 			fmt.Fprintf(&c, "\nnamespace %s {\n\n", u.Package)

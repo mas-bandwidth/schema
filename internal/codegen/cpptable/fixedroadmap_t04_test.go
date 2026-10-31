@@ -117,30 +117,19 @@ func TestFixedRoadmapCppT04VersionsEvolution(t *testing.T) {
 			}
 		}},
 		{"cpp/E9", func(t *testing.T) {
-			// cpptable.go TableReport: "The wire never raises it — a body
-			// carrying an id twice is legal input whose last occurrence wins,
-			// silently (§3)." The fixed runtime and the emitted fixed code
-			// raise no duplicate, so the counter is never written.
-			//
-			// The report struct DECLARES `int32_t duplicate = 0;`
-			// (cpptable.go TableReport), so searching the header for the bare
-			// name would match the declaration and never bite. The wire's
-			// decision is a RAISE, and the fixed load loop hands the runtime
-			// its report pointer (fixedform.go emitFixedLoad: `TableFixedRun(
-			// ..., report )`), so a fixed raise is spelled `report->duplicate`
-			// / `r.report->duplicate`. The TEXT form legitimately raises the
-			// counter for a repeated keyed-object key (json.go, the object
-			// rule §16.2), always as `in.report->duplicate++`; that text-form
-			// raise is removed and the fixed raise token is what remains to be
-			// searched for.
+			// The duplicate counter is retired (docs/SPEC-TABLES.md §4): a
+			// repeated id, map key or JSON member name is damage and is never
+			// counted, so nothing generated may raise it. The report struct
+			// still DECLARES `int32_t duplicate = 0;`, so the search is for a
+			// RAISE, in the fixed runtime and in the whole generated unit,
+			// text form included.
 			if strings.Contains(tableFixedRuntime, "duplicate") {
-				t.Fatal("the fixed runtime names a duplicate counter; the wire never raises it (SPEC-TABLES §3)")
+				t.Fatal("the fixed runtime names a duplicate counter; nothing raises it (SPEC-TABLES §4)")
 			}
 			gen := cppT04Generated(t, "VNEW_optional_add.schema")
-			wire := strings.ReplaceAll(gen, "in.report->duplicate++", "")
 			for _, raise := range []string{"duplicate++", "duplicate +="} {
-				if strings.Contains(wire, raise) {
-					t.Fatalf("the generated fixed code moves the duplicate counter via %q; the wire never raises it (SPEC-TABLES §3)", raise)
+				if strings.Contains(gen, raise) {
+					t.Fatalf("the generated code moves the duplicate counter via %q; nothing raises it (SPEC-TABLES §4)", raise)
 				}
 			}
 		}},
