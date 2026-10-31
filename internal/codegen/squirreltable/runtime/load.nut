@@ -271,6 +271,12 @@ local clampScalar = function(fd, kind, x, report) {
     else if (x == 0.0) x = 0.0;
     return x;
   }
+  // A NARROWER INTEGER WIDENED INTO A 128-BIT FIELD (docs/SPEC-TABLES.md §4's
+  // rungs: a signed kind into int128, an unsigned one into uint128) lands as
+  // the field's own [low, high] pair, sign- or zero-extended from the wire
+  // kind, and then clamps in 128 bits like any 128-bit value
+  if (fd.width == 16 && typeof x == "integer")
+    x = [x, kindSigned(kind) && x < 0 ? -1 : 0];
   if (typeof x == "array") {
     if (fd.lo != null && fd.hi != null) {
       local lo = widePair(fd.lo), hi = widePair(fd.hi);
@@ -998,7 +1004,18 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
     return ARRAY_SELECTED;
   }
   for (local i = 0; i < keep; i++) {
-    if (!readElement(fd, fd.elem, r, T, table, out, report, st, ek)) break;
+    local reached = r.at < r.end;
+    if (!readElement(fd, fd.elem, r, T, table, out, report, st, ek)) {
+      // AN ELEMENT OF AN ARRAY OF UNIONS IS RESET THE MOMENT ITS ARM ID IS READ
+      // (docs/SPEC-TABLES.md §4), before the kind and the arm length are
+      // checked, so a repeat whose own framing is damaged leaves no arm an
+      // earlier occurrence decoded standing: the slot reads None. A counted or
+      // listed array's live count stops before it, so only a fixed [N] array
+      // keeps the reset slot; an element the body cannot reach is untouched.
+      if (reached && fd.elem.shape == "union" && !fd.list && !fd.counted)
+        out.append(unionDesc(T, fd.elem.table).make());
+      break;
+    }
   }
   if (!fd.list && !fd.counted) {
     // A FIXED [N] ARRAY KEEPS ITS N SLOTS (docs/SPEC-TABLES.md §2.9, §4): the
@@ -1148,6 +1165,7 @@ readUnionInto = function(r, T, table, u, inst, report, st) {
     return true;
   }
   local want = arm.payload == null ? 32 : arm.payload.kind;
+  local widened = false;
   if (armKind != want) {
     if (!widens(armKind, want)) {
       report.kindMismatch = report.kindMismatch + 1;
@@ -1155,10 +1173,14 @@ readUnionInto = function(r, T, table, u, inst, report, st) {
       r.at = bodyEnd;
       return true;
     }
-    report.widened = report.widened + 1;
+    widened = true;
   }
   inst.Type = arm.tag;
   local ok = readArmPayload(arm, sub, armKind, T, table, inst, report, st);
+  // WIDENED AT AN ARM (docs/SPEC-TABLES.md §4) counts only once the payload
+  // has decoded at its own width: an L that is not that width is the arm's
+  // own framing damage, malformed alone, and the union reads None
+  if (widened && ok && inst.Type == arm.tag) report.widened = report.widened + 1;
   r.at = bodyEnd;
   return ok;
 };
