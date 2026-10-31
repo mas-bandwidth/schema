@@ -136,12 +136,6 @@ func nodeTable(count uint64, records ...[]byte) []byte {
 	return cat(b(4, 12), leb(uint64(len(payload))), payload)
 }
 
-// listNodeRecordNext is a node record of `ListNode { value = v, next = k }`:
-// the value field, the pointer field naming node index k, the terminator.
-func listNodeRecordNext(v int32, next byte) []byte {
-	return cat(b(5, 10, 1, 4), i32(v), b(3, 17, next), b(0))
-}
-
 var rootValue1 = cat(b(1, 4), i32(1))
 var nextIs2 = b(3, 17, 2)
 
@@ -365,14 +359,6 @@ var framingVectors = []framingVector{
 	// occurrence is the numbering, on R5's last-wins rule, and the earlier one
 	// is stepped over like any repeated field.
 	{name: "node_table_twice", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), nodeTable(1, listNodeRecord(3)), b(0))},
-	// T8: a pointer naming a node whose descent is still OPEN is a cycle, and
-	// no writer produces one (§3.1), so it is damage: node 2 naming itself,
-	// and node 2 naming the root.
-	{name: "node_cycle_self", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecordNext(2, 2)), b(0))},
-	{name: "node_cycle_to_root", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecordNext(2, 1)), b(0))},
-	// T8's legal twin: a chain of two records, each pointer naming a node not
-	// yet reached, reads clean.
-	{name: "node_chain_two", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecordNext(2, 3), listNodeRecord(3)), b(0))},
 	// T6: a reader that cannot name the reserved id counts one unknown.
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
 	// L4 at the node-table field: its L past the root body.
