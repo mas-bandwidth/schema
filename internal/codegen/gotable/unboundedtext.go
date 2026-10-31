@@ -12,8 +12,6 @@
 package gotable
 
 import (
-	"slices"
-
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -215,63 +213,4 @@ func unboundedTextCook(u *ir.Unit, s string) string {
 	return s + `
 func(w *tableCookWriter) text(slot unsafe.Pointer,at int64,live bool)bool{if w.numbering==nil{return false};t,ok:=tableTextBytes((*TableRef)(slot),w.numbering.arena);if !ok{return false};if !live||len(t)==0{return true};w.at=(w.at+7)&^7;start:=w.at;w.at+=tableRegionRound(9+int64(len(t)));w.put(at,uint64(start-at),8);if w.buffer!=nil{w.put(start,uint64(len(t)),4);copy(w.buffer[start+8:start+8+int64(len(t))],t)};return true}
 `
-}
-
-// messageCarries reports whether the message form emits st (docs/SPEC-TABLES.md
-// §3.3, §2.13.1): every table but one whose closure holds unbounded text. A
-// message body's string length rides in a count field sized by the declared
-// bound, and an unbounded element or key has none to size it, so the form
-// emits nothing for such a table — a named follow-on, never a clamp to zero.
-func (g *tableGen) messageCarries(st *ir.Struct) bool {
-	if !ir.UnitHasUnboundedText(g.unit) {
-		return true
-	}
-	if g.messageSkip == nil {
-		g.messageSkip = unboundedTextClosure(g.unit)
-	}
-	return !g.messageSkip[st.Name]
-}
-
-// unboundedTextClosure is the set of tables that hold unbounded text or reach
-// a table that does, by value, by pointer, through a list, a map or a union.
-func unboundedTextClosure(u *ir.Unit) map[string]bool {
-	out := map[string]bool{}
-	for name, st := range u.Tables {
-		for _, f := range st.Fields {
-			if f.Type.TextUnbounded() {
-				out[name] = true
-			}
-		}
-	}
-	reaches := func(f *ir.Field) bool {
-		if f.MapEntry != nil && out[f.MapEntry.Name] {
-			return true
-		}
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Struct:
-			return out[ref.Name]
-		case *ir.Union:
-			for _, v := range ref.Variants {
-				if v.F != nil {
-					if st, ok := v.F.Type.Ref.(*ir.Struct); ok && out[st.Name] {
-						return true
-					}
-				}
-			}
-		}
-		return false
-	}
-	for changed := true; changed; {
-		changed = false
-		for name, st := range u.Tables {
-			if out[name] {
-				continue
-			}
-			if slices.ContainsFunc(st.Fields, reaches) {
-				out[name] = true
-				changed = true
-			}
-		}
-	}
-	return out
 }

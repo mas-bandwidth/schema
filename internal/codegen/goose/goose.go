@@ -276,6 +276,25 @@ func (g *Gen) Declared(name string) bool {
 	return ok
 }
 
+// DeclaredBySurface reports whether the target already declared name for
+// itself — a derived name, not one of the schema's own declarations: the test
+// an emitter that writes a shared name once per unit asks before writing it
+// again. A name the schema declares is the schema's, and declaring it again
+// refuses the unit by name.
+func (g *Gen) DeclaredBySurface(name string) bool {
+	if _, ok := g.names[name]; !ok {
+		return false
+	}
+	if _, ok := g.Unit.DeclFile[name]; ok {
+		return false
+	}
+	if _, ok := g.Unit.Tables[name]; ok {
+		return false
+	}
+	_, ok := g.Unit.TableUnions[name]
+	return !ok
+}
+
 // Err is the first refusal a Declare recorded.
 func (g *Gen) Err() error { return g.err }
 

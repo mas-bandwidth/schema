@@ -195,7 +195,7 @@ fixed table TableMixed
     // purpose is to make the body vary in size, and *"that is a disqualifying
     // thing for a fixed table. not supported. only variable."* — the project
     // owner. Guard coverage lives on tables/examples/Guarded.schema's
-    // `Patrol`, which is a plain `table` and read as one by its driver.
+    // `Patrol`, which is a variable table and read as one by its driver.
     //
     // has_extra stays STRUCTURE (§2.7), pinned true and off its default so
     // §3's writer never elides it; both `extra` and `idle_ticks` ride now,

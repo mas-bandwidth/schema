@@ -84,9 +84,9 @@ type tableGen struct {
 	home     bool // this file carries the unit's shared table runtime
 	anyKeyed bool
 	owner    *ir.Struct // the closure member whose codec is being emitted
-	// messageSkip is the set of tables the message form emits nothing for
-	// (docs/SPEC-TABLES.md §2.13.1), computed once, in a unit with unbounded text
-	messageSkip map[string]bool
+	// messageClosure is the set of declarations the message form emits a body
+	// codec for (docs/SPEC-TABLES.md §3.3), computed once
+	messageClosure map[string]bool
 
 	types  strings.Builder // the table storage structs
 	body   strings.Builder // everything else
@@ -482,7 +482,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		g.pf("// BuildVersion is the unit's build version (docs/SPEC-TABLES.md §20): the\n// one digest a block carries and BlockOpen compares, and the fact §3.3's\n// announcement carries before the first body so an endpoint's build is knowable.\nconst BuildVersion uint64 = 0x%016x\n\n", ir.BuildVersion(u))
 		// the message form's TYPES are the core's: the descriptor's message
 		// columns are typed by them, and the core declares the descriptor
-		g.pf("%s", unboundedTextRuntime(u, textListRuntime(u, tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes(u)+tableFixedRuntime)))
+		g.pf("%s", unboundedTextRuntime(u, textListRuntime(u, tableRuntimeForUnit(regional)+tableRefusalSource+tableWireRuntime(u)+tableMessageCoreTypes()+tableFixedRuntime)))
 		if s.Message {
 			g.into(&g.message, func() { g.pf("%s", tableMessageRuntime(u)) })
 		}
@@ -990,7 +990,7 @@ type TableReport struct {
 	// record did not carry: a record an older writer produced before the field
 	// became required. The refusal names the field in Reason.
 	MissingRequired int32
-	Malformed bool // damage: the whole load is refused, nothing of it is used
+	Malformed bool // framing damage; decode stopped, partial result kept
 	// BlobShared counts the extra slots that named a blob record another slot
 	// already named (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
 	// node, never a copy per slot, and the strict read refuses blob_shared.

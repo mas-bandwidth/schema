@@ -122,6 +122,8 @@ type tableGen struct {
 	schema    strings.Builder
 	indent    string // extra per-line indent while emitting inside a branch guard
 	loopDepth int    // fixed-form element loops open around the current emit (fixedLoopVar)
+	// messageS and messageU cache the unit's message closure (messageClosure).
+	messageS, messageU map[string]bool
 }
 
 // tf prints into the namespace-level region (storage classes).
@@ -695,7 +697,7 @@ public sealed class TableReport
     public string NonFiniteFloat;
     internal string NonFiniteReason;
     public Schema.TableWire.Verdict Verdict;
-    public bool Malformed;     // damage: the whole load is refused, nothing of it is used
+    public bool Malformed;     // framing damage; decode stopped, partial result kept
     // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
     // a member at the end rather than a field inserted among the counters,
     // because the report is a type callers already hold. layout_newer reports

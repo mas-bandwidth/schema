@@ -9,10 +9,12 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -46,7 +48,9 @@ func messageRows(t *testing.T) []messageRow {
 		case "connection":
 			conns[fields[1]] = conn{fields[2], fields[3], fields[4]}
 		case "message":
-			raw = append(raw, fields)
+			if fields[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
+				raw = append(raw, fields)
+			}
 		}
 	}
 	var out []messageRow
@@ -157,6 +161,9 @@ func TestMooMessageFormMatchesTheManifest(t *testing.T) {
 		if g.err != nil {
 			t.Errorf("message %s: unit %s is refused: %v", row.name, row.unit, g.err)
 			continue
+		}
+		if st := g.unit.Tables[row.root]; st == nil || !st.FixedDeclared {
+			continue // a variable table carries no message form (§3.3)
 		}
 		conn := readRoot(t, row.connWire)
 		msg := readRoot(t, row.messageWire)
@@ -280,7 +287,13 @@ func TestMooMessageFormMatchesTheGoEngine(t *testing.T) {
 	t.Parallel()
 	compared := 0
 	for _, c := range constructCases {
-		u := unitFromSource(t, c.schema)
+		// THE MESSAGE FORM IS FIXED TABLES ONLY (§3.3): each construct is
+		// declared fixed, and one the fixed class cannot hold is not compared
+		u, err := compiler.New().Load([]string{writeSchema(t, fixedTables.ReplaceAllString(c.schema, "fixed table "))})
+		if err != nil {
+			t.Logf("%s: not a fixed table (%v): no message form", c.name, err)
+			continue
+		}
 		var vocab tablewire.Vocabulary
 		var rep tabletext.Report
 		if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &rep); err != nil || !vocab.Announced() {
@@ -354,7 +367,7 @@ func TestMooMessageFormMatchesTheGoEngine(t *testing.T) {
 
 // quantSchema is a compressed float on two ranges (docs/SPEC-TABLES.md §3.3,
 // the quantizer table's own two shapes).
-const quantSchema = "package probe\ntable Q\n{\n    a float32 | min = 0, max = 1, resolution = 0.01\n    b float32 | min = -1, max = 1, resolution = 0.01\n}\n"
+const quantSchema = "package probe\nfixed table Q\n{\n    a float32 | min = 0, max = 1, resolution = 0.01\n    b float32 | min = -1, max = 1, resolution = 0.01\n}\n"
 
 // TestMooMessageQuantizerIsTheGoEngines holds the writer's quantizer to
 // ir.TableMessageQuantize over the special values the quantizer table names
@@ -467,21 +480,21 @@ type evolveCase struct {
 
 var evolveCases = []evolveCase{
 	{"widened_unknown_mismatch",
-		"package probe\ntable T\n{\n    a int16\n    gone uint8\n    b int32\n    c float32\n    d uint16 | min = 0, max = 1000\n}\n",
-		"package probe\ntable T\n{\n    a int32\n    b string(8)\n    c float64\n    d uint16 | min = 0, max = 100\n}\n",
+		"package probe\nfixed table T\n{\n    a int16\n    gone uint8\n    b int32\n    c float32\n    d uint16 | min = 0, max = 1000\n}\n",
+		"package probe\nfixed table T\n{\n    a int32\n    b string(8)\n    c float64\n    d uint16 | min = 0, max = 100\n}\n",
 		"T", `{"a":-300,"gone":7,"b":5,"c":1.5,"d":500}`},
 	{"quantized_into_plain_and_clamped",
-		"package probe\ntable T\n{\n    q float32 | min = -10, max = 10, resolution = 0.5\n    r float32 | min = 0, max = 1, resolution = 0.01\n}\n",
-		"package probe\ntable T\n{\n    q float32 | min = -1, max = 1, resolution = 0.5\n    r float32\n}\n",
+		"package probe\nfixed table T\n{\n    q float32 | min = -10, max = 10, resolution = 0.5\n    r float32 | min = 0, max = 1, resolution = 0.01\n}\n",
+		"package probe\nfixed table T\n{\n    q float32 | min = -1, max = 1, resolution = 0.5\n    r float32\n}\n",
 		"T", `{"q":7.5,"r":0.25}`},
 	{"arrays_unions_enums",
-		"package probe\nenum E { a, b, c }\nunion U\n{\n    n uint32\n    s string(8)\n    extra uint8\n}\ntable T\n{\n    xs [..8]int16\n    u U\n    v U\n    e E\n    keyed [E]uint8\n}\n",
-		"package probe\nenum E { a, b }\nunion U\n{\n    n uint64\n    s string(4)\n}\ntable T\n{\n    xs [..4]int32\n    u U\n    v U\n    e E\n    keyed [E]uint8\n}\n",
+		"package probe\nenum E { a, b, c }\nunion U\n{\n    n uint32\n    s string(8)\n    extra uint8\n}\nfixed table T\n{\n    xs [..8]int16\n    u U\n    v U\n    e E\n    keyed [E]uint8\n}\n",
+		"package probe\nenum E { a, b }\nunion U\n{\n    n uint64\n    s string(4)\n}\nfixed table T\n{\n    xs [..4]int32\n    u U\n    v U\n    e E\n    keyed [E]uint8\n}\n",
 		"T", `{"xs":[1,-2,3,4,5,6],"u":{"extra":9},"v":{"s":"abcdefgh"},"e":"c","keyed":{"a":1,"c":3}}`},
-	{"maps_and_nested",
-		"package probe\ntable In\n{\n    k int8\n    w uint8\n}\ntable T\n{\n    m map[uint16]int32\n    inner In\n    list []In\n}\n",
-		"package probe\ntable In\n{\n    k int16\n}\ntable T\n{\n    m map[uint32]int32\n    inner In\n    list []In\n}\n",
-		"T", `{"m":{"3":30,"1":10},"inner":{"k":-5,"w":2},"list":[{"k":1},{"w":4}]}`},
+	{"nested",
+		"package probe\nfixed table In\n{\n    k int8\n    w uint8\n}\nfixed table T\n{\n    inner In\n    pair [2]In\n}\n",
+		"package probe\nfixed table In\n{\n    k int16\n}\nfixed table T\n{\n    inner In\n    pair [2]In\n}\n",
+		"T", `{"inner":{"k":-5,"w":2},"pair":[{"k":1},{"w":4}]}`},
 }
 
 // TestMooMessageFormEvolvesAsTheGoEngine is the reader's evolution gate on
@@ -590,6 +603,20 @@ func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 	if !strings.HasPrefix(got, "load 1 1,0,2,1,0,false") {
 		t.Fatalf("the patched reader did not drop exactly the kind mismatch: %s", got)
 	}
+}
+
+// fixedTables finds every `table` declaration of a schema source, to declare it
+// `fixed table` instead.
+var fixedTables = regexp.MustCompile(`(?m)^table `)
+
+// writeSchema writes one schema source to a fresh file and answers its path.
+func writeSchema(t *testing.T, src string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "Probe.schema")
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 // holdsTextList says whether a table declares a text list (SPEC-TABLES §2.13).

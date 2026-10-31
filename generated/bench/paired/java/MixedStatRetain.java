@@ -26,6 +26,7 @@ public final class MixedStatRetain {
         }
         retain.used = 0;
         retain.idUsed = 0;
+        retain.nodeKeys.clear();
         MixedStatVariable.Value v = new MixedStatVariable.Value();
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
@@ -41,18 +42,34 @@ public final class MixedStatRetain {
                     }
                 }
             }
-            for (TableVariable.NodeRecord rec : nt.recs) {
-                if (rec.table != null) {
-                    MixedStatVariable.decodeNodeBody(
-                            new TableVariable.Reader(rec.body, r.ids, report),
-                            rec.table,
-                            rec.typeId,
-                            report);
+            int[] np = new int[128];
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
+                if (rec.table == null) {
+                    continue;
                 }
+                retain.nodeKeys.put(rec.table, i);
+                np[0] = -(i + 1);
+                np[1] = 0;
+                decodeNodeBodyRetain(
+                        new TableVariable.Reader(rec.body, r.ids, report),
+                        rec.table,
+                        rec.typeId,
+                        retain,
+                        report,
+                        np);
             }
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
         if (report.refused) {
+            return null;
+        }
+        TableVariable.Measure measure = new TableVariable.Measure();
+        if (MixedStatVariable.loadMeasure(data, measure) < 0) {
+            report.refused = true;
+            if (measure.report.reason != null) {
+                report.reason = measure.report.reason;
+            }
             return null;
         }
         MixedStatVariable.resolveNodes(v, nt, report);
@@ -64,6 +81,135 @@ public final class MixedStatRetain {
             }
         }
         return v;
+    }
+
+    static void decodeNodeBodyRetain(
+            TableVariable.Reader r,
+            Object val,
+            long typeId,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsRetain.readFieldsRetain(
+                    r, (BenchBitsVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsRetain.readFieldsRetain(
+                    r, (BenchIntsVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedRetain.readFieldsRetain(
+                    r, (BenchMixedVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketRetain.readFieldsRetain(
+                    r, (BenchPacketVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableRetain.readFieldsRetain(
+                    r, (FixedTableVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventRetain.readFieldsRetain(
+                    r, (MixedChatEventVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityRetain.readFieldsRetain(
+                    r, (MixedEntityVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventRetain.readFieldsRetain(
+                    r, (MixedHitEventVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventRetain.readFieldsRetain(
+                    r, (MixedPickupEventVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatRetain.readFieldsRetain(
+                    r, (MixedStatVariable.Value) val, null, retain, report, path, 1);
+            return;
+        }
+    }
+
+    static void writeNodeBodyRetain(
+            TableVariable.Writer w,
+            TableVariable.NodeGraph nodes,
+            Object val,
+            long typeId,
+            TableRetain retain,
+            TableVariable.Report report,
+            int[] path) {
+        if (typeId == BenchBitsVariable.TYPE_ID) {
+            BenchBitsRetain.writeFieldsRetain(
+                    w, nodes, (BenchBitsVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == BenchIntsVariable.TYPE_ID) {
+            BenchIntsRetain.writeFieldsRetain(
+                    w, nodes, (BenchIntsVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == BenchMixedVariable.TYPE_ID) {
+            BenchMixedRetain.writeFieldsRetain(
+                    w, nodes, (BenchMixedVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == BenchPacketVariable.TYPE_ID) {
+            BenchPacketRetain.writeFieldsRetain(
+                    w, nodes, (BenchPacketVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == FixedTableVariable.TYPE_ID) {
+            FixedTableRetain.writeFieldsRetain(
+                    w, nodes, (FixedTableVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedChatEventVariable.TYPE_ID) {
+            MixedChatEventRetain.writeFieldsRetain(
+                    w, nodes, (MixedChatEventVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedEntityVariable.TYPE_ID) {
+            MixedEntityRetain.writeFieldsRetain(
+                    w, nodes, (MixedEntityVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedHitEventVariable.TYPE_ID) {
+            MixedHitEventRetain.writeFieldsRetain(
+                    w, nodes, (MixedHitEventVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedPickupEventVariable.TYPE_ID) {
+            MixedPickupEventRetain.writeFieldsRetain(
+                    w, nodes, (MixedPickupEventVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
+        if (typeId == MixedStatVariable.TYPE_ID) {
+            MixedStatRetain.writeFieldsRetain(
+                    w, nodes, (MixedStatVariable.Value) val, retain, report, path, 1);
+            emitTail(w, retain, report, path, 1);
+            return;
+        }
     }
 
     static void readFieldsRetain(
@@ -266,12 +412,30 @@ public final class MixedStatRetain {
                     }
                 } else {
                     int body = w.off;
-                    MixedStatVariable.writeNodeBody(w, nodes, value, typeId);
+                    Integer key = retain == null ? null : retain.nodeKeys.get(value);
+                    if (key != null) {
+                        path[0] = -(key + 1);
+                        path[1] = 0;
+                        writeNodeBodyRetain(w, nodes, value, typeId, retain, report, path);
+                    } else {
+                        MixedStatVariable.writeNodeBody(w, nodes, value, typeId);
+                    }
                     w.put8(0);
                     w.frame(body);
                 }
             }
             w.frameField(table, nodeRef, 12);
+        }
+        if (retain != null) {
+            for (int at = 0; at < retain.used; at += get32(retain.bytes, at)) {
+                if ((retain.bytes[at + 4] & 0x80) == 0) {
+                    if (report != null) {
+                        report.retainLost++;
+                    }
+                } else {
+                    retain.bytes[at + 4] &= 0x7f;
+                }
+            }
         }
         w.put8(0);
         w.trailer();
@@ -325,7 +489,7 @@ public final class MixedStatRetain {
         int at = 0;
         while (at < retain.used) {
             int len = get32(retain.bytes, at);
-            int d = retain.bytes[at + 4] & 0xff;
+            int d = retain.bytes[at + 4] & 0x7f;
             boolean match = d == depth;
             for (int k = 0; match && k < d; k++) {
                 if (get32(retain.bytes, at + 5 + 8 * k) != path[2 * k]
@@ -334,6 +498,7 @@ public final class MixedStatRetain {
                 }
             }
             if (match) {
+                retain.bytes[at + 4] |= (byte) 0x80; // placed, or counted lost below
                 int hdr = 14 + 8 * d;
                 long id = get64(retain.bytes, at + 5 + 8 * d);
                 int kind = retain.bytes[at + 13 + 8 * d] & 0xff;

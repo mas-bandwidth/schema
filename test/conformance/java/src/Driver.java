@@ -1143,14 +1143,15 @@ public final class Driver {
             if (conn == null) { return failInt("missing connection " + f[2]); }
             try {
                 MessageCodec codec = messageCodec(conn[2], f[3]);
-                if (codec == null) {
-                    // a message row whose root is a plain `table` carries no
-                    // message verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T`
-                    // may not" ride the form), so the leg answers ABSENT and
-                    // names the reason, as the Go reference does
-                    spillAbsentReason(out, f[1], "plain table: §3.3");
+                if (f[5].equals("-")) {
+                    // a named refusal row: the root is a variable table, which
+                    // carries no message verbs (docs/SPEC-TABLES.md §3.3: the
+                    // message form is fixed tables only)
+                    if (codec != null) { return failInt(f[1] + ": a variable table carries a message codec"); }
+                    spillAbsentReason(out, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
                     continue;
                 }
+                if (codec == null) { spillAbsentReason(out, f[1], ""); continue; }
                 Object vocab = codec.vocab();
                 Object report = codec.report();
                 if (!codec.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), report)
@@ -1195,36 +1196,25 @@ public final class Driver {
 
     private static int surfaceRetain(String out, boolean saved) throws IOException {
         for (String[] f : lines) {
-            if (!f[0].equals("retain") && !f[0].equals("retain-message")) {
+            if (!f[0].equals("retain")) {
                 continue;
             }
-            boolean message = f[0].equals("retain-message");
-            int at = message ? 1 : 0;
-            if (!f[2 + at].equals("tblrt1") || !f[3 + at].equals("Node")) {
-                return failInt(f[1] + ": no retaining codec for " + f[2 + at] + " " + f[3 + at]);
+            if (!f[2].equals("tblrt1") || !f[3].equals("Node")) {
+                return failInt(f[1] + ": no retaining codec for " + f[2] + " " + f[3]);
             }
-            byte[] wire = Files.readAllBytes(Paths.get(f[4 + at]));
+            byte[] wire = Files.readAllBytes(Paths.get(f[4]));
             tblrt1.TableVariable.Report report = new tblrt1.TableVariable.Report();
             List<tblrt1.NodeVariable.Value> roots = new ArrayList<>();
             List<tblrt1.TableRetain> stores = new ArrayList<>();
-            if (message) {
-                // RT1's Node is a plain `table`, which carries no message verbs
-                // (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
-                // the form), so the leg answers ABSENT and names the reason, as
-                // the Go reference does
-                spillAbsentReason(out, f[1], "plain table: §3.3");
-                continue;
-            } else {
-                tblrt1.TableRetain store = retainStore(f[6]);
-                if (f[5].equals("short")) {
-                    tblrt1.NodeRetain.loadRetain(wire, store, new tblrt1.TableVariable.Report());
-                    store.capacity = store.used - 1;
-                }
-                roots.add(tblrt1.NodeRetain.loadRetain(wire, store, report));
-                stores.add(store);
+            tblrt1.TableRetain store = retainStore(f[6]);
+            if (f[5].equals("short")) {
+                tblrt1.NodeRetain.loadRetain(wire, store, new tblrt1.TableVariable.Report());
+                store.capacity = store.used - 1;
             }
+            roots.add(tblrt1.NodeRetain.loadRetain(wire, store, report));
+            stores.add(store);
             if (report.malformed || report.refused || roots.contains(null)) {
-                return failInt(f[1] + ": the retaining load refused " + f[4 + at]);
+                return failInt(f[1] + ": the retaining load refused " + f[4]);
             }
             java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
             tblrt1.TableVariable.Report save = new tblrt1.TableVariable.Report();

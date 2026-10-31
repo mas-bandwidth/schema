@@ -524,14 +524,10 @@ func (g *tableGen) emitNodeThunkOverloads(vars []*ir.Struct) {
 			// existed — it takes neither the context nor the numbering
 			g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx &, const TableNumbering &, TableIds & ids, const %s & value ) { return %sMeasureBody( ids, value ); }\n", st.Name, st.Name)
 			g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( w, ids, value ); }\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx &, const TableNumbering &, int64_t, int64_t at, const %s & value ) { return %sMeasureMessageBody( at, value ); }\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool TableNodeMessageSave( const Ctx &, const TableNumbering &, int64_t, TableBitWriter & w, const %s & value ) { return %sSaveMessageBody( w, value ); }\n", st.Name, st.Name)
 			continue
 		}
 		g.pf("template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %s & value ) { return %sMeasureBody( ctx, numbering, ids, value ); }\n", st.Name, st.Name)
 		g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( ctx, numbering, w, ids, value ); }\n", st.Name, st.Name)
-		g.pf("template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const %s & value ) { return %sMeasureMessageBody( ctx, numbering, index_bits, at, value ); }\n", st.Name, st.Name)
-		g.pf("template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value ) { return %sSaveMessageBody( ctx, numbering, index_bits, w, value ); }\n", st.Name, st.Name)
 	}
 	g.pf("\n")
 }
@@ -656,11 +652,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("                TableNodeEntry node;\n")
 			g.pf("                node.node = (const void *) pointee;\n")
 			g.pf("                node.type_id = 0x%016xull; // fnv1a64( \"%s\" )\n", ir.TableWireId(wire), wire)
-			g.pf("                node.type_slot = %s; // its slot in the unit's vocabulary (§3.3)\n", g.slotOf(ir.TableWireId(wire)))
 			g.pf("                node.measure = &TableNodeMeasureThunk<Ctx, %s>;\n", t)
 			g.pf("                node.save = &TableNodeSaveThunk<Ctx, %s>;\n", t)
-			g.pf("                node.message_measure = &TableNodeMessageMeasureThunk<Ctx, %s>;\n", t)
-			g.pf("                node.message_save = &TableNodeMessageSaveThunk<Ctx, %s>;\n", t)
 			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; }\n")
 			g.pf("                if ( !%sNumber( ctx, numbering, *pointee ) ) { return false; }\n", t)
 			g.pf("                TablePackMapClose( numbering.seen, (const void *) pointee, slot );\n")
@@ -683,11 +676,8 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("                TableNodeEntry node;\n")
 			g.pf("                node.node = (const void *) blob;\n")
 			g.pf("                node.type_id = %s;\n", blobTypeIdConst(f))
-			g.pf("                node.type_slot = %s; // its slot in the unit's vocabulary (§3.3)\n", g.slotOf(blobTypeId(f)))
 			g.pf("                node.measure = &TableBlobMeasureThunk<Ctx>;\n")
 			g.pf("                node.save = &TableBlobSaveThunk<Ctx>;\n")
-			g.pf("                node.message_measure = &TableBlobMessageMeasureThunk<Ctx>;\n")
-			g.pf("                node.message_save = &TableBlobMessageSaveThunk<Ctx>;\n")
 			g.pf("                if ( !TableNumberingAppend( numbering, node ) ) { return false; } // a blob reaches nothing: no descent\n")
 			g.pf("                TablePackMapClose( numbering.seen, (const void *) blob, slot );\n")
 			g.pf("            }\n")
@@ -1004,7 +994,6 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("// not a depth and two references to one node are one node.\n\n")
 
 	g.emitRootNodeDispatch(st)
-	g.emitRootNodeMessageDispatch(st)
 
 	g.pf("// The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the\n")
 	g.pf("// root takes index 1 and its entry stays open for the whole walk, so a\n")
@@ -1095,10 +1084,6 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( builder.root_ref.null() ) { return -1; } // the root allocation failed\n")
 	g.pf("    TableArenaCtx ctx = { &builder.arena };\n")
 	g.pf("    return %sSaveWire( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );\n}\n\n", n, n)
-
-	// THE MESSAGE FORM over a POINTERED root (docs/SPEC-TABLES.md §3.3): the
-	// batch's three verbs over a region, beside the variable form's.
-	g.emitVariableMessageSurface(st)
 
 	// load
 	g.emitVariableLoadMeasure(st)
@@ -1221,6 +1206,13 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    ok = ok && !nodes.refused;\n")
 	}
 	g.pf("    table_release( allocator, directory );\n")
+	g.pf("    if ( ok && !out->malformed )\n    {\n")
+	g.pf("        TableNumbering cycle_walk;\n")
+	g.pf("        TableNumberingInit( cycle_walk, allocator );\n")
+	g.pf("        TableArenaCtx cycle_ctx = { &builder.arena };\n")
+	g.pf("        if ( !%sNumberFrom( cycle_ctx, cycle_walk, *root ) ) { out->malformed = true; } // a pointer naming an open node (§3.1)\n", n)
+	g.pf("        TableNumberingShutdown( cycle_walk );\n")
+	g.pf("    }\n")
 	g.pf("    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder\n")
 	g.pf("    // holds nothing to use, and false says so\n")
 	g.pf("    if ( out->malformed ) { return false; }\n")
@@ -1478,7 +1470,7 @@ func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs
 		g.pf("    (void) nodes; // every node this root can name is a FIXED table\n")
 	}
 	// A VARIABLE ROOT WHOSE NUMBERING CAN NAME NOTHING is a state the DECLARED
-	// class creates (docs/SPEC-TABLES.md §2.2): a plain `table` is the variable
+	// class creates (docs/SPEC-TABLES.md §2.2): a variable table is the variable
 	// wire whatever its fields are, so a unit can now have a variable root with
 	// no pointer, no map and no unbounded array anywhere under it. The reader
 	// and the storage are then read by nothing — which is what `NodePlace` and
@@ -1547,7 +1539,7 @@ func reachableBlobs(root *ir.Struct) []reachableBlob {
 
 // nodeDispatchEmpty is whether a root's numbering can name no TABLE record
 // and no byte buffer. The DECLARED class (docs/SPEC-TABLES.md §2.2) makes
-// that a real state: a plain `table` is the variable wire with nothing
+// that a real state: a variable table is the variable wire with nothing
 // under it to number. A switch over type_id with only `default` is C4065
 // under MSVC /W4 /WX, so it is not emitted.
 func nodeDispatchEmpty(reachable []*ir.Struct, blobs []reachableBlob) bool {
@@ -1925,6 +1917,17 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing\n")
 	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
 	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
+	// A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
+	// no writer produces a cycle, so the decoded graph is walked once from the
+	// root by the writer's own numbering walk, and a reference to a node whose
+	// descent is still open refuses the whole load.
+	g.pf("    if ( !out->malformed )\n    {\n")
+	g.pf("        TableNumbering cycle_walk;\n")
+	g.pf("        TableNumberingInit( cycle_walk, TableDefaultAllocator() );\n")
+	g.pf("        TableRegionCtx cycle_ctx;\n")
+	g.pf("        if ( !%sNumberFrom( cycle_ctx, cycle_walk, *root ) ) { out->malformed = true; } // a pointer naming an open node (§3.1)\n", n)
+	g.pf("        TableNumberingShutdown( cycle_walk );\n")
+	g.pf("    }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the region
 	// holds no root and the retention store holds nothing.
 	if g.retain {
