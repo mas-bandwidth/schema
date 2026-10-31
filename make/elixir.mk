@@ -749,7 +749,7 @@ test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tabl
 # passes (a count, never a clock: `make shape-gate` refuses a timing primitive
 # outside the sanctioned bench), cut into samples of 200, the audit's own
 # window. Every sample is the audit's own measurement of every case, heap words
-# and binary calls, each held to its pinned budget in 20 20 12 61 79 80 81 98 701 33 100 204 250 395 398 399 400ELIXIR_ALLOC_BUDGET)
+# and binary calls, each held to its pinned budget in $(ELIXIR_ALLOC_BUDGET)
 # with the audit's slack; the VM's binary, ETS, persistent-term and atom drift
 # is printed beside it as the weaker instrument and bounds retention. The pin comes first, as in the audit. THE LENGTH CHECK rides
 # every run: the soak must report exactly the passes and samples its count
@@ -814,6 +814,8 @@ test-elixir: tables-elixir-soak-short tables-elixir-soak-negative-control
 # reads the fixture cook and evaluates the fragment verbatim against the
 # compiled `graphdemo` modules — so a module name the packet emitter does not
 # write, the drift the register's measured effect names, goes red here.
+ELIXIR_USAGE_EBIN ?= build/elixir-tables-ebin
+
 .PHONY: tables-elixir-usage
 tables-elixir-usage: build/elixir-tables-ebin/.stamp build/cook-open/.stamp docs/USAGE.md
 	@rm -rf build/elixir-usage && mkdir -p build/elixir-usage
@@ -823,7 +825,82 @@ tables-elixir-usage: build/elixir-tables-ebin/.stamp build/cook-open/.stamp docs
 	printf '\nIO.puts("usage: docs/USAGE.md Elixir cook example opened the Scene cook and walked its chain")\n' >> build/elixir-usage/usage.exs
 	grep -q 'cook_open_scene' build/elixir-usage/usage.exs || \
 		{ echo "MISSING: docs/USAGE.md carries no elixir-table-usage example"; exit 1; }
-	$(ELIXIR) -pa build/elixir-tables-ebin build/elixir-usage/usage.exs $(CURDIR)/build/cook-open/Scene.cook
+	$(ELIXIR) -pa $(ELIXIR_USAGE_EBIN) build/elixir-usage/usage.exs $(CURDIR)/build/cook-open/Scene.cook
+
+# ITS NEGATIVE CONTROL (docs/PORTING.md I12), on the EMITTER for the fuzz
+# control's reason: the cook emitter renames the page's entry point
+# (cook_open_<table>/1), the corpus is rebuilt through that compiler, and the
+# page's example run against it must go red naming cook_open_scene. A gate that
+# ran something other than the page, or the committed corpus, would stay green.
+CONFORMANCE_NEGATIVE_ELIXIR_USAGE := build/elixir-usage-negative
+ELIXIR_USAGE_SED := -e 's|exDefDo("  ", "def cook_open_"+lo+"(data)"|exDefDo("  ", "def cook_open_renamed_"+lo+"(data)"|'
+
+.PHONY: tables-elixir-usage-negative-control
+tables-elixir-usage-negative-control: build/cook-open/.stamp docs/USAGE.md
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_USAGE),internal/codegen/elixirtable/cook.go,ELIXIR_USAGE_SED)
+	@if $(MAKE) --no-print-directory tables-elixir-usage ELIXIR_USAGE_EBIN=$(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/ebin \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log 2>&1; then \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log; \
+		echo "NEGATIVE CONTROL FAILED: the page's example ran against a corpus with no cook_open_scene/1"; exit 1; \
+	fi
+	@grep -q 'cook_open_scene' $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log || \
+		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_USAGE)/log; echo "NEGATIVE CONTROL FAILED: the usage gate went red, but not on cook_open_scene"; exit 1; }
+	@echo "elixir usage negative control: a renamed cook entry point reds the page's example on cook_open_scene"
+
+test-elixir: tables-elixir-usage-negative-control
+
+# J2 (docs/PORTING.md) — THE RUNTIME HOME, Elixir side. A unit's shared runtime
+# modules (TableRuntime, BlockRuntime, CookRuntime, BuildVersion, the unit's
+# Table and view modules) are files named by the module, never by the schema
+# file that sorts first, so a file that sorts earlier relocates nothing: every
+# runtime file is present and byte-identical across the two trees. The gate
+# runs over the compiler ELIXIR_RUNTIME_HOME_SCHEMA so its control can run the
+# same recipe over a sabotaged one.
+ELIXIR_RUNTIME_HOME_SCHEMA ?= ./bin/schema
+ELIXIR_RUNTIME_HOME_DIR    ?= build/runtime-home-elixir
+ELIXIR_RUNTIME_HOME_FILES  := Table.ex TableRuntime.ex BlockRuntime.ex CookRuntime.ex BuildVersion.ex
+
+.PHONY: tables-elixir-runtime-home
+tables-elixir-runtime-home: bin/schema
+	@rm -rf $(ELIXIR_RUNTIME_HOME_DIR) && mkdir -p $(ELIXIR_RUNTIME_HOME_DIR)/src
+	@cp tables/examples/*.schema $(ELIXIR_RUNTIME_HOME_DIR)/src/
+	@printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > $(ELIXIR_RUNTIME_HOME_DIR)/src/Aaa.schema
+	@$(ELIXIR_RUNTIME_HOME_SCHEMA) generate --lang elixir --out $(ELIXIR_RUNTIME_HOME_DIR)/base tables/examples > /dev/null 2>&1
+	@$(ELIXIR_RUNTIME_HOME_SCHEMA) generate --lang elixir --out $(ELIXIR_RUNTIME_HOME_DIR)/added $(ELIXIR_RUNTIME_HOME_DIR)/src > /dev/null 2>&1
+	@for n in $(ELIXIR_RUNTIME_HOME_FILES); do \
+		for tree in base added; do \
+			test -f $(ELIXIR_RUNTIME_HOME_DIR)/$$tree/$$n || \
+				{ echo "RUNTIME HOME GATE FAILED: the $$tree tree has no $$n (a runtime module is named by the module, not by a schema file)"; ls $(ELIXIR_RUNTIME_HOME_DIR)/$$tree; exit 1; }; \
+		done; \
+		cmp -s $(ELIXIR_RUNTIME_HOME_DIR)/base/$$n $(ELIXIR_RUNTIME_HOME_DIR)/added/$$n || \
+			{ echo "RUNTIME HOME GATE FAILED: the runtime file $$n changed when the unit gained an earlier-sorting file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Elixir): $(ELIXIR_RUNTIME_HOME_FILES) stay where they are and byte-identical when an earlier-sorting file joins the unit"
+
+# Its NEGATIVE CONTROL: put the file-order rule back (the table runtime named
+# by the file that sorts first, ir.ProtocolIdHome) and the gate, run over that
+# compiler, must go red on TableRuntime.ex.
+.PHONY: tables-elixir-runtime-home-negative-control
+tables-elixir-runtime-home-negative-control: bin/schema
+	@mkdir -p build/elixir-runtime-home-negative
+	@sed 's|out\[TableRuntimeModule+".ex"\] = tableRuntimeModule(u, ns)|out[ir.ProtocolIdHome(u)+TableRuntimeModule+".ex"] = tableRuntimeModule(u, ns) // SABOTAGED: back to the file order|' \
+		internal/codegen/elixirtable/elixirtable.go > build/elixir-runtime-home-negative/elixirtable.go.txt
+	@grep -q SABOTAGED build/elixir-runtime-home-negative/elixirtable.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/elixirtable.go":"%s/build/elixir-runtime-home-negative/elixirtable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-runtime-home-negative/overlay.json
+	go build -overlay=build/elixir-runtime-home-negative/overlay.json -o build/elixir-runtime-home-negative/schema ./cmd/schema
+	@if $(MAKE) --no-print-directory tables-elixir-runtime-home \
+			ELIXIR_RUNTIME_HOME_SCHEMA=build/elixir-runtime-home-negative/schema \
+			ELIXIR_RUNTIME_HOME_DIR=build/elixir-runtime-home-negative/tree > build/elixir-runtime-home-negative/log 2>&1; then \
+		cat build/elixir-runtime-home-negative/log; \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule left the runtime home gate green"; exit 1; \
+	fi
+	@grep -q 'TableRuntime.ex' build/elixir-runtime-home-negative/log || \
+		{ cat build/elixir-runtime-home-negative/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on TableRuntime.ex"; exit 1; }
+	@echo "runtime home negative control (Elixir): the file-order rule moves TableRuntime.ex and reds the gate"
+
+test-elixir: tables-elixir-runtime-home tables-elixir-runtime-home-negative-control
 
 # THE ELIXIR RELEASE GATE (certify.yml's release-gates job finds it BY NAME, so
 # landing it is this target and nothing else — no edit to that file).

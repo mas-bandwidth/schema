@@ -543,3 +543,94 @@ func TestElixirEmitsTheIdTableWireRuntime(t *testing.T) {
 		t.Error("--lang elixir emitted TableRuntime.ex for a table-free unit")
 	}
 }
+
+// THE BYTE ORDER IS THE READER'S, NOT THE HOST'S (docs/PORTING.md M12). On the
+// BEAM a binary segment's order is a modifier: `little` and `big` are fixed by
+// the language, and `native` is the ONE spelling that consults the host. So the
+// property is exact and checkable on the emitted text: no segment in any
+// generated table source spells `native`. The corpus units below are generated
+// afresh and every `::` segment in them is read; the scan must find the
+// explicit little-endian segments every wire read is made of, or it is blind.
+var elixirCorpusForOrder = []string{
+	"../tables/examples", "../tables/pointers", "../tables/blobs", "../tables/lists",
+	"../tables/maps", "../tables/messages", "../tables/scalars", "../tables/block",
+	"../tables/cards", "../test/tables/RT1.schema",
+}
+
+var elixirSegmentModifiers = regexp.MustCompile(`::\s*([A-Za-z0-9_()\-]+)`)
+
+// elixirHostOrderSegments returns every segment in files that spells `native`,
+// as "file: segment", and the count of `little` segments seen.
+func elixirHostOrderSegments(files map[string][]byte) (native []string, little int) {
+	for name, data := range files {
+		if !strings.HasSuffix(name, ".ex") {
+			continue
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			if i := strings.Index(line, "#"); i >= 0 {
+				line = line[:i]
+			}
+			for _, m := range elixirSegmentModifiers.FindAllStringSubmatch(line, -1) {
+				for mod := range strings.SplitSeq(m[1], "-") {
+					switch mod {
+					case "native":
+						native = append(native, name+": "+m[0])
+					case "little":
+						little++
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(native)
+	return native, little
+}
+
+func TestElixirSegmentsNeverConsultTheHost(t *testing.T) {
+	t.Parallel()
+	c := New()
+	total := 0
+	for _, dir := range elixirCorpusForOrder {
+		paths, err := GatherPaths([]string{dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := c.Load(paths)
+		if err != nil {
+			t.Fatalf("%s: %v", dir, err)
+		}
+		files, err := c.Generate(u, "elixir", Options{})
+		if err != nil {
+			t.Fatalf("%s: --lang elixir: %v", dir, err)
+		}
+		native, little := elixirHostOrderSegments(files)
+		for _, n := range native {
+			t.Errorf("%s: a generated segment reads or writes in the HOST's order: %s", dir, n)
+		}
+		total += little
+	}
+	if total < 100 {
+		t.Fatalf("the scan found %d little-endian segments over the corpus; the wire reads are made of them, so the scan, not the property, broke", total)
+	}
+}
+
+// TestElixirSegmentOrderScanGoesRed is that scan's negative control: a planted
+// `native` segment in a copy of the emitted files must be seen, in both the
+// leading and the trailing modifier position, and one in a comment must not.
+func TestElixirSegmentOrderScanGoesRed(t *testing.T) {
+	files := map[string][]byte{
+		"Planted.ex": []byte("defmodule Probe.Planted do\n" +
+			"  def a(<<v::native-unsigned-32, _::binary>>), do: v\n" +
+			"  def b(v), do: <<v::float-64-native>>\n" +
+			"  # <<v::native-16>> in prose is not a segment\n" +
+			"  def c(<<v::little-unsigned-32>>), do: v\n" +
+			"end\n"),
+	}
+	native, little := elixirHostOrderSegments(files)
+	if len(native) != 2 {
+		t.Fatalf("the scan saw %d of the 2 planted host-order segments (%v) — it is blind, and every green run of TestElixirSegmentsNeverConsultTheHost proves nothing", len(native), native)
+	}
+	if little != 1 {
+		t.Fatalf("the scan counted %d little segments, want 1", little)
+	}
+}
