@@ -323,8 +323,9 @@ func TestCTableWireWidening(t *testing.T) {
     `, octets(wire), octets(saved), octets(nan)))
 }
 
-// A damaged later occurrence resets text to its declared default; an explicit
-// empty value remains an edit and survives a save/load cycle.
+// A damaged later occurrence discards the whole load (docs/SPEC-TABLES.md §4):
+// the read answers 0 with the value at its declared defaults. An explicit empty
+// value remains an edit and survives a save/load cycle.
 func TestCTableWireDefaultRecovery(t *testing.T) {
 	u := unitFromSource(t, `package probe
 flags Caps { Jump, Crouch }
@@ -352,7 +353,7 @@ int main(void) {
  CHECK(value.data_length == 2 && !memcmp(value.data,"ab",2));
  CHECK(value.caps == CAPS_JUMP && root_measure(&value) == 10);
  memset(&report,0,sizeof(report));
- CHECK(root_load_tolerant(&value,damaged,sizeof(damaged),&report));
+ CHECK(!root_load_tolerant(&value,damaged,sizeof(damaged),&report));
  CHECK(report.malformed && value.name_length == 3 && !memcmp(value.name,"new",4));
  value.name_length = 0; value.name[0] = 0; value.data_length = 0; value.caps = 0;
  n=root_save(&value,out,sizeof(out)); CHECK(n > 10);
