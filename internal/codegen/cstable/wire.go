@@ -1610,6 +1610,7 @@ public static partial class TableWire
         if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
         bool complete = ReadBody(ref r, value, type, report, false);
         if (NonFiniteRefused(report)) { type.Reset(value); return Finish(report, Verdict.Refused); }
+        if (type.Variable && !Acyclic(value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); } // a pointer naming an open node (§3.1)
         return Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped);
     }
 }

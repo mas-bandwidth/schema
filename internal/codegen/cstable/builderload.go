@@ -66,6 +66,8 @@ const tableBuilderLoadSource = `
             if (state.Refused) { return false; }
             // a non-finite float refuses the load (docs/SPEC-TABLES.md §3.3)
             if (NonFiniteRefused(report)) { Finish(report, Verdict.Refused); return false; }
+            // a pointer naming an open node refuses the whole load (docs/SPEC-TABLES.md §3.1)
+            if (!RegionAcyclic(data, type, worker.Arena.Allocator, true)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
             Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return complete;
         }
         finally { worker.Arena.Allocator.Release(directory); }
