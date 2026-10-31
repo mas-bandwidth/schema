@@ -295,6 +295,10 @@ func sabotage(t *testing.T, file, from, to string) map[string][]byte {
 //     costs nothing in the id table either): only wire rows go red;
 //   - RETENTION writes no retained tail (§6.6): only retain-save and retain
 //     rows go red, and wire and report stay green.
+//   - the SAVE numbers each node one past its first-visit index (§3.1, M6):
+//     only wire rows go red;
+//   - the LOAD composes a multi-byte value high byte first (M12: byte order is
+//     the reader's, composed by shifts): wire rows go red.
 func TestGooseTableWireNegativeControl(t *testing.T) {
 	t.Parallel()
 	c := readWireCorpus(t)
@@ -317,6 +321,16 @@ func TestGooseTableWireNegativeControl(t *testing.T) {
 		{"retain-tail", "wire_retain.goose",
 			"    if rec < 0 { return; }\n    for i in c.retain.recs.len {", "    if rec < 0 || rec >= 0 { return; }\n    for i in c.retain.recs.len {",
 			map[string]func(string) bool{"retain": func(string) bool { return true }, "retain-save": func(string) bool { return true }}, "retain-save"},
+		// M6: the save numbers a node one past the index its first visit
+		// gives it, so every pointer edge names the wrong row of the node table
+		{"save-numbering", "wire_save.goose",
+			"    c.index[wire] = c.order.len + 1;", "    c.index[wire] = c.order.len + 2;",
+			map[string]func(string) bool{"wire": func(string) bool { return true }}, "wire"},
+		// M12: the load composes a multi-byte value high byte first, the
+		// host-order read the method refuses
+		{"load-byte-order", "wire_load.goose",
+			"        v |= b << ((8 * i) as! u64);", "        v |= b << ((8 * (w - 1 - i)) as! u64);",
+			map[string]func(string) bool{"wire": func(string) bool { return true }, "report": func(string) bool { return true }}, "wire"},
 	}
 	for _, ctl := range controls {
 		t.Run(ctl.name, func(t *testing.T) {
