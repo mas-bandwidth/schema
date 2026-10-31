@@ -7,15 +7,19 @@ source (`make dist-lua`). This page is the design every card of the
 It is written in the house order: the value model first, because every codec
 stands on it, then the files, then how the leg is held.
 
-What exists after the design card (schema-lua-port-design): the target
-(`compiler/target_lua.go`, a builtin target since 2026-10-28), the TYPE
-SURFACE (`internal/codegen/lua`: a module per schema file with constants,
-enums, flags, union tags and constructors), the TABLE SURFACE
-(`internal/codegen/luatable`: one descriptor per table and per table-side
-union, and constructors), the test helper (`internal/codegen/lua/luarun`), the
-build leg (`make/lua.mk`), the conformance driver and the register column.
-There is **no codec** on either wire yet; THE CARD MAP below names who writes
-each one.
+WHAT EXISTS ON MAIN (2026-10-28, through schema#2237): the target
+(`compiler/target_lua.go`, a builtin target of the compiler), the TYPE SURFACE (`internal/codegen/lua`: a module per schema file,
+the type wire read and written against the C++-pinned goldens, over the
+vendored serialize.lua), and the TABLE SURFACE (`internal/codegen/luatable`
+and `runtime/*.lua`: form `1` load and save, the fixed form `3` against the
+byte oracle, the message form `2`, retain-unknown on both, the JSON and
+hand-editable text forms, base64 text, block read and build, cook open,
+check and write). Every unit of the tables conformance manifest generates
+(33 units, 0 refused) and stands alone (`TestLuaUnitStandsAlone`); the
+conformance driver answers all eighteen surfaces; `make test-lua` runs the Go
+tests of both packages, the wire-fuzz differential against the Go engine and
+the shared hostile corpus. The open work is the `port/lua/open/*` entries of
+`docs/roadmap.sexp`; THE REGISTER below says which techniques they are.
 
 ## THE TYPE MAPPING
 
@@ -211,16 +215,17 @@ names no reason stays `damaged`.
 
 ## THE REGISTER
 
-The lua column of [PORTING.md](PORTING.md) is filled for every technique.
-Six cells are `—`, the platform's reason stated: M2 and M3 (a Lua 5.4
-integer and float are unboxed values, so there is no box to avoid), M4 (no
-inlining directive or aliasing qualifier), M10 (the VM owns allocation; the
-count is pinned instead), M11 (no struct layout), J5 (no table-wire bench).
-Every other cell is `❌` and names the stream card that carries it, or says
-no card carries it yet. The register's grammar requires a `#NNN` on a not-yet
-cell; the only issue that names the Lua port is #381 (closed, the language
-list), so the cells cite it beside the card. The cards, not the issue, are
-the carry-across record (the sprint retired per-technique issues).
+The lua column of [PORTING.md](PORTING.md) is checked against the tree, cell by
+cell (2026-10-28). Carried, each naming its proof: M4b, M6, M7, M8, M9, M12,
+M14, M16, M19, M20, I4, I5, I7, I15 and J4. `—`, the platform's reason stated:
+M2 and M3 (a Lua 5.4 integer and float are unboxed values), M4 (no inlining
+directive or aliasing qualifier), M10 (the VM owns allocation), M11 (no struct
+layout), M17 (no arena: a blob is one string of its own length) and J5 (no
+table-wire bench). Every other cell is `❌`: the register's grammar requires a
+`#NNN`, the only issue that names the Lua port is #381 (closed, the language
+list), so the cells cite it beside the `port/lua/open/*` roadmap entry that
+carries the work (roadmap entries, never new issues). I2 and I11 are the
+negative controls, which the gates work carries.
 
 ## THE CARD MAP
 
@@ -250,12 +255,18 @@ the cook's `Open` is the header and the base alone (O(1)) and `Check` runs
 because `announceRead` counts the announced entries but resolves the
 receiver's own vocabulary rather than the sender's (§3.3).
 
-Owed and named, not carried by any card yet: the cross-build announcement
-read above, the allocation gate (`collectgarbage("count")` is the
-instrument), the bench leg, the release tier and the analyzer-clean gate
-(`luac -p`). `make test` now probes the `lua` toolchain: a CI job that runs it
-needs `make dist-lua` or `LUA=lua` with a 5.4 interpreter, which is the
-conformance-leg card's workflow step.
+Owed and named, each a `port/lua/open/*` roadmap entry: the cross-build
+announcement read above (`retain-message-cross-build`); the message form's
+refusal of a plain `table` root (`message-form-plain-table`: `loadMessages`
+does not check `MessageRoots`, so `graph_tree` on the plain `Scene` answers
+bytes where the Go reference answers absent, and the refusal needs a reason
+name SPEC-TABLES §11 does not yet give); a caller-owned load with its
+allocation gate and soak; the keyed accessor; frozen descriptors; one pointer
+walk shared by save and cook; the arm read through the field reader; float32
+bit surgery on the table wire; a typed save; block and cook accessors; the
+forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
+the random text differential; the runtime-home control; the bench and release
+tier; and the card facade.
 
 ## DEEPEN
 
