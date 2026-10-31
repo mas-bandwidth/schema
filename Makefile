@@ -6936,55 +6936,67 @@ RELEASE_COMMIT ?= HEAD
 promotion-tag:
 	go run ./tools/releasetag promotion-tag -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
 
-# A release is refused, before any tag, by the previous-release differential.
-release: release-differential
+release:
 	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
 
-# THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463): the newest v
-# tag's compiler and RELEASE_COMMIT's, each built from its own tree, generate
-# every unit `make check` names in every target both carry, and a unit whose
-# protocol id is equal under both must come out as the same files and the
-# same bytes. A difference refuses, naming the unit, the target, the file and
-# the first differing byte; a unit whose id moved is listed, not compared.
-# RELEASE_DIFFERENTIAL_PREV names another previous release. It needs the tags
-# and their trees (a full clone), Go, and nothing else. `release` and
-# certify.yml run it.
+# THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463): the WIRE bytes
+# the newest v tag's compiler and RELEASE_COMMIT's encode for the same
+# instances, compared under an equal protocol id. The packet wire through the
+# C++ reference (the packet drivers, compiled against each side's generated
+# C++, one driver source on both), the table forms through the Go engine each
+# compiler carries (`schema pack` over every MANIFEST instance with text). A
+# differing byte refuses, naming the unit, the instance and the byte; a unit
+# whose id moved is listed, not compared. RELEASE_DIFFERENTIAL_PREV names
+# another previous release. It needs the tags and their trees (a full clone),
+# Go, a C++ compiler and $(SERIALIZE).
 RELEASE_DIFFERENTIAL_PREV ?=
 RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 .PHONY: release-differential release-differential-negative-control
 release-differential:
-	go run ./tools/releasediff $(if $(RELEASE_DIFFERENTIAL_PREV),-prev $(RELEASE_DIFFERENTIAL_PREV)) -rev $(RELEASE_COMMIT) -j $(RELEASE_DIFFERENTIAL_JOBS)
+	go run ./tools/releasediff $(if $(RELEASE_DIFFERENTIAL_PREV),-prev $(RELEASE_DIFFERENTIAL_PREV)) -rev $(RELEASE_COMMIT) -serialize $(SERIALIZE) -j $(RELEASE_DIFFERENTIAL_JOBS)
 
-# ITS NEGATIVE CONTROL. One compiler built from this tree, and a second from
-# the same tree with every union arm's packet tag moved by one in the C++
-# writer (tools/sabotage, release-differential-union-tag): the wire changes
-# and the protocol id does not. The guard leg compares the clean compiler with
-# itself and must pass having compared at least one unit; the red leg compares
-# the clean compiler with the sabotaged one and must refuse, naming a C++
-# header and its first differing byte under an equal protocol id.
+# ITS NEGATIVE CONTROL: one compiler built from this tree, and two built from
+# it under an overlay each (tools/sabotage): release-differential-union-tag
+# moves every union arm's tag by one in the C++ packet writer, and
+# release-differential-table-bool writes a true bool as 2 in the Go engine's
+# variable form. Neither moves a protocol id. The guard leg runs the clean
+# compiler against itself and must pass having compared both wires; each red
+# leg must refuse on its own wire, naming the unit, the instance and the byte,
+# and on no other wire.
 RELEASE_DIFFERENTIAL_CONTROL := build/release-differential-control
+RELEASE_DIFFERENTIAL_RUN = go run ./tools/releasediff -prev clean -old-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -corpus . -serialize $(SERIALIZE) -j $(RELEASE_DIFFERENTIAL_JOBS)
 release-differential-negative-control:
 	@rm -rf $(RELEASE_DIFFERENTIAL_CONTROL) && mkdir -p $(RELEASE_DIFFERENTIAL_CONTROL)
 	go build -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-union-tag -out $(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext internal/codegen/cpp/functions.go
-	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/overlay.json
-	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/overlay.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-sabotaged ./cmd/schema
-	@test "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean id examples)" = "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-sabotaged id examples)" || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage moved the protocol id, so the gate would list the unit rather than compare it"; exit 1; }
-	@go run ./tools/releasediff -prev clean -old-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean \
-		-corpus . -work $(RELEASE_DIFFERENTIAL_CONTROL)/guard -j $(RELEASE_DIFFERENTIAL_JOBS) > $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out 2>&1 || \
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json
+	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-packet ./cmd/schema
+	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext internal/tablewire/encode.go
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/table.json
+	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/table.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-table ./cmd/schema
+	@for s in packet table; do \
+		test "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean id examples)" = "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s id examples)" || \
+			{ echo "NEGATIVE CONTROL FAILED: the $$s sabotage moved the protocol id, so the gate would list the unit rather than compare it"; exit 1; }; \
+	done
+	@$(RELEASE_DIFFERENTIAL_RUN) -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -work $(RELEASE_DIFFERENTIAL_CONTROL)/guard > $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the clean compiler against itself did not pass"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out; exit 1; }
-	@grep -q '^  compared .*examples' $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the guard leg compared nothing, so a green verdict would mean nothing"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out; exit 1; }
-	@if go run ./tools/releasediff -prev clean -old-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-sabotaged \
-		-corpus . -work $(RELEASE_DIFFERENTIAL_CONTROL)/red -j $(RELEASE_DIFFERENTIAL_JOBS) > $(RELEASE_DIFFERENTIAL_CONTROL)/red.out 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a union tag moved under an unchanged protocol id left the release differential green"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/red.out; exit 1; \
-	fi
-	@grep -q '^DIFFERENCE under an equal protocol id: examples --lang cpp: [A-Za-z]*\.h first differs at byte [0-9]*' $(RELEASE_DIFFERENTIAL_CONTROL)/red.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the differential went red, but not naming examples, cpp, a header and its first differing byte"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/red.out; exit 1; }
-	@! grep '^DIFFERENCE' $(RELEASE_DIFFERENTIAL_CONTROL)/red.out | grep -v -- '--lang cpp:' || \
-		{ echo "NEGATIVE CONTROL FAILED: a C++-only sabotage was named in another target"; exit 1; }
-	@echo "negative control: a union tag moved under an unchanged protocol id turns the previous-release differential RED naming the unit, the target, the header and the byte"
+	@grep -q '^  compared     packet wire, driver examples ' $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out && \
+		grep -q '^  compared     table forms: [1-9][0-9]* variable-form and [1-9][0-9]* message-form' $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the guard leg did not compare both wires, so a green verdict would mean nothing"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out; exit 1; }
+	@for s in packet table; do \
+		if $(RELEASE_DIFFERENTIAL_RUN) -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s -work $(RELEASE_DIFFERENTIAL_CONTROL)/$$s > $(RELEASE_DIFFERENTIAL_CONTROL)/$$s.out 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$s sabotage moved wire bytes under an unchanged protocol id and left the differential green"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/$$s.out; exit 1; \
+		fi; \
+	done
+	@grep -q '^DIFFERENCE under an equal protocol id: packet wire, unit examples, instance [a-z_0-9/-]*\.bin first differs at byte [0-9]*' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the union-tag sabotage went red, but not naming examples, an instance and its byte"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out; exit 1; }
+	@! grep '^DIFFERENCE' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out | grep -v ': packet wire, ' || \
+		{ echo "NEGATIVE CONTROL FAILED: a C++ packet sabotage was named on a table form"; exit 1; }
+	@grep -q '^DIFFERENCE under an equal protocol id: table variable form, unit [a-z0-9]*, instance [a-z_0-9]*: first differs at byte [0-9]*' $(RELEASE_DIFFERENTIAL_CONTROL)/table.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the table-bool sabotage went red, but not naming a variable-form instance and its byte"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/table.out; exit 1; }
+	@! grep '^DIFFERENCE' $(RELEASE_DIFFERENTIAL_CONTROL)/table.out | grep -v ': table variable form, ' || \
+		{ echo "NEGATIVE CONTROL FAILED: a variable-form sabotage was named on another wire"; exit 1; }
+	@echo "negative control: a union tag moved in the C++ packet writer, and a true bool written as 2 in the Go engine's variable form, each under an unchanged protocol id, turn the previous-release differential RED on that wire alone, naming the unit, the instance and the byte"
 
 .PHONY: slow-gate-scan
 slow-gate-scan:

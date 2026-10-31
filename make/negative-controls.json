@@ -1194,7 +1194,7 @@
     {
       "name": "release-differential",
       "when": "pull-request",
-      "why": "the previous-release differential's control (docs/VERSIONING.md, #463): cmd/schema built twice from this tree, once under an overlay that moves every union arm's packet tag by one in the C++ writer, and tools/releasediff run over every unit `make check` names in every target, clean against clean (must pass, having compared examples) and clean against sabotaged (must refuse naming examples, cpp, a header and its first differing byte). Go alone, no sibling and no toolchain, so its own row: two compiler builds and the corpus generated four times.",
+      "why": "the previous-release differential's control (docs/VERSIONING.md, #463): cmd/schema built three times from this tree, clean, with every union arm's packet tag moved by one in the C++ writer, and with a true bool written as 2 in the Go engine's variable form, and tools/releasediff run clean against clean (must pass, having compared the packet wire and both table forms) and clean against each sabotage (each must refuse on its own wire alone, naming the unit, the instance and the byte). Go, the host C++ compiler and the serialize sibling; three compiler builds, the three packet drivers built six times each and the conformance instances packed four times.",
       "targets": [
         "release-differential-negative-control"
       ]

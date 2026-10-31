@@ -10,60 +10,73 @@ import (
 	"testing"
 )
 
-// TestCheckUnitsReadsTheCheckRecipe pins where the corpus comes from: the
-// `./bin/schema check` lines of the `check:` recipe, and nothing after it.
-func TestCheckUnitsReadsTheCheckRecipe(t *testing.T) {
+// TestParseManifest pins what the table leg reads: unit lines by key, and the
+// instance lines that carry text, in order.
+func TestParseManifest(t *testing.T) {
 	t.Parallel()
-	mk := "all: bin/schema\n\t./bin/schema check not/this\n\ncheck: bin/schema docs-check\n" +
-		"\t./bin/schema check examples\n\t./bin/schema check test/tables/V1.schema\n" +
-		"\t./bin/schema check bench/A.schema bench/B.schema\n\techo done\n\n" +
-		"other:\n\t./bin/schema check nor/this\n"
-	got, err := CheckUnits(mk)
+	m, err := ParseManifest("# a comment\nunit a  tables/a\nunit b x/B1.schema x/B2.schema\n" +
+		"instance one a Root testdata/wire/tables/one.bin\n" +
+		"instance two b Other testdata/wire/tables/two.bin no-text\n" +
+		"instance three b Other testdata/wire/tables/three.bin go-refusal=x\n" +
+		"report r a Root w.bin\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := [][]string{{"examples"}, {"test/tables/V1.schema"}, {"bench/A.schema", "bench/B.schema"}}
-	if !slices.EqualFunc(got, want, slices.Equal) {
-		t.Errorf("CheckUnits = %q; want %q", got, want)
+	if !slices.Equal(m.Units["b"], []string{"x/B1.schema", "x/B2.schema"}) || !slices.Equal(m.Keys, []string{"a", "b"}) {
+		t.Errorf("units %v keys %v", m.Units, m.Keys)
 	}
-	if _, err := CheckUnits("check:\n\techo nothing\n"); err == nil {
-		t.Error("CheckUnits over an empty check recipe returned no error: an empty corpus would compare nothing and pass")
+	want := []Instance{{"one", "a", "Root"}, {"three", "b", "Other"}}
+	if !slices.Equal(m.Instances, want) {
+		t.Errorf("instances %v; want %v (no-text left out)", m.Instances, want)
 	}
-}
-
-// TestCheckUnitsReadsThisRepository holds the parse to the repository's own
-// Makefile, so a reshaped check recipe fails here rather than in a release.
-func TestCheckUnitsReadsThisRepository(t *testing.T) {
-	t.Parallel()
-	mk, err := os.ReadFile("../../Makefile")
-	if err != nil {
-		t.Fatal(err)
-	}
-	units, err := CheckUnits(string(mk))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.ContainsFunc(units, func(u []string) bool { return slices.Equal(u, []string{"examples"}) }) {
-		t.Errorf("the corpus read from the Makefile does not hold examples: %q", units)
-	}
-	for _, u := range units {
-		for _, p := range u {
-			if _, err := os.Stat(filepath.Join("../..", p)); err != nil {
-				t.Errorf("corpus unit path %s: %v", p, err)
-			}
+	for _, bad := range []string{
+		"unit a\n",
+		"unit a x\nunit a y\ninstance i a R w\n",
+		"unit a x\ninstance i b R w\n",
+		"unit a x\ninstance i a R w no-text\n",
+	} {
+		if _, err := ParseManifest(bad); err == nil {
+			t.Errorf("ParseManifest(%q) accepted it", bad)
 		}
 	}
 }
 
-func TestParseTargets(t *testing.T) {
+// TestThisRepositorysCorpus holds the tool's two corpus readings to the tree:
+// the manifest parses with instances to encode, and every packet driver is the
+// Makefile's own, sources and units both.
+func TestThisRepositorysCorpus(t *testing.T) {
 	t.Parallel()
-	help := "Usage of generate:\n  -lang string\n    \ttarget language (c, cpp, cs, go) (default \"cpp\")\n"
-	got, err := ParseTargets(help)
-	if err != nil || !slices.Equal(got, []string{"c", "cpp", "cs", "go"}) {
-		t.Errorf("ParseTargets = %q, %v", got, err)
+	text, err := os.ReadFile(filepath.Join("../..", ManifestPath))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := ParseTargets("no list here"); err == nil {
-		t.Error("ParseTargets found targets in text that names none")
+	m, err := ParseManifest(string(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range m.Instances {
+		if _, err := os.Stat(filepath.Join("../../testdata/conformance/tables/json", in.Name+".json")); err != nil {
+			t.Errorf("instance %s carries text and has no JSON: %v", in.Name, err)
+		}
+	}
+	mk, err := os.ReadFile("../../Makefile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range PacketDrivers {
+		for _, s := range d.Sources {
+			if !strings.Contains(string(mk), s) {
+				t.Errorf("packet driver %s: the Makefile builds no %s", d.Name, s)
+			}
+			if _, err := os.Stat(filepath.Join("../..", s)); err != nil {
+				t.Errorf("packet driver %s: %v", d.Name, err)
+			}
+		}
+		for _, u := range d.Units {
+			if !strings.Contains(string(mk), "generate --lang cpp --out generated/") || !strings.Contains(string(mk), strings.Join(u, " ")) {
+				t.Errorf("packet driver %s: the Makefile generates no %s", d.Name, u)
+			}
+		}
 	}
 }
 
@@ -84,6 +97,10 @@ func TestFirstDifference(t *testing.T) {
 			t.Errorf("FirstDifference(%q, %q) = %d; want %d", c.a, c.b, got, c.want)
 		}
 	}
+	d := CompareBytes([]byte{1, 2, 3}, []byte{1, 2, 4, 5})
+	if d == nil || d.String() != "first differs at byte 2 of 3/4: previous 0x03, new 0x04" {
+		t.Errorf("CompareBytes reads %v", d)
+	}
 }
 
 func writeTree(t *testing.T, files map[string]string) string {
@@ -101,129 +118,132 @@ func writeTree(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// TestCompareTreesBothWays pins the comparison: same listing and same bytes
-// is nil; a byte, a missing file and an extra file each name the first
-// difference in path order, with the byte, its line and the count.
+// TestCompareTreesBothWays pins the packet comparison: a byte names the file
+// and the first byte; a file on one side only is a difference when both runs
+// were complete and is passed over when one stopped early.
 func TestCompareTreesBothWays(t *testing.T) {
 	t.Parallel()
-	base := map[string]string{"A.h": "one\ntwo\n", "sub/B.h": "bee\n"}
+	base := map[string]string{"a.bin": "\x01\x02", "tables/b.bin": "\x03"}
 	same := writeTree(t, base)
-	if d, err := CompareTrees(same, writeTree(t, base)); err != nil || d != nil {
-		t.Fatalf("identical trees: %v, %v", d, err)
+	if d, n, err := CompareTrees(same, writeTree(t, base), true); err != nil || d != nil || n != 2 {
+		t.Fatalf("identical trees: %v, %d, %v", d, n, err)
 	}
-
-	d, err := CompareTrees(same, writeTree(t, map[string]string{"A.h": "one\ntwX\n", "sub/B.h": "bee\n"}))
-	if err != nil || d == nil {
-		t.Fatalf("one changed byte: %v, %v", d, err)
+	d, _, _ := CompareTrees(same, writeTree(t, map[string]string{"a.bin": "\x01\x09", "tables/b.bin": "\x03"}), true)
+	if d == nil || d.File != "a.bin" || d.Offset != 1 || d.Old != 2 || d.New != 9 {
+		t.Errorf("one changed byte: %+v", d)
 	}
-	if d.File != "A.h" || d.Offset != 6 || d.Line != 2 || d.Old != 'o' || d.New != 'X' || d.Files != 1 {
-		t.Errorf("one changed byte: %+v; want A.h byte 6 line 2 'o' -> 'X', 1 file", d)
+	short := writeTree(t, map[string]string{"a.bin": "\x01\x02"})
+	if d, _, _ := CompareTrees(same, short, true); d == nil || d.File != "tables/b.bin" || d.Offset != -1 {
+		t.Errorf("a pin the new side stopped writing: %+v", d)
 	}
-	if s := d.String(); !strings.Contains(s, "A.h first differs at byte 6 (line 2)") {
-		t.Errorf("difference reads %q", s)
-	}
-
-	d, _ = CompareTrees(same, writeTree(t, map[string]string{"A.h": "one\ntwo\n"}))
-	if d == nil || d.File != "sub/B.h" || d.Offset != -1 || d.New != -1 {
-		t.Errorf("a file the new compiler stopped emitting: %+v", d)
-	}
-	d, _ = CompareTrees(same, writeTree(t, map[string]string{"A.h": "one\ntwo\n", "sub/B.h": "bee\n", "C.h": ""}))
-	if d == nil || d.File != "C.h" || d.Old != -1 {
-		t.Errorf("a file only the new compiler emits: %+v", d)
-	}
-	d, _ = CompareTrees(same, writeTree(t, map[string]string{"A.h": "one\ntwo\nthree\n", "sub/B.h": "BEE\n"}))
-	if d == nil || d.File != "A.h" || d.Offset != 8 || d.Old != -1 || d.Files != 2 {
-		t.Errorf("an appended tail and a second file: %+v", d)
+	if d, n, _ := CompareTrees(same, short, false); d != nil || n != 1 {
+		t.Errorf("one side stopped early: %+v, %d compared; want the common file alone, equal", d, n)
 	}
 }
 
-// fake is a compiler from a table: ids per unit, targets, and a generator per
-// target that writes the given files, or refuses.
+// fake is a compiler from tables.
 type fake struct {
-	name    string
-	targets []string
-	ids     map[string]string // unit -> id; absent refuses the unit
-	emit    map[string]string // "unit/lang" -> body of the one file; absent refuses
+	name   string
+	ids    map[string]string // unit -> id; absent refuses
+	packet map[string]string // driver -> its one pin's bytes; absent does not build
+	pack   map[string]string // "instance/form" -> bytes; absent refuses
 }
 
-func (f fake) Name() string               { return f.name }
-func (f fake) Targets() ([]string, error) { return f.targets, nil }
+func (f fake) Name() string { return f.name }
 func (f fake) ID(u []string) (string, error) {
 	if id, ok := f.ids[strings.Join(u, " ")]; ok {
 		return id, nil
 	}
 	return "", errors.New("schema: 1 error(s)")
 }
-func (f fake) Generate(u []string, lang, out string) error {
-	body, ok := f.emit[strings.Join(u, " ")+"/"+lang]
+func (f fake) Packet(d PacketDriver, tree, out string) (bool, error) {
+	body, ok := f.packet[d.Name]
 	if !ok {
-		return errors.New("schema: target refuses the unit")
+		return false, errors.New("error: no member named SelectSecond")
 	}
-	if err := os.MkdirAll(out, 0o755); err != nil {
-		return err
+	p := filepath.Join(out, "testdata", "wire", d.Name+".bin")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return false, err
 	}
-	return os.WriteFile(filepath.Join(out, "Out.h"), []byte(body), 0o644)
+	return true, os.WriteFile(p, []byte(body), 0o644)
+}
+func (f fake) Pack(u []string, root, json string, message bool) ([]byte, error) {
+	form := "v"
+	if message {
+		form = "m"
+	}
+	body, ok := f.pack[strings.TrimSuffix(filepath.Base(json), ".json")+"/"+form]
+	if !ok {
+		return nil, errors.New("schema: unknown flag --message")
+	}
+	return []byte(body), nil
 }
 
-// TestJudgeComparesOnlyUnderAnEqualId pins the decisions: an equal id compares
-// every shared target and a byte refuses naming the unit, target, file and
-// byte; a moved id, a unit one side refuses, a target one side lacks and a
-// target one side refuses are listed and never refuse.
-func TestJudgeComparesOnlyUnderAnEqualId(t *testing.T) {
+// TestJudgeComparesWireBytesUnderAnEqualId pins the decisions on both legs:
+// an equal id compares, and a changed byte refuses naming the wire, the unit,
+// the instance and the byte; a moved id, a refused unit, a driver that does
+// not build on one side and an instance one side refuses are listed and never
+// refuse.
+func TestJudgeComparesWireBytesUnderAnEqualId(t *testing.T) {
 	t.Parallel()
-	units := [][]string{{"same"}, {"moved"}, {"newgrammar"}, {"refused"}}
-	old := fake{
-		name: "v1.0.0", targets: []string{"cpp", "go", "gone"},
-		ids: map[string]string{"same": "0x1", "moved": "0x2", "refused": "0x4"},
-		emit: map[string]string{
-			"same/cpp": "x", "same/go": "y", "same/gone": "z",
-			"moved/cpp": "a", "moved/go": "a",
-			"refused/cpp": "r",
+	m := &Manifest{
+		Units: map[string][]string{"same": {"tables/same"}, "moved": {"tables/moved"}},
+		Keys:  []string{"same", "moved"},
+		Instances: []Instance{
+			{"s1", "same", "Root"}, {"s2", "same", "Root"}, {"mv", "moved", "Root"},
 		},
+	}
+	old := fake{
+		name:   "v1.0.0",
+		ids:    map[string]string{"examples": "0x1", "examples128": "0x2", "tables/same": "0x3", "tables/moved": "0x4"},
+		packet: map[string]string{"examples": "\x01\x02", "examples128": "\x07"},
+		pack:   map[string]string{"s1/v": "\x01", "s2/v": "\x02", "mv/v": "\x05"},
 	}
 	nw := fake{
-		name: "HEAD", targets: []string{"cpp", "go", "lua"},
-		ids: map[string]string{"same": "0x1", "moved": "0x3", "newgrammar": "0x5", "refused": "0x4"},
-		emit: map[string]string{
-			"same/cpp": "x", "same/go": "y", "same/lua": "l",
-			"moved/cpp": "b", "moved/go": "b",
-			"refused/go": "g",
-		},
+		name:   "HEAD",
+		ids:    map[string]string{"examples": "0x1", "examples128": "0x2", "tables/same": "0x3", "tables/moved": "0x5", "bench/corpus/Bench.schema": "0x6", "bench/corpus/RealWorld.schema": "0x7"},
+		packet: map[string]string{"examples": "\x01\x02"},
+		pack:   map[string]string{"s1/v": "\x01", "s1/m": "\x09", "s2/v": "\x02", "mv/v": "\x06"},
 	}
-	r, err := Judge(old, nw, units, t.TempDir(), 3)
+	tree := writeTree(t, map[string]string{"test/main.cpp": "", "test/ludicrous_main.cpp": "", "test/bench/main.cpp": ""})
+	r, err := Judge(old, nw, []string{tree}, m, "json", t.TempDir(), 3)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(r.Differences) != 0 {
 		t.Errorf("no byte differs under an equal id, and the gate refused: %q", r.Differences)
 	}
-	if len(r.Compared) != 2 || len(r.Moved) != 1 || len(r.Unreadable) != 1 {
-		t.Errorf("compared %q, moved %q, unreadable %q; want 2, 1, 1", r.Compared, r.Moved, r.Unreadable)
-	}
-	if !slices.Contains(r.Moved, "moved: 0x2 -> 0x3") {
-		t.Errorf("moved %q", r.Moved)
-	}
-	joined := strings.Join(r.Uncompared, "\n")
-	for _, want := range []string{"target lua: v1.0.0 does not carry it", "target gone: HEAD does not carry it",
-		"refused --lang cpp: HEAD refuses it", "refused --lang go: v1.0.0 refuses it"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("uncompared does not list %q:\n%s", want, joined)
+	all := strings.Join(slices.Concat(r.Compared, r.Moved, r.Unreadable, r.Uncompared), "\n")
+	for _, want := range []string{
+		"packet wire, driver examples",
+		"table forms: 2 variable-form and 0 message-form encodings",
+		"tables/moved: 0x4 -> 0x5",
+		"bench/corpus/Bench.schema: v1.0.0 refuses it",
+		"packet examples128: no driver source builds on both sides",
+		"table message form, unit same, instance s1: v1.0.0 refuses it",
+	} {
+		if !strings.Contains(all, want) {
+			t.Errorf("the report does not say %q:\n%s", want, all)
 		}
 	}
 
-	// THE REFUSAL: one byte under an equal id.
-	nw.emit["same/go"] = "Y"
-	r, err = Judge(old, nw, units, t.TempDir(), 3)
+	// THE REFUSALS: one byte on each wire under an equal id.
+	nw.packet["examples"] = "\x01\x03"
+	nw.pack["s2/v"] = "\x08"
+	r, err = Judge(old, nw, []string{tree}, m, "json", t.TempDir(), 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "same --lang go: Out.h first differs at byte 0 (line 1): previous 0x79 'y', new 0x59 'Y' (1 file(s) differ)"
-	if !slices.Equal(r.Differences, []string{want}) {
+	want := []string{
+		"packet wire, unit examples, instance examples.bin first differs at byte 1 of 2/2: previous 0x02, new 0x03",
+		"table variable form, unit same, instance s2: first differs at byte 0 of 1/1: previous 0x02, new 0x08",
+	}
+	if !slices.Equal(r.Differences, want) {
 		t.Errorf("differences %q; want %q", r.Differences, want)
 	}
 	var out bytes.Buffer
 	r.Print(&out, "v1.0.0", "HEAD")
-	if !strings.Contains(out.String(), "DIFFERENCE under an equal protocol id: "+want) || !strings.Contains(out.String(), "REFUSED") {
+	if !strings.Contains(out.String(), "DIFFERENCE under an equal protocol id: "+want[0]) || !strings.Contains(out.String(), "REFUSED, 2 encoding(s)") {
 		t.Errorf("printed report does not refuse by name:\n%s", out.String())
 	}
 }
