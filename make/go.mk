@@ -1283,7 +1283,7 @@ tables-go-discard-negative-control:
 	@grep -q "fixed: LoadTolerant answered true on damage" $(GO_DISCARD_NC)/fixed.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(GO_DISCARD_NC)/fixed.log; exit 1; }
-	@sed -e 's/if !ok||report.Malformed{clear(region);return nil}/if false{clear(region);return nil}/' \
+	@sed -e 's/if !ok||report.Malformed{clear(region);return nil}/if ok \&\& false{clear(region);return nil}/' \
 		internal/codegen/gotable/regions.go > $(GO_DISCARD_NC)/regions.go.txt
 	@cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; } || true
