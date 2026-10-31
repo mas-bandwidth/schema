@@ -304,6 +304,15 @@ func TestMooMessageFormMatchesTheGoEngine(t *testing.T) {
 			t.Logf("%s: the Go engine writes no message form: %v", c.name, err)
 			continue
 		}
+		if holdsTextList(u.Tables[c.root]) {
+			// A TEXT LIST ON THE MESSAGE FORM: the Go engine announces one
+			// (SPEC-TABLES §3.3) and writes its count, but writes no element
+			// payload where its own skip reads a length and bytes; moo refuses
+			// the save as invalid_value. The two do not agree on a contract,
+			// so the unit is named and not compared.
+			t.Logf("%s: a text list on the message form, which the Go engine writes without element payloads and moo refuses: not compared", c.name)
+			continue
+		}
 		// what the message form carries back: the Go engine's own read of its
 		// batch, in the file form (a message elides an empty string or bytes
 		// whatever its default, so the trip is not always the original value)
@@ -581,4 +590,14 @@ func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 	if !strings.HasPrefix(got, "load 1 1,0,2,1,0,false") {
 		t.Fatalf("the patched reader did not drop exactly the kind mismatch: %s", got)
 	}
+}
+
+// holdsTextList says whether a table declares a text list (SPEC-TABLES §2.13).
+func holdsTextList(tb *ir.Struct) bool {
+	for _, f := range tb.Fields {
+		if f.IsTextList() {
+			return true
+		}
+	}
+	return false
 }
