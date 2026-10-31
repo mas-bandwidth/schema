@@ -11,6 +11,7 @@ package baseline_test
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -108,7 +109,14 @@ type frameRow struct {
 	instance string // the §16 text of an instance written BEFORE the edit
 	read     string // unknown,kind_mismatch,widened,clamped,duplicate,malformed
 	baseline string // pass | warn | refuse
-	build    string // moves | stands
+	// hint is the one Warn finding, Where and What exactly, that a row whose
+	// cell says the baseline PASSES and HINTS carries: the verdict is pass
+	// only when that finding, and nothing else, comes back
+	hint string
+	// readHeldBy names the test that pins the row's read cell where the
+	// engine's read frame does not reach it: the row's read is not run here
+	readHeldBy string
+	build      string // moves | stands
 }
 
 // richEdit is a row's substitutions over base, each of which must appear
@@ -157,10 +165,16 @@ func framesRead(t *testing.T, baseText, liveText, instance string) string {
 
 // framesBaseline runs the BASELINE frame: the committed projection taken
 // before the edit against the live one, under the shipping policy.
-func framesBaseline(t *testing.T, baseText, liveText string) string {
+func framesBaseline(t *testing.T, baseText, liveText, hint string) string {
 	t.Helper()
 	findings := baseline.Diff(committed(t, baseText), baseline.Render(unit(t, liveText)), baseline.DefaultTokenPolicy)
 	refusals, warnings := baseline.Split(findings)
+	if hint != "" && len(refusals) == 0 {
+		if len(warnings) == 1 && warnings[0].String() == hint {
+			return "pass"
+		}
+		return fmt.Sprintf("warn %q", warnings)
+	}
 	switch {
 	case len(refusals) > 0:
 		return "refuse"
@@ -515,7 +529,63 @@ func frameRows(t *testing.T) []frameRow {
 			baseline: "refuse",
 			build:    "moves",
 		},
+		{
+			name:       "a text list's total tightened",
+			row:        "a text list's `total` tightened",
+			base:       framesRichSrc,
+			edited:     richEdit(t, framesRichSrc, "| total = 64", "| total = 8"),
+			instance:   `{"rules":["abcdef","ghijkl"]}`,
+			readHeldBy: "internal/codegen/gotable TestTextListTotal",
+			baseline:   "warn",
+			build:      "moves",
+		},
+		{
+			name:     "a field renamed under was",
+			row:      "a field renamed under `was`",
+			base:     framesRichSrc,
+			edited:   richEdit(t, framesRichSrc, "    label   string(16)\n", "    title   string(16) | was = \"label\"\n"),
+			instance: `{"label":"x"}`,
+			read:     "0,0,0,0,0,false",
+			baseline: "pass",
+			hint:     "Config.title: renamed under was = \"label\", which keeps the wire id and NOT the text key — the JSON key is now \"title\"; pair json = \"label\" if an existing text must still read (docs/SPEC-TABLES.md §16.4)",
+			build:    "stands",
+		},
+		{
+			name:     "a type's field renamed under was",
+			row:      "a `type`'s FIELD renamed under `was`",
+			base:     framesRichSrc,
+			edited:   richEdit(t, framesRichSrc, "    multiplier float32 = 1.0\n", "    mult float32 = 1.0 | was = \"multiplier\"\n"),
+			instance: `{"buff":{"multiplier":2.0}}`,
+			read:     "0,0,0,0,0,false",
+			baseline: "pass",
+			hint:     "Buff.mult: renamed under was = \"multiplier\", which keeps the wire id and NOT the text key — the JSON key is now \"mult\"; pair json = \"multiplier\" if an existing text must still read (docs/SPEC-TABLES.md §16.4)",
+			build:    "stands",
+		},
 	}
+}
+
+// heldBy reports whether "<dir> <TestName>" names a test function in a
+// _test.go file of that directory, relative to the repository root.
+func heldBy(t *testing.T, ref string) bool {
+	t.Helper()
+	dir, name, ok := strings.Cut(ref, " ")
+	if !ok {
+		t.Fatalf("readHeldBy %q is not \"<dir> <TestName>\"", ref)
+	}
+	files, err := filepath.Glob(filepath.Join("../..", dir, "*_test.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "\nfunc "+name+"(t *testing.T) {") {
+			return true
+		}
+	}
+	return false
 }
 
 // TestEvolutionTableFrames is the golden behind §4.1's table.
@@ -526,10 +596,14 @@ func TestEvolutionTableFrames(t *testing.T) {
 			if base == "" {
 				base = framesSrc
 			}
-			if got := framesRead(t, base, row.edited, row.instance); got != row.read {
-				t.Errorf("read report = %s, want %s", got, row.read)
+			if row.readHeldBy == "" {
+				if got := framesRead(t, base, row.edited, row.instance); got != row.read {
+					t.Errorf("read report = %s, want %s", got, row.read)
+				}
+			} else if !heldBy(t, row.readHeldBy) {
+				t.Errorf("the read cell is held by %s, which no longer exists", row.readHeldBy)
 			}
-			if got := framesBaseline(t, base, row.edited); got != row.baseline {
+			if got := framesBaseline(t, base, row.edited, row.hint); got != row.baseline {
 				t.Errorf("baseline = %s, want %s", got, row.baseline)
 			}
 			if got := framesBuild(t, base, row.edited); got != row.build {
@@ -614,14 +688,10 @@ func tableCell(t *testing.T, row string, n int) string {
 // the cell does not say which verdict the frame returns: the fixture is owed,
 // and the contract is not this file's to settle.
 var framesLeftOut = map[string]string{
-	"a text list's `total` tightened": "the spec cell says `clamped`; the read frame runs internal/tablewire, which " +
-		"holds no total (§2.13's read clamp lives in the generated readers), and measures a silent read",
-	"a field renamed under `was`": "the cell says the baseline PASSES and that the edit HINTS the `json =` pairing; " +
-		"the hint is a Warn finding, so the frame returns warn, and the cell does not say which verdict it means",
-	"an unbounded array's ELEMENT retyped": "the cell says the build version MOVES; `[]int32` to `[]float32` measures " +
-		"it standing, because the cook projection's array line carries the element's size and not its kind",
-	"a `type`'s FIELD renamed under `was`": "the cell says the baseline PASSES and that the edit HINTS the `json =` " +
-		"pairing; the hint is a Warn finding, so the frame returns warn, and the cell does not say which verdict it means",
+	"an unbounded array's ELEMENT retyped": "the cell says the build version MOVES; §20.1 and §20.2 specify the " +
+		"unbounded array's cook line as kind=14, array=unbounded and elem= the element's SIZE, with no element " +
+		"kind, and `[]int32` to `[]float32` measures it standing: the page contradicts itself, which is not this " +
+		"file's to settle",
 }
 
 // evolutionTableRows is §4.1's table, one line per row, header and rule
