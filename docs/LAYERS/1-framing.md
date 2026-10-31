@@ -350,11 +350,14 @@ nesting level and undoes no count.
 (F7); a node record of a type the root cannot place counts once at the record
 and not once per pointer (T7).**
 
-## FINDINGS, for the parent
+## FINDINGS, and how each was settled
 
-Rules the spec leaves unstated or states two ways. None is resolved here; each
-vector that depends on one is held out of the manifest and listed with its
-bytes so the ruling can land it.
+The spec's own rule for a contradiction (docs/VERSIONING.md): the sentence
+with the golden wins, and the other is a bug in prose. For each finding below
+the engine and the C++ reference were run on the vectors; where they agree the
+shared answer is pinned as a `framing` row and written into SPEC-TABLES in
+present tense (N2–N9, done on this branch); where the behavior is a choice with
+real consequences it is reported, not decided (N1, still held out).
 
 - **N1. "keeps what it decoded there" against "reads its declared default".**
   §4 (L2) says framing damage inside a nesting level keeps what that level

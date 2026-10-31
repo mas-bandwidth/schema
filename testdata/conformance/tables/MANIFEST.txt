@@ -1175,3 +1175,11 @@ framing node_index_null                       graphdemo ListNode testdata/wire/t
 framing node_reserved_id_in_record            graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin   0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_to_default.json
 framing node_unknown_to_fixed_reader          tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
 framing node_table_L_past_body                graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin       0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
+# The rows the law-home's findings settled (docs/LAYERS/1-framing.md, N6, N7,
+# N9): the engine and the C++ reference agree on each, so the shared
+# answer is the rule, pinned here and written into SPEC-TABLES.
+framing frame_empty_buffer                    tblr1 Cfg testdata/wire/tables/framing/frame_empty_buffer.bin                    0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_kind_unknown_37_named           tblr1 Cfg testdata/wire/tables/framing/frame_kind_unknown_37_named.bin           0,1,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_kind_reserved_34_named          tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34_named.bin          0,1,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_kind_zero_named                 tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero_named.bin                 0,1,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing node_table_twice                      graphdemo ListNode testdata/wire/tables/framing/node_table_twice.bin             0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_3.json
