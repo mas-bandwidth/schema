@@ -220,7 +220,7 @@ jobs:
               internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|test/conformance/go/*|make/go.mk) add_leg go ;;
             esac
             case "$f" in
-              internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk) add_leg c ;;
+              internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk|make/checks/c-clean-*|tools/sabotage/c_clean.go) add_leg c ;;
             esac
             case "$f" in
               internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
@@ -246,7 +246,7 @@ jobs:
             case "$f" in
               internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
               internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
-              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
+              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/goose-hostile/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
             esac
           done <<EOF
           $files
@@ -723,10 +723,10 @@ jobs:
           set -euo pipefail
           case "${{ matrix.leg }}" in
             cpp)    make tables-fixedform
-                    make tables-cpp-clean tables-cpp-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+                    make tables-cpp-clean tables-cpp-format-negative-control tables-cpp-warnings-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
-                    make tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+                    make tables-c-clean tables-c-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
             js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
             cs)     make tables-cs-leg-debug tables-cs-versioning ;;
@@ -737,9 +737,9 @@ jobs:
             luau)   make dist-luau
                     make tables-luau-fixed-form tables-luau-versioning
                     make bench-luau-gate ;;
-            # the Goose leg's fixed form against the reference's bytes (make/goose.mk;
-            # its versioning rows are owed, schema#2236), under the pinned compiler
-            goose)  make dist-goose test-goose ;;
+            # the Goose leg's fixed form against the reference's bytes (make/goose.mk)
+            # and its versioning rows (make/goose-versioning.mk), under the pinned compiler
+            goose)  make dist-goose test-goose tables-goose-versioning tables-goose-message-form ;;
             # test-lobster holds the fixed form to the reference's byte oracle
             # (SCHEMA_REQUIRE_CORPUS=1) beside both packages' suites; the strict
             # gate compiles every generated unit with zero warnings; the bench

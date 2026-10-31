@@ -1,0 +1,123 @@
+#!/bin/sh
+# THE LUAU LEG's emitter-sabotage conformance controls (test/conformance/README.md;
+# docs/PORTING.md I2 and I11). Each one sabotages the EMITTER, never a
+# generated file and never the driver: a sed over a copy of one runtime file
+# the table emitter embeds (internal/codegen/luautable/runtime/*.luau, the
+# //go:embed glob), checked to have matched, `go build -overlay` into a
+# private compiler, the conformance units regenerated from it, and the harness
+# required red on the named surfaces with their neighbours green. No tracked
+# file is written, so an interrupt leaves no sabotaged tree.
+#
+#   report  schema_load.luau counts every unknown field twice: the two
+#           surfaces that print the load's report red (`luau / report`, and
+#           `luau / retain`, whose answer carries the same counters) and
+#           nothing else; `wire`, `json-read` and `retain-save` green (the
+#           sabotage moves no byte).
+#   walk    schema_json.luau's field-key match never matches the first
+#           declared field: the text READER's two surfaces red (`luau /
+#           json-read`, and `luau / json-hostile`, which reads through the same
+#           match) and nothing else; `json-write`, `wire` and `cook-write`
+#           green, so the break is the text walk's and the matrix localizes it
+#           (I11).
+#
+# main.luau finds its staged inputs and the generated units by paths relative
+# to itself (../../../build/...), so the sabotaged units run under a MIRROR of
+# the repository: every top-level entry linked, except test/ (the mirror holds
+# a copy of the leg's driver and main.luau only) and build/, whose entries are
+# linked one by one but for the two the mirror owns: build/conformance-luau
+# (the regenerated units and the driver's staging) and build/luau-driver. The
+# harness's work directory sits under this control's own build directory, so
+# that one is linked too: the forgery lines name fixtures it wrote there.
+#
+# usage: test/conformance/luau/negative-control <report|walk>
+set -eu
+
+mode=$1
+root=$(pwd)
+out=build/luau-table-control-$mode
+rm -rf "$out"
+mkdir -p "$out"
+case "$mode" in
+report)
+	source=internal/codegen/luautable/runtime/schema_load.luau
+	sed 's/report.unknown = report.unknown + 1$/report.unknown = report.unknown + 1 + 1/' "$source" > "$out/runtime.luau"
+	;;
+walk)
+	source=internal/codegen/luautable/runtime/schema_json.luau
+	sed 's/    if fd.key == key then return fd end/    if fd.key == key and fd.raw.o ~= 0 then return fd end/' "$source" > "$out/runtime.luau"
+	;;
+*) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
+if cmp -s "$source" "$out/runtime.luau"; then
+	echo "NEGATIVE CONTROL: the $mode sabotage patched nothing in $source" >&2
+	exit 1
+fi
+printf '{"Replace":{"%s/%s":"%s/%s/runtime.luau"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+go build -overlay "$root/$out/overlay.json" -o "$out/schema-luau" ./cmd/schema
+
+# the mirror
+mirror=$root/$out/mirror
+mkdir -p "$mirror/build/luau-driver" "$mirror/test/conformance/luau"
+for entry in "$root"/* "$root"/.[!.]*; do
+	name=$(basename "$entry")
+	case "$name" in build | test | .git) continue ;; esac
+	[ -e "$entry" ] && ln -s "$entry" "$mirror/$name"
+done
+for entry in "$root"/build/*; do
+	name=$(basename "$entry")
+	case "$name" in conformance-luau | luau-driver) continue ;; esac
+	ln -s "$entry" "$mirror/build/$name"
+done
+cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
+cp build/luau-driver/units.luau "$mirror/build/luau-driver/units.luau"
+
+# the units exactly as make/luau.mk's build/conformance-luau generates them
+gen=$mirror/build/conformance-luau
+mkdir -p "$gen"
+grep '^unit ' testdata/conformance/tables/MANIFEST.txt | while read -r _ key paths; do
+	# shellcheck disable=SC2086
+	if ! "$out/schema-luau" generate --lang luau --out "$gen/$key" $paths > "$gen/$key.log" 2>&1; then
+		rm -rf "${gen:?}/$key"
+		mv "$gen/$key.log" "$gen/$key.refused"
+	else
+		rm -f "$gen/$key.log"
+	fi
+done
+
+luau="${LUAU:-$root/dist/luau-0.741/luau}"
+case "$luau" in /*) ;; *) luau=$root/$luau ;; esac
+# the harness names the manifest and the answer directory relative to the
+# repository; the mirror's driver runs from the mirror, so both are made
+# absolute first
+cat > "$out/driver" <<EOF
+#!/bin/sh
+abs() { case "\$1" in /*) echo "\$1" ;; *) echo "$root/\$1" ;; esac; }
+m=\$(abs "\$1")
+if [ "\$2" = list ]; then cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" list; fi
+o=\$(abs "\$3")
+cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" "\$2" "\$o"
+EOF
+chmod +x "$out/driver"
+printf 'luau %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage left conformance green" >&2
+	exit 1
+fi
+red=$(grep -oE '^ *luau / [a-z-]+' "$out/log" | sed 's/^ *luau \/ //' | sort -u | tr '\n' ' ')
+case "$mode" in
+report) want="report retain " ; green="wire json-read retain-save" ;;
+walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+esac
+if [ "$red" != "$want" ]; then
+	echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+for surface in $green; do
+	if ! grep -qE "^$surface +pass" "$out/log"; then
+		echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage did not leave $surface green" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+done
+echo "Luau table negative control: the $mode sabotage of the emitter turns exactly [${want% }] red and leaves $green green"

@@ -22,6 +22,7 @@ static partial class Program
 
     static void TestFixedForm()
     {
+        TestFixedLittleEndianCopies();
         TestFixedFxCase();
         // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). Both cases are ENTIRELY
         // a forward/compiled read across two generations with no lineage between
@@ -109,6 +110,26 @@ static partial class Program
               "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
         Check(Run(4, 4u, new byte[] { 0x01, 0x00, 0x00, 0x00, 0xBB }) == 0xBB,
               "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
+    }
+
+    // M12 (docs/PORTING.md): the flat element copies read and write the wire's
+    // little-endian image. The host here is little-endian, so the bulk copy is
+    // checked against explicit little-endian bytes, and the big-endian swap,
+    // which no host here runs, is checked on its own.
+    static void TestFixedLittleEndianCopies()
+    {
+        byte[] wire = { 0x01, 0x02, 0x03, 0x04, 0xfe, 0xff, 0xff, 0xff };
+        int[] values = new int[2];
+        FX1.Schema.TableFixedWire.ReadLittle<int>(wire, values);
+        Check(values[0] == 0x04030201 && values[1] == -2, "fixed flat copy: a read takes the little-endian image");
+        byte[] back = new byte[8];
+        FX1.Schema.TableFixedWire.WriteLittle<int>(values, back);
+        Check(back.AsSpan().SequenceEqual(wire), "fixed flat copy: a write gives the little-endian image");
+        byte[] swap = { 1, 2, 3, 4, 5, 6, 7, 8 };
+        FX1.Schema.TableFixedWire.ReverseEach(swap, 4);
+        Check(swap.AsSpan().SequenceEqual(new byte[] { 4, 3, 2, 1, 8, 7, 6, 5 }), "fixed flat copy: the big-endian swap reverses each element");
+        FX1.Schema.TableFixedWire.ReverseEach(swap, 1);
+        Check(swap[0] == 4 && swap[7] == 5, "fixed flat copy: a one-byte element is never swapped");
     }
 
     static void TestFixedFxCase()

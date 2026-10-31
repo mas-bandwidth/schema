@@ -1,0 +1,86 @@
+#!/bin/sh
+# THE MOO LEG's conformance negative controls (test/conformance/README.md;
+# docs/PORTING.md I2 and I11). Each one sabotages the EMITTER, never a
+# generated file and never the driver: a sed over a copy of one runtime file
+# the table emitter embeds (internal/codegen/mootable/runtime/*.moo, the
+# //go:embed glob), checked to have matched, `go build -overlay` into a private
+# compiler, the conformance units regenerated from it, and the harness required
+# red on the named surfaces with their neighbours green. No tracked file is
+# written, so an interrupt leaves no sabotaged tree.
+#
+#   report  table_load.moo counts every unknown field twice: the surfaces that
+#           print the load's report red (`moo / report`, and `moo / retain`,
+#           whose answer carries the same counters) and nothing else; `wire`,
+#           `json-read` and `retain-save` green (the sabotage moves no byte).
+#   walk    json.moo's field-key index never holds the first declared field:
+#           the text READER's two surfaces red (`moo / json-read`, and
+#           `moo / json-hostile`, which reads through the same index) and
+#           nothing else; `json-write`, `wire` and `cook-write` green, so the
+#           break is the text walk's and the matrix localizes it (I11).
+#
+# usage: test/conformance/moo/negative-control <report|walk>
+set -eu
+
+mode=$1
+root=$(pwd)
+out=build/moo-table-control-$mode
+rm -rf "$out"
+mkdir -p "$out"
+case "$mode" in
+report)
+    source=internal/codegen/mootable/runtime/table_load.moo
+    sed 's/^\([[:space:]]*_\{0,1\}report\.unknown += \)1$/\12/' "$source" > "$out/runtime.moo"
+    ;;
+walk)
+    source=internal/codegen/mootable/runtime/json.moo
+    sed 's/^\([[:space:]]*\)k\[fd\.json\] = i$/\1if i ~= 1 then k[fd.json] = i end/' "$source" > "$out/runtime.moo"
+    ;;
+*) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
+if cmp -s "$source" "$out/runtime.moo"; then
+    echo "NEGATIVE CONTROL: the $mode sabotage patched nothing in $source" >&2
+    exit 1
+fi
+printf '{"Replace":{"%s/%s":"%s/%s/runtime.moo"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+go build -tags schema_leg_moo -overlay "$root/$out/overlay.json" -o "$out/schema-moo" ./cmd/schema
+
+# the units exactly as make/moo-conformance.mk's build/conformance-moo generates them
+mkdir -p "$out/generated"
+grep '^unit[[:space:]]' testdata/conformance/tables/MANIFEST.txt |
+while read -r _ key paths; do
+    # shellcheck disable=SC2086
+    if ! "$out/schema-moo" generate --lang moo --out "$out/generated/$key" $paths > "$out/generated/$key.log" 2>&1; then
+        rm -rf "$out/generated/$key"
+        mv "$out/generated/$key.log" "$out/generated/$key.refused"
+    else
+        rm -f "$out/generated/$key.log"
+    fi
+done
+
+moo="${MOO:-$root/dist/moo/moo}"
+printf '#!/bin/sh\nexec env SCHEMA_MOO_GENERATED=%s/generated MOO_DRIVER_STAGE=%s/stage MOO=%s %s/test/conformance/moo/driver "$@"\n' \
+    "$out" "$out" "$moo" "$root" > "$out/driver"
+chmod +x "$out/driver"
+printf 'moo %s/driver\n' "$out" > "$out/drivers.txt"
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage left conformance green" >&2
+    exit 1
+fi
+red=$(grep -oE '^ *moo / [a-z-]+' "$out/log" | sed 's/^ *moo \/ //' | sort -u | tr '\n' ' ')
+case "$mode" in
+report) want="report retain " ; green="wire json-read retain-save" ;;
+walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+esac
+if [ "$red" != "$want" ]; then
+    echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
+    cat "$out/log" >&2
+    exit 1
+fi
+for surface in $green; do
+    if ! grep -qE "^$surface +pass" "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage did not leave $surface green" >&2
+        cat "$out/log" >&2
+        exit 1
+    fi
+done
+echo "Moo table negative control: the $mode sabotage of the emitter turns exactly [${want% }] red and leaves $green green"

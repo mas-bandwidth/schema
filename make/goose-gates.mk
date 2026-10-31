@@ -77,37 +77,51 @@ tables-goose-strict-negative-control: $(GOOSE_GATES_SCHEMA)
 	echo "goose strict negative control: the planted redundant cast is red at K2.goose:$$line, and only it; the copy without it is green"
 
 # THE STRICT GATE'S EMITTER SABOTAGE (docs/PORTING.md I2): a copy of
-# internal/codegen/goosetable/fixedform.go with the `import .fixed;` its record
-# functions need taken out (the sed is checked to have matched), built into a
-# private compiler through `go build -overlay` — no tracked file is written —
-# and the gate run over the units it writes. Red is required on EXACTLY the
-# <Base>Table.goose modules that name schema_rt::FixedReport, each by name, and
-# on nothing else: the runtime and type modules beside them stay green.
-GOOSE_GATES_SED_IMPORT := s|e.g.Import("fixed")|// SABOTAGED: the fixed runtime is not imported|
+# internal/codegen/goosetable/fixedform.go whose fixed-root load names a report
+# type no module declares (schema_rt::FixedReportUnreachable, the sed checked to
+# have matched), built into a private compiler through `go build -overlay` — no
+# tracked file is written — and the gate run over the units it writes. The
+# binding is unreachable through every import path, direct or through another
+# runtime module, so the check cannot be satisfied by an import the module
+# happens to inherit. Red is required on EXACTLY the <Base>Table.goose modules
+# that name it, each finding placed on a line that names it, and on nothing
+# else: the runtime and type modules beside them stay green.
+# A module that imports a sabotaged one (the unit module imports every Table
+# module) exits on that module's planted line: the same finding, reached
+# through the import, so its exit is required to cite a planted module.
+GOOSE_GATES_SED_UNREACHABLE := s|report = schema_rt::FixedReport { .. };|report = schema_rt::FixedReportUnreachable { .. }; // SABOTAGED: a binding no module declares|
 .PHONY: tables-goose-strict-emitter-negative-control
 tables-goose-strict-emitter-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@mkdir -p $(GOOSE_GATES_DIR)
-	@sed '$(GOOSE_GATES_SED_IMPORT)' internal/codegen/goosetable/fixedform.go >$(GOOSE_GATES_DIR)/fixedform-noimport.gotext
-	@grep -q SABOTAGED $(GOOSE_GATES_DIR)/fixedform-noimport.gotext || { \
+	@sed '$(GOOSE_GATES_SED_UNREACHABLE)' internal/codegen/goosetable/fixedform.go >$(GOOSE_GATES_DIR)/fixedform-unreachable.gotext
+	@grep -q SABOTAGED $(GOOSE_GATES_DIR)/fixedform-unreachable.gotext || { \
 		echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/goosetable/fixedform.go":"%s/$(GOOSE_GATES_DIR)/fixedform-noimport.gotext"}}\n' \
+	@printf '{"Replace":{"%s/internal/codegen/goosetable/fixedform.go":"%s/$(GOOSE_GATES_DIR)/fixedform-unreachable.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" >$(GOOSE_GATES_DIR)/fixedform-overlay.json
-	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/fixedform-overlay.json -o build/schema-goose-noimport ./cmd/schema
+	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/fixedform-overlay.json -o build/schema-goose-unreachable ./cmd/schema
 	@rm -rf $(GOOSE_GATES_DIR)/sabotage && mkdir -p $(GOOSE_GATES_DIR)/sabotage
-	@./build/schema-goose-noimport generate --lang goose --out $(GOOSE_GATES_DIR)/sabotage/tabledemo tables/examples >/dev/null 2>&1
-	@./build/schema-goose-noimport generate --lang goose --out $(GOOSE_GATES_DIR)/sabotage/tblk2 test/tables/K2.schema
+	@./build/schema-goose-unreachable generate --lang goose --out $(GOOSE_GATES_DIR)/sabotage/tabledemo tables/examples >/dev/null 2>&1
+	@./build/schema-goose-unreachable generate --lang goose --out $(GOOSE_GATES_DIR)/sabotage/tblk2 test/tables/K2.schema
 	@if sh make/goose-strict.sh "$(GOOSE)" $(GOOSE_GATES_DIR)/sabotage >$(GOOSE_GATES_DIR)/sabotage.log 2>&1; then \
-		cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: the strict gate stayed green on an emitter that drops the fixed import"; exit 1; fi
-	@want=$$(cd $(GOOSE_GATES_DIR)/sabotage && grep -l 'schema_rt::FixedReport' */*Table.goose | LC_ALL=C sort); \
-	got=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/' $(GOOSE_GATES_DIR)/sabotage.log | sed -E 's|^$(GOOSE_GATES_DIR)/sabotage/([^:]+):.*|\1|' | LC_ALL=C sort -u); \
+		cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: the strict gate stayed green on an emitter that names an unreachable binding"; exit 1; fi
+	@want=$$(cd $(GOOSE_GATES_DIR)/sabotage && grep -l 'schema_rt::FixedReportUnreachable' */*Table.goose | LC_ALL=C sort); \
+	got=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+\.goose:[0-9]+: ' $(GOOSE_GATES_DIR)/sabotage.log | sed -E 's|^$(GOOSE_GATES_DIR)/sabotage/([^:]+):.*|\1|' | LC_ALL=C sort -u); \
 	if [ -z "$$want" ]; then echo "NEGATIVE CONTROL FAILED: no Table module names the fixed runtime — the control watches nothing"; exit 1; fi; \
 	if [ "$$want" != "$$got" ]; then \
 		cat $(GOOSE_GATES_DIR)/sabotage.log; \
 		echo "NEGATIVE CONTROL FAILED: the gate went red on [$$(echo $$got)], expected exactly [$$(echo $$want)]"; exit 1; fi; \
-	grep -q 'unknown type: schema_rt::FixedReport' $(GOOSE_GATES_DIR)/sabotage.log || { \
-		cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate did not name the missing fixed runtime"; exit 1; }; \
-	echo "goose strict emitter negative control: dropping the fixed import reds exactly $$(echo $$want | wc -w | tr -d ' ') Table modules by name, and nothing else"
+	exits=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+: goose check exits ' $(GOOSE_GATES_DIR)/sabotage.log | sed -E 's|^.*: goose check exits [0-9]+: ([^:]+):[0-9]+: .*$$|\1|' | LC_ALL=C sort -u); \
+	for m in $$exits; do echo "$$want" | grep -q "/$$m$$" || { cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: a module exits on $$m, which the sabotage did not plant"; exit 1; }; done; \
+	other=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/' $(GOOSE_GATES_DIR)/sabotage.log | grep -v 'unknown type: schema_rt::FixedReportUnreachable'); \
+	if [ -n "$$other" ]; then echo "$$other"; echo "NEGATIVE CONTROL FAILED: the gate named a finding the sabotage did not plant"; exit 1; fi; \
+	placed=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+\.goose:[0-9]+: error: ' $(GOOSE_GATES_DIR)/sabotage.log); \
+	[ -n "$$placed" ] || { cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: no finding is placed on a line"; exit 1; }; \
+	echo "$$placed" | while IFS=: read -r file line rest; do \
+		sed -n "$${line}p" "$$file" | grep -q 'schema_rt::FixedReportUnreachable' || { \
+			echo "NEGATIVE CONTROL FAILED: $$file:$$line does not name the planted binding"; exit 1; }; \
+	done || exit 1; \
+	echo "goose strict emitter negative control: an unreachable binding in the emitter reds exactly $$(echo $$want | wc -w | tr -d ' ') Table modules, each on the line that names it, and nothing else"
 
 # THE RUNTIME HOME (docs/PORTING.md J2). The Goose runtime modules are emitted
 # once per unit under their own names (schema_rt.goose, schema_tables.goose,
@@ -148,6 +162,31 @@ tables-goose-runtime-home-negative-control:
 		cat $(GOOSE_GATES_DIR)/runtime-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate named a table module the sabotage did not touch"; exit 1; fi
 	@echo "goose runtime home negative control: the file-order rule moves the table runtime and the gate names each module it moved"
 
+# THE UNIT MODULE'S CONTROL: the file-order rule put back for the unit's own
+# module. A copy of internal/codegen/goosetable/goosetable.go whose
+# PackageModule names the registry's module for the file that sorts first
+# (ir.ProtocolIdHome) rather than the package, built through `go build -overlay`; the gate must go red naming the
+# registry's file-order homes, and no table module.
+GOOSE_GATES_SED_UNIT_HOME := s|^	p := goose.Namespace(u)$$|	p := goose.Namespace(u); if surface == "unit" { p = ir.ProtocolIdHome(u) } // SABOTAGED: the file-order rule|
+.PHONY: tables-goose-unit-home-negative-control
+tables-goose-unit-home-negative-control:
+	@mkdir -p $(GOOSE_GATES_DIR)
+	@sed '$(GOOSE_GATES_SED_UNIT_HOME)' internal/codegen/goosetable/goosetable.go >$(GOOSE_GATES_DIR)/goosetable-unitorder.gotext
+	@grep -q SABOTAGED $(GOOSE_GATES_DIR)/goosetable-unitorder.gotext || { \
+		echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/goosetable/goosetable.go":"%s/$(GOOSE_GATES_DIR)/goosetable-unitorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" >$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json
+	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json -o build/schema-goose-unitorder ./cmd/schema
+	@if sh make/goose-runtime-home.sh ./build/schema-goose-unitorder $(GOOSE_GATES_DIR)/unit-home-sabotage >$(GOOSE_GATES_DIR)/unit-home-sabotage.log 2>&1; then \
+		cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the runtime home gate stayed green with the unit module on the file order"; exit 1; fi
+	@for f in Guarded_unit.goose Aaa_unit.goose; do \
+		grep -q "unit-wide TableUnit in $$f" $(GOOSE_GATES_DIR)/unit-home-sabotage.log || { \
+			cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate did not name the registry in $$f"; exit 1; }; \
+	done
+	@if grep -q 'Table.goose moved' $(GOOSE_GATES_DIR)/unit-home-sabotage.log; then \
+		cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate named a table module the sabotage did not touch"; exit 1; fi
+	@echo "goose unit home negative control: the file-order rule moves the unit registry and the gate names each file-order home"
+
 # THE RELEASE TIER (docs/PORTING.md J3). certify.yml derives every
 # `tables-<lang>-release` target from the makefiles, so this target is all it
 # takes to run there. Today it is the leg's whole PR tier in one place — both
@@ -160,7 +199,11 @@ tables-goose-release:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	$(MAKE) test-goose
 	$(MAKE) tables-goose-fixedform-negative-control tables-goose-strict-negative-control \
-		tables-goose-strict-emitter-negative-control tables-goose-runtime-home-negative-control
+		tables-goose-strict-emitter-negative-control tables-goose-runtime-home-negative-control \
+		tables-goose-unit-home-negative-control
+	$(MAKE) conformance-negative-control-goose tables-goose-accel-negative-control \
+		tables-goose-order-negative-control tables-goose-fuzz-negative-control \
+		tables-goose-usage-negative-control
 
 # test-goose carries both gates (make/goose.mk); their controls run in the
 # goose-gates group of make/negative-controls.json.
