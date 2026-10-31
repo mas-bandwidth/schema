@@ -101,45 +101,6 @@ const tableVariableWireSource = `
         if (!graph.Visit(value, type)) { return null; }
         graph.Open.Clear(); return graph;
     }
-    // A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
-    // no writer produces a cycle, so a load walks the decoded graph once from
-    // the root, as the writer's numbering does, and a reference to a node whose
-    // descent is still open refuses the whole load. Nothing else refuses here.
-    internal static bool Acyclic(object value, TableTypeInfo type)
-    {
-        var open = new System.Collections.Generic.HashSet<object>(System.Collections.Generic.ReferenceEqualityComparer.Instance) { value };
-        var closed = new System.Collections.Generic.HashSet<object>(System.Collections.Generic.ReferenceEqualityComparer.Instance);
-        return AcyclicVisit(value, type, open, closed);
-    }
-    static bool AcyclicVisit(object value, TableTypeInfo type, System.Collections.Generic.HashSet<object> open, System.Collections.Generic.HashSet<object> closed)
-    {
-        foreach (TableFieldInfo f in type.Fields)
-        { if (Rides(value, f) && !AcyclicField(value, f, open, closed)) { return false; } }
-        return true;
-    }
-    static bool AcyclicField(object value, TableFieldInfo f, System.Collections.Generic.HashSet<object> open, System.Collections.Generic.HashSet<object> closed)
-    {
-        if (f == null) { return true; }
-        int n = f.IsArray ? Math.Max(0, Count(value, f)) : 1;
-        for (int i = 0; i < n; i++)
-        {
-            if (f.Kind == 13) { if (!AcyclicVisit(f.GetChild(value, i), f.Table, open, closed)) { return false; } }
-            else if (f.Kind == 15)
-            {
-                object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
-                if (tag != 0 && tag <= (ulong)f.EnumMax && !AcyclicField(union, f.Arms.Arms[(int)tag].Field, open, closed)) { return false; }
-            }
-            else if (f.Kind == 17 && f.BlobKind == 0)
-            {
-                object child = f.GetChild(value, i);
-                if (child == null || closed.Contains(child)) { continue; }
-                if (!open.Add(child)) { return false; }
-                if (!AcyclicVisit(child, f.Table, open, closed)) { return false; }
-                open.Remove(child); closed.Add(child);
-            }
-        }
-        return true;
-    }
     static bool CollectNodes(ref Ids ids)
     {
         if (ids.Graph == null || ids.Graph.Nodes.Count == 0) { return true; }

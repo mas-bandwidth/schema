@@ -91,51 +91,6 @@ const tableRegionGraphSource = `
         if (!RegionVisit(root, type, ref graph)) { graph.Dispose(); return default; }
         return graph;
     }
-    // A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
-    // the native loads walk the decoded graph once from the root, as the
-    // writer's numbering does, and refuse the whole load on a reference to a
-    // node whose descent is still open. Nothing else refuses here.
-    // It takes the region's base so the retaining load, which reads the same
-    // layout through its own value type, walks it too.
-    static unsafe bool RegionAcyclic(byte* data, TableTypeInfo type, TableAllocator allocator = default, bool mutable = false)
-    {
-        RegionGraph graph = new RegionGraph { Valid = true, Allocator = allocator };
-        bool acyclic = RegionAcyclicVisit(new NativeValue(data, 0) { Mutable = mutable }, type, ref graph);
-        graph.Dispose(); return acyclic;
-    }
-    static bool RegionAcyclicVisit(NativeValue value, TableTypeInfo type, ref RegionGraph graph)
-    {
-        foreach (TableFieldInfo f in type.Fields)
-        { if (RegionRides(value, f) && !RegionAcyclicField(value, f, ref graph)) { return false; } }
-        return true;
-    }
-    static unsafe bool RegionAcyclicField(NativeValue value, TableFieldInfo f, ref RegionGraph graph)
-    {
-        if (f == null) { return true; }
-        int n = f.IsArray ? Math.Max(0, RegionCount(value, f)) : 1;
-        for (int i = 0; i < n; i++)
-        {
-            if (f.Kind == 13) { if (!RegionAcyclicVisit(value.Child(f, i), f.Table, ref graph)) { return false; } }
-            else if (f.Kind == 15)
-            {
-                NativeValue union = value.Child(f, i); ulong tag = union.Tag(f);
-                if (tag != 0 && tag <= (ulong)f.EnumMax && !RegionAcyclicField(union.Arm(f), f.Arms.Arms[(int)tag].Field, ref graph)) { return false; }
-            }
-            else if (f.Kind == 17 && f.BlobKind == 0)
-            {
-                long at = value.Pointer(f, i); if (at == long.MinValue) { continue; }
-                int index = graph.Find(at);
-                if (index == 1) { return false; }
-                if (index >= 2) { if (graph.Entries[index - 2].Open) { return false; } continue; }
-                var child = new NativeValue(value.Base, at) { Mutable = value.Mutable };
-                int entry = graph.Count;
-                if (!graph.Add(new RegionNode { Value = child, TypeId = f.PointerTypeId, Open = true })) { return false; }
-                if (!RegionAcyclicVisit(child, f.Table, ref graph)) { return false; }
-                graph.Entries[entry].Open = false;
-            }
-        }
-        return true;
-    }
     static bool RegionVisit(NativeValue value, TableTypeInfo type, ref RegionGraph graph)
     {
         foreach (TableFieldInfo f in type.Fields)
