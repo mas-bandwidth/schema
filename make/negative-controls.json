@@ -519,6 +519,10 @@
         "tables-wire-fuzz-discard-negative-control",
         "tables-cpp-discard-negative-control",
         "tables-cpp-region-discard-negative-control",
+        "tables-cpp-cycle-negative-control",
+        "tables-cpp-cycle-linear-negative-control",
+        "tables-engine-cycle-negative-control",
+        "tables-engine-cycle-linear-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]
@@ -959,7 +963,8 @@
         "tables-dart-retain-negative-control",
         "tables-dart-identity-negative-control",
         "tables-dart-map-sort-negative-control",
-        "tables-dart-byte-order-negative-control"
+        "tables-dart-byte-order-negative-control",
+        "tables-dart-cycle-negative-control"
       ],
       "dart": "3.13.2"
     },

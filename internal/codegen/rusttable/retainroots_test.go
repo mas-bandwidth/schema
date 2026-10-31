@@ -101,9 +101,11 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 				seeds = append(seeds, p)
 			}
 		}
-		// A forged pointer cycle is accepted on load and refused on save
-		// (docs/SPEC-TABLES.md §3.1). The ordinary corpus contains only
-		// acyclic writers, so exercise the pinned hostile vector explicitly.
+		// A forged pointer cycle is damage and the whole load is refused
+		// (docs/SPEC-TABLES.md §3.1, §4; Glenn, 2026-10-31). The ordinary
+		// corpus contains only acyclic writers, so exercise the pinned
+		// hostile vector explicitly: the Rust leg must answer the oracle's
+		// refusal.
 		if carried["graphdemo.Scene"] {
 			seeds = append(seeds, rosterSeed{
 				name: "graph_self_cycle", unit: "graphdemo", root: "Scene",

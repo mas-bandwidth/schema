@@ -502,6 +502,9 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\t\tretain.reset();\n")
 	g.pf("\t\treturn %s();\n", n)
 	g.pf("\t}\n")
+	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): nothing lands,
+	// the retained store included.
+	g.pf("\tif (r.cyclic()) {\n\t\tr.report.malformed = true;\n\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 

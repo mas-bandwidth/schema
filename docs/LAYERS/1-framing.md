@@ -341,7 +341,16 @@ non-canonical one, is damage (D1).** §3.1: "it is skipped by its length,
 counted unknown. It KEEPS ITS INDEX." "An index above `node_count + 1`, or one
 whose LEB128 is not canonical ... malformed, which discards the whole load
 (§4)." "a pointer field's payload is a NUMBER: it is bounds-checked and
-stored, never followed."
+stored, and the decode never follows it."
+
+**T8. A cyclic wire is damage (D1); a second pointer to a CLOSED node is a
+share and legal.** Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS attack
+somebody would do on this protocol!" §3.1: "A cycle anywhere is `malformed`
+(§4) on every read", over every pointer slot the load stored, false guards
+included, and "THE CHECK IS LINEAR": each node is entered once. Held by
+`node_cycle_self`, `node_cycle_to_root` and `node_cycle_mid`, with
+`node_chain_two` and `node_diamond_chain` (82 nodes, 2^40 paths, must load)
+as the legal twins.
 
 ## F. The report
 

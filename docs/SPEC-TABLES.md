@@ -5803,13 +5803,36 @@ is visited a fixed number of times, in index order, and each is consumed
 in full before the next begins, so the work is linear in the wire's bytes
 and termination needs no argument beyond the record lengths and the end
 of the stream. A pointer field's payload is a NUMBER: it is
-bounds-checked and stored, never followed. There is no traversal on the
-load path, and therefore no traversal bound — no depth cap, no visited
-set, no ordering rule on the indices. The nesting that remains is
+bounds-checked and stored, and the decode never follows it.
+**A CYCLIC WIRE IS DAMAGE, and the whole load is refused.** Glenn's ruling,
+2026-10-31: "Why the fuck would I want to read a cycle" and "It's perhaps the
+MOST OBVIOUS attack somebody would do on this protocol!" No writer produces a
+cyclic wire: the numbering walk refuses a cycle at an open entry (below), and
+a cooked region is never cyclic. So once the scan has resolved every index,
+the load checks the graph it STORED: the vertices are the root and every
+record it placed, and the edges are every non-null table pointer slot a
+node's by-value closure holds — a slot under a FALSE GUARD included, because
+the load stored it (a guard decides what a write elides, never what a read
+places), and a cycle among records the root never reaches included. A cycle
+anywhere is `malformed` (§4) on every read: strict, tolerant, retaining,
+region and builder alike. A byte buffer reaches nothing and takes no part.
+
+**THE CHECK IS LINEAR, and that is part of the rule.** Each node carries
+one of three marks — UNVISITED, OPEN, CLOSED — and is ENTERED ONCE. A
+pointer to an OPEN node is a cycle; a pointer to a CLOSED node is a SHARE
+(a DAG), which is legal and is never re-entered. A walk that tracked only the
+open path would re-enter every shared node from every path that reaches it,
+and a diamond chain of forty levels — 2^40 paths over 82 nodes — would
+never finish; the conformance row `node_diamond_chain` is that chain and must
+load. The marks live on the node records the load already holds (a region's
+node directory, §6.3), so the region load still allocates nothing (§6.5),
+and no pass recurses over the pointer graph, so a chain's length is never a
+stack depth. The
+nesting that remains is
 by-value nesting, whose depth is fixed by the SCHEMA and cannot be driven
-by data, because §2 refuses by-value cycles. §14 records the two
-traversal bounds that were weighed and rejected, and why a type id
-removes the walk instead of bounding it.
+by data, because §2 refuses by-value cycles. §14 records the traversal
+bounds that were weighed, why a type id removes the walk that types the
+nodes, and the ruling that took the cycle check (notes 4 and 9).
 
 **Identity is preserved: one index, one node.** The numbering is by first
 visit, so a node three parents name takes one index and writes one body,
@@ -5826,17 +5849,14 @@ to an entry still open is a cycle, named, and measure, save, `Cook` and
 to NODES, never to bytes, and it lives on the AUTHORING side, where §6.5
 licenses allocation.
 
-**A region is not re-proved, and the claim stops there.** A save from a
-LOCKED region needs no map — the region's node directory (§6.3) already
-is the numbering — so it reproduces the structure it was handed, cycle
-and all. A region `Lock` produced is acyclic because `Lock` refused
-otherwise; a region LOADED from a wire is exactly as acyclic as its
-writer made it. Load itself is safe on any input: it scans, it
-terminates, it fabricates nothing. What a cyclic structure costs is paid
-by whatever WALKS it, and a consumer walking untrusted table data — a
-reflection dump, a text export (§16) — carries its own visit bound, the
-way any graph walker must. §14 prices the reader-side check this version
-does not spend.
+**A region is not re-proved, and it does not need to be.** A save from a
+LOCKED region needs no map — the region's node directory (§6.3) already is
+the numbering — so it reproduces the structure it was handed. A region
+`Lock` produced is acyclic because `Lock` refused otherwise; a region
+LOADED from a wire is acyclic because the load refused otherwise (above);
+and a cook is acyclic because the cook refused otherwise, and
+`schema cook-check` refuses a cyclic one (§7.4). Load itself is safe on
+any input: it scans, it terminates, it fabricates nothing.
 
 **Framing, worked.** Given
 
@@ -8814,8 +8834,10 @@ tolerance is the versioning model:
   is judged only up to the bound: the elements the reader keeps must lie
   inside the body), a descending map key, an arm whose `L` does not frame
   its kind, a bool byte other than `0` or `1`, ill-formed text, a node table
-  that cannot be read whole, a reserved id out of place, and every case that
-  makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
+  that cannot be read whole, a cycle (a loaded graph in which a pointer
+  names a node whose descent is still open, which no writer produces, §3.1),
+  a reserved id out of place, and
+  every case that makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
   OPAQUE**, and damage inside them is not damage: an unknown field, a
   kind-mismatched field, a retained record and the CLAMPED TAIL of an array
   (the elements past the reader's bound, stepped over by the field's `L`) are
@@ -11417,14 +11439,19 @@ the wire, and keeps the flexibility that comes with it.
      whose counts bound a walker just as a table's do. It reads no field
      value and decodes no payload.
 
+  3. **No cycle.** A cook is never cyclic (§3.1), so the edges pass two
+     resolved are walked once with three marks a node — unvisited, open,
+     closed — and a reference to an OPEN node refuses the file; a
+     reference to a CLOSED node is a share and is not re-entered.
+
   Every node is checked exactly once because the scan visits each entry
-  once, and no reference is ever FOLLOWED, so no reference can cause a
-  second visit. A forged file whose references alias into a
-  legal-looking DAG costs nothing extra, and neither does a cycle. The
-  scan also checks the nodes NOTHING POINTS AT, which no traversal from
-  the root can reach. The cost is `O(R + P log N)` — linear in the
-  region, plus one search per pointer slot — with no allocation and no
-  per-node state, and it terminates on every input.
+  once, and the cycle walk enters each node once, so no reference can
+  cause a second visit. A forged file whose references alias into a
+  legal-looking DAG costs nothing extra. The scan also checks the nodes
+  NOTHING POINTS AT, which no traversal from the root can reach. The
+  cost is `O(R + P log N)` — linear in the region, plus one search per
+  pointer slot — with one mark and one edge list per node, and it
+  terminates on every input.
 
 - **Pack order and checking are INDEPENDENT.** The region is packed in
   pre-order (§6.3) because that is the order the wire numbers nodes in
@@ -14962,10 +14989,14 @@ possible, and minimize copying (§6.2):
 
 **The node table's shape** (§3.1):
 
-4. **A visited-index guard on load — REJECTED.** It is what an untyped node
-   table forces: type the nodes by traversing, and bound the traversal with a
-   set. That is state proportional to the graph on the READING path, which
-   §6.5 forbids. The type id removes the walk instead of bounding it.
+4. **A visited-index guard on load — SUPERSEDED (Glenn, 2026-10-31).** It
+   was rejected as state proportional to the graph on the reading path. That
+   reasoning was never Glenn's (it came from #264 and #336), and his ruling
+   reverses it: "Why the fuck would I want to read a cycle" — "It's perhaps
+   the MOST OBVIOUS attack somebody would do on this protocol!" A cyclic wire
+   is damage (§3.1). The type id still removes the walk that TYPES the nodes;
+   the cycle check is a separate pass, three marks a node carried on the
+   records the load already holds, linear and allocation-free on a region.
 5. **An index-monotonic reference rule — REJECTED.** Requiring every reference
    to name a larger index would bound a traversal with no state at all, but it
    holds only under a TOPOLOGICAL numbering and pre-order is not one:
@@ -14991,12 +15022,13 @@ possible, and minimize copying (§6.2):
    under the encoding every other field uses, and a skipper that knows kind
    `12` frames it correctly without knowing what it holds. A second encoding
    would have bought nothing and cost every reader a case.
-9. **A reader-side acyclicity check — PRICED, NOT TAKEN.** Pre-order numbering
-   gives every node a contiguous index interval, so with a `max index in
-   subtree` on each record a cycle is an `O(1)` test per reference. It costs
-   bytes a node plus a pass to prove the intervals are genuinely nested, for a
-   property the writer already guarantees (§3.1). It is the shape the check
-   would take if untrusted-input hardening ever demands one.
+9. **A reader-side acyclicity check — TAKEN (Glenn, 2026-10-31).** It was
+   priced and not taken (#264, #336) on the ground that the writer already
+   guarantees the property. A reader cannot rely on what a forger's writer
+   guarantees, and Glenn ruled: "It's perhaps the MOST OBVIOUS attack
+   somebody would do on this protocol!" The shape taken is not the interval
+   scheme weighed here (bytes a node plus a nesting proof) but the
+   three-mark walk of §3.1, which costs no wire bytes.
 10. **Node-directory INDICES in place of self-relative deltas** — making the
     region and the wire one encoding — **REJECTED on the hot path.** A deref
     would become a directory load plus a base pointer where today it is one
@@ -17289,8 +17321,8 @@ union of seven arms whose Array and Object arms hold `[]*JsonValue` and
 `[]*JsonMember`. It needs a pointer per child and a node record per child. A
 ported reader would have to carry pointered units (§3.1) to read it. It can
 share a node or form a cycle, which a JSON text cannot express, so every read
-would have to refuse both. And depth would come back onto a load path that is
-a scan and has no traversal bound (§3.1). The tape has one variable edge of
+would have to refuse both. And depth would come back onto a decode that is a
+scan (§3.1). The tape has one variable edge of
 each kind. It has no pointer to a table. It cannot share a node or form a
 cycle, because nothing in it names a node. Its depth is counted by the same
 linear scan that checks it (below). Every port that carries `[]T` of a table,

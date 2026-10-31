@@ -502,9 +502,8 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		return r.mapField(fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A pointer field's payload is a NUMBER: it is bounds-checked and
-		// stored, never followed. There is no traversal on the load path, and
-		// therefore no traversal bound — no depth cap, no visited set, no
-		// ordering rule on the indices (docs/SPEC-TABLES.md §3.1).
+		// stored, and the decode never follows it. The cycle check runs once
+		// the scan has resolved every index (decodenodes.go, cyclic; §3.1).
 		index, ok := r.leb()
 		if !ok {
 			r.report.Malformed = true

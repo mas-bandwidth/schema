@@ -1244,6 +1244,23 @@ tables-dart-identity-negative-control:
 
 test-dart: tables-dart-identity tables-dart-identity-negative-control
 
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1; Glenn, 2026-10-31): the
+# framing vectors node_cycle_self, node_cycle_to_root and node_cycle_mid are
+# refused whole through WireLoad and WireLoadRetain, and a chain and the
+# 2^40-path diamond chain load clean inside a linear deadline. The control
+# makes the runtime's cyclic() answer false; the probe goes red on the three
+# cyclic rows alone.
+.PHONY: tables-dart-cycle tables-dart-cycle-negative-control
+tables-dart-cycle:
+	SCHEMA_SLOW=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestCyclicWireIsDamageDart$$'
+	@echo 'tables Dart cycle: a cyclic wire is refused whole on every load, a chain and a diamond chain load'
+
+tables-dart-cycle-negative-control:
+	SCHEMA_SLOW=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestCyclicWireIsDamageDartNegativeControl$$'
+	@echo 'negative control: with cyclic() answering false, the probe goes red on the three cyclic rows alone'
+
+test-dart: tables-dart-cycle tables-dart-cycle-negative-control
+
 # BYTE ORDER IS THE READER'S (docs/PORTING.md M12): every multi-byte ByteData
 # call in every corpus unit's generated Dart names its Endian, so the host's
 # order is never consulted. The control strips one call's Endian.little and

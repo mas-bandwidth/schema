@@ -1,0 +1,13 @@
+{
+  "value": 1,
+  "name": "",
+  "next": {
+    "value": 2,
+    "name": "",
+    "next": {
+      "value": 3,
+      "name": "",
+      "next": null
+    }
+  }
+}
