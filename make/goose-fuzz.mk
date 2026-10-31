@@ -114,3 +114,13 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 # beside them; the controls run in group goose-wire of the controls leg too.
 test-goose: tables-goose-wire-fuzz schema-goose-runs-hostile-corpus \
 	tables-goose-wire-fuzz-negative-control schema-goose-runs-hostile-corpus-negative-control
+
+# The retaining binary protocol is checked directly until the shared harness
+# supports builder + retain (Goose has no caller-region measure).
+.PHONY: tables-goose-retain-fuzz-driver tables-goose-retain-fuzz-negative-control
+tables-goose-retain-fuzz-driver:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -run '^TestGooseRetainingFuzzDriver$$' ./internal/codegen/goosetable/
+tables-goose-retain-fuzz-negative-control:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -run '^TestGooseRetainingFuzzNegativeControl$$' ./internal/codegen/goosetable/
