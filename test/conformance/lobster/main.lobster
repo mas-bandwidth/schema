@@ -34,9 +34,9 @@ import .json
 // the surfaces this leg answers: the variable wire's load and save (§3, §4),
 // the message form (§3.3), retain-unknown (§6.6), the cooked form's read,
 // write and forgery battery (§7), and the block form's reflective read with
-// its forgery battery (§19.2), each refusal with its reason, and the JSON
-// text form (§16)
-let surfaces = ["wire", "message", "report", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
+// its forgery battery (§19.2), each refusal with its reason, the JSON
+// text form (§16), and the framing vectors (docs/LAYERS/1-framing.md)
+let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile"]
 
@@ -119,6 +119,25 @@ def surface_report(text:string):
         assert rec or rep.refused
         let verdict = if rep.refused: "refused" else: "read"
         say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed},{verdict}\n")
+
+// the FRAMING surface (docs/LAYERS/1-framing.md): the read report as the
+// report surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read refused the wire or met damage.
+// Damage discards the whole load (§4), so a damaged read answers its report
+// line alone. A line is `framing <case> <unit> <root> <wire> [no-value]`.
+def surface_framing(text:string):
+    for(rows(text, "framing")) f:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+        let malformed = rep.malformed or (not rec and not rep.refused)
+        let verdict = if rep.refused: "refused" else: "read"
+        var out = "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{malformed},{verdict}\n"
+        let no_value = length(f) > 5 and f[5] == "no-value"
+        if rec and not rep.refused and not malformed and not no_value:
+            let js, why = schema_rt.json_write(rec)
+            assert why == ""
+            out += js
+        say(f[1], out)
 
 // block_root is the table a block image of the manifest projects, by the
 // image's name, as every leg's driver names it (test/conformance/js/main.mjs)
@@ -369,6 +388,8 @@ else:
         surface_wire(text)
     elif surface == "report":
         surface_report(text)
+    elif surface == "framing":
+        surface_framing(text)
     elif surface == "block":
         surface_block(text, false)
     elif surface == "message":
