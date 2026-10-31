@@ -1,0 +1,3 @@
+# THE MUTANTS THE MOO WIRE-FUZZ LEG DIVERGED ON, each fixed in the moo table
+# runtime and replayed alone by make/moo-fuzz.mk tables-moo-wire-fuzz-pinned:
+# <mutant file> <unit> <root> [message|retain]

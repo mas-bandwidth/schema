@@ -1,0 +1,29 @@
+#!/bin/sh
+# THE MOO LEG's wire-fuzz driver (test/conformance/README.md, "The wire-fuzz
+# driver"; docs/PORT-MOO.md, THE HARNESS; docs/SPEC-TABLES.md §4.2).
+#
+# The harness's one process on a pipe. The pinned moo CLI has no io library,
+# so the pipe is spoken by test/conformance/moo/wirefuzz.moo under the native
+# host tools/moofuzzhost (built from the moo pin's own source by
+# make/moo-fuzz.mk), whose __moofuzz.read and __moofuzz.write are its stdin and
+# stdout. The units are $SCHEMA_MOO_GENERATED (default build/conformance-moo,
+# make/moo-conformance.mk), a repo-relative path: the negative control points
+# the SAME driver at a sabotaged copy of it. moo cannot list a directory, so
+# test/conformance/moo/stage.pl writes each unit's <Base>Table module list
+# into $MOOFUZZ_STAGE (default build/moo-wire-fuzz/stage) first.
+#
+# The working directory is the repository root.
+#
+# usage: ./build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver [--seed S] [--n N]
+host=${MOOFUZZHOST:-build/moofuzzhost/moofuzzhost}
+generated=${SCHEMA_MOO_GENERATED:-build/conformance-moo}
+stage=${MOOFUZZ_STAGE:-build/moo-wire-fuzz/stage}
+for need in "$host" "$generated"; do
+	if [ ! -e "$need" ]; then
+		echo "wirefuzz-driver: $need is missing: run make tables-moo-wire-fuzz, which builds it" >&2
+		exit 2
+	fi
+done
+mkdir -p "$stage" || exit 1
+perl test/conformance/moo/stage.pl testdata/conformance/tables/MANIFEST.txt list "$stage" "$generated" || exit 1
+exec "$host" test/conformance/moo/wirefuzz.moo "$stage/tables" "$generated"
