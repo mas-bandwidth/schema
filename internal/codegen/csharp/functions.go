@@ -17,8 +17,8 @@
 //
 // So every caller-error check this emitter puts on the write path — a ranged
 // integer, an enum's headroom, a flags mask above the wire width, a union
-// tag, a counted array's count, a string/bytes/wstring length, a wide
-// string's interior null, a degenerate fixed or int128 raw — is a
+// tag, a counted array's count, a string/bytes length, a degenerate fixed or
+// int128 raw — is a
 // Debug.Assert, which is [Conditional("DEBUG")] and therefore gone from a
 // release build, call and arguments both. That is the idiom of the runtime
 // this code calls: serialize.cs's WriteStream documents values, capacity,

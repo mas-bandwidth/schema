@@ -92,15 +92,11 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) te
 	# (BlobdemoVariable.js).
 	./bin/schema generate --lang js --out build/tables-generated-js/blobs tables/blobs
 	# the MAP unit (§2.8), whole: MapdemoVariable.js carries Cells (a [N]T map
-	# value), Pairs (an [N]*T map value) and Text (a wstring(N) map value, kind
-	# 33, §3), which the conformance driver's wire surfaces answer
+	# value), Pairs (an [N]*T map value) and Text (a string(N) and a bytes(N)
+	# map value), which the conformance driver's wire surfaces answer
 	# (js-carries-nested-types-and-fixed-arrays,
 	# js-carries-fixed-point-and-wide-text-on-the-table-wire).
 	./bin/schema generate --lang js --out build/tables-generated-js/maps tables/maps
-	# the WIDE-TEXT unit (examples-wide, SPEC.md §4.12): Caption and Stamp carry
-	# wstring(N) as a field, inside a type, in a counted array of that type and
-	# as a union arm; WideVariable.js answers the widedemo rows on the variable
-	# wire (docs/SPEC-TABLES.md §3).
 	# the LIST unit (tables/lists, docs/SPEC-TABLES.md §2.7): ListdemoVariable.js
 	# carries the listdemo roots, so their instances answer the text form
 	# (json-read, json-write, json-hostile, §16) like every other generated unit.
@@ -642,10 +638,9 @@ test-js: tables-js-variable-class
 # `type` by value (§2), a fixed-length array [N]T as a field, an optional ?[N]T,
 # a map value and a union arm, and a flags arm do too, over keyed_config,
 # keyed_default, map_cells and map_pairs
-# (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript); fixed/ufixed and
-# wstring(N) as fields, arms and map values, over scalars_*, map_text, the
-# widedemo and the messagedemo instances, with wide text's read report and its
-# write refusal (TestFixedPointAndWideTextOnTheTableWireJavaScript); and the
+# (TestNestedTypesAndFixedArraysOnTheTableWireJavaScript); fixed/ufixed as
+# fields, arms and map values, over scalars_* and the messagedemo instances
+# (TestFixedPointAndWideTextOnTheTableWireJavaScript); and the
 # refusal test no longer names those constructs
 # (TestOtherVariableConstructsAreRefusedByName); and the map WRITER holds the
 # sort: a Map built out of key order saves, measures and writes text in
@@ -655,7 +650,7 @@ test-js: tables-js-variable-class
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
 	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestFixedPointAndWideTextOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
-	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars and wstring(N) round-trip the oracle bytes and are no longer refused by name'
+	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
 
@@ -765,7 +760,7 @@ test-js: tables-js-message-form
 .PHONY: tables-js-fixed-roadmap-all
 tables-js-fixed-roadmap-all: build/fixedform-corpus/.stamp
 	@mkdir -p build
-	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain|TestFixedRoadmapJsT19WideText)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
+	@rc=0; SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
 		cat build/js-fixed-roadmap-all.log; \
 		if [ $$rc -ne 0 ]; then echo "tables-js-fixed-roadmap-all: go test exited $$rc"; exit $$rc; fi; \
 		if grep -Eq '^ *--- SKIP' build/js-fixed-roadmap-all.log; then \

@@ -26,12 +26,9 @@ func TestSpecGoS6MeasureAndRetention(t *testing.T) {
 		stale string
 	}{
 		{
-			name: "§6.2 AllocWString is ahead of its implementation",
-			want: "`AllocWString( n )` — the wide member, which §2.5 specifies ahead of its implementation and the checker refuses by name — hand",
-		},
-		{
-			name: "§6.3 *wstring blob is ahead of its implementation",
-			want: "The blob is specified ahead of its implementation (§2.5), and the checker refuses `*wstring` by name.",
+			name:  "§6.2 the blob allocators are bytes and string",
+			want:  "`AllocBytes( n )` and `AllocString( n )` hand back a BLOB node",
+			stale: "AllocWString",
 		},
 		{
 			name:  "§6.5 where TableRefuseReason is carried",

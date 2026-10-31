@@ -101,8 +101,7 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # evolution rows; mapdemo (tables/maps) the maps (§2.8); messagedemo
 # (tables/messages) union arms of every field type, arrays of unions and
 # optional arrays (§2.3, §2.6); scalars (tables/scalars) the fixed-point and
-# 128-bit kinds and an enum-keyed array (§2.4, §3); widedemo (examples-wide)
-# wstring(N) on the variable wire (§3); vocabdemo, vocab9demo and backenddemo
+# 128-bit kinds and an enum-keyed array (§2.4, §3); vocabdemo, vocab9demo and backenddemo
 # (tables/vocab, tables/vocab9, tables/backend) the message surface's three
 # connections (§3.3); streamdemo (tables/stream) a variable-length arm, a
 # pointer arm and arrays of pointers (§2.1, §2.6); tblm1/tblm2 and tbla1/tbla2
@@ -926,17 +925,17 @@ tables-elixir-finite-float-negative-control:
 test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-control
 
 # THE VARIABLE CLASS'S REMAINING CONSTRUCTS (docs/SPEC-TABLES.md §2.3, §2.4,
-# §2.6, §2.8, §3, §3.2, §4.12): maps, union arms of every field type and
-# arrays of unions, optional fields and optional arrays, enum-keyed arrays,
-# the fixed-point and 128-bit kinds, and wstring(N).
+# §2.6, §2.8, §3, §3.2): maps, union arms of every field type and arrays of
+# unions, optional fields and optional arrays, enum-keyed arrays, and the
+# fixed-point and 128-bit kinds.
 # TestMapsAndUnionArmsOnTheTableWireElixir generates tables/maps,
-# tables/messages, tables/scalars and examples-wide through the COMPILER path
+# tables/messages and tables/scalars through the COMPILER path
 # (`schema generate --lang elixir`) and round-trips every committed instance,
 # and the tables/arms goldens, through the generated Elixir against the Go
 # oracle's wire and text byte for byte. It is a FUNCTIONAL test (it runs the
 # leg's own toolchain), so SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain
 # into a failure, never a skip. The conformance run answers wire, report,
-# json-read and json-write for the mapdemo, messagedemo, scalars and widedemo
+# json-read and json-write for the mapdemo, messagedemo and scalars
 # instances.
 .PHONY: tables-elixir-variable-arms
 tables-elixir-variable-arms: build/conformance/manifest.txt

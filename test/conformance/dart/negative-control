@@ -63,7 +63,7 @@ for pair in \
     examples:tables/examples pointers:tables/pointers blobs:tables/blobs \
     lists:tables/lists maps:tables/maps messages:tables/messages \
     backend:tables/backend stream:tables/stream vocab:tables/vocab \
-    vocab9:tables/vocab9 wide:examples-wide cards:tables/cards block:tables/block \
+    vocab9:tables/vocab9 cards:tables/cards block:tables/block \
     v1:test/tables/V1.schema v2:test/tables/V2.schema \
     w1:test/tables/W1.schema w2:test/tables/W2.schema \
     r1:test/tables/R1.schema r2:test/tables/R2.schema \

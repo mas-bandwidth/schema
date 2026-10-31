@@ -60,7 +60,6 @@ func TestUnitViewDescriptorsElixir(t *testing.T) {
 		{dir: "tables/backend", pkg: "backenddemo"},
 		{dir: "tables/vocab", pkg: "vocabdemo", generate: true},
 		{dir: "tables/vocab9", pkg: "vocab9demo", generate: true},
-		{dir: "examples-wide", pkg: "wide"},
 	}
 
 	driverPath, err := filepath.Abs("../../../test/elixir-view/view_main.exs")
@@ -469,9 +468,8 @@ table Spans field tracks json=tracks type=map[uint8]Item id=755332609c470fbd opt
 table Spans field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Squad file=Depth.schema fields=1 tags=[] doc=
 table Squad field roster json=roster type=map[uint8]Item id=1c84390d304f4f42 optional=false tags=[] doc=
-table Text file=Text.schema fields=4 tags=[] doc=
+table Text file=Text.schema fields=3 tags=[] doc=
 table Text field names json=names type=map[string(8)]string id=afb728fff268814f optional=false tags=[] doc=
-table Text field wide json=wide type=map[uint16]wstring id=a633f1f655715cca optional=false tags=[] doc=
 table Text field blobs json=blobs type=map[int32]bytes id=14e2eaab9cde925b optional=false tags=[] doc=
 table Text field past json=past type=int32 id=bf82010f6f71eae9 optional=false tags=[] doc=
 table Trails file=Trails.schema fields=2 tags=[] doc=

@@ -25,11 +25,11 @@ var cppCorpusDirs = []string{
 	"../tables/arms", "../tables/backend", "../tables/blobs", "../tables/block", "../tables/blockhome",
 	"../tables/cards", "../tables/examples", "../tables/lists", "../tables/maps", "../tables/messages",
 	"../tables/pointers", "../tables/scalars", "../tables/stream", "../tables/vocab", "../tables/vocab9",
-	"../examples", "../examples-wide", "../examples128",
+	"../examples", "../examples128",
 }
 
 // cppCorpusSources are the inline units: the fixed runtime, a pointered one,
-// the census-gated constructs (wide text, a float64 rung, the byte buffer), and
+// the census-gated constructs (a float64 rung, the byte buffer), and
 // the unbounded array, so every gated block of the emitter is written at least
 // once.
 var cppCorpusSources = []string{

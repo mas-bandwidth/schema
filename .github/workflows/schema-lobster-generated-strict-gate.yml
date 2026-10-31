@@ -3,7 +3,7 @@ name: schema Lobster generated strict gate
 # The strict lens over the generated Lobster (docs/PORTING.md J4;
 # make/schema-lobster-generated-strict-gate.mk). Lobster has no separate
 # linter, so the gate is its compiler: every unit the leg generates (examples/,
-# examples128/, examples-wide/ and every unit of the conformance manifest)
+# examples128/ and every unit of the conformance manifest)
 # compiles under the pinned v2026.8 and the compiler prints NOTHING, no warning
 # and no error. The planted-warning control proves the gate reads the output
 # rather than the exit status, which stays 0 over a warning.
@@ -31,7 +31,6 @@ on:
       - 'ir/**'
       - 'examples/**'
       - 'examples128/**'
-      - 'examples-wide/**'
       - 'tables/**'
       - 'testdata/conformance/tables/**'
   pull_request:
@@ -46,7 +45,6 @@ on:
       - 'ir/**'
       - 'examples/**'
       - 'examples128/**'
-      - 'examples-wide/**'
       - 'tables/**'
       - 'testdata/conformance/tables/**'
   schedule:

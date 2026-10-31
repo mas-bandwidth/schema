@@ -1,6 +1,5 @@
 // TestSpecTextFffdIsPerMaximalSubpart pins docs/SPEC-TABLES.md §16.3's unit
-// for "one U+FFFD per ill-formed sequence", and the §16.2 wstring reader row
-// that cites it. The standard must state the unit first: the Unicode maximal
+// for "one U+FFFD per ill-formed sequence". The standard must state the unit first: the Unicode maximal
 // subpart, with the worked examples, so the Go writers can be held to it.
 //
 // The card's evidence read at d808c3f54: both Go text writers replaced one
@@ -25,8 +24,6 @@ func TestSpecTextFffdIsPerMaximalSubpart(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(data)
-	mapping := specTablesSection(t, page,
-		"### 16.2 The mapping, field kind by field kind", "### 16.3 ")
 	writer := specTablesSection(t, page,
 		"### 16.3 What the writer refuses", "### 16.4 ")
 
@@ -58,18 +55,6 @@ func TestSpecTextFffdIsPerMaximalSubpart(t *testing.T) {
 			stales: []string{
 				"one per sequence",
 				"one `U+FFFD` per ill-formed unit",
-			},
-		},
-		{
-			// §16.2: the wstring row that cites §16.3 now names the
-			// maximal-subpart rule by reference, never restating it.
-			row:  "§16.2 the reader row that cites §16.3",
-			text: mapping,
-			wants: []string{
-				"§16.3's maximal-subpart rule writes it as `U+FFFD`",
-			},
-			stales: []string{
-				"and §16.3 writes it as `U+FFFD`",
 			},
 		},
 	}

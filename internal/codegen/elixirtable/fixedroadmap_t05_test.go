@@ -32,8 +32,6 @@ package elixirtable
 //
 // elixir/C3 [weak]: text length clamp.
 //
-// elixir/C5 [weak]: wide text code units.
-//
 // elixir/C4 [weak]: text content refuses BY NAME. elixir/R24 [owed]: ill-formed
 // text in the USED units refuses by name (`text_ill_formed`), text is counted in
 // bytes with the clamp in units, and slack is unspecified on read and not a
@@ -301,7 +299,7 @@ fixed table Cfg
 // ---- elixir/C3 ---------------------------------------------------------------
 
 // t05C3 holds elixir/C3: a text length is clamped ONCE in the bounds pass, at
-// the field's declared capacity, for `string(N)` and `wstring(N)` alike.
+// the field's declared capacity.
 func t05C3(t *testing.T) {
 	out, err := Generate(unitFrom(t, `package probe
 
@@ -315,36 +313,7 @@ fixed table T
 	}
 	body := string(out["ProbeFixed.ex"])
 	t05Has(t, body, "R.clamps(c, n_label, 0, 8)", "C3 a string(N)'s length clamps to its bound")
-	t05Has(t, body, "R.clamps(c, n_wide, 0, 8)", "C3 a wstring(N)'s length clamps to its bound")
 	t05Has(t, t05Runtime(t), "def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1", "C3 the clamp counts once")
-}
-
-// ---- elixir/C5 ---------------------------------------------------------------
-
-// t05C5 holds elixir/C5: a wstring(N) rides in UTF-16 CODE UNITS — the length is
-// a byte length over paired units, an odd length or an unpaired surrogate is
-// damage, and the reader decodes two bytes a unit.
-func t05C5(t *testing.T) {
-	runtime := t05Runtime(t)
-	for _, want := range []string{
-		"def wtext(used, default, m), do: wtext(used, default, m, true)",
-		"defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)",
-		"defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false",
-		"when u >= 0xD800 and u <= 0xDBFF",
-		"when u >= 0xDC00 and u <= 0xDFFF",
-	} {
-		t05Has(t, runtime, want, "C5 wide text code units")
-	}
-	out, err := Generate(unitFrom(t, `package probe
-
-fixed table T
-{
-}
-`))
-	if err != nil {
-		t.Fatalf("C5: Generate: %v", err)
-	}
-	t05Has(t, string(out["ProbeFixed.ex"]), "R.wtext(", "C5 the wide field reads through the wide-text helper")
 }
 
 // ---- elixir/C4 ---------------------------------------------------------------
@@ -420,7 +389,6 @@ func TestFixedRoadmapElixirT05Evolution(t *testing.T) {
 		{id: "elixir/R18", check: t05R18},
 		{id: "elixir/C3", check: t05C3},
 		{id: "elixir/C4", check: t05C4},
-		{id: "elixir/C5", check: t05C5},
 		{id: "elixir/R24", check: t05R24},
 	}
 	for _, task := range tasks {

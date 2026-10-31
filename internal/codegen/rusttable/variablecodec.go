@@ -1432,8 +1432,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "}\n\n")
 
 	// SAVE-CHECKED: the same file, or the writer's refusal BY NAME when a
-	// value is over its declared bound (docs/SPEC-TABLES.md §3, SPEC.md
-	// §4.12: a wstring(N) over N code units), as the Go leg's save refuses
+	// value is over its declared bound (docs/SPEC-TABLES.md §3), as the Go
+	// leg's save refuses
 	// (internal/codegen/gotable/write.go).
 	fmt.Fprintf(b, "/// %s_save_checked — %s_save, or the refusal by name of a value over its bound\n", fnName, fnName)
 	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3): nothing is returned for a refused value.\n")

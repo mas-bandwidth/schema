@@ -17,7 +17,7 @@
 #   * the committed packet trees, generated/squirrel (examples/) and
 #     generated/squirrel-ludicrous (examples128/), read where they are;
 #   * the table corpora the Makefile's generate targets read (SCHEMAS_TABLES*
-#     directories and examples-wide/), regenerated into build/ at this head;
+#     directories), regenerated into build/ at this head;
 #   * every conformance unit of the tables manifest (build/conformance-squirrel,
 #     make/squirrel.mk), the units the conformance leg runs.
 # A corpus directory the target refuses as a whole is listed by name with its
@@ -30,8 +30,7 @@ SQUIRREL_LINT_DIR    := build/schema-squirrel-generated-lint-gate
 SQUIRREL_LINT_NC_DIR := build/schema-squirrel-generated-lint-gate-negative-control
 SQUIRREL_LINT_TABLE_CORPORA := tables/examples tables/pointers tables/block \
 	tables/blockhome tables/messages tables/stream tables/blobs tables/scalars \
-	tables/maps tables/lists tables/arms tables/backend tables/vocab tables/vocab9 \
-	examples-wide
+	tables/maps tables/lists tables/arms tables/backend tables/vocab tables/vocab9
 
 $(SQUIRREL_LINT_DIR)/tables/.stamp: bin/schema make/schema-squirrel-generated-lint-gate.mk \
 		$(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) \

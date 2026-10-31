@@ -149,8 +149,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// this backend carries, fixed or variable: form 1 is the table wire every
 	// table speaks, and form 3 (above) is a second encoding of a fixed table,
 	// not a replacement for it (§2.2, §3.4). A unit with fixed tables therefore
-	// emits both libraries, and the tables/messages, tables/scalars and
-	// examples-wide oracle rows (fixed roots, form-1 wires) pin the bytes.
+	// emits both libraries, and the tables/messages and tables/scalars oracle
+	// rows (fixed roots, form-1 wires) pin the bytes.
 	wire, err := generateWireFiles(u)
 	if err != nil {
 		return nil, err

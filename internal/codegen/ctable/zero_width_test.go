@@ -26,7 +26,7 @@ var cConformanceInputs = []string{
 	"tables/maps", "tables/lists", "tables/arms", "tables/stream", "tables/blobs",
 	"tables/vocab9", "tables/vocab", "tables/backend", "tables/messages",
 	"tables/examples", "tables/pointers", "tables/block", "tables/blockhome",
-	"tables/scalars", "examples-wide",
+	"tables/scalars",
 }
 
 // zeroWidthUnit loads one conformance input as a unit.

@@ -95,8 +95,8 @@ func TestSpecGoS13S15FollowOnsLanded(t *testing.T) {
 		},
 		{
 			row:    "§15 ?string and ?bytes",
-			holds:  []string{"?wstring(N)"},
-			absent: []string{"`?string(N)` and `?bytes(N)`**"},
+			holds:  []string{"**`?string(N)` and `?bytes(N)`** (§2.3)"},
+			absent: []string{"?wstring(N)"},
 		},
 		{
 			row:   "§15 a map as a map's value",

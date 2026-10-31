@@ -45,9 +45,6 @@ func TestUnitViewDescriptorsDart(t *testing.T) {
 			t.Fatalf("VIEW_CORPUS entry %q has no package", entry)
 		}
 		dir := filepath.Join(repo, "tables", parts[0])
-		if parts[0] == "wide" {
-			dir = filepath.Join(repo, "examples-wide")
-		}
 		schemas, err := filepath.Glob(filepath.Join(dir, "*.schema"))
 		if err != nil || len(schemas) == 0 {
 			t.Fatalf("VIEW_CORPUS %s: %v, %d schema files", entry, err, len(schemas))

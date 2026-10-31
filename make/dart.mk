@@ -780,12 +780,6 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	./bin/schema generate --lang dart --out build/dart-fixed/fu1 test/tables/FU1.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/fu2 test/tables/FU2.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/examples tables/examples
-	# THE WIDE TEXT UNIT (docs/SPEC-TABLES.md §3.4, kind 33): its own file and
-	# its own directory, because every SHARED schema list is pinned to targets
-	# that refuse kind 33 in a table closure. Dart carries it on FORM 3 and on
-	# no other form — the block and the cook refuse it by name — so this is the
-	# only gate it can ride in, and without it the wide flavour of the text op
-	# has no oracle bytes anywhere.
 	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
@@ -1146,9 +1140,9 @@ tables-dart-block-build: build/tables-generated-dart/.stamp cards-dart-generate
 test-dart: tables-dart-block-build
 # MAPS AND UNION ARMS (docs/SPEC-TABLES.md §2.4, §2.6, §2.8, §3, §3.2): maps,
 # unions whose arms are tables, arrays of unions, arms of any carried field
-# type, enum-keyed and fixed positional arrays and wstring(N) on form 1, byte
-# for byte against the oracle rows of tables/maps and tables/arms, and of the
-# fixed-root units tables/messages, tables/scalars and examples-wide (optional
+# type, and enum-keyed and fixed positional arrays on form 1, byte for byte
+# against the oracle rows of tables/maps and tables/arms, and of the fixed-root
+# units tables/messages and tables/scalars (optional
 # fields and arrays, flags, `type` bodies, fixed(I,F) and the 128-bit scalars).
 # SCHEMA_REQUIRE_CORPUS=1 makes a missing SDK a failure.
 .PHONY: tables-dart-variable-arms

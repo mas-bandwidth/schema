@@ -2644,6 +2644,26 @@ check-enum-bound-negative-control: bin/schema
 	done
 	@echo "negative control: without the constant fold, three folded rows compile clean and the two direct spellings stay refused"
 
+# THE WSTRING REFUSAL'S NEGATIVE CONTROL (SPEC §4.12). `wstring` is a reserved
+# word and every spelling of it is refused by name, naming `string` as the fix
+# (TestWStringIsRefusedByName). Take the bounded spelling's diagnostic out of
+# the parser and the test must go red: `wstring(N)` would otherwise read as a
+# silent `string(N)`.
+.PHONY: check-wstring-refusal-negative-control
+check-wstring-refusal-negative-control:
+	@mkdir -p build/wstring-refusal-negative
+	@grep -q 'p.errf(t.Pos, WStringRefusal, "string(N)")' internal/parser/parser.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage anchor is gone from internal/parser/parser.go"; exit 1; }
+	@sed 's|p.errf(t.Pos, WStringRefusal, "string(N)")|_ = WStringRefusal // SABOTAGED: the bounded spelling is not refused|' \
+		internal/parser/parser.go > build/wstring-refusal-negative/parser.gotext
+	@printf '{"Replace":{"%s/internal/parser/parser.go":"%s/build/wstring-refusal-negative/parser.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/wstring-refusal-negative/overlay.json
+	@if go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./internal/check -run '^TestWStringIsRefusedByName$$' > build/wstring-refusal-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: TestWStringIsRefusedByName stayed green with the wstring(N) refusal removed"; cat build/wstring-refusal-negative/log; exit 1; \
+	fi
+	@grep -q 'wstring' build/wstring-refusal-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on a wstring spelling"; cat build/wstring-refusal-negative/log; exit 1; }
+	@echo "negative control: without the parser's wstring(N) diagnostic, TestWStringIsRefusedByName goes red"
+
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so
 # the projection carries both declarations' variant names in declaration order:
@@ -3306,6 +3326,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	./build/schema_test_guard
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) check-enum-bound-negative-control
+	$(MAKE) check-wstring-refusal-negative-control
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
 	$(MAKE) projection-union-arm-order-negative-control

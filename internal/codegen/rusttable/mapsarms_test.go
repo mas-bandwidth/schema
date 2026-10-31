@@ -22,8 +22,8 @@ import (
 // (internal/tablewire, internal/tabletext):
 //
 //   - the map corpus (tables/maps): map[K]V with scalar, enum, table, pointer,
-//     nested-map and fixed-length array values, empty and full (12 instances;
-//     Text, the wstring(N) map value, is widetext_test.go's);
+//     nested-map, text, byte-buffer and fixed-length array values, empty and
+//     full (13 instances);
 //   - the union-arm corpus (tables/arms): unions whose arms are tables holding
 //     lists, pointers, blobs, arrays of pointers and nested unions, and bounded
 //     and unbounded arrays of unions (9 instances);
@@ -70,8 +70,6 @@ func TestMapsAndUnionArmsOnTheTableWireRust(t *testing.T) {
 	}
 	mapsUnit := vcLoadUnit(t, repo, "tables/maps")
 	vcMaps := newVariableClass(mapsUnit)
-	// Text (map[uint16]wstring(6)) is carried since wstring(N) rides the
-	// variable wire; TestWideTextOnTheTableWireRust holds map_text
 	if why := vcMaps.reason["Text"]; why != "" {
 		t.Errorf("Text: refused: %q", why)
 	}
@@ -95,6 +93,7 @@ func TestMapsAndUnionArmsOnTheTableWireRust(t *testing.T) {
 			corpus("map_spans", "Spans", true),
 			corpus("map_trails", "Trails", true),
 			corpus("map_runs", "Runs", true),
+			corpus("map_text", "Text", true),
 		}},
 		{"armdemo", armsUnit, []maCase{
 			corpus("arms_chain", "Chain", false),

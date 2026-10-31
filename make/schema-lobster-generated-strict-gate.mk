@@ -22,7 +22,7 @@ SCHEMA_LOBSTER_STRICT_GATE_INCLUDED := 1
 # an error, is a red.
 #
 # THE CORPUS is every unit the leg generates from the tree: examples/,
-# examples128/ and examples-wide/ (the packet type surface and the type wire),
+# examples128/ (the packet type surface and the type wire),
 # and every unit of the conformance manifest (testdata/conformance/tables/
 # MANIFEST.txt, the table surface: load, save, text, block, fixed form), each
 # generated fresh from bin/schema into build/, never the committed tree. A unit

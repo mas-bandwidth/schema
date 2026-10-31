@@ -12,7 +12,7 @@ import (
 // (docs/PORTING.md J4) to what makes it a gate rather than a green line: it
 // compiles every generated unit and fails on ANY compiler output (Lobster
 // prints its warnings and exits 0, so a gate on the status alone is green over
-// all of them), its corpus is examples/, examples128/, examples-wide/ and the
+// all of them), its corpus is examples/, examples128/ and the
 // conformance manifest, its control plants a warning in a real generated module
 // and requires red on that line alone, the control is registered with the
 // negative-control plan at the leg's pinned toolchain, and a workflow runs both.
@@ -34,7 +34,7 @@ func TestSchemaLobsterGeneratedStrictGateWiring(t *testing.T) {
 		`--pak $(SCHEMA_LOBSTER_STRICT_MAIN)`,
 		// the verdict is the output, not the status
 		`[ "$$st" -eq 0 ] && [ ! -s "$$u.log" ]`,
-		"SCHEMA_LOBSTER_STRICT_TREES  := examples examples128 examples-wide",
+		"SCHEMA_LOBSTER_STRICT_TREES  := examples examples128",
 		"$(LOBSTER_MANIFEST)",
 		"tool missing: lobster",
 		// the control: a clean baseline, a plant in a real module, one line

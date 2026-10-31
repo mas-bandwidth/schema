@@ -159,14 +159,6 @@ func TestDiagnostics(t *testing.T) {
 		{name: "string below two", want: "below 2",
 			src: "package t\ntype T { s string(1) }\n"},
 
-		// ---- wide text (SPEC §4.12, §4.6): every refusal the construct owes.
-		// The type itself compiles, examples-wide/ being the corpus that pins
-		// it, so what a case here breaks is one rule and never the construct.
-		// wide text rides kind 33 in a table closure (docs/SPEC-TABLES.md §3),
-		// so what is left there is the OPTIONAL, refused for the reason a
-		// `?string(N)` is: the length companion already carries emptiness
-		// memcmp over UTF-8 is a portable order and little-endian code units
-		// have none, so the key diagnostic names string(N) (§2.8, §11)
 		{name: "a map as a union arm is refused by name", want: "a map is not an arm",
 			src: "package t\nunion U { m map[uint8]int32 }\ntable Root { u U }\n"},
 		{name: "array bound zero", want: "below 1",

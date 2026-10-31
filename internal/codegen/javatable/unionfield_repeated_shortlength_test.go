@@ -21,15 +21,16 @@ import (
 // as the Go oracle does — the fields decoded before the damage stand, so the
 // first occurrence's arm is kept and the enclosing body stops past the damage.
 //
-// The mutant is a widedemo.Caption wire (corpus seed wide_narrow_arm, pass
-// random #868 at seed 24845619678) whose body union field occurs twice. The
-// oracle keeps the first narrow="ok" arm and re-encodes 33 bytes, reporting
-// malformed; before this fix the Java leg dropped the arm, saved only 10 bytes
-// and lost the decoded value.
+// The mutant is a Caption wire (pass random #868 at seed 24845619678) whose
+// body union field occurs twice, each a narrow="ok" arm. The oracle keeps the
+// first arm and reports malformed; before this fix the Java leg dropped the
+// arm and lost the decoded value.
 func TestJavaFixUnionFieldRepeatedAfterShortLength(t *testing.T) {
 	t.Parallel()
-	repo := filepath.Join("..", "..", "..")
-	dir := filepath.Join(repo, "examples-wide")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Caption.schema"), []byte(captionUnit), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	u := unitFromDir(t, dir)
 	model := tabletext.NewModel(u)
 
@@ -131,3 +132,19 @@ public final class Driver {
 		t.Errorf("saved bytes differ: java %d bytes, oracle %d bytes", len(javaSaved), len(owire))
 	}
 }
+
+// captionUnit is the unit the mutant was written under: a union field whose
+// arm is a short string, beside a payload arm the mutant never selects.
+const captionUnit = `package caption
+
+union Body
+{
+    narrow string(4)
+    tally  int32 | was = "count"
+}
+
+fixed table Caption
+{
+    body Body
+}
+`

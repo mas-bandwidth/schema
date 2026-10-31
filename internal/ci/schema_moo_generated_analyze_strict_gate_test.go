@@ -93,7 +93,6 @@ func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
 		`"bench/corpus/Bench.schema"`,
 		`"bench/corpus/RealWorld.schema"`,
 		`"test/packet-defaults/*.schema"`,
-		`"test/packet-wide/*.schema"`,
 		`"test/tables/*.schema"`,
 	} {
 		if !strings.Contains(gate, want) {

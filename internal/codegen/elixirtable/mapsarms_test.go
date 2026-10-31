@@ -15,11 +15,11 @@ import (
 // TestMapsAndUnionArmsOnTheTableWireElixir pins docs/SPEC-TABLES.md §2.3
 // (optional fields and optional arrays), §2.4 and §3.2 (enum-keyed arrays),
 // §2.6 (union arms of every field type, arrays of unions), §2.8 (maps), §3
-// (the fixed-point and 128-bit kinds, wstring(N)) and §4.12, through the
+// (the fixed-point and 128-bit kinds), through the
 // COMPILER path `schema generate --lang elixir` takes: GatherPaths, Load and
 // Generate, so a target refusal the backend never sees still fails here.
 //
-// For every committed instance of mapdemo, messagedemo, scalars and widedemo
+// For every committed instance of mapdemo, messagedemo and scalars
 // in testdata/conformance/tables/MANIFEST.txt, and the tables/arms goldens,
 // the generated Elixir loads the Go oracle's wire clean, saves it back byte
 // for byte, writes the committed JSON byte for byte, and reads that JSON back
@@ -59,13 +59,6 @@ func TestMapsAndUnionArmsOnTheTableWireElixir(t *testing.T) {
 		}},
 		{"scalars", "tables/scalars", []instance{
 			{"scalars_full", "SimState"}, {"scalars_default", "SimState"}, {"scalars_edges", "SimState"},
-		}},
-		// examples-wide declares `fixed table Caption` in Caption.schema: the
-		// packet emitter's file module steps aside to Wide.CaptionFile for the
-		// fixed form's struct module Wide.Caption, so the unit generates whole.
-		{"widedemo", "examples-wide", []instance{
-			{"wide_empty", "Caption"}, {"wide_title", "Caption"}, {"wide_sites", "Caption"},
-			{"wide_narrow_arm", "Caption"}, {"wide_stamp", "Stamp"},
 		}},
 	}
 	for _, uu := range units {

@@ -4,7 +4,7 @@
 # THE CORPUS is every table schema the Dart generate targets read: the
 # directories named by `./bin/schema generate --lang dart` in make/dart.mk
 # (tables/examples, pointers, blobs, lists, maps, messages, backend, stream,
-# vocab, vocab9, scalars, block, blockhome, arms, and examples-wide). It is
+# vocab, vocab9, scalars, block, blockhome and arms). It is
 # generated into build/nightly-fuzz/gen and the harness reads a registry built
 # from those files, so the list and the corpus cannot drift apart.
 #

@@ -49,11 +49,11 @@ func TestSpecGoS3WireAndFixedForm(t *testing.T) {
 			stale:   []string{"Two slots that name one blob name one index, and the record is written once."},
 		},
 		{
-			// §3.1 *wstring blob is planned, and the checker refuses it by
-			// name (internal/check/check.go).
-			name:    "3.1-wstring-blob-planned",
+			// §3.1 two reserved blob ids, bytes and string: text is UTF-8
+			// and there is no wide blob (SPEC.md §4.12).
+			name:    "3.1-two-blob-ids",
 			section: "3.1",
-			want:    []string{"checker refuses `*wstring` by name"},
+			want:    []string{"one of two RESERVED ids"},
 		},
 		{
 			// §3.3 the wire, exactly: every align's pad bits are verified

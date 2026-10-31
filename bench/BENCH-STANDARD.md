@@ -237,12 +237,11 @@ padding 0.54% — `bool` is deliberately excluded from the numerator, the
 stricter reading). Tune the `stats` pinned count to hold the floor; never
 shrink the string, byte block or floats below realism.
 
-**Not expressible in schema v1, NAMED rather than skipped** (SPEC §4.10, both
-deferred with their wire already decided): `serialize_wstring` and
-`serialize_int_relative`. Wire-identical alternate spellings of covered
+**Not expressible in schema, NAMED rather than skipped**: `serialize_int_relative`
+(SPEC §4.10, deferred with its wire already decided). Wire-identical alternate spellings of covered
 operations, not separate constructs: the `*_compile_time` / `*_runtime_form`
 families and `serialize_compressed_float_precomputed`; `serialize_copy_string`
-/ `serialize_copy_wstring` are buffer helpers, not stream operations.
+is a buffer helper, not a stream operation.
 
 **Iteration counts rescaled with the shape.** bench_mixed grew from 21 to 438
 wire bytes (20.9x), so its fixed count drops **40,000,000 → 4,000,000** in
@@ -496,13 +495,9 @@ row this section defines is a pure instrument; the remaining string work (the
 bytes sweep, the C++ WriteBytes candidate, every port's equivalents) lands
 against it, never ahead of it.
 
-**A wstring row was defined here and is DELETED (2026-08-31).** It was
-suspended by schema#196 because schema defers wide strings (SPEC §4.10), so
-no schema type, no generated codec and no golden could carry it, and the
-family that would have — hand-written `rt` — is retired. A suspended row for
-a construct the language cannot express is fossil, not a record. Growing the
-language is issue #188's; when schema expresses wstring, the row is defined
-then, against what the language actually emits.
+**There is no wstring row.** Schema has no wide string type: text is UTF-8
+`string` (SPEC §4.12), so no schema type, generated codec or golden could
+carry one.
 
 **The string row — `bench_string`, family `gen`.** Transcribed from the
 reference implementation's own string row (`serialize/bench.cpp`, landed
@@ -733,7 +728,7 @@ reference writes these bytes too and every leg reads the same ones.
   WIDTH widen needs 255 → 256 variants, which would destroy the shape §1.9's
   mirror rule exists to protect. It stays in the versioning corpus's
   `enum_width` row (docs/FIXED-FORM-VERSIONING-TESTS.md) and is not smuggled in
-  here. `wstring` and `bytes` capacity growth is the SAME plan op as
+  here. `bytes` capacity growth is the SAME plan op as
   `string(N)` growth, so the text class is carried once.
 - **The files** are `bench/paired/corpus/bench_lineage.bin` and
   `bench_lineage.layout`, beside `bench_fixed.bin` / `bench_fixed.layout` and

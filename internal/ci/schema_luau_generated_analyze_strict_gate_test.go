@@ -21,13 +21,12 @@ import (
 )
 
 // luauCorpusDirs are the schema directories the Makefile's generate targets
-// read: SCHEMAS, SCHEMAS128, SCHEMAS_WIDE and the SCHEMAS_TABLES* wildcards
+// read: SCHEMAS, SCHEMAS128 and the SCHEMAS_TABLES* wildcards
 // (Makefile:80-108). test/tables is read file by file below, the way the same
 // generate targets name its versioning rows.
 var luauCorpusDirs = []string{
 	"examples",
 	"examples128",
-	"examples-wide",
 	"tables/examples",
 	"tables/pointers",
 	"tables/block",

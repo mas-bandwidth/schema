@@ -29,7 +29,6 @@ func TestFixedRoadmapCSharpT09FloatsUnions(t *testing.T) {
 		{"float64-values/cs/valid-data", t09Float64},
 		{"compressed-floats/cs/valid-data", t09Compressed},
 		{"flags-values/cs/valid-data", t09Flags},
-		{"utf16-values/cs/valid-data", t09UTF16},
 		{"nested-types/cs/valid-data", t09Nested},
 		{"keyed-arrays/cs/valid-data", t09Keyed},
 		{"nested-keyed-arrays/cs/valid-data", t09NestedKeyed},
@@ -106,22 +105,6 @@ fixed table T { mask Marks }
 	t02Has(t, t02Norm(src), "public const long TFixedBodyBytes = 8;", "flags-values: the mask's storage is the record width")
 	t02Has(t, t02Norm(src), "new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),",
 		"flags-values: the plan copies the whole mask")
-}
-
-// t09UTF16: utf16-values [capability] "Bounded UTF-16 string fields"
-// (SPEC-TABLES §3.4; the bound is in code units). The value surface is a
-// `char[]` of the bound plus its live length, and the plan carries the text op
-// over the code units.
-func t09UTF16(t *testing.T) {
-	src := generateCS(t, `package probe
-
-fixed table T { s wstring(8) }
-`)
-	t02Has(t, src, "public char[] S = new char[8];", "utf16-values: the value surface is a bounded char array")
-	t02Has(t, src, "public int SLength;", "utf16-values: the value keeps its live code-unit count")
-	t02Has(t, t02Norm(src), "public const long TFixedBodyBytes = 20;", "utf16-values: the body is the bound's code units plus the count")
-	t02Has(t, t02Norm(src), "new TableFixedEntry(0u, 0u, 16u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),",
-		"utf16-values: the plan reads and writes the text field")
 }
 
 // t09Nested: nested-types [capability] "Nested types by value" (SPEC-TABLES
@@ -208,7 +191,7 @@ fixed table T { body Body }
 
 type ScalarArm { n int32 }
 
-type TextArm { s wstring(8) }
+type TextArm { s string(16) }
 
 type ArrayArm { a [4]int32 }
 
@@ -224,7 +207,7 @@ fixed table T { body Body }
 		"union-field-arms: the body is the tag plus the widest arm's bound bytes")
 	t02Has(t, t02Norm(nested), "new TableFixedEntry(1u, 1u, 4u, 0u, 0u, TableFixedWire.Copy, 1, 0, 0, 0, 1),",
 		"union-field-arms: a scalar nested in a type arm is stored at its bound")
-	t02Has(t, t02Norm(nested), "new TableFixedEntry(1u, 2u, 16u, 3u, 0u, TableFixedWire.Text, 2, 0, 0, 2, 1),",
+	t02Has(t, t02Norm(nested), "new TableFixedEntry(1u, 2u, 16u, 3u, 0u, TableFixedWire.Text, 2, 0, 0, 1, 1),",
 		"union-field-arms: text nested in a type arm is stored as bounded text")
 	t02Has(t, t02Norm(nested), "new TableFixedEntry(1u, 4u, 16u, 0u, 0u, TableFixedWire.Flat, 3, 0, 0, 0, 1),",
 		"union-field-arms: an array nested in a type arm is stored as a fixed run")

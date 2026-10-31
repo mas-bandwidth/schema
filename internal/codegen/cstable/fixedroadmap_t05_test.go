@@ -38,7 +38,6 @@ func TestFixedRoadmapCSharpT05Evolution(t *testing.T) {
 		{"cs/R18", t05CsR18},
 		{"cs/C3", t05CsC3},
 		{"cs/C4", t05CsC4},
-		{"cs/C5", t05CsC5},
 		{"cs/R24", t05CsR24},
 	}
 	for _, tc := range tests {
@@ -182,22 +181,6 @@ func t05TextUtf8Arm(t *testing.T) string {
 	return rest
 }
 
-// t05TextWideArm is the `case TextWide:` arm of TextIllFormed, from the case
-// to its break, so an assertion reads the wide content rule and only that.
-func t05TextWideArm(t *testing.T) string {
-	t.Helper()
-	src := tableFixedWireSource
-	_, after, ok := strings.Cut(src, "case TextWide:")
-	if !ok {
-		t.Fatal("t05: the runtime carries no `case TextWide:`")
-	}
-	rest := after
-	if j := strings.Index(rest, "break;"); j >= 0 {
-		rest = rest[:j]
-	}
-	return rest
-}
-
 // t05Utf8Rejections holds the reference validity rule the narrow content check
 // must carry (testdata/golden/tables/pointers/PartsTable.h §TableUtf8Valid):
 // the validator reconstructs the code point and refuses a NUL lead, a bare
@@ -225,27 +208,6 @@ func t05Utf8Rejections(t *testing.T, arm string) {
 		"an overlong 4-byte encoding refuses (TableUtf8Valid: continuations == 3 && code_point < 0x10000)")
 	t05Has(t, arm, "code_point > 0x10FFFF",
 		"a code point past U+10FFFF and reserved leads F5..F7 refuse (TableUtf8Valid: code_point > 0x10FFFF)")
-}
-
-// t05WideRejections holds the reference validity rule the wide content check
-// must carry (internal/codegen/cpptable/text.go §TableUtf16Valid, the rule
-// docs/SPEC-TABLES.md §3.4 states for a kind 33 payload): a zero code unit, a
-// high surrogate left without its low half, a high surrogate whose second half
-// is not a low surrogate, and a low surrogate first are each a refusal. Each
-// clause is asserted at the emitted site, so a planted edit that drops a rule
-// turns the holding subtest red by name.
-func t05WideRejections(t *testing.T, arm string) {
-	t.Helper()
-	t05Has(t, arm, "if (u == 0) { return true; }",
-		"a zero code unit refuses (TableUtf16Valid: unit == 0; SPEC-TABLES §3.4 kind 33)")
-	t05Has(t, arm, "if (u >= 0xD800 && u <= 0xDBFF)",
-		"a high surrogate starts a pair (TableUtf16Valid: unit >= 0xD800 && unit <= 0xDBFF)")
-	t05Has(t, arm, "if (i + 1 >= used) { return true; }",
-		"a high surrogate with no low half refuses (TableUtf16Valid: i + 1 >= units)")
-	t05Has(t, arm, "if (lo < 0xDC00 || lo > 0xDFFF) { return true; }",
-		"a high surrogate whose second half is not a low surrogate refuses (TableUtf16Valid: low < 0xDC00 || low > 0xDFFF)")
-	t05Has(t, arm, "else if (u >= 0xDC00 && u <= 0xDFFF) { return true; }",
-		"a low surrogate first refuses (TableUtf16Valid: unit >= 0xDC00 && unit <= 0xDFFF)")
 }
 
 // ---- cs/E6 ------------------------------------------------------------------
@@ -450,19 +412,6 @@ func t05CsC4(t *testing.T) {
 	t05Has(t, t05Load(t), `report.Reason = run_why;`,
 		"the load refuses by the name the run reported (§5.8 row 8)")
 	t05Utf8Rejections(t, t05TextUtf8Arm(t))
-	t05WideRejections(t, t05TextWideArm(t))
-}
-
-// ---- cs/C5 ------------------------------------------------------------------
-
-// t05CsC5 holds C5 ("wide text code units") to the emitted text op: a
-// wstring(N) rides as UTF-16 CODE UNITS, so the cap is span / 2 and never span.
-func t05CsC5(t *testing.T) {
-	op := t05TextOp(t)
-	t05Has(t, op, "uint unit = (p.Meta == TextWide) ? 2u : 1u;",
-		"the wide flavour selects a two-byte unit (§4.5 THE TEXT OP)")
-	t05Has(t, op, "uint cap = p.Size / unit;",
-		"the cap is span/unit, so wstring(64)'s 128-byte span clamps at 64 (§4.5 THE TEXT OP)")
 }
 
 // ---- cs/R24 -----------------------------------------------------------------
@@ -479,7 +428,6 @@ func t05CsR24(t *testing.T) {
 	}
 	body := ill[i:]
 	t05Has(t, body, "case TextUtf8:", "the narrow content rule is UTF-8 over the used bytes (§4.5)")
-	t05Has(t, body, "case TextWide:", "the wide content rule is over the used code units (§4.5)")
 	if strings.Contains(body, "case TextBytes:") {
 		t.Error("R24: bytes(N) is content-validated; bytes carries no text rule (§4.5)")
 	}
@@ -488,5 +436,4 @@ func t05CsR24(t *testing.T) {
 	t05Has(t, op, "textBytes = src.Slice((int)p.Src + 4, (int)p.Size)", "the copy reads the whole span; slack is unspecified on read (§4.5, SPEC-TABLES §3.4)")
 	t05Has(t, t05Load(t), `report.Reason = run_why;`, "the refusal is by name, the load's own path (§5.8 row 8)")
 	t05Utf8Rejections(t, t05TextUtf8Arm(t))
-	t05WideRejections(t, t05TextWideArm(t))
 }

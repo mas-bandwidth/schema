@@ -627,8 +627,8 @@ local function pipe(host: any)
 	local loaded: { [string]: Unit | false } = {}
 	-- one unit, required from build/conformance-luau/<key>/; a unit the
 	-- target refused has no directory, and every root of it answers 0. Not
-	-- every schema file of a unit has a table module (examples-wide's
-	-- WideText.schema declares none), so a module the unit did not emit is
+	-- every schema file of a unit has a table module, so a module the unit
+	-- did not emit is
 	-- skipped, as the conformance driver skips it; a module that is there and
 	-- raises still refuses the unit.
 	local function unit(key: string): Unit?

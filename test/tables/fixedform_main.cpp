@@ -2290,17 +2290,6 @@ static std::string manifest_text_of( const std::string & entry )
     return eq == std::string::npos ? std::string() : entry.substr( eq + 1 );
 }
 
-static bool manifest_all_hex( const std::string & t )
-{
-    if ( t.size() != 6 || t.compare( 0, 2, "0x" ) != 0 ) { return false; }
-    for ( size_t i = 2; i < t.size(); ++i )
-    {
-        const char c = t[i];
-        if ( !( ( c >= '0' && c <= '9' ) || ( c >= 'A' && c <= 'F' ) ) ) { return false; }
-    }
-    return true;
-}
-
 static void manifest_case( const char * corpus_dir )
 {
     const std::string dir( corpus_dir );
@@ -2361,11 +2350,6 @@ static void manifest_case( const char * corpus_dir )
             const bool xesc = text.find( "\\x" ) != std::string::npos;
             if ( xesc ) { std::printf( "  manifest \\xNN escape: %s\n", vals[k].c_str() ); }
             check( !xesc, "manifest: a non-printable in text is \\uXXXX, never \\xNN" );
-
-            // ONE ENCODING FOR WIDE TEXT: `u"…"`, never a column of code units
-            const bool unit = manifest_all_hex( text );
-            if ( unit ) { std::printf( "  manifest wide unit in hex: %s\n", vals[k].c_str() ); }
-            check( !unit, "manifest: wide text is u\"...\" everywhere, never a per-unit hex line" );
 
             // a value under an ABSENT optional is not a value: the wire carries
             // the template's zeros there, not the store the dump made

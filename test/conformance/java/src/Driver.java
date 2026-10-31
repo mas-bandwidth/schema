@@ -745,8 +745,8 @@ public final class Driver {
 
     // The manifest names a unit by its key; the emitted classes live in the
     // unit's schema package. The two differ for tables/scalars (package
-    // scalardemo), test/tables/Scalars2.schema (package scalardemo2) and
-    // examples-wide (package wide), so the codec is looked up
+    // scalardemo) and test/tables/Scalars2.schema (package scalardemo2), so
+    // the codec is looked up
     // under the package, never under the unit key.
     private static String variableUnitPackage(String unit) {
         switch (unit) {

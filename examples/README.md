@@ -30,9 +30,3 @@ The schema comments teach the constructs. Many types also pin a past
 regression; the reasons are recorded in
 [`../internal/goldens/regressions_test.go`](../internal/goldens/regressions_test.go),
 whose test fails if a pinning type is removed or renamed.
-
-The independent packet wide-string unit is
-[`../examples-wide/WideText.schema`](../examples-wide/WideText.schema).
-All nine targets carry it. `make packet-wire-nine` stages it apart from the
-table-wide baseline and runs the packet defaults, UTF-8 and UTF-16 checks
-without changing this corpus's protocol identity.

@@ -214,4 +214,3 @@ internal/codegen/rusttable/retainroots_test.go
 internal/codegen/rusttable/variableclass_test.go
 internal/codegen/rusttable/variablecodec_test.go
 internal/codegen/rusttable/variabletext_test.go
-internal/codegen/rusttable/widetext_test.go

@@ -65,7 +65,6 @@ var strictGatePerFileGlobs = []string{
 	"test/packet-finite/*.schema",
 	"test/packet-text/*.schema",
 	"test/packet-void/*.schema",
-	"test/packet-wide/*.schema",
 	"test/tables/*.schema",
 }
 

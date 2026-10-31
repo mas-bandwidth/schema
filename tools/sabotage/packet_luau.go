@@ -8,10 +8,6 @@ func init() {
 		old: `if not utf8valid(%s, n) then return false end`,
 		new: `if false and not utf8valid(%s, n) then return false end -- SABOTAGED`,
 	}}
-	sabotages["packet-wide-luau-pairing"] = []edit{{
-		old: `if not high then return false end -- a low surrogate not preceded by a high one`,
-		new: `if false then return false end -- SABOTAGED: a lone low surrogate passes`,
-	}}
 	sabotages["luau-ludicrous-fixed-contract"] = []edit{{
 		old: `			guardNum(g, indent, val, rawMin, rawMax, "")`,
 		new: `			_ = rawMax // SABOTAGED: a fixed(I, F) of 32 bits or fewer writes unchecked`,

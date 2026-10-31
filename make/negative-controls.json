@@ -6,6 +6,7 @@
       "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, C++ finite-float read and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
         "check-enum-bound-negative-control",
+        "check-wstring-refusal-negative-control",
         "tables-cpp-bench-gate-negative-control",
         "tables-cpp-release-flags-negative-control",
         "generated-tree-negative-controls",
@@ -70,7 +71,7 @@
     {
       "name": "base-packet",
       "when": "pull-request",
-      "why": "the five packet families on the host toolchain, and the wide-scalar controls beside them: each is one small compile off the generated tree, and they share it. Measured 42 s over 22 controls, before the Go finite-float control (two small Go builds) joined them.",
+      "why": "the five packet families on the host toolchain: each is one small compile off the generated tree, and they share it.",
       "targets": [
         "packet-arm-defaults-c-negative-control",
         "packet-arm-defaults-cpp-negative-control",
@@ -83,18 +84,7 @@
         "packet-void-c-read-negative-control",
         "packet-void-c-write-negative-control",
         "packet-void-cpp-read-negative-control",
-        "packet-void-cpp-write-negative-control",
-        "packet-wide-c-negative-control",
-        "packet-wide-go-negative-control",
-        "wide-no-align-negative-control",
-        "wide-surrogate-negative-control",
-        "wide-table-byte-length-negative-control",
-        "wide-table-clamp-negative-control",
-        "wide-table-odd-length-negative-control",
-        "wide-table-surrogate-negative-control",
-        "wide-table-zero-unit-negative-control",
-        "wide-terminator-negative-control",
-        "wide-utf8-read-negative-control"
+        "packet-void-cpp-write-negative-control"
       ]
     },
     {
@@ -502,14 +492,6 @@
       ]
     },
     {
-      "name": "wire-fuzz-wide-text",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 28 s on the author's machine and 75 s on the runner.",
-      "targets": [
-        "tables-wire-fuzz-wide-text-negative-control"
-      ]
-    },
-    {
       "name": "wire-fuzz-message-text",
       "when": "pull-request",
       "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
@@ -613,7 +595,6 @@
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control",
         "packet-finite-cs-negative-control",
         "packet-clean-cs-negative-control",
         "tables-cs-clean-negative-control"
@@ -686,7 +667,6 @@
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
-        "packet-wide-rust-negative-control",
         "tables-rust-alloc-negative-control",
         "tables-rust-cook-write-negative-control",
         "tables-rust-json-differential-negative-control",
@@ -717,7 +697,6 @@
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
         "packet-utf8-js-negative-control",
-        "packet-wide-js-negative-control",
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
         "tables-js-block-lead-negative-control",
@@ -766,7 +745,6 @@
         "packet-defaults-dart-negative-control",
         "packet-finite-dart-negative-control",
         "packet-utf8-dart-negative-control",
-        "packet-wide-dart-negative-control",
         "tables-dart-alloc-negative-control",
         "tables-dart-alloc-runtime-negative-control",
         "tables-dart-soak-negative-control",
@@ -805,8 +783,7 @@
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
         "packet-finite-java-negative-control",
-        "packet-utf8-java-negative-control",
-        "packet-wide-java-negative-control"
+        "packet-utf8-java-negative-control"
       ],
       "java": "21"
     },
@@ -879,7 +856,6 @@
         "cards-elixir-conformance-hash-negative-control",
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
-        "packet-wide-elixir-negative-control",
         "tables-elixir-accessor-negative-control",
         "packet-finite-elixir-negative-control"
       ],
@@ -1012,8 +988,7 @@
       "targets": [
         "packet-defaults-goose-negative-control",
         "packet-finite-goose-negative-control",
-        "packet-utf8-goose-negative-control",
-        "packet-wide-goose-negative-control"
+        "packet-utf8-goose-negative-control"
       ]
     },
     {
@@ -1108,7 +1083,6 @@
         "conformance-negative-control-squirrel-retain",
         "conformance-negative-control-squirrel-walk",
         "packet-finite-squirrel-negative-control",
-        "packet-wide-squirrel-negative-control",
         "tables-squirrel-finite-float-negative-control",
         "tables-squirrel-float-parity-negative-control",
         "schema-squirrel-all-port-differential-negative-control",
@@ -1157,7 +1131,6 @@
         "packet-defaults-luau-negative-control",
         "packet-finite-luau-negative-control",
         "packet-utf8-luau-negative-control",
-        "packet-wide-luau-negative-control",
         "schema-luau-runs-hostile-corpus-negative-control",
         "tables-luau-finite-float-negative-control",
         "tables-luau-fixed-form-negative-control",
@@ -1310,10 +1283,6 @@
     {
       "target": "packet-utf8-moo-negative-control",
       "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
-    },
-    {
-      "target": "packet-wide-moo-negative-control",
-      "reason": "the moo leg's wide pairing control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
       "target": "tables-cpp-format-negative-control",

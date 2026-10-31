@@ -272,7 +272,6 @@ build/tables-generated-c/wide/CaptionBlock.c
 build/tables-generated-c/wide/CaptionBlock.h
 build/tables-generated-c/wide/CaptionTable.c
 build/tables-generated-c/wide/CaptionTable.h
-build/tables-generated-c/wide/WideTextTable.h
 build/tables-generated-c/wide/WideView.c
 build/tables-generated-c/wide/WideView.h
 generated/bench/c/BenchView.c

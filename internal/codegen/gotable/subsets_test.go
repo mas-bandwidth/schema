@@ -41,7 +41,6 @@ var subsetCorpusUnits = []struct {
 	{"tables/stream", []string{"tables/stream"}},
 	{"tables/vocab", []string{"tables/vocab"}},
 	{"tables/vocab9", []string{"tables/vocab9"}},
-	{"examples-wide", []string{"examples-wide"}},
 	{"bench/corpus/BenchTable", []string{"bench/corpus/BenchTable.schema"}},
 	{"bench/corpus/FixedTable", []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}},
 }

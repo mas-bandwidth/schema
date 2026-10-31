@@ -45,7 +45,7 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 		"tables/arms", "tables/backend", "tables/blobs", "tables/block",
 		"tables/blockhome", "tables/examples", "tables/lists", "tables/maps",
 		"tables/messages", "tables/pointers", "tables/scalars", "tables/stream",
-		"tables/vocab", "tables/vocab9", "examples-wide",
+		"tables/vocab", "tables/vocab9",
 		"test/tables/V1.schema", "test/tables/V2.schema",
 		"test/tables/W1.schema", "test/tables/W2.schema",
 		"test/tables/R1.schema", "test/tables/R2.schema",

@@ -358,7 +358,7 @@ JAVA_FORMAT_REQUIRED = $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_F
 # the committed generated/ tree, so the gate watches internal/codegen/java and
 # not a checkout that may be stale against it: the examples corpus, the 128-bit
 # corpus, the bench corpus, the real-world corpus, the paired bench unit, and
-# the packet-defaults and packet-wide fixtures.
+# the packet-defaults fixtures.
 build/java-clean-packet/.stamp: bin/schema $(SCHEMAS) $(SCHEMAS128) $(SCHEMAS_BENCH) test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/java.mk
 	@rm -rf build/java-clean-packet && mkdir -p build/java-clean-packet
 	./bin/schema generate --lang java --out build/java-clean-packet/examples examples

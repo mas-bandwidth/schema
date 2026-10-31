@@ -143,7 +143,7 @@ func init() {
 	// A `was` on an enum variant, a union arm or a type's field (§5): the
 	// form-1 codec hashes the alias the wire carries (enum VariantWireName,
 	// arm WireName, ir.TableFieldWireId), pinned byte for byte by
-	// TestMapsAndUnionArmsOnTheTableWireDart over tables/messages and
-	// examples-wide, whose arms carry `was = "count"`.
+	// TestMapsAndUnionArmsOnTheTableWireDart over tables/messages, whose
+	// arms carry `was`.
 	wasRowTargets = append(wasRowTargets, "dart")
 }

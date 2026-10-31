@@ -31,7 +31,6 @@ var rustNameUnits = []struct{ crate, path string }{
 	{"backenddemo", "../tables/backend"},
 	{"tblfe1", "../test/tables/FE1.schema"},
 	{"tblv1", "../test/tables/V1.schema"},
-	{"widedemo", "../examples-wide/Caption.schema"},
 }
 
 var rustTableTypeDecl = regexp.MustCompile(`(?m)^pub (?:struct|enum) ([A-Za-z_][A-Za-z0-9_]*)\b`)

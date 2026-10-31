@@ -68,9 +68,8 @@ type squirrelExpectedHostileMismatch struct {
 // which is the Squirrel reader's answer, so those rows pass.
 //
 // conformance-str-zero-escape-map-key arrived with dev's §16.3
-// zero rows in tables/maps, a unit that declares wide text (SPEC §4.12, table
-// kind 33). The Squirrel descriptors carry kind 33 now, so the unit generates
-// and the reader refuses the zero key by name, which is the manifest's verdict.
+// zero rows in tables/maps; the unit generates and the reader refuses the zero
+// key by name, which is the manifest's verdict.
 //
 // wire-non-finite-float, which arrived with the finite-tables ruling (#2226,
 // SPEC-TABLES §3.3), passes since tables-finite/squirrel: the strict read
