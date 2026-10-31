@@ -529,7 +529,7 @@ func tableMessageEntryRead(r *TableReader) (e TableMessageEntry, ok bool) {
 			return e, false
 		}
 		elem := r.Get8()
-		if !tableMessageKnownKind(elem) || elem == 12 || elem == 33 {
+		if !tableMessageKnownKind(elem) {
 			return e, false
 		}
 		e.Element, ok = tableMessageShapeRead(r, elem)
@@ -541,7 +541,7 @@ func tableMessageEntryRead(r *TableReader) (e TableMessageEntry, ok bool) {
 				return e, false
 			}
 			inner := r.Get8()
-			if !tableMessageKnownKind(inner) || inner == 12 || inner == 33 {
+			if !tableMessageKnownKind(inner) {
 				return e, false
 			}
 		}

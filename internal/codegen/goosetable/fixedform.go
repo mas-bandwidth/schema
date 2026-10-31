@@ -176,6 +176,12 @@ func emitFixedFormPart(g *goose.Gen) error {
 			}
 		}
 	}
+	if len(mine) > 0 {
+		// the record functions name the fixed runtime's types
+		// (schema_rt::FixedReport, ...), so the module imports it itself and
+		// compiles on its own (make/goose-gates.mk, THE STRICT GATE)
+		e.g.Import("fixed")
+	}
 	for _, name := range mine {
 		if st := structs[name]; st != nil {
 			if err := e.emitStruct(st); err != nil {
@@ -358,6 +364,43 @@ func (e *fixedEmit) storageType(f *ir.Field) string {
 	return goose.IntType(t.Signed, t.Width)
 }
 
+// primType is the Goose primitive under storageType: an enum's alias is the
+// unsigned integer sized to its max, a flags set's is u64 (goose.go,
+// emitEnum and emitFlags).
+func (e *fixedEmit) primType(f *ir.Field) string {
+	t := f.Type
+	if t.Kind == ir.TNamed {
+		switch r := t.Ref.(type) {
+		case *ir.Enum:
+			return goose.IntType(false, ir.StorageBitsFor(r.Max))
+		case *ir.Flags:
+			return "u64"
+		}
+	}
+	return e.storageType(f)
+}
+
+// widensToU64 reports whether a value of the Goose integer type prim reaches
+// a u64 with no cast: it is one, or it is a narrower unsigned integer, which
+// widens implicitly (the pinned Goose spec, §6.3). A cast there is a redundant-cast
+// warning, which the strict gate refuses (make/goose-gates.mk).
+func widensToU64(prim string) bool {
+	switch prim {
+	case "u8", "u16", "u32", "u64":
+		return true
+	}
+	return false
+}
+
+// asU64 is expr as the u64 fixed_put takes: bare where it widens implicitly,
+// an unchecked cast (the bits as they ride) where it does not.
+func asU64(expr, prim string) string {
+	if widensToU64(prim) {
+		return expr
+	}
+	return expr + " as! u64"
+}
+
 // ---------------------------------------------------------------------------
 // THE WRITE (docs/FIXED-FORM-ALGORITHM.md §3, §3.1): each field in declared
 // order at its constant size; the live extent onto zero.
@@ -391,9 +434,9 @@ func (e *fixedEmit) writeValue(ind int, f *ir.Field, pl place) {
 	case f.Array == ir.ArrayCounted:
 		cnt := pl.val + "Count"
 		i := e.loopVar()
-		e.p(ind, "schema_rt::fixed_put(out, (%s as! u32) as u64, 4);", cnt)
+		e.p(ind, "schema_rt::fixed_put(out, %s as! u32, 4);", cnt)
 		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < (%s as i64) {", i, cnt)
+		e.p(ind, "while %s < %s {", i, cnt)
 		e.writeElem(ind+1, el, pl.at(i))
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
@@ -408,12 +451,12 @@ func (e *fixedEmit) writeElem(ind int, f *ir.Field, pl place) {
 	case kBool:
 		e.p(ind, "schema_rt::fixed_put_bool(out, %s);", pl.val)
 	case kInt:
-		e.p(ind, "schema_rt::fixed_put(out, %s as! u64, %d);", pl.val, ir.TableFixedStorageBytes(f.Type))
+		e.p(ind, "schema_rt::fixed_put(out, %s, %d);", asU64(pl.val, e.primType(f)), ir.TableFixedStorageBytes(f.Type))
 	case kInt128:
 		e.p(ind, "schema_rt::fixed_put(out, %s.lo, 8);", pl.val)
 		e.p(ind, "schema_rt::fixed_put(out, %s.hi, 8);", pl.val)
 	case kF32:
-		e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f32_bits(%s) as u64, 4);", pl.val)
+		e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f32_bits(%s), 4);", pl.val)
 	case kF64:
 		e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f64_bits(%s), 8);", pl.val)
 	case kStr, kBytes:
@@ -471,7 +514,7 @@ func (e *fixedEmit) checkValue(ind int, f *ir.Field, pl place) {
 		}
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < (%s as i64) {", i, cnt)
+		e.p(ind, "while %s < %s {", i, cnt)
 		e.checkElem(ind+1, el, pl.at(i))
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
@@ -609,7 +652,12 @@ func (e *fixedEmit) landElem(ind int, f *ir.Field, pl place, off string) {
 	case kBool:
 		e.p(ind, "%s = b[%s] != 0;", pl.val, off)
 	case kInt:
-		e.p(ind, "%s = schema_rt::fixed_get(b, %s, %d) as! %s;", pl.val, off, ir.TableFixedStorageBytes(f.Type), e.storageType(f))
+		if e.primType(f) == "u64" {
+			// fixed_get is a u64 already: a u64 (or a flags set's u64 alias) takes it bare
+			e.p(ind, "%s = schema_rt::fixed_get(b, %s, %d);", pl.val, off, ir.TableFixedStorageBytes(f.Type))
+		} else {
+			e.p(ind, "%s = schema_rt::fixed_get(b, %s, %d) as! %s;", pl.val, off, ir.TableFixedStorageBytes(f.Type), e.storageType(f))
+		}
 	case kInt128:
 		e.p(ind, "%s.lo = schema_rt::fixed_u64(b, %s);", pl.val, off)
 		e.p(ind, "%s.hi = schema_rt::fixed_u64(b, %s + 8);", pl.val, off)
@@ -666,7 +714,7 @@ func (e *fixedEmit) clampValue(ind int, f *ir.Field, pl place) {
 	case f.Array == ir.ArrayCounted:
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < (%sCount as i64) {", i, pl.val)
+		e.p(ind, "while %s < %sCount {", i, pl.val)
 		e.clampElem(ind+1, el, pl.at(i))
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
@@ -906,7 +954,7 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 
 	e.loop = 0
 	e.p(0, "fn _%sFixedWrite(out: u8[>..]&, v: const %s&) {", n, typ)
-	e.p(1, "schema_rt::fixed_put(out, v.Type as! u64, %d);", tw)
+	e.p(1, "schema_rt::fixed_put(out, v.Type, %d);", tw) // a tag is unsigned: it widens to u64
 	arms(func(ind, tag int, v ir.UnionVariant) {
 		if v.F == nil {
 			e.p(ind, "schema_rt::fixed_put_zeros(out, %d);", widest)

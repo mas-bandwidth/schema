@@ -73,11 +73,11 @@ struct FixedReport { clamped: i64, malformed: bool, reason: i64, hash: u64 }
 // (docs/PORT-GOOSE.md, BYTE BUFFERS: assembled with shifts, never a host-order
 // view).
 fn fixed_u32(b: const u8[:], at: i64) -> u32 {
-    return b[at] as u32 | (b[at + 1] as u32) << 8 | (b[at + 2] as u32) << 16 | (b[at + 3] as u32) << 24;
+    return b[at] | (b[at + 1] as u32) << 8 | (b[at + 2] as u32) << 16 | (b[at + 3] as u32) << 24;
 }
 
 fn fixed_u64(b: const u8[:], at: i64) -> u64 {
-    return b[at] as u64 | (b[at + 1] as u64) << 8 | (b[at + 2] as u64) << 16 | (b[at + 3] as u64) << 24
+    return b[at] | (b[at + 1] as u64) << 8 | (b[at + 2] as u64) << 16 | (b[at + 3] as u64) << 24
         | (b[at + 4] as u64) << 32 | (b[at + 5] as u64) << 40 | (b[at + 6] as u64) << 48 | (b[at + 7] as u64) << 56;
 }
 
@@ -134,7 +134,7 @@ fn fixed_put_bool(out: u8[>..]&, v: bool) {
 fn fixed_f32_bits(x: f32) -> u32 {
     let a: f32[1] = [x];
     let b = bytes_of(a);
-    return b[0] as u32 | (b[1] as u32) << 8 | (b[2] as u32) << 16 | (b[3] as u32) << 24;
+    return b[0] | (b[1] as u32) << 8 | (b[2] as u32) << 16 | (b[3] as u32) << 24;
 }
 
 fn fixed_bits_f32(u: u32) -> f32 {
@@ -170,7 +170,7 @@ fn fixed_bits_f64(u: u64) -> f64 {
 // contract has already held n to 0..N.
 fn fixed_put_text(out: u8[>..]&, s: const u8[:], n: i32, cap: i64) {
     let used = n as i64;
-    fixed_put(out, (n as! u32) as u64, 4);
+    fixed_put(out, n as! u32, 4);
     var i: i64 = 0;
     while i < used {
         out.push(s[i]);
@@ -183,10 +183,10 @@ fn fixed_put_text(out: u8[>..]&, s: const u8[:], n: i32, cap: i64) {
 // units, two bytes each, then zero to N units (docs/FIXED-FORM-ALGORITHM.md §3).
 fn fixed_put_wtext(out: u8[>..]&, s: const u16[:], n: i32, cap: i64) {
     let used = n as i64;
-    fixed_put(out, (n as! u32) as u64, 4);
+    fixed_put(out, n as! u32, 4);
     var i: i64 = 0;
     while i < used {
-        fixed_put(out, s[i] as u64, 2);
+        fixed_put(out, s[i], 2);
         i += 1;
     }
     fixed_put_zeros(out, (cap - used) * 2);
@@ -206,7 +206,7 @@ fn fixed_get_text(b: const u8[:], at: i64, dst: u8[:]) {
 fn fixed_get_wtext(b: const u8[:], at: i64, dst: u16[:]) {
     var i: i64 = 0;
     while i < dst.len {
-        dst[i] = b[at + 2 * i] as u16 | (b[at + 2 * i + 1] as u16) << 8;
+        dst[i] = b[at + 2 * i] | (b[at + 2 * i + 1] as u16) << 8;
         i += 1;
     }
 }
@@ -289,11 +289,11 @@ fn fixed_utf16_ok(s: const u16[:], n: i64) -> bool {
 fn fixed_wire_utf16_ok(b: const u8[:], at: i64, n: i64) -> bool {
     var i: i64 = 0;
     while i < n {
-        let u = b[at + 2 * i] as u16 | (b[at + 2 * i + 1] as u16) << 8;
+        let u = b[at + 2 * i] | (b[at + 2 * i + 1] as u16) << 8;
         if u == 0 { return false; }
         if u >= 0xD800 && u <= 0xDBFF {
             if i + 1 >= n { return false; }
-            let lo = b[at + 2 * i + 2] as u16 | (b[at + 2 * i + 3] as u16) << 8;
+            let lo = b[at + 2 * i + 2] | (b[at + 2 * i + 3] as u16) << 8;
             if lo < 0xDC00 || lo > 0xDFFF { return false; }
             i += 2;
         } else if u >= 0xDC00 && u <= 0xDFFF {
@@ -310,17 +310,17 @@ fn fixed_wire_utf16_ok(b: const u8[:], at: i64, n: i64) -> bool {
 // does, in every build — a length outside 0..N, a string whose used bytes are
 // not UTF-8 or hold a NUL, a wstring whose used units are unpaired or zero.
 fn fixed_len_ok(n: i32, cap: i64) -> bool {
-    return n >= 0 && (n as i64) <= cap;
+    return n >= 0 && n <= cap;
 }
 
 fn fixed_text_ok(s: const u8[:], n: i32, cap: i64) -> bool {
     if !fixed_len_ok(n, cap) { return false; }
-    return fixed_utf8_ok(s, 0, n as i64);
+    return fixed_utf8_ok(s, 0, n);
 }
 
 fn fixed_wtext_ok(s: const u16[:], n: i32, cap: i64) -> bool {
     if !fixed_len_ok(n, cap) { return false; }
-    return fixed_utf16_ok(s, n as i64);
+    return fixed_utf16_ok(s, n);
 }
 
 // THE READER'S SCAN (docs/FIXED-FORM-ALGORITHM.md §4.5): a count or a length
@@ -329,15 +329,15 @@ fn fixed_wtext_ok(s: const u16[:], n: i32, cap: i64) -> bool {
 // 2 wide, 3 bytes.
 fn fixed_scan_count(b: const u8[:], at: i64, bound: i64) -> i64 {
     let v = fixed_i32(b, at);
-    if v < 0 || (v as i64) > bound { return FixedRefuseCountOverBound; }
+    if v < 0 || v > bound { return FixedRefuseCountOverBound; }
     return 0;
 }
 
 fn fixed_scan_text(b: const u8[:], at: i64, cap: i64, flavour: i64) -> i64 {
     let v = fixed_i32(b, at);
-    if v < 0 || (v as i64) > cap { return FixedRefuseLengthOverBound; }
-    if flavour == 1 && !fixed_utf8_ok(b, at + 4, v as i64) { return FixedRefuseTextIllFormed; }
-    if flavour == 2 && !fixed_wire_utf16_ok(b, at + 4, v as i64) { return FixedRefuseTextIllFormed; }
+    if v < 0 || v > cap { return FixedRefuseLengthOverBound; }
+    if flavour == 1 && !fixed_utf8_ok(b, at + 4, v) { return FixedRefuseTextIllFormed; }
+    if flavour == 2 && !fixed_wire_utf16_ok(b, at + 4, v) { return FixedRefuseTextIllFormed; }
     return 0;
 }
 

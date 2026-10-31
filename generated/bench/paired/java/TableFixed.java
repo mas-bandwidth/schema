@@ -508,7 +508,15 @@ public final class TableFixed {
          * field's default -- the verdict the packet reader gives, this form having no length to
          * continue past. The content check reads the USED units only, never the slack.
          */
-        textIllFormed
+        textIllFormed,
+
+        /**
+         * A FLOAT WHOSE RAW BITS ARE A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3, the finite
+         * rule, the packet wire's own): every read refuses it by name, before the bounds pass, and
+         * Report.nonFiniteFloat names the field as {@code <Table>.<field>}. Spelled
+         * non_finite_float on every wire.
+         */
+        nonFiniteFloat
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
@@ -535,6 +543,12 @@ public final class TableFixed {
         public Reason reason = Reason.none;
 
         /**
+         * THE FIELD A nonFiniteFloat REFUSAL NAMES, {@code <Table>.<field>}, the first one the read
+         * met (docs/SPEC-TABLES.md §3.3), and null on every other path.
+         */
+        public String nonFiniteFloat;
+
+        /**
          * THE FILE'S OWN LAYOUT HASH, and it is LAST on this report by rule (ALG 5.9 #15): a new
          * member at the end rather than a field inserted among the counters, because a report is a
          * thing callers already hold. Zero on every path but the two layout refusals (ALG 5.3, 5.9
@@ -552,12 +566,26 @@ public final class TableFixed {
             refused = false;
             reason = Reason.none;
             layoutHash = 0;
+            nonFiniteFloat = null;
         }
 
-        /** refuse by name, and set nothing else. */
+        /** refuse by name, and set nothing else; a nonFiniteFloat refusal is never overwritten. */
         public void refuse(Reason why) {
             refused = true;
-            reason = why;
+            if (reason != Reason.nonFiniteFloat) {
+                reason = why;
+            }
+        }
+
+        /**
+         * refuse a NaN or an infinity by name (docs/SPEC-TABLES.md §3.3): it outranks every other
+         * verdict, and the first field met is the one named.
+         */
+        public void refuseNonFinite(String field) {
+            if (reason != Reason.nonFiniteFloat) {
+                nonFiniteFloat = field;
+            }
+            refuse(Reason.nonFiniteFloat);
         }
 
         /** the two refusals that report THE FILE'S hash and nothing else (5.3). */
@@ -870,27 +898,12 @@ public final class TableFixed {
                             report.malformed = true;
                             return;
                         }
-                        // A FLOAT RIDES AS ITS BITS (SPEC-TABLES §3, the FU ruling), so
-                        // the widening is BY THE PATTERN and never through the
-                        // hardware's own conversion: the conversion between the two
-                        // widths SETS THE QUIET BIT on a signalling NaN and drops a
-                        // payload the narrower cell would have kept, and widenf owes
-                        // the bit-exact widening (ALG 4.2: "NaN payloads included").
-                        // Sign, exponent and payload carried; every finite value is
-                        // exact through the conversion, so only the pattern needs
-                        // spelling out — NaN and infinity share the all-ones
-                        // exponent the shift lands.
+                        // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
+                        // §3.3, §21.2): exact for every finite float32, -0 and the
+                        // subnormals included. A NaN or an infinity stays one, and the
+                        // scatter's finite test refuses it by name afterwards.
                         final int bits = get32(src, srcAt + p.src);
-                        final long out;
-                        if ((bits & 0x7F800000) == 0x7F800000) {
-                            out =
-                                    ((bits & 0x80000000L) << 32)
-                                            | 0x7FF0000000000000L
-                                            | ((bits & 0x7FFFFFL) << 29);
-                        } else {
-                            out = Double.doubleToRawLongBits(Float.intBitsToFloat(bits));
-                        }
-                        put64(image, p.dst, out);
+                        put64(image, p.dst, Double.doubleToRawLongBits(Float.intBitsToFloat(bits)));
                         report.widened++;
                         break;
                     }

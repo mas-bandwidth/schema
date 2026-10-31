@@ -235,7 +235,7 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/goose/goose.go` | the TYPE emitter (`Gen`, `Slots`, `TypeRef`, the literal renderers) and `Register`, the hook a later file joins from its own `init()` | this card only |
 | `internal/codegen/goose/read.go`, `write.go` | the type wire, joined through `goose.Register` | type-wire-read, type-wire-write |
 | `internal/codegen/goose/runtime/*.goose` | the type-wire runtime, `go:embed` by glob, emitted beside the modules: `schema_rt.goose` now (the `Int128` lanes), `serialize*.goose` and the float sidecar later | one file per card |
-| `internal/codegen/goosetable/goosetable.go` | the TABLE emitter: structs, constructors and one DESCRIPTOR per table as data, and `goosetable.Register` | this card only |
+| `internal/codegen/goosetable/goosetable.go` | the TABLE emitter: structs, constructors and one DESCRIPTOR per table as data, and `goosetable.Register`, and the unit's own module: `<Package>Unit.goose` (`UnitModule`, `goosetable.RegisterUnit`), the one home of the data that spans every file (the table wire's registry `TableUnit`, the message form's vocabulary, the accelerators' record numbers). It is named for the package, so a file that sorts earlier relocates nothing (docs/PORTING.md J2), and each file's modules name it rather than copy its numbers | this card only |
 | `internal/codegen/goosetable/<form>.go` | a form's emitted code (the per-table accessor), joined through `goosetable.Register` | fixedform.go, messageform.go, … — one per card |
 | `internal/codegen/goosetable/runtime/*.goose` | the table runtime by glob, one file per card: `schema_tables.goose` now (the descriptor types); `load.goose`, `save.goose`, `fixed.goose`, `message.goose`, … later | one file per card |
 | `internal/codegen/goosetable/runtime/registry/<construct>.goosereg` | THE REGISTRY's fragments: a card's dispatch registrations (an enum variant, a table row), assembled onto the end of `schema_tables.goose` when the target emits it (`goosetable/registry.go`) | one file per card; none edits another's, and none edits a registry's enum or array in a `.goose` file |
@@ -324,10 +324,11 @@ payload-free arm included, which the packet surface carries in every
 target), and a `[A..B]` count born at `A`. Its claims sit in
 `compiler/*_test.go` beside the other nine targets' (`bornAtMinimum`,
 `guardComment`, `tagEnumSurface`, the payload-free arm's `carried`). The
-packet WRITER is owed: `packetWriterOwed` in `compiler/countedbirth_test.go`
-names schema-goose-type-wire-write as the card that owes the write-side
-claims (the count and the union tag on write), and the gate turns red if
-goose emits a `fn Write...` while it is still listed there.
+packet wire has landed since (THE PACKET WIRE): goose left
+`packetWriterOwed` and carries its write-side claims in `refusesEveryBuild`
+and `tagRefusesEveryBuild`, and `compiler/carries_goose_packet.go` registers
+wide text on the packet wire and the string, bytes and flags packet
+defaults.
 
 **How a later card carries a construct.** In its OWN new file
 `compiler/carries_goose_<surface>.go`, tag `schema_leg_goose`, never by
@@ -389,9 +390,79 @@ lowercase hex lines.**
   `list` and answers it there; `compiler/carries_goose.go` claims no
   construct, so the two agree.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
-  per mutant) is a `goose build -O2` executable reading stdin with
-  `read_stdin` and writing with `write_stdout` and `flush_stdout`: Goose
-  speaks it directly, with no host shim (schema-goose-fuzz-differential).
+  per mutant) is a `goose build -O2` executable per unit
+  (`test/conformance/goose/wirefuzz.goose`, make/goose-fuzz.mk) writing with
+  `write_stdout` and `flush_stdout`. It reads stdin through a ten-line C
+  sidecar (`wirefuzz_io.c`, named by `wirefuzz.build`), because the standard
+  library's `read_stdin` reads to end of input and `read_line` to a newline,
+  and the pipe is a conversation: neither returns at a frame boundary.
+
+## THE PACKET WIRE
+
+The type surface's codec (`internal/codegen/goose/wire.go`, `write.go`,
+`read.go`), bit-packed over serialize.goose v2.1.1, vendored verbatim into
+`internal/codegen/goose/runtime/serialize*.goose` and held to
+`runtime/SERIALIZE_PIN` (repository, tag, commit, one sha256 per file) by
+`TestGooseVendoredSerializeIsThePin`. Per type and union of a module:
+
+```goose
+let <T>MaxBits: i64; let <T>MaxBytes: i64
+fn Zero<T>(value: <T>&)                         // the §5 zero form, not the defaults
+fn Write<T>(s: WriteStream&, value: <T>&) -> i32 // SERIALIZE_ERROR_NONE or the refusal kind
+fn Read<T>(s: ReadStream&, value: <T>&) -> bool  // false: the reason is serialize_error(s)
+```
+
+Every bit count is folded at generation time from the declaration, as the
+Go and C targets fold it. A plain bit field (bits, bool, a ranged or bare
+integer, an enum, a flags set, a count, a length, a union tag) moves through
+`schema_rt::wire_bits`, `wire_bits64` and `wire_bool`
+(`runtime/schema_wire.goose`, schema's own, emitted beside the vendored
+runtime): serialize.goose's `serialize_bits`, `serialize_bits64` and
+`serialize_bool` with the same checks, refusals and stream state, declared
+`inline fn` so that each call site's constant width folds the count checks,
+the mask and the shifts, and the 8-byte word moves through a slice window
+that carries no per-byte bounds check. Everything else moves through the
+runtime's own entries (`serialize_bytes`, the fixed, int128, float and
+compressed-float entries, a 64-bit write and a read past 56 bits). On the
+packet-wire bench (`bench/run.sh --only goose`, intel, Core Ultra 9 285H,
+pinned, four interleaved sittings, 2026-10-29) the inline moves took
+bench_mixed from 0.89 to 1.84 M msg/s on write and from 0.34 to 0.94 M msg/s
+on round trip, the wire byte-identical.
+
+**Writes refuse in every build, and never abort.** serialize.goose aborts on
+write misuse (its U9), and Goose's `assert` aborts in every build: the
+language has no build-removable check. So the generated writer checks every
+value the wire cannot carry BEFORE the runtime sees it and returns the kind,
+the form Go makes native: `SERIALIZE_ERROR_VALUE_OUT_OF_RANGE` for a value
+outside its range, a count or length past its bound, a mask bit above the
+flags width, an interior null in wide text, an out-of-set union tag (which
+writes nothing); `SERIALIZE_ERROR_NON_FINITE_FLOAT` for a NaN or an infinity
+(SPEC §4.3). The claims are `refusesEveryBuild` and `tagRefusesEveryBuild` in
+`compiler/countedbirth_test.go` and `compiler/uniontagwrite_test.go`.
+
+**Reads refuse, never clamp,** latching the reason the C target latches:
+`value_out_of_range` for a value in a range's bit headroom, a const or
+reserved mismatch, a tag above the arm count or a broken surrogate pair;
+`invalid_utf8` and `embedded_nul` for string content; the runtime's own
+reasons (`past_end`, `non_finite_float`, `nonzero_padding`) otherwise. A
+read zeroes the untaken side of a branch through `Zero<T>` (SPEC §5), and a
+union selection builds its arm fresh at its declared defaults (SPEC §4.8).
+A direct read overlays the received prefix of a string and keeps the tail.
+
+**Storage crossing.** A 128-bit value's storage is `schema_rt::Int128`, the
+runtime's is serialize.goose's global `Int128`/`Uint128`; the codec moves the
+two lanes, `lo` and `hi`, by name. An unsigned fixed field rides the next
+wider signed fixed entry with `I = width - F`, zero extended, which writes
+the same bytes (the wire depends only on the raw span) and never reads a raw
+value above the signed half as negative.
+
+**The gates.** `TestGooseExamplesAgreeWithTheWireGoldens` and
+`TestGooseLudicrousAgreesWithTheWireGoldens` (`make test-goose`) run
+`test/goose/main.goose` and `test/goose-ludicrous/main.goose`, the Go legs'
+golden tests in Goose, against `testdata/wire`, at `-O1` and under
+`--debug`. `make/goose-packet.mk` holds the shared packet gates, each with
+its registered control (group `goose-packet`): `packet-utf8-goose`,
+`packet-wide-goose`, `packet-defaults-goose` and `packet-finite-goose`.
 
 ## THE REGISTER
 
@@ -400,7 +471,12 @@ The `goose` column of docs/PORTING.md is filled, every cell with its reason:
 - **✅ carried now:** M13 (descriptors are global constants:
   `schema_tables.goose`, held by `TestGooseTableDescriptorsLoad`), I4
   (per-case absent, in the driver's line grammar), I10 (the zero-cost gate,
-  `TestGooseTableFreeUnitAddsNothing`).
+  `TestGooseTableFreeUnitAddsNothing`); and the gates over what the leg emits,
+  make/goose-gates.mk: J4 (`tables-goose-strict`: every generated module and
+  runtime module checked on its own by the pinned compiler, zero warnings),
+  J2 (`tables-goose-runtime-home`), J3 (`tables-goose-release`) and I2 (the
+  strict gate's and the runtime home's controls sabotage the emitter through
+  `go build -overlay`).
 - **— the platform cannot:** M3 (an `f32`/`f64` is a C scalar by value and
   nothing allocates), M10 (Goose has no allocator to hook: data stacks and
   scope exit).
@@ -448,8 +524,7 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 
 Not yet carded, and named so in the register: the layout assertion (M11), a
 node larger than a slab (M17), the allocation instrument and its pin (I1,
-I14), the soak (I9), the documented surface (I12) and the analyzer half of
-J4.
+I14), the soak (I9) and the documented surface (I12).
 
 ## DEEPEN
 
