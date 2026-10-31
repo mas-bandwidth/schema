@@ -638,7 +638,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static ARMDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1727,7 +1727,7 @@ static const int64_t kTableAnnounceBytes = 389;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xdb, 0x79, 0xaf, 0xbe, 0x1c, 0xa4, 0x41, 0xfc, 0x02,
+    0x01, 0x01, 0x09, 0xa2, 0x6e, 0xa0, 0x9d, 0x34, 0x84, 0x21, 0x6a, 0x02,
     0x0e, 0xdd, 0x02, 0x06, 0xda, 0x02, 0x4e, 0x27, 0xb8, 0xf1, 0xa9, 0x01,
     0xc2, 0x5c, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0f, 0xe9, 0xea,
     0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00, 0x58, 0xb8, 0xde, 0x05,
@@ -4529,9 +4529,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7081,7 +7087,8 @@ template <typename T> struct TableListEach
         }
         Element * operator*() const { return segment->elements + index; }
         Iterator & operator++() { index++; Skip(); return *this; }
-        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
+        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
+        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 
@@ -7353,7 +7360,7 @@ namespace armdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xfc41a41cbeaf79dbull;
+static const uint64_t BuildVersion = 0x6a2184349da06ea2ull;
 
 } // namespace armdemo
 
@@ -7846,11 +7853,11 @@ inline void TableReset( Tray & value ) { TrayReset( value ); }
 // Node is a pointer target.
 inline const Node * NodeAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Node *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Node *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Node * NodeAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Node *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Node *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Node * NodeAt( const TableRegionCtx &, const TableRef & ref ) { return NodeAt( ref ); }
 inline const Node * NodeAt( const TableArenaCtx & ctx, const TableRef & ref )

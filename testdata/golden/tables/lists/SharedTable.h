@@ -638,7 +638,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static LISTDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1739,7 +1739,7 @@ static const int64_t kTableAnnounceBytes = 756;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xf0, 0x0e, 0x19, 0x83, 0x6e, 0xbc, 0xf9, 0x98, 0x02,
+    0x01, 0x01, 0x09, 0x95, 0x50, 0x7c, 0xe7, 0xf8, 0x5d, 0xec, 0x86, 0x02,
     0x0e, 0xcc, 0x05, 0x06, 0xc9, 0x05, 0x30, 0xb1, 0x3a, 0xff, 0x4a, 0xd9,
     0xb1, 0x40, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x11, 0x20, 0xea,
     0x4d, 0x40, 0x8e, 0xa7, 0x19, 0xaa, 0x11, 0x26, 0xa9, 0x02, 0x0c, 0x9b,
@@ -4571,9 +4571,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7248,7 +7254,8 @@ template <typename Entry> struct TableMapEach
         }
         auto operator*() const { return TableEntryEach( segment->entries + index ); }
         Iterator & operator++() { index++; Skip(); return *this; }
-        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
+        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
+        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 
@@ -7793,7 +7800,8 @@ template <typename T> struct TableListEach
         }
         Element * operator*() const { return segment->elements + index; }
         Iterator & operator++() { index++; Skip(); return *this; }
-        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
+        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
+        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 
@@ -8065,7 +8073,7 @@ namespace listdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x98f9bc6e83190ef0ull;
+static const uint64_t BuildVersion = 0x86ec5df8e77c5095ull;
 
 } // namespace listdemo
 
@@ -8429,11 +8437,11 @@ inline void TableReset( Album & value ) { AlbumReset( value ); }
 // Photo is a pointer target.
 inline const Photo * PhotoAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Photo *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Photo *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Photo * PhotoAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Photo *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Photo *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Photo * PhotoAt( const TableRegionCtx &, const TableRef & ref ) { return PhotoAt( ref ); }
 inline const Photo * PhotoAt( const TableArenaCtx & ctx, const TableRef & ref )

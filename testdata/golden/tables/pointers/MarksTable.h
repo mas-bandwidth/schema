@@ -631,7 +631,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static GRAPHDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1704,7 +1704,7 @@ static const int64_t kTableAnnounceBytes = 536;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x3c, 0x9c, 0xd9, 0xc0, 0x3e, 0x9b, 0x06, 0xa6, 0x02,
+    0x01, 0x01, 0x09, 0x5c, 0x1d, 0xd8, 0x26, 0x47, 0xbe, 0xaa, 0xfd, 0x02,
     0x0e, 0xf0, 0x03, 0x06, 0xed, 0x03, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad,
     0xbc, 0xc4, 0x0c, 0x10, 0x4c, 0x8a, 0x95, 0x2e, 0xef, 0x84, 0x49, 0x1e,
     0x0d, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee, 0x0d, 0x77, 0x6e,
@@ -4600,9 +4600,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -6776,7 +6782,7 @@ namespace graphdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xa6069b3ec0d99c3cull;
+static const uint64_t BuildVersion = 0xfdaabe4726d81d5cull;
 
 } // namespace graphdemo
 
@@ -7137,11 +7143,11 @@ inline void TableReset( Marker & value ) { MarkerReset( value ); }
 // Tally is a pointer target.
 inline const Tally * TallyAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Tally *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Tally *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Tally * TallyAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Tally *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Tally *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Tally * TallyAt( const TableRegionCtx &, const TableRef & ref ) { return TallyAt( ref ); }
 inline const Tally * TallyAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7168,11 +7174,11 @@ inline Tally * TallyEmplace( TableWorker & worker, TableRef & slot )
 // Marker is a pointer target.
 inline const Marker * MarkerAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Marker *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Marker *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Marker * MarkerAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Marker *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Marker *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Marker * MarkerAt( const TableRegionCtx &, const TableRef & ref ) { return MarkerAt( ref ); }
 inline const Marker * MarkerAt( const TableArenaCtx & ctx, const TableRef & ref )
