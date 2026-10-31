@@ -697,8 +697,14 @@ end
 
 -- THE PENDING POINTER SLOTS (§3.1): one entry per slot a load queues for
 -- resolution, kept in the loader state and reused, so queueing a slot builds
--- nothing once the state has run a load of its size
-local function queue(ctx, holder, key, index, d)
+-- nothing once the state has run a load of its size. `null` is what the slot
+-- holds when its index resolves to nothing: nil for a field or an arm (absent),
+-- false for an array element, a keyed slot or a map value (a sequence and a
+-- key cannot hold nil). Resolution runs in queue order and every entry writes
+-- its slot, so a slot the wire names twice takes the LAST occurrence's answer,
+-- null included (§3: a repeated id is last-wins; decodenodes.go resolveCell
+-- clears the cell before it resolves).
+local function queue(ctx, holder, key, index, d, null)
   local n = ctx.np + 1
   ctx.np = n
   local pending = ctx.pending
@@ -707,7 +713,20 @@ local function queue(ctx, holder, key, index, d)
     p = {}
     pending[n] = p
   end
-  p.holder, p.key, p.index, p.d = holder, key, index, d
+  p.holder, p.key, p.index, p.d, p.null = holder, key, index, d, null
+end
+
+-- a repeat of a FIXED array that builds a fresh array from the one an
+-- earlier occurrence left keeps that occurrence's unreplaced slots (decode.go
+-- arrayBody leaves fv.Elems standing). A pointer slot there is still queued
+-- against the earlier array, so its entries are pointed at the new one, where
+-- they resolve before the repeat's own entries for the same slots.
+local function adopt(ctx, from, to)
+  local pending = ctx.pending
+  for i = 1, ctx.np do
+    local p = pending[i]
+    if p.holder == from then p.holder = to end
+  end
 end
 
 -- takes slot j out of the queue; its entry is kept at the end for reuse
@@ -780,7 +799,7 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
       ctx.report.malformed = true
       return false, false
     end
-    queue(ctx, out, index, i, e)
+    queue(ctx, out, index, i, e, false)
     return false, true
   elseif s == "enum" then
     local x, ok = enum_read(ctx.table, sub, e, ctx.report)
@@ -1130,6 +1149,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
             if pp.holder == inst then
               pp.holder = out
               pp.key = dkey
+              pp.null = false
             end
           end
         else
@@ -1202,7 +1222,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
           if body.bad or body.at ~= body.lim then
             report.malformed = true
           else
-            queue(ctx, out, slot, idx, e)
+            queue(ctx, out, slot, idx, e, false)
           end
         elseif es == "enum" then
           -- a slot's value is read inside its own L, which also skips its
@@ -1281,6 +1301,7 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
         for i = 1, fd.bound do
           out[i] = prior[i]
         end
+        adopt(ctx, prior, out)
       else
         for i = 1, fd.bound do
           out[i] = zero_elem(T, fd.elem)
@@ -1839,12 +1860,14 @@ local function resolve(ctx, root, rootdesc)
         end
       end
     end
-    -- §3.1: 0 is null and null is elided, so a null slot resolves to nil —
-    -- a pointer field of a table is absent. A LIST element keeps its false
-    -- placeholder (§3.1's "A null slot is index 0 ... and it rides in its
-    -- place"): read_element stored it, so an assignment of nil here must not
-    -- drop the trailing null and the count.
-    if value ~= nil then p.holder[p.key] = value end
+    -- §3.1: 0 is null and null is elided, so a null slot resolves to the
+    -- slot's null (queue): nil for a pointer field, which is absent, and false
+    -- for a LIST element (§3.1's "A null slot is index 0 ... and it rides in
+    -- its place"), so the trailing null and the count stay. A slot that does
+    -- not resolve is WRITTEN null rather than left alone, because an earlier
+    -- occurrence of the same slot may already have resolved into it.
+    if value == nil then value = p.null end
+    p.holder[p.key] = value
     -- the queue keeps its entries for the next load, and no value it named
     p.holder, p.d = nil, nil
   end

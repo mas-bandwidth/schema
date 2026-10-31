@@ -227,8 +227,8 @@ func TestLuaLoadAllocationNegativeControl(t *testing.T) {
 		red                 []string
 	}{
 		{"an allocation per queued pointer slot",
-			"local function queue(ctx, holder, key, index, d)\n  local n = ctx.np + 1\n",
-			"local function queue(ctx, holder, key, index, d)\n  local _ = string.rep(\"q\", 1000 + ctx.np)\n  local n = ctx.np + 1\n",
+			"local function queue(ctx, holder, key, index, d, null)\n  local n = ctx.np + 1\n",
+			"local function queue(ctx, holder, key, index, d, null)\n  local _ = string.rep(\"q\", 1000 + ctx.np)\n  local n = ctx.np + 1\n",
 			[]string{"pointer nodes and slots", "a list of records"}},
 		{"an allocation per array body",
 			"array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)\n  local report = ctx.report\n",
