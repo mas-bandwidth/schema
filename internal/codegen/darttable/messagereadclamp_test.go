@@ -2,6 +2,7 @@ package darttable
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -40,7 +41,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 		if !st.IsTable || !st.FixedDeclared {
 			t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
 		}
-		checkMessageReadClamp(t, row.root, u, matchReadClampMutant)
+		checkMessageReadClamp(t, row.root, u, matchReadClampMutant(t, u))
 	})
 
 	// The constructed second vector: a store block whose quantity field's offset
@@ -211,14 +212,39 @@ func checkMessageReadClamp(t *testing.T, root string, u *ir.Unit, mutant []byte)
 	}
 }
 
-// matchReadClampMutant is the coordinator's vector: the backenddemo match_full
-// message with bit 402 flipped, a mutant of 148 bytes whose placement field
-// decodes above its declared max (sha256 748a550a763569cd93d52bf1715fca0dcd3
-// 106b212a2bab4d584a57cd51d4218). The Go oracle counts one `clamped`; Dart
-// before this fix landed the out-of-range value uncounted.
-const matchReadClampMutantHex = "02004640404040404040c021a00f00000000000020d20400217d00000000000000f928900420a80f000000000000206c05120584f50100000000000024b7403280c03e000000000000801818480810da07000000000000902903490182fb00000000000000026a203140781f00000000000040da0d240708f00300000000000088ce810401217e00000000000000393c90240000"
-
-var matchReadClampMutant = mustHex(matchReadClampMutantHex)
+// matchReadClampMutant is the coordinator's vector rebuilt on the current
+// wire: the backenddemo match_full value with the first player's placement
+// written at offset 13, which decodes to 14, above its declared max of 10 (a
+// placement rides bits_required(0, 9), four bits, so 13 is spellable). The Go
+// oracle counts one `clamped`; Dart before its fix landed the out-of-range
+// value uncounted.
+func matchReadClampMutant(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("MatchResult"))
+	file, err := os.ReadFile("../../../testdata/wire/tables/match_full.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep tabletext.Report
+	if _, err := tablewire.Decode(m, inst, file, &rep); err != nil || !rep.Silent() {
+		t.Fatalf("match_full did not read: %v %+v", err, rep)
+	}
+	players, ok := inst.FieldByKey("players")
+	if !ok || len(players.Elems) == 0 || players.Elems[0].Tab == nil {
+		t.Fatal("match_full holds no first player")
+	}
+	placement, ok := players.Elems[0].Tab.FieldByKey("placement")
+	if !ok {
+		t.Fatal("a player holds no placement")
+	}
+	placement.Cell.I, placement.Cell.U = 14, 14
+	out, err := tablewire.EncodeMessage(m, inst)
+	if err != nil {
+		t.Fatalf("the Go encoder refused the MatchResult mutant: %v", err)
+	}
+	return out
+}
 
 // messageReadClampBody loads the mutant with the generated Dart batch message
 // load and asserts the report's six counters and body one's saved bytes match
