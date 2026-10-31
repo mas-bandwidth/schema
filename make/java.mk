@@ -1426,20 +1426,31 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 # retention arm's pair. The harness owns the mutants and the oracle
 # (internal/tablewire, the compiler's own engine).
 #
-# The gate runs every ENUMERATED pass and every pinned vector (159,457 mutants
-# over 188 seeds and 63 roots, 0 divergences, about 15 s). The seeded RANDOM
-# pass and the retention arm are OWED (roadmap java/wire-fuzz-random): both
-# still find divergences — a bounded count that runs past its collection's L,
-# a nested union arm's clamp, and the retaining save over a shared node — so
-# JAVA_WIRE_FUZZ_N stays 0 until they are closed, and raising it is the change
-# that closes the card.
+# The gate runs every ENUMERATED pass and every pinned vector over the plain
+# pair, and REPLAYS the retention arm's pinned vectors through the retaining
+# pair (--retain, §6.6). Two halves are OWED (roadmap
+# java/java-wire-fuzz-every-root), and each still finds a divergence:
+#   - the seeded RANDOM pass: at the shared N and SEED, a stream_arm_first
+#     mutant whose arm body the Java leg counts one kind_mismatch fewer than
+#     the engine (random #22918, run seed 24845619678);
+#   - the whole RETENTION ARM: Java's retention does not reach a pointer
+#     node's body, so an unknown field there is counted and not retained
+#     (graph_tree, enumerated pass reference #43, where the engine retains it).
+# JAVA_WIRE_FUZZ_N stays 0 and the retention arm runs its vectors alone until
+# those close; raising N to $(N) and running --retain whole closes the card.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-.PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene
+.PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
+	@set -e; for v in $(JAVA_RETAIN_VECTORS); do \
+		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
+		./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
+			--replay testdata/wire/tables/fuzz-vectors/$$name.bin --unit $$unit --root $$root; \
+	done
 
 test-java: tables-java-wire-fuzz
 
@@ -1470,6 +1481,58 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 	@echo 'Java wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-java: tables-java-wire-fuzz-negative-control
+
+# THE RETENTION ARM'S CONTROL (docs/PORTING.md I15; docs/SPEC-TABLES.md §4.2,
+# §6.6): a scratch copy of the generated units whose retaining save tests
+# graphdemo.Meta's `build` against zero instead of its declared default 1, the
+# fault the pinned vector retain_declared_default was found on. The vector's
+# retaining replay must go red, and the unplanted gate above is green.
+JAVA_RETAIN_FUZZ_SABOTAGE := build/java-retain-sabotage
+tables-java-retain-fuzz-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_RETAIN_FUZZ_SABOTAGE) && mkdir -p $(JAVA_RETAIN_FUZZ_SABOTAGE)/generated $(JAVA_RETAIN_FUZZ_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_RETAIN_FUZZ_SABOTAGE)/generated/$$u || exit 1; done
+	sed 's/if (v\.build != 1) {/if (v.build != 0) { \/\/ SABOTAGED declared default/' \
+		build/tables-generated-java/pointers/MetaRetain.java > $(JAVA_RETAIN_FUZZ_SABOTAGE)/generated/pointers/MetaRetain.java
+	@grep -q 'SABOTAGED declared default' $(JAVA_RETAIN_FUZZ_SABOTAGE)/generated/pointers/MetaRetain.java || \
+		{ echo 'NEGATIVE CONTROL: the Java retaining-default sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_RETAIN_FUZZ_SABOTAGE)/classes \
+		$(JAVA_RETAIN_FUZZ_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@if ./build/conformance-harness wire-fuzz --retain \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_RETAIN_FUZZ_SABOTAGE)/classes TablesWireFuzz" \
+			--replay testdata/wire/tables/fuzz-vectors/retain_declared_default.bin --unit graphdemo --root Scene \
+			> $(JAVA_RETAIN_FUZZ_SABOTAGE)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a retaining save that ignores a declared default left the pinned vector green'; exit 1; \
+	fi
+	@grep -q 'the decoded value differs' $(JAVA_RETAIN_FUZZ_SABOTAGE)/log || { cat $(JAVA_RETAIN_FUZZ_SABOTAGE)/log; exit 1; }
+	@echo 'Java retain negative control: a retaining save that ignores a declared default changes the saved bytes'
+
+test-java: tables-java-retain-fuzz-negative-control
+
+# THE FOREIGN-KIND MAP COUNT'S CONTROL (docs/SPEC-TABLES.md §2.8, §4): a scratch
+# copy whose map reader reads a foreign element kind's count inside the map's
+# own L again, the fault the pinned vector map_foreign_kind_count_past_body was
+# found on. The plain arm must go red on listdemo.Army.
+JAVA_MAP_COUNT_SABOTAGE := build/java-map-count-sabotage
+.PHONY: tables-java-map-count-negative-control
+tables-java-map-count-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_MAP_COUNT_SABOTAGE) && mkdir -p $(JAVA_MAP_COUNT_SABOTAGE)/generated $(JAVA_MAP_COUNT_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_COUNT_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/*Variable.java; do \
+		sed 's/long n = ek != 13 ? ar\.count(r\.limit) : ar\.leb();/long n = ar.leb(); \/\/ SABOTAGED map count/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED map count' $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/SquadVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java map-count sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_MAP_COUNT_SABOTAGE)/classes \
+		$(JAVA_MAP_COUNT_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_COUNT_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
+			--failed $(JAVA_MAP_COUNT_SABOTAGE)/failed.bin > $(JAVA_MAP_COUNT_SABOTAGE)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a map reader that reads a foreign kind'"'"'s count inside L left the differential green'; exit 1; \
+	fi
+	@grep -q 'listdemo.Army' $(JAVA_MAP_COUNT_SABOTAGE)/log || { cat $(JAVA_MAP_COUNT_SABOTAGE)/log; exit 1; }
+	@echo 'Java map-count negative control: reading a foreign kind'"'"'s count inside L loses the kind mismatch'
+
+test-java: tables-java-map-count-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
