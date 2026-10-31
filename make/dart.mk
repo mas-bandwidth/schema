@@ -104,13 +104,31 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 	@touch $@
 
  
+# THE TABLES BOARD UNIT, for bench/tables/dart/leg (bench/tables/README.md): the
+# VARIABLE form (form 1) of TableMixed, the board's representative corpus.
+# Committed, like every other language's generated/bench/tables/<lang>.
+generated/bench/tables/dart/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/dart
+	./bin/schema generate --lang dart --out generated/bench/tables/dart bench/corpus/BenchTable.schema
+	@touch $@
+
+# THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK, with no clock at all: the
+# golden, all 64 variants load clean and re-save byte-identically, and two
+# rotations (docs/PORTING.md J5).
+.PHONY: tables-dart-bench-gate
+tables-dart-bench-gate: generated/bench/tables/dart/.stamp
+	bench/tables/dart/leg build
+	bench/tables/dart/leg run --gate
+test-dart: tables-dart-bench-gate
+BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
+
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -144,6 +162,8 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
+	# RT1 is the RETAIN surfaces' unit (docs/SPEC-TABLES.md §6.6).
+	./bin/schema generate --lang dart --out build/tables-generated-dart/rt1 test/tables/RT1.schema
 	# the REPORT surface's remaining readers (docs/SPEC-TABLES.md §4, §5): the
 	# pointer-presence middle P2, the id-table pair K1/K2, the arm retypes A2,
 	# and Scalars2 (beside the tree, as tables/scalars is, for its Int128.dart).
@@ -172,6 +192,29 @@ tables-dart-clean: build/tables-generated-dart/.stamp
 			{ echo "dart format drift in $$f"; exit 1; }; \
 	done
 	@echo "tables Dart: analyzer clean and format-canonical"
+
+# ITS CONTROL: a copy of one generated block library carries a planted unused
+# private declaration spelled off-format. The analyzer must reject the copy on
+# unused_element, and the formatter must rewrite it, which is the drift test the
+# gate above applies file by file. No generated file is written to.
+.PHONY: tables-dart-clean-negative-control
+tables-dart-clean-negative-control: build/tables-generated-dart/.stamp
+	@rm -rf build/tables-dart-clean-nc && mkdir -p build/tables-dart-clean-nc/tree
+	@cp build/tables-generated-dart/block/BlockdemoBlock.dart build/tables-dart-clean-nc/tree/BlockdemoBlock.dart
+	@printf '\nint   _plantedUnused=1;\n' >> build/tables-dart-clean-nc/tree/BlockdemoBlock.dart
+	@cp -r build/tables-dart-clean-nc/tree build/tables-dart-clean-nc/fmt
+	@$(DART) format build/tables-dart-clean-nc/fmt >/dev/null
+	@cmp -s build/tables-dart-clean-nc/tree/BlockdemoBlock.dart build/tables-dart-clean-nc/fmt/BlockdemoBlock.dart && \
+		{ echo "NEGATIVE CONTROL FAILED: the planted off-format line is format-canonical, so the drift gate cannot see it"; exit 1; } || true
+	@if $(DART) analyze build/tables-dart-clean-nc/tree > build/tables-dart-clean-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the analyzer stayed green with an unused private declaration planted"; \
+		cat build/tables-dart-clean-nc/log; exit 1; \
+	fi
+	@grep -Fq 'unused_element' build/tables-dart-clean-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the analyzer went red for some other reason"; cat build/tables-dart-clean-nc/log; exit 1; }
+	@echo "negative control: an off-format unused declaration is caught by the formatter drift test and by the analyzer's unused_element"
+
+test-dart: tables-dart-clean-negative-control
 
 # THE DART NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). Every
 # library-scope spelling of the Dart table runtime is registered in
@@ -437,6 +480,9 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-wire-fuzz N=500000
+	$(MAKE) tables-dart-wire-fuzz SEED=2 N=500000
+	$(MAKE) tables-dart-wire-fuzz-negative-control
 	$(MAKE) tables-dart-alloc
 	$(MAKE) tables-dart-alloc-negative-control
 	$(MAKE) tables-dart-alloc-runtime-negative-control
@@ -607,6 +653,91 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
+
+# THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
+# the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
+# scalars (the WIDE KINDS as array elements) are carried by two pieces of
+# cookwrite_form1.go / cookwrite.go. Each leg removes one from a COPY of the
+# emitter, regenerates that unit beside the tree, compiles a copy of the driver
+# against it, and requires the harness to go red on that unit's cook-write
+# rows and on nothing else. No tracked file is written to.
+DART_COOKWRITE_NC := build/dart-cookwrite-nc
+# $(1) leg, $(2) emitter file, $(3) sed sabotage, $(4) unit dir in the tree,
+# $(5) schema source, $(6) the failing rows' name prefix
+define dart-cookwrite-nc-leg
+	@rm -rf $(DART_COOKWRITE_NC)/$(1) && mkdir -p $(DART_COOKWRITE_NC)/$(1)
+	@sed $(3) internal/codegen/darttable/$(2) > $(DART_COOKWRITE_NC)/$(1)/$(2).txt
+	@grep -q SABOTAGED $(DART_COOKWRITE_NC)/$(1)/$(2).txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage matched nothing - the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/$(2)":"%s/$(DART_COOKWRITE_NC)/$(1)/$(2).txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/overlay.json
+	go build -overlay $(DART_COOKWRITE_NC)/$(1)/overlay.json -o $(DART_COOKWRITE_NC)/$(1)/schema ./cmd/schema
+	$(DART_COOKWRITE_NC)/$(1)/schema generate --lang dart --out $(DART_COOKWRITE_NC)/$(1)/generated $(5)
+	@sed -e "s|../../../build/$(4)/|$(CURDIR)/$(DART_COOKWRITE_NC)/$(1)/generated/|g" \
+	     -e "s|../../../build/|$(CURDIR)/build/|g" \
+		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
+	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@printf 'dart %s/$(DART_COOKWRITE_NC)/$(1)/driver-bin\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/drivers.txt \
+			--work $(DART_COOKWRITE_NC)/$(1)/work > $(DART_COOKWRITE_NC)/$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left the harness green"; \
+		tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; \
+	fi
+	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
+		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
+	@if awk '/^FAILURES/ { f = 1; next } f && /^  /' $(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)"; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; exit 1; \
+	fi
+	@grep -m1 "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log
+endef
+
+.PHONY: tables-dart-cookwrite-negative-control
+tables-dart-cookwrite-negative-control: build/conformance-dart build/conformance-harness
+	$(call dart-cookwrite-nc-leg,unions,cookwrite_form1.go,'s|g.emitCookForm1Union(elem, un, 0, "value", "    ")|// SABOTAGED: no union element is written|',tables-generated-dart/messages,tables/messages,message_)
+	$(call dart-cookwrite-nc-leg,wide,cookwrite.go,'s|g.emitCookVariableWide(f, expr, addr, addr+" + 8", stride, ind)|_ = addr // SABOTAGED: no wide element is written|',tables-generated-dart-scalars/scalars,tables/scalars,scalars_)
+	@echo "negative control: the form-1 cook writer's union elements and wide elements each turn exactly their own cook-write rows RED"
+
+test-dart: tables-dart-cookwrite-negative-control
+
+# THE RETAIN SURFACES' NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): a copy of
+# the emitter whose retaining save re-emits NO retained record, built through
+# `go build -overlay` (under build/, never committed), regenerates RT1 into a
+# copy of the generated corpus, and the driver compiled against it must turn
+# `retain-save` red — the retained fields no longer come back to their bodies,
+# and `retain` with it where the id list's loss moves — while every other
+# surface stays green, so the red is the retention and nothing else. The run is one substituted leg (--drivers), as the harness
+# README says a substituted registry is.
+.PHONY: tables-dart-retain-negative-control
+tables-dart-retain-negative-control: build/conformance-harness build/conformance-dart
+	@rm -rf build/dart-retain-nc && mkdir -p build/dart-retain-nc
+	@sed -e 's|    if (!identical(rec.owner, owner)) continue;|    continue; // SABOTAGED: no retained record is re-emitted|' \
+		internal/codegen/darttable/retainwire.go > build/dart-retain-nc/retainwire.go.txt
+	@cmp -s internal/codegen/darttable/retainwire.go build/dart-retain-nc/retainwire.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/retainwire.go":"%s/build/dart-retain-nc/retainwire.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-retain-nc/overlay.json
+	go build -overlay build/dart-retain-nc/overlay.json -o build/dart-retain-nc/schema ./cmd/schema
+	@cp -R build/tables-generated-dart build/dart-retain-nc/generated
+	@rm -rf build/dart-retain-nc/generated/rt1
+	./build/dart-retain-nc/schema generate --lang dart --out build/dart-retain-nc/generated/rt1 test/tables/RT1.schema
+	@sed -e "s|'../../../build/tables-generated-dart/|'$(CURDIR)/build/dart-retain-nc/generated/|" \
+	     -e "s|'../../../build/|'$(CURDIR)/build/|" \
+		test/conformance/dart/main.dart > build/dart-retain-nc/main.dart
+	$(DART) compile exe -o build/dart-retain-nc/conformance-dart build/dart-retain-nc/main.dart >/dev/null
+	@echo "dart build/dart-retain-nc/conformance-dart" > build/dart-retain-nc/drivers.txt
+	@if ./build/conformance-harness run --drivers build/dart-retain-nc/drivers.txt \
+		--work build/dart-retain-nc/work > build/dart-retain-nc/log 2>&1; then \
+		cat build/dart-retain-nc/log; \
+		echo "NEGATIVE CONTROL FAILED: the Dart leg stayed green with no retained record re-emitted"; exit 1; \
+	fi
+	@grep -qE '^retain-save +FAIL' build/dart-retain-nc/log || \
+		{ cat build/dart-retain-nc/log; echo "NEGATIVE CONTROL FAILED: retain-save did not go red"; exit 1; }
+	@if grep -E '^[a-z-]+ +FAIL' build/dart-retain-nc/log | grep -vqE '^retain(-save)? '; then \
+		cat build/dart-retain-nc/log; echo "NEGATIVE CONTROL FAILED: a surface other than the two retain surfaces went red"; exit 1; \
+	fi
+	@grep -E '^retain(-save)? ' build/dart-retain-nc/log
+	@echo "negative control: a Dart retaining save that re-emits no retained record turns the retain surfaces RED and only them"
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
@@ -1065,6 +1196,61 @@ tables-dart-variable-fixed-class:
 
 test-dart: tables-dart-variable-fixed-class
 
+# FINITE TABLE FLOATS ON THE DART LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27: "Tables go finite-only too, same rule as packets"): every read
+# refuses a NaN or an infinity on its raw bits as non_finite_float, naming the
+# field — the variable form (scalars, list and [N] elements, union arms and a
+# retained unknown float), the message form, the fixed form, and the block and
+# cook accessors, which never return one and latch the refusal on the view —
+# every writer refuses one, and -0 rides by its bits. The reversed witness
+# takes every read-side bit test out of the generated source and requires
+# EXACTLY the read vectors to go red, the writers and -0 staying green.
+.PHONY: tables-dart-finite-float tables-dart-finite-float-negative-control
+tables-dart-finite-float:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartFiniteFloatsEveryForm$$'
+	@echo 'tables Dart finite floats: every read and every writer refuses a NaN or an infinity, and -0 rides'
+tables-dart-finite-float-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartFiniteFloatNegativeControl$$'
+	@echo 'negative control: with the read-side bit tests removed, exactly the Dart read vectors go red'
+
+test-dart: tables-dart-finite-float tables-dart-finite-float-negative-control
+
+# DESCRIPTORS ARE CONSTANTS (docs/PORTING.md M13): the card registry, the unit
+# view, the extent scan's tables and the retained-id set are `const`, so a read
+# allocates nothing, runs no lazy initializer and cannot write. The probe
+# requires each registry identical across reads and unmodifiable; its reversed
+# witness turns the card registry and the unit view back into finals in a copy
+# of the generated source and requires the probe red, naming both.
+.PHONY: tables-dart-descriptors
+tables-dart-descriptors:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartDescriptorsAreConstants$$'
+	@echo 'tables Dart descriptors: every registry is const, identical across reads and unmodifiable, and the finals witness goes red'
+
+test-dart: tables-dart-descriptors
+
+# THE IDENTITY MAP (docs/PORTING.md M6, docs/SPEC-TABLES.md §3.1): a node two
+# pointers reach is one record and one object on the read, two equal nodes stay
+# two, and a cycle is refused at its OPEN entry by name. The reversed witness
+# takes the OPEN-entry test out of the generated runtime and requires the probe
+# red on the cycle alone.
+.PHONY: tables-dart-identity
+tables-dart-identity:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestWireIdentityMapDart$$'
+	@echo 'tables Dart identity map: a shared node is one record, a cycle is refused, and the blinded witness goes red'
+
+test-dart: tables-dart-identity
+
+# THE WRITER HOLDS THE MAP'S SORT (docs/PORTING.md M19, docs/SPEC-TABLES.md
+# §2.8): a map built out of key order saves and writes text exactly as the
+# ascending one does, and reads back ascending, for a string and a signed key.
+# The reversed witness leaves the entries in stored order and requires red.
+.PHONY: tables-dart-map-sort
+tables-dart-map-sort:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestMapWriterSortDart$$'
+	@echo 'tables Dart map sort: the writer sorts a map built out of order, and the unsorted witness goes red'
+
+test-dart: tables-dart-map-sort
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
@@ -1213,7 +1399,7 @@ cards-dart-generate: bin/schema
 # make/go.mk's cards-wire-fuzz does.
 .PHONY: cards-dart-wire-fuzz
 cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart \
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-dart-wire-fuzz.log 2>&1; \
@@ -1235,7 +1421,7 @@ test-dart: cards-dart-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 .PHONY: cards-dart-retain-fuzz
 cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart \
+	@timeout $(CARDS_DART_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-dart-retain-fuzz.log 2>&1; \
@@ -1404,3 +1590,68 @@ test-dart: tables-dart-agree tables-dart-accessor-negative-control tables-dart-s
 # see the header of the included file for the corpus, the pinned SDK and the
 # negative control.
 include make/schema-dart-generated-strict-analyze-gate.mk
+
+# THE DART LEG's EMITTER-SIDE CONFORMANCE NEGATIVE CONTROLS (docs/PORTING.md
+# I11). Each sabotages internal/codegen/darttable through a Go overlay
+# (tools/sabotage), generates every unit the driver reads afresh into
+# build/conformance-dart-negative-<mode>, compiles the driver against that tree
+# and requires the matrix red on exactly one surface: `walk` negates the text
+# reader's bool arm (dart / json-read red, json-write and wire green); `zero`
+# removes the text_holds_zero refusal (docs/SPEC-TABLES.md §16.3) and turns
+# exactly the two carried json-hostile zero rows red. Nothing tracked is written.
+.PHONY: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
+conformance-negative-control-dart-walk: build/conformance-harness
+	sh test/conformance/dart/negative-control walk "$(DART)"
+
+conformance-negative-control-dart-zero: build/conformance-harness
+	sh test/conformance/dart/negative-control zero "$(DART)"
+
+# THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
+# image block_pitch open, `forgery` red on that row alone.
+.PHONY: conformance-negative-control-dart-block
+conformance-negative-control-dart-block: build/conformance-harness
+	sh test/conformance/dart/negative-control block "$(DART)"
+
+test-dart: conformance-negative-control-dart-block
+
+test-dart: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
+
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Dart side:
+# docs/USAGE.md's dart-table-usage fragment, generated against tables/pointers
+# afresh, analyzed with infos fatal and run over the graph_tree corpus wire
+# (test/dart-tables/usage). Its control renames the page's entry point in the
+# generated library and requires the gate red, naming it; the control runs the
+# gate first, so the pull-request negative-control row carries both halves.
+.PHONY: tables-dart-usage tables-dart-usage-negative-control
+tables-dart-usage: bin/schema docs/USAGE.md
+	sh test/dart-tables/usage "$(DART)"
+
+tables-dart-usage-negative-control: tables-dart-usage
+	sh test/dart-tables/usage "$(DART)" control
+
+test-dart: tables-dart-usage tables-dart-usage-negative-control
+
+# I15 (docs/PORTING.md) — THE TOLERANT WIRE'S DIFFERENTIAL FUZZER, Dart side.
+# The harness owns the mutators and the oracle (docs/SPEC-TABLES.md §4.2); this
+# leg is the thin reader test/conformance/dart/main.dart's `wire-fuzz` mode:
+# every file root the wire surface carries, bound by (unit, root) in fuzzRoot,
+# read on a pipe through the generated tolerant Load and written back through
+# Save, and the form-2 roots of the message arm through the message codecs. A
+# Save the value cannot honour (a cycle, a blob two slots name) is the
+# StateError the driver answers as a refusal. The default N and SEED are the
+# Makefile's. The driver also binds LoadRetain/SaveRetain for every root
+# (`wire-fuzz --retain`, docs/SPEC-TABLES.md §6.6), but that arm is NOT gated:
+# the Dart leg carries no retain surface yet and the arm is red at its first
+# graph_tree mutant (docs/PORTING.md I15).
+.PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
+tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
+
+# Its control: the emitter's counted-list `widened` count is removed
+# (tools/sabotage table-dart-wire-widen), every unit the driver reads is
+# regenerated from that compiler and the driver rebuilt on the copy, and the
+# fuzzer must go red on the report comparison, at seed 1 with no random pass.
+tables-dart-wire-fuzz-negative-control: build/conformance-harness
+	sh test/conformance/dart/negative-control wire "$(DART)"
+
+test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control

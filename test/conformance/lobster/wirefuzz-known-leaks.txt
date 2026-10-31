@@ -1,0 +1,6 @@
+# THE LOBSTER WIRE-FUZZ LEG's KNOWN FINDINGS (make/lobster-fuzz.mk;
+# test/conformance/lobster/wirefuzzhost). One `<unit> <arm>` per line: a unit
+# whose loaded graphs the VM reports leaked at exit. Empty: a variable load
+# unlinks the node records its root does not reach, and the leg releases
+# every graph it loads (schema_rt.release; docs/PORT-LOBSTER.md, THE LOAD).
+# A unit that leaks fails the leg until it is reviewed here.

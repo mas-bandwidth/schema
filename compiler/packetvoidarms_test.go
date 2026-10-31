@@ -2,7 +2,7 @@
 // what the pages say about it, held to each other.
 //
 // The arm carries no payload, so it rides the packet wire as its tag alone and
-// a `type` body takes it. All nine packet backends carry it.
+// a `type` body takes it. Every packet backend carries it.
 // The pages once grouped the arm with the TABLE-CLOSURE constructs — a `table`
 // arm, a pointer arm, a scalar arm — which are refused at the FRONT END, by
 // `check`, in every target. The two halves below pin the tool's behavior and
@@ -65,7 +65,7 @@ func TestVoidArmInTypeBodyIsCheckedAndCarried(t *testing.T) {
 	c := New()
 	carried := map[string]bool{
 		"c": true, "cpp": true, "cs": true, "dart": true, "elixir": true, "go": true,
-		"java": true, "js": true, "rust": true,
+		"goose": true, "java": true, "js": true, "lobster": true, "lua": true, "rust": true, "squirrel": true, "luau": true,
 	}
 	for _, target := range c.Targets() {
 		_, err := c.Generate(u, target, Options{})

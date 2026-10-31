@@ -49,15 +49,19 @@ type A
 // guardComment is the comment lead each target writes for a guarded field.
 // It is the text the guard is pasted in front of.
 var guardComment = map[string]string{
-	"c":      "", // C emits no branch storage comment
-	"cpp":    " — wire branch",
-	"cs":     " — wire branch",
-	"dart":   " — wire branch",
-	"elixir": " — wire branch",
-	"go":     " — wire branch",
-	"java":   " — wire branch",
-	"js":     " — wire branch",
-	"rust":   " — wire branch",
+	"c":        "", // C emits no branch storage comment
+	"cpp":      " — wire branch",
+	"cs":       " — wire branch",
+	"dart":     " — wire branch",
+	"elixir":   " — wire branch",
+	"go":       " — wire branch",
+	"goose":    " — wire branch",
+	"java":     " — wire branch",
+	"js":       " — wire branch",
+	"lobster":  "", // Lobster emits no branch storage comment
+	"lua":      " — wire branch",
+	"rust":     " — wire branch",
+	"squirrel": " — wire branch",
 }
 
 func TestGuardCommentsSpellTheConditionTheWayDescriptorsDo(t *testing.T) {

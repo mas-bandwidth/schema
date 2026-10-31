@@ -40,7 +40,7 @@ func (g *gen) emitWriteInlineMacro() {
 	g.pf("#if defined( _MSC_VER )\n")
 	g.pf("#define SCHEMA_WRITE_INLINE __forceinline\n")
 	g.pf("#elif defined( __GNUC__ ) || defined( __clang__ )\n")
-	g.pf("#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))\n")
+	g.pf("#define SCHEMA_WRITE_INLINE inline __attribute__( ( always_inline ) )\n")
 	g.pf("#else\n")
 	g.pf("#define SCHEMA_WRITE_INLINE inline\n")
 	g.pf("#endif\n")

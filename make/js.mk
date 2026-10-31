@@ -142,15 +142,15 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	# tblk1.Root, tblk2.Root, tblp2.Chain): the harness's default wire-fuzz
 	# roster (testdata/conformance/tables/MANIFEST.txt, docs/SPEC-TABLES.md
 	# §4.2) names them, and the driver's fuzzUnits binds them for
-	# tables-js-wire-fuzz-all alone. tblg1.Guarded is NOT generated here: G1
-	# declares `optional ?Wrapped`, an optional over a variable closure, which
-	# this target refuses until its turn (§2.3; roadmap
-	# sprint-out/js-carries-optional-over-a-variable-closure), so its four
-	# seeds answer absent.
+	# tables-js-wire-fuzz-all alone. tblg1.Guarded (G1) declares `optional
+	# ?Wrapped`, an optional over a variable closure, which this target carries
+	# (§2.3; compiler/carries_javascript.go): its wire rows and its four roster
+	# seeds answer through the driver's wireRows.
 	./bin/schema generate --lang js --out build/tables-generated-js/a2 test/tables/A2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/k1 test/tables/K1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/k2 test/tables/K2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/p2 test/tables/P2.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/g1 test/tables/G1.schema
 	# THE RETAIN-UNKNOWN TRIO (§6.6): the reader RT1 and the two newer builds
 	# whose unknown fields it retains across. The conformance driver's retain and
 	# retain-save surfaces load RT2's and RT3's wires through RT1's retaining
@@ -209,7 +209,7 @@ tables-js-leg: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 .PHONY: tables-js-accessor-negative-control
 tables-js-accessor-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	@rm -rf build/js-accessor-sabotage && mkdir -p build/js-accessor-sabotage
-	@sed 's|at + %d + i \* %d", fl.Offset, elem)))|at + %d + i * %d", fl.Offset+4, elem))) // SABOTAGED|' \
+	@sed 's|at + %d + i \* %d", fl.Offset, elem)\(.*\)$$|at + %d + i * %d", fl.Offset+4, elem)\1 // SABOTAGED|' \
 		internal/codegen/jstable/record.go > build/js-accessor-sabotage/record.go.txt
 	@grep -q SABOTAGED build/js-accessor-sabotage/record.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
@@ -329,6 +329,35 @@ tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz
 	@grep -m1 "FAILED: RenderFrame ships walk" build/js-alloc-control.log
 	@echo "negative control: one extra allocation per iteration turns every zero-floor path RED"
 
+# THE SOAK (docs/PORTING.md I9): the allocation gate's own paths for a PASS
+# COUNT (never a clock), the bytes per iteration re-measured and gated at every
+# one of sixteen samples, and the live heap's drift after a collection beside it
+# as the weaker instrument that sees retention. The default count is the release
+# act, 2^35 passes, about forty minutes on mini-m5; `make test` runs the short form.
+TABLES_JS_SOAK_ITERATIONS ?= 34359738368
+.PHONY: tables-js-soak tables-js-soak-short tables-js-soak-negative-control
+tables-js-soak: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	cd $(CURDIR) && TABLES_JS_SOAK_ITERATIONS=$(TABLES_JS_SOAK_ITERATIONS) $(NODE) --expose-gc test/js-tables/main.mjs soak
+
+tables-js-soak-short: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	$(MAKE) tables-js-soak TABLES_JS_SOAK_ITERATIONS=4194304
+
+# ITS NEGATIVE CONTROL: eight short-lived objects planted per iteration in the
+# measured loop alone (SCHEMA_JS_ALLOC_LEAK, the harness's plant, never a change
+# to generated code). Each is dropped as the next is made, so the drift line
+# must stay green while the COUNT goes red.
+tables-js-soak-negative-control: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	@if SCHEMA_JS_ALLOC_LEAK=1 TABLES_JS_SOAK_ITERATIONS=400000 $(NODE) --expose-gc test/js-tables/main.mjs soak \
+			> build/js-soak-negative.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a planted per-iteration allocation left the soak count green'; \
+		cat build/js-soak-negative.log; exit 1; \
+	fi
+	@grep -Fq 'soak: RenderFrame ships walk per-iteration allocation moved over its ceiling' build/js-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the soak went red, but not on the COUNT of the zero-floor path'; cat build/js-soak-negative.log; exit 1; }
+	@grep -Fq 'soak: drift OK' build/js-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the drift line was not green beside the red COUNT'; cat build/js-soak-negative.log; exit 1; }
+	@echo 'js tables soak negative control: a planted per-iteration allocation turns the COUNT red while the drift stays green'
+
 # THE JAVASCRIPT PORT'S RELEASE GATE (certify.yml derives the target list from
 # this file, so landing one is adding it here and nothing else). What sits
 # behind it is the expensive half of this port's own instruments:
@@ -367,8 +396,9 @@ tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	$(MAKE) tables-js-fuzz N=200000
 	$(MAKE) tables-js-alloc ITERS=2000000
 	$(MAKE) tables-js-alloc-negative-control
+	$(MAKE) tables-js-soak
 	$(MAKE) tables-js-usage
-	@echo "tables JS release gate: the fuzzer at depth, the allocation floor at scale, and the page's example"
+	@echo "tables JS release gate: the fuzzer at depth, the allocation floor at scale, the hour's soak, and the page's example"
 
 # THE REFUSAL IS SCOPED TO THE POINTERED TABLE, NOT THE UNIT. This gate was
 # written when JavaScript had no table wire at all, so it asked that a pointered
@@ -618,11 +648,14 @@ test-js: tables-js-variable-class
 # widedemo and the messagedemo instances, with wide text's read report and its
 # write refusal (TestFixedPointAndWideTextOnTheTableWireJavaScript); and the
 # refusal test no longer names those constructs
-# (TestOtherVariableConstructsAreRefusedByName).
+# (TestOtherVariableConstructsAreRefusedByName); and the map WRITER holds the
+# sort: a Map built out of key order saves, measures and writes text in
+# ascending key order, with a reversed witness that drops the sort
+# (TestMapWriterSortJavaScript, docs/PORTING.md M19).
 # SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestFixedPointAndWideTextOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestFixedPointAndWideTextOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
 	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars and wstring(N) round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
@@ -660,6 +693,20 @@ tables-js-text-differential-negative-control:
 	@echo 'tables JS text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 test-js: tables-js-text-differential
+
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# finite-only too, same rule as packets"): every JavaScript read refuses a NaN
+# or an infinity on its raw bits as non_finite_float (variable, retained,
+# message, fixed, and the block and record accessors latched on the view),
+# every writer refuses one, and -0 and the subnormals ride exact. The gate is
+# TestJsFloat32CellsAreBitTransparent; its reversed witness turns each read's
+# raw-bits test off in turn and the probe must red on exactly that read's rows.
+.PHONY: tables-js-finite-float tables-js-finite-float-negative-control
+tables-js-finite-float:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFloat32CellsAreBitTransparent$$'
+tables-js-finite-float-negative-control:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFiniteFloatNegativeControl$$'
+test-js: tables-js-finite-float
 
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
 # row 5: "a known hash over different bytes is `layout_malformed`"; SPEC-TABLES
@@ -981,7 +1028,7 @@ build/tables-generated-js/cards/.stamp: bin/schema tables/cards/Card.schema tabl
 # vectors out of this Card-only manifest; the greps below hold the nonzero
 # seed/mutant claim, so a zero-coverage roster fails rather than passing.
 cards-js-wire-fuzz: build/conformance-harness cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-js-wire-fuzz.log 2>&1; \
@@ -996,7 +1043,7 @@ cards-js-wire-fuzz: build/conformance-harness cards-js-generate
 # JavaScript Card codec's retaining Load and Save are held to the identical
 # byte-for-byte contract the C and C# drivers' retain fuzzers reproduce.
 cards-js-retain-fuzz: build/conformance-harness cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
@@ -1017,13 +1064,13 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # absent are the message-form (form-2) entries, which this leg's wire-fuzz arm
 # does not bind: backenddemo LoginRequest, MatchResult and StorePurchase,
 # vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, graphdemo Scene
-# and blobdemo Catalog, 19 seeds, and tblg1 Guarded's four (an optional over a
-# variable closure, which this target does not carry yet), 23 in all. The count is pinned exactly, so a root
+# and blobdemo Catalog, 19 seeds. tblg1 Guarded's four answer since the target
+# carries an optional over a variable closure (§2.3). The count is pinned exactly, so a root
 # that drops to absent (or a new message-form root) fails the target by name
 # rather than shrinking the run unseen; it does not depend on SEED or N.
-TABLES_JS_WIRE_FUZZ_ABSENT := 23
+TABLES_JS_WIRE_FUZZ_ABSENT := 19
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all.log; \
@@ -1033,7 +1080,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
 	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-all.log || { \
 		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) message-form seeds pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js --retain \
+	@./build/conformance-harness wire-fuzz --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all-retain.log; \
@@ -1041,6 +1088,67 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all-retain.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all-retain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all-retain.log
+
+# THE TWO ARMS ONE AT A TIME, for ci-full.yml's js-fuzz rows. Together the
+# arms measured 88 s on a workstation at the default SEED and N (the
+# enumerated pass is most of it and does not move with N), too close to a
+# five-minute CI row once setup is paid, so CI runs each arm as its own row.
+# Each is the same command and the same greps as its half of
+# tables-js-wire-fuzz-all, which stays the one target test-js runs; the plain
+# arm reads the absent pin through the variable, so the pin lives in one place.
+.PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
+tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-js-wire-fuzz-plain.log 2>&1; \
+		status=$$?; cat build/tables-js-wire-fuzz-plain.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-plain.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-plain.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-plain.log
+	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-plain.log || { \
+		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds pinned in make/js.mk'; exit 1; }
+
+tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js --retain \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-js-wire-fuzz-retain.log 2>&1; \
+		status=$$?; cat build/tables-js-wire-fuzz-retain.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-retain.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-retain.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-retain.log
+
+# tables-js-wire-fuzz-negative-control is I15's control for this leg
+# (docs/PORTING.md): the twin of the reference's numbering-resolve control.
+# One statement of the GENERATED variable reader is removed in a COPY of the
+# generated tree: the enum reference's range check (a reference past the
+# unit's id table is damage, docs/SPEC-TABLES.md §3). Without it the reader
+# looks the reference up past the table, names no variant, and counts an
+# unknown where the oracle counts malformed, so the differential must go red
+# on the REPORT. --n 0 runs the enumerated pass alone, so the control does not
+# depend on the random stream. Nothing else in the js gate sees this: the
+# conformance harness's wire, report and hostile surfaces stay green over the
+# same sabotaged tree, so the red here is the fuzzer's own.
+.PHONY: tables-js-wire-fuzz-negative-control
+tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@rm -rf build/js-wire-fuzz-sabotage && mkdir -p build/js-wire-fuzz-sabotage
+	@cp -R build/tables-generated-js build/js-wire-fuzz-sabotage/generated
+	@for f in build/js-wire-fuzz-sabotage/generated/*/*Variable.js; do \
+		sed 's|if (ref > table.length) { report.malformed = true; return undefined; }|/* SABOTAGED enum reference range */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED enum reference range' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
+		{ echo 'NEGATIVE CONTROL FAILED: the enum reference range sabotage patched nothing'; exit 1; }
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+			--driver 'test/conformance/js/driver wire-fuzz' --seed 1 --n 0 --failed build/js-wire-fuzz-sabotage/failed.bin \
+			> build/js-wire-fuzz-sabotage/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: an enum reference past the id table was read as unknown and the differential stayed green'; exit 1; \
+	fi
+	@grep -q 'the report differs' build/js-wire-fuzz-sabotage/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the differential went red, but not on the report'; cat build/js-wire-fuzz-sabotage/log; exit 1; }
+	@echo 'JavaScript wire negative control: an enum reference past the id table changes the read report'
+
+test-js: tables-js-wire-fuzz-negative-control
 
 # THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
 # cards-js-test runs the facade's node:test cases against the generated unit;
@@ -1110,6 +1218,8 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-fuzz-negative-control
 	$(MAKE) tables-js-alloc
 	$(MAKE) tables-js-alloc-negative-control
+	$(MAKE) tables-js-soak-short
+	$(MAKE) tables-js-soak-negative-control
 	$(MAKE) tables-js-runtime-home
 	$(MAKE) tables-js-runtime-home-negative-control
 	$(MAKE) tables-js-fixed-form
@@ -1278,3 +1388,91 @@ conformance-negative-control-js-walk: build/conformance-harness build/tables-gen
 	sh test/conformance/js/negative-control walk
 
 test-js: conformance-negative-control-js-walk
+
+# THE GENERIC-WALK GATE, JavaScript side (docs/PORTING.md M9, docs/SPEC-TABLES.md
+# §16). The text form is one walk over the descriptors, emitted between the
+# `---- json walk: begin/end ----` markers into each unit's <Package>Variable.js
+# (the module that already carries the unit's variable runtime). The gate holds
+# the shape cs holds: exactly one walker per unit directory, and every walker in
+# the corpus the same bytes. The package name never enters the markers, so
+# nothing is normalised away. js_json_walk_compare is the comparison alone, over
+# a directory of extracted walkers, so the negative control runs the same lines.
+define js_json_walk_compare
+	@if [ -z "$$(ls $(1) 2>/dev/null)" ]; then \
+		echo "GENERIC-WALK GATE FAILED: no walker in any generated Variable.js"; exit 1; fi
+	@first=""; for f in $(1)/*; do \
+		if [ -z "$$first" ]; then first=$$f; else \
+			cmp -s $$first $$f || { echo "GENERIC-WALK GATE FAILED: the walker in $$f is not the walker in $$first"; exit 1; }; \
+		fi; \
+	done
+endef
+
+.PHONY: tables-js-json-walk-extract tables-js-json-walk tables-js-json-walk-compare tables-js-json-walk-negative-control
+tables-js-json-walk-extract: build/tables-generated-js/.stamp
+	@rm -rf build/json-walk-js && mkdir -p build/json-walk-js
+	@for d in build/tables-generated-js/*/; do \
+		unit=$$(basename $$d); n=0; \
+		for f in $$d*.js; do \
+			[ -e "$$f" ] || continue; \
+			out=build/json-walk-js/$$unit.$$(basename $$f); \
+			awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f > $$out; \
+			if [ -s $$out ]; then n=$$((n+1)); else rm -f $$out; fi; \
+		done; \
+		if [ -n "$$(ls $$d*Variable.js 2>/dev/null)" ] && [ $$n -ne 1 ]; then \
+			echo "GENERIC-WALK GATE FAILED: unit $$unit carries $$n walkers, not one"; exit 1; \
+		fi; \
+	done
+
+tables-js-json-walk-compare:
+	$(call js_json_walk_compare,$(JS_JSON_WALK_DIR))
+
+tables-js-json-walk: tables-js-json-walk-extract
+	$(call js_json_walk_compare,build/json-walk-js)
+	@echo "tables JavaScript generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-js | wc -l | tr -d ' ') units"
+
+# The control: one unit's walker, copied aside with one line of the text
+# writer's indent changed (the shape a per-unit specialisation of the walk would
+# take), must turn the comparison red. A comparison that matched nothing, or one
+# that compared a walker to itself, stays green here and fails the control.
+tables-js-json-walk-negative-control: tables-js-json-walk-extract
+	@rm -rf build/json-walk-js-control && cp -R build/json-walk-js build/json-walk-js-control
+	@victim=$$(ls build/json-walk-js-control | tail -1); \
+	grep -q 'TableVariableBase64' build/json-walk-js-control/$$victim || { echo "negative control: the planted line is gone from the walker"; exit 1; }; \
+	sed 's/TableVariableBase64Text(data) {/TableVariableBase64Text(data) { \/\/ specialised/' build/json-walk-js-control/$$victim > build/json-walk-js-control/$$victim.tmp && \
+	mv build/json-walk-js-control/$$victim.tmp build/json-walk-js-control/$$victim; \
+	cmp -s build/json-walk-js/$$victim build/json-walk-js-control/$$victim && { echo "negative control: the sabotage did not apply"; exit 1; }; \
+	if $(MAKE) --no-print-directory tables-js-json-walk-compare JS_JSON_WALK_DIR=build/json-walk-js-control > build/json-walk-js-control.log 2>&1; then \
+		echo "JavaScript json-walk negative control FAILED: a specialised walker in one unit passed the gate"; exit 1; fi; \
+	grep -q 'GENERIC-WALK GATE FAILED: the walker in' build/json-walk-js-control.log || { cat build/json-walk-js-control.log; echo "negative control: red for the wrong reason"; exit 1; }
+	@echo "JavaScript json-walk negative control: a specialised walker in one unit turns the gate red"
+
+test-js: tables-js-json-walk tables-js-json-walk-negative-control
+
+# M13 (docs/PORTING.md, "Descriptors are constants"): the variable codec and
+# union descriptors are frozen whole once TableVariableLink has filled them,
+# and the exported <Name>TableType, <Package>UnitRegistry and TableRetainKnown
+# are frozen as they are made. TestJavaScriptDescriptorsAreConstants walks
+# every descriptor reachable from them and requires each frozen, and a write
+# into one to throw; its reversed witness drops the freeze and must find one
+# open. SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE, not a skip.
+.PHONY: tables-js-descriptors
+tables-js-descriptors:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestJavaScriptDescriptorsAreConstants$$'
+	@echo 'tables JS descriptors: every variable descriptor is frozen after the link (M13)'
+
+test-js: tables-js-descriptors
+
+# M5 (docs/PORTING.md, "Keyed arrays index by key, refused at both ends"): a
+# keyed array [E]T takes the KEY on every JavaScript form that stores one — the
+# variable class's and the fixed class's static <field>At / set<Field>At /
+# <field>Entries, and the block row's <Field>ByKey / <Field>AtKey — and refuses
+# None and a key past E.Max in every build. TestKeyedArrayAccessorsJavaScript
+# holds all three forms and plants the None-only guard, the Max-only guard and
+# the missing shift back, each of which must turn it red.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-keyed
+tables-js-keyed:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestKeyedArrayAccessorsJavaScript$$'
+	@echo 'tables JS keyed: a keyed array indexes by key and refuses None and a key past Max on every form (M5)'
+
+test-js: tables-js-keyed

@@ -1,0 +1,9 @@
+THE REGISTRY's fragments (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT, "The registry").
+
+One file per construct card: <construct>.goosereg. The schema compiler
+assembles every fragment's declarations and entries onto the end of
+schema_tables.goose when the Goose target emits it, so no card edits a shared
+enum or array. The format and its refusals are in ../../registry.go.
+
+This README is not a fragment; it keeps the directory embeddable while no
+fragment exists.

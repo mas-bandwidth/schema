@@ -264,14 +264,11 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 		if !TableMessageKnownKind(s.Elem) {
 			return s, 0, false // an element kind outside the closed set
 		}
-		// AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
-		// announcement, rather than at the skip that would meet it (§3.3): no
-		// declaration this language accepts is an array of `string(N)` or of
-		// `wstring(N)`, so a shape announcing one is one rule's business and
-		// not two.
-		if s.Elem == TableKindString || s.Elem == TableKindWstring {
-			return s, 0, false
-		}
+		// AN ELEMENT KIND OF 12 OR 33 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+		// (§3.3): a text list (§2.13) is a kind `14` array of kind `12`, so a
+		// unit that declares one announces one, and the element's own shape is
+		// the `max` its length is sized from. A string element is framed, so
+		// the skip steps it one element at a time rather than by width.
 		inner, n, ok := DecodeShape(in[at:], s.Elem)
 		if !ok {
 			return s, 0, false
@@ -293,6 +290,10 @@ func TableMessageKnownKind(kind uint8) bool {
 	case kind >= TableKindI128 && kind <= TableKindUFixed128:
 		return true
 	case kind >= TableKindEnum && kind <= TableKindWstring:
+		return true
+	case kind == TableKindTimestamp:
+		// 36: the timestamp, a sixty-four bit raw payload with no shape bytes
+		// (§2.11, §3.3's entry shape table)
 		return true
 	}
 	return false
@@ -500,6 +501,12 @@ func tableMessageElementShape(f *Field) TableMessageShape {
 	if f.Type.Pointer {
 		return TableMessageShape{}
 	}
+	if TextListPlain(f) {
+		// A PLAIN TEXT LIST'S ELEMENT is a `string(M)` (§2.13, §3): the shape
+		// of kind `12` is its `max`, and `0` for the unbounded spelling, as
+		// the element record's own `value` entry gives it
+		return TableMessageShape{Max: TextListValue(f).Type.Size}
+	}
 	switch f.Type.Kind {
 	case TBits:
 		// a `bits(N)` rides in N, which is a range of [0, 2^N - 1] against a
@@ -565,7 +572,7 @@ func TableMessageValueBits(kind uint8, s TableMessageShape) int64 {
 	switch {
 	case kind == TableKindBool:
 		return 1
-	case kind == TableKindF64:
+	case kind == TableKindF64, kind == TableKindTimestamp:
 		return 64
 	case kind == TableKindF32:
 		if s.Packing == TableMessageQuantized {

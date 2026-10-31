@@ -54,6 +54,8 @@ var tagAssertsInDebug = map[string][]string{
 	"cs":   {`Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]");`},
 	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
+	// --runtime-no-asserts removes a Lobster assert from the build
+	"lobster": {"assert v.Type >= 0 and v.Type <= 2"},
 	// js is not here: its debug-only idiom is the PRODUCTION/checked fork of
 	// the flat writer, not a statement. Checked separately below.
 }
@@ -62,18 +64,26 @@ var tagAssertsInDebug = map[string][]string{
 // carry. An assert BESIDE a live refusal removes nothing, so none of it may
 // survive.
 var tagGoneFromRelease = map[string][]string{
-	"c":   {"if ( value->type > TAGUNIT_SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
-	"cpp": {"not a ShotType value; nothing was written"},
-	"cs":  {"if (tagValue > 2)"},
+	"c":       {"if ( value->type > TAGUNIT_SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
+	"cpp":     {"not a ShotType value; nothing was written"},
+	"cs":      {"if (tagValue > 2)"},
+	"lobster": {"if v.Type < 0 or v.Type > 2: return false"},
 }
 
 // tagRefusesEveryBuild is the write's UNCONDITIONAL tag refusal, for the
 // targets that still hold it that way. Go and Elixir are here by the ruling —
-// a language with no dormant-assert idiom keeps the form native to it. They
-// are the only two left.
+// a language with no dormant-assert idiom keeps the form native to it, and
+// Goose, whose `assert` aborts in every build, returns the refusal kind.
 var tagRefusesEveryBuild = map[string][]string{
 	"elixir": {`raise ArgumentError, "value.shot is not a Shot value: #{inspect(value_shot_other)}"`},
 	"go":     {"if value.Type > ShotTypeMax {"},
+	// Goose has no build-removable assert: the writer returns the refusal
+	// kind before the tag rides (internal/codegen/goose/wire.go)
+	"goose": {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	// Lua's assert() is an ordinary call no build strips, so the writer
+	// refuses an out-of-set tag (returns false) in every build, as Go does.
+	"lua":      {`if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end`},
+	"squirrel": {`if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;`},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the
@@ -85,6 +95,10 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		text := generatedText(t, unionTagUnit, target)
 
 		switch {
+		case writerStillOwed(t, target, text):
+			// no writer yet: the claim is owed (countedbirth_test.go,
+			// packetWriterOwed)
+
 		case target == "js":
 			// the fork, not a statement: the contract lives in the checked
 			// flat writer and the production writer is free of it

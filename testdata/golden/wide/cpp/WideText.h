@@ -11,7 +11,8 @@
 namespace wide {
 
 // type WideSeven
-struct WideSeven {
+struct WideSeven
+{
     char16_t text[7 + 1] = {}; // wstring(7): max length in UTF-16 code units, used length beside it (SPEC §4.12)
     int32_t text_length = 0;
 };
@@ -20,7 +21,8 @@ inline constexpr int64_t WideSevenMaxBits = 227; // longest wire path; align pad
 inline constexpr int64_t WideSevenMaxBytes = 32; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type WideFour
-struct WideFour {
+struct WideFour
+{
     char16_t text[4 + 1] = {}; // wstring(4): max length in UTF-16 code units, used length beside it (SPEC §4.12)
     int32_t text_length = 0;
 };
@@ -29,7 +31,8 @@ inline constexpr int64_t WideFourMaxBits = 131; // longest wire path; align pads
 inline constexpr int64_t WideFourMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type NarrowFifteen
-struct NarrowFifteen {
+struct NarrowFifteen
+{
     char text[15 + 1] = {}; // string(15): max length, used length beside it (SPEC §4.7)
     int32_t text_length = 0;
 };
@@ -38,7 +41,8 @@ inline constexpr int64_t NarrowFifteenMaxBits = 131; // longest wire path; align
 inline constexpr int64_t NarrowFifteenMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type WideInterop
-struct WideInterop {
+struct WideInterop
+{
     char16_t caption[7 + 1] = {}; // wstring(7): max length in UTF-16 code units, used length beside it (SPEC §4.12)
     int32_t caption_length = 0;
 };

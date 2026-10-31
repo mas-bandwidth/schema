@@ -1,0 +1,55 @@
+#!/bin/sh
+# THE LOBSTER LEG of the tables bench (bench/tables/README.md, "Registering a
+# port"; docs/PORT-LOBSTER.md, THE HARNESS and THE CARD MAP). Run from the
+# repository root:
+#
+#   leg build        check the pinned toolchain and the generated unit; the
+#                    JIT build has nothing to compile ahead of the run
+#   leg run [args]   run bench/tables/lobster/table_main.lobster: --gate (no
+#                    timing), --csv, --round K, --iterations N, --wire-dir,
+#                    --variant-dir
+#
+# The unit is generated/bench/tables/lobster (make/lobster.mk registers its
+# stamp in BENCH_TABLES_LEGS). LOBSTER overrides the toolchain.
+#
+# THE BUILD IT MEASURES: the pin's default JIT with --runtime-no-asserts, every
+# row `linkage=jit`. The --cpp ahead-of-time row is OWED as card
+# schema-lobster-bench-cpp (docs/roadmap.sexp): `lobster --cpp` writes into the
+# toolchain's dev/ tree, which the pinned release archive does not carry, and
+# compiling it needs the engine's full build from an aardappel/lobster checkout
+# at 0921f7dd5745 — a heavy build, and a fleet job. No --cpp row is printed or
+# estimated until it lands. The output grammar and its refusal of any untagged
+# line (a compiler warning) are bench/lobster/route.sh's.
+set -e
+
+ROOT="$(pwd -P)"
+LOBSTER="${LOBSTER:-$ROOT/dist/lobster-v2026.8/bin/lobster}"
+export LOBSTER
+GEN=generated/bench/tables/lobster
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.lobster" ]; then
+        echo "missing $GEN — run \`make generated/bench/tables/lobster/.stamp\`" >&2
+        exit 2
+    fi
+    if [ ! -x "$LOBSTER" ]; then
+        echo "no lobster at $LOBSTER (\`make dist-lobster\`, or set LOBSTER)" >&2
+        exit 2
+    fi
+    ;;
+run)
+    shift
+    status=0
+    bench/lobster/route.sh bench/tables/lobster/table_main.lobster ../../lobster "../../../$GEN" -- "$@" || status=$?
+    case " $* " in
+        *" --gate "*) ;;
+        *) echo "lobster --cpp row: owed (schema-lobster-bench-cpp — the pinned release has no dev/ tree to compile lobster --cpp output against)" >&2 ;;
+    esac
+    exit "$status"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

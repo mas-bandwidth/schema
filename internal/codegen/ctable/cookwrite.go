@@ -215,7 +215,8 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 		if t.Kind == ir.TFloat64 {
 			width = 64
 		}
-		g.pf("%s{ uint%d_t bits; memcpy(&bits,&%s,%d); table_cook_put(%s,bits,%d,order); }\n", ind, width, src, width/8, at, width/8)
+		// A NaN OR AN INFINITY IS REFUSED, NEVER COOKED (docs/SPEC-TABLES.md §3.3)
+		g.pf("%s{ uint%d_t bits; memcpy(&bits,&%s,%d); if(!table_bits_finite%d(bits)) { return 0; } table_cook_put(%s,bits,%d,order); }\n", ind, width, src, width/8, width, at, width/8)
 	case ir.TInt, ir.TFixed:
 		if t.Width == 128 {
 			g.pf("%stable_cook_put128(%s,%s.lo,%s.hi,order);\n", ind, at, src, src)
@@ -319,7 +320,7 @@ func (g *tableGen) emitCookFixedRoot(st *ir.Struct) {
 	bytes := cookAlignUp(ml.Size, align)
 	need := 64 + bytes + 16
 	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * value) { (void)value; return %d; }\n", g.api(st.Name, "cook_measure"), st.Name, need)
-	g.pf("static SCHEMA_UNUSED int %s(const %s * value,void * output,uint64_t capacity,TableByteOrder order)\n{\n    uint8_t * raw=(uint8_t *)output;\n    if(value==NULL || raw==NULL || capacity<%d) { return 0; }\n    memset(raw,0,%d);\n    if(!%s(NULL,raw+64,value,order)) { return 0; }\n", g.api(st.Name, "cook"), st.Name, need, need, g.sym(st.Name, "cook_body"))
+	g.pf("static SCHEMA_UNUSED int %s(const %s * value,void * output,uint64_t capacity,TableByteOrder order)\n{\n    uint8_t * raw=(uint8_t *)output;\n    if(value==NULL || raw==NULL || capacity<%d) { return 0; }\n    memset(raw,0,%d);\n    if(!%s(NULL,raw+64,value,order)) { memset(raw,0,%d); return 0; } /* a NaN or an infinity writes no cook (§3.3) */\n", g.api(st.Name, "cook"), st.Name, need, need, g.sym(st.Name, "cook_body"), need)
 	g.pf("    table_cook_put(raw+%d,UINT64_C(0x%016x),8,order);\n    table_cook_header(raw,%s,%d,1,%d,order); return 1;\n}\n", 64+bytes+8, ir.TableWireId(st.WireName()), buildVersionName(g.unit.Package), bytes, align)
 }
 func (g *tableGen) emitCookVariableRoot(st *ir.Struct) {

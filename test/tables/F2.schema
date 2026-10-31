@@ -1,9 +1,9 @@
 // F2.schema — F1's root one generation on, every float32 respelled float64
-// (docs/SPEC-TABLES.md §4, schema#480). `f32` into `f64` is the float rung of
-// the WIDENED ladder and the only one, and it is the place a port that models
-// a float32 in a wider cell would quiet a signalling NaN: the widening is done
-// on the BITS, the 23 payload bits riding in the top of the double's 52, and
-// the pin at testdata/wire/tables/floats_nan.bin is what says so.
+// (docs/SPEC-TABLES.md §4). `f32` into `f64` is the float rung of the WIDENED
+// ladder and the only one; every finite float32 widens exactly through the
+// ordinary conversion, and a NaN or an infinity is refused on the float32's
+// raw bits before it (§3.3) — the pin at testdata/wire/tables/floats_nan.bin
+// is refused through this rung too.
 package tblf2
 
 fixed table Floats

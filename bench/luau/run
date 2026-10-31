@@ -1,0 +1,37 @@
+#!/bin/sh
+# THE LUAU LEG of the type bench (bench/README.md, "Runner contract";
+# docs/PORT-LUAU.md, THE HARNESS). Run from the repository root:
+#
+#   bench/luau/run [--csv] [--gate] [--round K] [--quick] [--iterations N]
+#                  [--wire-dir <dir>] [--variant-dir <dir>]
+#
+# Exit 2 (run.sh prints SKIP) when the pinned interpreter or the generated unit
+# is absent. LUAU overrides the interpreter, as everywhere in the repo.
+#
+# THE BUILD IT MEASURES. bench/luau/main.luau under the pin's stock `luau` CLI,
+# NATIVE CODEGEN OFF (no --codegen): what an embedding host gets unless it
+# enables the JIT. A codegen row is NOT measured and none is printed; the CSV
+# says linkage pkg, checks always, opt default, and the pass preamble says
+# interpreter. The staging, the corpus-as-source and the output grammar (and its
+# refusal of any untagged line) are bench/luau/route.sh's.
+set -e
+
+ROOT="$(pwd -P)"
+LUAU="${LUAU:-$ROOT/dist/luau-0.741/luau}"
+export LUAU
+GEN=generated/bench/luau
+
+if [ ! -f bench/luau/main.luau ]; then
+    echo "run this from the repository root" >&2
+    exit 1
+fi
+if [ ! -f "$GEN/Bench.luau" ]; then
+    echo "missing $GEN — run \`make generated/bench/luau/.stamp\`" >&2
+    exit 2
+fi
+if [ ! -x "$LUAU" ]; then
+    echo "no luau at $LUAU (\`make dist-luau\`, or set LUAU)" >&2
+    exit 2
+fi
+
+exec bench/luau/route.sh packet bench/luau/main.luau "$GEN" bench_mixed -- "$@"

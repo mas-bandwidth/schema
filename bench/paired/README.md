@@ -92,10 +92,11 @@ set and a pass measuring anything else would render as a pass it is not. **Fast
 mode is the diagnostic and takes any non-empty subset of the known legs**, which
 is `cpp,c,go,cs,elixir`, plus table-only `rust` asked alone: it publishes
 nothing and seals nothing, and it is where a leg that is not in a published
-pass yet is measured at all. The Elixir leg is exactly that today — it carries
-the FIXED form (form 3) and no other table wire (form 1 is deferred to
-schema#515), so its table rows are named `bench_fixed` and it is not part of a
-confirmation pass. `rust` is table-only (see below) and is never mixed with a
+pass yet is measured at all. The Elixir leg is exactly that today. This driver's
+runner measures the FIXED form (form 3), so its table rows are named
+`bench_fixed` and it is not part of a confirmation pass; the variable form
+(form 1) of the board's `TableMixed` is measured by its own runner under the
+tables board (`bench/tables/elixir/leg`), against that corpus's id. `rust` is table-only (see below) and is never mixed with a
 paired request.
 
 An interpreted leg has no compiled artifact, so what stands in place of a hashed
@@ -196,8 +197,10 @@ type board's, from its own runner over the same sixty-four records. The table
 leg, `bench/tables/dart/table_main.dart`, is compiled by `dart compile exe` into
 `build/paired/table-dart` — the AOT form, the one that ships — with the generated
 unit (`generated/bench/paired/dart`) compiled into it, so like rust it runs as
-the driver's own build product. Dart has no form-1 table wire (schema#514), so
-the leg is the fixed form alone. `DART` names the SDK (the repository-local pin
+the driver's own build product. This runner is the fixed form alone: the paired
+corpus's `fixed table` root has no form-1 codec, and the variable form of the
+board's `TableMixed` is measured by its own runner under the tables board
+(`bench/tables/dart/leg`, `bench/tables/README.md`), against that corpus's id. `DART` names the SDK (the repository-local pin
 under `dist/` when it is there, as in make/dart.mk; CI passes `DART=dart`).
 
     go run ./bench/paired -mode build -langs rust   generate, build, gate the leg

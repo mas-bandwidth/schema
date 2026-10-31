@@ -32,6 +32,8 @@
 /test/conformance/rust/Cargo.lock
 /test/rust-fuzz/target/
 /test/rust-fuzz/Cargo.lock
+/test/rust-agree/target/
+/test/rust-agree/Cargo.lock
 /test/rust-fixedform/target/
 /test/rust-fixedform/Cargo.lock
 /bench/tools/cs-union-form/bin/

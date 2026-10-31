@@ -222,8 +222,11 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.aimX != 0.0f) {
+            if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
                 w.put(16L, 7);
+                if (!Float.isFinite(v.aimX)) {
+                    return false;
+                }
                 TableMessage.writeFloat32Quantized(
                         w,
                         v.aimX,
@@ -234,8 +237,11 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.aimY != 0.0f) {
+            if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
                 w.put(17L, 7);
+                if (!Float.isFinite(v.aimY)) {
+                    return false;
+                }
                 TableMessage.writeFloat32Quantized(
                         w,
                         v.aimY,
@@ -246,8 +252,11 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.aimZ != 0.0f) {
+            if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
                 w.put(18L, 7);
+                if (!Float.isFinite(v.aimZ)) {
+                    return false;
+                }
                 TableMessage.writeFloat32Quantized(
                         w,
                         v.aimZ,
@@ -258,14 +267,20 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.recoil != 0.0f) {
+            if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
                 w.put(19L, 7);
+                if (!Float.isFinite(v.recoil)) {
+                    return false;
+                }
                 w.put((long) Float.floatToRawIntBits(v.recoil) & 0xffffffffL, 32);
             }
         }
         {
-            if (v.drift != 0.0) {
+            if (Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0)) {
                 w.put(20L, 7);
+                if (!Double.isFinite(v.drift)) {
+                    return false;
+                }
                 w.put(Double.doubleToRawLongBits(v.drift), 64);
             }
         }
@@ -962,7 +977,8 @@ public final class BenchMixedMessage {
                                     entry.shape,
                                     Float.intBitsToFloat(0xbf800000),
                                     Float.intBitsToFloat(0x3f800000),
-                                    true);
+                                    true,
+                                    "BenchMixed.aim_x");
                     if (r.err) {
                         r.report.malformed = true;
                         return false;
@@ -994,7 +1010,8 @@ public final class BenchMixedMessage {
                                     entry.shape,
                                     Float.intBitsToFloat(0xbf800000),
                                     Float.intBitsToFloat(0x3f800000),
-                                    true);
+                                    true,
+                                    "BenchMixed.aim_y");
                     if (r.err) {
                         r.report.malformed = true;
                         return false;
@@ -1026,7 +1043,8 @@ public final class BenchMixedMessage {
                                     entry.shape,
                                     Float.intBitsToFloat(0xbf800000),
                                     Float.intBitsToFloat(0x3f800000),
-                                    true);
+                                    true,
+                                    "BenchMixed.aim_z");
                     if (r.err) {
                         r.report.malformed = true;
                         return false;
@@ -1052,7 +1070,9 @@ public final class BenchMixedMessage {
                     }
                 }
                 {
-                    float v56 = TableMessage.readFloat32(r, entry.shape, 0.0f, 0.0f, false);
+                    float v56 =
+                            TableMessage.readFloat32(
+                                    r, entry.shape, 0.0f, 0.0f, false, "BenchMixed.recoil");
                     if (r.err) {
                         r.report.malformed = true;
                         return false;
@@ -1078,7 +1098,9 @@ public final class BenchMixedMessage {
                     }
                 }
                 {
-                    double v57 = TableMessage.readFloat64(r, entry.shape, 0.0, 0.0, false);
+                    double v57 =
+                            TableMessage.readFloat64(
+                                    r, entry.shape, 0.0, 0.0, false, "BenchMixed.drift");
                     if (r.err) {
                         r.report.malformed = true;
                         return false;

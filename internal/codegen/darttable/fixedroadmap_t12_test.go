@@ -651,6 +651,36 @@ void main() {
 	return t12RunProbe(t, dir, "t12_roundtrip.dart", probe)
 }
 
+// t12MustRefuse reads a reference file that carries a NaN or an infinity and
+// holds the read to the finite rule (docs/SPEC-TABLES.md §3.3): refused as
+// non_finite_float, the leaf field named, and every caller value back at its
+// defaults.
+func t12MustRefuse(t *testing.T, u *ir.Unit, path, leaf string) string {
+	t.Helper()
+	dir, codec, typefile, typ, lower := t12Emit(t, u)
+	probe := fmt.Sprintf(`import 'dart:io';
+import %q as c;
+import %q as t;
+void check(bool ok, String what) {
+  if (!ok) { stderr.writeln('FAIL: $what'); exitCode = 1; }
+}
+void main() {
+  final data = File(%q).readAsBytesSync();
+  final report = t.TableFixedReport();
+  final values = <t.%s>[for (var i = 0; i < 8; i++) t.%s()];
+  final n = c.%sFixedLoad(values, values.length, data, data.length, c.%sFixedNewPlan(), report);
+  check(n == -1 && report.refused == t.TableFixedRefusal.nonFiniteFloat,
+      'a non-finite reference file was not refused as non_finite_float: n=$n refused=${t.TableFixedRefusal.name(report.refused)}');
+  check(report.nonFiniteFloat.endsWith(%q),
+      'the refusal names "${report.nonFiniteFloat}", want the %s field');
+  check(report.unknown == 0 && report.clamped == 0 && report.widened == 0,
+      'a refused read moved a counter');
+  if (exitCode == 0) { stdout.writeln('ok'); }
+}
+`, "./"+codec, "./"+typefile, path, typ, typ, lower, lower, "."+leaf, leaf)
+	return t12RunProbe(t, dir, "t12_mustrefuse.dart", probe)
+}
+
 // t12Sweep flips every byte of a reference file and reads it, failing only if
 // an exception escapes the reader.
 func t12Sweep(t *testing.T, u *ir.Unit, path string) string {

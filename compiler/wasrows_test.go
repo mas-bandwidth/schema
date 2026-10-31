@@ -67,7 +67,17 @@ func TestWasRowsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
-		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" {
+		if target == "squirrel" {
+			// docs/SPEC-TABLES.md §5: squirrel carries the three rows. The
+			// unit above also holds a union in a table closure, which the
+			// target still refuses as a different, named follow-on; only a
+			// refusal of THIS construct would be wrong.
+			if err != nil && strings.Contains(err.Error(), "was on an enum variant") {
+				t.Errorf("squirrel refused the was rows it carries: %v", err)
+			}
+			continue
+		}
+		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "elixir" || target == "js" || target == "rust" || target == "java" || target == "lobster" || target == "lua" || target == "luau" {
 			if err != nil {
 				t.Fatalf("%s carries the was rows and refused: %v", target, err)
 			}
@@ -83,6 +93,15 @@ func TestWasRowsCarriers(t *testing.T) {
 				want := fmt.Sprintf("0x%016x", ir.TableWireId(old))
 				if target == "dart" {
 					want = fmt.Sprintf("%d", int64(ir.TableWireId(old)))
+				}
+				if target == "luau" {
+					// Luau spells an id below 2^63 in decimal and the rest in
+					// hex, both as integer literals (0x..i / ..i)
+					if id := ir.TableWireId(old); id < 1<<63 {
+						want = fmt.Sprintf("%di", id)
+					} else {
+						want += "i"
+					}
 				}
 				if !strings.Contains(emitted, want) {
 					t.Errorf("%s output lacks the id of %q, %s", target, old, want)

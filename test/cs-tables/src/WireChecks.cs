@@ -43,11 +43,14 @@ static partial class Program
         Check(V1.Schema.CfgLoad(cfg, Fixture(new byte[] { 1,3,42,0,0 }, "a"), report) &&
             cfg.A == 42 && report.Widened == 1 && report.KindMismatch == 0, "signed widening");
         Demo.ProfileConfig profile = new Demo.ProfileConfig(); Demo.TableReport floatReport = new Demo.TableReport();
-        uint raw = 0x7f812345u; // signalling NaN, whose payload must not be quieted
+        uint raw = 0xc0490fdbu; // -3.14159274f: a finite float32 widens exactly (docs/SPEC-TABLES.md §3.3)
         Check(Demo.Schema.ProfileConfigLoad(profile, Fixture(Join(new byte[] { 1,10 }, U32(raw), new byte[] { 0 }), "precision"), floatReport),
             "float widening: load");
-        Check(Demo.Schema.TableDoubleToBits(profile.Precision) == (0x7ff0000000000000ul | ((ulong)(raw & 0x7fffff) << 29)) &&
-            floatReport.Widened == 1, "float widening: sign and signalling payload preserved");
+        Check(Demo.Schema.TableDoubleToBits(profile.Precision) == Demo.Schema.TableDoubleToBits((double)Demo.Schema.TableBitsToFloat(raw)) &&
+            floatReport.Widened == 1, "float widening: the ordinary conversion, exact");
+        // A NaN on the rung is refused, not widened (FiniteChecks.cs holds the rest).
+        Check(!Demo.Schema.ProfileConfigLoad(profile, Fixture(Join(new byte[] { 1,10 }, U32(0x7f812345u), new byte[] { 0 }), "precision"), floatReport) &&
+            floatReport.Reason == "non_finite_float: ProfileConfig.precision", "float widening: a signalling NaN is refused as non_finite_float");
 
         // Ref zero terminates a body; identity zero in the vocabulary is just
         // an unknown name. Escape, no-payload and enum values remain skippable.

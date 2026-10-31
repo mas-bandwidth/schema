@@ -109,6 +109,7 @@ export function TableMessageResetReport(report) {
   report.Malformed = false;
   report.Verdict = 0;
   report.Reason = "";
+  report.NonFiniteFloat = "";
   report.Unknown = 0;
   report.Clamped = 0;
   report.KindMismatch = 0;
@@ -406,13 +407,24 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 		}
 		v := ir.GoExportName(f.Name) + "AllDefault"
 		g.pf("%slet %s = true;\n", ind, v)
-		g.pf("%sfor (let i = 0; i < %d; i++) { if (%s !== %s) { %s = false; break; } }\n", ind, f.ArrayBound, lhs, def, v)
+		g.pf("%sfor (let i = 0; i < %d; i++) { if (%s) { %s = false; break; } }\n", ind, f.ArrayBound, messageDiffers(f, lhs, def), v)
 		return "!" + v
 	}
 	if isUnionRef(f.Type) {
 		return mem + ".type !== 0"
 	}
-	return mem + " !== " + fixedZeroFor(f)
+	return messageDiffers(f, mem, fixedZeroFor(f))
+}
+
+// messageDiffers is the elision compare of one value against its default. A
+// float compares its BIT PATTERN (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
+// Object.is is the bit compare for two finite values, so a -0 under a +0
+// default rides, and a NaN never elides and reaches the writer's refusal.
+func messageDiffers(f *ir.Field, lhs, def string) string {
+	if fixedIsFloat(f.Type) {
+		return "!Object.is(" + lhs + ", " + def + ")"
+	}
+	return lhs + " !== " + def
 }
 
 func (g *fixedModule) emitMessageKeyedCount(f *ir.Field, mem, ind string) {
@@ -525,6 +537,9 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		g.pf("%sw.Put(%s ? 1n : 0n, 1);\n", ind, mem)
 		return
 	case ir.TableKindF32:
+		// A NaN OR AN INFINITY IS REFUSED BEFORE IT IS WRITTEN OR QUANTIZED
+		// (docs/SPEC-TABLES.md §3.3): no form carries one, so the save refuses
+		g.pf("%sif (!Number.isFinite(Math.fround(%s))) { return false; }\n", ind, mem)
 		if s.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(s)
 			g.pf("%s{ const b = TableMessageFloat32Bits(%s); tableMessageWriteScalar(w, {Packing:2, Bits:%d, Base:[0n,0n], QMin:%s, QDelta:%s, QCount:%d}, b, 0n); }\n",
@@ -534,6 +549,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		}
 		return
 	case ir.TableKindF64:
+		g.pf("%sif (!Number.isFinite(%s)) { return false; }\n", ind, mem)
 		g.pf("%sw.Put(TableMessageFloat64Bits(%s), 64);\n", ind, mem)
 		return
 	}
@@ -724,10 +740,21 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 	case ir.TFloat32, ir.TFloat64:
 		// A compressed float reconstructs by the packet wire's rule, two
 		// roundings each side; a raw float is its own bits.
+		//
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+		// §3.3), before the bits become a value and before the field is
+		// written: the read names the field and the batch refuses whole as
+		// non_finite_float. A quantized float reconstructs from its index and
+		// is finite by construction, so only the raw shape is tested.
+		refuse := fmt.Sprintf("{ if (!r.Report.NonFiniteFloat) { r.Report.NonFiniteFloat = %s; } return false; }", jsStr(jsFloatOwner(g.unit, f)))
 		if f.Type.Kind == ir.TFloat32 {
-			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat32FromBits(Number(v[0] & 0xffffffffn));\n", ind, shape)
+			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } const b = Number(v[0] & 0xffffffffn);\n", ind, shape)
+			g.pf("%s  if (%s.Packing !== 2 && (b & 0x7f800000) === 0x7f800000) %s\n", ind, shape, refuse)
+			g.pf("%s  let x = TableMessageFloat32FromBits(b);\n", ind)
 		} else {
-			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; } let x = TableMessageFloat64FromBits(v[0]);\n", ind, shape)
+			g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; }\n", ind, shape)
+			g.pf("%s  if ((v[0] & 0x7ff0000000000000n) === 0x7ff0000000000000n) %s\n", ind, refuse)
+			g.pf("%s  let x = TableMessageFloat64FromBits(v[0]);\n", ind)
 		}
 		g.emitMessageFloatClamp(f, "x", ind+"  ")
 		g.pf("%s  %s = x;\n%s}\n", ind, mem, ind)
@@ -857,7 +884,16 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  if (count < 0) { return -1; }\n")
 	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return count; }\n")
 	g.pf("  for (let i = 0; i < count; i++) {\n")
-	g.pf("    if (!%sLoadMessageBody(r, values[i])) { return i; }\n", n)
+	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
+	g.pf("      // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md\n")
+	g.pf("      // §3.3), the tolerant read included: no body of it is delivered.\n")
+	g.pf("      if (report.NonFiniteFloat) {\n")
+	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
+	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
+	g.pf("        return -1;\n")
+	g.pf("      }\n")
+	g.pf("      return i;\n")
+	g.pf("    }\n")
 	g.pf("  }\n")
 	g.pf("  if (!tableMessageBatchClose(r)) { return count; }\n")
 	g.pf("  return count;\n}\n\n")

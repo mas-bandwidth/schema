@@ -56,6 +56,9 @@ export class TableVariableReport {
     this.duplicate = 0;
     this.retained = 0;
     this.retainLost = 0;
+    // the first float a read found to be a NaN or an infinity, <Table>.<field>
+    // (docs/SPEC-TABLES.md §3.3): the read refuses, reason non_finite_float
+    this.nonFiniteFloat = "";
   }
 }
 
@@ -102,6 +105,11 @@ class TableVariableWriter {
   i32(v) { this.u32(v | 0); }
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
   u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  f32(v) {
+    const d = TableVariableScratch;
+    d.setFloat32(0, v, true);
+    this.u32(d.getUint32(0, true));
+  }
   f64(v) {
     const d = TableVariableScratch;
     d.setFloat64(0, v, true);
@@ -355,7 +363,7 @@ function TableVariableJsonString(s) {
   }
   return out + '"';
 }
-export const TableRetainKnown = [0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc16aea8ff5276n,0x0ca8b41b00d755f6n,0x0dbe005c56697c3en,0x11a44fc1d1243da7n,0x126167908c9aa52dn,0x13a62f542cf8e86en,0x188bbb1783928a95n,0x20bada21bc8cb334n,0x229d0447c3086a55n,0x23fcfd6678e36712n,0x2c3667b9c2f272f1n,0x2cc8282fb0de8831n,0x2e35dc5321aa5790n,0x2f2ec0474f1c4fe4n,0x33732819300680aan,0x35e53bc341129217n,0x3c460475f9be69c6n,0x3d827cb76b809d8cn,0x3eee6b51be54fc85n,0x52076675ec13a0c1n,0x53a9f665a90cc1b1n,0x560d6527ccd8515fn,0x5759ce7586bbb5a3n,0x5ab3f9c9341f6c04n,0x6cede5b6eb60ecb4n,0x6cede6b6eb60ee67n,0x6cede8b6eb60f1cdn,0x6d7b98e2d095967en,0x704be0d8faaffc58n,0x73a94c71d60dc0d8n,0x7674cfd19b9031can,0x78101ac0aa8cbcfen,0x7bbc035f7b6d0112n,0x7ce4fd9430e80cean,0x7f6308be8ab37fc0n,0x7f69d4b5288ba9cfn,0x80ab75f0866dbf65n,0x8113fe7ea2b16969n,0x85df369cdca746b3n,0x89f7566e1123e15fn,0x8d7f25318b3b4469n,0x935d0fb07bb3822an,0x9367b84cab99cdc3n,0x985fc819fab21a4en,0x9bae0da8b829ee03n,0x9cef31fff7e2e457n,0x9e7fd06d864fbd56n,0x9f2c9da926a7408an,0x9fa3a41c86ecb765n,0x9fbfefa835da8476n,0xa0b610205f2c6e01n,0xa3348580461faf16n,0xa5013e9ad5caeda4n,0xa790eee12766cf0cn,0xaa38aca481f528a8n,0xac9fe3b25a77f1d7n,0xb54d8e19798e16e8n,0xb7bc9ac015a25050n,0xb7d7b5650a590b05n,0xbf30e00dc53307a9n,0xc08292176cfd8672n,0xc42975bfe5e07baan,0xcb4b353576672da8n,0xcb4b37357667310en,0xcb4b3835766732c1n,0xcfb8a9d063b5e9e5n,0xd61bdd7908af2642n,0xd9cd0dcc285b7816n,0xdbaf79e5e2429363n,0xdbaf7ae5e2429516n,0xdbaf7be5e24296c9n,0xeb80cfd516eb3d5cn,0xee639cad45b1994cn,0xf2a38d910b5b348bn,0xfbf1ac4d96ebd022n,0xfd29ee12a979cb69n,0xffffffffffffffffn,];
+export const TableRetainKnown = Object.freeze([0x011c7b49a7228f9dn,0x01fbc365b059b925n,0x04dc16aea8ff5276n,0x0ca8b41b00d755f6n,0x0dbe005c56697c3en,0x11a44fc1d1243da7n,0x126167908c9aa52dn,0x13a62f542cf8e86en,0x188bbb1783928a95n,0x20bada21bc8cb334n,0x229d0447c3086a55n,0x23fcfd6678e36712n,0x2c3667b9c2f272f1n,0x2cc8282fb0de8831n,0x2e35dc5321aa5790n,0x2f2ec0474f1c4fe4n,0x33732819300680aan,0x35e53bc341129217n,0x3c460475f9be69c6n,0x3d827cb76b809d8cn,0x3eee6b51be54fc85n,0x52076675ec13a0c1n,0x53a9f665a90cc1b1n,0x560d6527ccd8515fn,0x5759ce7586bbb5a3n,0x5ab3f9c9341f6c04n,0x6cede5b6eb60ecb4n,0x6cede6b6eb60ee67n,0x6cede8b6eb60f1cdn,0x6d7b98e2d095967en,0x704be0d8faaffc58n,0x73a94c71d60dc0d8n,0x7674cfd19b9031can,0x78101ac0aa8cbcfen,0x7bbc035f7b6d0112n,0x7ce4fd9430e80cean,0x7f6308be8ab37fc0n,0x7f69d4b5288ba9cfn,0x80ab75f0866dbf65n,0x8113fe7ea2b16969n,0x85df369cdca746b3n,0x89f7566e1123e15fn,0x8d7f25318b3b4469n,0x935d0fb07bb3822an,0x9367b84cab99cdc3n,0x985fc819fab21a4en,0x9bae0da8b829ee03n,0x9cef31fff7e2e457n,0x9e7fd06d864fbd56n,0x9f2c9da926a7408an,0x9fa3a41c86ecb765n,0x9fbfefa835da8476n,0xa0b610205f2c6e01n,0xa3348580461faf16n,0xa5013e9ad5caeda4n,0xa790eee12766cf0cn,0xaa38aca481f528a8n,0xac9fe3b25a77f1d7n,0xb54d8e19798e16e8n,0xb7bc9ac015a25050n,0xb7d7b5650a590b05n,0xbf30e00dc53307a9n,0xc08292176cfd8672n,0xc42975bfe5e07baan,0xcb4b353576672da8n,0xcb4b37357667310en,0xcb4b3835766732c1n,0xcfb8a9d063b5e9e5n,0xd61bdd7908af2642n,0xd9cd0dcc285b7816n,0xdbaf79e5e2429363n,0xdbaf7ae5e2429516n,0xdbaf7be5e24296c9n,0xeb80cfd516eb3d5cn,0xee639cad45b1994cn,0xf2a38d910b5b348bn,0xfbf1ac4d96ebd022n,0xfd29ee12a979cb69n,0xffffffffffffffffn,]);
 
 
 // ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
@@ -764,33 +772,54 @@ function TableVariableRetainCountLost(retain, report) {
 
 const TableVariableScratch = new DataView(new ArrayBuffer(8));
 
-// A FLOAT RIDES AS ITS IEEE-754 BIT PATTERN (§3, internal/tablewire NarrowF32
-// and WidenF32): a float32 NaN's payload rides in the top of the double's
-// mantissa, by bit surgery rather than through a conversion that would set the
-// quiet bit.
-function TableVariableNarrowF32(v) {
-  const d = TableVariableScratch;
-  if (v !== v) {
-    d.setFloat64(0, v, true);
-    const lo = d.getUint32(0, true), hi = d.getUint32(4, true);
-    let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
-    if (payload === 0) { payload = 0x400000; }
-    return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
-  }
-  d.setFloat32(0, v, true);
-  return d.getUint32(0, true);
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the finite rule of
+// 2026-10-27, the packet wire's rule): every writer refuses a NaN or an
+// infinity, and every read refuses one on its RAW BITS, before the
+// bits become a number, as non_finite_float naming <Table>.<field>. A finite
+// value rides as its bit pattern, -0 and the subnormals exact, so the float32
+// widens and narrows by the ordinary conversion.
+//
+// TableVariableFiniteFloat is the writers' test: a float32 field's value must
+// stay finite at float32 too, so a double past the float32 range is refused
+// rather than written as an infinity.
+function TableVariableFiniteFloat(f32, v) {
+  return f32 ? Number.isFinite(Math.fround(v)) : Number.isFinite(v);
 }
 
-function TableVariableWidenF32(bits) {
-  const d = TableVariableScratch;
-  if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
-    const payload = bits & 0x007fffff;
-    d.setUint32(4, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
-    d.setUint32(0, ((payload & 7) << 29) >>> 0, true);
-    return d.getFloat64(0, true);
-  }
-  d.setUint32(0, bits >>> 0, true);
-  return d.getFloat32(0, true);
+// TableVariableSameFloat is ELISION'S compare (§3, the 10-15 rule): the bit
+// patterns, so a -0 under a +0 default rides. For two finite values Object.is
+// is exactly the bit compare, at float32 once both are rounded to it.
+function TableVariableSameFloat(f32, a, b) {
+  return f32 ? Object.is(Math.fround(a), Math.fround(b)) : Object.is(a, b);
+}
+
+// the write that meets a non-finite float refuses the save, and names the
+// reason to a MeasureReason walk (TableVariableSaveWhy) when one is asking
+let TableVariableSaveWhy = null;
+function TableVariableRefuseNonFinite() {
+  if (TableVariableSaveWhy !== null && TableVariableSaveWhy.reason === null) { TableVariableSaveWhy.reason = "non_finite_float"; }
+  return false;
+}
+
+// a float's payload at its kind's width; false (refused) for a non-finite one
+function TableVariableWriteFloat(w, f32, v) {
+  if (!TableVariableFiniteFloat(f32, v)) { return TableVariableRefuseNonFinite(); }
+  if (f32) { w.f32(v); } else { w.f64(v); }
+  return true;
+}
+
+// the raw-bits test on an unknown entry a read is retaining (§3.3, §6.6): kind
+// 10's four bytes and kind 11's eight, little-endian; true for any other kind
+function TableVariableRetainedFinite(b, from, to, kind) {
+  if (kind === 10 && to - from === 4) { return ((b[from + 3] << 24 | b[from + 2] << 16) & 0x7f800000) !== 0x7f800000; }
+  if (kind === 11 && to - from === 8) { return ((b[from + 7] << 24 | b[from + 6] << 16) & 0x7ff00000) !== 0x7ff00000; }
+  return true;
+}
+
+// a read's non-finite float, refused on its raw bits: the first name wins, and
+// the load that met it refuses whole (TableVariableLoad)
+function TableVariableNonFinite(report, d) {
+  if (!report.nonFiniteFloat) { report.nonFiniteFloat = d.nf; }
 }
 
 // §4's WIDENING RUNGS: a narrower kind on its own signedness ladder, and f32
@@ -834,6 +863,23 @@ function TableVariableLink(codecs, unions) {
     p.byType = new Map();
     for (const t of p.tables) { p.byType.set(codecs[t].typeId, codecs[t]); }
   }
+}
+
+// THE FREEZE (docs/PORTING.md M13: descriptors are constants): once the link
+// has filled every descriptor, the whole graph is frozen, every object and
+// array reachable from it, so nothing after module load can change how a
+// table saves, loads or writes text. A Map the link built is frozen as an
+// object and its values are frozen; its entries are written by the link alone.
+// A function (a codec's make) and a typed array are left as they are.
+function TableVariableFreeze(x) {
+  if (x === null || typeof x !== "object" || ArrayBuffer.isView(x) || Object.isFrozen(x)) { return x; }
+  Object.freeze(x);
+  if (x instanceof Map) {
+    for (const v of x.values()) { TableVariableFreeze(v); }
+    return x;
+  }
+  for (const k of Object.keys(x)) { TableVariableFreeze(x[k]); }
+  return x;
 }
 
 // the live count of an array: a bounded array never writes past its bound
@@ -1040,9 +1086,10 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); }
       return true;
     case "float":
-      if (fd.f32 ? Math.fround(val) !== Math.fround(fd.def) : val !== fd.def) {
+      if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
+      if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
-        if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
+        TableVariableWriteFloat(w, fd.f32, val);
       }
       return true;
     case "str":
@@ -1143,9 +1190,7 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
   switch (e.s) {
     case "bool": w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableWriteInt(w, e.kw, val); return true;
-    case "float":
-      if (e.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
-      return true;
+    case "float": return TableVariableWriteFloat(w, e.f32, val);
     case "enum": {
       const vref = TableVariableEnumRef(e, ids, val);
       if (vref < 0) { return false; }
@@ -1183,18 +1228,21 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
 // or a value with no wire identity refuses the save (null), and so does one
 // blob two slots name, blob_shared (§2.5): every writer refuses it.
 function TableVariableSave(c, v, retain, why) {
-  const outer = TableVariableEntryCache;
+  const outer = TableVariableEntryCache, outerWhy = TableVariableSaveWhy;
   TableVariableEntryCache = new Map();
+  TableVariableSaveWhy = why === undefined ? null : why;
   try {
     return TableVariableSaveWalk(c, v, retain, why);
   } finally {
     TableVariableEntryCache = outer;
+    TableVariableSaveWhy = outerWhy;
   }
 }
 
 // THE MEASURE'S REASON TWIN (Go's MeasureReason): [size, null] for a value
 // the wire carries, [-1, reason] for one it refuses — blob_shared for a blob
-// two slots name (§2.5), invalid_value for any other value outside the
+// two slots name (§2.5), non_finite_float for a NaN or an infinity (§3.3),
+// invalid_value for any other value outside the
 // writer's contract (a data cycle, §3.1; an enum value no variant names, §5).
 function TableVariableMeasureReason(c, v) {
   const why = { reason: null };
@@ -1289,6 +1337,10 @@ function TableVariableOpen(bytes, report) {
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
 function TableVariableLoad(c, bytes, report, retain) {
+  // a caller that passed no report still gets the refusal: the read keeps one
+  if (report === undefined || report === null) { report = new TableVariableReport(); }
+  // this read's own non-finite refusal (§3.3)
+  report.nonFiniteFloat = "";
   const open = TableVariableOpen(bytes, report);
   // A non-variable root starts at its declared defaults and keeps them when
   // the file framing is damaged or refused before any field decodes
@@ -1331,6 +1383,13 @@ function TableVariableLoad(c, bytes, report, retain) {
     }
   }
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
+  // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+  // any damage the walk met after it (§3.3): nothing lands.
+  if (report.nonFiniteFloat) {
+    report.refused = 1;
+    report.reason = "non_finite_float: " + report.nonFiniteFloat;
+    return null;
+  }
   TableVariableResolve(st, report);
   return v;
 }
@@ -1429,6 +1488,13 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       const from = r.at;
       if (!TableVariableSkip(r, kind)) { report.malformed = true; return false; }
       if (retain !== null) {
+        // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
+        // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
+        // read, named <Table>.0x<id>
+        if (!TableVariableRetainedFinite(r.b, from, r.at, kind)) {
+          if (!report.nonFiniteFloat) { report.nonFiniteFloat = c.name + ".0x" + id.toString(16).padStart(16, "0"); }
+          continue;
+        }
         if (path === null) { report.retainLost++; }
         else { TableVariableRetainCapture(r.b, from, r.at, id, kind, table, retain, path, report); }
       }
@@ -1463,16 +1529,35 @@ function TableVariableScalar(r, d, kind, report) {
   if (r.at + width > r.end) { report.malformed = true; return undefined; }
   let x;
   switch (kind) {
-    case 1: return r.u8() !== 0;
+    case 1: {
+      // A BOOL BYTE IS 0 OR 1 (§3): any other byte reads true, counts one
+      // malformed and the body reads on (decode.go scalarAt)
+      const b = r.u8();
+      if (b > 1) { report.malformed = true; }
+      return b !== 0;
+    }
     case 10: {
-      let v = TableVariableWidenF32(r.u32());
-      if (v === v && d.f32 && d.lo !== null) {
+      // A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (§3.3), before the
+      // bits become a number and before the field is written; a compressed
+      // float takes the test before its bounds. Every finite float32 widens
+      // exactly, so the float rung is the ordinary conversion.
+      const b = r.u32();
+      if ((b & 0x7f800000) === 0x7f800000) { TableVariableNonFinite(report, d); return undefined; }
+      const s = TableVariableScratch;
+      s.setUint32(0, b, true);
+      let v = s.getFloat32(0, true);
+      if (d.f32 && d.lo !== null) {
         if (v < d.lo) { v = Math.fround(d.lo); report.clamped++; }
         else if (v > d.hi) { v = Math.fround(d.hi); report.clamped++; }
       }
       return v;
     }
-    case 11: return r.f64();
+    case 11: {
+      // the exponent is the high word's bits 20..30
+      const hi = (r.b[r.at + 4] | (r.b[r.at + 5] << 8) | (r.b[r.at + 6] << 16) | (r.b[r.at + 7] << 24)) >>> 0;
+      if ((hi & 0x7ff00000) === 0x7ff00000) { r.at += 8; TableVariableNonFinite(report, d); return undefined; }
+      return r.f64();
+    }
     case 2: case 20: x = r.i8(); break;
     case 3: case 21: x = r.i16(); break;
     case 4: case 22: x = r.i32(); break;
@@ -2009,7 +2094,8 @@ function TableVariableElemDefault(e) {
 }
 
 function TableVariableElemIsDefault(e, x) {
-  if (e.s === "float" && e.f32) { return Math.fround(x) === Math.fround(e.def); }
+  // a float compares its bit pattern (§3): a -0 under a +0 default rides
+  if (e.s === "float") { return TableVariableSameFloat(e.f32, x, e.def); }
   return x === e.def;
 }
 
@@ -2033,9 +2119,9 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
+      if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       TableVariableHeader(w, ids, fd, fd.k);
-      if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
-      return true;
+      return TableVariableWriteFloat(w, fd.f32, val);
     case "str": {
       const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
@@ -2182,9 +2268,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   switch (f.s) {
     case "bool": w.u8(x ? 1 : 0); return true;
     case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
-    case "float":
-      if (f.f32) { w.u32(TableVariableNarrowF32(x)); } else { w.f64(x); }
-      return true;
+    case "float": return TableVariableWriteFloat(w, f.f32, x);
     case "str": w.raw(TableVariableUtf8Encode(x)); return true;
     // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table): the
     // units ride under it with no length of their own; past N units refuses
@@ -2499,226 +2583,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
   return holder;
 }
 
-// ---- the text (write.go, read.go) -------------------------------------------
-
-function TableVariableJsonMap(fd, val, depth, g, out) {
-  if (val.size === 0) { out.push("{}"); return true; }
-  const ents = TableVariableMapEntries(fd, val);
-  const vd = fd.c.fields[1];
-  const ind = "\n" + "  ".repeat(depth + 1);
-  out.push("{");
-  for (let i = 0; i < ents.length; i++) {
-    if (i > 0) { out.push(","); }
-    out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
-    if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
-  }
-  out.push("\n" + "  ".repeat(depth) + "}");
-  return true;
-}
-
-function TableVariableJsonKeyed(fd, val, depth, g, out) {
-  if (fd.slots.length === 0) { out.push("{}"); return true; }
-  const ind = "\n" + "  ".repeat(depth + 1);
-  out.push("{");
-  for (let s = 0; s < fd.slots.length; s++) {
-    if (fd.slots[s] === null) { return false; }
-    if (s > 0) { out.push(","); }
-    out.push(ind + TableVariableJsonString(fd.slots[s][0]) + ": ");
-    if (!TableVariableJsonScalar(fd.e, val[s], depth + 1, g, out)) { return false; }
-  }
-  out.push("\n" + "  ".repeat(depth) + "}");
-  return true;
-}
-
-// a union is an object with ONE key, the arm's name; None is {} (§16.2)
-function TableVariableJsonUnion(u, val, depth, g, out) {
-  if (val === null) { out.push("{}"); return true; }
-  const arm = u.byName.get(val.arm);
-  if (arm === undefined) { return false; }
-  out.push("{\n" + "  ".repeat(depth + 1) + TableVariableJsonString(arm.name) + ": ");
-  if (arm.void) {
-    out.push("null");
-  } else if (arm.body) {
-    if (!TableVariableJsonValue(arm.c, val.value, depth + 1, g, out)) { return false; }
-  } else if (!TableVariableJsonField(arm.f, val.value, depth + 1, g, out)) {
-    return false;
-  }
-  out.push("\n" + "  ".repeat(depth) + "}");
-  return true;
-}
-
-// a map key's text (placeMapKey): a string key is the key; an integer key is
-// ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
-// key kind's range — anything else of that shape is a kind mismatch, and a
-// token that is not one JSON number is malformed
-function TableVariableMapKeyNumber(kd, s) {
-  const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
-  if (m === null) { return { status: "malformed" }; }
-  const frac = m[3] === undefined ? "" : m[3];
-  let digits = BigInt(m[2] + frac);
-  let exp = (m[4] === undefined ? 0 : parseInt(m[4], 10)) - frac.length;
-  if (digits !== 0n) {
-    if (exp > 40) { return { status: "mismatch" }; }
-    if (exp >= 0) { digits *= 10n ** BigInt(exp); }
-    else {
-      if (-exp > 400) { return { status: "mismatch" }; }
-      const p = 10n ** BigInt(-exp);
-      if (digits % p !== 0n) { return { status: "mismatch" }; }
-      digits /= p;
-    }
-  }
-  const x = m[1] === "-" ? -digits : digits;
-  if (x < kd.dlo || x > kd.dhi) { return { status: "mismatch" }; }
-  return { status: "ok", key: kd.big ? x : Number(x) };
-}
-
-// one field read at a holder WITHOUT the key walk's shape gate: what a map's
-// value takes (readMap calls readField directly), null placing a pointer's null
-function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
-  if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
-    if (!inp.literal("null")) { return false; }
-    holder[fd.n] = null;
-    return true;
-  }
-  if (inp.shape() !== fd.js) { inp.bad = true; return false; }
-  return TableVariableTextField(fd, inp, holder, depth, graph, report);
-}
-
-function TableVariableTextMap(fd, inp, v, depth, graph, report) {
-  if (inp.peek() !== "{") { inp.bad = true; return false; }
-  inp.p++;
-  const kd = fd.c.fields[0], vd = fd.c.fields[1];
-  const ents = [];
-  v[fd.n] = new Map();
-  for (;;) {
-    let ch = inp.peek();
-    if (ch === "}") { inp.p++; break; }
-    if (ch === "") { inp.bad = true; return false; }
-    const ks = inp.str();
-    if (ks === null) { return false; }
-    if (inp.peek() !== ":") { inp.bad = true; return false; }
-    inp.p++;
-    let key = ks, status = "ok";
-    if (!fd.ks) {
-      const res = TableVariableMapKeyNumber(kd, ks);
-      status = res.status;
-      key = res.key;
-    }
-    if (status === "malformed") { report.malformed = true; inp.bad = true; return false; }
-    if (status === "mismatch") {
-      report.kindMismatch++;
-      if (!inp.skip(depth, graph)) { return false; }
-    } else if (fd.ks && TableVariableUtf8Encode(key).length > fd.kb) {
-      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
-      report.clamped++;
-      if (!inp.skip(depth, graph)) { return false; }
-    } else {
-      const entry = fd.c.make();
-      entry.key = key;
-      if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
-      const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
-      if (at >= 0) { report.duplicate++; ents[at] = entry; } else { ents.push(entry); }
-    }
-    ch = inp.peek();
-    if (ch === ",") { inp.p++; continue; }
-    if (ch === "}") { inp.p++; break; }
-    inp.bad = true;
-    return false;
-  }
-  ents.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
-  for (const e of ents) { v[fd.n].set(e.key, e.value); }
-  return true;
-}
-
-function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
-  if (inp.peek() !== "{") { inp.bad = true; return false; }
-  inp.p++;
-  const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
-  v[fd.n] = arr;
-  const seen = new Set();
-  for (;;) {
-    let ch = inp.peek();
-    if (ch === "}") { inp.p++; return true; }
-    if (ch === "") { inp.bad = true; return false; }
-    const key = inp.str();
-    if (key === null) { return false; }
-    if (inp.peek() !== ":") { inp.bad = true; return false; }
-    inp.p++;
-    const slot = fd.slotByName.get(key);
-    if (slot !== undefined) {
-      if (seen.has(slot)) { report.duplicate++; }
-      seen.add(slot);
-    }
-    if (slot === undefined) {
-      report.unknown++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else if (inp.shape() !== fd.e.js) {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
-      return false;
-    }
-    ch = inp.peek();
-    if (ch === ",") { inp.p++; continue; }
-    if (ch === "}") { inp.p++; return true; }
-    inp.bad = true;
-    return false;
-  }
-}
-
-// a union's text (readUnion): {} is None, one key names the arm, and a second
-// key is a text this walk will not guess at
-function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
-  if (inp.peek() !== "{") { inp.bad = true; return false; }
-  inp.p++;
-  holder[key] = null;
-  if (inp.peek() === "}") { inp.p++; return true; }
-  const k = inp.str();
-  if (k === null) { return false; }
-  if (inp.peek() !== ":") { inp.bad = true; return false; }
-  inp.p++;
-  const arm = d.u.byName.get(k);
-  if (arm === undefined) {
-    report.unknown++;
-    if (!inp.skip(depth + 1, graph)) { return false; }
-  } else if (arm.void) {
-    if (inp.shape() !== "z") {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else {
-      if (!inp.literal("null")) { return false; }
-      holder[key] = { arm: arm.name, value: null };
-    }
-  } else if (arm.body) {
-    if (inp.shape() !== "o") {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else {
-      const inst = arm.c.make();
-      if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
-      holder[key] = { arm: arm.name, value: inst };
-    }
-  } else {
-    const h = { arm: arm.name, value: TableVariableFieldDefault(arm.f) };
-    const shape = inp.shape();
-    if (shape === "z" && (arm.f.s === "ptr" || arm.f.s === "sblob" || arm.f.s === "bblob")) {
-      if (!inp.literal("null")) { return false; }
-      h.value = null;
-      holder[key] = h;
-    } else if (shape !== arm.f.js) {
-      report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
-    } else {
-      if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
-      holder[key] = h;
-    }
-  }
-  let c = inp.peek();
-  if (c === ",") { inp.p++; c = inp.peek(); }
-  if (c === "}") { inp.p++; return true; }
-  inp.bad = true;
-  return false;
-}
+// ---- json walk: begin ----
 
 // ---------------------------------------------------------------------------
 // THE TEXT FORM (docs/SPEC-TABLES.md §16)
@@ -3675,7 +3540,229 @@ function TableVariableTextInt(d, inp, holder, key, report) {
   holder[key] = d.big ? x : Number(x);
   return true;
 }
-export const MixedEntityTableType = {
+
+// ---- the text (write.go, read.go) -------------------------------------------
+
+function TableVariableJsonMap(fd, val, depth, g, out) {
+  if (val.size === 0) { out.push("{}"); return true; }
+  const ents = TableVariableMapEntries(fd, val);
+  const vd = fd.c.fields[1];
+  const ind = "\n" + "  ".repeat(depth + 1);
+  out.push("{");
+  for (let i = 0; i < ents.length; i++) {
+    if (i > 0) { out.push(","); }
+    out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
+    if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
+  }
+  out.push("\n" + "  ".repeat(depth) + "}");
+  return true;
+}
+
+function TableVariableJsonKeyed(fd, val, depth, g, out) {
+  if (fd.slots.length === 0) { out.push("{}"); return true; }
+  const ind = "\n" + "  ".repeat(depth + 1);
+  out.push("{");
+  for (let s = 0; s < fd.slots.length; s++) {
+    if (fd.slots[s] === null) { return false; }
+    if (s > 0) { out.push(","); }
+    out.push(ind + TableVariableJsonString(fd.slots[s][0]) + ": ");
+    if (!TableVariableJsonScalar(fd.e, val[s], depth + 1, g, out)) { return false; }
+  }
+  out.push("\n" + "  ".repeat(depth) + "}");
+  return true;
+}
+
+// a union is an object with ONE key, the arm's name; None is {} (§16.2)
+function TableVariableJsonUnion(u, val, depth, g, out) {
+  if (val === null) { out.push("{}"); return true; }
+  const arm = u.byName.get(val.arm);
+  if (arm === undefined) { return false; }
+  out.push("{\n" + "  ".repeat(depth + 1) + TableVariableJsonString(arm.name) + ": ");
+  if (arm.void) {
+    out.push("null");
+  } else if (arm.body) {
+    if (!TableVariableJsonValue(arm.c, val.value, depth + 1, g, out)) { return false; }
+  } else if (!TableVariableJsonField(arm.f, val.value, depth + 1, g, out)) {
+    return false;
+  }
+  out.push("\n" + "  ".repeat(depth) + "}");
+  return true;
+}
+
+// a map key's text (placeMapKey): a string key is the key; an integer key is
+// ONE JSON number, integral in VALUE (2.0 and 1e3 are integers) and inside the
+// key kind's range — anything else of that shape is a kind mismatch, and a
+// token that is not one JSON number is malformed
+function TableVariableMapKeyNumber(kd, s) {
+  const m = /^(-?)(0|[1-9][0-9]*)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(s);
+  if (m === null) { return { status: "malformed" }; }
+  const frac = m[3] === undefined ? "" : m[3];
+  let digits = BigInt(m[2] + frac);
+  let exp = (m[4] === undefined ? 0 : parseInt(m[4], 10)) - frac.length;
+  if (digits !== 0n) {
+    if (exp > 40) { return { status: "mismatch" }; }
+    if (exp >= 0) { digits *= 10n ** BigInt(exp); }
+    else {
+      if (-exp > 400) { return { status: "mismatch" }; }
+      const p = 10n ** BigInt(-exp);
+      if (digits % p !== 0n) { return { status: "mismatch" }; }
+      digits /= p;
+    }
+  }
+  const x = m[1] === "-" ? -digits : digits;
+  if (x < kd.dlo || x > kd.dhi) { return { status: "mismatch" }; }
+  return { status: "ok", key: kd.big ? x : Number(x) };
+}
+
+// one field read at a holder WITHOUT the key walk's shape gate: what a map's
+// value takes (readMap calls readField directly), null placing a pointer's null
+function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
+  if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
+    if (!inp.literal("null")) { return false; }
+    holder[fd.n] = null;
+    return true;
+  }
+  if (inp.shape() !== fd.js) { inp.bad = true; return false; }
+  return TableVariableTextField(fd, inp, holder, depth, graph, report);
+}
+
+function TableVariableTextMap(fd, inp, v, depth, graph, report) {
+  if (inp.peek() !== "{") { inp.bad = true; return false; }
+  inp.p++;
+  const kd = fd.c.fields[0], vd = fd.c.fields[1];
+  const ents = [];
+  v[fd.n] = new Map();
+  for (;;) {
+    let ch = inp.peek();
+    if (ch === "}") { inp.p++; break; }
+    if (ch === "") { inp.bad = true; return false; }
+    const ks = inp.str();
+    if (ks === null) { return false; }
+    if (inp.peek() !== ":") { inp.bad = true; return false; }
+    inp.p++;
+    let key = ks, status = "ok";
+    if (!fd.ks) {
+      const res = TableVariableMapKeyNumber(kd, ks);
+      status = res.status;
+      key = res.key;
+    }
+    if (status === "malformed") { report.malformed = true; inp.bad = true; return false; }
+    if (status === "mismatch") {
+      report.kindMismatch++;
+      if (!inp.skip(depth, graph)) { return false; }
+    } else if (fd.ks && TableVariableUtf8Encode(key).length > fd.kb) {
+      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
+      report.clamped++;
+      if (!inp.skip(depth, graph)) { return false; }
+    } else {
+      const entry = fd.c.make();
+      entry.key = key;
+      if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
+      const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
+      if (at >= 0) { report.duplicate++; ents[at] = entry; } else { ents.push(entry); }
+    }
+    ch = inp.peek();
+    if (ch === ",") { inp.p++; continue; }
+    if (ch === "}") { inp.p++; break; }
+    inp.bad = true;
+    return false;
+  }
+  ents.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  for (const e of ents) { v[fd.n].set(e.key, e.value); }
+  return true;
+}
+
+function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
+  if (inp.peek() !== "{") { inp.bad = true; return false; }
+  inp.p++;
+  const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
+  v[fd.n] = arr;
+  const seen = new Set();
+  for (;;) {
+    let ch = inp.peek();
+    if (ch === "}") { inp.p++; return true; }
+    if (ch === "") { inp.bad = true; return false; }
+    const key = inp.str();
+    if (key === null) { return false; }
+    if (inp.peek() !== ":") { inp.bad = true; return false; }
+    inp.p++;
+    const slot = fd.slotByName.get(key);
+    if (slot !== undefined) {
+      if (seen.has(slot)) { report.duplicate++; }
+      seen.add(slot);
+    }
+    if (slot === undefined) {
+      report.unknown++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else if (inp.shape() !== fd.e.js) {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
+      return false;
+    }
+    ch = inp.peek();
+    if (ch === ",") { inp.p++; continue; }
+    if (ch === "}") { inp.p++; return true; }
+    inp.bad = true;
+    return false;
+  }
+}
+
+// a union's text (readUnion): {} is None, one key names the arm, and a second
+// key is a text this walk will not guess at
+function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
+  if (inp.peek() !== "{") { inp.bad = true; return false; }
+  inp.p++;
+  holder[key] = null;
+  if (inp.peek() === "}") { inp.p++; return true; }
+  const k = inp.str();
+  if (k === null) { return false; }
+  if (inp.peek() !== ":") { inp.bad = true; return false; }
+  inp.p++;
+  const arm = d.u.byName.get(k);
+  if (arm === undefined) {
+    report.unknown++;
+    if (!inp.skip(depth + 1, graph)) { return false; }
+  } else if (arm.void) {
+    if (inp.shape() !== "z") {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else {
+      if (!inp.literal("null")) { return false; }
+      holder[key] = { arm: arm.name, value: null };
+    }
+  } else if (arm.body) {
+    if (inp.shape() !== "o") {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else {
+      const inst = arm.c.make();
+      if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
+      holder[key] = { arm: arm.name, value: inst };
+    }
+  } else {
+    const h = { arm: arm.name, value: TableVariableFieldDefault(arm.f) };
+    const shape = inp.shape();
+    if (shape === "z" && (arm.f.s === "ptr" || arm.f.s === "sblob" || arm.f.s === "bblob")) {
+      if (!inp.literal("null")) { return false; }
+      h.value = null;
+      holder[key] = h;
+    } else if (shape !== arm.f.js) {
+      report.kindMismatch++;
+      if (!inp.skip(depth + 1, graph)) { return false; }
+    } else {
+      if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
+      holder[key] = h;
+    }
+  }
+  let c = inp.peek();
+  if (c === ",") { inp.p++; c = inp.peek(); }
+  if (c === "}") { inp.p++; return true; }
+  inp.bad = true;
+  return false;
+}
+// ---- json walk: end ----
+export const MixedEntityTableType = TableVariableFreeze({
   name: "MixedEntity",
   sz: 64, al: 8,
   fields: [
@@ -3694,18 +3781,18 @@ export const MixedEntityTableType = {
     { name: "moving", kind: 1, shape: "value", bound: 0 },
     { name: "firing", kind: 1, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedStatTableType = {
+export const MixedStatTableType = TableVariableFreeze({
   name: "MixedStat",
   sz: 8, al: 4,
   fields: [
     { name: "stat_id", kind: 6, shape: "value", bound: 0 },
     { name: "delta", kind: 4, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedHitEventTableType = {
+export const MixedHitEventTableType = TableVariableFreeze({
   name: "MixedHitEvent",
   sz: 16, al: 4,
   fields: [
@@ -3714,27 +3801,27 @@ export const MixedHitEventTableType = {
     { name: "hit_kind", kind: 4, shape: "value", bound: 0 },
     { name: "crit", kind: 1, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedChatEventTableType = {
+export const MixedChatEventTableType = TableVariableFreeze({
   name: "MixedChatEvent",
   sz: 8, al: 4,
   fields: [
     { name: "channel", kind: 4, shape: "value", bound: 0 },
     { name: "speaker", kind: 7, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const MixedPickupEventTableType = {
+export const MixedPickupEventTableType = TableVariableFreeze({
   name: "MixedPickupEvent",
   sz: 8, al: 4,
   fields: [
     { name: "item_id", kind: 7, shape: "value", bound: 0 },
     { name: "amount", kind: 4, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const BenchMixedTableType = {
+export const BenchMixedTableType = TableVariableFreeze({
   name: "BenchMixed",
   sz: 1376, al: 16,
   fields: [
@@ -3766,17 +3853,17 @@ export const BenchMixedTableType = {
     { name: "extra", kind: 4, shape: "value", bound: 0 },
     { name: "idle_ticks", kind: 4, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const FixedTableTableType = {
+export const FixedTableTableType = TableVariableFreeze({
   name: "FixedTable",
   sz: 1376, al: 16,
   fields: [
     { name: "value", kind: 13, shape: "value", bound: 0 },
   ],
-};
+});
 
-export const BenchUnitRegistry = {
+export const BenchUnitRegistry = TableVariableFreeze({
   package: "bench",
   tables: [
     MixedEntityTableType,
@@ -3787,7 +3874,7 @@ export const BenchUnitRegistry = {
     BenchMixedTableType,
     FixedTableTableType,
   ],
-};
+});
 
 export class MixedEntity {
   constructor() {
@@ -3990,11 +4077,11 @@ const TableVariableCodecs = {
       { n: "loadout", key: "loadout", id: 0x5759ce7586bbb5a3n, o: 12, k: 14, s: "arr", js: "a", list: false, fixed: true, bound: 4, ek: 6, esz: 1, eal: 1, e: { s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 255n, def: 0 } },
       { n: "player_name", key: "player_name", id: 0x13a62f542cf8e86en, o: 13, k: 12, s: "str", js: "s", bound: 15, def: "" },
       { n: "payload", key: "payload", id: 0xcfb8a9d063b5e9e5n, o: 14, k: 14, s: "bytes", js: "s", list: false, bound: 16, ek: 6, def: new Uint8Array([]) },
-      { n: "aim_x", key: "aim_x", id: 0xdbaf7be5e24296c9n, o: 15, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
-      { n: "aim_y", key: "aim_y", id: 0xdbaf7ae5e2429516n, o: 16, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
-      { n: "aim_z", key: "aim_z", id: 0xdbaf79e5e2429363n, o: 17, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, def: 0 },
-      { n: "recoil", key: "recoil", id: 0x9cef31fff7e2e457n, o: 18, k: 10, s: "float", js: "n", f32: true, lo: null, hi: null, def: 0 },
-      { n: "drift", key: "drift", id: 0x5ab3f9c9341f6c04n, o: 19, k: 11, s: "float", js: "n", f32: false, lo: null, hi: null, def: 0 },
+      { n: "aim_x", key: "aim_x", id: 0xdbaf7be5e24296c9n, o: 15, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_x", def: 0 },
+      { n: "aim_y", key: "aim_y", id: 0xdbaf7ae5e2429516n, o: 16, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_y", def: 0 },
+      { n: "aim_z", key: "aim_z", id: 0xdbaf79e5e2429363n, o: 17, k: 10, s: "float", js: "n", f32: true, lo: -1, hi: 1, nf: "BenchMixed.aim_z", def: 0 },
+      { n: "recoil", key: "recoil", id: 0x9cef31fff7e2e457n, o: 18, k: 10, s: "float", js: "n", f32: true, lo: null, hi: null, nf: "BenchMixed.recoil", def: 0 },
+      { n: "drift", key: "drift", id: 0x5ab3f9c9341f6c04n, o: 19, k: 11, s: "float", js: "n", f32: false, lo: null, hi: null, nf: "BenchMixed.drift", def: 0 },
       { n: "wide_key", key: "wide_key", id: 0xa3348580461faf16n, o: 20, s: "int", js: "n", k: 19, big: true, kw: 16, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 340282366920938463463374607431768211455n, def: 0n },
       { n: "flux", key: "flux", id: 0xd61bdd7908af2642n, o: 21, s: "int", js: "n", k: 18, big: true, kw: 16, lo: -1267650600228229401496703205376n, hi: 1267650600228229401496703205376n, bits: 0, bmax: 0, frac: 0, tlo: -1267650600228229401496703205376n, thi: 1267650600228229401496703205376n, dlo: -170141183460469231731687303715884105728n, dhi: 170141183460469231731687303715884105727n, def: 0n },
       { n: "ping", key: "ping", id: 0xbf30e00dc53307a9n, o: 22, s: "int", js: "n", k: 26, big: false, kw: 2, lo: 0, hi: 64000, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 64000n, dlo: 0n, dhi: 65535n, def: 0 },
@@ -4019,10 +4106,12 @@ const TableVariableCodecs = {
   },
 };
 TableVariableLink(TableVariableCodecs, TableVariableUnions);
+TableVariableFreeze(TableVariableCodecs);
+TableVariableFreeze(TableVariableUnions);
 
 // Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
 export const TableCookWrite = (() => {
-  const build = 0x23753a84972a054en;
+  const build = 0x41d3559378bfa852n;
   const layouts = {
     "MixedEntity": {
       size: 64, align: 8, data: 64, measure: 144, alignCook: 8, typeId: 0x9367b84cab99cdc3n, make: () => new MixedEntity(),
@@ -4112,17 +4201,12 @@ export const TableCookWrite = (() => {
       ],
     },
   };
-  const f32Scratch = new DataView(new ArrayBuffer(8));
-  function narrowF32(v) {
-    if (v !== v) {
-      f32Scratch.setFloat64(0, v, true);
-      const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
-      let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
-      if (payload === 0) { payload = 0x400000; }
-      return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
-    }
-    f32Scratch.setFloat32(0, v, true);
-    return f32Scratch.getUint32(0, true);
+  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the cook writer
+  // refuses a NaN or an infinity, a float32 one past the float32 range
+  // included, and names it to the measure's reason as non_finite_float
+  function refuseFloat(ctx) {
+    if (ctx !== null) { ctx.nonFinite = true; }
+    return false;
   }
   function fit(v, width, signed) {
     let b;
@@ -4217,10 +4301,12 @@ export const TableCookWrite = (() => {
         return true;
       case "f32":
         if (typeof value !== "number") { return false; }
-        if (view !== null) { view.setUint32(at, narrowF32(value), le); }
+        if (!Number.isFinite(Math.fround(value))) { return refuseFloat(ctx); }
+        if (view !== null) { view.setFloat32(at, value, le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
+        if (!Number.isFinite(value)) { return refuseFloat(ctx); }
         if (view !== null) { view.setFloat64(at, value, le); }
         return true;
       case "int":
@@ -4392,10 +4478,10 @@ export const TableCookWrite = (() => {
       data += size;
     }
     data = alignUp(data, align);
-    const ctx = { entries, nodes };
+    const ctx = { entries, nodes, nonFinite: false };
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: "invalid_value" }; }
+      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: ctx.nonFinite ? "non_finite_float" : "invalid_value" }; }
     }
     return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
   }

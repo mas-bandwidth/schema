@@ -1,0 +1,10 @@
+package probe
+enum Ship {
+    Fighter
+    Bomber | deprecated
+    Scout
+}
+fixed table Root {
+    ship Ship = Scout
+    fleet [..2]Ship
+}

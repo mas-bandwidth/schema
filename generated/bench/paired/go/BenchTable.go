@@ -132,7 +132,7 @@ type MixedEventRow struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so an endpoint's build is knowable.
-const BuildVersion uint64 = 0x23753a84972a054e
+const BuildVersion uint64 = 0x41d3559378bfa852
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -5864,7 +5864,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 				mark := w.Ids.Count
 				payload24 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := range int(value.EntitiesCount) {
+				for i := range arrayLengths[:value.EntitiesCount] {
 					n := MixedEntityMeasureBody(&value.Entities[i], payload24.Ids)
 					if n < 0 {
 						return false
@@ -5891,7 +5891,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := range int(value.EntitiesCount) {
+					for i := range arrayLengths[:value.EntitiesCount] {
 						if !w.putLebPair(uint64(arrayLengths[i])) {
 							w.putLebWide(uint64(arrayLengths[i]))
 						}
@@ -5918,7 +5918,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 				mark := w.Ids.Count
 				payload27 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := range int(value.StatsCount) {
+				for i := range arrayLengths[:value.StatsCount] {
 					n := MixedStatMeasureBody(&value.Stats[i], payload27.Ids)
 					if n < 0 {
 						return false
@@ -5945,7 +5945,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := range int(value.StatsCount) {
+					for i := range arrayLengths[:value.StatsCount] {
 						if !w.putLebPair(uint64(arrayLengths[i])) {
 							w.putLebWide(uint64(arrayLengths[i]))
 						}

@@ -87,7 +87,7 @@ repository. Clone them beside it, at the tags this build is pinned to:
 
 ```
 $ cd ..
-$ git clone --branch v2.1.0 https://github.com/mas-bandwidth/serialize.git
+$ git clone --branch v2.1.3 https://github.com/mas-bandwidth/serialize.git
 $ git clone --branch v2.0.2 https://github.com/mas-bandwidth/serialize.c.git
 ```
 
@@ -4179,7 +4179,7 @@ file to diff when you want to know **why** the version moved:
 
 ```
 $ schema build-version --facts .
-schema-build-version 4
+schema-build-version 5
 protocol c08f66a810e84fcd
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8

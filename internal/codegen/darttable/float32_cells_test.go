@@ -14,8 +14,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// SPEC-TABLES §3 preserves every IEEE-754 payload, including signalling NaNs
-// and signed zero, through a consumer that receives and sends the same cell.
+// SPEC-TABLES §3 carries every FINITE IEEE-754 pattern bit for bit — -0 and
+// the subnormals included — and §3.3 refuses a NaN or an infinity in every
+// form (Glenn, 2026-10-27, "tables go finite-only too, same rule as packets"):
+// the block accessor never returns one and latches non_finite_float naming
+// the field (ruling 2), the message read refuses one on its raw bits, and the
+// message write refuses one before the quantizer or the bits. -0 under a +0
+// default RIDES: elision compares bits.
 func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, "package probe\nfixed table Cell { value float32 = 2 }\nfixed table Root { cells [..2]Cell }\nfixed table _float32Cell { n uint8 }\nfixed table ZeroCell { value float32 }\n")
@@ -31,13 +36,20 @@ func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 	block := string(files["ProbeBlock.dart"])
 	message := string(files["ProbeFixed.dart"])
 	for _, check := range []struct{ source, fragment, what string }{
-		{block, "_float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);", "block read must widen raw float32 bits in software"},
+		{block, "if ((bits & 0x7f800000) != 0x7f800000) {", "block read must test the raw float32 bits before it widens them"},
+		{block, "nonFiniteFloat = 'Cell.value';", "block read must latch non_finite_float naming the field"},
 		{message, "final f = value.value;", "message write must narrow the field's own double"},
-		{message, "w.put(((b >>> 63) << 31) | 0x7f800000 | m, 32)", "message write must narrow NaN bits in software"},
-		{message, "TableBitWriter._float64Words[0] = w64 | 0x7ff0000000000000;", "message read must widen raw float32 bits in software"},
+		{message, "if (!f.isFinite) return false;", "message write must refuse a NaN or an infinity"},
+		{message, "if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('Cell.value');", "message read must refuse a NaN or an infinity on its raw bits"},
+		{message, "if (value.value != 0 || value.value.isNegative) {", "message write must elide a plain float by its bits"},
 	} {
 		if !strings.Contains(check.source, check.fragment) {
 			t.Errorf("%s", check.what)
+		}
+	}
+	for _, gone := range []string{"0x400000", "<< 29", "0x7ff0000000000000;"} {
+		if strings.Contains(message, gone) {
+			t.Errorf("message form still carries NaN-payload surgery (%q); the finite rule retired it", gone)
 		}
 	}
 	// A schema may declare a leading-underscore type (SPEC §4.6). Helpers
@@ -84,24 +96,23 @@ import 'ProbeBlock.dart' as b;
 import 'ProbeFixed.dart' as m;
 
 void check(bool ok, String what) { if (!ok) throw StateError(what); }
-int raw(double value) {
- final d=ByteData(8)..setFloat64(0,value,Endian.little);
- final bits=d.getUint64(0,Endian.little);
- if(value.isNaN) return ((bits >>> 63)<<31) | 0x7f800000 | ((bits >>>29)&0x7fffff);
- return (ByteData(4)..setFloat32(0,value,Endian.little)).getUint32(0,Endian.little);
+int raw(double value) => (ByteData(4)..setFloat32(0,value,Endian.little)).getUint32(0,Endian.little);
+Uint8List body(int bits) {
+ final wire=Uint8List(32);
+ final writer=m.TableBitWriter(wire);
+ writer.put(%[2]d,m.tableMessageRefBits);writer.put(bits,32);writer.put(0,m.tableMessageRefBits);writer.align();
+ return Uint8List.sublistView(wire,0,writer.bits>>3);
 }
 void main() {
- for(final bits in [0x7f800001,0xff800001,0x7fc0dead,0x80000000,0x3f800000]) {
-  final data=ByteData(b.CellRow.rowSize)..setUint32(%d,bits,Endian.little);
+ // EVERY FINITE PATTERN rides bit for bit: -0, the smallest and the largest
+ // subnormal, and ordinary values, through the block read and the message
+ // form both ways. A nonzero default keeps -0 on the wire (§3).
+ for(final bits in [0x80000000,0x00000001,0x007fffff,0x3f800000,0xc0490fdb]) {
+  final data=ByteData(b.CellRow.rowSize)..setUint32(%[1]d,bits,Endian.little);
   final row=b.CellRow(data,0);
   check(raw(row.value)==bits,'block changed $bits');
-  // A nonzero default keeps -0 on the wire under C numeric elision (§3).
-  // Build the reference body directly from raw bits: the input does not use
-  // either conversion under test, including for the negative-zero payload.
-  final wire=Uint8List(32);
-  final writer=m.TableBitWriter(wire);
-  writer.put(%d,m.tableMessageRefBits);writer.put(bits,32);writer.put(0,m.tableMessageRefBits);writer.align();
-  final reader=m.TableMessageReader()..bits=m.TableBitReader(Uint8List.sublistView(wire,0,writer.bits>>3));
+  check(row.nonFiniteFloat.isEmpty,'block latched a finite $bits');
+  final reader=m.TableMessageReader()..bits=m.TableBitReader(body(bits));
   final value=m.Cell();
   check(m.cellLoadMessageBody(reader,value),'message load refused $bits');
   check(raw(value.value)==bits,'message load changed $bits');
@@ -110,15 +121,38 @@ void main() {
   check(m.cellSaveMessageBody(output,value),'message save refused $bits');
   output.align();
   final parsed=m.TableBitReader(Uint8List.sublistView(saved,0,output.bits>>3));
-  check(parsed.get(m.tableMessageRefBits)==%d,'message elided $bits');
+  check(parsed.get(m.tableMessageRefBits)==%[3]d,'message elided $bits');
   check(parsed.get(32)==bits,'message save changed $bits');
   check(parsed.get(m.tableMessageRefBits)==0,'message terminator changed');
  }
+ // A NaN OR AN INFINITY IS REFUSED (§3.3): any sign, any payload, quiet or
+ // signalling. The block accessor never returns one — it answers 0 and
+ // latches non_finite_float naming the field — the message read refuses it on
+ // its raw bits, and the message write refuses the value.
+ for(final bits in [0x7f800001,0xff800001,0x7fc0dead,0xffc00000,0x7f800000,0xff800000]) {
+  final data=ByteData(b.CellRow.rowSize)..setUint32(%[1]d,bits,Endian.little);
+  final row=b.CellRow(data,0);
+  check(row.value==0.0,'block returned the non-finite $bits');
+  check(row.nonFiniteFloat=='Cell.value','block did not latch the non-finite $bits: "${row.nonFiniteFloat}"');
+  final reader=m.TableMessageReader()..bits=m.TableBitReader(body(bits));
+  check(!m.cellLoadMessageBody(reader,m.Cell()),'message load kept the non-finite $bits');
+  check(reader.report.reason=='non_finite_float: Cell.value','message load reason for $bits: "${reader.report.reason}"');
+ }
+ for(final v in [double.nan,double.infinity,double.negativeInfinity]) {
+  final saved=Uint8List(32);
+  check(!m.cellSaveMessageBody(m.TableBitWriter(saved),m.Cell()..value=v),'message save wrote $v');
+ }
+ // -0 IS A VALUE AND IT RIDES (§3.3): elision compares bits, so -0 under the
+ // numeric zero default is written, and +0 is not.
  final zero=m.ZeroCell()..value=-0.0;
  final bytes=Uint8List(32);
  final writer=m.TableBitWriter(bytes);
  check(m.zeroCellSaveMessageBody(writer,zero),'default-zero save refused');
  final reader=m.TableBitReader(bytes);
- check(reader.get(m.tableMessageRefBits)==0,'negative zero must elide against numeric zero default');
+ check(reader.get(m.tableMessageRefBits)!=0,'negative zero must ride against the numeric zero default');
+ check(reader.get(32)==0x80000000,'negative zero must ride as its bits');
+ final plus=Uint8List(32);
+ check(m.zeroCellSaveMessageBody(m.TableBitWriter(plus),m.ZeroCell()),'+0 save refused');
+ check(m.TableBitReader(plus).get(m.tableMessageRefBits)==0,'+0 must elide against the numeric zero default');
 }
 `

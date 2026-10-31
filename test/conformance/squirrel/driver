@@ -1,0 +1,44 @@
+#!/bin/sh
+# THE SQUIRREL LEG's driver (test/conformance/README.md; docs/PORT-SQUIRREL.md,
+# THE HARNESS).
+#
+# Every surface is handed to one script, test/conformance/squirrel/main.nut,
+# under the pinned interpreter ($SQ, which make exports; sq on PATH otherwise).
+# While that script is absent the leg answers ABSENT: an empty list, and exit 2
+# for any surface asked of it.
+#
+# sq EXITS 0 ON A RUNTIME ERROR (it prints "AN ERROR HAS OCCURRED" to stderr),
+# so a run that writes anything to stderr is a failure here whatever its exit
+# status: a crashed surface is never reported as answered.
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+main=test/conformance/squirrel/main.nut
+if [ ! -f "$main" ]; then
+	case "$2" in
+	list) exit 0 ;;
+	*) exit 2 ;;
+	esac
+fi
+# A SURFACE this leg does not answer is ABSENT: exit 2 (test/conformance/
+# README.md, "Exit codes"). main.nut's own `list` is the one place the answered
+# surfaces are named.
+if [ "$2" != list ]; then
+	listed=$("${SQ:-sq}" "$main" "$1" list 2>/dev/null) || exit 1
+	if ! printf '%s\n' "$listed" | grep -qx -- "$2"; then
+		exit 2
+	fi
+fi
+err=$(mktemp) || exit 1
+"${SQ:-sq}" "$main" "$@" 2>"$err"
+status=$?
+if [ -s "$err" ]; then
+	cat "$err" >&2
+	rm -f "$err"
+	[ "$status" -ne 0 ] && exit "$status"
+	exit 1
+fi
+rm -f "$err"
+exit "$status"

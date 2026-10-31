@@ -20,6 +20,10 @@ const tableRegionCookSource = `
         public bool Big;
         public long Base;
         public RegionGraph Graph;
+        // Finite is the cook's own rule (docs/SPEC-TABLES.md §3.3): a cooked
+        // float is finite, so a NaN or an infinity refuses the cook. A builder's
+        // pack into its own region is not a form and carries what it holds.
+        public bool Finite;
         public void Put(long at, UInt128 raw, int width)
         {
             if (Bytes == null) { return; }
@@ -69,6 +73,8 @@ const tableRegionCookSource = `
         }
         for (int i = 0; i < count; i++)
         {
+            // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a NaN or an infinity refuses the cook
+            if (w.Finite && (f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, value.Raw(f, i))) { return false; }
             long element = at + (long)i * f.NativeElementSize, before = extent;
             if (!RegionPackElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
             if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -97,7 +103,7 @@ const tableRegionCookSource = `
         }
         w.Put(at, NativeWord(value.Slot(f, index), f.NativeElementSize), f.NativeElementSize); return true;
     }
-    static long RegionPlace(NativeValue value, TableTypeInfo type, ref RegionGraph graph, out int alignment)
+    static long RegionPlace(NativeValue value, TableTypeInfo type, ref RegionGraph graph, out int alignment, bool finite = false)
     {
         alignment = Math.Max(8, type.StorageAlign); long extent = 0;
         if (!RegionExtentSize(value, type, ref extent)) { return -1; }
@@ -116,7 +122,7 @@ const tableRegionCookSource = `
                 at = checked(at + NativeRecordBytes(child) + extent);
             }
         }
-        RegionPackWriter probe = new RegionPackWriter { Graph = graph }; extent = 0;
+        RegionPackWriter probe = new RegionPackWriter { Graph = graph, Finite = finite }; extent = 0;
         if (!RegionPackRecord(ref probe, 0, value, type, NativeRecordBytes(type), ref extent) || extent != rootExtent) { return -1; }
         foreach (RegionNode node in graph.Nodes)
         {
@@ -150,7 +156,7 @@ const tableRegionCookSource = `
         if (!graph.Valid) { return -1; }
         try
         {
-            long data = RegionPlace(root, type, ref graph, out int alignment); if (data < 0) { return -1; }
+            long data = RegionPlace(root, type, ref graph, out int alignment, true); if (data < 0) { return -1; }
             long directory = ((long)graph.Count + 1) * 16, size = checked(64 + data + directory);
             if (measure) { return size; }
             if (bytes == IntPtr.Zero || capacity < size || (ulong)size > (ulong)nuint.MaxValue) { return -1; }

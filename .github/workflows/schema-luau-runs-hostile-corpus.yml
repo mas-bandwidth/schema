@@ -1,0 +1,62 @@
+name: schema-luau-runs-hostile-corpus
+
+# THE LUAU PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md), the
+# same two jobs the Elixir port's workflow runs
+# (schema-elixir-runs-hostile-corpus.yml). The fast part runs on every push and
+# pull request: generate the Luau reader for each schema the manifest names and
+# hold every input to the manifest's verdict, named reason and decoded-value
+# digest under the pinned interpreter. The planted-bad-pattern control plants a
+# text-reader bug in the scratch units and requires the runner to go red on
+# exactly the rows it moves; it runs on schedule and workflow_dispatch here,
+# and on every merge in ci-full's negative-controls luau row
+# (make/negative-controls.json).
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  schedule:
+    - cron: "29 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+
+jobs:
+  corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      # THE LUAU PIN, as make/luau.mk's dist-luau installs it: the release
+      # archive's sha256 is refused before anything is unpacked.
+      - name: Luau 0.741 (pinned release)
+        run: make dist-luau
+      - name: the corpus gate
+        run: make schema-luau-runs-hostile-corpus
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      - name: Luau 0.741 (pinned release)
+        run: make dist-luau
+      - name: the planted-bad-pattern control
+        run: make schema-luau-runs-hostile-corpus-negative-control

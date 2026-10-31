@@ -244,6 +244,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
+	// runs it before the bounds pass and the writer before its first byte
+	for _, st := range own {
+		g.emitFixedFiniteBodyFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
@@ -621,6 +626,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    TableFixedPut64( buffer + kTableFixedHashAt, %sFixedHash );\n", st.Name)
 	g.pf("    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) %sFixedLayoutBytes );\n", st.Name)
 	g.pf("    memcpy( buffer + kTableFixedHeaderBytes + 4, %sFixedLayout, (size_t) %sFixedLayoutBytes );\n", st.Name, st.Name)
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3): every record is asked before the first byte of the file
+		g.pf("    for ( int64_t k = 0; k < count; ++k ) { if ( !%sFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)\n", st.Name)
+	}
 	g.pf("    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + %sFixedLayoutBytes;\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < count; ++k )\n    {\n")
 	g.pf("        TableFixedPut64( at, %sFixedHash );\n", st.Name)
@@ -792,6 +802,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        const int32_t rec_widened = report->widened;\n")
 	}
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, %sFixedGuards );\n", st.Name)
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
+		// FIRST, before the bounds pass, over the storage the run just wrote,
+		// and a NaN or an infinity refuses the whole batch as
+		// non_finite_float, the tolerant read included. Nothing of the batch
+		// is kept: every record this call wrote goes back to its defaults.
+		g.pf("        if ( !%sFixedFiniteBody( values[k] ) )\n        {\n", st.Name)
+		g.pf("            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n", st.Name)
+		g.pf("            *report = TableReport();\n")
+		g.pf("            TableNonFiniteFloat( report );\n")
+		g.pf("            return -1;\n        }\n")
+	}
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
@@ -1266,4 +1288,148 @@ func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
 	}
 	g.pf("%sclamped += ( %s %s %s );\n", ind, expr, op, bound)
 	g.pf("%s%s = ( %s %s %s ) ? %s : %s;\n", ind, expr, expr, op, bound, bound, expr)
+}
+
+/* ---- the read-side finite pass ---------------------------------------------
+
+A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+finite-only too, same rule as packets"): every fixed read refuses a NaN or an
+infinity as non_finite_float, tolerant and strict alike, and the test runs
+FIRST, before the bounds pass, so a compressed float's clamp never sees one.
+Like the bounds pass it runs over STORAGE, straight-line, after the record
+lands, so ONE pass covers both plans: the identity copy and a lineage plan's
+widenF, whose ordinary conversion keeps a NaN a NaN and an infinity an
+infinity. It walks only what a read can have written — a counted array's live
+elements, an optional's payload when present, a union's set arm. The writer
+asks the same question of the values it was handed, before a byte is written.
+The Go oracle is internal/codegen/gotable's emitFixedFiniteBodyFn. */
+
+// fixedFiniteNeededStruct is whether a fixed type holds a float anywhere a
+// read lands one.
+func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedFiniteNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFiniteNeededField(f *ir.Field, seen map[string]bool) bool {
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedFiniteNeededStruct(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedFiniteNeededField(v.F, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFixedFiniteBodyFn emits <T>FixedFiniteBody: true when every float a
+// read can have landed in the record is finite. A type that holds no float
+// gets no function (§2.2's zero-cost rule).
+func (g *tableGen) emitFixedFiniteBodyFn(st *ir.Struct) {
+	if !fixedFiniteNeededStruct(st, map[string]bool{}) {
+		return
+	}
+	g.fixedOwner = st
+	g.pf("// %s's finite rule (docs/SPEC-TABLES.md §3.3): false when a float it\n", st.Name)
+	g.pf("// holds is a NaN or an infinity, which no read lands and no writer writes.\n")
+	g.pf("TABLE_FIXED_INLINE bool %sFixedFiniteBody( const %s & value )\n{\n", st.Name, st.Name)
+	for _, f := range st.Fields {
+		g.emitFixedFiniteField(f, "value", 0, 4)
+	}
+	g.pf("    return true;\n}\n\n")
+}
+
+func (g *tableGen) emitFixedFiniteField(f *ir.Field, val string, depth, indent int) {
+	if !fixedFiniteNeededField(f, map[string]bool{}) {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		g.pf("%sif ( %s.%s_present )\n%s{\n", ind, val, f.Name, ind)
+		g.emitFixedFinitePayload(f, val, depth, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedFinitePayload(f, val, depth, indent)
+}
+
+func (g *tableGen) emitFixedFinitePayload(f *ir.Field, val string, depth, indent int) {
+	ind := strings.Repeat(" ", indent)
+	i := fixedLoopVar(depth)
+	loop := func(count, elem string) {
+		g.pf("%sfor ( int64_t %s = 0; %s < %s; ++%s )\n%s{\n", ind, i, i, count, i, ind)
+		g.emitFixedFiniteElement(f, elem+"["+i+"]", depth+1, indent+4)
+		g.pf("%s}\n", ind)
+	}
+	switch {
+	case f.KeyEnum != "":
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4)
+		loop(strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+ir.TableFixedKeyedSlots(g.fixedOwner, f))
+	case f.Array == ir.ArrayFixed:
+		loop(strconv.FormatInt(f.ArrayBound, 10), val+"."+f.Name)
+	case f.Array == ir.ArrayCounted:
+		// the count was refused past its bound before the record landed; the
+		// bound keeps the walk inside storage anyway
+		loop(fmt.Sprintf("(int64_t) %s.%s_count && %s < %d", val, f.Name, i, f.ArrayBound), val+"."+f.Name)
+	default:
+		g.emitFixedFiniteElement(f, val+"."+f.Name, depth, indent)
+	}
+}
+
+func (g *tableGen) emitFixedFiniteElement(f *ir.Field, expr string, depth, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; }\n", ind, expr)
+		return
+	case ir.TNamed:
+	default:
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedFiniteNeededStruct(r, map[string]bool{}) {
+			g.pf("%sif ( !%sFixedFiniteBody( %s ) ) { return false; }\n", ind, r.Name, expr)
+		}
+	case *ir.Union:
+		g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+		for _, v := range r.Variants {
+			if v.F == nil || !fixedFiniteNeededField(v.F, map[string]bool{}) {
+				continue
+			}
+			g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
+			inner := strings.Repeat(" ", indent+8)
+			i := fixedLoopVar(depth)
+			switch v.F.Array {
+			case ir.ArrayFixed:
+				g.pf("%sfor ( int64_t %s = 0; %s < %d; ++%s )\n%s{\n", inner, i, i, v.F.ArrayBound, i, inner)
+				g.emitFixedFiniteElement(v.F, armValue(expr, v)+"["+i+"]", depth+1, indent+12)
+				g.pf("%s}\n", inner)
+			case ir.ArrayCounted:
+				g.pf("%sfor ( int64_t %s = 0; %s < (int64_t) %s && %s < %d; ++%s )\n%s{\n", inner, i, i, armCount(expr, v), i, v.F.ArrayBound, i, inner)
+				g.emitFixedFiniteElement(v.F, armValue(expr, v)+"["+i+"]", depth+1, indent+12)
+				g.pf("%s}\n", inner)
+			default:
+				g.emitFixedFiniteElement(v.F, armValue(expr, v), depth, indent+8)
+			}
+			g.pf("%s        break;\n%s    }\n", ind, ind)
+		}
+		g.pf("%s    default: break;\n%s}\n", ind, ind)
+	}
 }

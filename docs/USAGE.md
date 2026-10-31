@@ -1439,33 +1439,45 @@ lambda, and a named function per enum would claim a name per enum, so the
 same facts ride as constant data — every question the descriptors answer
 elsewhere has an answer here, asked of an array instead of a call.
 
-The Rust surface is the same three functions, name first, as free functions in
-the generated crate, over slices the caller owns. Storage is a `#[repr(C)]`
-struct of public fields — every buffer fixed at its declared capacity, so
-`load` allocates nothing and overlays in place after restoring the declared
-defaults:
+The Rust surface is the same three questions, name first, as free functions
+in the generated crate. On the table wire a value is an owned storage struct
+(`String`, `Vec`, `Option`, an `Rc` for each pointer) whose `Default` is the
+DECLARED defaults: `<t>_save` returns the bytes, `<t>_load` reads them back with
+the report as a parameter, and `<t>_to_json_checked` / `<t>_from_json` are the
+text form. A fixed table also has a `#[repr(C)]` `<T>Row` for the fixed form and
+the block, which `<t>_fixed_save` and `<t>_fixed_load` write and read. This
+complete example uses the `tables/examples` crate, and `make tables-rust-usage`
+runs it directly from this page:
 
+<!-- rust-table-usage -->
 ```rust
-use example::*;
+use tabledemo::*;
 
-let mut ship = ShipConfig::default();   // the DECLARED defaults, not zeros
-ship.health = 250.0;
-ship.settings_present = true;           // ?T: presence decides whether it rides
+fn main() {
+    let mut config = RootConfig::default();   // the DECLARED defaults, not zeros
+    config.version_note = "v7".to_string();
+    config.weapons.push(WeaponConfig::default());
+    config.weapons[0].damage = 30.0;
 
-let size = ship_config_measure(&ship);  // exact, writes nothing
-let mut buffer = vec![0u8; size as usize];
-ship_config_save(&ship, &mut buffer);   // returns size, or -1
+    let wire = root_config_save(&config);     // form 1: the id-table wire
 
-let mut report = TableReport::default();
-let mut loaded = ShipConfig::default();
-if !ship_config_load(&mut loaded, &buffer, &mut report) {
-    // framing damage: report.malformed is set, the good prefix is kept
-}
-if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
-    // the data came from a different schema generation — loaded is still
-    // fully usable; log the counts so drift is visible
+    let mut report = TableReport::default();
+    let Some(loaded) = root_config_load(&wire, &mut report) else {
+        panic!("framing damage: report.malformed is set");
+    };
+    if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+        // the data came from a different schema generation: loaded is still
+        // fully usable; log the counts so drift is visible
+    }
+    assert_eq!(loaded.weapons[0].damage, 30.0);
+    assert_eq!(loaded.weapons[0].speed, 500.0); // the declared default rode back
+
+    let text = root_config_to_json_checked(&loaded).expect("a finite value has a text");
+    let again = root_config_from_json(&text, &mut report).expect("the text reads back");
+    assert_eq!(root_config_save(&again), wire);
 }
 ```
+<!-- /rust-table-usage -->
 
 **The Go surface is the same three functions again**, name first at package
 scope over a `*T` the caller owns. Storage is a plain struct — the Go packet
@@ -3236,7 +3248,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xe1fbe3acd0a181af
+0xc06e89a209a3dda7
 ```
 
 ```cpp
@@ -4494,17 +4506,43 @@ if (!ok) {
 }
 ```
 
-Dart carries the two **table accelerators** (docs/SPEC-TABLES.md §19 and §7)
-and not the table wire: a unit that declares tables grows `<Base>Block.dart`
-and `<Base>Cook.dart` beside its packet library, plus one runtime home per
-unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A block
-is pointed at and a cook is opened; neither parses a wire, both are read-only,
-and both refuse a forged image rather than throwing on it (`make
-tables-dart-fuzz` is that oracle over mutated corpus images, with its planted
-control). There is no `<Base>Table.dart`: the Dart port of the table wire wrote
-the form that preceded the id-table wire, which the current specification does
-not describe, and it was removed rather than carried; schema#514 is the row that
-brings the id-table wire to Dart, and ROADMAP.md marks the cells.
+A unit that declares tables grows `<Package>Wire.dart`, the table wire
+(docs/SPEC-TABLES.md §3): one class per table, `<root>WireLoad(bytes,
+[report])` and `<root>WireSave(value)` for the id-table form, and
+`<root>ToJson` / `<root>FromJson(text, [report])` for the §16 text form, beside
+`<Package>Fixed.dart` (the fixed form, §3.4) and the two **table accelerators**
+(§19 and §7): `<Base>Block.dart` and `<Base>Cook.dart`, plus one runtime home
+per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`. A
+wire load never throws on hostile bytes: it answers what it could read and
+says why in a `TableWireReport` (`malformed`, `refused`, and `reason`, the
+refusal by name). A text read is tolerant in the same way, counting what it set
+aside in a `TableTextReport`, and refuses text that is not JSON, or a text
+string that holds U+0000 (§16.3), by throwing a `FormatException`. A block is
+pointed at and a cook is opened; neither parses a wire, both are read-only, and
+both refuse a forged image rather than throwing on it (`make tables-dart-fuzz`
+is that oracle over mutated corpus images, with its planted control). This
+fragment is compiled and run against the `tables/pointers` unit by `make
+tables-dart-usage`:
+
+<!-- dart-table-usage -->
+```dart
+import 'GraphdemoWire.dart';
+
+final report = TableWireReport();
+final scene = sceneWireLoad(bytes, report); // never throws on hostile bytes
+if (report.malformed || report.refused) {
+  // drop it: report.reason names why (wire_damaged, unknown_form)
+} else {
+  for (var node = scene.head; node != null; node = node.next) {
+    use(node.value);
+  }
+  final again = sceneWireSave(scene); // the canonical id-table wire
+  final text = sceneToJson(scene); // the §16 text form
+  final back = sceneFromJson(text, TableTextReport());
+  use(again.length + back.name.length);
+}
+```
+<!-- /dart-table-usage -->
 
 **Go** — accessors, file/message loads and block fill avoid allocation and
 operate on caller-owned buffers. Variable table builders own a `TableArena`;
@@ -4875,6 +4913,40 @@ constants and data members are UpperCamelCase (`ship.Health`, `report.Unknown`,
 `teams.get(key)`, `report.reset()`). A field's wire name, a JSON key and a
 variant's name stay the schema's own spelling — they are data in a descriptor,
 not identifiers.
+
+**Lua** — vanilla Lua 5.4 (PUC-Rio; LuaJIT is not covered), no dependencies.
+Generated code is self-contained: a module per schema file beside the
+serialize runtime, and for tables a `<Package>Tables.lua` of descriptors with
+the runtime modules (`load`, `save`, `cook`, `uncook`, `block`, ...) beside it,
+so the directory is the whole program and `package.path = "./?.lua;"` reaches
+it. A value is a plain Lua table and its kind lives in the descriptor, never in
+the value, so a value of the wrong Lua type on write is a named refusal, not a
+coercion. A buffer is a Lua string, which has no address, so the cook's `Open`
+takes the buffer's lead past an aligned base as an optional fourth argument.
+`Open` answers a handle, or `nil` and the refusal's name (`unaligned_base`, a
+foreign build, the other byte order); `uncook.Read` runs cook-check's two
+passes over a cook nothing has checked and builds the root. This fragment is
+compiled and run against the `tables/pointers` unit by `make tables-lua-usage`:
+
+<!-- lua-table-usage -->
+```lua
+local T = require("GraphdemoTables")
+local cook = require("cook")
+local uncook = require("uncook")
+
+-- open the cook another build wrote; nil and a reason is a foreign build, a
+-- corrupt file or the other byte order: fall back to the tolerant wire
+local handle, why = cook.Open(T, "Scene", bytes)
+if handle == nil then error("the Scene cook did not open: " .. why) end
+local scene, refused = uncook.Read(T, handle)   -- nil and a reason for a forged cook
+if scene == nil then error("the Scene cook is corrupt: " .. refused) end
+local node = scene.head
+while node ~= nil do
+  use(node.value)
+  node = node.next                              -- nil is the null reference
+end
+```
+<!-- /lua-table-usage -->
 
 All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is

@@ -327,14 +327,18 @@ public final class TableVocabulary {
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
-        // The ENTRY bound is the caller's capacity, and an announcement above it
-        // is refused by name as vocabulary_too_large before an entry is touched
-        // (§3.3).
+        // The ENTRY bound is the caller's capacity, narrowed by maxEntries when
+        // the receiver sets one, and an announcement above it is refused by
+        // name as vocabulary_too_large before an entry is touched (§3.3).
+        int entryBound = v.entries.length;
+        if (v.maxEntries > 0 && v.maxEntries < entryBound) {
+            entryBound = v.maxEntries;
+        }
         Reader src = new Reader(vocab, 0);
         int count = 0;
         boolean nodeSeen = false;
         while (src.at < vocab.length) {
-            if (count >= v.entries.length) {
+            if (count >= entryBound) {
                 report.refused = true;
                 report.reason = "vocabulary_too_large";
                 return false;
@@ -1144,7 +1148,19 @@ public final class TableMessage {
         return c != 0 ? c : Long.compareUnsigned(aLo, bLo);
     }
 
-    public static float readFloat32(Reader r, TableVocabulary.Shape s, float min, float max, boolean hasRange) {
+    // A FLOAT IS FINITE ON THE MESSAGE WIRE (docs/SPEC-TABLES.md §3.3, the
+    // packet wire's own rule): a float carried whole whose raw bits
+    // are a NaN or an infinity refuses the batch as non_finite_float, naming
+    // the first such field, before any range is applied. A quantized float's
+    // index always names a finite value.
+    public static void nonFiniteFloat(TableVocabulary.Report report, String field) {
+        if (!report.refused) {
+            report.refused = true;
+            report.reason = "non_finite_float: " + field;
+        }
+    }
+
+    public static float readFloat32(Reader r, TableVocabulary.Shape s, float min, float max, boolean hasRange, String field) {
         float v;
         if (s.packing == 2) {
             long index = r.get((int) s.bits);
@@ -1158,6 +1174,10 @@ public final class TableMessage {
         } else {
             int raw = (int) r.get(32);
             if (r.err) { return 0.0f; }
+            if ((raw & 0x7f800000) == 0x7f800000) {
+                nonFiniteFloat(r.report, field);
+                return 0.0f;
+            }
             v = Float.intBitsToFloat(raw);
         }
         if (hasRange) {
@@ -1167,16 +1187,7 @@ public final class TableMessage {
         return v;
     }
 
-    public static double widenF32(int raw) {
-        if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x007fffff) != 0) {
-            long sign = (long) (raw & 0x80000000) << 32;
-            long payload = (long) (raw & 0x007fffff) << 29;
-            return Double.longBitsToDouble(sign | 0x7ff0000000000000L | payload);
-        }
-        return (double) Float.intBitsToFloat(raw);
-    }
-
-    public static double readFloat64(Reader r, TableVocabulary.Shape s, double min, double max, boolean hasRange) {
+    public static double readFloat64(Reader r, TableVocabulary.Shape s, double min, double max, boolean hasRange, String field) {
         if (s.kind == 10) {
             if (s.packing == 2) {
                 long index = r.get((int) s.bits);
@@ -1190,10 +1201,19 @@ public final class TableMessage {
             }
             int raw = (int) r.get(32);
             if (r.err) { return 0.0; }
-            return widenF32(raw);
+            if ((raw & 0x7f800000) == 0x7f800000) {
+                nonFiniteFloat(r.report, field);
+                return 0.0;
+            }
+            // the float rung is the ordinary conversion: exact for every finite float32
+            return (double) Float.intBitsToFloat(raw);
         }
         long raw = r.get(64);
         if (r.err) { return 0.0; }
+        if ((raw & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            nonFiniteFloat(r.report, field);
+            return 0.0;
+        }
         double v = Double.longBitsToDouble(raw);
         if (hasRange) {
             if (v < min) { v = min; r.report.clamped++; }
@@ -1264,6 +1284,9 @@ type messageGen struct {
 	refBits int
 	b       strings.Builder
 	serial  int
+	// owner is the declaration whose body a load is being emitted for, the
+	// <Owner> of a non_finite_float refusal's <Owner>.<field> (§3.3)
+	owner string
 }
 
 func (g *messageGen) pf(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -1613,8 +1636,11 @@ func (g *messageGen) emitSaveField(f *ir.Field, owner, guard string, indent int)
 		// so nothing is ever written into the real stream that is later
 		// thrown away — a buffer of exactly the measured size must never see
 		// a transient write past its end.
+		// The probe's own answer counts: a body it refuses (a NaN or an
+		// infinity, docs/SPEC-TABLES.md §3.3) refuses the holder too, even
+		// when what it wrote before refusing looks like an elided body.
 		g.pf("%sTableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", iind, probe)
-		g.pf("%s%s.saveMessageBody(%s, %s);\n", iind, messageClass(st.Name), probe, expr)
+		g.pf("%sif (!%s.saveMessageBody(%s, %s)) { return false; }\n", iind, messageClass(st.Name), probe, expr)
 		g.pf("%sif (%s.bits != %dL) {\n", iind, probe, g.refBits)
 		g.pf("%s    w.put(%dL, %d);\n", iind, slot, g.refBits)
 		g.pf("%s    if (!%s.saveMessageBody(w, %s)) { return false; }\n", iind, messageClass(st.Name), expr)
@@ -1700,6 +1726,14 @@ func (g *messageGen) scalarOrUnionRidesExpr(f *ir.Field, expr string) string {
 	def := fixedZeroLit(typ)
 	if init := fixedScalarDefault(f); init != "" {
 		def = init
+	}
+	// A FLOAT RIDES BY ITS BITS (docs/SPEC-TABLES.md §3.3, the 10-15 rule): a
+	// -0 under a +0 default is not the default.
+	switch typ {
+	case "float":
+		return "Float.floatToRawIntBits(" + expr + ") != Float.floatToRawIntBits(" + def + ")"
+	case "double":
+		return "Double.doubleToRawLongBits(" + expr + ") != Double.doubleToRawLongBits(" + def + ")"
 	}
 	return expr + " != " + def
 }
@@ -1860,10 +1894,15 @@ func (g *messageGen) emitSaveElement(f *ir.Field, kind uint8, shape ir.TableMess
 	case int(kind) == ir.TableKindBool:
 		g.pf("%sw.put(%s ? 1L : 0L, 1);\n", ind, expr)
 
+	// A NaN OR AN INFINITY IS REFUSED, never quantized or clamped
+	// (docs/SPEC-TABLES.md §3.3, both special-values rules): the body answers
+	// false before the quantizer runs, so measure and save both return -1.
 	case int(kind) == ir.TableKindF64:
+		g.pf("%sif (!Double.isFinite(%s)) { return false; }\n", ind, expr)
 		g.pf("%sw.put(Double.doubleToRawLongBits(%s), 64);\n", ind, expr)
 
 	case int(kind) == ir.TableKindF32:
+		g.pf("%sif (!Float.isFinite(%s)) { return false; }\n", ind, expr)
 		if shape.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(shape)
 			g.pf("%sTableMessage.writeFloat32Quantized(w, %s, %s, %s, %dL, %d);\n",
@@ -1907,6 +1946,7 @@ func (g *messageGen) emitSaveElement(f *ir.Field, kind uint8, shape ir.TableMess
 // ---- loadMessageBody ------------------------------------------------------
 
 func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
+	g.owner = st.DeclaredName()
 	g.pf("    public static boolean loadMessageBody(TableMessage.Reader r, %s v) {\n", valType)
 	g.pf("        reset(v);\n")
 	g.pf("        while (true) {\n")
@@ -2194,7 +2234,7 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 			lo, hi = "0.0f", "0.0f"
 		}
 		g.pf("%s{\n", ind)
-		g.pf("%s    float %s = TableMessage.readFloat32(r, %s, %s, %s, %t);\n", ind, vVar, shapeExpr, lo, hi, hasRange)
+		g.pf("%s    float %s = TableMessage.readFloat32(r, %s, %s, %s, %t, %q);\n", ind, vVar, shapeExpr, lo, hi, hasRange, g.owner+"."+f.Name)
 		g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
 		g.pf("%s    %s = %s;\n", ind, targetExpr, vVar)
 		g.pf("%s}\n", ind)
@@ -2206,7 +2246,7 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 			lo, hi = "0.0", "0.0"
 		}
 		g.pf("%s{\n", ind)
-		g.pf("%s    double %s = TableMessage.readFloat64(r, %s, %s, %s, %t);\n", ind, vVar, shapeExpr, lo, hi, hasRange)
+		g.pf("%s    double %s = TableMessage.readFloat64(r, %s, %s, %s, %t, %q);\n", ind, vVar, shapeExpr, lo, hi, hasRange, g.owner+"."+f.Name)
 		g.pf("%s    if (r.err) { r.report.malformed = true; return false; }\n", ind)
 		g.pf("%s    %s = %s;\n", ind, targetExpr, vVar)
 		g.pf("%s}\n", ind)
@@ -2280,6 +2320,9 @@ func (g *messageGen) emitLoadUnion(un *ir.Union, expr string, indent int) {
 	aHiVar := g.nextTemp("aHi")
 	aLoVar := g.nextTemp("aLo")
 
+	outer := g.owner
+	g.owner = un.Name
+	defer func() { g.owner = outer }()
 	g.emitResetUnion(un, expr, indent)
 	g.pf("%s{\n", ind)
 	g.pf("%s    long %s = r.get(r.vocab.refBits);\n", ind, refVar)
@@ -2424,7 +2467,15 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        TableMessage.Reader r = new TableMessage.Reader(data, 2, vocab, report);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null) { values[i] = new %s(); }\n", valType)
-	g.pf("            if (!loadMessageBody(r, values[i])) { return i; }\n")
+	// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+	// §3.3): no body of it is delivered, so every body read so far is reset
+	// and the count is zero.
+	g.pf("            boolean read = loadMessageBody(r, values[i]);\n")
+	g.pf("            if (report.refused) {\n")
+	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
+	g.pf("                return 0;\n")
+	g.pf("            }\n")
+	g.pf("            if (!read) { return i; }\n")
 	g.pf("        }\n")
 	g.pf("        if (!r.align() || r.at != r.totalBits) {\n")
 	g.pf("            report.malformed = true;\n")

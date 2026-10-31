@@ -1,10 +1,13 @@
-// THE FOUR WIDENING HELPERS AND THE SUPERSET THAT CARRIES THEM
+// THE THREE WIDENING HELPERS AND THE SUPERSET THAT CARRIES THEM
 // (docs/SPEC-TABLES.md §2.2, §3, §4).
 //
 // The C++ Table header used to carry the whole widening runtime in EVERY unit.
-// Four of its five functions are reached only from a kind the unit DECLARES:
+// Three of its four functions are reached only from a kind the unit DECLARES.
+// A fifth, TableWidenF32, carried a NaN's payload across the float rung by bit
+// surgery; tables are finite only (§3.3, 2026-10-27), so every finite float32
+// widens through the ordinary conversion and the helper is gone from every
+// unit — asked for below as an absence, and its call site as the conversion.
 //
-//   - TableWidenF32, the float rung: a declared kind 11.
 //   - TableReadSignedAt: a declared kind 3, 4, 5 or 18, the signed ladder's
 //     tops, which are the only kinds that have a rung below them.
 //   - TableReadUnsignedAt: a declared kind 7, 8, 9 or 19.
@@ -12,7 +15,7 @@
 //     on a ladder, whose L must be the wire kind's own width (§3), and the
 //     list runtime's extent term, which asks for that width on any list.
 //
-// The fifth, TableKindWidens, stays in every unit: a kind comparison is what
+// The fourth, TableKindWidens, stays in every unit: a kind comparison is what
 // every reader does.
 //
 // THE CENSUS IS A SAFE SUPERSET AND THE TESTS BELOW ARE WRITTEN TO THAT.
@@ -102,7 +105,8 @@ fixed table Note
 }
 `
 
-// float64 for float32: the float rung's top, and nothing else moved.
+// float64 for float32: the float rung's top, and nothing else moved. It needs
+// no helper: the rung is the finite test and the ordinary conversion.
 const widenF32Src = `package probe
 
 union Pick
@@ -185,11 +189,6 @@ var (
 		"inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )",
 		"if ( !TableReadUnsignedAt( r, kind, widened_v ) )",
 	}
-	widenF32Helper = widenHelper{
-		"TableWidenF32",
-		"inline double TableWidenF32( uint32_t bits )",
-		"TableWidenF32( r.get32() )",
-	}
 	widenWidthArm = widenHelper{
 		"TableKindWidth",
 		"inline int64_t TableKindWidth( uint8_t kind )",
@@ -244,9 +243,26 @@ func TestCppTableWidenUnsignedFollowsTheCensus(t *testing.T) {
 		[]string{"TableReadSignedAt", "TableWidenF32", "TableKindWidth"})
 }
 
-func TestCppTableWidenF32FollowsTheCensus(t *testing.T) {
-	widenBothWays(t, widenF32Src, widenF32Helper,
-		[]string{"TableReadSignedAt", "TableReadUnsignedAt", "TableKindWidth"})
+// THE FLOAT RUNG CARRIES NO HELPER (docs/SPEC-TABLES.md §3.3, §4): a unit
+// that declares a float64 widens a float32 by testing its raw bits and then
+// the ordinary conversion, carries no TableWidenF32 and none of the other
+// three, and compiles and runs.
+func TestCppTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
+	with, files := deadCppHeader(t, widenF32Src)
+	for _, sym := range []string{"TableWidenF32", "TableReadSignedAt", "TableReadUnsignedAt", "TableKindWidth"} {
+		if strings.Contains(with, sym) {
+			t.Errorf("the float rung reaches no %s and the unit must carry none of it", sym)
+		}
+	}
+	for _, want := range []string{
+		"if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }",
+		"= (double) table_bits_to_float( widened_bits );",
+	} {
+		if !strings.Contains(with, want) {
+			t.Errorf("the float rung must test the bits and then convert; no %q in the header", want)
+		}
+	}
+	deadCppCompile(t, files)
 }
 
 // AN ARM ON A LADDER is TableKindWidth's declared-kind half: the arm's L must
@@ -266,7 +282,7 @@ func TestCppTableWidenListWidthFollowsTheCensus(t *testing.T) {
 }
 
 // THE ALL-ABSENT UNIT, asked for once on its own: a schema whose every scalar
-// sits at the bottom of its ladder carries none of the four, and still
+// sits at the bottom of its ladder carries none of the four names, and still
 // compiles and runs. It is the claim the five cases above each lean on.
 func TestCppTableWidenRuntimeAbsentFromALadderlessUnit(t *testing.T) {
 	header, files := deadCppHeader(t, widenNoneSrc)

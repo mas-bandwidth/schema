@@ -83,19 +83,6 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(runtime, "@CHECK_DEFAULT@", checkDefault)
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
-		// THE FLOAT RUNG, kind 10 into kind 11 (docs/SPEC-TABLES.md §4), only
-		// where kind 11 is declared. table_wire_widen_f32 has exactly two call
-		// sites in this emitter — the file wire's widened scalar
-		// (wire_read.go) and the message form's f32-shaped entry read into an
-		// f64 field (message_read.go) — and both sit behind a DECLARED f64, so
-		// a unit whose closure declares no kind 11 carried nine lines it could
-		// not reach. table_kind_widens above stays in every unit: a kind
-		// comparison is what every reader does.
-		widenF32 := ""
-		if ir.TableDeclaredKinds(g.unit)[ir.TableKindF64] {
-			widenF32 = tableWidenF32Runtime
-		}
-		runtime = strings.ReplaceAll(runtime, "@WIDEN_F32@", widenF32)
 	}
 	// KIND 33's RUNTIME, and only where a kind 33 payload can arrive
 	// (docs/SPEC-TABLES.md §3, §2.2). table_wire_utf16_unit, table_wire_utf16
@@ -122,23 +109,6 @@ func (g *tableGen) wirePrimitives() string {
 	}
 	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), ir.TableFixedHasWriteBound(g.unit)) + wideText
 }
-
-// tableWidenF32Runtime is the FLOAT RUNG of the widening rule (§4): f32 into
-// f64, exact, with a NaN's payload riding on the bits because the hardware
-// conversion would set the quiet bit. It goes into @WIDEN_F32@ inside
-// fileWireRuntime, and only into a unit whose closure DECLARES a kind 11 —
-// see wirePrimitives for the census and for why the other five widening
-// symbols stay in every unit.
-const tableWidenF32Runtime = `static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
-{
-    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
-    {
-        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
-        double d; memcpy( &d, &wide, 8 ); return d;
-    }
-    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
-}
-`
 
 const fileWireRuntime = `
 /* Each save owns one bounded identity table. Probes share it and rewind their
@@ -428,7 +398,7 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
-@WIDEN_F32@static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
+static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     uint64_t count, i; int64_t span; TableReader tail;
     if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }
@@ -698,6 +668,13 @@ func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
 			condition = "( " + guard + " ) && " + condition
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
+		// the save's finite rule, on the measure's own path (§3.3)
+		switch ir.TableWireScalarKind(f) {
+		case tkF32:
+			g.pf("            if ( !table_float_finite( value->%s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", f.Name)
+		case tkF64:
+			g.pf("            if ( !table_double_finite( value->%s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", f.Name)
+		}
 		g.pf("            %s\n", g.wireIdCall(ir.TableFieldWireId(f)))
 		g.pf("            payload_bytes += %d; /* kind and fixed-width payload */\n        }\n", 1+tableKindWidth(ir.TableWireScalarKind(f)))
 	}

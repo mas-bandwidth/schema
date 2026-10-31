@@ -14,7 +14,8 @@ namespace example {
 
 inline constexpr int64_t RenderBlockMaxSprites = 64;
 // type RenderSprite
-struct RenderSprite {
+struct RenderSprite
+{
     uint64_t sort_key = 0;
     uint32_t mesh_id = 0;
     uint32_t material_id = 0;
@@ -26,7 +27,8 @@ inline constexpr int64_t RenderSpriteMaxBits = 138; // longest wire path; align 
 inline constexpr int64_t RenderSpriteMaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type RenderBlock
-struct RenderBlock {
+struct RenderBlock
+{
     uint32_t worker_index = 0;
     uint32_t sprite_count_hint = 0;
     RenderSprite sprites[RenderBlockMaxSprites] = {}; // used count beside it; wire count in [0, RenderBlockMaxSprites]

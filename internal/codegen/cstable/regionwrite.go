@@ -33,6 +33,8 @@ const tableRegionWriteSource = `
     static int RegionCount(NativeValue value, TableFieldInfo f) { return f.Counted ? value.Count(f) : f.ArrayBound; }
     static bool RegionCollectElement(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids)
     {
+        // a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md §3.3)
+        if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, value.Raw(f, i)); }
         if (f.Kind == 13) { return RegionCollect(value.Child(f, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {

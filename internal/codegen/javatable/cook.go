@@ -50,6 +50,7 @@ type cookUnit struct {
 	members map[string]*ir.MemberLayout // every record the cook closure reaches
 	order   []string                    // those record names, sorted
 	skipped map[string]string           // table -> why it has no Java Open
+	unions  []*ir.Union                 // every union the cook closure reaches, sorted by name
 	align   int64                       // the unit's region alignment (§7.1)
 }
 
@@ -64,9 +65,9 @@ func (c *cookUnit) opens(name string) bool {
 
 // cookUnitOf computes the surface. A ROOT IS ANY TABLE (§7) and every table gets
 // one — with one absence this backend states rather than hides: a closure
-// carrying a UNION has no cooked accessor set, which is the same reason a union
-// keeps a table out of the block form, and it is a named follow-on rather than a
-// refusal.
+// carrying an UNBOUNDED ARRAY has no fixed pitch to cook, and it is a named
+// follow-on rather than a refusal. A UNION is a TAG beside its overlaid arms
+// (§7.2), and a <Union>Row reads it where it lies.
 func cookUnitOf(u *ir.Unit) *cookUnit {
 	c := &cookUnit{members: map[string]*ir.MemberLayout{}, skipped: map[string]string{}}
 	names := make([]string, 0, len(u.Tables))
@@ -82,15 +83,26 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 		}
 		c.tables = append(c.tables, st)
 	}
+	unions := map[string]*ir.Union{}
 	for _, st := range c.tables {
 		cookWalk(u, st.Name, func(name string, ml *ir.MemberLayout) {
 			c.members[name] = ml
+		}, func(un *ir.Union) {
+			unions[un.Name] = un
 		})
 	}
-	aligns := make([]int64, 0, len(c.members))
+	for _, un := range unions {
+		c.unions = append(c.unions, un)
+	}
+	sort.Slice(c.unions, func(i, j int) bool { return c.unions[i].Name < c.unions[j].Name })
+	aligns := make([]int64, 0, len(c.members)+len(c.unions))
 	for name := range c.members {
 		c.order = append(c.order, name)
 		aligns = append(aligns, c.members[name].Align)
+	}
+	for _, un := range c.unions {
+		_, align, _, _ := ir.UnionLayout(u, un)
+		aligns = append(aligns, align)
 	}
 	sort.Strings(c.order)
 	c.align = ir.RegionAlignOf(aligns...)
@@ -100,10 +112,30 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 // cookWalk visits every record one table's cooked region can hold: itself,
 // everything it nests by value, and everything it POINTS AT — a cook's region is
 // the whole graph, so a pointer edge reaches records a by-value walk never
-// would.
-func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
+// would. A UNION is visited too, and its arms are walked as the fields they are
+// (§2.6): an arm that nests or points at a record reaches it.
+func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout), union func(*ir.Union)) {
 	seen := map[string]bool{}
 	var walk func(string)
+	var field func(*ir.Field)
+	field = func(f *ir.Field) {
+		if f == nil || f.Type.Kind != ir.TNamed {
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			walk(ref.Name)
+		case *ir.Union:
+			if seen["union:"+ref.Name] {
+				return
+			}
+			seen["union:"+ref.Name] = true
+			union(ref)
+			for _, v := range ref.Variants {
+				field(v.F)
+			}
+		}
+	}
 	walk = func(n string) {
 		if seen[n] {
 			return
@@ -115,12 +147,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 		seen[n] = true
 		visit(n, ir.RecordLayout(u, st))
 		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
-				walk(ref.Name)
-			}
+			field(f)
 		}
 	}
 	walk(name)
@@ -131,6 +158,40 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 	seen := map[string]bool{}
 	var walk func(string) string
+	var field func(string, *ir.Field) string
+	field = func(owner string, f *ir.Field) string {
+		if f == nil {
+			return ""
+		}
+		// An UNBOUNDED ARRAY ([]T, docs/SPEC-TABLES.md §2.9) makes a table
+		// VARIABLE-LENGTH: there is no fixed pitch anywhere in it, so a
+		// cooked record's accessors cannot read one field at one offset
+		// (§7, §19). The card is the first such table this backend meets,
+		// and it is skipped here, not laid out.
+		if f.Array == ir.ArrayList {
+			return owner + "." + f.Name + " is an unbounded array, and a variable-length table has no fixed pitch to cook (docs/SPEC-TABLES.md §2.9)"
+		}
+		if f.Type.Kind != ir.TNamed {
+			return ""
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Union:
+			// a union is a TAG beside its overlaid arms (§7.2), each arm a
+			// field line, so the closure is the arms' closures
+			if seen["union:"+ref.Name] {
+				return ""
+			}
+			seen["union:"+ref.Name] = true
+			for _, v := range ref.Variants {
+				if why := field(ref.Name, v.F); why != "" {
+					return why
+				}
+			}
+		case *ir.Struct:
+			return walk(ref.Name)
+		}
+		return ""
+	}
 	walk = func(name string) string {
 		if seen[name] {
 			return ""
@@ -141,24 +202,8 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 			return ""
 		}
 		for _, f := range m.Fields {
-			// An UNBOUNDED ARRAY ([]T, docs/SPEC-TABLES.md §2.9) makes a table
-			// VARIABLE-LENGTH: there is no fixed pitch anywhere in it, so a
-			// cooked record's accessors cannot read one field at one offset
-			// (§7, §19). The card is the first such table this backend meets,
-			// and it is skipped here, not laid out.
-			if f.Array == ir.ArrayList {
-				return name + "." + f.Name + " is an unbounded array, and a variable-length table has no fixed pitch to cook (docs/SPEC-TABLES.md §2.9)"
-			}
-			if f.Type.Kind != ir.TNamed {
-				continue
-			}
-			switch ref := f.Type.Ref.(type) {
-			case *ir.Union:
-				return name + "." + f.Name + " is a union, and a cooked record's accessors read one field at one offset, which cannot say which arm a slot holds"
-			case *ir.Struct:
-				if why := walk(ref.Name); why != "" {
-					return why
-				}
+			if why := field(name, f); why != "" {
+				return why
 			}
 		}
 		return ""
@@ -195,6 +240,8 @@ public enum TableCookStorage {
     FLOAT,
     STRING, // char[N + 1] with an int32 used length beside it
     BYTES, // uint8[N] with an int32 used length beside it
+    UNION, // a TAG at the union's base, the SET arm overlaid after it (§7.2)
+    WIDE, // a 128-bit integer: sixteen bytes at sixteen, one eight-byte lane per half
 }
 `
 
@@ -232,6 +279,15 @@ public final class TableCookInfo {
 
     public String name;
     public long typeId; // attribution entry's table id (§7.6)
+    /** a UNION's tag width in bytes, its tag at offset zero; 0 for a record. A
+     *  union's fields are its ARMS, each carrying the tag that selects it. */
+    public int tagWidth;
+    /** a UNION's declared arm count (its Max), payload-free arms included. */
+    public int armCount;
+    /** a RECORD's VALUE-INITIALIZED element: its declared defaults, which is
+     *  what a counted array's slot past the live count and a fixed array's
+     *  slot past the value's elements hold (§7.2); null for a union. */
+    public java.util.function.Supplier<Object> defaults;
     public int size;
     public int align;
     public int numFields;
@@ -265,9 +321,16 @@ public final class TableCookFieldInfo {
     public int presentOffset; // an optional's presence bool, or -1
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
+    public int tag; // a union ARM's tag (§7.2); 0 for a record's field
 
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
+    }
+
+    /** this field as a union ARM: the tag value that selects it. */
+    public TableCookFieldInfo arm(int armTag) {
+        this.tag = armTag;
+        return this;
     }
 
     public static TableCookFieldInfo of(
@@ -399,9 +462,13 @@ func (g *cookGen) emitWrite() {
 	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
 	g.f("        return p == null ? -1 : p.total;\n    }\n\n")
 	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
+	// a NaN or an infinity is the cook's own refusal, named non_finite_float
+	// (docs/SPEC-TABLES.md §3.3), and every other invalid value invalid_value
 	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
-	g.f("        long bytes = cookMeasure(value);\n")
-	g.f("        return new MeasureReason(bytes, bytes < 0 ? \"invalid_value\" : \"ok\");\n    }\n\n")
+	g.f("        boolean[] nonFinite = new boolean[1];\n")
+	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite);\n")
+	g.f("        long bytes = p == null ? -1 : p.total;\n")
+	g.f("        return new MeasureReason(bytes, bytes >= 0 ? \"ok\" : nonFinite[0] ? \"non_finite_float\" : \"invalid_value\");\n    }\n\n")
 	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n")
 	g.f("        if (order != TableCookWrite.LITTLE && order != TableCookWrite.BIG) { return false; }\n")
 	g.f("        TableCookWrite.Plan p = TableCookWrite.plan(value, type());\n")
@@ -595,6 +662,10 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
 		}
 		fmt.Fprintf(&b, "        record(\"%sRow\", %sRow.size, %sRow.align, %sRow.offsets, %sRow.cookInfo());\n",
 			name, name, name, name, name)
+	}
+	for _, un := range ck.unions {
+		fmt.Fprintf(&b, "        record(\"%sRow\", %sRow.size, %sRow.align, %sRow.offsets, %sRow.cookInfo());\n",
+			un.Name, un.Name, un.Name, un.Name, un.Name)
 	}
 	b.WriteString("        checked = true;\n")
 	b.WriteString("    }\n\n")

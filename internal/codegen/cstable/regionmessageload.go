@@ -7,7 +7,7 @@ const tableRegionMessageLoadSource = `
     { return NativeLoadMessageRegion(type, region, capacity, attribution, attributionCapacity, true, roots, bytes, vocabulary, report, out count); }
     static unsafe Verdict NativeLoadMessageRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, bool separate, Span<IntPtr> roots, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
     {
-        count = 0; report.Refused = false; report.Reason = null;
+        count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         int total = MessageCount(bytes, vocabulary, report);
         if (report.Refused) { return Finish(report, Verdict.Refused); }
         if (total == 0) { return Finish(report, Verdict.Damaged); }
@@ -75,14 +75,28 @@ const tableRegionMessageLoadSource = `
                 long offset = (long)NativeWord(dir + (i + 1L) * 16, 8);
                 state.Next = offset + Align(node.StorageSize, type.RegionAlign); state.End = state.Next + extent;
                 if (!NativeMessageReadBody(ref state, ref payload, d, new NativeValue(body, offset), node))
-                { Damage(report); return Finish(report, Verdict.Damaged); }
+                {
+                    if (NativeMessageRefused(report, data, dataBytes, roots, ref count)) { return Verdict.Refused; }
+                    Damage(report); return Finish(report, Verdict.Damaged);
+                }
             }
             state.Next = Align(type.StorageSize, type.RegionAlign); state.End = state.Next + rootExtent;
-            if (!NativeMessageReadBody(ref state, ref root, d, new NativeValue(body, 0), type))
-            { Damage(report); return Finish(report, Verdict.Damaged); }
+            bool good = NativeMessageReadBody(ref state, ref root, d, new NativeValue(body, 0), type);
+            if (NativeMessageRefused(report, data, dataBytes, roots, ref count)) { return Verdict.Refused; }
+            if (!good) { Damage(report); return Finish(report, Verdict.Damaged); }
             cursor = root; dataAt += size; dirAt += (nodes + 1L) * 16;
         }
         if (!cursor.Align() || cursor.At != cursor.End) { Damage(report); return Finish(report, Verdict.Damaged); }
         return Finish(report, Verdict.Ok);
+    }
+    // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+    // §3.3), outranking damage met after it: no root is delivered and the
+    // region holds nothing.
+    static unsafe bool NativeMessageRefused(TableReport report, byte* data, long dataBytes, Span<IntPtr> roots, ref int count)
+    {
+        if (!NonFiniteRefused(report)) { return false; }
+        System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes));
+        for (int i = 0; i <= count && i < roots.Length; i++) { roots[i] = IntPtr.Zero; }
+        count = 0; Finish(report, Verdict.Refused); return true;
     }
 `

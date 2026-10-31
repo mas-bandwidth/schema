@@ -580,9 +580,10 @@ control puts the start-only bound back and requires the gate to go red.
 **DART emits two libraries per unit file**: `<Base>Block.dart` and
 `<Base>Cook.dart` (the two accelerators, §19 and §7) — plus one runtime home
 per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`, which
-every other library of the unit imports. It emits no `<Base>Table.dart`: the
-Dart port of the table wire wrote the form that preceded the id-table wire and
-was removed rather than carried (schema#514 brings the current wire to Dart). A Dart library IS a file, so a runtime shared across a unit's
+every other library of the unit imports. The id-table wire (§3) and the text
+form (§16) ride one library per unit, `<Package>Wire.dart`; the fixed form
+(§3.4) rides `<Base>Fixed.dart` with its runtime home `<Package>Fixed.dart`;
+reflection (§8) rides the optional `<Package>View.dart`. A Dart library IS a file, so a runtime shared across a unit's
 files has to be PUBLIC, and every spelling of it is claimed by the front end
 (§11); the backend spells NO PRIVATE LIBRARY-SCOPE NAME AT ALL, because a schema
 identifier may begin with an underscore and a private top-level name would be a
@@ -637,14 +638,11 @@ Four spellings are Dart's own and the reason is at each site.
   The refusals a save and a measure answer are the reference's `-1`, in both
   verbs, because a value that measures as unsaveable and a buffer too short
   are one contract in the reference and this port does not split it.
-- **A float32 field's storage is a `double`**, so every elision comparison
-  narrows first (`tableNarrowFloat`). That is what gives the decision C's own
-  float semantics rather than the double's — -0.0 equal to 0.0, a NaN equal to
-  nothing — and what makes a Dart wire byte equal the C++ one for a value the
-  two languages cannot store alike.
-  The `-0.0 equal to 0.0` half is the comparison §3.3's plain-float rule
-  retires: a plain float's elision compares BIT PATTERNS, so this port owes
-  the bit compare after the narrowing (Go first, §3.3).
+- **A float32 field's storage is a `double`**, and a plain float's elision
+  compares BIT PATTERNS (§3.3): a value at a nonzero default elides by `==`,
+  and at a zero default by `==` and the sign (`isNegative`), so a `-0` under a
+  `+0` default rides as it does on every leg. A NaN or an infinity is refused
+  before any comparison matters (§3.3).
 - **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
   of a per-type `<Name>TableFields` class rather than C++'s offset and width: a
   Dart field has no address, and a tear-off of a static method is a
@@ -6589,10 +6587,17 @@ appearance gave it, and the same name at a SECOND kind or shape takes a second
 slot. Two entries that agree on all three parts are malformed, and both engines
 enforce that at `AnnounceRead` rather than leaving it to a writer's good
 behavior. **An element kind of `12` or `33` in an announced array or keyed
-shape is malformed there too**, because no declaration this language accepts is
-an array of `string(N)` or of `wstring(N)`, so such a shape is refused once at
-the announcement rather than accepted there and refused again by the skip that
-would meet it.
+shape is a shape like any other**, and its own shape is the `max` the kind
+names. A text list (§2.13) is a kind `14` array of element kind `12`, so a unit
+that declares one announces one, and an announcement that carried the shape
+would otherwise be refused whole: the unit's own would be (a Go unit with a text
+list refused its own announcement until this rule was written down). The
+element's `max` is the list's `M`, and `0` for the unbounded spelling, the value
+the element record's own `value` entry gives it. Such an element is framed, so
+a skip steps it one element at a time and never by width. A target that does not
+yet carry text lists (§2.13) reads the shape all the same: it can never meet the
+field in a body, because the form is fixed-only (§3.3), and refusing the entry
+would refuse the announcement.
 
 **THREE PROPERTIES FOLLOW from announcing the unit rather than the message.**
 
@@ -6969,15 +6974,25 @@ Go dogfooding). Go's wire for a value holding `-0` in an elided plain float
 GAINS that field — its header and four or eight bytes — where a leg still
 comparing with `==` elides it, so until each leg adopts the bit compare the
 legs agree byte for byte on every value except that one. Each other leg owes
-three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
-included, which today gives `-0` C's `==`), and the finite rule of
+three things: elision by bit pattern, and the finite rule of
 2026-10-27: the writer's refusal and every read's `non_finite_float`
-refusal, in all three binary forms. The Go leg and the tool's engines
-(`internal/tablewire`, `internal/tablecook`) keep the rule, held by
+refusal, in all three binary forms. The Go leg, the C++ leg and the tool's
+engines (`internal/tablewire`, `internal/tablecook`) keep the rule, held by
 `internal/codegen/gotable/floatspecial_test.go`
-(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) and
-`internal/tablewire/floatnan_test.go`, which reads the reference's NaN pin
-(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. Until a leg
+(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`),
+`test/tables/floatnan_main.cpp` (`make tables-float-nan`, whose negative
+control blinds the C++ read's mask test) and
+`internal/tablewire/floatnan_test.go`, which read the reference's NaN pin
+(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. The C++
+leg's report names the refusal (`non_finite_float`, `non_finite_floats`
+counting what the read met) and not the field: its report carries no field
+names for any refusal.
+The Squirrel leg keeps it too (tables-finite/squirrel), in the variable,
+message and fixed forms, the retained unknown entry and the block and cook
+writers, held against the Go engine by
+`internal/codegen/squirreltable/nonfinite_test.go`
+(`TestSquirrelTableFloatsAreFinite`) and `nonfinite_forms_test.go`
+(`TestSquirrelTableFiniteFloatForms`). Until a leg
 lands the rule it keeps the 2026-10-18/19 behaviour (a NaN or an infinity
 rides, and only a strict read, where the leg has one, refuses it as
 `non_finite`); each leg's work is its card in docs/roadmap.sexp
@@ -10041,7 +10056,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
   | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
   | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
-  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
+  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs. **It is the FIXED READER (`<T>FixedLoad`, §3.4) that answers it**, for a form byte `1` it is handed. **The STRICT read does not**: `ReadStrict` at a declared-fixed root READS a form-1 file as the variable form — the accepting read — so a form-1 file over a fixed root reads rather than refusing `previous_form` |
   | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
   | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
   | `layout_unknown` | a fixed file's header hash that no entry of this build's lineage holds (§3.4, §21.3, algorithm §5.3 step 5). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
@@ -16168,8 +16183,9 @@ the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`. The C walk carries it too (`table_json_scan_unit`; C's report
-has no `Reason` text, so it answers `Malformed`); every other backend keeps its
-behaviour until its port.
+has no `Reason` text, so it answers `Malformed`), and so does the Rust reader
+(`Jr::read_string` under `<root>_from_json_bytes`, answering `Malformed`); every
+other backend keeps its behaviour until its port.
 **The refusal comes BEFORE any clamp**: an ill-formed byte at or past a
 field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
@@ -16256,8 +16272,8 @@ pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`, so a pack never encodes a wire its own decode calls
 `malformed`. The C walk carries it too (`table_json_scan_text`, and the wide
-scan), answering `Malformed`; every other backend keeps its behaviour until its
-port.
+scan), answering `Malformed`, and so does the Rust reader (`Jr::read_text`);
+every other backend keeps its behaviour until its port.
 
 ### 16.4 The key: `json`
 
@@ -19188,7 +19204,7 @@ keep, so it belongs in `none` with its reason or the token belongs on the line.
 | array class and bound; string/`bytes` capacity | layout | `array=`, `bound=`, and the `size=` they produce |
 | a keyed array's KEY enum | layout | `key=` — its slots ride by that enum's variant-name hashes (§3.2) |
 | a MAP field's class and its ELEMENT | layout | `kind=14`, `array=map` and `elem=` the generated entry's own storage size on the field line, the pitch its entries lie at, and the `size=` the sixteen-byte slot produces (§2.8) |
-| an UNBOUNDED ARRAY field's class and its ELEMENT | layout | `kind=14`, `array=unbounded` and `elem=` the element's own storage size on the field line, the pitch its elements lie at, and the `size=` the sixteen-byte slot produces (§2.9). It carries no `bound=`, for the map's reason: it declares no extent and its count is a wire fact |
+| an UNBOUNDED ARRAY field's class and its ELEMENT | layout | `kind=14`, `array=unbounded`, `elem=` the element's own storage size on the field line, the pitch its elements lie at, `elemkind=` the element's own wire kind, and the `size=` the sixteen-byte slot produces (§2.9). The element's kind is its own token because `kind=` on a list's line is the array's 14: a retype that keeps the element's size, `[]int32` to `[]float32`, and a move to or from `[]*T` move the id through it (§4.1). It carries no `bound=`, for the map's reason: it declares no extent and its count is a wire fact |
 | a MAP's generated ENTRY, its layout and its two fields | layout | its own `record` line, keyed by the holder's wire id and the map field's wire id and never by the entry's generated name, with the `key` and `value` `field` lines under it (§2.8) |
 | a MAP's KEY kind and KEY capacity | layout | `kind=` and `bound=` on the entry's `key` line, which is where a key edit moves the id |
 | an out-of-line array's pitch | layout | `stride=` on the `slot` line |
@@ -19262,7 +19278,7 @@ lines are what it produces:
 record <Name> sizeof=<n> alignof=<n>
     field <id> kind=<n> offset=<n> size=<n> [ frac=<n> ]
         [ type=<Name> | enum=<Name> | union=<Name> ]
-        [ elem=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
+        [ elem=<n> ] [ elemkind=<n> ] [ array=fixed|bounded|unbounded|keyed|map ]
         [ bound=<n> ] [ key=<Name> ]
         [ optional=true ]
         [ default=<v> ] [ min=<v> ] [ max=<v> ] [ step=<v> ]
@@ -19304,7 +19320,12 @@ of declaration it names"*:
   list's line carries `kind=14`**, the array's own kind, as a map's does,
   where a fixed or bounded array's line carries its ELEMENT's kind: the two
   spellings are one wire (§2.9) and two storages, and this projection digests
-  storage.
+  storage. **So a list's line carries its element's kind in `elemkind=`**,
+  right after `elem=`, the same number a scalar field's `kind=` would be
+  (`10` for `[]float32`, `17` for `[]*T`, `13` for a list of tables): the size
+  alone would let `[]int32` and `[]float32` share an id, and a cooked list
+  would read under the other kind. A map's line needs none: its element is the
+  entry, whose `key` and `value` lines carry their own kinds.
 - **`text=unbounded`** marks an UNBOUNDED text element's `value` or an
   unbounded map `key` (§2.13.1), which carries no `bound=`: its storage is the
   eight-byte blob slot, so its `size=` is eight, and the line differs from any
@@ -19417,7 +19438,9 @@ FORM's too. Bump `N` when this rendering changes, and bump it when the cook's
 own form changes — the region's pack order (§6.3), the node directory's
 encoding, the header's shape. Those are compiler and runtime facts rather than
 declaration facts, and without a version for them a cook's bytes could diverge
-with the id unmoved, which the invariant does not permit. **Form 4 changed the
+with the id unmoved, which the invariant does not permit. **Form 5 added
+`elemkind=` to the unbounded array's line**, so a same-size element retype
+moves the id (§4.1). **Form 4 changed the
 line facts to the WIRE names** §4.1 says every referent carries: the `block`
 line prints the table's wire name, a by-value arm's `payload=` prints its
 referent's wire name, and a variant default's `default=` prints the variant's
@@ -19467,7 +19490,7 @@ With the protocol id `0x0123456789abcdef` and a little-endian target, the
 whole projection is:
 
 ```
-schema-build-version 4
+schema-build-version 5
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -19482,12 +19505,12 @@ enum Grade
     variant 3 Gold
 ```
 
-and the build version is **`0x91cc2ade8160c4c7`**. `ShipConfig` gets no
+and the build version is **`0x482a6d07fc09a843`**. `ShipConfig` gets no
 `block` line: it declares no bounded array, so its block form lays nothing out
 of line and its projection is the prologue the header already carries plus the
 `record` line's own layout. The same unit with no table at all — its four
 header lines, that same protocol id, and nothing else — is
-**`0xb0834916acb6dd3c`**, deliberately not equal to the protocol id, so no
+**`0xfb3cc9032b967207`**, deliberately not equal to the protocol id, so no
 caller can substitute one for the other by accident.
 
 

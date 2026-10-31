@@ -1,0 +1,90 @@
+name: schema Lobster generated strict gate
+
+# The strict lens over the generated Lobster (docs/PORTING.md J4;
+# make/schema-lobster-generated-strict-gate.mk). Lobster has no separate
+# linter, so the gate is its compiler: every unit the leg generates (examples/,
+# examples128/, examples-wide/ and every unit of the conformance manifest)
+# compiles under the pinned v2026.8 and the compiler prints NOTHING, no warning
+# and no error. The planted-warning control proves the gate reads the output
+# rather than the exit status, which stays 0 over a warning.
+#
+# Both parts are fast (about four seconds of compiling on the studio, plus the
+# generation), so push and pull request run them when a path the generated
+# Lobster depends on moves, and the nightly repeats them over whatever moved
+# without touching those paths. ci-fast.yml's leg gate runs the same target on
+# the lobster row.
+#
+# THIS JOB RUNS ON THE FLEET (self-hosted, schema set). A fork's pull request
+# never reaches fleet hardware: the job carries the fork guard.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+    paths:
+      - 'make/schema-lobster-generated-strict-gate.mk'
+      - 'make/lobster*.mk'
+      - '.github/workflows/schema-lobster-generated-strict-gate.yml'
+      - 'internal/ci/schema_lobster_generated_strict_gate_test.go'
+      - 'internal/codegen/lobster/**'
+      - 'internal/codegen/lobstertable/**'
+      - 'compiler/**'
+      - 'ir/**'
+      - 'examples/**'
+      - 'examples128/**'
+      - 'examples-wide/**'
+      - 'tables/**'
+      - 'testdata/conformance/tables/**'
+  pull_request:
+    paths:
+      - 'make/schema-lobster-generated-strict-gate.mk'
+      - 'make/lobster*.mk'
+      - '.github/workflows/schema-lobster-generated-strict-gate.yml'
+      - 'internal/ci/schema_lobster_generated_strict_gate_test.go'
+      - 'internal/codegen/lobster/**'
+      - 'internal/codegen/lobstertable/**'
+      - 'compiler/**'
+      - 'ir/**'
+      - 'examples/**'
+      - 'examples128/**'
+      - 'examples-wide/**'
+      - 'tables/**'
+      - 'testdata/conformance/tables/**'
+  schedule:
+    # nightly, after the other language lenses
+    - cron: '41 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  strict:
+    name: strict compile (every generated unit)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # make/lobster.mk's dist-lobster: the release archive, its sha256
+      # refused before it is unpacked, into dist/lobster-v2026.8/. A hosted
+      # fallback adds the two GL libraries the release binary links.
+      - name: the pinned Lobster v2026.8
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+      - name: every generated unit compiles with zero warnings
+        run: make tables-lobster-clean
+      - name: prove the gate fires on a planted warning, and only on it
+        run: make schema-lobster-generated-strict-gate-negative-control

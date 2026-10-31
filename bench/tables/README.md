@@ -20,7 +20,7 @@ records, framed by ids, kinds and lengths.
 
 ## Scope and performance standard
 
-The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**.
+The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**, **Dart** (`bench/tables/dart/leg`) and Elixir (`bench/tables/elixir/leg`).
 Glenn's September 8 direction is the **fastest correct implementation for each
 language**. The shared workload fixes the work being measured; each language may
 use its best correct representation, compiler and runtime techniques. Optimize
@@ -33,12 +33,12 @@ a performance result from this fixed-table pass.
 **The FIXED form (form 3) is measured through the paired driver, not through
 this board.** `bench/paired/main.go` names the fixed rows `bench_fixed` and
 answers them to the paired corpus's own id; `bench/tables/cpp`, `bench/tables/c`
-and `bench/tables/elixir` carry that path. The Elixir leg carries **form 3 and
-nothing else** — form 1 is deferred to schema#515, so it has no `bench_table`
-row and therefore no `leg` script on this board yet; `run.sh`'s row filter
-accepts `bench_table` only. That registration is the named follow-on, and it is
-what would put Elixir on the board below rather than only in a paired
-diagnostic.
+and `bench/tables/elixir` carry that path. The Elixir leg carries both forms in two
+runners: `bench/tables/elixir/main.exs` is form 3 for the paired driver, and
+`bench/tables/elixir/form1_main.exs`, registered by `bench/tables/elixir/leg`,
+is the variable form's `bench_table` row over this page's corpus
+(`generated/bench/tables/elixir`, gated before the clock, compiled BEAM files).
+Dart's is the same split (`bench/tables/dart/leg`).
 
 ## The corpus
 
@@ -223,6 +223,15 @@ it under the same nine rules as the type board's:
 
 Stated so a reader knows what is not here, and why:
 
+- **`bench/tables/luau` carries the tolerant leg at a rescaled count.** The
+  Luau port's form-1 codec is one runtime walk over the generated descriptors
+  (`schema_load`'s `loadTolerant`, `schema_save`'s `save`), so that walk is what
+  the leg times, under the pinned interpreter with native codegen OFF (rows
+  `linkage=pkg`, `checks=always`; `bench/README.md`, "The Luau leg"). The
+  interpreter loads one record in about 0.6 ms, so the count is 6,400 against
+  the reference's 400,000, recorded in `iters`. `make bench-luau-gate` is its
+  golden gate and `bench-luau-gate-negative-control` its control.
+
 - **A Go leg's `opt` column is `default`.** Go has one optimisation
   configuration and no flag to name, so the column says what is true rather
   than borrowing C++'s spelling. `linkage` is `pkg`: the generated table codec
@@ -259,15 +268,31 @@ Stated so a reader knows what is not here, and why:
   is a leg whose rows are named `bench_fixed`. When a form-1 JavaScript wire
   lands, its `leg` lands with it.
 
-- **`bench/tables/dart` has a runner and NO `leg`**, for the same reason: Dart
-  has no form-1 table wire (schema#514: the backend carries form 3 and only
-  form 3), so this page's tolerant pass has nothing to run.
+- **`bench/tables/dart` carries both forms, in two runners.**
   `bench/tables/dart/table_main.dart` is the FIXED form's leg for
   [`bench/paired`](../paired/README.md), where it is a table-only language: it
   names the same flags and emits the same CSV columns as the C++ reference
-  (linkage `aot`), it runs as the AOT executable `dart compile exe` builds — the
+  (linkage `aot`), runs as the AOT executable `dart compile exe` builds — the
   form that ships — over `generated/bench/paired/dart`, and its rows are named
-  `bench_fixed`. When a form-1 Dart wire lands, its `leg` lands with it.
+  `bench_fixed`. `bench/tables/dart/table_form1_main.dart` is the VARIABLE
+  form's leg, registered here by `bench/tables/dart/leg`: `TableMixed` of
+  `BenchTable.schema` written, loaded and round-tripped on the tolerant wire
+  over `testdata/wire/bench_table.bin` and its 64 variants, gated before the
+  clock (golden, 64-variant load and re-save, two rotations), rows named
+  `bench_table`, AOT as well. It is a separate runner on purpose: it answers to
+  the board's corpus id and its own generated unit
+  (`generated/bench/tables/dart`), so no paired row moves. Dart's Save returns a
+  fresh `Uint8List` and its Load a fresh object graph, so both rows carry
+  allocation by design; that is the shipped API.
+
+- **`bench/tables/lobster/leg` measures the port's one runtime walk.** Lobster
+  has no reflection, so its form-1 codec is `load_tolerant` and `save` over
+  the generated descriptors into a `schema_rt.Record`, and that is what the
+  leg times (docs/PORT-LOBSTER.md, THE HARNESS). The public load answers a
+  fresh record with the defaults restored, so the allocation is inside the
+  clock and gate 3 runs exactly what the timed round trip runs. Its rows are
+  the default JIT's (`linkage=jit`); the `--cpp` row is owed
+  (schema-lobster-bench-cpp). It has no fixed-form leg in `bench/paired`.
 
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the

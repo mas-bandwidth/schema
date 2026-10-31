@@ -11,7 +11,8 @@
 namespace example {
 
 // enum Team — None = 0 implicit, variants dense from 1, wire range [0, 2] (SPEC §4.2)
-enum class Team : uint8_t {
+enum class Team : uint8_t
+{
     None = 0,
     Red = 1,
     Blue = 2,
@@ -31,7 +32,8 @@ inline const char * EnumName( Team value )
 }
 
 // enum ShipType — None = 0 implicit, variants dense from 1, wire range [0, 5] (SPEC §4.2)
-enum class ShipType : uint8_t {
+enum class ShipType : uint8_t
+{
     None = 0,
     Fighter = 1,
     Corvette = 2,
@@ -57,7 +59,8 @@ inline const char * EnumName( ShipType value )
 }
 
 // enum MissileType — None = 0 implicit, variants dense from 1, wire range [0, 3] (SPEC §4.2)
-enum class MissileType : uint8_t {
+enum class MissileType : uint8_t
+{
     None = 0,
     Heatseeker = 1,
     Torpedo = 2,
@@ -79,7 +82,8 @@ inline const char * EnumName( MissileType value )
 }
 
 // enum PropType — None = 0 implicit, variants dense from 1, wire range [0, 6] (SPEC §4.2)
-enum class PropType : uint8_t {
+enum class PropType : uint8_t
+{
     None = 0,
     Asteroid = 1,
     Chunk = 2,
@@ -107,7 +111,8 @@ inline const char * EnumName( PropType value )
 }
 
 // enum Pending — None = 0 implicit, variants dense from 1, wire range [0, 0] (SPEC §4.2)
-enum class Pending : uint8_t {
+enum class Pending : uint8_t
+{
     None = 0,
     Max = 0, // the exported extent (SPEC §4.2)
 };

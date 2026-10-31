@@ -93,9 +93,9 @@ on:
   push:
     # THE MERGE GATE. main, dev (where work streams land serially before
     # promoting to main), and the fixed-form integration branch while the
-    # nine language legs land on it (2026-09-09): the batch to main must never
-    # be the first time anybody sees red, so the whole of this file runs on
-    # every merge into those branches.
+    # nine language legs land on it (2026-09-09): a merge into those branches
+    # runs the whole of this file. Feature branches do not: their pull request
+    # already ran it on the same head (2026-10-29).
     branches: [ main, dev, fixed-table-form ]
   pull_request:
     # A pull request runs this file only when it carries the `full-ci` label —
@@ -117,7 +117,7 @@ on:
 # and a queued dispatch run can never displace each other (a group holds only
 # one pending run).
 concurrency:
-  group: ci-full-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
@@ -131,10 +131,10 @@ concurrency:
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
-  SERIALIZE_TAG: v2.1.0
+  SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.0.2
-  SERIALIZE_GO_TAG: v2.0.1
-  SERIALIZE_RS_TAG: v3.1.0
+  SERIALIZE_GO_TAG: v2.1.1
+  SERIALIZE_RS_TAG: v5.0.0
   SERIALIZE_CS_TAG: v2.0.1
   SERIALIZE_JS_TAG: v2.0.1
 
@@ -345,9 +345,49 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # THE LUAU PIN for the test rows below: internal/codegen/luau,
+      # internal/codegen/luautable, the compiler's Luau testgen gate and the
+      # Luau lanes under internal/ci run generated Luau under the pinned
+      # interpreter and fail, never skip, without it
+      # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
+      # does, the sha256 refused before anything is unpacked.
+      - name: install the Luau pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        run: make dist-luau
+
       - name: go vet
         if: matrix.group == 'unit-rest'
         run: go vet ./...
+
+      # THE LUA PIN for the test steps below: internal/codegen/lua,
+      # internal/codegen/luatable and the Lua lanes under internal/ci run
+      # generated Lua under the pinned PUC-Rio interpreter and fail, never
+      # skip, without it. make/lua.mk's dist-lua builds it from source at the
+      # sha256 it names, into dist/lua-<version>/, which is the LUA default.
+      - name: install the Lua pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        run: make dist-lua
+
+      # THE Goose PIN for the test steps below: internal/codegen/goose and
+      # internal/codegen/goosetable run generated Goose under the pinned compiler
+      # and fail, never skip, without it. make/goose.mk's dist-goose installs it
+      # at the sha256 it names, into the dist/ path the leg's default names.
+      - name: install the Goose pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        run: make dist-goose
+
+      # THE SQUIRREL PIN, on the three rows that run generated Squirrel and on
+      # no other. Under SCHEMA_SLOW=1 internal/codegen/squirrel and
+      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-2;
+      # no Squirrel test matches the first half's pattern) and internal/ci's
+      # hostile-corpus runner (unit-rest) fail, never skip, without it. The
+      # slow-gate rows run plain `go test`, where every Squirrel test skips at
+      # internal/slowtest.Gate before the interpreter is resolved, so they pay
+      # nothing. make/squirrel.mk's dist-squirrel builds sq at the sha256 it
+      # names, into the dist/ path the leg's default names.
+      - name: install the Squirrel pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
+        run: make dist-squirrel
 
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
@@ -362,11 +402,45 @@ jobs:
       # step of its own: its TestOffsetsComposeFromHalvesElixir measures
       # allocations and is load-sensitive, so it runs with no other package's
       # tests beside it, on a row of its own (2026-10-27).
+      # THE MOO PIN for the emitter rows: internal/codegen/moo runs the
+      # generated modules under the pinned interpreter and its analyzer, and
+      # under SCHEMA_SLOW=1 fails, never skips, without them (make/moo.mk;
+      # .github/actions/moo builds the pin once per runner image and caches it).
+      - uses: ./.github/actions/moo
+        if: matrix.group == 'unit-codegen' || matrix.group == 'slow-gate-codegen'
+
+      # THE LOBSTER PIN for the emitter row: internal/codegen/lobster and
+      # internal/codegen/lobstertable run generated Lobster under the pinned
+      # compiler and fail, never skip, without it
+      # (internal/codegen/lobster/lobsterrun). make/lobster.mk's dist-lobster
+      # installs it at the sha256 it names, into the dist/ path the leg's
+      # default names. The release binary links libOpenGL and libGLX, which the
+      # fleet hosts carry and a hosted fallback does not.
+      - name: install the Lobster pin
+        if: matrix.group == 'unit-codegen'
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
         run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')
+
+      # THE LOBSTER FIXED FORM AGAINST THE REFERENCE'S BYTES. The step above
+      # runs internal/codegen/lobstertable without build/fixedform-corpus, so
+      # its corpus-reading tests skip there as every leg's do; test-lobster
+      # builds the corpus (the ../serialize checkout above is all it needs) and
+      # sets SCHEMA_REQUIRE_CORPUS=1, under which a missing oracle is a
+      # failure. The two packages' suites are seconds, so the repeat is cheap.
+      - name: the Lobster fixed form reads the reference's bytes
+        if: matrix.group == 'unit-codegen'
+        run: make test-lobster
 
       # THE COMPILER PACKAGE, IN TWO ROWS, because on its own it is 441 s of
       # the complement below and one package is one test binary: the only cut
@@ -548,6 +622,29 @@ jobs:
         run: |
           make tables-elixir-versioning \
             ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
+
+      # THE SAME SUITE ON THE LUAU LEG (§5.7 step 6). Its probes are generated
+      # Luau, one per row per column, run under the pinned interpreter, which
+      # this row installs as make/luau.mk's dist-luau does (the sha256 refused
+      # before anything is unpacked). The corpus is the one the steps above
+      # already built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus a
+      # failure rather than a silent skip. A few seconds of probes.
+      - name: the Luau leg reads backward over every versioning row
+        if: matrix.group == 'versioning'
+        run: |
+          make dist-luau
+          make tables-luau-versioning
+
+      # THE GOOSE LEG's fixed form against the same corpus (docs/PORT-GOOSE.md).
+      # `make test-goose` runs both Goose packages under the pinned compiler and
+      # sets SCHEMA_REQUIRE_CORPUS=1, so the byte-oracle suite
+      # (TestGooseFixedFormAgreesWithTheByteOracle) and its negative control fail
+      # rather than skip without the corpus the steps above built. The unit
+      # groups' `go test` runs the same packages without the corpus, where
+      # those two skip. Goose's versioning rows are owed (schema#2236).
+      - name: the Goose leg reads the reference's fixed-form bytes
+        if: matrix.group == 'versioning'
+        run: make dist-goose test-goose
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
@@ -745,6 +842,32 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # update-goldens ends in `go test ./...`, which runs the Lua packages
+      # under the pinned interpreter (make/lua.mk's dist-lua)
+      - name: install the Lua pin
+        run: make dist-lua
+
+      # THE LUAU PIN: update-goldens runs the Luau type-wire golden tests, which
+      # run generated Luau under the pinned interpreter and fail, never skip,
+      # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
+      - name: install the Luau pin
+        run: make dist-luau
+
+      # update-goldens ends in `go test ./...`, which runs the Goose packages
+      # under the pinned compiler (make/goose.mk's dist-goose)
+      - name: install the Goose pin
+        run: make dist-goose
+      # and the Lobster packages under the pinned compiler (make/lobster.mk's
+      # dist-lobster).
+      - name: install the Lobster pin
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens
 
@@ -869,6 +992,13 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # THE LUAU PIN, installed exactly as make/luau.mk's dist-luau does: the
+      # same release archive, the same sha256 refused before it is unpacked,
+      # and the same dist/luau-<version>/ layout the leg's LUAU default names.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
       # One step per toolchain, each keyed on the row's field for it. The
       # version is the leg's to name, and it is the same pin the leg's
       # make/<lang>.mk documents for the repo-local dist/.
@@ -914,6 +1044,47 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # The LUA leg's toolchain is the pinned PUC-Rio interpreter, built from
+      # source exactly as `make dist-lua` builds it (make/lua.mk holds the pin
+      # and its sha256; the row's `lua` field is the version). The row's env
+      # carries LUA=lua, so the built interpreter lands on PATH.
+      - name: install the pinned Lua interpreter
+        if: matrix.lua != ''
+        run: |
+          make dist-lua
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$HOME/.local/bin/lua"
+
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
+
+      # THE LOBSTER PIN, installed exactly as make/lobster.mk's dist-lobster
+      # does: the same release archive, the same sha256 refused before it is
+      # unpacked, and the same dist/lobster-<version>/ layout the leg's LOBSTER
+      # default names. The row's field is the version. The release binary
+      # links libOpenGL and libGLX, which the hosted ubuntu image does not carry.
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
+      # THE SQUIRREL STEP: the pinned interpreter is built from source, exactly
+      # as `make dist-squirrel` does (make/squirrel.mk), and its binary is put
+      # on PATH so the leg's `SQ=sq` (ci.json) resolves.
+      - name: build and install the pinned Squirrel interpreter
+        if: matrix.squirrel != ''
+        run: |
+          make dist-squirrel
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$HOME/.local/bin/sq"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
@@ -990,6 +1161,127 @@ jobs:
 
       - name: run C# ${{ matrix.name }} fuzz
         run: make ${{ matrix.target }}
+
+  # JAVASCRIPT WIRE FUZZ (docs/PORTING.md I15, the js cell; #492).
+  #
+  # The harness's differential wire fuzzer over its whole default roster
+  # through the JavaScript driver, the plain arm and the --retain arm, at the
+  # Makefile's default SEED and N (the same as cs-fuzz). The enumerated pass is
+  # most of the cost (about 154,000 mutants plain, 87,000 retain) and does not
+  # change with N. Measured on a workstation: 43 s per arm, 88 s for the two in
+  # one make call, so each arm is its own matrix row (make/js.mk's
+  # tables-js-wire-fuzz-plain and -retain, the two halves of
+  # tables-js-wire-fuzz-all) to keep a row well inside its five minutes once
+  # the setup is paid. Node comes from the same pin the js
+  # conformance row reads (test/conformance/js/ci.json), and NODE=node is that
+  # row's env, so make/js.mk's repo-local dist/ default is not used here.
+  # Its negative control, tables-js-wire-fuzz-negative-control, rides in the
+  # js group of the negative-controls job.
+  js-fuzz:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    name: JavaScript fuzz (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: wire
+            target: tables-js-wire-fuzz-plain
+          - name: retain
+            target: tables-js-wire-fuzz-retain
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the node pin of the js conformance row
+        run: echo "JS_NODE_PIN=$(jq -r .node test/conformance/js/ci.json)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.JS_NODE_PIN }}
+
+      - name: build the harness and the generated JavaScript units
+        run: make build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+
+      - name: run the JavaScript ${{ matrix.name }} fuzz
+        run: make ${{ matrix.target }} NODE=node
+
+
+  # DART WIRE FUZZ (docs/PORTING.md I15). The tolerant wire's differential
+  # fuzzer, with the compiler's own engine as the oracle, over every file root
+  # the Dart wire surface carries: the plain Load/Save run and the message arm.
+  # Its own job keeps the target off the conformance (dart) leg's clock. The
+  # Dart leg clones no runtime (generated Dart is self-contained), so the job is
+  # Go and the pinned SDK only.
+  dart-fuzz:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    name: Dart fuzz (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: tables-dart-wire-fuzz
+            name: wire
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: '3.13.2'
+
+      - name: build the harness and the Dart driver
+        run: make build/conformance-harness build/conformance-dart DART=dart
+
+      - name: run Dart ${{ matrix.name }} fuzz
+        run: make ${{ matrix.target }} DART=dart
 
 
   # THE C# TABLES LEG, PER PULL REQUEST. Before this job the leg ran in no
@@ -1858,10 +2150,49 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # THE LUAU PIN, as make/luau.mk's dist-luau installs it (sha256 refused
+      # before unpacking), at the version the group's field names.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
+
+      # The Lobster pin, as the conformance row installs it (make dist-lobster
+      # at the row's version, the two GL libraries the release binary links).
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
+      # THE SQUIRREL PIN, keyed on the row's field like every toolchain above:
+      # a group naming `squirrel` runs controls that execute generated Squirrel
+      # or pass the leg's toolchain gate (make/squirrel.mk's
+      # toolchain-squirrel), which refuses by name when SQ does not resolve.
+      # dist-squirrel builds the interpreter at the sha256 it names, into the
+      # dist/ path SQ defaults to.
+      - name: install the Squirrel pin
+        if: matrix.squirrel != ''
+        run: make dist-squirrel
+
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and
       # building them here keeps the build cost out of the first control's
       # timing and out of its log.
+      # A row naming `lua` (make/negative-controls.json) runs the Lua port's
+      # controls under the pinned PUC-Rio interpreter, which make/lua.mk's
+      # dist-lua builds from source at the sha256 it names into the LUA default.
+      - name: install the Lua pin
+        if: matrix.lua != ''
+        run: make dist-lua
+
       - name: build bin/schema and the generated tree once
         run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
 

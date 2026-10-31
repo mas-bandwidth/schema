@@ -1,0 +1,76 @@
+#!/bin/sh
+# THE LUAU LEG's WIRE-FUZZ NEGATIVE CONTROL (make/luau-fuzz.mk,
+# tables-luau-wire-fuzz-negative-control; make/negative-controls.json, the
+# luau group). The pipe differential tables-luau-wire-fuzz runs has to be
+# able to go red, so this plants one reader bug in a SCRATCH copy of the
+# generated units and requires the harness to fail on exactly that bug.
+#
+# The plant is the one the in-package control uses
+# (internal/codegen/luautable/fuzz_test.go, TestLuauWireFuzzNegativeControl):
+# in every unit's schema_load.luau, a string field whose frame length runs past
+# its body stops the body WITHOUT counting it malformed (docs/SPEC-TABLES.md
+# §3). The anchor must match exactly once per copy, or the control refuses.
+# The harness must stop on a report divergence whose only moved counter is
+# malformed: the leg says false, the Go oracle says true.
+#
+# The scratch tree mirrors the three paths the driver resolves relative to
+# itself (test/conformance/luau/wirefuzz.luau, build/conformance-luau,
+# build/luau-driver/units.luau), so the committed driver runs unchanged over
+# the planted units. Nothing outside build/luau-wire-fuzz-nc is written.
+#
+# The working directory is the repository root; make/luau-fuzz.mk builds the
+# harness, the units, units.luau and the native host first.
+#
+# usage: sh test/conformance/luau/wire-fuzz-negative-control
+set -eu
+
+out=build/luau-wire-fuzz-nc
+host=${LUAUFUZZHOST:-build/luaufuzzhost/luaufuzzhost}
+for need in build/conformance-harness "$host" build/conformance-luau build/luau-driver/units.luau; do
+	if [ ! -e "$need" ]; then
+		echo "NEGATIVE CONTROL FAILED: $need is missing (make tables-luau-wire-fuzz-negative-control builds it)" >&2
+		exit 1
+	fi
+done
+rm -rf "$out"
+mkdir -p "$out/test/conformance/luau" "$out/build/luau-driver"
+cp test/conformance/luau/wirefuzz.luau "$out/test/conformance/luau/"
+cp build/luau-driver/units.luau "$out/build/luau-driver/"
+cp -R build/conformance-luau "$out/build/conformance-luau"
+
+planted=0
+for f in "$out"/build/conformance-luau/*/schema_load.luau; do
+	n=$(perl -0ne 'my $c = () = /\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then _report\.malformed = true; return false end/g; print $c' "$f")
+	if [ "$n" -ne 1 ]; then
+		echo "NEGATIVE CONTROL FAILED: the sabotage anchor appears $n times in $f, want 1" >&2
+		exit 1
+	fi
+	perl -0pi -e 's/(\telseif s == "str" then\n\t\tlocal n = r_leb\(r\)\n\t\tif r\.bad or r\.at \+ n > r\.e then )_report\.malformed = true; (return false end)/$1$2/' "$f"
+	planted=$((planted + 1))
+done
+if [ "$planted" -lt 1 ]; then
+	echo "NEGATIVE CONTROL FAILED: no generated schema_load.luau to plant in" >&2
+	exit 1
+fi
+
+if build/conformance-harness wire-fuzz --driver "$host $out/test/conformance/luau/wirefuzz.luau" \
+	--seed 1 --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
+	cat "$out/log"
+	echo "NEGATIVE CONTROL FAILED: a load that does not count a string frame past its body left the wire fuzz green" >&2
+	exit 1
+fi
+# EXACTLY the plant's row: a report divergence, and the two tuples (unknown,
+# kind_mismatch, widened, clamped, duplicate, malformed, verdict) equal in
+# every field but the sixth, which is false on the leg and true in the oracle.
+line=$(grep '^harness: FAILED after [0-9]* mutants: the report differs: ' "$out/log" || true)
+leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\), the oracle says .*/\1/p')
+oracle=$(printf '%s\n' "$line" | sed -n 's/.*the oracle says \([^ ]*\)$/\1/p')
+if [ -z "$leg" ] || [ -z "$oracle" ] \
+	|| [ "$(printf '%s' "$leg" | cut -d, -f6)" != false ] \
+	|| [ "$(printf '%s' "$oracle" | cut -d, -f6)" != true ] \
+	|| [ "$(printf '%s' "$leg" | cut -d, -f1-5,7-)" != "$(printf '%s' "$oracle" | cut -d, -f1-5,7-)" ]; then
+	cat "$out/log"
+	echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the malformed count the plant removed" >&2
+	exit 1
+fi
+echo "luau wire-fuzz negative control: planted in $planted schema_load.luau copies; the harness stops on the malformed count the plant removed"

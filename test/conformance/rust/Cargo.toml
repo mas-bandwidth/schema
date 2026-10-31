@@ -35,11 +35,14 @@ tblw1 = { path = "../../../build/tables-generated-rust/tblw1" }
 tblw2 = { path = "../../../build/tables-generated-rust/tblw2" }
 tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }
 tblr2 = { path = "../../../build/tables-generated-rust/tblr2" }
+tblg1 = { path = "../../../build/tables-generated-rust/tblg1" }
 backenddemo = { path = "../../../build/tables-generated-rust/backenddemo" }
 vocabdemo = { path = "../../../build/tables-generated-rust/vocabdemo" }
 vocab9demo = { path = "../../../build/tables-generated-rust/vocab9demo" }
 tblrt1 = { path = "../../../build/tables-generated-rust/tblrt1" }
 widedemo = { path = "../../../build/tables-generated-rust/widedemo" }
+scalars = { path = "../../../build/tables-generated-rust/scalars" }
+tblscalars2 = { path = "../../../build/tables-generated-rust/tblscalars2" }
 
 [profile.dev]
 # the conformance corpus is small and the driver runs seven times per matrix;

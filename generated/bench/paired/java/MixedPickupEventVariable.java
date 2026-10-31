@@ -400,6 +400,9 @@ public final class MixedPickupEventVariable {
         }
         w.put8(0);
         w.trailer();
+        if (w.ids.nonFinite) {
+            return null;
+        }
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 

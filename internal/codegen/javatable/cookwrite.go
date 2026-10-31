@@ -116,17 +116,34 @@ public final class TableCookWrite {
 
     private static void discover(Plan p, Object value, TableCookInfo info)
             throws ReflectiveOperationException {
-        for (TableCookFieldInfo f : info.fields) {
-            Object source = field(value, f.sourceName);
-            if (f.isArray) {
-                int used = count(value, f, source);
-                if (used < 0 || used > f.arrayBound || length(source) < used) {
-                    throw new IllegalArgumentException("array count");
-                }
-                for (int i = 0; i < used; i++) { discoverValue(p, element(source, i), f); }
-            } else {
-                discoverValue(p, source, f);
+        for (TableCookFieldInfo f : info.fields) { discoverField(p, value, f); }
+    }
+
+    // §2.3: an ABSENT optional owns no node. Its storage may still hold a
+    // stale value (a cleared ?T keeps what it held), so the numbering never
+    // descends it, and the store writes it as a load leaves it: the
+    // value-initialized record, every reference null.
+    private static boolean absentRecord(Object value, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        return f.presentOffset >= 0 && f.storage == TableCookStorage.RECORD
+                && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"));
+    }
+
+    private static void discoverField(Plan p, Object value, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        if (absentRecord(value, f)) { return; }
+        Object source = field(value, f.sourceName);
+        if (f.isArray) {
+            int used = count(value, f, source);
+            if (used < 0 || used > f.arrayBound || (f.countOffset >= 0 && length(source) < used)) {
+                throw new IllegalArgumentException("array count");
             }
+            // a FIXED array's value may hold fewer than N elements: the slots
+            // past it are value-initialized (§7.2) and reach no node
+            used = Math.min(used, length(source));
+            for (int i = 0; i < used; i++) { discoverValue(p, element(source, i), f); }
+        } else {
+            discoverValue(p, source, f);
         }
     }
 
@@ -135,11 +152,38 @@ public final class TableCookWrite {
         if (f.isPointer) { add(p, source, f.record()); }
         else if (f.storage == TableCookStorage.RECORD && source != null) {
             discover(p, source, f.record());
+        } else if (f.storage == TableCookStorage.UNION && source != null) {
+            // the SET arm is the union's one edge (§2.6, §3.1), walked in the
+            // union field's own declaration-order position
+            TableCookFieldInfo arm = arm(source, f.record());
+            if (arm != null) { discoverField(p, source, arm); }
         }
+    }
+
+    // The arm a union value's tag selects, or null for None. A tag no arm
+    // carries is not a value this build can hold, and the plan refuses it.
+    private static TableCookFieldInfo arm(Object union, TableCookInfo info)
+            throws ReflectiveOperationException {
+        long tag = ((Number) field(union, "tag")).longValue();
+        if (tag == 0) { return null; }
+        for (TableCookFieldInfo a : info.fields) {
+            if (a.tag == tag) { return a; }
+        }
+        // a declared arm with no payload rides its tag alone
+        if (tag > 0 && tag <= info.armCount) { return null; }
+        throw new IllegalArgumentException("union tag");
     }
 
     /** Measure and validate before writing; invalid values answer null (§7.6). */
     public static Plan plan(Object root, TableCookInfo info) {
+        return plan(root, info, null);
+    }
+
+    /**
+     * plan, saying why it refused: nonFinite[0] turns true when the value held a NaN or an
+     * infinity (docs/SPEC-TABLES.md §3.3), which no cook carries.
+     */
+    public static Plan plan(Object root, TableCookInfo info, boolean[] nonFinite) {
         if (root == null || info == null) { return null; }
         try {
             Plan p = new Plan();
@@ -162,8 +206,20 @@ public final class TableCookWrite {
                 if (n.info != null) { record(p, null, 0, 64L + n.offset, n.value, n.info); }
             }
             return p;
+        } catch (NonFiniteFloat ex) {
+            if (nonFinite != null) { nonFinite[0] = true; }
+            return null;
         } catch (ReflectiveOperationException | RuntimeException ex) {
             return null;
+        }
+    }
+
+    /** a cooked float's NaN or infinity: the plan's own refusal (docs/SPEC-TABLES.md §3.3). */
+    static final class NonFiniteFloat extends IllegalArgumentException {
+        private static final long serialVersionUID = 1L;
+
+        NonFiniteFloat() {
+            super("non_finite_float", null);
         }
     }
 
@@ -175,8 +231,14 @@ public final class TableCookWrite {
         if (source == null) { return 0; }
         if (storage == TableCookStorage.BOOL) { return Boolean.TRUE.equals(source) ? 1 : 0; }
         if (storage == TableCookStorage.FLOAT) {
-            return width == 4 ? Float.floatToRawIntBits(((Number) source).floatValue()) & 0xffffffffL
+            // A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): its raw bits
+            // ride, -0 and the subnormals exact, and a NaN or an infinity
+            // refuses the plan, so the cook is never written.
+            long raw = width == 4 ? Float.floatToRawIntBits(((Number) source).floatValue()) & 0xffffffffL
                     : Double.doubleToRawLongBits(((Number) source).doubleValue());
+            long exponent = width == 4 ? 0x7f800000L : 0x7ff0000000000000L;
+            if ((raw & exponent) == exponent) { throw new NonFiniteFloat(); }
+            return raw;
         }
         if (source instanceof Character) { return ((Character) source).charValue(); }
         return ((Number) source).longValue();
@@ -189,7 +251,25 @@ public final class TableCookWrite {
             if (source != null && target == null) { throw new IllegalArgumentException("unnumbered pointer"); }
             put(out, order, at, target == null ? 0 : (64L + target.offset - at), 8);
         } else if (f.storage == TableCookStorage.RECORD) {
-            if (source != null) { record(p, out, order, at, source, f.record()); }
+            TableCookInfo r = f.record();
+            Object held = source != null ? source : (r.defaults != null ? r.defaults.get() : null);
+            if (held != null) { record(p, out, order, at, held, r); }
+        } else if (f.storage == TableCookStorage.UNION) {
+            // §7.2: the TAG at the union's base, then ONLY the set arm's bytes;
+            // every other byte of the extent stays the zero write() laid down
+            if (source != null) {
+                TableCookInfo u = f.record();
+                put(out, order, at, ((Number) field(source, "tag")).longValue(), u.tagWidth);
+                TableCookFieldInfo a = arm(source, u);
+                if (a != null) { store(p, out, order, at, source, a); }
+            }
+        } else if (f.storage == TableCookStorage.WIDE) {
+            // §7.2: the low half first in a little-endian cook, the high half
+            // first in a big-endian one, each half one eight-byte lane
+            long hi = source == null ? 0 : ((Number) field(source, "hi")).longValue();
+            long lo = source == null ? 0 : ((Number) field(source, "lo")).longValue();
+            put(out, order, at, order == BIG ? hi : lo, 8);
+            put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
             put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
         }
@@ -197,40 +277,55 @@ public final class TableCookWrite {
 
     private static void record(Plan p, byte[] out, int order, long at, Object source, TableCookInfo info)
             throws ReflectiveOperationException {
-        for (TableCookFieldInfo f : info.fields) {
-            Object v = field(source, f.sourceName);
-            if (f.presentOffset >= 0) {
-                Object present = field(source, f.sourceName + "Present");
-                put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
+        for (TableCookFieldInfo f : info.fields) { store(p, out, order, at, source, f); }
+    }
+
+    // One field line's pieces, read off the source value and stored at the
+    // given offset plus the
+    // descriptor's offsets: a record's field, or a union's set arm.
+    private static void store(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
+            throws ReflectiveOperationException {
+        Object v = field(source, f.sourceName);
+        if (f.presentOffset >= 0) {
+            Object present = field(source, f.sourceName + "Present");
+            put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
+        }
+        long dest = at + f.offset;
+        if (absentRecord(source, f)) {
+            if (f.countOffset >= 0) { put(out, order, at + f.countOffset, 0, 4); }
+            int slots = f.isArray ? f.arrayBound : 1;
+            for (int i = 0; i < slots; i++) { value(p, out, order, dest + (long) i * f.elemSize, null, f); }
+            return;
+        }
+        if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
+            byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
+                    : (byte[]) v;
+            if (bytes == null) { bytes = new byte[0]; }
+            int used = bytes.length;
+            if (!(v instanceof String)) {
+                try { used = ((Number) field(source, f.sourceName + "Length")).intValue(); }
+                catch (NoSuchFieldException ignored) { /* variable bytes use their full length */ }
             }
-            long dest = at + f.offset;
-            if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
-                byte[] bytes = v instanceof String ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)
-                        : (byte[]) v;
-                if (bytes == null) { bytes = new byte[0]; }
-                int used = bytes.length;
-                if (!(v instanceof String)) {
-                    try { used = ((Number) field(source, f.sourceName + "Length")).intValue(); }
-                    catch (NoSuchFieldException ignored) { /* variable bytes use their full length */ }
-                }
-                if (used < 0 || used > f.arrayBound || used > bytes.length) {
-                    throw new IllegalArgumentException("text length");
-                }
-                if (out != null) { System.arraycopy(bytes, 0, out, (int) dest, used); }
-                put(out, order, at + f.countOffset, used, 4);
-            } else if (f.isArray) {
-                int used = count(source, f, v);
-                if (used < 0 || used > f.arrayBound || length(v) < used) {
-                    throw new IllegalArgumentException("array count");
-                }
-                if (f.countOffset >= 0) { put(out, order, at + f.countOffset, used, 4); }
-                for (int i = 0; i < f.arrayBound; i++) {
-                    value(p, out, order, dest + (long) i * f.elemSize,
-                            i < length(v) ? element(v, i) : null, f);
-                }
-            } else {
-                value(p, out, order, dest, v, f);
+            if (used < 0 || used > f.arrayBound || used > bytes.length) {
+                throw new IllegalArgumentException("text length");
             }
+            if (out != null) { System.arraycopy(bytes, 0, out, (int) dest, used); }
+            put(out, order, at + f.countOffset, used, 4);
+        } else if (f.isArray) {
+            int used = count(source, f, v);
+            if (used < 0 || used > f.arrayBound || (f.countOffset >= 0 && length(v) < used)) {
+                throw new IllegalArgumentException("array count");
+            }
+            if (f.countOffset >= 0) { put(out, order, at + f.countOffset, used, 4); }
+            // §7.2: ALL N slots are written, and a slot past the live elements
+            // holds the VALUE-INITIALIZED element — zero for a scalar, the
+            // element record's declared defaults for a record
+            int live = f.countOffset >= 0 ? used : Math.min(used, length(v));
+            for (int i = 0; i < f.arrayBound; i++) {
+                value(p, out, order, dest + (long) i * f.elemSize, i < live ? element(v, i) : null, f);
+            }
+        } else {
+            value(p, out, order, dest, v, f);
         }
     }
 

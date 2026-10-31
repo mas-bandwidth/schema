@@ -1229,11 +1229,16 @@ it (§4.6).
   the reason `non_finite_float`, before the field is written. Every finite
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
-  (serialize v2.1.0), C (serialize.c v2.0.2), Rust (serialize.rs v3.1.0),
-  JavaScript (serialize.js v2.0.1), Go (serialize.go v2.0.1) and C#
-  (serialize.cs v2.0.1) enforce the rule through their serialize runtime,
-  and Java, Dart and Elixir in their own generated float codecs. Every
-  packet target enforces it. A
+  (serialize v2.1.3), C (serialize.c v2.0.2), Rust (serialize.rs v5.0.0),
+  JavaScript (serialize.js v2.0.1), Go (serialize.go v2.1.1), C#
+  (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.1) enforce the rule
+  through their serialize runtime,
+  and Java, Dart and Elixir in their own generated float codecs. Lua
+  (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
+  a write traps naming `non_finite_float`, a read refuses with it. Luau
+  (serialize.luau v2.1.3) enforces it through its vendored serialize
+  runtime: a write traps naming the finite rule, a read refuses with
+  `non_finite_float`. Every packet target enforces it. A
   *quantized* `float32` is a different field: its wire is the step index and
   not the pattern, per its row below. The table forms take the same rule
   (SPEC-TABLES.md §3.3; Glenn, 2026-10-27).
@@ -2083,9 +2088,9 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status.** All nine packet targets carry the storage, groups and
-read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart and Elixir.
-C++ also carries table kind `33`. The other eight targets refuse wide text
+**Backend status.** All ten packet targets carry the storage, groups and
+read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart, Elixir and
+Squirrel. C++ and Squirrel also carry table kind `33` in every table form. The other eight targets refuse wide text
 reachable from a table by name (SPEC-TABLES.md §3); an unrelated table in the
 same unit does not prevent a packet type from carrying wide text. `*wstring`,
 the unbounded twin, is specified ahead of implementation and no backend emits
@@ -2800,9 +2805,10 @@ or a file per declaration where the language demands one.
   `<Base>Block.dart` and `<Base>Cook.dart` (the two accelerators,
   SPEC-TABLES.md §19 and §7) — plus one RUNTIME HOME per unit and per surface,
   `<Package>Block.dart` and `<Package>Cook.dart`, which the per-file libraries
-  import. Dart emits no table-wire library (`<Base>Table.dart`): its port of
-  the table wire wrote the form that preceded the id-table wire and was
-  removed; schema#514 brings the current wire to Dart. **A Dart library
+  import. The id-table wire and the text form ride one library per unit,
+  `<Package>Wire.dart`; the fixed form rides `<Base>Fixed.dart` with its home
+  `<Package>Fixed.dart`, and reflection the optional `<Package>View.dart`
+  (SPEC-TABLES.md §3, §3.4, §8, §16). **A Dart library
   IS a file**, so a runtime shared across a unit's files must be public, and
   the home is named for the PACKAGE on §19.2's rule for every port: a runtime
   that lived in whichever file sorted first would relocate whole the day a

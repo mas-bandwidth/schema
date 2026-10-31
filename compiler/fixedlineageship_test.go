@@ -37,7 +37,7 @@ import (
 // for it. Every other built-in target's table backend has no second entry point
 // yet (elixir is here); their `GenerateLineage` lives on the open port branches,
 // and the day one lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
+var fixedLineageShipTargets = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "rust"}
 
 // fixedLineageHashSpelling is ONE layout hash as the target's emitted source
 // writes it. It is a per-target NEEDLE and not a per-target assertion: the
@@ -281,6 +281,11 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// four members on their own lines and in its order — the hash in UPPER-case
 	// hex, the layout as an escaped binary literal that `mix format` may WRAP
 	// onto the next line, the layout's byte length, the record size last.
+	// internal/codegen/lobstertable/fixedevolve.go: one TableFixedKnownLayout
+	// literal per entry, one member per line, the record size last.
+	"lobster": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`hash: 0x%016x,\n\s*layout: [^\n]*\n\s*layout_bytes: \d+,\n\s*record: (\d+)`, h))
+	},
 	"elixir": func(h uint64) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(`hash: 0x%016X,\n\s*layout:[^\n]*\n(?:\s*"[^\n]*\n)?\s*layout_bytes: \d+,\n\s*record_bytes: (\d+)`, h))
 	},

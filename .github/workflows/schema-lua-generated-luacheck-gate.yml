@@ -1,0 +1,77 @@
+name: schema Lua generated luacheck gate
+
+# THE LUA LEG'S STRICT-CHECKER LENS (ideas roadmap group
+# schema-per-language-lenses). luacheck 1.2.0 runs over the Lua the compiler
+# generates for the Makefile's own schema corpus, and over the runtime emitted
+# beside it. The target is the card's own make file; this workflow only names
+# it, so a card landing the target and a card landing the schedule do not edit
+# the same lines.
+#
+# THE SPLIT IS BY WHEN. luacheck is a seconds-scale parser, so it runs on every
+# push and pull request. The schedule is kept for the nightly sweep even though
+# today the whole lens is fast: a later heavy addition (a differential against
+# the interpreter, say) belongs on the schedule, never on the push.
+#
+# ZERO WARNINGS, NO ALLOWANCE: the config is luacheck's default set (the make
+# file says why, line by line), so a finding is fixed in the generator.
+# Like the Go golangci-lint and Dart strict-analyze lenses, it runs on every
+# push and on every pull request into main, on the fleet runner that carries
+# the pinned checker.
+on:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # nightly, 03:17 UTC — not on the hour, so the fleet's jobs do not collide
+    - cron: '17 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  luacheck:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the runner's own pinned go already satisfies go.mod
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The checker is fleet software, installed through rowan-tools/fleet from
+      # its official source and pinned by the make file at 1.2.0. A host that
+      # does not carry it says so by name; it never reports a green it did not
+      # run.
+      - name: the pinned checker is present
+        run: |
+          set -euo pipefail
+          if ! command -v luacheck >/dev/null 2>&1; then
+            echo "::error::tool missing: luacheck 1.2.0 — install it fleet-wide from its official source (rowan-tools/fleet)"
+            exit 1
+          fi
+          luacheck --version
+
+      - name: the generated Lua is clean under luacheck
+        run: make tables-lua-luacheck
+
+      # THE NEGATIVE CONTROL RIDES THE SAME JOB, because a green checker that
+      # has never named a plant is not a verdict. It plants a dead local in a
+      # copy of the emitted runtime and requires luacheck to name it.
+      - name: the lens fires on a planted finding
+        run: make tables-lua-luacheck-negative-control
+
+      # THE FORMAT HALF: the pinned StyLua (make dist-stylua, sha256-pinned)
+      # holds the same corpus to make/lua-stylua.toml as a no-diff check.
+      - name: the generated Lua is StyLua-canonical
+        run: make tables-lua-format
+
+      - name: the format gate fires on a planted block
+        run: make tables-lua-format-negative-control

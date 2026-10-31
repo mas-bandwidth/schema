@@ -339,11 +339,12 @@ var messageColdReadSabotages = map[string][]edit{
 		new: "\t\t// SABOTAGED: a triple may be placed twice\n",
 	}},
 
-	// AN ELEMENT KIND OF 12 OR 33 IS REFUSED AT THE ANNOUNCEMENT: accept it
-	// there and the refusal moves to a skip that meets it, or to nowhere.
-	"message-array-of-text-accepted": {{
-		old: "\t\tif s.Elem == TableKindString || s.Elem == TableKindWstring {\n\t\t\treturn s, 0, false\n\t\t}\n",
-		new: "\t\t// SABOTAGED: an array over element kind 12 or 33 is announced\n",
+	// AN ELEMENT KIND OF 12 OR 33 IS A SHAPE LIKE ANY OTHER (§3.3): a text
+	// list is a kind 14 array over kind 12, so refuse that element at the
+	// announcement and a unit with a text list is refused its own vocabulary.
+	"message-array-of-text-refused": {{
+		old: "\t\t\treturn s, 0, false // an element kind outside the closed set\n\t\t}\n",
+		new: "\t\t\treturn s, 0, false // an element kind outside the closed set\n\t\t}\n\t\tif s.Elem == TableKindString || s.Elem == TableKindWstring {\n\t\t\treturn s, 0, false // SABOTAGED: an array over element kind 12 or 33 is refused\n\t\t}\n",
 	}},
 
 	// A VARIANT REFERENCE IS RESOLVED EVEN ON THE SKIP PATH: step over its
@@ -435,7 +436,7 @@ var messageTextSabotages = map[string][]edit{
 // says a field was lost. What goes red is the pinned batch's own row.
 var messageRetainSabotages = map[string][]edit{
 	"message-retain-no-capture": {{
-		old: "\t\tg.pf(\"                TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at );\\n\")\n",
+		old: "\t\tg.pf(\"                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)\\n\")\n",
 		new: "\t\tg.pf(\"                (void) unknown_at; // SABOTAGED: the message path never enters the resolving walk\\n\")\n",
 	}},
 }

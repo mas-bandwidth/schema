@@ -193,3 +193,74 @@ nested_arm_trailing_top messagedemo ToolMessage testdata/wire/tables/nested_arm_
 # nothing. Found by the random pass at mutant 193624 of seed 24845619678
 # (corpus seed list_shared), on the region fuzz of PR #2163.
 region_list_cap_resumes listdemo Album testdata/wire/tables/fuzz-vectors/region_list_cap_resumes.bin
+
+# A VALUE THE SKIP CANNOT HONOUR ENDS THE RECORD (§3, §4). The C# region
+# measure's ExtentField ignored the result of skipping a framed scalar, so a
+# map entry whose string key claimed more bytes than the entry holds left the
+# reader just past the length and ExtentBody resumed inside the broken payload,
+# read it as the entry's value (an inner map) and measured storage the framing
+# never placed: "LoadMeasure asks for 528 region bytes; the framing commands
+# exactly 512". The reference scan (internal/tablewire/extent.go) ends the
+# record. Found by the region fuzz at mutant 215837 of seed 24845619678
+# (corpus seed map_full, mapdemo.Fleet), on the CI of PR #2237.
+region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/region_map_skip_past_value.bin
+
+# THE NODE SCAN OF A VARIABLE ROOT REFUSES NOTHING (§3.1, §4). A deletion inside
+# Mixed's id table leaves eleven entries over 80 trailing bytes, so the table
+# starts inside the body: three fields name ids nobody declares, and the last
+# field's L falls past the body's end. The oracle's node-table scan stops at
+# the damage and the body read counts it: three unknown, malformed, the value
+# read. The Rust gathering scan refused the whole file on the unskippable
+# field, so the load returned no root after LoadMeasure sized its region.
+# Found by the random pass of the retention arm at mutant 720704 of seed
+# 68719476731 (corpus seed list_mixed), on tables-rust-release run on vision;
+# the plain arm refuses it the same way.
+root_scan_passes_damage_to_body listdemo Mixed testdata/wire/tables/fuzz-vectors/root_scan_passes_damage_to_body.bin
+
+# A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). The C# writer's default
+# elision compared a float32 or float64 as a VALUE, under which -0 == +0, so a
+# list element's x of -0 was left off the wire and the saved bytes were 57 where
+# the oracle saved 71. Elision compares bit patterns. Found by the random pass
+# at mutant 237037 of seed 24845619678 (corpus seed list_scalar_widen,
+# listdemo.Save), on the Certify wire fuzz.
+list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
+
+# A KEYED SLOT WRITTEN AGAIN DISCARDS WHAT WAS RETAINED UNDER IT (§6.6). Depth's
+# keyed field rides twice; the first occurrence's Squad carries a roster entry
+# whose value arrives under the wrong kind, so the retaining read keeps it.
+# The second occurrence rewrites the same slot, and the oracle forgets the
+# slot's instance, records and all, before refilling it. The Rust retaining
+# reader refilled the slot and kept the first occurrence's record, so it saved
+# 194 bytes where the oracle saved 174. Found by the random pass of the
+# retention arm at mutant 745809 of seed 68719476731 (corpus seed map_depth),
+# on tables-rust-release run on vision.
+keyed_slot_rewrite_discards_retained mapdemo Depth testdata/wire/tables/fuzz-vectors/keyed_slot_rewrite_discards_retained.bin
+
+# A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
+# and one malformed counts, naming the field. profile_elide with has_loadout's
+# byte set to 0x11. The JavaScript variable reader read it true and counted
+# nothing. Found by the random pass at mutant 18630 of seed 24845619678
+# (corpus seed profile_elide), on tables-js-wire-fuzz-all; its emitter-lane
+# gate is internal/codegen/jstable's TestBoolByteAboveOneIsMalformedJavaScript.
+bool_byte_above_one tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin
+
+# AN ARM'S ARRAY HEADER IS READ INSIDE THE ARM'S L (§3, the arm payload table).
+# ToolMessage's body arrives as the spans arm with L = 4: element kind 2 (an i8,
+# which widens into the declared i32) and a count whose LEB128 runs past the
+# L. The oracle reads an arm out of a reader framed by its L, so the count is
+# truncated, the arm is that arm's own framing damage, the union reads None,
+# and only malformed counts. The Rust arm reader took the count from the whole
+# wire and counted a widen and a clamp first. Found by the random pass at
+# mutant 487423 of seed 68719476731 (corpus seed message_arms), on Certify run
+# 41188400968, tables-rust-release.
+arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/arm_array_count_past_arm_length.bin
+
+# A BLOB TWO SLOTS NAME IS REFUSED BY THE RETAINING SAVE TOO (§2.5, §6.6). One
+# byte of blob_small moves the `brick` Asset's `data` index from its own blob
+# (node 3) to node 6, the blob Catalog's `thumb` names. The load keeps both
+# slots on the one blob; every writer
+# refuses that graph as blob_shared, and the oracle refuses to encode it. The C#
+# retaining save numbered the region without the refusal and wrote 186 bytes.
+# Found by the index pass (#33, corpus seed blob_small) of the retention arm at
+# seed 24845619678, on tables-cs-release on hetzner1.
+retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin

@@ -49,8 +49,8 @@ func TestReservedWordsOfEveryLanguageWhateverTheTarget(t *testing.T) {
 		{"select", "Go"},
 		{"class", "C#, C++, Dart, Java, JavaScript, Lobster, and Squirrel"},
 		{"self", "Elixir, Goose, and Rust"},
-		{"local", "Lua, Luau, and Squirrel"},
-		{"end", "Elixir, Lua, and Luau"},
+		{"local", "Lua, Luau, Squirrel, and moo"},
+		{"end", "Elixir, Lua, Luau, and moo"},
 	} {
 		needle := fmt.Sprintf("%q is a reserved word in %s ", want.word, want.langs)
 		found := false
@@ -150,10 +150,10 @@ func TestEveryReservedWordAsEveryNameKindIsRefused(t *testing.T) {
 
 // TestEveryLanguageHasItsWords: each row of the one table names a language,
 // the --lang spellings that generate it and a non-empty word list, and the
-// fourteen supported languages are all there.
+// fifteen supported languages are all there.
 func TestEveryLanguageHasItsWords(t *testing.T) {
 	t.Parallel()
-	want := []string{"C", "C++", "C#", "Go", "Rust", "Java", "JavaScript", "Dart", "Elixir", "Lua", "Luau", "Squirrel", "Goose", "Lobster"}
+	want := []string{"C", "C++", "C#", "Go", "Rust", "Java", "JavaScript", "Dart", "Elixir", "Lua", "Luau", "moo", "Squirrel", "Goose", "Lobster"}
 	if got := ReservedLanguages(); !slices.Equal(got, want) {
 		t.Fatalf("ReservedLanguages() = %v, want %v", got, want)
 	}

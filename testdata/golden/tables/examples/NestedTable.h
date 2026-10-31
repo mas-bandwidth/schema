@@ -271,11 +271,48 @@ struct TableReport
     // the plain names and ReadStrict on every refusal and ok otherwise.
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
+    // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+    // an infinity is refused on its raw bits by every read, the tolerant one
+    // included, so a read that moves this refuses as non_finite_float and
+    // lands nothing. It is a count only so a read can tell its own refusal
+    // from a caller's report that already held one.
+    int32_t non_finite_floats = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
+// packet wire's own): a NaN or an infinity, whatever its
+// sign or payload, has an all-ones exponent, and that is the whole test. Every
+// read runs it on the RAW BITS, before they become a float and before the
+// field is written; every writer runs it on the bits of the value it was
+// handed. -0 and the subnormals are finite and ride bit-exact.
+inline bool TableBitsFinite32( uint32_t bits ) { return ( bits & 0x7F800000u ) != 0x7F800000u; }
+inline bool TableBitsFinite64( uint64_t bits ) { return ( bits & 0x7FF0000000000000ull ) != 0x7FF0000000000000ull; }
+
+// TableNonFiniteFloat is a read meeting one: the read is REFUSED by name,
+// non_finite_float, and the caller that started it lands nothing.
+inline void TableNonFiniteFloat( TableReport * report )
+{
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    report->non_finite_floats++;
+}
+
+// TableNonFiniteRefused is the load's own end: true when the walk met a
+// non-finite float since before, with the refusal stamped again over
+// whatever the walk met after it, because it outranks any damage (§3.3).
+inline bool TableNonFiniteRefused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return false; }
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    return true;
+}
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -595,7 +632,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static TABLEDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -898,20 +935,6 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
         case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
         default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
     }
-}
-
-// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
-// the hardware conversion would set the quiet bit (§4)
-inline double TableWidenF32( uint32_t bits )
-{
-    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-    {
-        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-        double d; memcpy( &d, &nan_bits, 8 ); return d;
-    }
-    float f; memcpy( &f, &bits, 4 ); return (double) f;
 }
 
 // ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
@@ -1694,7 +1717,7 @@ static const int64_t kTableAnnounceBytes = 1727;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x49, 0xa5, 0x22, 0x75, 0xee, 0xd8, 0xb9, 0x81, 0x02,
+    0x01, 0x01, 0x09, 0xd4, 0xb4, 0x1c, 0x11, 0xe3, 0x58, 0xff, 0x93, 0x02,
     0x0e, 0x97, 0x0d, 0x06, 0x94, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
     0x54, 0xa3, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
     0x01, 0x07, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04,
@@ -2491,6 +2514,10 @@ inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+// the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
+// never written, and measure answers -1 for it as save answers false
+inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
+inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -4685,9 +4712,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -5767,7 +5800,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
         case 1: case 2: case 6: case 20: case 25: // the fixed-width kinds, by width
         case 3: case 7: case 21: case 26:
         case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28:
+        case 5: case 9: case 11: case 23: case 28: case 36:
         case 18: case 19: case 24: case 29:
         {
             int64_t width = 1;
@@ -5775,7 +5808,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             {
                 case 3: case 7: case 21: case 26: width = 2; break;
                 case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: width = 8; break;
+                case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: width = 1; break;
             }
@@ -5844,6 +5877,20 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     if ( !r.skip( kind ) ) { return false; }
     if ( retain == NULL ) { return true; }
     const int64_t wire_bytes = r.offset - start;
+    // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+    // §3.3, §6.6): kind 10's or 11's raw bits, and a NaN or an infinity refuses
+    // the read as non_finite_float. The read goes on, as it does for a known
+    // field, and the load answers the refusal at its end.
+    if ( kind == 10 || kind == 11 )
+    {
+        uint64_t raw = 0;
+        for ( int64_t i = wire_bytes - 1; i >= 0; i-- ) { raw = ( raw << 8 ) | r.buffer[start + i]; }
+        if ( kind == 10 ? !TableBitsFinite32( (uint32_t) raw ) : !TableBitsFinite64( raw ) )
+        {
+            TableNonFiniteFloat( r.report );
+            return true;
+        }
+    }
 
     TableRetainIn probe;
     probe.in = r.buffer + start;
@@ -6143,7 +6190,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
         case 1: case 2: case 6: case 20: case 25:
         case 3: case 7: case 21: case 26:
         case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28:
+        case 5: case 9: case 11: case 23: case 28: case 36:
         case 18: case 19: case 24: case 29:
         {
             int64_t width = 1;
@@ -6151,7 +6198,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             {
                 case 3: case 7: case 21: case 26: width = 2; break;
                 case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: width = 8; break;
+                case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
                 case 18: case 19: case 24: case 29: width = 16; break;
                 default: width = 1; break;
             }
@@ -6436,7 +6483,7 @@ inline int64_t TableMessageRetainWidth( uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: return 1;
         case 3: case 7: case 21: case 26: return 2;
         case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: return 8;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp (§2.11)
         case 18: case 19: case 24: case 29: return 16;
         default: return -1;
     }
@@ -6763,18 +6810,35 @@ inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableM
 // CAPTURE, the message form's load side. The entry has already been SKIPPED and
 // counted unknown exactly as it always was, and the start offset is where its payload
 // began: this re-reads those bits, and a record it cannot make changes nothing
-// else about the read.
-inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r, const TableVocabulary & vocabulary,
+// else about the read. False is a retained float that is not finite, and
+// nothing else: the read is refused (§3.3).
+inline bool TableMessageRetainCapture( TableRetain * retain, TableBitReader & r, const TableVocabulary & vocabulary,
                                        int64_t index_bits, const TableMessageEntry & entry,
                                        const TableRetainPath & path, TableReport * report, int64_t start )
 {
-    if ( retain == NULL ) { return; }
+    if ( retain == NULL ) { return true; }
+    // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+    // §3.3, §6.6): kind 10's or 11's raw bits, unless the float rides as a
+    // quantized index, which names a finite value. A NaN or an infinity
+    // refuses the read as non_finite_float, and the caller stops.
+    if ( ( entry.kind == 10 && entry.packing != 2 ) || entry.kind == 11 )
+    {
+        TableBitReader bits = r;
+        bits.offset = start;
+        uint64_t raw = 0;
+        if ( bits.get( raw, entry.kind == 10 ? 32 : 64 ) &&
+             !( entry.kind == 10 ? TableBitsFinite32( (uint32_t) raw ) : TableBitsFinite64( raw ) ) )
+        {
+            TableNonFiniteFloat( report );
+            return false;
+        }
+    }
     if ( entry.kind == 17 )
     {
         // A FIELD WHOSE PAYLOAD CARRIES A NODE INDEX: kind 17 itself, the
         // excluded class at the outer kind (§6.6)
         report->retain_lost++;
-        return;
+        return true;
     }
     const int64_t end = r.offset;
     TableBitReader walk = r;
@@ -6801,7 +6865,7 @@ inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r,
         // nothing else: the record is dropped, one retain_lost counts, and
         // malformed DOES NOT MOVE (§6.6).
         report->retain_lost++;
-        return;
+        return true;
     }
 
     const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
@@ -6809,7 +6873,7 @@ inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r,
     {
         // REFUSAL IS PER RECORD AND NEVER PARTIAL (§6.6)
         report->retain_lost++;
-        return;
+        return true;
     }
     uint8_t * record = retain->bytes + retain->used;
     TableRetainWrite32( record, (uint32_t) need );
@@ -6830,10 +6894,11 @@ inline void TableMessageRetainCapture( TableRetain * retain, TableBitReader & r,
     write.r = &again;
     write.out.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
     write.out.out_at = 0;
-    if ( TableMessageRetainPayload( write, entry, 0 ) < 0 ) { report->retain_lost++; return; }
+    if ( TableMessageRetainPayload( write, entry, 0 ) < 0 ) { report->retain_lost++; return true; }
     retain->used += need;
     retain->count++;
     report->retained++;
+    return true;
 }
 } // namespace tabledemo
 
@@ -6856,7 +6921,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x81b9d8ee7522a549ull;
+static const uint64_t BuildVersion = 0x93ff58e3111cb4d4ull;
 
 } // namespace tabledemo
 
@@ -7392,7 +7457,10 @@ inline TableOpenVerdict ArchiveConfigLoadVerdict( ArchiveConfig & value, const u
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !ArchiveConfigLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = ArchiveConfigLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { ArchiveConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -7639,13 +7707,14 @@ inline bool ArchiveConfigLoadMessages( ArchiveConfig * values, int64_t * count, 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ArchiveConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !ArchiveConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -7695,6 +7764,14 @@ inline void ArchiveConfigFixedClampBody( ArchiveConfig & value, int32_t & TABLE_
     RootConfigFixedClampBody( value.root, clamped, damaged );
     clamped += (int) ( value.count < 0 ) | (int) ( value.count > 100 );
     value.count = ( value.count < 0 ) ? 0 : ( ( value.count > 100 ) ? 100 : value.count );
+}
+
+// ArchiveConfig's finite rule (docs/SPEC-TABLES.md §3.3): false when a float it
+// holds is a NaN or an infinity, which no read lands and no writer writes.
+TABLE_FIXED_INLINE bool ArchiveConfigFixedFiniteBody( const ArchiveConfig & value )
+{
+    if ( !RootConfigFixedFiniteBody( value.root ) ) { return false; }
+    return true;
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -8318,6 +8395,7 @@ inline int64_t ArchiveConfigFixedSave( const ArchiveConfig * values, int64_t cou
     TableFixedPut64( buffer + kTableFixedHashAt, ArchiveConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) ArchiveConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, ArchiveConfigFixedLayout, (size_t) ArchiveConfigFixedLayoutBytes );
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ArchiveConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + ArchiveConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -8499,6 +8577,13 @@ inline int64_t ArchiveConfigFixedLoadTolerant( ArchiveConfig * values, int64_t c
         const int32_t rec_clamped = report->clamped;
         const int32_t rec_widened = report->widened;
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ArchiveConfigFixedGuards );
+        if ( !ArchiveConfigFixedFiniteBody( values[k] ) )
+        {
+            for ( int64_t j = 0; j <= k; ++j ) { ArchiveConfigReset( values[j] ); }
+            *report = TableReport();
+            TableNonFiniteFloat( report );
+            return -1;
+        }
         TableFixedClampKnownRanges( ArchiveConfigFixedKnownRanges[lineage_at], ArchiveConfigFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !ArchiveConfigFixedClamp( values[k], report ) )
@@ -8768,7 +8853,7 @@ inline bool ArchiveConfigLoadMessageBodyRetain( TableBitReader & r, const TableV
             {
                 const int64_t unknown_at = r.offset;
                 if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at );
+                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)
             }
                 break;
         }
@@ -8867,12 +8952,13 @@ inline const ArchiveConfig * ArchiveConfigOpen( const void * bytes, uint64_t len
 // content-addressed by (asset hash, build version), so two writers of one
 // instance produce ONE artifact or the pair means nothing.
 
-inline void ArchiveConfigCookBody( uint8_t * at, const ArchiveConfig & value, TableByteOrder order );
+inline bool ArchiveConfigCookBody( uint8_t * at, const ArchiveConfig & value, TableByteOrder order );
 
-inline void ArchiveConfigCookBody( uint8_t * at, const ArchiveConfig & value, TableByteOrder order )
+inline bool ArchiveConfigCookBody( uint8_t * at, const ArchiveConfig & value, TableByteOrder order )
 {
-    RootConfigCookBody( at + 0, value.root, order );
+    if ( !RootConfigCookBody( at + 0, value.root, order ) ) { return false; }
     table_cook_put( at + 1480, (uint64_t) value.count, 4, order );
+    return true;
 }
 
 // ArchiveConfigCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -8918,7 +9004,7 @@ inline bool ArchiveConfigCook( const ArchiveConfig & value, void * out, uint64_t
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    ArchiveConfigCookBody( raw + 64, value, order );
+    if ( !ArchiveConfigCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)

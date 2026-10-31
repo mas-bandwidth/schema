@@ -20,8 +20,10 @@
 //   cook images   every node of the five cook images, reached through the
 //                 reference slots (each deref also resolved here, independently)
 //   synthetic     every record type either descriptor graph reaches, read over a
-//                 seeded pseudo-random buffer (all-bits patterns, NaNs, forged
-//                 used lengths), so a type with no row in an image is still held
+//                 seeded pseudo-random buffer (all-bits patterns, NaNs and
+//                 infinities, which every float accessor refuses and answers 0
+//                 for, forged used lengths), so a type with no row in an image
+//                 is still held
 //
 // A POINTER SLOT is an eight-byte signed self-relative delta (descriptor:
 // isPointer, size 8). The generated row getter for it reads ONE byte of the slot
@@ -174,11 +176,25 @@ Object scalarByKind(ByteData v, int at, int kind, int slotWidth) {
     case 9:
       return v.getUint64(at, Endian.little);
     case 10:
-      return v.getFloat32(at, Endian.little);
+      return finite(v.getFloat32(at, Endian.little));
     case 11:
-      return v.getFloat64(at, Endian.little);
+      return finite(v.getFloat64(at, Endian.little));
   }
   throw StateError('kind $kind is not a scalar kind this gate reads');
+}
+
+// A FLOAT ACCESSOR NEVER RETURNS A NaN OR AN INFINITY (docs/SPEC-TABLES.md
+// §3.3, ruling 2 of 2026-10-27): it answers 0 and latches non_finite_float on
+// the view. So the descriptor side reads a non-finite cell as that 0, and the
+// all-ones round below holds every float accessor to the refusal.
+int nonFiniteCells = 0;
+
+double finite(double d) {
+  if (d.isFinite) {
+    return d;
+  }
+  nonFiniteCells++;
+  return 0.0;
 }
 
 int widthOfKind(int kind) {
@@ -204,9 +220,11 @@ Object scalarByStorage(ByteData v, int at, int storage, int width) {
     case TableCookStorage.boolean:
       return v.getUint8(at) != 0;
     case TableCookStorage.float:
-      return width == 4
-          ? v.getFloat32(at, Endian.little)
-          : v.getFloat64(at, Endian.little);
+      return finite(
+        width == 4
+            ? v.getFloat32(at, Endian.little)
+            : v.getFloat64(at, Endian.little),
+      );
     case TableCookStorage.signed:
       return width == 1
           ? v.getInt8(at)
@@ -935,7 +953,8 @@ Uint8List noise(int n, int round) {
   for (var i = 0; i < n; i++) {
     out[i] = nextWord() & 0xff;
   }
-  // rounds 0-1 are the all-ones and all-zero patterns (NaNs, the sign bit);
+  // rounds 0-1 are the all-ones and all-zero patterns (NaNs, refused by every
+  // float accessor, and the sign bit);
   // later rounds also forge small and wild used lengths at every int32 slot
   if (round == 0) {
     out.fillRange(0, n, 0xff);
@@ -1135,11 +1154,16 @@ void main(List<String> args) {
           '$syntheticRecords synthetic records',
     );
   }
+  // the all-ones round puts a NaN in every float cell, so a run that met none
+  // never held an accessor to the refusal (§3.3)
+  if (nonFiniteCells == 0) {
+    fail('agree', 'no float accessor met a NaN or an infinity');
+  }
   stdout.writeln(
     'dart tables agree: $blockRows block rows, $cookNodes cook nodes '
     '($cookRecords cook records), ${seenBlock.length} block and ${seenCook.length} '
     'cook record types over $syntheticRecords synthetic reads, $reads field reads, '
-    '$disagreements disagreement(s)',
+    '$nonFiniteCells non-finite float cells refused, $disagreements disagreement(s)',
   );
   exit(disagreements == 0 ? 0 : 1);
 }

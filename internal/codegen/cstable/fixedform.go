@@ -1520,6 +1520,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedClampBodyFn(st)
 	}
+	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
+	// runs it before the bounds pass and the writer before its first byte.
+	for _, st := range bodies {
+		g.emitFixedFiniteBodyFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
@@ -2004,6 +2009,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md
+		// §3.3), before the first output byte
+		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
+	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")
 	g.pf("    BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), %sFixedHash);\n", name)
@@ -2166,6 +2176,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (run_why != null)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
+		// FIRST, before the bounds pass, over the storage the run just wrote,
+		// and a NaN or an infinity refuses the whole batch as non_finite_float,
+		// the tolerant read included. Nothing of the batch is kept: every record
+		// this call wrote goes back to its defaults.
+		g.pf("        string finite_why = %sFixedFiniteBody(values[k]);\n", name)
+		g.pf("        if (finite_why != null)\n        {\n")
+		g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
+		g.pf("            if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = \"non_finite_float: \" + finite_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+		g.pf("            return -1;\n        }\n")
+	}
 	// STEP 11's BOUNDS(out[rec]): straight-line code after the plan run, over
 	// STORAGE, so ONE pass covers BOTH plans (§4.6). A type that bounds nothing
 	// emits no pass and this line is not written at all.
@@ -2326,7 +2348,7 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    for (int e = 0; e < runs; ++e)\n                    {\n")
 	g.pf("                        int at = (int)p.Src + e * sw;\n")
 	g.pf("                        if (p.Sign == 2)\n                        {\n")
-	g.pf("                            double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));\n")
+	g.pf("                            double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));\n")
 	g.pf("                            BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);\n")
 	g.pf("                            continue;\n                        }\n")
 	g.pf("                        ulong raw = 0;\n")
@@ -2406,7 +2428,7 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.WidenF:\n                {\n")
 	g.pf("                    float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));\n")
-	g.pf("                    %sFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));\n", name)
+	g.pf("                    %sFixedSetDouble(dst, p.Dst, (double)f);\n", name)
 	g.pf("                    if (report != null) { report.Widened++; }\n")
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Const:\n                {\n")

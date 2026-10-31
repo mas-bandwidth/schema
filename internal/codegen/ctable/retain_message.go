@@ -9,7 +9,7 @@ static SCHEMA_UNUSED int table_retain_message_frame(TableRetainMessage * s,const
 static SCHEMA_UNUSED int table_retain_message_scalar(TableRetainMessage * s,const TableMessageEntry * e)
 {
  uint64_t lo=0,hi=0;uint8_t bytes[16];int width=table_retain_width(e->kind);if(!width)return 0;
- if(e->kind==10&&e->packing==2){float value;if(!table_message_float(&s->input,e,&value))return 0;lo=table_float_to_bits(value);}
+ if(e->kind==10&&e->packing==2){float value=0;if(!table_message_float(&s->input,e,&value))return 0;lo=table_float_to_bits(value);}
  else if(!table_message_number(&s->input,e,&lo,&hi))return 0;
  table_retain_put64(bytes,lo);table_retain_put64(bytes+8,hi);return table_retain_raw(&s->output,bytes,width);
 }
@@ -49,9 +49,15 @@ static SCHEMA_UNUSED int table_retain_message_payload(TableRetainMessage * s,con
  default:return table_retain_message_scalar(s,e);
  }
 }
+/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+   §3.3, §6.6): kind 10's or 11's raw bits, unless the float rides as a
+   quantized index, which names a finite value. A NaN or an infinity refuses
+   the read as non_finite_float, nothing is kept and the walk goes on. */
 static SCHEMA_UNUSED int table_retain_message_capture(TableMessageReader * r,const TableMessageEntry * entry,TableRetainWalk keep)
 {
  TableRetainMessage s;uint8_t * record;s.input=*r;if(!table_message_skip(r,entry))return 0;if(!keep.retain)return 1;
+ if((entry->kind==10&&entry->packing!=2)||entry->kind==11){TableBitReader bits=s.input.bits;uint64_t raw=0;
+  if(table_bit_get(&bits,&raw,entry->kind==10?32:64)&&(entry->kind==10?!table_bits_finite32((uint32_t)raw):!table_bits_finite64(raw))){table_non_finite_float(r->report);return 1;}}
  record=table_retain_begin(keep,entry->id,entry->kind,&s.output);
  if(!record||!table_retain_message_payload(&s,entry,0)||s.input.bits.offset!=r->bits.offset){r->report->retain_lost++;return 1;}
  table_retain_commit(keep,record,&s.output,r->report);return 1;

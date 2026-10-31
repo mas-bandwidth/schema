@@ -443,6 +443,7 @@ public final class %s {
            .append(" widened=").append(report.widened)
            .append(" clamped=").append(report.clamped)
            .append(" layoutHash=").append(layoutHash(report))
+           .append(" nonFiniteFloat=").append(report.nonFiniteFloat)
            .append('\n');
         dump("VALUE", vals[0]);
         System.out.print(out);
@@ -599,8 +600,11 @@ type probeRun struct {
 	widened      int
 	clamped      int
 	layoutHash   string
-	fresh        map[string]string
-	value        map[string]string
+	// nonFiniteFloat is the report's named field for a nonFiniteFloat
+	// refusal (docs/SPEC-TABLES.md §3.3), "null" on every other path
+	nonFiniteFloat string
+	fresh          map[string]string
+	value          map[string]string
 }
 
 func parseProbe(t *testing.T, out string) probeRun {
@@ -633,6 +637,8 @@ func parseProbe(t *testing.T, out string) probeRun {
 					r.clamped, _ = strconv.Atoi(v)
 				case "layoutHash":
 					r.layoutHash = v
+				case "nonFiniteFloat":
+					r.nonFiniteFloat = v
 				}
 			}
 		case strings.HasPrefix(line, "FRESH "):
@@ -804,6 +810,7 @@ func runProbe(t *testing.T, classes, class, file string) probeRun {
 // reference's bytes.
 func TestFixedVersioningRows(t *testing.T) {
 	corpus := corpusDir(t)
+	nonFinite := manifestNonFinite(t, corpus)
 	for _, row := range versioningRows {
 		t.Run(row.name, func(t *testing.T) {
 			t.Parallel()
@@ -827,16 +834,33 @@ func TestFixedVersioningRows(t *testing.T) {
 			// NEW-READS-OLD, and the OLD build's own identity read of the same
 			// file is the value oracle (never a number restated here).
 			oracle := runProbe(t, classes, "Probe_refuses", oldFile)
-			if oracle.n < 1 || oracle.refused || oracle.malformed {
-				t.Fatalf("the OLD build could not read its own file: %+v", oracle)
+			if leaf := nonFinite[filepath.Base(oldFile)]; leaf != "" {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 both builds refuse it
+				// by name before any bounds (docs/SPEC-TABLES.md §3.3): a
+				// must-refuse vector until tables-finite/cpp regenerates the
+				// corpus with finite values, and an ordinary row after.
+				got := runProbe(t, classes, "Probe_reads", oldFile)
+				for _, side := range []struct {
+					name string
+					r    probeRun
+				}{{"OLD", oracle}, {"NEW-READS-OLD", got}} {
+					if side.r.n != -1 || !side.r.refused || side.r.reason != "nonFiniteFloat" || !strings.HasSuffix(side.r.nonFiniteFloat, "."+leaf) {
+						t.Errorf("%s: the non-finite %s the older writer wrote was not refused by name: %+v", side.name, leaf, side.r)
+					}
+				}
+			} else {
+				if oracle.n < 1 || oracle.refused || oracle.malformed {
+					t.Fatalf("the OLD build could not read its own file: %+v", oracle)
+				}
+				got := runProbe(t, classes, "Probe_reads", oldFile)
+				if got.refused || got.malformed || got.n != oracle.n {
+					t.Errorf("NEW-READS-OLD: n=%d refused=%v reason=%s malformed=%v, want %d records and no refusal",
+						got.n, got.refused, got.reason, got.malformed, oracle.n)
+				}
+				assertValuesLand(t, oracle, got, wasNames(versioningSchemaUnit(t, "VNEW_"+row.name+".schema")))
+				assertCounters(t, "NEW-READS-OLD", row, got)
 			}
-			got := runProbe(t, classes, "Probe_reads", oldFile)
-			if got.refused || got.malformed || got.n != oracle.n {
-				t.Errorf("NEW-READS-OLD: n=%d refused=%v reason=%s malformed=%v, want %d records and no refusal",
-					got.n, got.refused, got.reason, got.malformed, oracle.n)
-			}
-			assertValuesLand(t, oracle, got, wasNames(versioningSchemaUnit(t, "VNEW_"+row.name+".schema")))
-			assertCounters(t, "NEW-READS-OLD", row, got)
 
 			// OLD-REFUSES-NEW: `layout_newer`, the FILE's hash and nothing
 			// else, no counter moved, nothing malformed, the destination still

@@ -153,10 +153,10 @@ union Empty {}
 			t.Errorf("%s: direct <new> include = %v, want %v; only a header that constructs a payload includes it", name, got, want)
 		}
 	}
-	if !strings.Contains(string(files["ChoiceWire.h"]), "::new ( (void*) &value.payload ) Payload{};") {
+	if !strings.Contains(string(files["ChoiceWire.h"]), "::new ( static_cast<void *>( &value.payload ) ) Payload{};") {
 		t.Error("ChoiceWire.h lost selected-payload placement construction")
 	}
-	if !strings.Contains(string(files["Choice.h"]), "        ::new ( (void*) &payload ) Payload{};\n") {
+	if !strings.Contains(string(files["Choice.h"]), "        ::new ( static_cast<void *>( &payload ) ) Payload{};\n") {
 		t.Error("Choice.h lost the arm setter's placement construction")
 	}
 	if !strings.Contains(string(files["Choice.h"]), "// together (SPEC §4.8, the arm setter): Payload & arm = value.SelectPayload();") {

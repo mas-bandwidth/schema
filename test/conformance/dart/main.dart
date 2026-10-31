@@ -55,6 +55,20 @@ import '../../../build/tables-generated-dart/k1/Tblk1Wire.dart' as tblk1;
 import '../../../build/tables-generated-dart/k2/Tblk2Wire.dart' as tblk2;
 import '../../../build/tables-generated-dart/a2/Tbla2Wire.dart' as tbla2;
 import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Wire.dart' as scalardemo2;
+import '../../../build/tables-generated-dart/examples/TablesCook.dart' as tablescook;
+import '../../../build/tables-generated-dart/examples/NestedCook.dart' as nestedcook;
+import '../../../build/tables-generated-dart/examples/KeyedCook.dart' as keyedcook;
+import '../../../build/tables-generated-dart/examples/WideCook.dart' as widecook;
+import '../../../build/tables-generated-dart/v1/V1Cook.dart' as v1cook;
+import '../../../build/tables-generated-dart/v2/V2Cook.dart' as v2cook;
+import '../../../build/tables-generated-dart/p1/P1Cook.dart' as p1cook;
+import '../../../build/tables-generated-dart/p3/P3Cook.dart' as p3cook;
+import '../../../build/tables-generated-dart/m1/M1Cook.dart' as m1cook;
+import '../../../build/tables-generated-dart/m2/M2Cook.dart' as m2cook;
+import '../../../build/tables-generated-dart/stream/StreamCook.dart' as streamcook;
+import '../../../build/tables-generated-dart/messages/MessagesCook.dart' as messagescook;
+import '../../../build/tables-generated-dart-scalars/scalars/ScalarsCook.dart' as scalarscook;
+import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -744,6 +758,8 @@ int surfaceCook(String outDir) {
 }
 
 // A row this leg cannot carry writes <case>.absent (test/conformance/README.md).
+// Every instance root answers wire: its form-1 load re-saved byte for byte,
+// the same pair json-read and json-write already exercise.
 // graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
 // report for the roots the variable class carries. mapdemo, messagedemo,
 // scalars and widedemo answer the same four for every root: maps, unions and
@@ -824,6 +840,46 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
+    case 'listdemo Army':
+      return listdemo.armyWireSave(listdemo.armyWireLoad(wire));
+    case 'listdemo Mixed':
+      return listdemo.mixedWireSave(listdemo.mixedWireLoad(wire));
+    case 'streamdemo Feed':
+      return streamdemo.feedWireSave(streamdemo.feedWireLoad(wire));
+    case 'tabledemo ArchiveConfig':
+      return tabledemo.archiveConfigWireSave(tabledemo.archiveConfigWireLoad(wire));
+    case 'tabledemo KeyedConfig':
+      return tabledemo.keyedConfigWireSave(tabledemo.keyedConfigWireLoad(wire));
+    case 'tabledemo WideBlob':
+      return tabledemo.wideBlobWireSave(tabledemo.wideBlobWireLoad(wire));
+    case 'tblm1 Msg':
+      return tblm1.msgWireSave(tblm1.msgWireLoad(wire));
+    case 'tblm2 Msg':
+      return tblm2.msgWireSave(tblm2.msgWireLoad(wire));
+    case 'tblp1 Chain':
+      return tblp1.chainWireSave(tblp1.chainWireLoad(wire));
+    case 'tblp3 Chain':
+      return tblp3.chainWireSave(tblp3.chainWireLoad(wire));
+    case 'vocabdemo Wide00':
+      return vocabdemo.wide00WireSave(vocabdemo.wide00WireLoad(wire));
+    case 'vocabdemo Wide09':
+      return vocabdemo.wide09WireSave(vocabdemo.wide09WireLoad(wire));
+    case 'vocab9demo Wide00':
+      return vocab9demo.wide00WireSave(vocab9demo.wide00WireLoad(wire));
+    case 'vocab9demo Wide19':
+      return vocab9demo.wide19WireSave(vocab9demo.wide19WireLoad(wire));
+    case 'backenddemo LoginRequest':
+      return backenddemo.loginRequestWireSave(backenddemo.loginRequestWireLoad(wire));
+    case 'backenddemo MatchResult':
+      return backenddemo.matchResultWireSave(backenddemo.matchResultWireLoad(wire));
+    case 'backenddemo StorePurchase':
+      return backenddemo.storePurchaseWireSave(backenddemo.storePurchaseWireLoad(wire));
+    case 'tabledemo LoadoutConfig':
+      return tabledemo.loadoutConfigWireSave(tabledemo.loadoutConfigWireLoad(wire));
+    case 'tabledemo ProfileConfig':
+      return tabledemo.profileConfigWireSave(tabledemo.profileConfigWireLoad(wire));
+    case 'tabledemo RootConfig':
+      return tabledemo.rootConfigWireSave(tabledemo.rootConfigWireLoad(wire));
   }
   return null;
 }
@@ -1208,29 +1264,9 @@ String? loadReport(String unit, String root, Uint8List wire) {
 //
 // A row whose instance this leg cannot load writes <case>.absent with the
 // reason, by unit (test/conformance/README.md).
-const Map<String, String> cookWriteAbsent = <String, String>{
-  'tabledemo': _fixedFormOnly,
-  'tblv1': _fixedFormOnly,
-  'tblv2': _fixedFormOnly,
-  'tblp1': _fixedFormOnly,
-  'tblp3': _fixedFormOnly,
-  'tblm1': _fixedFormOnly,
-  'tblm2': _fixedFormOnly,
-  'messagedemo':
-      'the Dart table backend refuses the unit (a union arm '
-      'carrying `was`, docs/SPEC-TABLES.md §5): no Dart value to cook',
-  'streamdemo':
-      'the Dart table backend refuses the unit (a union a table '
-      'closure holds, docs/SPEC-TABLES.md §2.6, §11): no Dart value to cook',
-  'scalars':
-      'the unit carries the wide kinds, for which the Dart table '
-      'backend emits no cook form (docs/SPEC-TABLES.md §3)',
-};
-
-const String _fixedFormOnly =
-    'the Dart fixed class reads form 3 only and '
-    "this instance's wire is form 1, which Dart reads for the variable class "
-    'alone (docs/SPEC-TABLES.md §3, §3.4): no Dart value to cook';
+// Every unit's rows are answered today; the map stays as the one place a
+// future absence is named.
+const Map<String, String> cookWriteAbsent = <String, String>{};
 
 // cookWriter loads one instance and answers its measured extent and the
 // writer for one byte order, or null when this leg has no codec for it.
@@ -1255,6 +1291,127 @@ const String _fixedFormOnly =
       return (
         assets.CatalogCook.cookMeasure(value),
         (out, order) => assets.CatalogCook.cook(value, out, order),
+      );
+    case 'tabledemo ArchiveConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.archiveConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        nestedcook.ArchiveConfigCookWire.cookMeasure(value),
+        (out, order) => nestedcook.ArchiveConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo KeyedConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.keyedConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        keyedcook.KeyedConfigCookWire.cookMeasure(value),
+        (out, order) => keyedcook.KeyedConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo LoadoutConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.loadoutConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        tablescook.LoadoutConfigCookWire.cookMeasure(value),
+        (out, order) => tablescook.LoadoutConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo ProfileConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.profileConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        tablescook.ProfileConfigCookWire.cookMeasure(value),
+        (out, order) => tablescook.ProfileConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo RootConfig':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.rootConfigWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        tablescook.RootConfigCookWire.cookMeasure(value),
+        (out, order) => tablescook.RootConfigCookWire.cook(value, out, order),
+      );
+    case 'tabledemo WideBlob':
+      final r = tabledemo.TableWireReport();
+      final value = tabledemo.wideBlobWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        widecook.WideBlobCookWire.cookMeasure(value),
+        (out, order) => widecook.WideBlobCookWire.cook(value, out, order),
+      );
+    case 'tblv1 Cfg':
+      final r = tblv1.TableWireReport();
+      final value = tblv1.cfgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        v1cook.CfgCookWire.cookMeasure(value),
+        (out, order) => v1cook.CfgCookWire.cook(value, out, order),
+      );
+    case 'tblv2 Cfg':
+      final r = tblv2.TableWireReport();
+      final value = tblv2.cfgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        v2cook.CfgCookWire.cookMeasure(value),
+        (out, order) => v2cook.CfgCookWire.cook(value, out, order),
+      );
+    case 'tblp1 Chain':
+      final r = tblp1.TableWireReport();
+      final value = tblp1.chainWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        p1cook.ChainCookWire.cookMeasure(value),
+        (out, order) => p1cook.ChainCookWire.cook(value, out, order),
+      );
+    case 'tblp3 Chain':
+      final r = tblp3.TableWireReport();
+      final value = tblp3.chainWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        p3cook.ChainCookWire.cookMeasure(value),
+        (out, order) => p3cook.ChainCookWire.cook(value, out, order),
+      );
+    case 'tblm1 Msg':
+      final r = tblm1.TableWireReport();
+      final value = tblm1.msgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        m1cook.MsgCookWire.cookMeasure(value),
+        (out, order) => m1cook.MsgCookWire.cook(value, out, order),
+      );
+    case 'tblm2 Msg':
+      final r = tblm2.TableWireReport();
+      final value = tblm2.msgWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        m2cook.MsgCookWire.cookMeasure(value),
+        (out, order) => m2cook.MsgCookWire.cook(value, out, order),
+      );
+    case 'messagedemo ToolMessage':
+      final r = messagedemo.TableWireReport();
+      final value = messagedemo.toolMessageWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        messagescook.ToolMessageCookWire.cookMeasure(value),
+        (out, order) =>
+            messagescook.ToolMessageCookWire.cook(value, out, order),
+      );
+    case 'scalars SimState':
+      final r = scalardemo.TableWireReport();
+      final value = scalardemo.simStateWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        scalarscook.SimStateCookWire.cookMeasure(value),
+        (out, order) => scalarscook.SimStateCookWire.cook(value, out, order),
+      );
+    case 'streamdemo Feed':
+      final r = streamdemo.TableWireReport();
+      final value = streamdemo.feedWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        streamcook.FeedCook.cookMeasure(value),
+        (out, order) => streamcook.FeedCook.cook(value, out, order),
       );
   }
   return null;
@@ -1310,7 +1467,16 @@ int surfaceCookWrite(String outDir) {
 
 int surfaceWire(String outDir) {
   for (final f in kind('instance')) {
-    final saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
+    Uint8List? saved;
+    try {
+      saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
+    } on StateError catch (e) {
+      // a blob two slots name is refused by every writer
+      // (docs/SPEC-TABLES.md §2.5): the case's answer is that refusal
+      if (!e.message.startsWith('blob_shared')) rethrow;
+      File('$outDir/${f[1]}.absent').writeAsStringSync('blob_shared');
+      continue;
+    }
     if (saved == null) {
       spillAbsent(outDir, f[1]);
       continue;
@@ -1373,6 +1539,14 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = graphdemo.TableTextReport();
         graphdemo.sceneFromJson(text, r);
         break;
+      case 'mapdemo Text':
+        r = mapdemo.TableTextReport();
+        mapdemo.textFromJson(text, r);
+        break;
+      case 'listdemo Army':
+        r = listdemo.TableTextReport();
+        listdemo.armyFromJson(text, r);
+        break;
       case 'messagedemo ToolMessage':
         r = messagedemo.TableTextReport();
         messagedemo.toolMessageFromJson(text, r);
@@ -1405,6 +1579,84 @@ int surfaceJsonHostile(String outDir) {
     File('$outDir/${f[1]}').writeAsStringSync(verdict);
   }
   return 0;
+}
+
+// ---- retain and retain-save (docs/SPEC-TABLES.md §6.6): RT1's Node loaded
+// with retention at the row's two capacities, measured and saved back. `retain`
+// prints `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
+// saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
+// what this port's own records cost, and the second load gets one byte less
+// (test/conformance/README.md). The id list's capacity is a count.
+//
+// A retain-message row's root is a plain `table` — Node in RT1 — which carries
+// no message verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
+// the form), so the driver answers ABSENT and names the reason, as the Go
+// leg's does.
+const int _retainRoomy = 1 << 20;
+
+int surfaceRetain(String outDir, bool saves) {
+  for (final f in lines) {
+    if (f[0] != 'retain' && f[0] != 'retain-message') continue;
+    if (saves && f[f.length - 1] == '-') continue;
+    if (f[0] == 'retain-message') {
+      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
+      continue;
+    }
+    if (f[2] != 'tblrt1' || f[3] != 'Node') {
+      stderr.writeln('driver: retain ${f[1]} names ${f[2]} ${f[3]}');
+      return 1;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
+    var store = tblrt1.TableRetain(_retainRoomy, ids);
+    var report = tblrt1.TableWireReport();
+    if (f[5] == 'short') {
+      tblrt1.nodeWireLoadRetain(wire, store, report);
+      if (report.malformed || report.refused) {
+        stderr.writeln('driver: ${f[1]}: capacity probe refused');
+        return 1;
+      }
+      store = tblrt1.TableRetain(store.used - 1 < 0 ? 0 : store.used - 1, ids);
+      report = tblrt1.TableWireReport();
+    }
+    final root = tblrt1.nodeWireLoadRetain(wire, store, report);
+    if (report.malformed || report.refused) {
+      stderr.writeln('driver: ${f[1]}: retaining load failed');
+      return 1;
+    }
+    final size = tblrt1.nodeWireMeasureRetain(root, store);
+    final save = tblrt1.TableWireReport();
+    final out = tblrt1.nodeWireSaveRetain(root, store, save);
+    if (size < 0 || out.length != size) {
+      stderr.writeln('driver: ${f[1]}: retaining measure and save disagree');
+      return 1;
+    }
+    // the save is a function of the value and the store: a second one writes
+    // the same bytes and loses the same records
+    final second = tblrt1.TableWireReport();
+    final again = tblrt1.nodeWireSaveRetain(root, store, second);
+    if (!_sameBytes(again, out) || second.retainLost != save.retainLost) {
+      stderr.writeln('driver: ${f[1]}: retaining save is not repeatable');
+      return 1;
+    }
+    if (saves) {
+      File('$outDir/${f[1]}').writeAsBytesSync(out);
+    } else {
+      File('$outDir/${f[1]}').writeAsStringSync(
+        '${report.retained},${report.retainLost},${report.unknown} '
+        '${save.retainLost}\n',
+      );
+    }
+  }
+  return 0;
+}
+
+bool _sameBytes(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 int surfaceReport(String outDir) {
@@ -1687,12 +1939,13 @@ int surfaceMessage(String outDir) {
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
-    // cook-write the graphdemo and blobdemo rows (§7.6). The
+    // cook-write the graphdemo and blobdemo rows (§7.6). retain and
+    // retain-save carry RT1's retaining round trip (§6.6). The
     // accelerators and the forgery surfaces stay, and cook-reason and
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\njson-read\njson-write\njson-hostile\nreport\n'
+    'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
 
@@ -1752,11 +2005,6 @@ class _ByteSource {
 }
 
 void _putU8(List<int> out, int v) => out.add(v & 0xFF);
-void _putU16(List<int> out, int v) {
-  out.add(v & 0xFF);
-  out.add((v >> 8) & 0xFF);
-}
-
 void _putU32(List<int> out, int v) {
   for (var i = 0; i < 4; i++) {
     out.add((v >> (8 * i)) & 0xFF);
@@ -1813,11 +2061,309 @@ List<int> _fuzzReply({
   return out;
 }
 
+// A _FuzzRoot is one file root's binding for the wire-fuzz stream: the
+// ordinary Load/Save run and, where the roster asks for it, the retaining
+// pair. Every root the wire surface answers is bound by fuzzRoot below, so the
+// fuzzer reads the whole corpus, not one table.
+class _FuzzRoot {
+  final _FuzzRun plain;
+  final _FuzzRun? retain;
+  const _FuzzRoot(this.plain, {this.retain});
+}
+
+typedef _FuzzRun = List<int> Function(Uint8List wire);
+
+_FuzzRun _plainCodec<V, R>(
+  R Function() mkReport,
+  int Function(Uint8List) measure,
+  V Function(Uint8List, [R?]) load,
+  Uint8List Function(V) save,
+) {
+  return (Uint8List wire) {
+    final report = mkReport();
+    final m = measure(wire);
+    final value = load(wire, report);
+    return _fuzzReplyFor(report as dynamic, m >= 0, m, _refusable(() => save(value)));
+  };
+}
+
+// The retention arm (docs/SPEC-TABLES.md §6.6): read and write back through
+// the retaining pair, with the two caller-owned stores the harness fixes
+// (1 MiB of bytes and one id per eight bytes).
+_FuzzRun _retainCodec<V, R, T>(
+  T Function(int, List<int>) mkRetain,
+  R Function() mkReport,
+  int Function(Uint8List) measure,
+  V Function(Uint8List, T, R) load,
+  Uint8List Function(V, T, R) save,
+) {
+  return (Uint8List wire) {
+    final report = mkReport();
+    final retain = mkRetain(1048576, List<int>.filled(131072, 0));
+    final m = measure(wire);
+    final value = load(wire, retain, report);
+    return _fuzzReplyFor(report as dynamic, m >= 0, m, _refusable(() => save(value, retain, report)));
+  };
+}
+
+// A save the value cannot honour is a REFUSAL, a StateError by name here (a
+// cycle, an arm tag naming no arm): the harness reads it as a save that wrote
+// nothing, the -1 in the reply.
+List<int>? _refusable(Uint8List Function() save) {
+  try {
+    return save();
+  } on StateError {
+    return null;
+  }
+}
+
+List<int> _fuzzReplyFor(dynamic r, bool loaded, int measure, List<int>? saved) {
+  return _fuzzReply(
+    loaded: loaded,
+    unknown: r.unknown as int,
+    kindMismatch: r.kindMismatch as int,
+    widened: r.widened as int,
+    clamped: r.clamped as int,
+    duplicate: r.duplicate as int,
+    malformed: r.malformed as bool,
+    refused: r.refused as bool,
+    measure: measure,
+    retained: r.retained as int,
+    retainLost: r.retainLost as int,
+    saved: saved,
+  );
+}
+
+_FuzzRoot? fuzzRoot(String unit, String root) {
+  switch ('$unit $root') {
+    case 'cards Card':
+      return _FuzzRoot(
+          _plainCodec(TableWireReport.new, cardWireMeasure, cardWireLoad, cardWireSave),
+          retain: _retainCodec(TableRetain.new, TableWireReport.new, cardWireMeasure, cardWireLoadRetain, cardWireSaveRetain));
+    case 'backenddemo LoginRequest':
+      return _FuzzRoot(
+          _plainCodec(backenddemo.TableWireReport.new, backenddemo.loginRequestWireMeasure, backenddemo.loginRequestWireLoad, backenddemo.loginRequestWireSave),
+          retain: _retainCodec(backenddemo.TableRetain.new, backenddemo.TableWireReport.new, backenddemo.loginRequestWireMeasure, backenddemo.loginRequestWireLoadRetain, backenddemo.loginRequestWireSaveRetain));
+    case 'backenddemo MatchResult':
+      return _FuzzRoot(
+          _plainCodec(backenddemo.TableWireReport.new, backenddemo.matchResultWireMeasure, backenddemo.matchResultWireLoad, backenddemo.matchResultWireSave),
+          retain: _retainCodec(backenddemo.TableRetain.new, backenddemo.TableWireReport.new, backenddemo.matchResultWireMeasure, backenddemo.matchResultWireLoadRetain, backenddemo.matchResultWireSaveRetain));
+    case 'backenddemo StorePurchase':
+      return _FuzzRoot(
+          _plainCodec(backenddemo.TableWireReport.new, backenddemo.storePurchaseWireMeasure, backenddemo.storePurchaseWireLoad, backenddemo.storePurchaseWireSave),
+          retain: _retainCodec(backenddemo.TableRetain.new, backenddemo.TableWireReport.new, backenddemo.storePurchaseWireMeasure, backenddemo.storePurchaseWireLoadRetain, backenddemo.storePurchaseWireSaveRetain));
+    case 'blobdemo Catalog':
+      return _FuzzRoot(
+          _plainCodec(blobdemo.TableWireReport.new, blobdemo.catalogWireMeasure, blobdemo.catalogWireLoad, blobdemo.catalogWireSave),
+          retain: _retainCodec(blobdemo.TableRetain.new, blobdemo.TableWireReport.new, blobdemo.catalogWireMeasure, blobdemo.catalogWireLoadRetain, blobdemo.catalogWireSaveRetain));
+    case 'graphdemo Scene':
+      return _FuzzRoot(
+          _plainCodec(graphdemo.TableWireReport.new, graphdemo.sceneWireMeasure, graphdemo.sceneWireLoad, graphdemo.sceneWireSave),
+          retain: _retainCodec(graphdemo.TableRetain.new, graphdemo.TableWireReport.new, graphdemo.sceneWireMeasure, graphdemo.sceneWireLoadRetain, graphdemo.sceneWireSaveRetain));
+    case 'listdemo Album':
+      return _FuzzRoot(
+          _plainCodec(listdemo.TableWireReport.new, listdemo.albumWireMeasure, listdemo.albumWireLoad, listdemo.albumWireSave),
+          retain: _retainCodec(listdemo.TableRetain.new, listdemo.TableWireReport.new, listdemo.albumWireMeasure, listdemo.albumWireLoadRetain, listdemo.albumWireSaveRetain));
+    case 'listdemo Army':
+      return _FuzzRoot(
+          _plainCodec(listdemo.TableWireReport.new, listdemo.armyWireMeasure, listdemo.armyWireLoad, listdemo.armyWireSave),
+          retain: _retainCodec(listdemo.TableRetain.new, listdemo.TableWireReport.new, listdemo.armyWireMeasure, listdemo.armyWireLoadRetain, listdemo.armyWireSaveRetain));
+    case 'listdemo Mixed':
+      return _FuzzRoot(
+          _plainCodec(listdemo.TableWireReport.new, listdemo.mixedWireMeasure, listdemo.mixedWireLoad, listdemo.mixedWireSave),
+          retain: _retainCodec(listdemo.TableRetain.new, listdemo.TableWireReport.new, listdemo.mixedWireMeasure, listdemo.mixedWireLoadRetain, listdemo.mixedWireSaveRetain));
+    case 'listdemo Save':
+      return _FuzzRoot(
+          _plainCodec(listdemo.TableWireReport.new, listdemo.saveWireMeasure, listdemo.saveWireLoad, listdemo.saveWireSave),
+          retain: _retainCodec(listdemo.TableRetain.new, listdemo.TableWireReport.new, listdemo.saveWireMeasure, listdemo.saveWireLoadRetain, listdemo.saveWireSaveRetain));
+    case 'listdemo Sheet':
+      return _FuzzRoot(
+          _plainCodec(listdemo.TableWireReport.new, listdemo.sheetWireMeasure, listdemo.sheetWireLoad, listdemo.sheetWireSave),
+          retain: _retainCodec(listdemo.TableRetain.new, listdemo.TableWireReport.new, listdemo.sheetWireMeasure, listdemo.sheetWireLoadRetain, listdemo.sheetWireSaveRetain));
+    case 'listdemo Unbounded':
+      return _FuzzRoot(
+          _plainCodec(listdemo.TableWireReport.new, listdemo.unboundedWireMeasure, listdemo.unboundedWireLoad, listdemo.unboundedWireSave),
+          retain: _retainCodec(listdemo.TableRetain.new, listdemo.TableWireReport.new, listdemo.unboundedWireMeasure, listdemo.unboundedWireLoadRetain, listdemo.unboundedWireSaveRetain));
+    case 'mapdemo Cells':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.cellsWireMeasure, mapdemo.cellsWireLoad, mapdemo.cellsWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.cellsWireMeasure, mapdemo.cellsWireLoadRetain, mapdemo.cellsWireSaveRetain));
+    case 'mapdemo Chunks':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.chunksWireMeasure, mapdemo.chunksWireLoad, mapdemo.chunksWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.chunksWireMeasure, mapdemo.chunksWireLoadRetain, mapdemo.chunksWireSaveRetain));
+    case 'mapdemo Crews':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.crewsWireMeasure, mapdemo.crewsWireLoad, mapdemo.crewsWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.crewsWireMeasure, mapdemo.crewsWireLoadRetain, mapdemo.crewsWireSaveRetain));
+    case 'mapdemo Depth':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.depthWireMeasure, mapdemo.depthWireLoad, mapdemo.depthWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.depthWireMeasure, mapdemo.depthWireLoadRetain, mapdemo.depthWireSaveRetain));
+    case 'mapdemo Docs':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.docsWireMeasure, mapdemo.docsWireLoad, mapdemo.docsWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.docsWireMeasure, mapdemo.docsWireLoadRetain, mapdemo.docsWireSaveRetain));
+    case 'mapdemo Fleet':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.fleetWireMeasure, mapdemo.fleetWireLoad, mapdemo.fleetWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.fleetWireMeasure, mapdemo.fleetWireLoadRetain, mapdemo.fleetWireSaveRetain));
+    case 'mapdemo Pairs':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.pairsWireMeasure, mapdemo.pairsWireLoad, mapdemo.pairsWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.pairsWireMeasure, mapdemo.pairsWireLoadRetain, mapdemo.pairsWireSaveRetain));
+    case 'mapdemo Runs':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.runsWireMeasure, mapdemo.runsWireLoad, mapdemo.runsWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.runsWireMeasure, mapdemo.runsWireLoadRetain, mapdemo.runsWireSaveRetain));
+    case 'mapdemo Slots':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.slotsWireMeasure, mapdemo.slotsWireLoad, mapdemo.slotsWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.slotsWireMeasure, mapdemo.slotsWireLoadRetain, mapdemo.slotsWireSaveRetain));
+    case 'mapdemo Spans':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.spansWireMeasure, mapdemo.spansWireLoad, mapdemo.spansWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.spansWireMeasure, mapdemo.spansWireLoadRetain, mapdemo.spansWireSaveRetain));
+    case 'mapdemo Text':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.textWireMeasure, mapdemo.textWireLoad, mapdemo.textWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.textWireMeasure, mapdemo.textWireLoadRetain, mapdemo.textWireSaveRetain));
+    case 'mapdemo Trails':
+      return _FuzzRoot(
+          _plainCodec(mapdemo.TableWireReport.new, mapdemo.trailsWireMeasure, mapdemo.trailsWireLoad, mapdemo.trailsWireSave),
+          retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.trailsWireMeasure, mapdemo.trailsWireLoadRetain, mapdemo.trailsWireSaveRetain));
+    case 'messagedemo ToolMessage':
+      return _FuzzRoot(
+          _plainCodec(messagedemo.TableWireReport.new, messagedemo.toolMessageWireMeasure, messagedemo.toolMessageWireLoad, messagedemo.toolMessageWireSave),
+          retain: _retainCodec(messagedemo.TableRetain.new, messagedemo.TableWireReport.new, messagedemo.toolMessageWireMeasure, messagedemo.toolMessageWireLoadRetain, messagedemo.toolMessageWireSaveRetain));
+    case 'scalars SimState':
+      return _FuzzRoot(
+          _plainCodec(scalardemo.TableWireReport.new, scalardemo.simStateWireMeasure, scalardemo.simStateWireLoad, scalardemo.simStateWireSave),
+          retain: _retainCodec(scalardemo.TableRetain.new, scalardemo.TableWireReport.new, scalardemo.simStateWireMeasure, scalardemo.simStateWireLoadRetain, scalardemo.simStateWireSaveRetain));
+    case 'streamdemo Feed':
+      return _FuzzRoot(
+          _plainCodec(streamdemo.TableWireReport.new, streamdemo.feedWireMeasure, streamdemo.feedWireLoad, streamdemo.feedWireSave),
+          retain: _retainCodec(streamdemo.TableRetain.new, streamdemo.TableWireReport.new, streamdemo.feedWireMeasure, streamdemo.feedWireLoadRetain, streamdemo.feedWireSaveRetain));
+    case 'tabledemo ArchiveConfig':
+      return _FuzzRoot(
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.archiveConfigWireMeasure, tabledemo.archiveConfigWireLoad, tabledemo.archiveConfigWireSave),
+          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.archiveConfigWireMeasure, tabledemo.archiveConfigWireLoadRetain, tabledemo.archiveConfigWireSaveRetain));
+    case 'tabledemo KeyedConfig':
+      return _FuzzRoot(
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.keyedConfigWireMeasure, tabledemo.keyedConfigWireLoad, tabledemo.keyedConfigWireSave),
+          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.keyedConfigWireMeasure, tabledemo.keyedConfigWireLoadRetain, tabledemo.keyedConfigWireSaveRetain));
+    case 'tabledemo LoadoutConfig':
+      return _FuzzRoot(
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.loadoutConfigWireMeasure, tabledemo.loadoutConfigWireLoad, tabledemo.loadoutConfigWireSave),
+          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.loadoutConfigWireMeasure, tabledemo.loadoutConfigWireLoadRetain, tabledemo.loadoutConfigWireSaveRetain));
+    case 'tabledemo ProfileConfig':
+      return _FuzzRoot(
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.profileConfigWireMeasure, tabledemo.profileConfigWireLoad, tabledemo.profileConfigWireSave),
+          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.profileConfigWireMeasure, tabledemo.profileConfigWireLoadRetain, tabledemo.profileConfigWireSaveRetain));
+    case 'tabledemo RootConfig':
+      return _FuzzRoot(
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.rootConfigWireMeasure, tabledemo.rootConfigWireLoad, tabledemo.rootConfigWireSave),
+          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.rootConfigWireMeasure, tabledemo.rootConfigWireLoadRetain, tabledemo.rootConfigWireSaveRetain));
+    case 'tabledemo WideBlob':
+      return _FuzzRoot(
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.wideBlobWireMeasure, tabledemo.wideBlobWireLoad, tabledemo.wideBlobWireSave),
+          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.wideBlobWireMeasure, tabledemo.wideBlobWireLoadRetain, tabledemo.wideBlobWireSaveRetain));
+    case 'tbla2 Root':
+      return _FuzzRoot(
+          _plainCodec(tbla2.TableWireReport.new, tbla2.rootWireMeasure, tbla2.rootWireLoad, tbla2.rootWireSave),
+          retain: _retainCodec(tbla2.TableRetain.new, tbla2.TableWireReport.new, tbla2.rootWireMeasure, tbla2.rootWireLoadRetain, tbla2.rootWireSaveRetain));
+    case 'tblg1 Guarded':
+      return _FuzzRoot(
+          _plainCodec(tblg1.TableWireReport.new, tblg1.guardedWireMeasure, tblg1.guardedWireLoad, tblg1.guardedWireSave),
+          retain: _retainCodec(tblg1.TableRetain.new, tblg1.TableWireReport.new, tblg1.guardedWireMeasure, tblg1.guardedWireLoadRetain, tblg1.guardedWireSaveRetain));
+    case 'tblk1 Root':
+      return _FuzzRoot(
+          _plainCodec(tblk1.TableWireReport.new, tblk1.rootWireMeasure, tblk1.rootWireLoad, tblk1.rootWireSave),
+          retain: _retainCodec(tblk1.TableRetain.new, tblk1.TableWireReport.new, tblk1.rootWireMeasure, tblk1.rootWireLoadRetain, tblk1.rootWireSaveRetain));
+    case 'tblk2 Root':
+      return _FuzzRoot(
+          _plainCodec(tblk2.TableWireReport.new, tblk2.rootWireMeasure, tblk2.rootWireLoad, tblk2.rootWireSave),
+          retain: _retainCodec(tblk2.TableRetain.new, tblk2.TableWireReport.new, tblk2.rootWireMeasure, tblk2.rootWireLoadRetain, tblk2.rootWireSaveRetain));
+    case 'tblm1 Msg':
+      return _FuzzRoot(
+          _plainCodec(tblm1.TableWireReport.new, tblm1.msgWireMeasure, tblm1.msgWireLoad, tblm1.msgWireSave),
+          retain: _retainCodec(tblm1.TableRetain.new, tblm1.TableWireReport.new, tblm1.msgWireMeasure, tblm1.msgWireLoadRetain, tblm1.msgWireSaveRetain));
+    case 'tblm2 Msg':
+      return _FuzzRoot(
+          _plainCodec(tblm2.TableWireReport.new, tblm2.msgWireMeasure, tblm2.msgWireLoad, tblm2.msgWireSave),
+          retain: _retainCodec(tblm2.TableRetain.new, tblm2.TableWireReport.new, tblm2.msgWireMeasure, tblm2.msgWireLoadRetain, tblm2.msgWireSaveRetain));
+    case 'tblp1 Chain':
+      return _FuzzRoot(
+          _plainCodec(tblp1.TableWireReport.new, tblp1.chainWireMeasure, tblp1.chainWireLoad, tblp1.chainWireSave),
+          retain: _retainCodec(tblp1.TableRetain.new, tblp1.TableWireReport.new, tblp1.chainWireMeasure, tblp1.chainWireLoadRetain, tblp1.chainWireSaveRetain));
+    case 'tblp2 Chain':
+      return _FuzzRoot(
+          _plainCodec(tblp2.TableWireReport.new, tblp2.chainWireMeasure, tblp2.chainWireLoad, tblp2.chainWireSave),
+          retain: _retainCodec(tblp2.TableRetain.new, tblp2.TableWireReport.new, tblp2.chainWireMeasure, tblp2.chainWireLoadRetain, tblp2.chainWireSaveRetain));
+    case 'tblp3 Chain':
+      return _FuzzRoot(
+          _plainCodec(tblp3.TableWireReport.new, tblp3.chainWireMeasure, tblp3.chainWireLoad, tblp3.chainWireSave),
+          retain: _retainCodec(tblp3.TableRetain.new, tblp3.TableWireReport.new, tblp3.chainWireMeasure, tblp3.chainWireLoadRetain, tblp3.chainWireSaveRetain));
+    case 'tblr1 Cfg':
+      return _FuzzRoot(
+          _plainCodec(tblr1.TableWireReport.new, tblr1.cfgWireMeasure, tblr1.cfgWireLoad, tblr1.cfgWireSave),
+          retain: _retainCodec(tblr1.TableRetain.new, tblr1.TableWireReport.new, tblr1.cfgWireMeasure, tblr1.cfgWireLoadRetain, tblr1.cfgWireSaveRetain));
+    case 'tblr2 Cfg':
+      return _FuzzRoot(
+          _plainCodec(tblr2.TableWireReport.new, tblr2.cfgWireMeasure, tblr2.cfgWireLoad, tblr2.cfgWireSave),
+          retain: _retainCodec(tblr2.TableRetain.new, tblr2.TableWireReport.new, tblr2.cfgWireMeasure, tblr2.cfgWireLoadRetain, tblr2.cfgWireSaveRetain));
+    case 'tblscalars2 SimState':
+      return _FuzzRoot(
+          _plainCodec(scalardemo2.TableWireReport.new, scalardemo2.simStateWireMeasure, scalardemo2.simStateWireLoad, scalardemo2.simStateWireSave),
+          retain: _retainCodec(scalardemo2.TableRetain.new, scalardemo2.TableWireReport.new, scalardemo2.simStateWireMeasure, scalardemo2.simStateWireLoadRetain, scalardemo2.simStateWireSaveRetain));
+    case 'tblv1 Cfg':
+      return _FuzzRoot(
+          _plainCodec(tblv1.TableWireReport.new, tblv1.cfgWireMeasure, tblv1.cfgWireLoad, tblv1.cfgWireSave),
+          retain: _retainCodec(tblv1.TableRetain.new, tblv1.TableWireReport.new, tblv1.cfgWireMeasure, tblv1.cfgWireLoadRetain, tblv1.cfgWireSaveRetain));
+    case 'tblv2 Cfg':
+      return _FuzzRoot(
+          _plainCodec(tblv2.TableWireReport.new, tblv2.cfgWireMeasure, tblv2.cfgWireLoad, tblv2.cfgWireSave),
+          retain: _retainCodec(tblv2.TableRetain.new, tblv2.TableWireReport.new, tblv2.cfgWireMeasure, tblv2.cfgWireLoadRetain, tblv2.cfgWireSaveRetain));
+    case 'tblw1 Fleet':
+      return _FuzzRoot(
+          _plainCodec(tblw1.TableWireReport.new, tblw1.fleetWireMeasure, tblw1.fleetWireLoad, tblw1.fleetWireSave),
+          retain: _retainCodec(tblw1.TableRetain.new, tblw1.TableWireReport.new, tblw1.fleetWireMeasure, tblw1.fleetWireLoadRetain, tblw1.fleetWireSaveRetain));
+    case 'tblw2 Fleet':
+      return _FuzzRoot(
+          _plainCodec(tblw2.TableWireReport.new, tblw2.fleetWireMeasure, tblw2.fleetWireLoad, tblw2.fleetWireSave),
+          retain: _retainCodec(tblw2.TableRetain.new, tblw2.TableWireReport.new, tblw2.fleetWireMeasure, tblw2.fleetWireLoadRetain, tblw2.fleetWireSaveRetain));
+    case 'vocab9demo Wide00':
+      return _FuzzRoot(
+          _plainCodec(vocab9demo.TableWireReport.new, vocab9demo.wide00WireMeasure, vocab9demo.wide00WireLoad, vocab9demo.wide00WireSave),
+          retain: _retainCodec(vocab9demo.TableRetain.new, vocab9demo.TableWireReport.new, vocab9demo.wide00WireMeasure, vocab9demo.wide00WireLoadRetain, vocab9demo.wide00WireSaveRetain));
+    case 'vocab9demo Wide19':
+      return _FuzzRoot(
+          _plainCodec(vocab9demo.TableWireReport.new, vocab9demo.wide19WireMeasure, vocab9demo.wide19WireLoad, vocab9demo.wide19WireSave),
+          retain: _retainCodec(vocab9demo.TableRetain.new, vocab9demo.TableWireReport.new, vocab9demo.wide19WireMeasure, vocab9demo.wide19WireLoadRetain, vocab9demo.wide19WireSaveRetain));
+    case 'vocabdemo Wide00':
+      return _FuzzRoot(
+          _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide00WireMeasure, vocabdemo.wide00WireLoad, vocabdemo.wide00WireSave),
+          retain: _retainCodec(vocabdemo.TableRetain.new, vocabdemo.TableWireReport.new, vocabdemo.wide00WireMeasure, vocabdemo.wide00WireLoadRetain, vocabdemo.wide00WireSaveRetain));
+    case 'vocabdemo Wide09':
+      return _FuzzRoot(
+          _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoad, vocabdemo.wide09WireSave),
+          retain: _retainCodec(vocabdemo.TableRetain.new, vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoadRetain, vocabdemo.wide09WireSaveRetain));
+    case 'widedemo Caption':
+      return _FuzzRoot(
+          _plainCodec(widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoad, widedemo.captionWireSave),
+          retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoadRetain, widedemo.captionWireSaveRetain));
+    case 'widedemo Stamp':
+      return _FuzzRoot(
+          _plainCodec(widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoad, widedemo.stampWireSave),
+          retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoadRetain, widedemo.stampWireSaveRetain));
+  }
+  return null;
+}
+
 Future<void> wireFuzz() async {
   final src = _ByteSource();
   final count = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
-  final roster = <bool>[];
-  final retains = <bool>[];
+  final runs = <_FuzzRun?>[];
   final messages = <MessageFuzz?>[];
   final available = <int>[];
   for (var i = 0; i < count; i++) {
@@ -1825,15 +2371,15 @@ Future<void> wireFuzz() async {
     final root = await _readString(src);
     final form = (await src.read(1))[0];
     final retain = (await src.read(1))[0];
-    final ok = unit == 'cards' && root == 'Card' && form == 1;
+    final bound = form == 1 ? fuzzRoot(unit, root) : null;
+    final run = bound == null ? null : (retain == 1 ? bound.retain : bound.plain);
     // a form-2 root rides the message arm (§3.3), as findMessageCodec binds
     // it in test/conformance/go/wire_fuzz.go; a plain `table` carries no
     // message verbs and so answers absent, as the Go leg's does
     final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
-    roster.add(ok);
-    retains.add(ok && retain == 1);
-    messages.add(ok ? null : message);
-    available.add(ok || message != null ? 1 : 0);
+    runs.add(run);
+    messages.add(message);
+    available.add(run != null || message != null ? 1 : 0);
   }
   stdout.add(available);
   await stdout.flush();
@@ -1848,46 +2394,9 @@ Future<void> wireFuzz() async {
     final message = messages[index];
     if (message != null) {
       stdout.add(message(wire));
-      await stdout.flush();
-      continue;
-    }
-    final report = TableWireReport();
-    var loaded = true;
-    var measure = 0;
-    var saved = <int>[];
-    if (!roster[index]) {
-      loaded = false;
-      measure = -1;
-    } else if (retains[index]) {
-      // the retention arm (docs/SPEC-TABLES.md §6.6): read and write back
-      // through the retaining pair, with the two caller-owned stores the
-      // harness fixes (1 MiB of bytes and one id per eight bytes).
-      final retain = TableRetain(1048576, List<int>.filled(131072, 0));
-      measure = cardWireMeasure(wire);
-      loaded = measure >= 0;
-      final card = cardWireLoadRetain(wire, retain, report);
-      saved = cardWireSaveRetain(card, retain, report);
     } else {
-      measure = cardWireMeasure(wire);
-      loaded = measure >= 0;
-      final card = cardWireLoad(wire, report);
-      saved = cardWireSave(card);
+      stdout.add(runs[index]!(wire));
     }
-    final out = <int>[];
-    _putU8(out, loaded ? 1 : 0);
-    _putU32(out, report.unknown);
-    _putU32(out, report.kindMismatch);
-    _putU32(out, report.widened);
-    _putU32(out, report.clamped);
-    _putU32(out, report.duplicate);
-    _putU8(out, report.malformed ? 1 : 0);
-    _putU8(out, report.refused ? 1 : 0);
-    _putU64(out, measure);
-    _putU32(out, report.retained);
-    _putU32(out, report.retainLost);
-    _putU64(out, saved.length);
-    out.addAll(saved);
-    stdout.add(out);
     await stdout.flush();
   }
 }
@@ -1916,6 +2425,10 @@ int run(List<String> args) {
       return surfaceWire(out);
     case 'message':
       return surfaceMessage(out);
+    case 'retain':
+      return surfaceRetain(out, false);
+    case 'retain-save':
+      return surfaceRetain(out, true);
     case 'json-read':
       return surfaceJsonRead(out);
     case 'json-write':

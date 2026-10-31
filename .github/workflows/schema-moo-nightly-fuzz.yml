@@ -1,0 +1,84 @@
+name: schema moo nightly fuzz
+
+# THE MOO PACKET-WIRE FUZZ, NIGHTLY (make/schema-moo-nightly-fuzz.mk;
+# docs/PORT-MOO.md, THE LAYERS: layer 6).
+#
+# Per push and pull request the differential's short seeded round and its two
+# reversed witnesses already run as go tests of internal/codegen/moo (ci-full's
+# unit-codegen row, make test-moo). This file adds the long run: on the
+# schedule and on workflow_dispatch, MOO_NIGHTLY_FUZZ_ROUNDS rounds of
+# MOO_NIGHTLY_FUZZ_N instances per corpus unit, the generated moo against the
+# Go target, seeded with the run id (a case count, never a clock, so a red
+# night replays from the seed it logs), then the planted patterns, so a green
+# night is one whose fuzzer could see. A push runs the cheap wiring check only.
+#
+# HEAVY WORK NEVER RIDES A PUSH. The nightly job is the only one that fuzzes
+# at depth.
+
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  SERIALIZE_GO_TAG: v2.0.1
+
+jobs:
+  wiring:
+    name: wiring
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: wiring
+        run: go test ./internal/ci -count=1 -timeout 600s -run TestSchemaMooNightlyFuzzWiring
+
+  nightly:
+    name: nightly fuzz
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the Go serialize runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The moo pin (make/moo.mk), built once per runner image and cached.
+      - uses: ./.github/actions/moo
+      - name: fuzz
+        run: make schema-moo-nightly-fuzz MOO_NIGHTLY_FUZZ_SEED=${{ github.run_id }} MOO_NIGHTLY_FUZZ_ROUNDS=100
+      - name: planted patterns
+        run: make schema-moo-nightly-fuzz-negative-control MOO_NIGHTLY_FUZZ_SEED=${{ github.run_id }}
+      # A red night keeps its findings: one file per diverging case, naming its
+      # seed, unit and root, the lines that differed, and the statements that
+      # built the value in each language.
+      - name: keep the findings
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: moo-nightly-fuzz-findings
+          path: |
+            build/moo-nightly-fuzz/findings/
+            build/slowgate/schema-moo-nightly-fuzz.log
+          if-no-files-found: ignore
+          retention-days: 30

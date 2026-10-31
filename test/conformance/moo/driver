@@ -1,0 +1,59 @@
+#!/bin/sh
+# THE MOO LEG's driver (test/conformance/README.md; docs/PORT-MOO.md, THE
+# HARNESS and THE LAYERS, layer 5).
+#
+# Every surface is handed to ONE moo program, test/conformance/moo/main.moo,
+# under the pinned interpreter ($MOO, default dist/moo/moo, `make dist-moo`).
+# The moo CLI has no io library, so this script is the host shim both ways:
+#
+#   IN   the derived manifest, as the module <stage>/manifest.moo (its text as
+#        a string literal), and every fixture file the surface's lines name, as
+#        the module <stage>/inputs.moo (a frozen table of buffers by
+#        repo-relative path) — the same shape internal/codegen/moo/moorun hands
+#        the packet tests;
+#   OUT  one stdout line per case, `<case> <hex>` or `<case> absent`, which this
+#        script writes as one file per case into <outdir> (`<case>.absent`, an
+#        empty file, for the second: test/conformance/README.md, per-case
+#        absence, docs/PORTING.md I4).
+#
+# <stage> is build/conformance-moo-driver/<surface>, one per surface, so two
+# surfaces run at once never share a module. The generated tree main.moo loads
+# is $SCHEMA_MOO_GENERATED (default build/conformance-moo, make/moo-conformance.mk),
+# a repo-relative path: the negative control points the SAME driver at a
+# sabotaged copy of it, as the JavaScript leg's SCHEMA_JS_GENERATED does.
+#
+# A nonzero exit of main.moo (an error() it raised) is the driver failing: the
+# matrix prints FAIL and the harness prints stderr. moo has no os.exit, so a
+# surface this leg does not carry is the line `!surface-absent`, said here as
+# exit 2.
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+main=test/conformance/moo/main.moo
+moo=${MOO:-dist/moo/moo}
+generated=${SCHEMA_MOO_GENERATED:-build/conformance-moo}
+surface=$2
+case "$surface" in
+"" | */* | .*)
+	echo "driver: usage: driver <manifest> list | <surface> <outdir>" >&2
+	exit 1
+	;;
+esac
+stage=build/conformance-moo-driver/$surface
+mkdir -p "$stage" || exit 1
+perl test/conformance/moo/stage.pl "$1" "$surface" "$stage" "$generated" || exit 1
+if [ "$surface" = list ]; then
+	exec "$moo" "$main" -a list "$generated"
+fi
+"$moo" "$main" -a "$surface" "$generated" >"$stage/out"
+status=$?
+[ "$status" -eq 0 ] || exit "$status"
+# moo has no os.exit: a surface main.moo does not carry is the one line
+# `!surface-absent`, and the shim says it as the contract's exit 2 (ABSENT)
+if [ "$(head -n 1 "$stage/out")" = "!surface-absent" ]; then
+	exit 2
+fi
+mkdir -p "$3" || exit 1
+perl test/conformance/moo/split.pl "$stage/out" "$3"

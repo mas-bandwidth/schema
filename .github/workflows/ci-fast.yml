@@ -150,17 +150,17 @@ on:
 # branch, and an interactive gate that queues behind its own stale runs is the
 # thing this file is fixing.
 concurrency:
-  group: ci-fast-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The same sibling pins ci-full.yml and certify.yml carry, for the same reason: a
 # sibling merging to main mid-day must not change what a schema commit proves.
 # The three files move together.
 env:
-  SERIALIZE_TAG: v2.1.0
+  SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.0.2
-  SERIALIZE_GO_TAG: v2.0.1
-  SERIALIZE_RS_TAG: v3.1.0
+  SERIALIZE_GO_TAG: v2.1.1
+  SERIALIZE_RS_TAG: v5.0.0
   SERIALIZE_CS_TAG: v2.0.1
   SERIALIZE_JS_TAG: v2.0.1
 
@@ -223,7 +223,7 @@ jobs:
               internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk) add_leg c ;;
             esac
             case "$f" in
-              internal/codegen/cpptable/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h) add_leg cpp ;;
+              internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
             esac
             case "$f" in
               internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk) add_leg rust ;;
@@ -243,11 +243,16 @@ jobs:
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
             esac
+            case "$f" in
+              internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
+              internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
+              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
+            esac
           done <<EOF
           $files
           EOF
           if [ "$broad" = yes ]; then
-            legs="cpp go c rust js cs java dart elixir"
+            legs="cpp go c rust js cs java dart elixir goose lobster luau"
           fi
 
           # THE PACKAGES. Every directory holding a changed .go file, as the
@@ -276,11 +281,16 @@ jobs:
             done
             for leg in $legs; do
               case "$leg" in
-                cpp) p=./internal/codegen/cpptable ;;
-                *)   p=./internal/codegen/${leg}table ;;
+                cpp)     ps=./internal/codegen/cpptable ;;
+                # the Lobster leg is two packages: the type surface and the
+                # table surface, both run under the pinned toolchain
+                lobster) ps="./internal/codegen/lobster ./internal/codegen/lobstertable" ;;
+                *)       ps=./internal/codegen/${leg}table ;;
               esac
-              [ -d "${p#./}" ] || continue
-              case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+              for p in $ps; do
+                [ -d "${p#./}" ] || continue
+                case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+              done
             done
             packages=$(echo "$packages" | xargs || true)
           fi
@@ -494,6 +504,61 @@ jobs:
             exit 1
           fi
 
+      # THE LUA PIN, exactly as ci-full.yml's go-test installs it:
+      # internal/codegen/lua, internal/codegen/luatable and the Lua lanes under
+      # internal/ci run generated Lua under the pinned PUC-Rio interpreter and
+      # FAIL, never skip, without it. make/lua.mk's dist-lua builds it from
+      # source at the sha256 it names, into dist/lua-<version>/, the LUA default.
+      - name: install the Lua pin when a Lua package is touched
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          set -euo pipefail
+          case " $PACKAGES " in
+            *" ./internal/codegen/lua"*|*" ./internal/ci "*|*" ./... "*)
+              make dist-lua
+              ;;
+          esac
+
+      # THE LUAU PIN: the Luau packages, the compiler's Luau testgen gate and
+      # the Luau lanes under internal/ci run generated Luau under the pinned
+      # interpreter and fail, never skip, without it
+      # (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
+      - name: install the Luau pin
+        run: make dist-luau
+      # THE Goose PIN, when a Goose package is touched: internal/codegen/goose
+      # and internal/codegen/goosetable (the only importers of gooserun) run
+      # generated Goose under the pinned compiler and fail, never skip,
+      # without it. make/goose.mk's dist-goose installs it at the sha256 it
+      # names, into the dist/ path gooserun's default names; ci-full.yml's
+      # go-test does the same.
+      - name: install the Goose pin
+        if: contains(needs.plan.outputs.packages, '/codegen/goose') || contains(needs.plan.outputs.packages, './...')
+        run: make dist-goose
+
+      # THE LOBSTER PIN, when the packages include a Lobster one (or are
+      # broad): internal/codegen/lobster and internal/codegen/lobstertable run
+      # generated Lobster under the pinned compiler and fail, never skip,
+      # without it (internal/codegen/lobster/lobsterrun). make/lobster.mk's
+      # dist-lobster installs it at the sha256 it names, into the dist/ path
+      # lobsterrun's default names. The release binary links libOpenGL and
+      # libGLX, which the fleet hosts carry and the hosted ubuntu image does
+      # not, so a hosted fallback installs those two first.
+      - name: install the Lobster pin
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          set -euo pipefail
+          case " $PACKAGES " in
+            *" ./internal/codegen/lobster "*|*" ./internal/codegen/lobstertable "*|*" ./... "*)
+              if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+                sudo apt-get update
+                sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+              fi
+              make dist-lobster
+              ;;
+          esac
+
       - name: go test the touched packages
         env:
           PACKAGES: ${{ needs.plan.outputs.packages }}
@@ -623,11 +688,24 @@ jobs:
           otp-version: '27'
           elixir-version: '1.18'
 
-      # THE C FORMAT GATE's formatter, pinned: clang-format from PyPI at the
-      # version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
+      # THE LOBSTER PIN (make/lobster.mk's dist-lobster: the release archive,
+      # its sha256 refused before it is unpacked, into dist/lobster-<version>/).
+      # A hosted fallback adds the two GL libraries the release binary links.
+      - name: the pinned Lobster (Lobster leg)
+        if: matrix.leg == 'lobster'
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+
+      # THE C AND C++ FORMAT GATES' formatter, pinned: clang-format from PyPI at
+      # the version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
       # runner's temp so a self-hosted runner keeps nothing between runs.
-      - name: the pinned clang-format (C leg)
-        if: matrix.leg == 'c'
+      - name: the pinned clang-format (C and C++ legs)
+        if: matrix.leg == 'c' || matrix.leg == 'cpp'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
@@ -644,7 +722,8 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ matrix.leg }}" in
-            cpp)    make tables-fixedform ;;
+            cpp)    make tables-fixedform
+                    make tables-cpp-clean tables-cpp-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
                     make tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
@@ -655,5 +734,16 @@ jobs:
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            luau)   make dist-luau
+                    make tables-luau-fixed-form tables-luau-versioning
+                    make bench-luau-gate ;;
+            # the Goose leg's fixed form against the reference's bytes (make/goose.mk;
+            # its versioning rows are owed, schema#2236), under the pinned compiler
+            goose)  make dist-goose test-goose ;;
+            # test-lobster holds the fixed form to the reference's byte oracle
+            # (SCHEMA_REQUIRE_CORPUS=1) beside both packages' suites; the strict
+            # gate compiles every generated unit with zero warnings; the bench
+            # legs' gate runs both runners over their corpus, no clock
+            lobster) make test-lobster tables-lobster-clean bench-lobster-gate ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac

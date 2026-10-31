@@ -12,16 +12,26 @@ package bench;
 // end of the wire. A reference is an unsigned LEB128 naming a slot of the id
 // table, counted from 1; reference 0 names no id and is the terminator.
 public final class TableVariable {
-    static double widenF32(int raw) {
-        if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x7fffff) != 0)
-            return Double.longBitsToDouble(
-                    ((long) (raw & 0x80000000) << 32)
-                            | 0x7ff0000000000000L
-                            | ((long) (raw & 0x7fffff) << 29));
-        return (double) Float.intBitsToFloat(raw);
+    private TableVariable() {}
+
+    // A FLOAT IS FINITE ON EVERY TABLE WIRE (docs/SPEC-TABLES.md §3.3, the
+    // packet wire's own rule): a read that meets a NaN or an
+    // infinity in a float's raw bits refuses as non_finite_float, the
+    // tolerant load too, naming the first such field, and lands nothing.
+    // Every finite float32 widens exactly through the ordinary conversion.
+    public static void nonFiniteFloat(Report report, String field) {
+        if (report.reason == null) {
+            report.reason = "non_finite_float: " + field;
+        }
+        report.refused = true;
     }
 
-    private TableVariable() {}
+    // a retained unknown float is named by the table that holds it and the
+    // id it cannot name (§6.6): <Table>.0x<id, sixteen hex digits>
+    public static String retainedFloatName(String owner, long id) {
+        String hex = Long.toHexString(id);
+        return owner + ".0x" + "0000000000000000".substring(hex.length()) + hex;
+    }
 
     // The two RESERVED ids the node table names (docs/SPEC-TABLES.md §3.1, §5):
     // the node-table field's own id, and the reserved type id a *string blob
@@ -128,6 +138,38 @@ public final class TableVariable {
             }
             off += 8;
             return v;
+        }
+
+        // count reads a BOUNDED collection's COUNT, the LEB128 after its
+        // element kind, against the ENCLOSING body rather than the
+        // collection's own L, as the engine reads it (internal/tablewire
+        // arrayBody, §3, §4): a count that runs past L is still a count, judged
+        // with the kind byte and clamped to the bound, and the elements after
+        // it then find no bytes. An unbounded list's count is read inside its
+        // own L (the count refusal, §2.9).
+        public long count(int outer) {
+            int own = limit;
+            if (outer > limit) {
+                limit = outer;
+            }
+            long v = leb();
+            limit = own;
+            return v;
+        }
+
+        // unsigned reads one little-endian unsigned integer of 1, 2, 4 or 8
+        // bytes: a flags element at its WIRE width (§4's widening).
+        public long unsigned(int width) {
+            switch (width) {
+                case 1:
+                    return get8();
+                case 2:
+                    return get16();
+                case 4:
+                    return get32() & 0xffffffffL;
+                default:
+                    return get64();
+            }
         }
 
         // leb reads one canonical unsigned LEB128. A non-minimal spelling or a
@@ -343,6 +385,10 @@ public final class TableVariable {
         public final long[] entries;
         public int count;
         public boolean overflow;
+        // nonFinite is the SAVE's refusal of a NaN or an infinity
+        // (docs/SPEC-TABLES.md §3.3): it lives on the one id table every
+        // writer of a save shares, sub-writers included, so the save sees it.
+        public boolean nonFinite;
 
         public Ids(int cap) {
             entries = new long[cap];
@@ -572,6 +618,25 @@ public final class TableVariable {
             for (int i = 0; i < 8; i++) {
                 put8((int) (v >>> (8 * i)) & 0xff);
             }
+        }
+
+        // putF32 and putF64 write a float's RAW bits, -0 and the subnormals
+        // exact, and refuse a NaN or an infinity for the whole save
+        // (docs/SPEC-TABLES.md §3.3): no table writer emits one.
+        public void putF32(float v) {
+            int bits = Float.floatToRawIntBits(v);
+            if ((bits & 0x7f800000) == 0x7f800000) {
+                ids.nonFinite = true;
+            }
+            put32(bits);
+        }
+
+        public void putF64(double v) {
+            long bits = Double.doubleToRawLongBits(v);
+            if ((bits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                ids.nonFinite = true;
+            }
+            put64(bits);
         }
 
         public void putLeb(long v) {
@@ -1274,6 +1339,15 @@ public final class TableVariable {
         return nt;
     }
 
+    // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
+    // as the engine's scalarAt reads it (§3).
+    static boolean boolByte(int b, Report report) {
+        if (b > 1) {
+            report.malformed = true;
+        }
+        return b != 0;
+    }
+
     // resolveString resolves one *string pointer index against the numbering
     // (§3.1): 0 is null; 1 is the ROOT — a table, not a blob, so it is a kind
     // mismatch; an index past the records is malformed; and a record whose
@@ -1291,7 +1365,18 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].value;
+        // a record this reader cannot name (or a text record that was not
+        // text) reads null, counted once at the scan; a record of another
+        // type — a table, or the other blob kind — is a kind mismatch (§2.5)
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != STRING_ID) {
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.value;
     }
 
     // resolveBytes resolves one *bytes pointer index against the numbering
@@ -1309,7 +1394,18 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].bytes;
+        // a record this reader cannot name (or a text record that was not
+        // text) reads null, counted once at the scan; a record of another
+        // type — a table, or the other blob kind — is a kind mismatch (§2.5)
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != BYTES_ID) {
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.bytes;
     }
 
     // Wide values use UTF-16 code units in the public value API. Wire bytes
@@ -1583,6 +1679,7 @@ public final class TableVariable {
             graph.reset();
             ids.count = 0;
             ids.overflow = false;
+            ids.nonFinite = false;
             writer.off = 0;
             writer.overflow = false;
             return writer;

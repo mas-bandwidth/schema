@@ -12,7 +12,8 @@
 namespace example {
 
 // type W13
-struct W13 {
+struct W13
+{
     uint16_t items[12] = {}; // used count beside it; wire count in [0, 12]
     int32_t items_count = 0;
 };
@@ -21,7 +22,8 @@ inline constexpr int64_t W13MaxBits = 160; // longest wire path; align pads at w
 inline constexpr int64_t W13MaxBytes = 24; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type W17
-struct W17 {
+struct W17
+{
     uint32_t items[9] = {}; // used count beside it; wire count in [0, 9]
     int32_t items_count = 0;
 };
@@ -30,7 +32,8 @@ inline constexpr int64_t W17MaxBits = 157; // longest wire path; align pads at w
 inline constexpr int64_t W17MaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type W26
-struct W26 {
+struct W26
+{
     uint32_t items[6] = {}; // used count beside it; wire count in [0, 6]
     int32_t items_count = 0;
 };
@@ -39,7 +42,8 @@ inline constexpr int64_t W26MaxBits = 159; // longest wire path; align pads at w
 inline constexpr int64_t W26MaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type W1
-struct W1 {
+struct W1
+{
     uint8_t items[20] = {}; // used count beside it; wire count in [0, 20]
     int32_t items_count = 0;
 };
@@ -48,7 +52,8 @@ inline constexpr int64_t W1MaxBits = 25; // longest wire path; align pads at wor
 inline constexpr int64_t W1MaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type W52
-struct W52 {
+struct W52
+{
     uint64_t items[3] = {}; // used count beside it; wire count in [0, 3]
     int32_t items_count = 0;
 };
@@ -57,7 +62,8 @@ inline constexpr int64_t W52MaxBits = 158; // longest wire path; align pads at w
 inline constexpr int64_t W52MaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type W50
-struct W50 {
+struct W50
+{
     uint64_t items[3] = {}; // used count beside it; wire count in [0, 3]
     int32_t items_count = 0;
 };
@@ -66,7 +72,8 @@ inline constexpr int64_t W50MaxBits = 152; // longest wire path; align pads at w
 inline constexpr int64_t W50MaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type F13
-struct F13 {
+struct F13
+{
     uint16_t items[7] = {}; // wire [0, 8191]
 };
 
@@ -74,7 +81,8 @@ inline constexpr int64_t F13MaxBits = 91; // longest wire path; align pads at wo
 inline constexpr int64_t F13MaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type Tri3
-struct Tri3 {
+struct Tri3
+{
     uint32_t a = 0;
     uint32_t b = 0;
 };
@@ -83,7 +91,8 @@ inline constexpr int64_t Tri3MaxBits = 3; // longest wire path; align pads at wo
 inline constexpr int64_t Tri3MaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ArrTri3
-struct ArrTri3 {
+struct ArrTri3
+{
     Tri3 items[10] = {}; // used count beside it; wire count in [0, 10]
     int32_t items_count = 0;
 };
@@ -92,7 +101,8 @@ inline constexpr int64_t ArrTri3MaxBits = 34; // longest wire path; align pads a
 inline constexpr int64_t ArrTri3MaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type Eleven
-struct Eleven {
+struct Eleven
+{
     uint32_t a = 0;
     uint32_t b = 0;
 };
@@ -101,7 +111,8 @@ inline constexpr int64_t ElevenMaxBits = 11; // longest wire path; align pads at
 inline constexpr int64_t ElevenMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ArrEleven
-struct ArrEleven {
+struct ArrEleven
+{
     Eleven items[9] = {};
 };
 
@@ -109,21 +120,24 @@ inline constexpr int64_t ArrElevenMaxBits = 99; // longest wire path; align pads
 inline constexpr int64_t ArrElevenMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type EmptyA
-struct EmptyA {
+struct EmptyA
+{
 };
 
 inline constexpr int64_t EmptyAMaxBits = 0; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t EmptyAMaxBytes = 0; // 8-byte write granularity; read slack per the contract above
 
 // type EmptyB
-struct EmptyB {
+struct EmptyB
+{
 };
 
 inline constexpr int64_t EmptyBMaxBits = 0; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t EmptyBMaxBytes = 0; // 8-byte write granularity; read slack per the contract above
 
 // EmptyUnionType: union EmptyUnion's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class EmptyUnionType : uint8_t {
+enum class EmptyUnionType : uint8_t
+{
     None = 0,
     A = 1,
     B = 2,
@@ -162,14 +176,14 @@ struct EmptyUnion
 
     EmptyA & SelectA() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &a ) EmptyA{};
+        ::new ( static_cast<void *>( &a ) ) EmptyA{};
         type = EmptyUnionType::A;
         return a;
     }
 
     EmptyB & SelectB() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &b ) EmptyB{};
+        ::new ( static_cast<void *>( &b ) ) EmptyB{};
         type = EmptyUnionType::B;
         return b;
     }
@@ -179,7 +193,8 @@ inline constexpr int64_t EmptyUnionMaxBits = 2; // tag + the largest arm; None c
 inline constexpr int64_t EmptyUnionMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type HoldsEmptyUnion
-struct HoldsEmptyUnion {
+struct HoldsEmptyUnion
+{
     uint32_t lead = 0;
     EmptyUnion u;
     uint32_t tail = 0;
@@ -189,7 +204,8 @@ inline constexpr int64_t HoldsEmptyUnionMaxBits = 14; // longest wire path; alig
 inline constexpr int64_t HoldsEmptyUnionMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type Strs
-struct Strs {
+struct Strs
+{
     uint32_t lead = 0;
     char s[8 + 1] = {}; // string(8): max length, used length beside it (SPEC §4.7)
     int32_t s_length = 0;
@@ -202,7 +218,8 @@ inline constexpr int64_t StrsMaxBits = 158; // longest wire path; align pads at 
 inline constexpr int64_t StrsMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type ArrNested
-struct ArrNested {
+struct ArrNested
+{
     uint32_t lead = 0;
     Eleven items[4] = {}; // used count beside it; wire count in [0, 4]
     int32_t items_count = 0;
@@ -213,7 +230,8 @@ inline constexpr int64_t ArrNestedMaxBits = 55; // longest wire path; align pads
 inline constexpr int64_t ArrNestedMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type Sole
-struct Sole {
+struct Sole
+{
     uint32_t only = 0;
 };
 

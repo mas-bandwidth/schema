@@ -44,12 +44,12 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "test-js: tables-js-wire-fuzz-all") {
 		t.Fatal("test-js does not run tables-js-wire-fuzz-all")
 	}
-	// The absent set (the 19 message-form seeds the arm does not bind, and
-	// tblg1 Guarded's four: an optional over a variable closure, which this
-	// target refuses until its turn) is pinned, so a roster root dropping to
-	// absent fails the target.
-	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 23\n") {
-		t.Error("make/js.mk does not pin the absent set at 23 seeds (19 message-form, 4 tblg1)")
+	// The absent set (the 19 message-form seeds the arm does not bind) is
+	// pinned, so a roster root dropping to absent fails the target. tblg1
+	// Guarded's four answer: the target carries an optional over a variable
+	// closure (docs/SPEC-TABLES.md §2.3).
+	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 19\n") {
+		t.Error("make/js.mk does not pin the absent set at the 19 message-form seeds")
 	}
 	if !strings.Contains(target, "', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent '") {
 		t.Errorf("tables-js-wire-fuzz-all does not check the pinned absent count:\n%s", target)
@@ -79,10 +79,14 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 			t.Errorf("main.mjs fuzzUnits does not bind %s to %s", u.unit, u.file)
 		}
 	}
-	// tblg1 stays unbound until the target carries ?T over a variable closure
-	// (docs/SPEC-TABLES.md §2.3): binding it would fail the generate step.
-	if strings.Contains(d, "tblg1: \"") {
-		t.Error("main.mjs fuzzUnits binds tblg1, which this target cannot generate")
+	// tblg1 is generated and bound through wireRows, which wireFuzzCodec
+	// reads first: the target carries ?T over a variable closure
+	// (docs/SPEC-TABLES.md §2.3), so its four roster seeds answer.
+	if !strings.Contains(s, "--out build/tables-generated-js/g1 test/tables/G1.schema") {
+		t.Error("make/js.mk does not generate G1 for the JavaScript leg")
+	}
+	if !strings.Contains(d, `["tblg1", "Guarded", "g1/Tblg1Variable.js"]`) {
+		t.Error("main.mjs wireRows does not bind tblg1.Guarded")
 	}
 }
 

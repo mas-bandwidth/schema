@@ -257,11 +257,48 @@ struct TableReport
     // the plain names and ReadStrict on every refusal and ok otherwise.
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
+    // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+    // an infinity is refused on its raw bits by every read, the tolerant one
+    // included, so a read that moves this refuses as non_finite_float and
+    // lands nothing. It is a count only so a read can tell its own refusal
+    // from a caller's report that already held one.
+    int32_t non_finite_floats = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
+// packet wire's own): a NaN or an infinity, whatever its
+// sign or payload, has an all-ones exponent, and that is the whole test. Every
+// read runs it on the RAW BITS, before they become a float and before the
+// field is written; every writer runs it on the bits of the value it was
+// handed. -0 and the subnormals are finite and ride bit-exact.
+inline bool TableBitsFinite32( uint32_t bits ) { return ( bits & 0x7F800000u ) != 0x7F800000u; }
+inline bool TableBitsFinite64( uint64_t bits ) { return ( bits & 0x7FF0000000000000ull ) != 0x7FF0000000000000ull; }
+
+// TableNonFiniteFloat is a read meeting one: the read is REFUSED by name,
+// non_finite_float, and the caller that started it lands nothing.
+inline void TableNonFiniteFloat( TableReport * report )
+{
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    report->non_finite_floats++;
+}
+
+// TableNonFiniteRefused is the load's own end: true when the walk met a
+// non-finite float since before, with the refusal stamped again over
+// whatever the walk met after it, because it outranks any damage (§3.3).
+inline bool TableNonFiniteRefused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return false; }
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    return true;
+}
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -562,7 +599,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static SCALARDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1641,7 +1678,7 @@ static const int64_t kTableAnnounceBytes = 677;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x85, 0x81, 0x82, 0xed, 0x52, 0x3e, 0xea, 0x84, 0x02,
+    0x01, 0x01, 0x09, 0x9d, 0x8e, 0x8a, 0x8a, 0x85, 0xa8, 0x58, 0x08, 0x02,
     0x0e, 0xfd, 0x04, 0x06, 0xfa, 0x04, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
     0x63, 0xaf, 0x17, 0x01, 0x20, 0x00, 0x00, 0xd0, 0x8a, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x54, 0x15, 0x02,
@@ -2351,6 +2388,10 @@ inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+// the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
+// never written, and measure answers -1 for it as save answers false
+inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
+inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -3985,7 +4026,7 @@ namespace scalardemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x84ea3e52ed828185ull;
+static const uint64_t BuildVersion = 0x0858a8858a8a8e9dull;
 
 } // namespace scalardemo
 
@@ -5291,7 +5332,10 @@ inline TableOpenVerdict SimStateLoadVerdict( SimState & value, const uint8_t * b
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !SimStateLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = SimStateLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { SimStateReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -6392,13 +6436,14 @@ inline bool SimStateLoadMessages( SimState * values, int64_t * count, const Tabl
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !SimStateLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !SimStateLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -6578,7 +6623,10 @@ inline TableOpenVerdict PoseLoadVerdict( Pose & value, const uint8_t * buffer, i
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !PoseLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = PoseLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { PoseReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -6844,13 +6892,14 @@ inline bool PoseLoadMessages( Pose * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PoseLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !PoseLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -7659,10 +7708,10 @@ inline const SimState * SimStateOpen( const void * bytes, uint64_t length, Table
 // content-addressed by (asset hash, build version), so two writers of one
 // instance produce ONE artifact or the pair means nothing.
 
-inline void SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrder order );
-inline void PoseCookBody( uint8_t * at, const Pose & value, TableByteOrder order );
+inline bool SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrder order );
+inline bool PoseCookBody( uint8_t * at, const Pose & value, TableByteOrder order );
 
-inline void SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrder order )
+inline bool SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.tilt, 1, order );
     table_cook_put( at + 4, (uint64_t) value.angle, 4, order );
@@ -7699,16 +7748,18 @@ inline void SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrd
         { serialize::uint128_t raw_v = serialize::uint128_t( value.seeds[ i ] ); table_cook_put128( at + 208 + i * 16, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order ); }
     }
     table_cook_put( at + 240, (uint64_t) (uint32_t) value.seeds_count, 4, order );
-    PoseCookBody( at + 248, value.pose, order );
+    if ( !PoseCookBody( at + 248, value.pose, order ) ) { return false; }
     table_cook_put( at + 296, (uint64_t) ( value.spawn_present ? 1 : 0 ), 1, order ); // ?T's presence companion
-    PoseCookBody( at + 272, value.spawn, order );
+    if ( !PoseCookBody( at + 272, value.spawn, order ) ) { return false; }
+    return true;
 }
 
-inline void PoseCookBody( uint8_t * at, const Pose & value, TableByteOrder order )
+inline bool PoseCookBody( uint8_t * at, const Pose & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.x, 8, order );
     table_cook_put( at + 8, (uint64_t) value.y, 8, order );
     table_cook_put( at + 16, (uint64_t) value.heading, 4, order );
+    return true;
 }
 
 // SimStateCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -7754,7 +7805,7 @@ inline bool SimStateCook( const SimState & value, void * out, uint64_t capacity,
     table_cook_put( raw + 40, 16, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    SimStateCookBody( raw + 64, value, order );
+    if ( !SimStateCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)

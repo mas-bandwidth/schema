@@ -1,0 +1,61 @@
+name: schema lua hostile corpus
+
+# THE LUA PORT'S SHARED HOSTILE-CORPUS GATE
+# (schema-lua-runs-hostile-corpus; docs/HOSTILE-CORPUS.md). Every committed
+# hostile input is decoded by the port's generated Lua reader and held to the
+# manifest's verdict, named refusal and decoded-value digest.
+#
+# THE HEAVY PART IS NIGHTLY ONLY, so the lane stays inside the fast lane's
+# one-minute budget: the full corpus replay and its planted-reader control run
+# on the schedule and on workflow_dispatch. Every push and pull request that
+# touches this lane runs the planted-reader control, which is seconds of work
+# and proves the comparison has a blade. The runner reads files only: no
+# network, no clock, no service.
+#
+# FORK SAFETY: every fleet job carries the fork guard so a fork's pull request
+# never runs on fleet hardware.
+
+on:
+  schedule:
+    - cron: '31 3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+    paths:
+      - 'make/schema-lua-runs-hostile-corpus.mk'
+      - 'internal/ci/schema_lua_runs_hostile_corpus_test.go'
+      - '.github/workflows/schema-lua-runs-hostile-corpus.yml'
+  pull_request:
+    paths:
+      - 'make/schema-lua-runs-hostile-corpus.mk'
+      - 'internal/ci/schema_lua_runs_hostile_corpus_test.go'
+      - '.github/workflows/schema-lua-runs-hostile-corpus.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fast:
+    if: (github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Lua 5.4.8
+        run: make dist-lua
+      - name: the planted reader bug is red
+        run: make schema-lua-runs-hostile-corpus-planted
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned Lua 5.4.8
+        run: make dist-lua
+      - name: every shared hostile-corpus verdict, reason and digest
+        run: make schema-lua-runs-hostile-corpus
+      - name: replay the corpus and require the planted reader bug to be observed
+        run: make schema-lua-runs-hostile-corpus-planted

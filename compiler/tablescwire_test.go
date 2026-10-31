@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -223,11 +224,11 @@ int main(void)
 }
 
 // Clamps must happen after promoting the source-width integer, and the float
-// rung widens a finite float32 exactly. The rung's payload is FINITE since the
-// finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3): the Go oracle this row
-// takes its expected bytes from refuses a NaN as non_finite_float, and the C
-// leg's own refusal of one is owed by docs/roadmap.sexp tables-finite/c, which
-// puts this row's NaN back in as a must-refuse case.
+// rung widens a finite float32 exactly. The SAME wire with the rung's payload
+// a signalling NaN (0xffa5a5a5) is a must-refuse case (docs/SPEC-TABLES.md
+// §3.3, the finite rule of 2026-10-27): the Go oracle refuses it as
+// non_finite_float, and so does every C read of it, tolerant and strict,
+// landing nothing; the writer refuses the NaN, and a -0 rides by its bits.
 func TestCTableWireWidening(t *testing.T) {
 	u := unitFromSource(t, `package probe
     fixed table Root {
@@ -238,14 +239,25 @@ func TestCTableWireWidening(t *testing.T) {
         samples [..2]uint32 | min = 0, max = 2000
     }
     `)
-	wire := []byte{1, 1, 2, 255, 2, 2, 0, 3, 6, 255, 4, 10}
-	wire = binary.LittleEndian.AppendUint32(wire, 0xc0490fdb) // -3.14159274, finite with a full mantissa
-	wire = append(wire, 5, 14, 6, 7, 2, 0, 0, 255, 255, 0)
-	for _, f := range u.Tables["Root"].Fields {
-		wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(f))
+	build := func(rung uint32) []byte {
+		wire := []byte{1, 1, 2, 255, 2, 2, 0, 3, 6, 255, 4, 10}
+		wire = binary.LittleEndian.AppendUint32(wire, rung)
+		wire = append(wire, 5, 14, 6, 7, 2, 0, 0, 255, 255, 0)
+		for _, f := range u.Tables["Root"].Fields {
+			wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(f))
+		}
+		return binary.LittleEndian.AppendUint64(wire, 5)
 	}
-	wire = binary.LittleEndian.AppendUint64(wire, 5)
+	wire := build(0xc0490fdb) // -3.14159274, finite with a full mantissa
+	nan := build(0xffa5a5a5)  // a signalling NaN with a payload: must refuse
 	model := tabletext.NewModel(u)
+	{
+		var report tabletext.Report
+		_, err := tablewire.Decode(model, model.New(u.Tables["Root"]), nan, &report)
+		if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](err); !refused {
+			t.Fatalf("the oracle must refuse the NaN rung as non_finite_float: %v", err)
+		}
+	}
 	value := model.New(u.Tables["Root"])
 	var report tabletext.Report
 	if ok, err := tablewire.Decode(model, value, wire, &report); err != nil || !ok {
@@ -270,17 +282,45 @@ func TestCTableWireWidening(t *testing.T) {
 	}
 	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
     #include <stdio.h>
-    static const uint8_t wire[] = { %s }, expected[] = { %s };
+    static const uint8_t wire[] = { %s }, expected[] = { %s }, nan_wire[] = { %s };
+    /* field by field: a reset assigns members and leaves padding as it was */
+    static int same(const Root * a, const Root * b) {
+        return a->low == b->low && a->high == b->high && a->positive == b->positive && !memcmp(&a->real, &b->real, sizeof(a->real)) &&
+            a->samples_count == b->samples_count && a->samples[0] == b->samples[0] && a->samples[1] == b->samples[1];
+    }
     int main(void) {
-        Root value; TableReport report; uint8_t saved[sizeof(expected)];
+        Root value, fresh; TableReport report; uint8_t saved[sizeof(expected)]; uint64_t bits; double d;
         memset(&report, 0, sizeof(report));
         if (!root_load_tolerant(&value, wire, sizeof(wire), &report)) return 1;
         if (report.widened != 5 || report.clamped != 4 || report.malformed || report.refused) return 2;
         if (root_measure(&value) != (int64_t)sizeof(expected)) { fprintf(stderr, "measure %%lld expected %%zu: low %%d high %%d positive %%llu samples %%d [%%u, %%u]\n", (long long)root_measure(&value), sizeof(expected), value.low, value.high, (unsigned long long)value.positive, value.samples_count, value.samples[0], value.samples[1]); return 3; }
         if (root_save(&value, saved, sizeof(saved)) != (int64_t)sizeof(expected)) return 4;
-        return memcmp(saved, expected, sizeof(expected)) != 0;
+        if (memcmp(saved, expected, sizeof(expected)) != 0) return 5;
+        /* THE NaN RUNG IS REFUSED BY EVERY READ, and nothing lands (§3.3) */
+        root_reset(&fresh);
+        memset(&report, 0, sizeof(report));
+        if (root_load_tolerant(&value, nan_wire, sizeof(nan_wire), &report)) return 6;
+        if (!report.refused || report.reason != SCHEMA_TABLE_NON_FINITE_FLOAT || report.non_finite_floats != 1) { fprintf(stderr, "tolerant: refused %%d reason %%d count %%d\n", report.refused, report.reason, (int)report.non_finite_floats); return 7; }
+        if (!same(&value, &fresh)) return 8;
+        if (root_load(&value, nan_wire, sizeof(nan_wire), &report)) return 9;
+        if (report.refuse_reason != SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT || !same(&value, &fresh)) { fprintf(stderr, "strict: refuse_reason %%d\n", report.refuse_reason); return 10; }
+        /* THE WRITER REFUSES ONE: the measure and the save alike */
+        bits = 0x7ff8000000000001ull; memcpy(&d, &bits, 8); value.real = d;
+        if (root_measure(&value) != -1 || root_save(&value, saved, sizeof(saved)) != -1) return 11;
+        bits = 0xfff0000000000000ull; memcpy(&d, &bits, 8); value.real = d;
+        if (root_measure(&value) != -1) return 12;
+        /* -0 RIDES BY ITS BITS under the +0 default, and reads back as -0 */
+        value = fresh; value.real = -0.0;
+        if (root_measure(&value) == root_measure(&fresh)) return 13;
+        {
+            uint8_t out[256]; int64_t n = root_save(&value, out, sizeof(out));
+            if (n < 0 || !root_load(&fresh, out, n, &report)) return 14;
+            memcpy(&bits, &fresh.real, 8);
+            if (bits != 0x8000000000000000ull) return 15;
+        }
+        return 0;
     }
-    `, octets(wire), octets(saved)))
+    `, octets(wire), octets(saved), octets(nan)))
 }
 
 // A damaged later occurrence resets text to its declared default; an explicit

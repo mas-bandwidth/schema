@@ -41,6 +41,10 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 	case tkBool:
 		g.pf("%stable_bit_put(w,%s ? 1 : 0,1);\n", ind, expr)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3), a compressed float's too, before it is quantized: the
+		// measure and the save share this body and refuse it at one place
+		g.pf("%sif(!table_float_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if shape.Packing == ir.TableMessageQuantized {
 			count, delta, _ := ir.TableMessageQuantization(shape)
 			g.pf("%stable_bit_put(w,table_message_quantize(%s,%s,%s,%du),%d);\n", ind, expr, formatFloat(float64(shape.QMin), true), formatFloat(float64(delta), true), count, bits)
@@ -48,6 +52,7 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 			g.pf("%stable_bit_put(w,table_float_to_bits(%s),32);\n", ind, expr)
 		}
 	case tkF64:
+		g.pf("%sif(!table_double_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		g.pf("%stable_bit_put(w,table_double_to_bits(%s),64);\n", ind, expr)
 	default:
 		var lo, hi uint64

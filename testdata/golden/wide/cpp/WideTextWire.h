@@ -28,7 +28,7 @@ namespace wide {
 #if defined( _MSC_VER )
 #define SCHEMA_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_WRITE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_WRITE_INLINE inline
 #endif
@@ -47,7 +47,7 @@ namespace wide {
 #if defined( _MSC_VER )
 #define SCHEMA_READ_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_READ_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_READ_INLINE inline
 #endif

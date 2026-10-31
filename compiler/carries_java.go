@@ -1,5 +1,5 @@
 package compiler
 
 func init() {
-	registerCarries("java")
+	registerCarries("java", carryOptionalVariableClosure)
 }

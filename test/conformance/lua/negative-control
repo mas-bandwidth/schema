@@ -1,0 +1,86 @@
+#!/bin/sh
+# THE LUA LEG's conformance negative controls (test/conformance/README.md;
+# docs/PORTING.md I2 and I11). Each one sabotages the EMITTER, never a
+# generated file and never the driver: a sed over a copy of one runtime file
+# the table emitter embeds (internal/codegen/luatable/runtime/*.lua, the
+# //go:embed glob), checked to have matched, `go build -overlay` into a
+# private compiler, the conformance units regenerated from it, and the harness
+# required red on the named surface with its neighbours green. No tracked
+# file is written, so an interrupt leaves no sabotaged tree.
+#
+#   report  load.lua counts every unknown field twice: the two surfaces that
+#           print the load's report red (`lua / report`, and `lua / retain`,
+#           whose answer carries the same counters) and nothing else; `wire`,
+#           `json-read` and `retain-save` green (the sabotage moves no byte).
+#   walk    json.lua's field-key match never matches the first declared
+#           field: the text READER's two surfaces red (`lua / json-read`, and
+#           `lua / json-hostile`, which reads through the same match) and
+#           nothing else; `json-write`, `wire` and every other surface green,
+#           so the break is the text walk's and the matrix localizes it (I11).
+#
+# usage: test/conformance/lua/negative-control <report|walk>
+set -eu
+
+mode=$1
+root=$(pwd)
+out=build/lua-table-control-$mode
+rm -rf "$out"
+mkdir -p "$out"
+case "$mode" in
+report)
+    source=internal/codegen/luatable/runtime/load.lua
+    sed 's/report.unknown = report.unknown + 1$/report.unknown = report.unknown + 1 + 1/' "$source" > "$out/runtime.lua"
+    ;;
+walk)
+    source=internal/codegen/luatable/runtime/json.lua
+    sed 's/    if fd.key == key then return fd end/    if fd.key == key and fd.ordinal ~= 1 then return fd end/' "$source" > "$out/runtime.lua"
+    ;;
+*) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
+if cmp -s "$source" "$out/runtime.lua"; then
+    echo "NEGATIVE CONTROL: the $mode sabotage patched nothing in $source" >&2
+    exit 1
+fi
+printf '{"Replace":{"%s/%s":"%s/%s/runtime.lua"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+go build -tags schema_leg_lua -overlay "$root/$out/overlay.json" -o "$out/schema-lua" ./cmd/schema
+
+# the units exactly as make/lua.mk's build/conformance-lua generates them
+mkdir -p "$out/generated"
+awk '$1 == "unit" { key = $2; $1 = ""; $2 = ""; print key $0 }' testdata/conformance/tables/MANIFEST.txt |
+while read -r key paths; do
+    # shellcheck disable=SC2086
+    if ! "$out/schema-lua" generate --lang lua --out "$out/generated/$key" $paths > "$out/generated/$key.log" 2>&1; then
+        rm -rf "$out/generated/$key"
+        mv "$out/generated/$key.log" "$out/generated/$key.refused"
+    else
+        rm -f "$out/generated/$key.log"
+    fi
+done
+
+lua="${LUA:-$root/dist/lua-5.4.8/src/lua}"
+printf '#!/bin/sh\nexec env LUA_CONFORMANCE_GENERATED=%s/%s/generated LUA=%s %s/test/conformance/lua/driver "$@"\n' \
+    "$root" "$out" "$lua" "$root" > "$out/driver"
+chmod +x "$out/driver"
+printf 'lua %s/driver\n' "$out" > "$out/drivers.txt"
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage left conformance green" >&2
+    exit 1
+fi
+red=$(grep -oE '^ *lua / [a-z-]+' "$out/log" | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')
+case "$mode" in
+report) want="report retain " ; green="wire json-read retain-save" ;;
+walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+esac
+if [ "$red" != "$want" ]; then
+    echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
+    cat "$out/log" >&2
+    exit 1
+fi
+for surface in $green; do
+    if ! grep -qE "^$surface +pass" "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage did not leave $surface green" >&2
+        cat "$out/log" >&2
+        exit 1
+    fi
+done
+echo "Lua table negative control: the $mode sabotage of the emitter turns exactly [${want% }] red and leaves $green green"

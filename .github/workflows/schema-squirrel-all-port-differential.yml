@@ -1,0 +1,92 @@
+name: Squirrel all-port differential
+
+# FORKS: this repository is PUBLIC, so a pull request from a fork must never run
+# on fleet hardware. Every fleet job here carries the fork guard; a fork's pull
+# request gets no CI run, and a maintainer reruns it by workflow_dispatch after
+# reading the diff.
+#
+# THE SQUIRREL LENS (ROADMAP.md, docs/roadmap.sexp, group
+# schema-per-language-lenses). Squirrel has no static checker of its own over
+# the generated output, so its lens is a differential against every other port:
+# the same conformance corpus and the same random vectors through each port,
+# with identical accept/refuse verdicts, refusal reasons and decoded values
+# (make/schema-squirrel-all-port-differential.mk).
+#
+# THE SPLIT IS BY WHEN, NOT BY WHETHER:
+#   * push and pull_request run the FAST half only: the comparison and its
+#     planted-bad-pattern control on a t.TempDir() tree. It needs no port and
+#     no toolchain, and the whole job is well inside the owner's one-minute
+#     rule.
+#   * the WHOLE differential builds every leg and runs every driver, so it is
+#     HEAVY and runs nightly and on demand, never per commit. The wall budget
+#     is the job's timeout-minutes, and the make target's own go test carries
+#     -timeout 600s.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+    paths:
+      - 'make/schema-squirrel-all-port-differential.mk'
+      - '.github/workflows/schema-squirrel-all-port-differential.yml'
+      - 'internal/ci/schema_squirrel_all_port_differential_test.go'
+      - 'testdata/conformance/tables/**'
+      - 'internal/tablewire/**'
+  pull_request:
+    paths:
+      - 'make/schema-squirrel-all-port-differential.mk'
+      - '.github/workflows/schema-squirrel-all-port-differential.yml'
+      - 'internal/ci/schema_squirrel_all_port_differential_test.go'
+      - 'testdata/conformance/tables/**'
+      - 'internal/tablewire/**'
+  schedule:
+    - cron: '43 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fast:
+    name: fast (comparison and planted control)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Tool presence check: go'
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
+      - name: The differential's fast half
+        run: |
+          export GOFLAGS=-mod=readonly
+          make schema-squirrel-all-port-differential-fast
+
+  nightly:
+    name: whole differential (every registered port)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Tool presence check: go'
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
+      - name: The pinned Squirrel interpreter
+        run: |
+          export GOFLAGS=-mod=readonly
+          make dist-squirrel
+      - name: The same corpus and the same vectors through every port
+        run: |
+          export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1
+          time make schema-squirrel-all-port-differential

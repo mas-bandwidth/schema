@@ -28,7 +28,7 @@ defmodule Bench.TableMessage do
 
   import Bitwise
 
-  @announcement <<0x01, 0x01, 0x09, 0x4E, 0x05, 0x2A, 0x97, 0x84, 0x3A, 0x75, 0x23, 0x02, 0x0E,
+  @announcement <<0x01, 0x01, 0x09, 0x52, 0xA8, 0xBF, 0x78, 0x93, 0x55, 0xD3, 0x41, 0x02, 0x0E,
                   0xFC, 0x06, 0x06, 0xF9, 0x06, 0xA8, 0x28, 0xF5, 0x81, 0xA4, 0xAC, 0x38, 0xAA,
                   0x07, 0x01, 0x10, 0x00, 0x3E, 0x7C, 0x69, 0x56, 0x5C, 0x00, 0xBE, 0x0D, 0x04,
                   0x01, 0x10, 0x00, 0x03, 0xEE, 0x29, 0xB8, 0xA8, 0x0D, 0xAE, 0x9B, 0x08, 0x01,
@@ -747,6 +747,9 @@ defmodule Bench.TableMessage do
         :error -> {:error, :malformed}
       end
     end
+  catch
+    # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -765,6 +768,8 @@ defmodule Bench.TableMessage do
         :error -> {:error, :malformed}
       end
     end
+  catch
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -797,6 +802,11 @@ defmodule Bench.TableMessage do
           {:malformed, k, bodies}
       end
     end
+  catch
+    # A NaN OR AN INFINITY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3), the
+    # first one the walk meets, and outranks any damage after it: no body is
+    # delivered.
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def load_messages(%__MODULE__{announced: true}, <<2>>, _capacity), do: {:error, :malformed}
@@ -1258,6 +1268,12 @@ defmodule Bench.TableMessage do
   defp bit_length(n, b) when n > 0, do: bit_length(n >>> 1, b + 1)
   defp bit_length(_n, b), do: b
 
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a read tests the raw bits for
+  # an all-ones exponent before they become a float and refuses the batch, and
+  # a write refuses a float64 that narrows past float32's range to an infinity
+  # (a BEAM float holds no NaN and no infinity of its own).
+  defp f64_from_bits(v) when (v >>> 52 &&& 0x7FF) == 0x7FF, do: throw(:non_finite_float)
+
   defp f64_from_bits(v) do
     <<f::little-float-64>> = <<v::little-64>>
     f
@@ -1268,6 +1284,8 @@ defmodule Bench.TableMessage do
     v
   end
 
+  defp f32_from_bits(v) when (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float)
+
   defp f32_from_bits(v) do
     <<f::little-float-32>> = <<v::little-32>>
     f
@@ -1275,6 +1293,6 @@ defmodule Bench.TableMessage do
 
   defp f32_to_bits(f) do
     <<v::little-32>> = <<f::little-float-32>>
-    v
+    if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
   end
 end

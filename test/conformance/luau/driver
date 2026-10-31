@@ -1,0 +1,76 @@
+#!/bin/sh
+# THE LUAU LEG's driver (test/conformance/README.md; docs/PORT-LUAU.md, THE
+# HARNESS).
+#
+# Every surface is handed to ONE Luau program, test/conformance/luau/main.luau,
+# under the pinned interpreter. The interpreter has no io library, so this
+# script is the host shim both ways: the manifest goes IN as source (a module
+# build/conformance-luau/driver/manifest.luau holding its text as a string
+# literal, which main.luau requires), and so does every file the derived
+# manifest names (build/conformance-luau/driver/files.luau: each regular file a
+# manifest field names, the instance's committed JSON text and the json-hostile
+# tree's <root>.json, keyed by repo-relative path). The answers come OUT on
+# stdout, one line per case — the case name, a space, the answer's bytes as
+# lowercase hex — which this script writes as one file per case into <outdir>
+# (a case the leg cannot answer is the line "<case> absent", written as
+# <case>.absent; "<case> absent <reason>" writes the reason into that file, as
+# a named writer refusal is answered, docs/SPEC-TABLES.md §2.5).
+#
+# While main.luau is absent the leg answers ABSENT: `list` prints nothing and
+# every surface exits 2.
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+main=test/conformance/luau/main.luau
+luau=${LUAU:-dist/luau-0.741/luau}
+if [ ! -f "$main" ]; then
+	case "$2" in
+	list) exit 0 ;;
+	*) exit 2 ;;
+	esac
+fi
+dir=build/conformance-luau/driver
+mkdir -p "$dir" || exit 1
+perl -e 'local $/; my $t = <STDIN>; my $h = unpack("H*", $t); $h =~ s/(..)/\\x$1/g; print "return \"$h\"\n";' <"$1" >"$dir/manifest.luau" || exit 1
+case "$2" in
+list)
+	exec "$luau" "$main" -a list
+	;;
+*)
+	# files.luau: every file this surface's lines can name, as a buffer
+	SURFACE=$2 perl -e '
+		my %want;
+		while (my $line = <STDIN>) {
+			my @f = split /\s+/, $line;
+			shift @f while @f && $f[0] eq "";
+			next unless @f;
+			next if $f[0] =~ /^#/;
+			for my $i (1 .. $#f) { $want{$f[$i]} = 1 if $f[$i] =~ m{/} && -f $f[$i]; }
+			if ($f[0] eq "instance" && defined $f[1]) {
+				my $j = "testdata/conformance/tables/json/$f[1].json";
+				$want{$j} = 1 if -f $j;
+			}
+			if ($f[0] eq "json-hostile" && defined $f[4]) {
+				my $j = "$f[4]/$f[3].json";
+				$want{$j} = 1 if -f $j;
+			}
+		}
+		print "return {\n";
+		for my $path (sort keys %want) {
+			open(my $in, "<:raw", $path) or die "$path: $!";
+			local $/; my $data = <$in>; close $in;
+			$data = "" unless defined $data;
+			my $h = unpack("H*", $data); $h =~ s/(..)/\\x$1/g;
+			print "\t[\"$path\"] = buffer.fromstring(\"$h\"),\n";
+		}
+		print "}\n";
+	' <"$1" >"$dir/files.luau" || exit 1
+	mkdir -p "$3" || exit 1
+	"$luau" "$main" -a "$2" >"$dir/$2.out"
+	status=$?
+	[ "$status" -eq 0 ] || exit "$status"
+	LUAU_OUTDIR=$3 perl -ne 'chomp; my ($c, $h, $why) = split / /, $_, 3; next unless defined $c && $c ne ""; if (defined $h && $h eq "absent") { open(my $f, ">", "$ENV{LUAU_OUTDIR}/$c.absent") or die; print $f $why if defined $why; close $f; next } open(my $f, ">:raw", "$ENV{LUAU_OUTDIR}/$c") or die "$c: $!"; print $f pack("H*", defined $h ? $h : ""); close $f;' <"$dir/$2.out"
+	;;
+esac

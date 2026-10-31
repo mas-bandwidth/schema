@@ -1,0 +1,16 @@
+# THE ROOTS THE LUAU WIRE-FUZZ LEG CANNOT OPEN (make/luau-fuzz.mk, tables-luau-wire-fuzz).
+# One line per roster entry the driver answers 0 for: <unit>.<root> form=<f> <reason>.
+# message: a FORM-2 (message) root; test/conformance/luau/wirefuzz.luau does not
+# drive the message batch reader yet (docs/SPEC-TABLES.md §3.3), refused: the unit
+# does not load, no-codec: the unit loads and no module registers the root. A root
+# that opens deletes its line; a root that drops out is a reviewed change here and
+# to LUAU_WIRE_FUZZ_ABSENT_COUNT.
+backenddemo.LoginRequest form=2 message
+backenddemo.MatchResult form=2 message
+backenddemo.StorePurchase form=2 message
+blobdemo.Catalog form=2 message
+graphdemo.Scene form=2 message
+vocab9demo.Wide00 form=2 message
+vocab9demo.Wide19 form=2 message
+vocabdemo.Wide00 form=2 message
+vocabdemo.Wide09 form=2 message

@@ -389,10 +389,10 @@ func cT04R20(t *testing.T) {
 
 // cT04R21 holds c/R21 to §4's float rung: "widenf is the f32 at src as an f64
 // at dst". The C leg widens through the hardware conversion, matching the C++
-// twin's widenf (an f32 stays an f32 and the value rides the cast). The exact
-// NaN-payload assembly R21 names is owed by the C++ reference first (a
-// schema-cpp leg); until it lands there, the C leg spells the same widenf the
-// reference does, so the twin gate holds.
+// twin's widenf (an f32 stays an f32 and the value rides the cast). A NaN or
+// an infinity never lands: the finite pass refuses it over storage before the
+// bounds pass (docs/SPEC-TABLES.md §3.3), so every value the rung carries is
+// finite and the ordinary conversion is exact.
 func cT04R21(t *testing.T) {
 	runtime := string(tableFixedRuntime)
 	cT04Has(t, runtime, "const double d = (double) f;", "R21 the float rung widens through the hardware conversion")

@@ -25,9 +25,11 @@ for unit in backenddemo:tables/backend \
 	listdemo:tables/lists \
 	mapdemo:tables/maps \
 	messagedemo:tables/messages \
+	scalars:tables/scalars \
 	streamdemo:tables/stream \
 	tabledemo:tables/examples \
 	tbla2:test/tables/A2.schema \
+	tblg1:test/tables/G1.schema \
 	tblk1:test/tables/K1.schema \
 	tblk2:test/tables/K2.schema \
 	tblm1:test/tables/M1.schema \
@@ -37,6 +39,7 @@ for unit in backenddemo:tables/backend \
 	tblp3:test/tables/P3.schema \
 	tblr1:test/tables/R1.schema \
 	tblr2:test/tables/R2.schema \
+	tblscalars2:test/tables/Scalars2.schema \
 	tblv1:test/tables/V1.schema \
 	tblv2:test/tables/V2.schema \
 	tblw1:test/tables/W1.schema \

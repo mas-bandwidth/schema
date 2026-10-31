@@ -28,9 +28,11 @@ mod graphdemo;
 mod listdemo;
 mod mapdemo;
 mod messagedemo;
+mod scalars;
 mod streamdemo;
 mod tabledemo;
 mod tbla2;
+mod tblg1;
 mod tblk1;
 mod tblk2;
 mod tblm1;
@@ -40,6 +42,7 @@ mod tblp2;
 mod tblp3;
 mod tblr1;
 mod tblr2;
+mod tblscalars2;
 mod tblv1;
 mod tblv2;
 mod tblw1;
@@ -206,6 +209,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("mapdemo", "Text"),
     ("mapdemo", "Trails"),
     ("messagedemo", "ToolMessage"),
+    ("scalars", "SimState"),
     ("streamdemo", "Feed"),
     ("tabledemo", "ArchiveConfig"),
     ("tabledemo", "KeyedConfig"),
@@ -214,6 +218,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("tabledemo", "RootConfig"),
     ("tabledemo", "WideBlob"),
     ("tbla2", "Root"),
+    ("tblg1", "Guarded"),
     ("tblk1", "Root"),
     ("tblk2", "Root"),
     ("tblm1", "Msg"),
@@ -223,6 +228,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("tblp3", "Chain"),
     ("tblr1", "Cfg"),
     ("tblr2", "Cfg"),
+    ("tblscalars2", "SimState"),
     ("tblv1", "Cfg"),
     ("tblv2", "Cfg"),
     ("tblw1", "Fleet"),
@@ -242,6 +248,7 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "MatchResult"),
     ("backenddemo", "StorePurchase"),
     ("messagedemo", "ToolMessage"),
+    ("scalars", "SimState"),
     ("tabledemo", "ArchiveConfig"),
     ("tabledemo", "KeyedConfig"),
     ("tabledemo", "LoadoutConfig"),
@@ -257,6 +264,7 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("tblp3", "Chain"),
     ("tblr1", "Cfg"),
     ("tblr2", "Cfg"),
+    ("tblscalars2", "SimState"),
     ("tblv1", "Cfg"),
     ("tblv2", "Cfg"),
     ("vocab9demo", "Wide00"),
@@ -293,6 +301,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("mapdemo", "Text") => arm!(mapdemo, text_load, text_load_retain, text_save, text_save_checked, text_save_retain, text_load_measure, wire, retain),
         ("mapdemo", "Trails") => arm!(mapdemo, trails_load, trails_load_retain, trails_save, trails_save_checked, trails_save_retain, trails_load_measure, wire, retain),
         ("messagedemo", "ToolMessage") => arm!(messagedemo, tool_message_load, tool_message_load_retain, tool_message_save, tool_message_save_checked, tool_message_save_retain, tool_message_load_measure, wire, retain),
+        ("scalars", "SimState") => arm!(scalars, sim_state_load, sim_state_load_retain, sim_state_save, sim_state_save_checked, sim_state_save_retain, sim_state_load_measure, wire, retain),
         ("streamdemo", "Feed") => arm!(streamdemo, feed_load, feed_load_retain, feed_save, feed_save_checked, feed_save_retain, feed_load_measure, wire, retain),
         ("tabledemo", "ArchiveConfig") => arm!(tabledemo, archive_config_load, archive_config_load_retain, archive_config_save, archive_config_save_checked, archive_config_save_retain, archive_config_load_measure, wire, retain),
         ("tabledemo", "KeyedConfig") => arm!(tabledemo, keyed_config_load, keyed_config_load_retain, keyed_config_save, keyed_config_save_checked, keyed_config_save_retain, keyed_config_load_measure, wire, retain),
@@ -301,6 +310,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("tabledemo", "RootConfig") => arm!(tabledemo, root_config_load, root_config_load_retain, root_config_save, root_config_save_checked, root_config_save_retain, root_config_load_measure, wire, retain),
         ("tabledemo", "WideBlob") => arm!(tabledemo, wide_blob_load, wide_blob_load_retain, wide_blob_save, wide_blob_save_checked, wide_blob_save_retain, wide_blob_load_measure, wire, retain),
         ("tbla2", "Root") => arm!(tbla2, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
+        ("tblg1", "Guarded") => arm!(tblg1, guarded_load, guarded_load_retain, guarded_save, guarded_save_checked, guarded_save_retain, guarded_load_measure, wire, retain),
         ("tblk1", "Root") => arm!(tblk1, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
         ("tblk2", "Root") => arm!(tblk2, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
         ("tblm1", "Msg") => arm!(tblm1, msg_load, msg_load_retain, msg_save, msg_save_checked, msg_save_retain, msg_load_measure, wire, retain),
@@ -310,6 +320,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("tblp3", "Chain") => arm!(tblp3, chain_load, chain_load_retain, chain_save, chain_save_checked, chain_save_retain, chain_load_measure, wire, retain),
         ("tblr1", "Cfg") => arm!(tblr1, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblr2", "Cfg") => arm!(tblr2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
+        ("tblscalars2", "SimState") => arm!(tblscalars2, sim_state_load, sim_state_load_retain, sim_state_save, sim_state_save_checked, sim_state_save_retain, sim_state_load_measure, wire, retain),
         ("tblv1", "Cfg") => arm!(tblv1, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblv2", "Cfg") => arm!(tblv2, cfg_load, cfg_load_retain, cfg_save, cfg_save_checked, cfg_save_retain, cfg_load_measure, wire, retain),
         ("tblw1", "Fleet") => arm!(tblw1, fleet_load, fleet_load_retain, fleet_save, fleet_save_checked, fleet_save_retain, fleet_load_measure, wire, retain),

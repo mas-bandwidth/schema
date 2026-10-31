@@ -145,6 +145,11 @@ export const TableFixedRefusal = Object.freeze({
   // default, the verdict the packet reader gives — this form has no length to
   // continue past. It is not one of §4's six events: nothing was decoded.
   TextIllFormed: 17,
+  // A NaN OR AN INFINITY, REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3,
+  // the finite rule of 2026-10-27): the content pass refuses it before any
+  // destination write, as it refuses an ill-formed text, and every writer
+  // refuses one (the save answers -1).
+  NonFiniteFloat: 18,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -168,6 +173,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutNewer: return "layout_newer";
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
+    case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
     default: return "???";
   }
 }
@@ -522,17 +528,13 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         break;
       }
       case TableFixedOpWidenF: {
-        // every f32 value is exactly representable in an f64, infinities and
-        // NaN payloads included, so there is nothing to round and nothing to lose
-        const bits = TableFixedGetU32(src, s);
-        if ((bits & 0x7f800000) === 0x7f800000 && (bits & 0x007fffff) !== 0) {
-          const payload = bits & 0x007fffff;
-          TableFixedConv.setUint32(8, ((payload & 7) << 29) >>> 0, true);
-          TableFixedConv.setUint32(12, ((bits & 0x80000000) | 0x7ff00000 | (payload >>> 3)) >>> 0, true);
-        } else {
-          TableFixedConv.setUint32(0, bits, true);
-          TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
-        }
+        // every finite f32 value is exactly representable in an f64, so the
+        // ordinary conversion has nothing to round and nothing to lose. A NaN
+        // or an infinity widens to one too, and the content pass over the
+        // image refuses it as non_finite_float (docs/SPEC-TABLES.md §3.3)
+        // before the projection lands a value.
+        TableFixedConv.setUint32(0, TableFixedGetU32(src, s), true);
+        TableFixedConv.setFloat64(8, TableFixedConv.getFloat32(0, true), true);
         for (let k = 0; k < 8; k++) { dst[d + k] = TableFixedConv.getUint8(8 + k); }
         report.widened++;
         break;
