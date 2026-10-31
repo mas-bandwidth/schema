@@ -573,7 +573,7 @@ function TableVariableOpen(bytes, report) {
   if (bytes.length < 9) { report.malformed = true; return null; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.malformed = true; return null; }
+  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.malformed = true; return null; }
   const end = bytes.length - 8 - Number(count) * 8;
   const table = [];
   const seen = new Set();
