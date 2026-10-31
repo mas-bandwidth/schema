@@ -45,6 +45,18 @@ conformance-negative-control-squirrel-retain: build/conformance-harness build/co
 		's/if (store.ids.len() >= store.idCapacity) return false;//' \
 		retain wire report
 
+# THE FRAMING LAYER (docs/LAYERS/1-framing.md): the load forgets the id
+# table's 4096-entry maximum (docs/SPEC-TABLES.md §3), so frame_entries_4097
+# reads where it owes the refusal and the framing surface goes red, while wire
+# and report, whose files are far under the bound, stay green.
+.PHONY: conformance-negative-control-squirrel-framing
+conformance-negative-control-squirrel-framing: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/negative-control framing load.nut \
+		's/ || count > ID_TABLE_BOUND//' \
+		framing wire report
+
+test-squirrel: conformance-negative-control-squirrel-framing
+
 # THE EMBEDDED RUNTIME IS A BUILD INPUT. squirreltable.go carries
 # `//go:embed runtime/*.nut`, but the Makefile's GO_SOURCES names only *.go, so
 # without this prerequisite a runtime change leaves build/schema-squirrel — and
@@ -114,6 +126,7 @@ tables-squirrel-release:
 	$(MAKE) conformance-negative-control-squirrel-block
 	$(MAKE) conformance-negative-control-squirrel-retain
 	$(MAKE) conformance-negative-control-squirrel-absent
+	$(MAKE) conformance-negative-control-squirrel-framing
 	$(MAKE) tables-squirrel-usage-negative-control
 	$(MAKE) tables-squirrel-runtime-home-negative-control
 	$(MAKE) tables-squirrel-release-negative-control

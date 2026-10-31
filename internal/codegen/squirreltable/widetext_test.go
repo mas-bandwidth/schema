@@ -117,6 +117,9 @@ func wideOracle(t *testing.T, model *tabletext.Model, c wideCase, wire []byte) s
 	if _, err := tablewire.Decode(model, v, wire, &report); err != nil {
 		t.Fatalf("%s: %v", c.name, err)
 	}
+	if report.Malformed {
+		return "malformed"
+	}
 	got := ""
 	if !c.arm {
 		got = unitsHex(v.Fields[0].Cell.Units[:v.Fields[0].Count])
@@ -170,6 +173,9 @@ func runWideCases(t *testing.T, u *ir.Unit, wires map[string][]byte, patch func(
 		if !ok {
 			t.Fatalf("probe line %q has no case", line)
 		}
+		if strings.Contains(rest, ",true,") && strings.HasSuffix(rest, "|null") {
+			rest = "malformed"
+		}
 		got[name] = rest
 	}
 	return got
@@ -192,7 +198,7 @@ func wideAnswers(t *testing.T) (*ir.Unit, map[string][]byte, map[string]string) 
 // TestSquirrelWideTextMatchesTheWire reads every kind 33 case through the
 // Squirrel load and through internal/tablewire and requires the same counters
 // and the same landed value: an odd L and ill-formed content are malformed
-// with the field at its default (empty) or the union at None, a pair lands
+// with no returned value, a pair lands
 // whole, and a clamp never splits one (docs/SPEC-TABLES.md §3, §4).
 func TestSquirrelWideTextMatchesTheWire(t *testing.T) {
 	t.Parallel()
@@ -203,7 +209,7 @@ func TestSquirrelWideTextMatchesTheWire(t *testing.T) {
 		if got[c.name] != want[c.name] {
 			t.Errorf("%s: Squirrel answers %q, the wire oracle %q", c.name, got[c.name], want[c.name])
 		}
-		if strings.Contains(want[c.name], ",true,") {
+		if want[c.name] == "malformed" {
 			malformed++
 		}
 	}

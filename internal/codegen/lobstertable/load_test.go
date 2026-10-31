@@ -547,7 +547,7 @@ func TestLobsterTableLoadMatchesTheReports(t *testing.T) {
 				t.Errorf("%s %s: the report is not the reference's:\nlobster: %s\ngo:      %s", row.kind, row.name, line, res.goLine[i])
 				continue
 			}
-			if dump != res.goDump[i] {
+			if !damaged(line) && dump != res.goDump[i] {
 				t.Errorf("%s %s: the loaded value is not the reference's at byte %s", row.kind, row.name, divergence(dump, res.goDump[i]))
 				continue
 			}
@@ -688,10 +688,19 @@ func TestLobsterTableLoadBytesCountPastItsBody(t *testing.T) {
 			t.Errorf("%s: the report is not the reference's:\nlobster: %s\ngo:      %s", row.name, line, res.goLine[i])
 			continue
 		}
-		if dump != res.goDump[i] {
+		if !damaged(line) && dump != res.goDump[i] {
 			t.Errorf("%s: the loaded value is not the reference's at byte %s", row.name, divergence(dump, res.goDump[i]))
 			continue
 		}
-		t.Logf("%s: %x -> %s, value equal to Go", row.name, row.data, line)
+		t.Logf("%s: %x -> %s, value equal to Go or discarded as damage", row.name, row.data, line)
 	}
+}
+
+// damaged reports whether a report line (`u,k,w,c,d,malformed,verdict`) says
+// malformed. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the value
+// a damaged read leaves is undefined, so no test compares it; the report line
+// saying malformed is the whole answer.
+func damaged(line string) bool {
+	f := strings.Split(strings.TrimSpace(line), ",")
+	return len(f) == 7 && f[5] == "true"
 }
