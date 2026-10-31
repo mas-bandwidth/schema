@@ -749,9 +749,16 @@ defmodule Driver do
             if Map.get(report, :malformed, false) do
               write(outdir, name, "refused\n")
             else
-              {:ok, wire} = mod.save(root, value)
-              {:ok, _back, _r2} = mod.load(root, wire)
-              write(outdir, name, report_counters(report) <> ",read\n")
+              # a value the writer refuses (a float32 past its range, §3.3)
+              # answers refused
+              case mod.save(root, value) do
+                {:ok, wire} ->
+                  {:ok, _back, _r2} = mod.load(root, wire)
+                  write(outdir, name, report_counters(report) <> ",read\n")
+
+                {:error, _} ->
+                  write(outdir, name, "refused\n")
+              end
             end
 
           _ ->
