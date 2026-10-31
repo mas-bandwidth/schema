@@ -524,7 +524,8 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	fmt.Fprintf(&b, "        elem_size: %s,\n", exInt(elemSize))
 	fmt.Fprintf(&b, "        is_array: %v,\n", isArray)
 	fmt.Fprintf(&b, "        array_bound: %s,\n", exInt(arrayBound))
-	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer)
+	// a holder is a span, never a reference, whatever its elements are
+	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer && !f.IsList() && !f.IsMap())
 	fmt.Fprintf(&b, "        count_offset: %s,\n", exInt(countOffset))
 	fmt.Fprintf(&b, "        present_offset: %s,\n", exInt(presentOffset))
 	fmt.Fprintf(&b, "        storage: %s,\n", storage)
