@@ -1,0 +1,23 @@
+# Unit-only fixtures; never used by the conformance driver.
+unit fixture tables/cards/conformance/cases/card-populated.json
+unit fixture tables/cards/conformance/cases/card-populated.wire
+unit fixture tables/cards/conformance/cases/consumers-populated.wire
+unit fixture tables/cards/conformance/cases/empty-consumers.wire
+unit fixture tables/cards/conformance/cases/future-note.wire
+unit fixture tables/cards/conformance/cases/initial-populated.wire
+unit fixture tables/cards/conformance/cases/normalized-valid.md
+unit fixture tables/cards/conformance/cases/rejected-legacy.md
+unit fixture tables/cards/conformance/cases/truncated.wire
+unit fixture tables/cards/conformance/expected/card-populated.hex
+unit fixture tables/cards/conformance/expected/card-populated.txt
+unit fixture tables/cards/conformance/expected/consumers-populated.txt
+unit fixture tables/cards/conformance/expected/consumers-populated.wire
+unit fixture tables/cards/conformance/expected/empty-consumers.hex
+unit fixture tables/cards/conformance/expected/empty-consumers.txt
+unit fixture tables/cards/conformance/expected/empty-consumers.wire
+unit fixture tables/cards/conformance/expected/future-note.wire
+unit fixture tables/cards/conformance/expected/initial-populated.hex
+unit fixture tables/cards/conformance/expected/initial-populated.txt
+unit fixture tables/cards/conformance/expected/initial-populated.wire
+unit fixture tables/cards/conformance/expected/normalized-valid.wire
+unit fixture tables/cards/conformance/expected/rejected-legacy.refused

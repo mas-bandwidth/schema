@@ -2516,14 +2516,15 @@ places**: the wire's element order, the cook's bytes, and a loaded region.
   the record, which includes a map inside a nested table and a map inside an
   entry, in depth-first field order. The placement is PRE-ORDER: a map's
   whole entry array first, then, entry by entry in key order, the arrays of
-  any map an entry's value holds by value. **AN ENTRY WHOSE ALIGNMENT EXCEEDS
+  any map an entry's value holds by value. The node and the extent's start
+  are aligned for every entry by §6.2's two alignment rules, the arena's and the
+  cook's (§6.2, THE TWO ALIGNMENT RULES). **AN ENTRY WHOSE ALIGNMENT EXCEEDS
   THE ARENA'S IS REFUSED AT COMPILE TIME, naming the map field and the
-  alignment it asks for**: a node's extent begins at the arena's alignment and
-  nothing inside it can ask for more, so an over-aligned entry is a layout the
-  region could not hold and is a build error rather than a runtime surprise
-  (§6.3, §20.3). In Go this refusal never fires: the arena alignment is
-  `ir.TableRegionAlign`, the closure's maximum alignment floored at 8, so no
-  entry can ask for more than the arena holds. A node's extent still runs to the
+  alignment it asks for**, as a layout the region could not hold, a build error
+  rather than a runtime surprise (§6.3, §20.3). In Go this refusal never fires:
+  the arena alignment is
+  `ir.TableRegionAlign`, the closure's maximum alignment floored at 8, which
+  counts every entry and element an extent can hold. A node's extent still runs to the
   next directory entry (§6.3), `LoadMeasure` sums it from the framing, since
   `N` is framing and not a value, and the directory gains no position and the
   wire's numbering gains no index. A map is a bounded array whose bound was
@@ -3174,10 +3175,10 @@ the cook's bytes, and a loaded region.
   order of the fields that hold them, because the extent has one layout and two
   rules would be two answers for a record that holds both. **AN ELEMENT WHOSE
   ALIGNMENT EXCEEDS THE ARENA'S IS REFUSED AT COMPILE TIME**, naming the field
-  and the alignment it asks for, on §2.8's own reason: a node's extent begins
-  at the arena's alignment and nothing inside it can ask for more. In Go the
-  refusal never fires (§2.8: the arena alignment is `ir.TableRegionAlign`, the
-  closure's maximum alignment floored at 8). A node's
+  and the alignment it asks for, on §2.8's own reason; the node and the
+  extent's start are aligned for every element by §6.2's two alignment rules, the
+  arena's and the cook's (§6.2, THE TWO ALIGNMENT RULES). In Go the refusal never fires
+  (`ir.TableRegionAlign` counts every element an extent can hold). A node's
   extent still runs to the next directory entry (§6.3), the directory gains no
   position and the wire's numbering gains no index. An unbounded array is a
   bounded array whose bound was decided at pack time.
@@ -9645,9 +9646,23 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
   representation `Lock` does, so a locked structure and a loaded one are
   read through one view API.
 
-The arena and region use one alignment for the unit: eight bytes, or sixteen
-when any record in the table closure requires sixteen-byte alignment, including
-a 128-bit integer or fixed-point field. Every node starts at that alignment.
+**THE TWO ALIGNMENT RULES.** A node extent holds arrays laid at their
+element's alignment relative to the extent's start, so the node and the extent
+start have to be at least that aligned. The ARENA and the REGION that `Lock`
+and `Load` produce satisfy it with ONE alignment for the unit
+(`ir.TableRegionAlign`): eight bytes, or sixteen when any record in the table
+closure, or any list element or map entry such a record's extent can hold,
+requires sixteen, a 128-bit integer or fixed-point included. Every node starts
+at that alignment and every extent at `sizeof` rounded up to it. A COOK (§7.2)
+places each node at its own type's alignment instead, and for a type whose
+node can hold an extent that is the greater of its record's alignment and the
+greatest alignment any element or entry the extent CAN hold asks for, at any
+depth, computed from the types and never from one value's arrays
+(`ir.CookNodeAlign`); its extent begins at `sizeof` rounded up to the greater
+of eight and that same array alignment (`ir.CookExtentStart`). Without the
+first rule a sixteen-aligned element in a holder aligned eight sits at eight
+modulo sixteen whenever the node does, and without the second whenever `sizeof`
+is eight modulo sixteen; the conformance row `widelist_wide` is that case.
 
 Reading a pointer is `NodeAt( node->next )` — one add (§6.3), NULL when
 the reference is null.
@@ -9789,7 +9804,9 @@ yields NULL and can never fabricate the root.
 
 Every node starts at its own type's alignment and the directory's offsets
 are those padded starts, so "is a directory entry" and "is aligned" are
-one check rather than two.
+one check rather than two. A node's own alignment is the unit's in a region
+`Lock` or `Load` produced, and in a cook its type's, which for a type whose
+node can hold an extent counts every array that extent can hold (§6.2, THE TWO ALIGNMENT RULES).
 
 **A BLOB NODE in a region** (§2.5) is an eight-byte header and then the
 bytes: `length (u32)` in the cook's byte order, then four pad bytes written
@@ -11624,12 +11641,12 @@ fields would get wrong:
   position for them; `schema cook-check` bounds each array inside its node as
   it bounds a count companion, walks each entry's pointer slots as it walks a
   bounded array's elements, and CHECKS THE ORDER, because a cook `Find` cannot
-  search is a forgery. **`schema cook` and `schema uncook` refuse every
-  map-bearing unit BY NAME**, because the tool's engine does not lay out the
-  entry arrays yet (§15); a generated runtime writer is not held to that
-  absence, and Go's map cook is held by an independent layout test,
-  `TestCookWriterMapExtentLayout`. The refusal is the tool's and not the
-  format's: a map is laid out above exactly as any value is.
+  search is a forgery. **`schema cook` and `schema uncook` carry a
+  map-bearing unit**: the tool lays the entry arrays out as above and reads
+  them back through the deltas it wrote, and every generated runtime writer is
+  held to the tool's bytes by the conformance `cook-write` rows that carry a
+  map. Go's map cook is also held by an independent layout test,
+  `TestCookWriterMapExtentLayout`.
 - **AN UNBOUNDED ARRAY's ELEMENTS are laid the same way** (§2.9): after the
   record's own storage, `count × sizeof( T )` at the element's alignment, in
   INDEX order, zero slack. Lists and maps are ONE POPULATION in that extent,
@@ -15432,11 +15449,8 @@ inspects everything in the schema built:
   with its `duplicate` and `malformed` events, the const `Find`, the text
   form's object and `schema cook-check`'s map-slot clause with its order check
   (§7.4). C carries the file wire, region and text forms, including the optional
-  runtime index. The tool's COOK and UNCOOK halves are the one piece still owed for
-  this construct: a map-bearing unit is refused by name at those two surfaces,
-  because a map adds the sort, the entry array's key order and the two reader
-  events to the node extent the list's own halves already
-  carry. What a port needs is the entry as an ordinary array-of-tables element in its
+  runtime index. The tool's COOK and UNCOOK halves carry it too: the entries ride the node
+  extent the list's own halves carry, one population with the lists. What a port needs is the entry as an ordinary array-of-tables element in its
   measure, save and load, the writer's sort, the reader's one compare with its
   two events, the const `Find` as a binary search that allocates nothing,
   ascending iteration, and the text form's keyed object; each holds the same
