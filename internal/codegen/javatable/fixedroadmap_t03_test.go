@@ -759,13 +759,30 @@ func t03R20(t *testing.T) {
 }
 
 // t03R21: R21 "widenf is the bit-exact widening — signalling NaNs kept, the
-// quiet bit carried as the writer wrote it". The corpus's old_float_wide file
-// carries a SIGNALLING NaN, 0x7F8ABCDE, whose bits are the value; the
-// widened f64 must be the PATTERN widened — sign, exponent and payload
-// carried, the quiet bit as the writer wrote it (clear) — and never through
-// the hardware's conversion, which sets the quiet bit.
+// quiet bit carried as the writer wrote it". The reference's
+// old_float_widen.bin is FINITE now (-1234.5625f, 0xC49A5200:
+// docs/SPEC-TABLES.md §3.3, the C++ card of the finite-tables plan), so this
+// row FORGES the signalling NaN, 0x7F8ABCDE, into a copy of it and holds the
+// Java leg to what it does today: the widened f64 is the PATTERN widened —
+// sign, exponent and payload carried, the quiet bit as the writer wrote it
+// (clear). OWED BY tables-finite/java: under the finite rule this read
+// refuses as non_finite_float, and the row flips to that refusal.
 func t03R21(t *testing.T) {
-	oldFile := t03CorpusFile(t, "old_float_widen.bin")
+	ref, err := os.ReadFile(t03CorpusFile(t, "old_float_widen.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	written := []byte{0x00, 0x52, 0x9A, 0xC4} // 0xC49A5200, little-endian: what the reference wrote
+	at := bytes.Index(ref, written)
+	if at < 0 || bytes.Count(ref, written) != 1 {
+		t.Fatalf("R21: the reference's float32 0xC49A5200 is not once in old_float_widen.bin")
+	}
+	forged := bytes.Clone(ref)
+	binary.LittleEndian.PutUint32(forged[at:], 0x7F8ABCDE)
+	oldFile := filepath.Join(t.TempDir(), "old_float_widen_snan.bin")
+	if err := os.WriteFile(oldFile, forged, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	_, classes := buildRow(t, t.TempDir(), "float_widen", []sideSpec{
 		{key: "reads", schema: "VNEW_float_widen.schema", older: []string{"VOLD_float_widen.schema"}},
 		{key: "refuses", schema: "VOLD_float_widen.schema"},

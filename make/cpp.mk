@@ -77,7 +77,25 @@ cards-cpp-conformance-hash-negative-control: build/conformance-harness build/car
 	done
 	@echo 'cards-cpp hash negative control: hashing needs turns taskhash red; the other eight surfaces stay green'
 
-test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-control cards-cpp-conformance-upgrade-negative-control cards-cpp-conformance-hash-negative-control
+test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-control cards-cpp-conformance-upgrade-negative-control cards-cpp-conformance-hash-negative-control tables-cpp-text-differential tables-cpp-text-differential-negative-control
+
+# I13 (docs/PORTING.md): the C++ leg's text differential against a third
+# implementation. A C++ probe (compiled with the generated probeTable.cpp)
+# draws 200 random float-only instances of a root (seed 24845619678,
+# splitmix64, the Go cell's schema and draw order) and writes each as
+# (wire, text) with the generated RootSave and RootToJson; the Go engine
+# (internal/tabletext, internal/tablepack) writes its own text from the leg's
+# wire, byte-compared, and packs the leg's text back to wire, byte-compared.
+# The control caps the emitted float32 writer at six significant digits in
+# memory and must go red on the text comparison. SCHEMA_REQUIRE_CORPUS=1 makes
+# a missing C++ compiler a FAILURE rather than a skip.
+.PHONY: tables-cpp-text-differential tables-cpp-text-differential-negative-control
+tables-cpp-text-differential:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
+	@echo 'tables C++ text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
+tables-cpp-text-differential-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
+	@echo 'tables C++ text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C++ TABLES SOAK (docs/PORTING.md I9, issue #416's C++ half). The one-shot
 # tables-cpp-alloc counts operator new across ONE pass on the richest root; a
@@ -138,6 +156,140 @@ tables-cpp-soak-negative-control: build/tables-generated/.stamp test/tables/soak
 	@grep -m1 "^SOAK FAILED" build/cpp-soak-sabotage/log
 	@grep -m1 "drift flat" build/cpp-soak-sabotage/log
 	@echo "negative control: a matched new/delete pair per iteration leaves the drift line flat and turns the C++ soak's ALLOCATION COUNT red"
+
+
+# J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
+# The C++ table leg's `--gate` verb (bench/tables/cpp/table_main.cpp) runs
+# every correctness gate it runs before a timed pass — variant 0 against
+# testdata/wire/bench_table.bin, all 64 variants loaded, re-saved and compared
+# byte for byte, reused storage — and returns before the clock starts. This
+# builds the leg the way the bench builds it (bench/tables/cpp/leg, -O3
+# -DNDEBUG) and runs ONLY the gate: a correctness check, no timing.
+.PHONY: tables-cpp-bench-gate
+tables-cpp-bench-gate: generated/bench/tables/cpp/.stamp
+	bench/tables/cpp/leg build
+	bench/tables/cpp/leg run --gate
+test: tables-cpp-bench-gate
+
+# ITS NEGATIVE CONTROL. A gate that has never been red proves nothing, so this
+# feeds the built leg's --gate a golden with ONE byte changed, and then the
+# true golden with one byte changed in variant 0 of the variant corpus, and
+# requires each to be refused with the gate's own words before any timing.
+# The same leg over the true files must pass first, so a red here is the
+# corruption and not the harness.
+.PHONY: tables-cpp-bench-gate-negative-control
+tables-cpp-bench-gate-negative-control: generated/bench/tables/cpp/.stamp
+	bench/tables/cpp/leg build
+	@rm -rf build/cpp-bench-gate-sabotage && mkdir -p build/cpp-bench-gate-sabotage/wire build/cpp-bench-gate-sabotage/variants
+	./build/schema_tables_bench_cpp --gate > build/cpp-bench-gate-sabotage/clean.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate is red over the true corpus"; cat build/cpp-bench-gate-sabotage/clean.log; exit 1; }
+	@cp testdata/wire/bench_table.bin build/cpp-bench-gate-sabotage/wire/bench_table.bin
+	@cp bench/corpus/variants/bench_table.variants.bin build/cpp-bench-gate-sabotage/variants/bench_table.variants.bin
+	@b=$$(od -An -tu1 -j1000 -N1 build/cpp-bench-gate-sabotage/wire/bench_table.bin | tr -d ' '); \
+		printf "$$(printf '\\%03o' $$(( (b + 1) % 256 )))" | dd of=build/cpp-bench-gate-sabotage/wire/bench_table.bin bs=1 seek=1000 conv=notrunc 2>/dev/null; \
+		cmp -s testdata/wire/bench_table.bin build/cpp-bench-gate-sabotage/wire/bench_table.bin && \
+		{ echo "NEGATIVE CONTROL FAILED: the golden was not changed"; exit 1; } || true
+	@if ./build/schema_tables_bench_cpp --gate --wire-dir build/cpp-bench-gate-sabotage/wire > build/cpp-bench-gate-sabotage/golden.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a golden one byte off left the bench gate green"; \
+		cat build/cpp-bench-gate-sabotage/golden.log; exit 1; \
+	fi
+	@grep -q "WIRE GOLDEN MISMATCH" build/cpp-bench-gate-sabotage/golden.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the golden"; cat build/cpp-bench-gate-sabotage/golden.log; exit 1; }
+	@b=$$(od -An -tu1 -j1000 -N1 build/cpp-bench-gate-sabotage/variants/bench_table.variants.bin | tr -d ' '); \
+		printf "$$(printf '\\%03o' $$(( (b + 1) % 256 )))" | dd of=build/cpp-bench-gate-sabotage/variants/bench_table.variants.bin bs=1 seek=1000 conv=notrunc 2>/dev/null
+	@if ./build/schema_tables_bench_cpp --gate --variant-dir build/cpp-bench-gate-sabotage/variants > build/cpp-bench-gate-sabotage/variant.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a variant one byte off left the bench gate green"; \
+		cat build/cpp-bench-gate-sabotage/variant.log; exit 1; \
+	fi
+	@grep -q "WIRE GOLDEN MISMATCH" build/cpp-bench-gate-sabotage/variant.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the golden"; cat build/cpp-bench-gate-sabotage/variant.log; exit 1; }
+	@grep -m1 "WIRE GOLDEN MISMATCH" build/cpp-bench-gate-sabotage/golden.log
+	@echo "negative control: one changed byte in the golden, or in variant 0, turns the C++ bench gate red before any clock"
+
+
+# THE C++ PORT'S RELEASE BATTERY (docs/PORTING.md J3), run by the Makefile's
+# `tables-cpp-release`, which certify.yml DERIVES by name (that target also
+# carries the long wire fuzz and the INT32_MAX reproduction). The release tier is the same battery built the way a game ships it:
+# -O2 -DNDEBUG, which removes every assert() in the generated headers and the
+# runtime and lets the optimizer use undefined behaviour the -O0 `make test`
+# builds never reach. It reuses the PR tier's own test sources, unchanged:
+#   - the tables suite, maps, lists, arms and retain, each compiled release and
+#     run (their CHECK macros are not assert(), so NDEBUG cannot blind them);
+#   - the soak, release-built, at TABLES_CPP_SOAK_RELEASE_ITERATIONS passes
+#     (`make test` runs 4096; 250000 is about 16 minutes against the 60 minute
+#     job cap, the default 1,000,000 would not fit it);
+#   - the block fuzzer at five times the PR scale under a second seed;
+#   - the two NDEBUG refusal gates and the soak's controls the PR tier carries.
+# tables-cpp-release-flags-negative-control proves the release flags are on.
+TABLES_CPP_SOAK_RELEASE_ITERATIONS ?= 250000
+TABLES_CXXFLAGS_RELEASE = $(TABLES_CXXFLAGS) -O2 -DNDEBUG
+CPP_RELEASE_DIR := build/cpp-release
+
+$(CPP_RELEASE_DIR)/tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/maps: build/tables-generated/.stamp test/tables/maps_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/maps_main.cpp $(MAPS_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/lists: build/tables-generated/.stamp test/tables/lists_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/lists_main.cpp $(LISTS_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/arms: build/tables-generated/.stamp test/tables/arms_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/arms_main.cpp $(ARMS_SOURCES) -o $@
+
+$(CPP_RELEASE_DIR)/retain: build/tables-generated/.stamp test/tables/retain_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/retain_main.cpp -o $@
+
+$(CPP_RELEASE_DIR)/soak: build/tables-generated/.stamp test/tables/soak_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) $(TABLES_CPP_SOAK_SRCS) -o $@
+
+$(CPP_RELEASE_DIR)/block_fuzz: build/tables-generated/.stamp test/tables/block_fuzz_main.cpp make/cpp.mk
+	@mkdir -p $(CPP_RELEASE_DIR)
+	$(CXX) $(BLOCK_CXXFLAGS) -O2 -DNDEBUG $(BLOCK_FUZZ_INCLUDES) test/tables/block_fuzz_main.cpp \
+		$(BLOCK_FUZZ_SOURCES) -o $@
+
+.PHONY: tables-cpp-release-battery
+tables-cpp-release-battery: $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
+		$(CPP_RELEASE_DIR)/arms $(CPP_RELEASE_DIR)/retain $(CPP_RELEASE_DIR)/soak \
+		$(CPP_RELEASE_DIR)/block_fuzz
+	$(MAKE) tables-cpp-release-flags-negative-control
+	./$(CPP_RELEASE_DIR)/tables
+	./$(CPP_RELEASE_DIR)/maps
+	./$(CPP_RELEASE_DIR)/lists
+	./$(CPP_RELEASE_DIR)/arms
+	./$(CPP_RELEASE_DIR)/retain
+	./$(CPP_RELEASE_DIR)/soak $(TABLES_CPP_SOAK_RELEASE_ITERATIONS)
+	$(MAKE) tables-cpp-soak-negative-control
+	SEED=$(SEED) N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz
+	SEED=2 N=500000 ./$(CPP_RELEASE_DIR)/block_fuzz
+	$(MAKE) tables-keyed-none-refusal-ndebug
+	$(MAKE) tables-keyed-none-refusal-negative-control
+	$(MAKE) tables-keyed-max-refusal-ndebug
+	$(MAKE) tables-keyed-max-refusal-negative-control
+
+# THE RELEASE TIER'S NEGATIVE CONTROL. The whole point of the tier is that the
+# battery runs with asserts compiled out and the optimizer on, so a flag
+# variable that quietly lost -DNDEBUG or -O2 would turn the tier back into a
+# second copy of `make test` and stay green. This compiles one probe that
+# refuses to build unless NDEBUG and __OPTIMIZE__ are both defined, with the
+# release flags (must build) and with the PR tier's flags (must be refused).
+.PHONY: tables-cpp-release-flags-negative-control
+tables-cpp-release-flags-negative-control:
+	@rm -rf build/cpp-release-flags && mkdir -p build/cpp-release-flags
+	@printf '#if !defined(NDEBUG) || !defined(__OPTIMIZE__)\n#error release flags are off\n#endif\nint main( void ) { return 0; }\n' > build/cpp-release-flags/probe.cpp
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) build/cpp-release-flags/probe.cpp -o build/cpp-release-flags/probe
+	@if $(CXX) $(TABLES_CXXFLAGS) build/cpp-release-flags/probe.cpp -o build/cpp-release-flags/refused > build/cpp-release-flags/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the PR tier's flags passed the release probe"; exit 1; \
+	fi
+	@grep -q "release flags are off" build/cpp-release-flags/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the probe went red, but not on the flags"; cat build/cpp-release-flags/log; exit 1; }
+	@echo "negative control: without -O2 -DNDEBUG the release probe is refused"
 
 
 # THE EMITTED C++ IS ANALYZER-CLEAN AND FORMAT-CANONICAL (docs/PORTING.md J4,

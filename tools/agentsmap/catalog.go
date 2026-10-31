@@ -167,6 +167,7 @@ var catalog = []Entry{
 	e("test/c-two-units", "C two units in one TU", "make tables-c-two-units", "make tables-c-two-units"),
 	e("test/conformance", "cross-language table matrix", "make conformance", "make conformance"),
 	e("test/cookgen", "cook fixture generator", "make tables-cook-scale", "go build -o build/cookgen ./test/cookgen"),
+	e("test/cpp-tables", "C++ table runtime-home digest", "make tables-cpp-runtime-home", "make tables-cpp-runtime-home"),
 	e("test/cs", "C# packet tests", "make test-cs", "make test-cs"),
 	e("test/cs-block", "C# block tests", "make test-cs", "make test-cs"),
 	e("test/cs-cook", "C# cook tests", "make test-cs", "make test-cs"),
