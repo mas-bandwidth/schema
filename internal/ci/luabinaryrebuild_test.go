@@ -163,7 +163,7 @@ func newLuaRebuildTree(t *testing.T) *luaRebuildTree {
 func luaRebuildMakefile(t *testing.T, source string) string {
 	t.Helper()
 	n := 0
-	for _, line := range strings.Split(source, "\n") {
+	for line := range strings.SplitSeq(source, "\n") {
 		if strings.HasPrefix(line, "bin/schema:") {
 			n++
 		}

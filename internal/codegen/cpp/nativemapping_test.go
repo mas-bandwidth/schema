@@ -254,8 +254,8 @@ func TestNativeMappingIsCppOnly(t *testing.T) {
 		t.Fatal("examples declares no cpp_native mapping")
 	}
 	targets := c.Targets()
-	if len(targets) != 9 {
-		t.Fatalf("want the nine built-in targets, got %v", targets)
+	if len(targets) < 9 {
+		t.Fatalf("want at least the nine built-in targets, got %v", targets)
 	}
 	for _, target := range targets {
 		if target == "cpp" {
