@@ -5066,6 +5066,12 @@ const variableRetainSource = `
     case read_payload_retain(%{f | t: :list}, payload, nodes, ids, report, retain, path) do
       {:cont, entries, report, retain} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
+        # DESCENDING keys are not a map any conforming writer produced: damage,
+        # and the whole load is discarded (§2.8, §4), as the plain read holds it
+        report =
+          if is_list(entries) and descending?(Enum.map(entries, &Map.get(&1, "key", kf.default))),
+            do: %{report | malformed: true},
+            else: report
 
         keyed =
           Enum.map(entries, fn entry ->
@@ -5155,8 +5161,15 @@ const variableRetainSource = `
   # table's declared defaults and one malformed.
   defp read_body_retain(desc, body, nodes, ids, report, retain, path) do
     case entries(body, ids, desc.string_blob, :nested) do
-      {:ok, fields, []} -> decode_retain(desc, fields, nodes, ids, retain, report, path)
-      _ -> {%{}, %{report | malformed: true}, retain}
+      {:ok, fields, []} ->
+        # a body whose terminator is not the last byte of its L is damage (§3),
+        # as the plain read's read_element holds it
+        if ends_early?(body, ids),
+          do: {%{}, %{report | malformed: true}, retain},
+          else: decode_retain(desc, fields, nodes, ids, retain, report, path)
+
+      _ ->
+        {%{}, %{report | malformed: true}, retain}
     end
   end
 
@@ -5398,7 +5411,9 @@ const variableRetainSource = `
             {{:value, value}, report, %{retain | memo: Map.put(retain.memo, idx, value)}}
 
           _ ->
-            {:null, report, retain}
+            # a pointee record the walk cannot finish is damage, and the whole
+            # load is discarded (§4), as decode_node_table holds it
+            {:null, %{report | malformed: true}, retain}
         end
     end
   end

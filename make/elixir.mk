@@ -1802,13 +1802,14 @@ tables-elixir-wire-fuzz-refusal: build/conformance-harness build/elixir-tables-e
 	done
 	@echo "tables-elixir-wire-fuzz-refusal: an empty buffer and a newer form are refused as the oracle refuses them, on a variable and a fixed root"
 
-# ITS CONTROL: the driver answers a refused load with an EMPTY report (the
-# answer it gave before the discard rule), compiled over a copy of the corpus;
-# the gate must go red on the fixed root's empty buffer.
+# ITS CONTROL: the driver answers a refused load, and a refused measure, with an
+# EMPTY report (the answer it gave before the discard rule), compiled over a
+# copy of the corpus; the gate must go red on the fixed root's empty buffer.
 tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -rf $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control && mkdir -p $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin
 	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin/
-	@sed 's|          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)|          stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>) # SABOTAGED|' \
+	@sed -e 's|          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)|          stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>) # SABOTAGED|' \
+		-e 's|      {:error, _reason, report} -> %{report \| malformed: true}|      {:error, _reason, _report} -> %{} # SABOTAGED|' \
 		test/conformance/elixir/driver_impl.ex > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex
 	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex || \
 		{ echo "NEGATIVE CONTROL: the driver sabotage did not apply"; exit 1; }
