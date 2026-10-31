@@ -36,8 +36,8 @@ frame-cap)
     sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
     ;;
 frame-cycle)
-    source=$(grep -l 'return n.reason == TableRefuseDataCycle' build/tables-generated-go/pointers/*.go)
-    sed 's/return n.reason == TableRefuseDataCycle/return false \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
+    source=$(grep -l '^[[:space:]]*return w\.cycle$' build/tables-generated-go/pointers/*.go)
+    sed 's/^\([[:space:]]*\)return w\.cycle$/\1return false \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
     ;;
 absent)
     # both writers of the marker: the bare one and the one carrying a reason

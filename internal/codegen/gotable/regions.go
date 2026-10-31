@@ -349,7 +349,7 @@ func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64
  nodes.Good=s.whole();if nodes.Good {report.Unknown+=unknown}else {report.Malformed=true}
  if nodes.Good {s=tableNodeScanBegin(r);k=1;for {id,body,ok:=s.next();if !ok{break};if directory[k].Offset!=^uint64(0){p:=unsafe.Add(base,directory[k].Offset);if t:=nodeType(id);t!=nil{body.Nodes=nodes;t.LoadBody(body,p)}else{copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(body.Buffer)),body.Buffer)}};k++} }
  r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base);if tableNonFiniteRefused(report){return nil}
- if !report.Malformed&&tableCyclic(base,root,nil){report.Malformed=true;return nil} // a pointer naming an open node is damage: the whole load is refused (docs/SPEC-TABLES.md §3.1, §4)
+ if !report.Malformed&&tableRegionCyclic(base,root,directory){report.Malformed=true;return nil} // a pointer naming an open node is damage: the whole load is refused (docs/SPEC-TABLES.md §3.1, §4)
  return base
 }
 // tableCyclic walks a decoded graph from its root with the writer's own
@@ -357,6 +357,26 @@ func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64
 // (docs/SPEC-TABLES.md §3.1): no writer produces one, so a read that meets one
 // has met damage. A share of a closed node is legal and is not this.
 func tableCyclic(root unsafe.Pointer,info *TableTypeInfo,a *TableArena)bool{n,ok:=tableNumber(root,info,a);if ok{n.Release();return false};return n.reason==TableRefuseDataCycle}
+// tableRegionCyclic is tableCyclic over a loaded region, and allocates
+// nothing: the region's own node directory carries the walk's marks. Each
+// entry's Offset takes an OPEN and a CLOSED bit while the walk runs, and an
+// entry the load left empty (^0) holds the offset before it under an EMPTY bit,
+// so the offsets stay ascending and a node is found by binary search. Every
+// entry is restored before it returns.
+const tableCycleEmpty,tableCycleOpen,tableCycleClosed=uint64(1)<<61,uint64(1)<<63,uint64(1)<<62
+type tableCycleWalk struct{base unsafe.Pointer;dir []TableNodeDirEntry;cycle bool}
+func tableRegionCyclic(base unsafe.Pointer,root *TableTypeInfo,dir []TableNodeDirEntry)bool{
+ last:=uint64(0);for i:=range dir{if dir[i].Offset==^uint64(0){dir[i].Offset=tableCycleEmpty|last}else{last=dir[i].Offset}}
+ w:=tableCycleWalk{base:base,dir:dir};w.visit(base,root)
+ for i:=range dir{if dir[i].Offset&tableCycleEmpty!=0{dir[i].Offset=^uint64(0)}else{dir[i].Offset&^=tableCycleOpen|tableCycleClosed}}
+ return w.cycle
+}
+func (w *tableCycleWalk) find(off uint64)int{keys:=^(tableCycleOpen|tableCycleClosed|tableCycleEmpty);lo,hi:=0,len(w.dir);for lo<hi{m:=int(uint(lo+hi)>>1);if w.dir[m].Offset&keys<off{lo=m+1}else{hi=m}};if lo<len(w.dir)&&w.dir[lo].Offset&tableCycleEmpty==0&&w.dir[lo].Offset&keys==off{return lo};return -1}
+func (w *tableCycleWalk) visit(p unsafe.Pointer,t *TableTypeInfo)bool{
+ i:=w.find(uint64(uintptr(p)-uintptr(w.base)));if i<0{return true};e:=&w.dir[i];if e.Offset&tableCycleOpen!=0{w.cycle=true;return false};if e.Offset&tableCycleClosed!=0||t==nil{e.Offset|=tableCycleClosed;return true}
+ e.Offset|=tableCycleOpen;tableRegionEdges(p,t,w.edge);if w.cycle{return false};w.dir[i].Offset=w.dir[i].Offset&^tableCycleOpen|tableCycleClosed;return true
+}
+func (w *tableCycleWalk) edge(slot *TableRef,f *TableFieldInfo)bool{if *slot==0{return true};var t *TableTypeInfo;if f.Table!=nil{t=f.Table()};return w.visit(tableRefAt(slot,nil),t)}
 func tablePackNodeBytes(e *tableNodeEntry,a *TableArena)int64 {if e.info!=nil {return tableRegionRound(int64(e.info.Size))};extra:=int64(0);if e.id==tableStringTypeID{extra=1};return tableRegionRound(8+int64(*(*uint32)(e.node))+extra)}
 func tablePackOffsets(n *TableNumbering)int64 {size:=int64(0);for i:=range n.entries{e:=&n.entries[i];extent:=tablePackNodeBytes(e,n.arena);if extent<0||size>math.MaxInt64-extent{return -1};e.offset=size;size+=extent};return size}
 func tableRegionPackMeasure(root unsafe.Pointer,info *TableTypeInfo,a *TableArena)int64{n,_:=tableRegionPackMeasureReason(root,info,a);return n}
