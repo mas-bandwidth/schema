@@ -577,7 +577,7 @@ function messageRow(unit, root) {
 // whose root is a variable table is such a case; the surface itself is
 // answered, so the matrix counts the rows rather than the feature.
 function messageAbsent(outDir, name, reason) {
-  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+  writeFileSync(join(outDir, name + ".absent"), reason);
 }
 
 async function surfaceMessage(lines, outDir) {

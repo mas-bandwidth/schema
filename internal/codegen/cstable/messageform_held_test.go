@@ -722,7 +722,7 @@ var csHeldUnits = []csHeldUnit{
 	{"tables/vocab9", "vocab9demo", "Vocab9demo", "N"},
 }
 
-// csHeldRuntimeUnits are the two manifest units whose connection rows the Go
+// csHeldRuntimeUnits are the manifest units whose connection rows the Go
 // leg answers and this leg's own build does not carry: their packet emitter
 // names the sibling `../serialize.cs` runtime this checkout does not stage, and
 // this card's rule that such a target is NAMED AS NOT RUN and never faked
@@ -730,7 +730,6 @@ var csHeldUnits = []csHeldUnit{
 // refusal, so the not-run status is evidenced rather than assumed.
 var csHeldRuntimeUnits = []csHeldUnit{
 	{"tables/pointers", "graphdemo", "Graphdemo", "G"},
-	{"test/tables/R2.schema", "tblr2", "Tblr2", "T"},
 }
 
 // csHeldConn is one MANIFEST `connection` row: the unit whose whole vocabulary
@@ -743,12 +742,11 @@ var csHeldConns = []csHeldConn{
 	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x3a923c7d0da66dd8"},
 }
 
-// csHeldRuntimeConns are the two `connection` rows of MANIFEST.txt the main
+// csHeldRuntimeConns are the `connection` rows of MANIFEST.txt the main
 // build cannot carry (csHeldRuntimeUnits), each with its announcement wire and
 // the build version the row pins.
 var csHeldRuntimeConns = []csHeldConn{
 	{"graph_conn", "graphdemo", "graph_conn.bin", "0xfdaabe4726d81d5c"},
-	{"retain_conn", "tblr2", "retain_conn.bin", "0x59185ac86252d03a"},
 }
 
 // csHeldMsg is one MANIFEST `message` row: one value in BOTH forms, the file

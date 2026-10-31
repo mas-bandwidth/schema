@@ -953,11 +953,20 @@ static int surface_message( const std::string & out )
             if ( c[0] == "connection" && c[1] == f[2] ) { unit = c[2]; announcement_path = c[4]; break; }
         }
         if ( unit.empty() ) { fprintf( stderr, "driver: no connection %s\n", f[2].c_str() ); return 1; }
+        const MsgCodec * codec = find_msg_codec( unit, f[3] );
+        if ( f[5] == "-" )
+        {
+            // a variable table: the message form is fixed tables only (§3.3),
+            // so no codec exists, and the row is answered by name
+            if ( codec != NULL ) { fprintf( stderr, "driver: %s.%s is a refusal row and carries a message codec\n", unit.c_str(), f[3].c_str() ); return 1; }
+            static const char reason[] = "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)";
+            if ( !spill( out, f[1] + ".absent", (const uint8_t *) reason, sizeof( reason ) - 1 ) ) return 1;
+            continue;
+        }
+        if ( codec == NULL ) { fprintf( stderr, "driver: no message codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> announcement, message;
         if ( !slurp( announcement_path.c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", announcement_path.c_str() ); return 1; }
         if ( !slurp( f[5].c_str(), message ) ) { fprintf( stderr, "driver: cannot read %s\n", f[5].c_str() ); return 1; }
-        const MsgCodec * codec = find_msg_codec( unit, f[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no message codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> answer;
         Report report;
         if ( !codec->round_trip( announcement.data(), (int64_t) announcement.size(),

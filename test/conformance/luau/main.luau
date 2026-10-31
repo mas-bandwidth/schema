@@ -440,7 +440,10 @@ local function surfaceMessage(lines: { { string } })
 		local u = unit(conn[3])
 		local M = u and optional(u, "schema_message")
 		local d = if u ~= nil then rootOf(u, f[4]) else nil
-		if u == nil or M == nil or d == nil then
+		if f[6] == "-" then
+			-- a named refusal row: the root is a variable table (§3.3)
+			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+		elseif u == nil or M == nil or d == nil then
 			say(f[2], nil)
 		elseif not (d.table and d.fixed) then
 			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")

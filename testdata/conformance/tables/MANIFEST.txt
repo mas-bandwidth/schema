@@ -15,16 +15,15 @@
 #            testdata/conformance/tables/json/<name>.json (§16). The same
 #            instance both ways.
 #
-#   retain   <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
-#   retain-message <case> <connection> <unit> <root> <wire> <capacity> <ids> ...
+#   retain   <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
 #            one RETAIN-UNKNOWN round trip (§6.6): the wire, the two capacities
 #            the caller declares, the counters the LOAD owes and the one the
 #            SAVE adds, and the file the pair writes back. The byte capacity is
 #            a RULE where a number would not travel, a record's byte cost is
 #            the port's own, so `full` and `short` say what a leg DOES rather
 #            than how many bytes it declares, and the id list, being a COUNT,
-#            travels as one. The message row is the form-2 read, whose save is
-#            the VARIABLE form (§3.3). FORMAT.md states both shapes.
+#            travels as one. Retention is the variable form's alone: the
+#            message form is fixed tables only (§3.3).
 #
 #   report   <case> <unit> <root> <wire file>
 #            bytes read by a type that did not write them — the evolution class
@@ -856,7 +855,11 @@ json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/
 #            for byte and a second json/ file would be one golden with two
 #            homes. What the pair pins is a ROUND TRIP: loading either form and
 #            saving the other reproduces the other's pinned bytes, because the
-#            two are two encodings of one value (§3.3).
+#            two are two encodings of one value (§3.3). A message-form wire of
+#            `-` is a NAMED REFUSAL row: the root is a variable table, the
+#            message form is fixed tables only (§3.3), and every leg answers it
+#            absent with "variable table: the message form is fixed tables only
+#            (SPEC-TABLES §3.3)".
 unit backenddemo tables/backend
 unit vocabdemo   tables/vocab
 unit vocab9demo  tables/vocab9
@@ -884,8 +887,8 @@ message store_full    backend_conn StorePurchase testdata/wire/tables/store_full
 message store_default backend_conn StorePurchase testdata/wire/tables/store_default.bin testdata/wire/tables/store_default_message.bin
 
 # and the four the rules a value alone cannot reach: a WIDE vocabulary whose
-# slots fall on both sides of the one-byte boundary, a POINTERED root whose node
-# records name their type ids through the announced table, and a TWO-PEER pair
+# slots fall on both sides of the one-byte boundary, a POINTERED root, which is
+# a variable table and so the named refusal row, and a TWO-PEER pair
 # whose units announce different vocabularies and each decode the other's
 # messages against the table THAT peer announced.
 instance vocab_wide vocabdemo Wide09 testdata/wire/tables/vocab_wide.bin
@@ -897,7 +900,7 @@ instance vocab9_low  vocab9demo Wide00 testdata/wire/tables/vocab9_low.bin
 
 message vocab_wide vocab_conn   Wide09        testdata/wire/tables/vocab_wide.bin testdata/wire/tables/vocab_wide_message.bin
 message vocab_low  vocab_conn   Wide00        testdata/wire/tables/vocab_low.bin  testdata/wire/tables/vocab_low_message.bin
-message graph_tree graph_conn   Scene         testdata/wire/tables/graph_tree.bin testdata/wire/tables/graph_tree_message.bin
+message graph_tree graph_conn   Scene         testdata/wire/tables/graph_tree.bin -
 message peer_a     backend_conn StorePurchase testdata/wire/tables/peer_a.bin     testdata/wire/tables/peer_a_message.bin
 message peer_b     vocab_conn   Wide00        testdata/wire/tables/peer_b.bin     testdata/wire/tables/peer_b_message.bin
 message vocab9_wide vocab9_conn Wide19 testdata/wire/tables/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
@@ -1004,16 +1007,10 @@ refusal block_base_unaligned      unaligned_base
 # SHORT of the last record: a record's byte cost is the port's own, so the
 # short row is stated as a rule a leg applies rather than as a number two
 # layouts would read differently. `ids` is `full` or the ENTRIES the caller's
-# retained-id list holds, which is a COUNT and is comparable. A `retain-message`
-# row's capacity is `full` only: `short` is one buffer's rule and a batch takes
-# one buffer a body, so the loader refuses the pair by name (schema#681).
+# retained-id list holds, which is a COUNT and is comparable.
 unit tblrt1 test/tables/RT1.schema
 unit tblrt2 test/tables/RT2.schema
 unit tblrt3 test/tables/RT3.schema
-
-# THE CONNECTION the message-form row resolves against: RT2's own announcement,
-# read by RT1, which is a receiver meeting a LARGER unit (§3.3).
-connection retain_conn tblrt2 0xeea0e45b080c7bca testdata/wire/tables/retain_conn.bin
 
 # THE ROUND TRIP AT DEPTH, and the two capacities. The first save is a pinned
 # byte string of its own: moving a field changes the order ids are first used
@@ -1034,16 +1031,6 @@ retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bi
 retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full full 0,1,1 0 -
 retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full full 0,1,1 0 -
 
-# THE MESSAGE FORM'S TAIL (§3.3): a form-2 batch loaded with retention against
-# the connection's announced vocabulary and saved as FILES, which is the one
-# direction retention crosses the forms. The batch's two bodies take one region
-# and one retention buffer each, and the saves ride back to back in body order.
-# `unknown` is SEVENTEEN where the two retention counters sum to sixteen, and
-# the seventeenth is the plain read's own: a bit stream has to be walked past,
-# so the DISCARDED SLOT's element body is decoded where a file's reader steps
-# over it by its length, and the field inside it that RT1 cannot name counts
-# there.
-retain-message retain_message_tail retain_conn tblrt1 Node testdata/wire/tables/retain_message.bin full full 10,6,17 0 testdata/wire/tables/retain_message_save_0.bin,testdata/wire/tables/retain_message_save_1.bin
 
 # Unbounded arrays: existing C++ wire pins now shared by every port.
 unit listdemo tables/lists

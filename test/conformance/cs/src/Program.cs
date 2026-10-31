@@ -601,10 +601,10 @@ static partial class Program
         {
             string[] connection = lines.Find(c => c[0] == "connection" && c[1] == f[2]);
             Codec codec = Find(connection[2], f[3]);
-            if (codec == null) { SpillAbsent(outDir, f[1]); continue; }
             // only a fixed table rides the message form: a variable root has no message codec
-            if (codec.MessageLoad == null)
+            if (f[5] == "-" || (codec != null && codec.MessageLoad == null))
             { File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); continue; }
+            if (codec == null) { SpillAbsent(outDir, f[1]); continue; }
             var report = new Report();
             object value = codec.MessageLoad(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[5]), report);
             if (report.Malformed || report.Refused) { Console.Error.WriteLine("message read failed: " + f[1]); return 1; }

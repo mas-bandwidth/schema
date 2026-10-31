@@ -625,6 +625,11 @@ if (mode == "message") {
     local name = f[1]; local root = f[3];
     if (!(f[2] in connections)) throw name + ": no connection " + f[2];
     local conn = connections[f[2]];
+    if (f[5] == "-") {
+      // a named refusal row: the root is a variable table (§3.3)
+      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+      continue;
+    }
     if (!generated(conn.unit)) { writeAbsent(name); continue; }
     local T = openUnit(conn.unit)[1];
     if (!T.Descriptors[root].fixed) {

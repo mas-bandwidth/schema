@@ -1164,16 +1164,8 @@ fn surface_report(manifest: &Manifest, out: &str) {
 // A short store is measured from the full retaining read, then reduced by one
 // byte so the loss is caused by capacity rather than a different input wire.
 fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
-    for f in manifest.lines.iter().filter(|f| f[0] == "retain" || f[0] == "retain-message") {
+    for f in manifest.of_kind("retain") {
         if saves && f.last().is_some_and(|v| v == "-") {
-            continue;
-        }
-        if f[0] == "retain-message" {
-            // A retain-message row's root is a plain `table` (RT1's `Node`),
-            // which carries no message verbs (docs/SPEC-TABLES.md §3.3: "a
-            // plain `table T` may not" ride the form): ABSENT, with the reason,
-            // as the Go driver answers it.
-            spill(out, &format!("{}.absent", f[1]), b"plain table: \xc2\xa73.3");
             continue;
         }
         if f[2] != "tblrt1" || f[3] != "Node" {
@@ -1418,12 +1410,18 @@ fn surface_message(manifest: &Manifest, out: &str) {
         let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
             fail(&format!("message {} names no connection {}", f[1], f[2]));
         };
+        if f[5] == "-" {
+            // a named refusal row: the root is a variable table, and the
+            // message form is fixed tables only (docs/SPEC-TABLES.md §3.3)
+            spill(out, &format!("{}.absent", f[1]), "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)".as_bytes());
+            continue;
+        }
         let ann = slurp(&c[4]);
         let wire = slurp(&f[5]);
         match message_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
             Some(Some(bytes)) => spill(out, &f[1], &bytes),
             Some(None) => fail(&format!("{}: message load/save refused {}", f[1], f[5])),
-            None => spill(out, &format!("{}.absent", f[1]), b"plain table: \xc2\xa73.3"),
+            None => spill_absent(out, &f[1]),
         }
     }
 }

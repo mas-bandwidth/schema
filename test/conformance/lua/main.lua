@@ -303,7 +303,10 @@ local function surfaceMessage(all, outdir)
     -- message <name> <connection> <root> <file-form wire> <message-form wire>
     local conn = connectionNamed(all, f[3])
     local u = unit(conn[3])
-    if not u then
+    if f[6] == "-" then
+      -- a named refusal row: the root is a variable table (§3.3)
+      absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+    elseif not u then
       absent(outdir, f[2], NOT_GENERATED)
     elseif u.T.MessageRoots == nil or not u.T.MessageRoots[f[4]] then
       absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")

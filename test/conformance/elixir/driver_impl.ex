@@ -858,6 +858,9 @@ defmodule Driver do
 
     for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
       case message_answer(Map.get(connections, connection), root, batch) do
+        {:refused, why} ->
+          File.write!(Path.join(outdir, name <> ".absent"), why)
+
         {:ok, bytes} ->
           write(outdir, name, bytes)
 
@@ -884,6 +887,11 @@ defmodule Driver do
        do: mod,
        else: nil
   end
+
+  # a named refusal row: the root is a variable table, and the message form is
+  # fixed tables only (docs/SPEC-TABLES.md §3.3)
+  defp message_answer(_connection, _root, "-"),
+    do: {:refused, "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"}
 
   defp message_answer(nil, _root, _batch),
     do: {:absent, "the row names no connection the manifest defines"}
