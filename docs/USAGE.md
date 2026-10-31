@@ -3035,8 +3035,10 @@ caller holding an `int64_t` from a `stat` casts once, at the call site.
 **The same cook, from C#.** The bytes are memory your engine already holds — an
 mmap, a native allocation, or an array you pinned — and this side takes a pointer
 and a length and points at it, so the generated source is `unsafe` and your
-project sets `AllowUnsafeBlocks`:
+project sets `AllowUnsafeBlocks`. `make tables-cs-usage` compiles and runs
+this example from this page:
 
+<!-- cs-table-usage -->
 ```csharp
 using Graphdemo;
 
@@ -3060,6 +3062,7 @@ for ( ListNodeRow * n = ListNodeCook.At( &scene->Head ); n != null; n = ListNode
     Console.WriteLine( "  " + Encoding.UTF8.GetString( ListNodeCook.Name( n ) ) + " = " + n->Value );
 }
 ```
+<!-- /cs-table-usage -->
 
 There is a `ReadOnlySpan<byte>` overload beside the pointer form for a consumer
 that already holds the bytes — the same contract, spelled differently. Its length

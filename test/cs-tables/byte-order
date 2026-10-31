@@ -1,0 +1,27 @@
+#!/bin/sh
+# M12 (docs/PORTING.md) — BYTE ORDER IS THE READER'S, NOT THE HOST'S, C# side.
+#
+# Every multi-byte access the generated C# makes to WIRE bytes (the file,
+# message, retain and text forms: every generated source but the cook's and the
+# block's, which are native-order forms by §7 and §19 and are refused across
+# orders by their magic, docs/PORTING.md I7) is an explicit little-endian
+# BinaryPrimitives call. A host-order primitive (MemoryMarshal.Read/Write,
+# Unsafe.Read/WriteUnaligned, BitConverter.To*/GetBytes) reads the same bytes on
+# a little-endian host and different ones on a big-endian host, and no .NET this
+# tree runs on is big-endian, so the gate is this scan of the emitted source; the
+# native big-endian half stays unproven until a big-endian .NET runs here.
+#
+#   byte-order <generated dir>
+set -eu
+dir=$1
+files=$(find "$dir" -name '*.cs' ! -name '*Cook.cs' ! -name '*Block.cs' | sort)
+[ -n "$files" ] || { echo "BYTE ORDER GATE FAILED: no generated C# under $dir" >&2; exit 1; }
+bad=$(grep -nE 'MemoryMarshal\.(Read|Write|TryRead|TryWrite|Cast)\b|Unsafe\.(Read|Write)Unaligned|BitConverter\.(To(U?Int(16|32|64)|Single|Double|Half)|GetBytes|TryWriteBytes)' $files || true)
+if [ -n "$bad" ]; then
+    echo "$bad" | head -10
+    echo "BYTE ORDER GATE FAILED: a host-order read or write of wire bytes in the generated C#" >&2
+    exit 1
+fi
+n=$(cat $files | grep -oE 'BinaryPrimitives\.(Read|Write)[A-Za-z0-9]+LittleEndian' | wc -l | tr -d ' ')
+[ "$n" -gt 0 ] || { echo "BYTE ORDER GATE FAILED: no explicit little-endian access at all — the scan, not the property, is what broke" >&2; exit 1; }
+echo "tables C# byte order: $n explicit little-endian wire accesses and no host-order primitive in $(echo "$files" | wc -l | tr -d ' ') generated sources"

@@ -69,3 +69,62 @@ func init() {
 		new: `if (f.Kind == 10 || f.Kind == 11) { return f.GetRaw != null; } // SABOTAGED: the writer emits a NaN`,
 	}}
 }
+
+// The C# table leg's controls (make/cs.mk, cs_leg_sabotage): each removes one
+// rule a docs/PORTING.md row names, and the leg must go red on that rule.
+func init() {
+	// M5: the None-only guard, the defect the symmetric compare replaced.
+	sabotages["table-cs-keyed-none-only"] = []edit{{
+		old: `if ((uint)(key - 1) >= (uint)SlotCount)`,
+		new: `if (key == 0 && SlotCount > 0) // SABOTAGED: the None-only guard`,
+	}}
+	// M6: the identity map forgets a closed node, so a node two pointers name
+	// is numbered and written twice.
+	sabotages["table-cs-identity-map"] = []edit{
+		{old: `if (Indices.TryGetValue(child, out ulong old))`, new: `if (Nodes.Count < 0 && Indices.TryGetValue(child, out ulong old)) // SABOTAGED: no identity`},
+		{old: `Indices.Add(child, (ulong)Nodes.Count + 2);`, new: `Indices[child] = (ulong)Nodes.Count + 2;`},
+	}
+	// M10: the caller's free is dropped, so a hook pair no longer balances.
+	sabotages["table-cs-allocator-free"] = []edit{{
+		old: `if (Free != null) { Free(Context, (IntPtr)pointer); }`,
+		new: `if (Free != null) { /* SABOTAGED: the pair's free is dropped */ }`,
+	}}
+	// M14: the text writer never labels a shared node; it spells it in full at
+	// every reference, so the text reads back as two nodes.
+	sabotages["table-cs-text-label"] = []edit{{
+		old: `if (o.Graph.Uses[child] <= 1) { return WriteValue(ref o, child, f.Table, depth); }`,
+		new: `if (o.Graph.Uses[child] >= 1) { return WriteValue(ref o, child, f.Table, depth); } // SABOTAGED: no &node label`,
+	}}
+	// M17: the size test that sends a node larger than a slab to its own span
+	// never fires, so the node is bump-allocated in a slab it does not fit.
+	sabotages["table-cs-blob-span"] = []edit{{
+		old: `if (bytes > TableArena.SlabBytes) { return Arena.Grab(bytes); }`,
+		new: `if (bytes > TableArena.SlabBytes && bytes < 0) { return Arena.Grab(bytes); } // SABOTAGED: no span`,
+	}}
+	// M19: the builder map appends instead of inserting at the key's place.
+	sabotages["table-cs-map-insert-order"] = []edit{{
+		old: "        for (int i = slot->Count - 1; i > at; i--) { head->Items[i] = head->Items[i - 1]; }\n        head->Items[at] = entry; return (T*)entry;",
+		new: "        head->Items[slot->Count - 1] = entry; return (T*)entry; // SABOTAGED: insertion order, no sort",
+	}}
+	// §2.5: the native region writer numbers the graph without the shared-blob
+	// refusal, so a blob two slots name is written.
+	sabotages["table-cs-region-blob-shared"] = []edit{{
+		old: `if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true); if (!ids.Graph.Valid) { return -1; } }`,
+		new: `if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator); if (!ids.Graph.Valid) { return -1; } } // SABOTAGED: shared blobs written`,
+	}}
+	// I7: the magic no longer refuses, so a cook of the other byte order is
+	// refused later and not by name.
+	sabotages["cook-open-order-cs"] = []edit{{
+		old: `if (Schema.TableCookRead64(at + %d) != Schema.TableCookMagic) { reason =`,
+		new: `if (Schema.TableCookRead64(at + %d) == ~Schema.TableCookMagic) { /* SABOTAGED: the magic does not refuse */ reason =`,
+	}}
+}
+
+// M12: one wire read goes through a host-order primitive, which reads the same
+// bytes on a little-endian host and so is invisible to every round trip here.
+func init() {
+	sabotages["table-cs-host-order-read"] = []edit{{
+		old: `case 4: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;`,
+		new: `case 4: v = System.Runtime.InteropServices.MemoryMarshal.Read<uint>(Buffer.Slice(Offset)); break; // SABOTAGED: host order`,
+	}}
+}
