@@ -991,6 +991,73 @@ jobs:
       - name: run C# ${{ matrix.name }} fuzz
         run: make ${{ matrix.target }}
 
+  # JAVASCRIPT WIRE FUZZ (docs/PORTING.md I15, the js cell; #492).
+  #
+  # The harness's differential wire fuzzer over its whole default roster
+  # through the JavaScript driver, the plain arm and the --retain arm, at the
+  # Makefile's default SEED and N (the same as cs-fuzz). The enumerated pass is
+  # most of the cost (about 154,000 mutants plain, 87,000 retain) and does not
+  # change with N. Measured on a workstation: 43 s per arm, 88 s for the two in
+  # one make call, so each arm is its own matrix row (make/js.mk's
+  # tables-js-wire-fuzz-plain and -retain, the two halves of
+  # tables-js-wire-fuzz-all) to keep a row well inside its five minutes once
+  # the setup is paid. Node comes from the same pin the js
+  # conformance row reads (test/conformance/js/ci.json), and NODE=node is that
+  # row's env, so make/js.mk's repo-local dist/ default is not used here.
+  # Its negative control, tables-js-wire-fuzz-negative-control, rides in the
+  # js group of the negative-controls job.
+  js-fuzz:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    name: JavaScript fuzz (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: wire
+            target: tables-js-wire-fuzz-plain
+          - name: retain
+            target: tables-js-wire-fuzz-retain
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # The Go build cache, restore only — `go-test` is the one Linux writer.
+      # The block on that job carries the reasoning.
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: read the node pin of the js conformance row
+        run: echo "JS_NODE_PIN=$(jq -r .node test/conformance/js/ci.json)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.JS_NODE_PIN }}
+
+      - name: build the harness and the generated JavaScript units
+        run: make build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+
+      - name: run the JavaScript ${{ matrix.name }} fuzz
+        run: make ${{ matrix.target }} NODE=node
+
 
   # THE C# TABLES LEG, PER PULL REQUEST. Before this job the leg ran in no
   # pull-request job at all — it was reached only through `make test` and the

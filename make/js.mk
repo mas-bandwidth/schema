@@ -1059,6 +1059,67 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all-retain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all-retain.log
 
+# THE TWO ARMS ONE AT A TIME, for ci-full.yml's js-fuzz rows. Together the
+# arms measured 88 s on a workstation at the default SEED and N (the
+# enumerated pass is most of it and does not move with N), too close to a
+# five-minute CI row once setup is paid, so CI runs each arm as its own row.
+# Each is the same command and the same greps as its half of
+# tables-js-wire-fuzz-all, which stays the one target test-js runs; the plain
+# arm reads the absent pin through the variable, so the pin lives in one place.
+.PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
+tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-js-wire-fuzz-plain.log 2>&1; \
+		status=$$?; cat build/tables-js-wire-fuzz-plain.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-plain.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-plain.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-plain.log
+	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-plain.log || { \
+		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds pinned in make/js.mk'; exit 1; }
+
+tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js --retain \
+		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		> build/tables-js-wire-fuzz-retain.log 2>&1; \
+		status=$$?; cat build/tables-js-wire-fuzz-retain.log; \
+		if [ $$status -ne 0 ]; then exit $$status; fi
+	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-retain.log
+	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-retain.log
+	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-retain.log
+
+# tables-js-wire-fuzz-negative-control is I15's control for this leg
+# (docs/PORTING.md): the twin of the reference's numbering-resolve control.
+# One statement of the GENERATED variable reader is removed in a COPY of the
+# generated tree: the enum reference's range check (a reference past the
+# unit's id table is damage, docs/SPEC-TABLES.md §3). Without it the reader
+# looks the reference up past the table, names no variant, and counts an
+# unknown where the oracle counts malformed, so the differential must go red
+# on the REPORT. --n 0 runs the enumerated pass alone, so the control does not
+# depend on the random stream. Nothing else in the js gate sees this: the
+# conformance harness's wire, report and hostile surfaces stay green over the
+# same sabotaged tree, so the red here is the fuzzer's own.
+.PHONY: tables-js-wire-fuzz-negative-control
+tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	@rm -rf build/js-wire-fuzz-sabotage && mkdir -p build/js-wire-fuzz-sabotage
+	@cp -R build/tables-generated-js build/js-wire-fuzz-sabotage/generated
+	@for f in build/js-wire-fuzz-sabotage/generated/*/*Variable.js; do \
+		sed 's|if (ref > table.length) { report.malformed = true; return undefined; }|/* SABOTAGED enum reference range */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED enum reference range' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
+		{ echo 'NEGATIVE CONTROL FAILED: the enum reference range sabotage patched nothing'; exit 1; }
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+			--driver 'test/conformance/js/driver wire-fuzz' --seed 1 --n 0 --failed build/js-wire-fuzz-sabotage/failed.bin \
+			> build/js-wire-fuzz-sabotage/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: an enum reference past the id table was read as unknown and the differential stayed green'; exit 1; \
+	fi
+	@grep -q 'the report differs' build/js-wire-fuzz-sabotage/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the differential went red, but not on the report'; cat build/js-wire-fuzz-sabotage/log; exit 1; }
+	@echo 'JavaScript wire negative control: an enum reference past the id table changes the read report'
+
+test-js: tables-js-wire-fuzz-negative-control
+
 # THE CARDS CONFORMANCE CHECK, this leg's half (tables/cards/conformance/FORMAT.md).
 # cards-js-test runs the facade's node:test cases against the generated unit;
 # cards-js-conformance runs the harness `cards` subcommand over the JS driver;
