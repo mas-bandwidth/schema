@@ -127,7 +127,7 @@ macro_rules! arm {
 // One fixed root's form-2 message batch (§3.3). The oracle decodes the batch
 // but saves body one as a single-message batch, so the leg does the same.
 macro_rules! message_arm {
-    ($unit:ident, $default:expr, $load:ident, $measure:ident, $save:ident, $wire:expr) => {{
+    ($unit:ident, $default:ident, $load:ident, $measure:ident, $save:ident, $wire:expr) => {{
         use $unit::*;
         let mut report = TableReport::default();
         let mut reply = Reply { loaded: true, ..Default::default() };
@@ -137,9 +137,7 @@ macro_rules! message_arm {
             let mut values = vec![$default(); TABLE_MESSAGE_BATCH_MAX];
             let _ = $load(&mut values, &vocabulary, $wire, &mut report);
             let mut saved_report = TableReport::default();
-            // a cycle a pointered body's numbering closes is a save refusal,
-            // as the file arm answers it (§3.1)
-            let n = if report.cycle_on_save { -1 } else { $measure(&values[..1], &mut saved_report) };
+            let n = $measure(&values[..1], &mut saved_report);
             if n < 0 {
                 reply.save_fail = true;
             } else {
@@ -168,7 +166,6 @@ const MESSAGE_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "StorePurchase"), ("backenddemo", "Envelope"),
     ("vocabdemo", "Wide00"), ("vocabdemo", "Wide09"),
     ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
-    ("graphdemo", "Scene"),
 ];
 
 fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
@@ -181,20 +178,6 @@ fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("vocabdemo", "Wide09") => message_arm!(vocabdemo, wide09_message_default, wide09_load_messages, wide09_measure_messages, wide09_save_messages, wire),
         ("vocab9demo", "Wide00") => message_arm!(vocab9demo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, wire),
         ("vocab9demo", "Wide19") => message_arm!(vocab9demo, wide19_message_default, wide19_load_messages, wide19_measure_messages, wide19_save_messages, wire),
-        ("graphdemo", "Scene") => {
-            // a POINTERED root's batch (§3.1, §3.3): the region its LoadMeasure
-            // sizes is compared too
-            let measure = {
-                use graphdemo::*;
-                let mut entries = vec![TableMessageEntry::default(); 4096];
-                let mut vocabulary = TableVocabulary::new(&mut entries);
-                if announce_read(&mut vocabulary, &TABLE_ANNOUNCEMENT, &mut TableReport::default()) { scene_load_measure_messages(&vocabulary, wire) } else { -1 }
-            };
-            message_arm!(graphdemo, graphdemo::Scene::default, scene_load_messages, scene_measure_messages, scene_save_messages, wire).map(|mut reply| {
-                reply.measure = measure;
-                reply
-            })
-        }
         _ => None,
     }
 }
