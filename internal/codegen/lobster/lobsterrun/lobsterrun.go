@@ -94,7 +94,14 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 // serialize.lobster's serialize_abort prints the rule and exits 70.
 func RunExit(t testing.TB, dir, main string, inputs map[string][]byte, args ...string) ([]byte, int) {
 	t.Helper()
-	stdout, stderr, err := run(t, dir, main, inputs, args)
+	return RunExitFlags(t, dir, main, nil, inputs, args...)
+}
+
+// RunExitFlags is [RunExit] with compiler flags before the program, such as
+// --runtime-no-asserts, which compiles every assert away.
+func RunExitFlags(t testing.TB, dir, main string, flags []string, inputs map[string][]byte, args ...string) ([]byte, int) {
+	t.Helper()
+	stdout, stderr, err := runFlags(t, dir, main, flags, inputs, args)
 	if err == nil {
 		return stdout, 0
 	}
@@ -106,6 +113,11 @@ func RunExit(t testing.TB, dir, main string, inputs map[string][]byte, args ...s
 }
 
 func run(t testing.TB, dir, main string, inputs map[string][]byte, args []string) ([]byte, []byte, error) {
+	t.Helper()
+	return runFlags(t, dir, main, nil, inputs, args)
+}
+
+func runFlags(t testing.TB, dir, main string, flags []string, inputs map[string][]byte, args []string) ([]byte, []byte, error) {
 	t.Helper()
 	// a test that shells out to a toolchain is the slow half (internal/slowtest):
 	// make test-lobster and ci-full set SCHEMA_REQUIRE_CORPUS / SCHEMA_SLOW, so
@@ -131,7 +143,7 @@ func run(t testing.TB, dir, main string, inputs map[string][]byte, args []string
 			t.Fatal(err)
 		}
 	}
-	argv := []string{main}
+	argv := append(append([]string{}, flags...), main)
 	if len(args) > 0 {
 		argv = append(argv, "--")
 		argv = append(argv, args...)
