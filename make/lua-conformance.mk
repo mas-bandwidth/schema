@@ -16,9 +16,14 @@
 # conformance-negative-control-lua-walk  the text walk's field-key match (I11:
 #                                        json-read and json-hostile red,
 #                                        json-write and wire green)
-.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk
+# conformance-negative-control-lua-framing  the id table's 4096-entry bound
+#                                        lifted (lua / framing red on
+#                                        frame_entries_4097, wire and report green)
+.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing
 conformance-negative-control-lua: build/conformance-harness
 	sh test/conformance/lua/negative-control report
 
 conformance-negative-control-lua-walk: build/conformance-harness
 	sh test/conformance/lua/negative-control walk
+conformance-negative-control-lua-framing: build/conformance-harness
+	sh test/conformance/lua/negative-control framing

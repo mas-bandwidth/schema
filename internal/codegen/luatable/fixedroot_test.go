@@ -12,14 +12,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// 2026-10-18 (schema-lua-fuzz-differential w3, head 7020fe0, draft PR #2074):
-// the wire-fuzz differential found 4304 of 19000 mutants where the Lua Load
-// returned NO ROOT for a FIXED root (one with no pointer in its by-value
-// closure, docs/SPEC-TABLES.md §2.2). A fixed root ALWAYS LOADS
-// (docs/SPEC-TABLES.md §4.2, §6.5; test/conformance/README.md, "The wire-fuzz
-// driver"): whatever the bytes, Load returns the root with the defaults for
-// what it could not read, and the report says what happened. The smallest
-// mutant of the class is the EMPTY wire.
+// Every fixed root must obey §4: malformed input produces no usable root.
+// An unsupported form retains its distinct refusal contract. These vectors
+// originated in the fixed-root fuzz differential and continue to cover every
+// fixed root, with the owner's whole-load discard rule replacing recovery.
 
 // fixedRootDamage is one damaged form of an instance wire.
 type fixedRootDamage struct {
@@ -62,9 +58,13 @@ for i = 1, %d do
   local v = load.LoadTolerant(T, %q, inputs["w" .. i], report)
   local verdict
   if report.refused > 0 then verdict = "refused" else verdict = "read" end
+  if report.malformed then
+    print(v == nil and "malformed" or "malformed-with-root")
+  else
   print(string.format("%%s,%%d,%%d,%%d,%%d,%%d,%%s,%%s", v ~= nil and "root" or "nil",
     report.unknown, report.kindMismatch, report.widened, report.clamped,
     report.duplicate, tostring(report.malformed), verdict))
+  end
 end
 `, module, n, root)
 }
@@ -83,6 +83,9 @@ func fixedRootEngine(t *testing.T, m *tabletext.Model, root string, data []byte)
 			t.Fatalf("root %s: the engine refused the root itself on %x: %v", root, data, err)
 		}
 		verdict = "refused"
+	}
+	if rep.Malformed || (!ok && err == nil) {
+		return "malformed" // §4: neither the instance nor other counters are defined.
 	}
 	// false with a nil error is framing damage (malformed); false with a
 	// refusal is the refusal alone, which moves no counter (§3)
@@ -175,13 +178,10 @@ func checkFixedRoots(t *testing.T, patch func([]byte) []byte) (reds []string, co
 	return reds, compared
 }
 
-// TestLuaTableFixedRootAlwaysLoads loads every FIXED root of every instance
-// row of the tables manifest on the empty wire, the wire cut at half, the
-// wire with its first frame byte set to 0xff and the wire refused by its form
-// byte, and requires a root and the report counters, malformed flag and
-// verdict internal/tablewire gives the same bytes (docs/SPEC-TABLES.md §4.2,
-// §6.5).
-func TestLuaTableFixedRootAlwaysLoads(t *testing.T) {
+// TestLuaTableFixedRootReadBoundary checks every fixed root against the
+// engine: whole-load discard on damage and the separate unsupported-form
+// refusal. Successful/evolution results still compare their full reports.
+func TestLuaTableFixedRootReadBoundary(t *testing.T) {
 	t.Parallel()
 	reds, compared := checkFixedRoots(t, nil)
 	for _, r := range reds {
@@ -193,10 +193,10 @@ func TestLuaTableFixedRootAlwaysLoads(t *testing.T) {
 	t.Logf("%d damaged fixed-root wires compared, %d diverge", compared, len(reds))
 }
 
-// TestLuaTableFixedRootAlwaysLoadsNegativeControl patches the emitted load.lua
+// TestLuaTableFixedRootReadBoundaryNegativeControl patches the emitted load.lua
 // in memory — one anchor, matched exactly once — so a fixed root whose wire
 // does not open answers no root again, and requires the check to go red.
-func TestLuaTableFixedRootAlwaysLoadsNegativeControl(t *testing.T) {
+func TestLuaTableFixedRootReadBoundaryNegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = `if into ~= nil then return D.reset(T, desc, into) end
     return fresh(T, desc)`

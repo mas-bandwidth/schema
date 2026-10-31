@@ -3,8 +3,7 @@ package luautable_test
 // THE MESSAGE FORM'S GOLDENS (docs/SPEC-TABLES.md §3.3): every `message` row
 // of testdata/conformance/tables/MANIFEST.txt, read against its `connection`
 // row's announcement, saved again, and compared byte for byte with the batch
-// wire the C++ reference wrote. A batch with damage in its second body
-// delivers the bodies before it and is malformed, terminal for the batch.
+// wire the C++ reference wrote. Damage in any body discards the whole batch.
 
 import (
 	"bufio"
@@ -301,7 +300,7 @@ func TestLuauMessageFormDamageRefusesTheBatch(t *testing.T) {
 	}
 	dir, mods, _ := buildMessageUnit(t, units[conn.unit])
 	out := messageMainWith(t, dir, mods, "LoginRequest", "LoadMessagesTolerant", ann, batch)
-	if !strings.Contains(out, " malformed true") {
+	if !strings.HasPrefix(out, "count 0 malformed true") {
 		t.Fatalf("the tolerant batch read did not refuse a damaged batch: %q", out)
 	}
 	out = messageMainWith(t, dir, mods, "LoginRequest", "LoadMessages", ann, batch)

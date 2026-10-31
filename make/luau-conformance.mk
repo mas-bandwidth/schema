@@ -61,7 +61,10 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 # conformance-negative-control-luau-walk     the text walk's field-key match (I11:
 #                                            json-read and json-hostile red,
 #                                            json-write and wire green)
-.PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk
+# conformance-negative-control-luau-framing  the id table's 4096-entry bound
+#                                            (docs/LAYERS/1-framing.md: framing
+#                                            red, wire and report green)
+.PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing
 conformance-negative-control-luau-emitter: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
 	sh test/conformance/luau/negative-control report
@@ -69,3 +72,7 @@ conformance-negative-control-luau-emitter: build/conformance-harness $(LUAU_CONF
 conformance-negative-control-luau-walk: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
 	sh test/conformance/luau/negative-control walk
+
+conformance-negative-control-luau-framing: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/negative-control framing
