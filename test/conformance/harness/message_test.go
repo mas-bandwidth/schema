@@ -157,56 +157,54 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 	}
 }
 
-// TestTheTailIsUnconditional holds §3.3's stated choice: a unit with no
-// pointer announces the reserved node-table id and the three blob type ids all
-// the same, so an ordinary edit only ever grows the tail at its END and never
-// moves a slot a generated field header carries as a literal.
-func TestTheTailIsUnconditional(t *testing.T) {
+// TestTheVocabularyIsTheMessageClosure: the announcement names what a fixed
+// table can carry and nothing else (docs/SPEC-TABLES.md §3.3; Glenn,
+// 2026-10-31). Every entry is a field or arm of the message closure or a
+// variant of an enum it reaches, and no entry is the node-table id, a blob id,
+// a table's name id or a field only a variable table declares.
+func TestTheVocabularyIsTheMessageClosure(t *testing.T) {
 	m, _, u := corpus(t)
 	for _, c := range m.Connections {
 		unit, err := u.get(c.Unit)
 		if err != nil {
 			t.Fatal(err)
 		}
-		entries := ir.TableVocabulary(unit)
-		var tables []uint64
-		for name := range ir.TableClosure(unit) {
-			// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S and
-			// its name is on no wire, so the tail never names it (§2.8, §20.2).
-			// The vocabulary skips it by `MapEntryOf`, and so does this: no
-			// connection unit carried a map until the retain rows landed one.
-			if st := unit.Tables[name]; st != nil && st.MapEntryOf != "" {
+		closure := ir.TableMessageClosure(unit)
+		if len(closure) == 0 {
+			t.Fatalf("%s: the connection's unit has no fixed table", c.Key)
+		}
+		forbidden := map[uint64]string{
+			ir.TableNodeWireId:    "the node-table id",
+			ir.BytesWireTypeId:   "the bytes blob id",
+			ir.StringWireTypeId:  "the string blob id",
+			ir.WstringWireTypeId: "the wstring blob id",
+		}
+		for name, st := range unit.Tables {
+			forbidden[ir.TableWireId(st.WireName())] = "the name id of table " + name
+		}
+		inClosure := map[uint64]bool{}
+		for name := range closure {
+			st := unit.Tables[name]
+			if st == nil {
+				st = unit.Structs[name]
+			}
+			for _, f := range st.Fields {
+				inClosure[ir.TableFieldWireId(f)] = true
+			}
+		}
+		for name, st := range unit.Tables {
+			if closure[name] {
 				continue
 			}
-			if unit.Tables[name] != nil {
-				// the id is the table's WIRE name, so a `was` rename moves no slot
-				tables = append(tables, ir.TableWireId(unit.Tables[name].WireName()))
+			for _, f := range st.Fields {
+				if id := ir.TableFieldWireId(f); !inClosure[id] {
+					forbidden[id] = "the field " + name + "." + f.Name + ", which only a variable table declares"
+				}
 			}
 		}
-		// the tail is the last 4 + one-per-table entries, in the fixed order
-		want := len(tables) + 4
-		if len(entries) < want {
-			t.Fatalf("%s: %d entries cannot hold a tail of %d", c.Key, len(entries), want)
-		}
-		tail := entries[len(entries)-want:]
-		if tail[0].Id != ir.TableNodeWireId || tail[1].Id != ir.BytesWireTypeId ||
-			tail[2].Id != ir.StringWireTypeId || tail[3].Id != ir.WstringWireTypeId {
-			t.Errorf("%s: the tail does not open with the node-table id and bytes, string, wstring", c.Key)
-		}
-		for i, e := range tail {
-			if e.Kind != 0 {
-				t.Errorf("%s: tail entry %d is announced at kind %d, not 0", c.Key, i, e.Kind)
-			}
-		}
-		// and the table name ids beyond them are the projection's sorted
-		// record order, which is what makes the tail grow only at its end
-		have := map[uint64]bool{}
-		for _, e := range tail[4:] {
-			have[e.Id] = true
-		}
-		for _, id := range tables {
-			if !have[id] {
-				t.Errorf("%s: the tail names no table id %016x", c.Key, id)
+		for i, e := range ir.TableVocabulary(unit) {
+			if why, bad := forbidden[e.Id]; bad {
+				t.Errorf("%s: slot %d announces %s", c.Key, i+1, why)
 			}
 		}
 	}

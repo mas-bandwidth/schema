@@ -11,11 +11,11 @@ func init() {
 }
 
 var messageSabotages = map[string][]edit{
-	// THE TAIL IS UNCONDITIONAL: a unit with no pointer announces the
-	// node-table id all the same. Take it out and every slot after it moves.
-	"message-tail-without-node-table": {{
-		old: "\tname(TableNodeWireId)\n",
-		new: "\t// SABOTAGED: the tail's node-table id is gone\n",
+	// THE VOCABULARY IS THE MESSAGE CLOSURE'S: announce the whole unit and a
+	// variable table's fields and every table's name id take slots.
+	"message-vocabulary-whole-unit": {{
+		old: "\tclosure := TableMessageClosure(u)\n",
+		new: "\tclosure := TableClosure(u) // SABOTAGED: the whole unit is announced\n",
 	}},
 
 	// THE ORDER IS THE COOK PROJECTION'S, and the committed announcement pins

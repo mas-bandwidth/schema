@@ -6283,8 +6283,8 @@ recoverable, because the very next bit's meaning is what is in doubt. It is
 damage, terminal for the batch like all damage here. **The reserved-id rule
 outranks this one**: a reserved id anywhere but its own transport is malformed
 (below, §3.1), so an ENUM's reference naming the node-table id refuses on that
-rule and never reaches the kind-`0` test, even though the node-table id is
-announced at kind `0`.
+rule and never reaches the kind-`0` test, even where an announcement carries
+the node-table id at kind `0`.
 
 **A POINTER, A MAP, AN UNBOUNDED ARRAY AND A BYTE BUFFER AT ITS USED SIZE NEVER
 RIDE A BODY**, because a fixed table holds none of them (§2.2). The vocabulary is
@@ -6396,7 +6396,7 @@ and that is its integer.
 
   | kind | shape | what it means |
   |---|---|---|
-  | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: a table's name id, one of the three blob type ids and an enum VARIANT name, which are referenced as values and carry no payload at all, and the reserved node-table id, which the unit's vocabulary carries and no message body references |
+  | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: an enum VARIANT name, which is referenced as a value and carries no payload at all |
   | `1` bool | nothing | one bit |
   | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base`, encoded by the KIND'S SIGNEDNESS (below): zigzag LEB128 for the signed kinds `2`–`5`, unsigned LEB128 for the unsigned kinds `6`–`9`, both canonical on §3's rule, and sixteen bytes little-endian for `18` and `19`. The value is `base` plus the offset those `bits` spell. A `bits(N)` field is RANGED with `base` `0` and `bits` N, and a `flags` mask is RANGED with `base` `0` and `bits` the mask's own declared width W. Neither spells a kind of its own, because both are a width and a base and that is what RANGED already is |
   | `10` f32 | `packing (u8)`, then its facts | `0` RAW, thirty-two bits. `2` QUANTIZED, then `min`, `max` and `res`, four bytes each, IEEE-754 float32, which are the three facts SPEC.md §4.3's compressed-float rule takes: the step count, the width and the value all derive from them by that rule and by nothing else (below) |
@@ -6501,29 +6501,29 @@ The build version and the vocabulary are the announcement's own transport, they
 appear in its trailer and never in a message body, so they take no slot and no
 reference names them. Slot `1` is the first entry of the closure.
 
-**THE VOCABULARY IS THE UNIT'S WHOLE CLOSURE, IN THE COOK PROJECTION'S ORDER.**
-A peer announces every entry its unit's table closure CAN put on this wire, not
+**THE VOCABULARY IS THE UNIT'S MESSAGE CLOSURE, IN THE COOK PROJECTION'S
+ORDER.** The message closure is every `fixed table` and every record one
+reaches BY VALUE (nested fixed tables and types, array elements, union
+payloads). A peer announces every entry that closure CAN put on this wire, not
 the entries one message happens to use:
 
-- **every field name** of every record in the closure, a generated map entry's
-  `key` and `value` included (§2.8), each with the kind and shape its
-  declaration gives it,
-- **every enum variant name** and **every union arm name** in the closure, a
-  variant at kind `0` and an arm at its own arm kind and shape,
-- **the reserved node-table id**, **the three BLOB type ids**
-  `fnv1a64( "bytes" )`, `fnv1a64( "string" )` and `fnv1a64( "wstring" )`
-  (§3.1, all three), and **the NAME id of EVERY table in the closure**, whether
-  or not a pointer names it today, each at kind `0`.
+- **every field name** of every record in the message closure, each with the
+  kind and shape its declaration gives it,
+- **every enum variant name** and **every union arm name** the message closure
+  reaches, a variant at kind `0` and an arm at its own arm kind and shape.
+
+**NOTHING ELSE IS ANNOUNCED** (Glenn, 2026-10-31, "yes obviously remove
+this"): a variable table's fields, every table's name id, the reserved
+node-table id, the three blob type ids, and an enum variant or union arm that
+only a variable table reaches take no slot, because no body can carry them. A
+unit with no `fixed table` announces an empty vocabulary.
 
 **THE ORDER IS THE COOK PROJECTION'S** (§20.2, §20.7), which is already
 compiler-settled, already total over the closure and already printable and
 diffable by `schema build-version --facts`: each record in the order the
 projection renders it and each record's fields in the order the projection
 renders them, then each enum's variants and each union's arms in that same
-order. **Then comes the TAIL, which the projection does not name**, in this
-fixed order: the reserved node-table id, then the three blob type ids as
-`bytes`, `string`, `wstring`, then every table's own name id in the projection's
-sorted record order. **A TRIPLE already placed is never placed twice**, so a
+order. **A TRIPLE already placed is never placed twice**, so a
 field name three records share at one kind and shape takes the slot its first
 appearance gave it, and the same name at a SECOND kind or shape takes a second
 slot. Two entries that agree on all three parts are malformed, and both engines
@@ -6592,16 +6592,6 @@ well as about work, and this is where that memory lives.
 - **PER FIELD ON THE READ PATH THAT IS ONE ARRAY INDEX**: no parse, no LEB128,
   and no branch on the announcement's format. A reference resolves to an entry
   by subscript and the decode reads the widths off it.
-
-**THE TAIL IS UNCONDITIONAL, AND THAT IS A CHOICE.** A unit with no pointer
-announces it anyway, because the alternative reshuffles slots for an ordinary
-edit: if only pointer targets carried a type id, adding a `*T` would insert one
-entry into the middle of the sorted run and move every slot after it. Neither is
-a wire break, since the build version moves with any such edit, but both make a
-slot number a thing that drifts under edits that have nothing to do with it, and
-a slot number is a compile-time constant this form asks a generated field header
-to carry. **Four entries and one entry a table is the price of a tail that only
-ever grows at its end**, and it is stated rather than optimized away.
 
 **THE VOCABULARY IS PER CONNECTION AND PER DIRECTION.** Each peer announces its
 own unit's, and its own bodies resolve against it. A peer holds two vocabularies
