@@ -1488,7 +1488,7 @@ test-js: tables-js-keyed
 # other reason fails too.
 
 # js_jstable_control: $(1) the tools/sabotage name, $(2) the jstable source it
-# copies, $(3) the go test -run pattern (the gate's own test), $(4) the package,
+# copies, $(3) the regexp that selects the gate's own test, $(4) the package,
 # $(5) the line the red run must print.
 define js_jstable_control
 	@rm -rf build/$@ && mkdir -p build/$@
