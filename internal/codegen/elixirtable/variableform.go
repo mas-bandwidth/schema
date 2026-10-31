@@ -780,7 +780,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           end
 
         :table ->
-          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc)
+          # an absent optional (nil) owns no edge (§2.3), and a by-value
+          # table left nil holds its defaults, which name no node
+          case Map.get(value, f.name) do
+            nil -> acc
+            v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
+          end
 
         :list ->
           collect_list_nodes(f, Map.get(value, f.name) || [], acc)
@@ -1453,10 +1458,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # entries walks the body once into {id, kind, payload} triples, splitting the
   # node table out into its records (docs/SPEC-TABLES.md §3.1). transport is
-  # true only for a variable root: that body carries the reserved node id as
-  # its own numbering and does not count it unknown. A fixed root, and every
-  # nested body, cannot name the id, so it joins the field list and counts
-  # once as unknown (§4).
+  # true for a variable root: that body carries the reserved node id as its own
+  # numbering and does not count it unknown. It is false for a fixed root, which
+  # cannot name the id, so the id joins the field list and counts once as
+  # unknown (§4). It is :nested for every other body (a by-value table, an
+  # element, an entry, a node record), where the id is malformed: a second
+  # numbering cannot exist.
   defp entries(bin, ids, string_blob, transport),
     do: entries(bin, ids, string_blob, transport, [], [])
 
@@ -1480,16 +1487,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           id ->
             case rest do
               <<kind, rest2::binary>> ->
-                if id == @build_version_id or id == @message_vocab_id do
+                if id == @build_version_id or id == @message_vocab_id or
+                     (id == @node_id and transport == :nested) do
                   # the two reserved ids ride in the ANNOUNCEMENT and nowhere
-                  # else (§3.3): one in any body but the announcement's own is
-                  # malformed, the walk stops there and no field after it is
-                  # read (§3.1)
+                  # else (§3.3), and the node id is a root's alone (§3.1): one
+                  # in a body that is not its transport is malformed, the walk
+                  # stops there and no field after it is read
                   {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                 else
                   case slice(rest2, kind) do
                     {:ok, payload, rest3} ->
-                      if id == @node_id and transport do
+                      if id == @node_id and transport == true do
                         # the reserved node id is a variable root's own transport
                         # (§3.1): the body reads it as the node table, and a body
                         # that carries it under another kind steps over it, never
@@ -1521,7 +1529,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                       # cannot hold: the field still counts — unknown when the id
                       # is not this body's, a kind mismatch when it is — and the
                       # walk stops (§3, §4)
-                      if id == @node_id and transport do
+                      if id == @node_id and transport == true do
                         {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                       else
                         {:stop, Enum.reverse([{id, kind, <<>>} | acc]), nodes, byte_size(rest2)}
@@ -1683,7 +1691,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp decode_node_table(nodes, name, body, ids, idx) do
     desc = Map.fetch!(@tables, name)
 
-    case entries(body, ids, desc.string_blob, false) do
+    case entries(body, ids, desc.string_blob, :nested) do
       {:ok, fields, []} ->
         {value, _report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
         {:value, value}
@@ -1848,18 +1856,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp read_payload(%{t: :table} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, body} ->
-        elem_desc = Map.fetch!(@tables, f.elem)
-
-        case entries(body, ids, elem_desc.string_blob, false) do
-          {:ok, fields, []} ->
-            # the nested body's events FOLD into the holder's (§4): a fresh
-            # report here would drop every event the holder counted before it
-            {value, nested} = decode(elem_desc, fields, nodes, ids)
-            {:cont, value, merge_report(report, nested)}
-
-          _ ->
-            {:cont, %{}, %{report | malformed: true}}
-        end
+        # a nested body reads as an element does (§3, §4), and its events FOLD
+        # into the holder's: a fresh report here would drop every event the
+        # holder counted before it
+        {value, nested} = read_element(Map.fetch!(@tables, f.elem), body, nodes, ids)
+        {:cont, value, merge_report(report, nested)}
 
       :error ->
         {:cont, %{}, %{report | malformed: true}}
@@ -1979,8 +1980,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                       end
 
                     reader = %{f | elem_kind: elem_kind}
+                    {n, report} = clamp_count(n, f, report)
                     {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
-                    {:cont, value, report} |> clamp_count(f)
+                    {:cont, value, report}
 
                   :error ->
                     {:cont, [], %{report | malformed: true}}
@@ -2141,13 +2143,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # a count past a bounded array's declared bound keeps the first bound
-  # elements and counts one clamped (docs/SPEC-TABLES.md §4)
-  defp clamp_count({:cont, value, report}, %{max_count: max})
-       when is_list(value) and length(value) > max,
-       do: {:cont, Enum.take(value, max), %{report | clamped: report.clamped + 1}}
+  # a count past a bounded array's declared bound reads the first bound
+  # elements and counts one clamped, before any element is read, so the
+  # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{max_count: max}, report) when n > max,
+    do: {max, %{report | clamped: report.clamped + 1}}
 
-  defp clamp_count(result, _f), do: result
+  defp clamp_count(n, _f, report), do: {n, report}
 
   # widens? reports whether a wire kind decodes EXACTLY into this field
   # (docs/SPEC-TABLES.md §4): a smaller integer into a wider one of the same
@@ -2366,32 +2368,35 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # DEFAULTS and one malformed counts, and the list reads on past it. A clean
   # body reads its value, and an event inside it folds into the list's report.
   defp read_element(desc, sub, nodes, ids) do
-    if ends_early?(sub, ids) do
-      {%{}, malformed_report()}
-    else
-      case entries(sub, ids, false, false) do
-        {:ok, fields, []} ->
-          # a list element's report FOLDS into the enclosing one (§4): the
-          # counters sum and malformed sticks, so an event inside an element
-          # is never lost when the element's own walk returns.
-          decode(desc, fields, nodes, ids)
+    case entries(sub, ids, false, :nested) do
+      {:ok, fields, []} ->
+        # a list element's report FOLDS into the enclosing one (§4): the
+        # counters sum and malformed sticks, so an event inside an element
+        # is never lost when the element's own walk returns. A body whose
+        # terminator is not the last byte of its L is framing damage (§3):
+        # the events its fields earned count, the element reads its
+        # declared defaults, and one malformed counts.
+        {value, report} = decode(desc, fields, nodes, ids)
 
-        {:stop, fields, [], 0} ->
-          # the element's body ran off its own end with no terminator: the
-          # prefix decoded stands, and one malformed counts (§3)
-          {value, report} = decode(desc, fields, nodes, ids)
-          {value, %{report | malformed: true}}
+        if ends_early?(sub, ids),
+          do: {%{}, %{report | malformed: true}},
+          else: {value, report}
 
-        {:stop, fields, [], _remaining} ->
-          # the element's body is damaged mid-walk: the events its prefix
-          # already earned count, the element reads its declared defaults, and
-          # one malformed counts (§3, §4)
-          {_value, report} = decode(desc, fields, nodes, ids)
-          {%{}, %{report | malformed: true}}
+      {:stop, fields, [], 0} ->
+        # the element's body ran off its own end with no terminator: the
+        # prefix decoded stands, and one malformed counts (§3)
+        {value, report} = decode(desc, fields, nodes, ids)
+        {value, %{report | malformed: true}}
 
-        _ ->
-          {%{}, malformed_report()}
-      end
+      {:stop, fields, [], _remaining} ->
+        # the element's body is damaged mid-walk: the events its prefix
+        # already earned count, the element reads its declared defaults, and
+        # one malformed counts (§3, §4)
+        {_value, report} = decode(desc, fields, nodes, ids)
+        {%{}, %{report | malformed: true}}
+
+      _ ->
+        {%{}, malformed_report()}
     end
   end
 
@@ -4295,9 +4300,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # a header whose element kind is not the declared one is a kind mismatch the
+  # read answers as an empty list, so it places nothing (internal/tablewire
+  # extent.go): only a list DECLARED of tables descends into table elements.
   defp list_extent(field, arr, ids, at) do
     case arr do
-      <<13, count_rest::binary>> ->
+      <<13, count_rest::binary>> when field.elem_kind == 13 ->
         case leb(count_rest) do
           :error ->
             :error
@@ -5068,7 +5076,7 @@ const variableRetainSource = `
   # one nested body read under its path: the entries failing to frame leave the
   # table's declared defaults and one malformed.
   defp read_body_retain(desc, body, nodes, ids, report, retain, path) do
-    case entries(body, ids, desc.string_blob, false) do
+    case entries(body, ids, desc.string_blob, :nested) do
       {:ok, fields, []} -> decode_retain(desc, fields, nodes, ids, retain, report, path)
       _ -> {%{}, %{report | malformed: true}, retain}
     end
@@ -5299,7 +5307,7 @@ const variableRetainSource = `
       memo ->
         desc = Map.fetch!(@tables, name)
 
-        case entries(body, ids, desc.string_blob, false) do
+        case entries(body, ids, desc.string_blob, :nested) do
           {:ok, fields, []} ->
             retain = %{retain | memo: Map.put(memo, idx, :pending)}
 
@@ -5353,7 +5361,7 @@ const variableRetainSource = `
     if ends_early?(sub, ids) do
       {%{}, %{report | malformed: true}, retain}
     else
-      case entries(sub, ids, false, false) do
+      case entries(sub, ids, false, :nested) do
         {:ok, fields, []} ->
           decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
 
