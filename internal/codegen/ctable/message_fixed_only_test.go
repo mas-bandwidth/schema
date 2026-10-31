@@ -49,7 +49,9 @@ table Varplain { v int32 }
 			t.Errorf("the fixed root's message surface lacks %q", want)
 		}
 	}
-	absent := regexp.MustCompile(`\b(varroot|varplain|varleaf|onlyvar)_[a-z_]*messages?\b|\b(varroot|varplain|varleaf|onlyvar)_[a-z_]*message_body\b|\bschema_probe_(varroot|varplain|varleaf|onlyvar)_message_|\bschema_probe_varchoice_wire_message_|\btable_retain_message_|\btable_message_nodes_open\b`)
+	// Onlyvar is a struct and not a root: it keeps the named retention
+	// refusals every non-variable member carries, and loses its message codecs.
+	absent := regexp.MustCompile(`\b(varroot|varplain|varleaf)_[a-z_]*messages?\b|\bonlyvar_(load|save|measure|load_measure)_messages\b|\b(varroot|varplain|varleaf|onlyvar)_[a-z_]*message_body\b|\bschema_probe_(varroot|varplain|varleaf|onlyvar)_message_|\bschema_probe_varchoice_wire_message_|\btable_retain_message_|\btable_message_nodes_open\b`)
 	if hits := absent.FindAllString(text, -1); len(hits) > 0 {
 		t.Fatalf("a variable table carries message-form code: %q", hits)
 	}
