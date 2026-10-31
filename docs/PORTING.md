@@ -1070,7 +1070,7 @@ reader controls share.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) | ✅ `packet-utf8-goose-negative-control` `packet-wide-goose-negative-control` `packet-defaults-goose-negative-control` `packet-finite-goose-negative-control` (make/goose-packet.mk: each a named `tools/sabotage` edit of one Goose emitter, `go build -overlay` into a private compiler, the fixture regenerated and the gate required red on exactly its rows; the finite controls diff the failing vectors against `test/packet-finite/goose/read.expected` and `test/packet-finite/goose/write.expected`) |
+| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) | ✅ `tables-goose-strict-emitter-negative-control` (fixedform.go's `import .fixed;` dropped through `go build -overlay`; the strict gate must red exactly the Table modules that name the fixed runtime) `tables-goose-runtime-home-negative-control` `packet-utf8-goose-negative-control` `packet-wide-goose-negative-control` `packet-defaults-goose-negative-control` `packet-finite-goose-negative-control` (make/goose-packet.mk: each a named `tools/sabotage` edit of one Goose emitter, `go build -overlay` into a private compiler, the fixture regenerated and the gate required red on exactly its rows; the finite controls diff the failing vectors against `test/packet-finite/goose/read.expected` and `test/packet-finite/goose/write.expected`) |
 
 ### I3 — The forgery fuzz oracle walks what it opened
 
@@ -1508,7 +1508,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ❌ #2236 — card schema-goose-conformance-leg (docs/PORT-GOOSE.md, THE CARD MAP); the runtime modules are emitted once beside the modules and imported relative to the importing file |
+| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ✅ `tables-goose-runtime-home` `tables-goose-runtime-home-negative-control` (the runtime modules are emitted once under their own names beside the modules and imported relative to the importing file; the gate holds them and every original Table module byte-identical when an earlier-sorting file joins) |
 
 ### J3 — The release tier
 
@@ -1534,7 +1534,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ❌ #2236 — card schema-goose-ci-on-fleet (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ✅ `tables-goose-release` (`test-goose` and every Goose control on the certification schedule) |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
@@ -1563,7 +1563,7 @@ below.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) | ❌ #2236 — not yet carded in the schema-goose stream (docs/PORT-GOOSE.md, THE CARD MAP); the pinned compiler's warnings are its analyzer; v2026.2 ships no formatter |
+| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) | ✅ `tables-goose-strict` (every generated module and the runtime modules beside it, each checked on its own by the pinned compiler, zero warnings, warnings as errors; v2026.2 ships no formatter, so the compiler's warnings are its analyzer) `tables-goose-strict-negative-control` |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
