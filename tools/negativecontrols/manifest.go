@@ -79,7 +79,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "moo"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.
@@ -97,6 +97,8 @@ func (g Group) toolchain(field string) string {
 		return g.OTP
 	case "elixir":
 		return g.Elixir
+	case "moo":
+		return g.Moo
 	}
 	return ""
 }

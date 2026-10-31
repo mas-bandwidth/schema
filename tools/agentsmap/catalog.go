@@ -119,6 +119,7 @@ var catalog = []Entry{
 	e("internal/codegen/js", "JS packet emitter", "go test ./internal/codegen/js", "go test ./internal/codegen/js"),
 	e("internal/codegen/jstable", "JS table emitter", "go test ./internal/codegen/jstable", "go test ./internal/codegen/jstable"),
 	e("internal/codegen/moo", "moo packet emitter", "make test-moo", "make test-moo"),
+	e("internal/codegen/mootable", "moo table emitter", "make test-moo-tables", "make test-moo-tables"),
 	e("internal/codegen/rust", "Rust packet emitter", "go test ./internal/codegen/rust", "go test ./internal/codegen/rust"),
 	e("internal/codegen/rusttable", "Rust table emitter", "go test ./internal/codegen/rusttable", "go test ./internal/codegen/rusttable"),
 

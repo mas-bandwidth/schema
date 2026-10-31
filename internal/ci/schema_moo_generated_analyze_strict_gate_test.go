@@ -103,7 +103,7 @@ func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
 	corpus := regexp.MustCompile(`\$\(wildcard ([^)*]+)/\*\.schema\)`)
 	makefile := read("Makefile")
 	dirs := 0
-	for _, line := range strings.Split(makefile, "\n") {
+	for line := range strings.SplitSeq(makefile, "\n") {
 		if !strings.HasPrefix(line, "SCHEMAS") || !strings.Contains(line, ":=") {
 			continue
 		}

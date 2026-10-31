@@ -5389,7 +5389,11 @@ static SCHEMA_UNUSED int tabledemo_gunner_config_load_body( tabledemo_table_read
                     break;
                 }
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->tracking = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->tracking = bool_byte != 0;
+                }
                 break;
             }
             case UINT64_MAX:
@@ -9440,7 +9444,12 @@ static SCHEMA_UNUSED int tabledemo_gunner_config_load_body_retain( tabledemo_tab
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
                 return 0;
                 }
-                value->tracking = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true;
+                    }
+                    value->tracking = bool_byte != 0;
+                }
                 break;
             }
             case UINT64_MAX:
