@@ -8,9 +8,26 @@ const tableBuilderLoadSource = `
         ResetNativeElement((IntPtr)TableListStorage.At((byte*)slot, index, field.NativeElementSize), field);
         return true;
     }
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a builder load
+    // that meets damage answers false with the builder's root back at its
+    // declared defaults, so nothing it decoded can be saved or locked.
     public static bool LoadBuilder(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        bool malformedBefore = report.Malformed;
+        report.Malformed = false;
+        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);
+        if (report.Malformed)
+        {
+            if (pointer != IntPtr.Zero && !worker.Arena.Closed) { NativeReset(new NativeValue((byte*)pointer, 0) { Mutable = true }, type); }
+            if (report.Verdict != Verdict.Refused) { Finish(report, Verdict.Damaged); }
+            return false;
+        }
+        report.Malformed = malformedBefore;
+        return whole;
+    }
+    static bool LoadBuilderWalk(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
+    {
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null; Finish(report, Verdict.BodyStopped);
         if (pointer == IntPtr.Zero || worker.Arena.Closed) { return false; }
         if (bytes.Length == 0) { Damage(report); Finish(report, Verdict.Damaged); return false; }

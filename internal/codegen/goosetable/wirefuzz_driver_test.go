@@ -11,14 +11,17 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestGooseRetainingFuzzDriver(t *testing.T) {
+	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	out := gooseRetainingFuzzProbe(t, nil)
 	checkGooseRetainingReplies(t, out, 9)
 }
 
 func TestGooseRetainingFuzzNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	checkGooseRetainingReplies(t, gooseRetainingFuzzProbe(t, nil), 9)
 	// A real runtime counter defect must survive the driver and reach its reply.
 	src := string(goosetable.Runtime()["wire_retain.goose"])
@@ -154,10 +157,12 @@ func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]b
 // oracle replaces that map (retainmaprepeat_test.go); the upcoming duplicate
 // field damage contract must revise this success expectation explicitly.
 func TestGooseRetainingMapReplacement(t *testing.T) {
+	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	gooseRetainingMapReplay(t, nil, 0)
 }
 
 func TestGooseRetainingMapReplacementNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	baseline := gooseRetainingMapReplay(t, nil, 0)
 	src := string(goosetable.Runtime()["wire_load.goose"])
 	const anchor = "        if c.retaining && c.vals[slot].made { forget_rec(c, slot); }\n"

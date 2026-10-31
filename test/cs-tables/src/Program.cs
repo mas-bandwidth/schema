@@ -550,10 +550,8 @@ static partial class Program
             byte[] wire = Fixture(Join(new byte[] { 1, 14 }, Var((ulong)payload.Length), payload,
                 new byte[] { 2, 4 }, U32(42), new byte[] { 0 }), "items", "a");
             V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
-            Check(V1.Schema.CfgLoad(value, wire, report), "bounded elements: parent reaches terminator");
-            Check(report.Malformed && value.A == 42, "bounded elements: local damage preserves sibling");
-            Check(value.ItemsCount == (prefix ? 1 : 0), "bounded elements: decoded prefix only");
-            if (prefix) { Check(value.Items[0] == 10, "bounded elements: prefix value"); }
+            Check(!V1.Schema.CfgLoad(value, wire, report), "bounded elements: a count the body cannot cover refuses the load");
+            Check(report.Malformed && value.A == 5 && value.ItemsCount == 0, "bounded elements: the damaged load is discarded whole");
         }
     }
 
@@ -563,20 +561,18 @@ static partial class Program
     // vocabulary suffix; splicing the field streams yields two occurrences.
     static byte[] SharedVocabSplice(byte[] first, byte[] second)
     {
-        int suffix = 0;
-        int n = Math.Min(first.Length, second.Length);
-        while (suffix < n && first[first.Length - 1 - suffix] == second[second.Length - 1 - suffix])
-        {
-            suffix++;
-        }
-        Check(suffix > 8, "counted tail: files share a vocabulary suffix");
-        // Identical vocabularies make the terminator 0 part of the suffix, so
-        // the field stream ends at Length-suffix, not one byte earlier.
-        int cut = first.Length - suffix;
+        // The table's own trailer says where the field stream ends: the root
+        // terminator sits just before the vocabulary and its count.
+        long count = BitConverter.ToInt64(first, first.Length - 8);
+        int tail = 8 + (int)count * 8;
+        int cut = first.Length - tail - 1;
         Check(cut > 0 && first[cut] == 0, "counted tail: first field stream ends at 0");
-        byte[] spliced = new byte[cut + second.Length];
+        Check(second.Length > tail && first.AsSpan(cut).SequenceEqual(second.AsSpan(second.Length - tail - 1)),
+            "counted tail: files share a vocabulary suffix");
+        byte[] spliced = new byte[cut + second.Length - 1];
         Buffer.BlockCopy(first, 0, spliced, 0, cut);
-        Buffer.BlockCopy(second, 0, spliced, cut, second.Length);
+        // the second file's form byte is not part of its field stream
+        Buffer.BlockCopy(second, 1, spliced, cut, second.Length - 1);
         return spliced;
     }
 
@@ -601,7 +597,7 @@ static partial class Program
         byte[] spliced = SharedVocabSplice(a, b);
         Demo.RootConfig got = new Demo.RootConfig();
         Demo.TableReport report = new Demo.TableReport();
-        Check(Demo.Schema.RootConfigLoad(got, spliced, report), "counted tail: load two occurrences");
+        Check(Demo.Schema.RootConfigLoad(got, spliced, report) && !report.Malformed, "counted tail: load two occurrences");
         Check(got.WeaponsCount == 1, "counted tail: later count wins");
         Check(got.Weapons[0].Damage == 5.0f, "counted tail: live prefix kept");
         Check(got.Weapons[1].Damage == 21.0f, "counted tail: slot 1 restored to default");
@@ -1000,10 +996,9 @@ static partial class Program
         byte[] wire = Fixture(Join(new byte[] { 1,14 }, Var((ulong)payload.Length), payload,
             new byte[] { 2,12,2,(byte)'o',(byte)'k',0 }), "samples", "label");
         Demo.TableReport report2 = new Demo.TableReport(); Demo.WideBlob out2 = new Demo.WideBlob();
-        Check(Demo.Schema.WideBlobLoad(out2, wire, report2), "wide prefix: load");
-        Check(report2.Malformed && out2.SamplesCount == 2 && out2.Samples[0] == 11 && out2.Samples[1] == 22,
-            "wide prefix: bounded payload cannot fabricate 70000 elements");
-        Check(out2.LabelLength == 2 && GetString(out2.Label, 2) == "ok", "wide prefix: sibling survived");
+        Check(!Demo.Schema.WideBlobLoad(out2, wire, report2), "wide prefix: a count the payload cannot cover refuses the load");
+        Check(report2.Malformed && out2.SamplesCount == 0 && out2.LabelLength == new Demo.WideBlob().LabelLength,
+            "wide prefix: bounded payload cannot fabricate 70000 elements, and the damaged load is discarded whole");
     }
 
     // ---- clamping: hostile or stale numerics clamp and count ----
@@ -1021,7 +1016,7 @@ static partial class Program
         Check(V1.Schema.CfgLoad(value, wire, report) && report.Clamped == 1 && value.NameLength == 32, "string bound clamp");
     }
 
-    // ---- malformed framing: decode stops, partial result kept, flag raised ----
+    // ---- malformed framing: the flag is raised and the whole load is discarded (§4) ----
 
     static void TestMalformed()
     {
@@ -1039,8 +1034,8 @@ static partial class Program
         Check(!V1.Schema.CfgLoad(value, Fixture(new byte[] { 1,4,0,0 }, "a"), report) && report.Malformed,
             "truncated scalar stops root");
         report = new V1.TableReport();
-        Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42)), "a"), report) && report.Malformed && value.A == 42,
-            "missing root terminator keeps good prefix");
+        Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42)), "a"), report) && report.Malformed && value.A == 5,
+            "missing root terminator discards the whole load");
         report = new V1.TableReport();
         Check(!V1.Schema.CfgLoad(value, Fixture(Join(new byte[] { 1,4 }, U32(42), new byte[] { 0,99 }), "a"), report) && value.A == 5,
             "slack before vocabulary defaults the entire file");
@@ -1537,9 +1532,9 @@ static partial class Program
         byte[] wire = Fixture(Join(new byte[] { 1,16 }, Var((ulong)payload.Length), payload,
             new byte[] { 3,4 }, U32(42), new byte[] { 0 }), "tokens", "Beta", "a");
         V1.Cfg value = new V1.Cfg(); V1.TableReport report = new V1.TableReport();
-        Check(V1.Schema.CfgLoad(value, wire, report), "null key: load");
-        Check(report.Malformed && report.Unknown == 0 && value.Tokens[(int)V1.Slot.Beta] == 77 && value.A == 42,
-            "null key: damage keeps prefix and sibling");
+        Check(!V1.Schema.CfgLoad(value, wire, report), "null key: the load is refused");
+        Check(report.Malformed && report.Unknown == 0 && value.Tokens[(int)V1.Slot.Beta] == 0 && value.A == 5,
+            "null key: damage discards the whole load");
         payload = Join(new byte[] { 4,2,2,4 }, U32(88), new byte[] { 3,4 }, U32(99));
         wire = Fixture(Join(new byte[] { 1,16 }, Var((ulong)payload.Length), payload, new byte[] { 0 }), "tokens", "unknown", "Delta");
         report = new V1.TableReport();
@@ -1859,6 +1854,7 @@ static partial class Program
         TestWideExtents();
         TestClamping();
         TestMalformed();
+        TestDamageDiscardsTheWholeLoad();
         TestReflection();
         TestCrossFile();
         TestFixedForm();
