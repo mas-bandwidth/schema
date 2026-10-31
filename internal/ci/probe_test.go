@@ -29,6 +29,24 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// a tagged port in the real tree (a `schema new-leg` leg, make/<lang>.mk
+	// beside a build-tagged compiler/target_<lang>.go) is identified by the
+	// target file's first line, so the fixture carries those files too
+	targets, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		data, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(string(data), "//go:build schema_leg_") {
+			if err := os.WriteFile(filepath.Join(fixture, "compiler", filepath.Base(target)), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
 		t.Fatal(err)

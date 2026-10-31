@@ -124,6 +124,12 @@ jobs:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
 
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
+
       # The two halves split so a failing build fails the run before the
       # harness's overhead shows in the log; both run with the row's env so
       # a toolchain-on-PATH leg (java, elixir, js, dart, rust) sees the

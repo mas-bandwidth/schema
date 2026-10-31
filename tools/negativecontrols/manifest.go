@@ -63,6 +63,11 @@ type Group struct {
 	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
 	// GOLANGCI_LINT_VERSION rather than against test/conformance/*/ci.json.
 	Golangci string `json:"golangci,omitempty"`
+	// Moo says the row needs the moo pin (make/moo.mk's MOO_PIN, a commit of
+	// mas-bandwidth/moo), which .github/actions/moo restores or builds into
+	// dist/moo. Like dotnet it is a marker, "pin", and never a version: the
+	// commit lives in make/moo.mk alone.
+	Moo string `json:"moo,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -79,7 +84,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "moo"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.
@@ -97,6 +102,8 @@ func (g Group) toolchain(field string) string {
 		return g.OTP
 	case "elixir":
 		return g.Elixir
+	case "moo":
+		return g.Moo
 	}
 	return ""
 }
@@ -190,6 +197,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		OTP      string `json:"otp"`
 		Elixir   string `json:"elixir"`
 		Golangci string `json:"golangci"`
+		Moo      string `json:"moo"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -209,6 +217,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			OTP:      g.OTP,
 			Elixir:   g.Elixir,
 			Golangci: g.Golangci,
+			Moo:      g.Moo,
 		})
 	}
 	return json.Marshal(struct {

@@ -24,5 +24,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `javatable/` | Java table emitter | `go test ./internal/codegen/javatable` | `go test ./internal/codegen/javatable` |
 | `js/` | JS packet emitter | `go test ./internal/codegen/js` | `go test ./internal/codegen/js` |
 | `jstable/` | JS table emitter | `go test ./internal/codegen/jstable` | `go test ./internal/codegen/jstable` |
+| `moo/` | moo packet emitter | `make test-moo` | `make test-moo` |
+| `mootable/` | moo table emitter | `make test-moo-tables` | `make test-moo-tables` |
 | `rust/` | Rust packet emitter | `go test ./internal/codegen/rust` | `go test ./internal/codegen/rust` |
 | `rusttable/` | Rust table emitter | `go test ./internal/codegen/rusttable` | `go test ./internal/codegen/rusttable` |
