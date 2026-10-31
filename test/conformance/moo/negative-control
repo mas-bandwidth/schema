@@ -58,8 +58,8 @@ while read -r _ key paths; do
 done
 
 moo="${MOO:-$root/dist/moo/moo}"
-printf '#!/bin/sh\nexec env SCHEMA_MOO_GENERATED=%s/generated MOO=%s %s/test/conformance/moo/driver "$@"\n' \
-    "$out" "$moo" "$root" > "$out/driver"
+printf '#!/bin/sh\nexec env SCHEMA_MOO_GENERATED=%s/generated MOO_DRIVER_STAGE=%s/stage MOO=%s %s/test/conformance/moo/driver "$@"\n' \
+    "$out" "$out" "$moo" "$root" > "$out/driver"
 chmod +x "$out/driver"
 printf 'moo %s/driver\n' "$out" > "$out/drivers.txt"
 if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
