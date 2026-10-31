@@ -2160,8 +2160,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # read_widened decodes a field whose wire kind widened (§4): the value
   # reads at the wire kind's own width and lands, one widened event counts, and an
   # out-of-range value clamps as always.
-  defp read_widened(%{t: :float}, kind, payload, report) do
-    {float_of(payload, kind_width(kind)), %{report | widened: report.widened + 1}}
+  defp read_widened(%{t: :float} = f, kind, payload, report) do
+    {float_of(payload, kind_width(kind), f.non_finite), %{report | widened: report.widened + 1}}
   end
 
   defp read_widened(f, kind, payload, report) do
