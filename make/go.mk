@@ -383,7 +383,7 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
 # ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
-# cards-conformance-go and every cards-<lang>-conformance target across all eleven
+# cards-conformance-go and every cards-<lang>-conformance target across all twelve
 # carded languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
 # parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
 # the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
@@ -394,7 +394,7 @@ CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
 cards-conformance-all:
 	@mkdir -p build/cards-conformance-all
 	@fail=0; \
-	for leg in go c cpp cs rust java js dart elixir lua lobster; do \
+	for leg in go c cpp cs rust java js dart elixir lua luau lobster; do \
 		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
 		log=build/cards-conformance-all/$$leg.log; \
 		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
@@ -769,7 +769,7 @@ test-go: packet-wide-go packet-wide-go-negative-control
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
@@ -984,7 +984,7 @@ GO_FUZZ_DRIVER ?= build/conformance-go
 GO_RELEASE_N ?= 100000
 .PHONY: tables-go-release-fuzz tables-go-release-negative-control
 tables-go-release-fuzz: build/conformance-harness build/conformance-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	./build/conformance-harness wire-fuzz --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	$(MAKE) tables-go-builders N=$(GO_RELEASE_N) SEED=$(GO_RELEASE_SEED)
