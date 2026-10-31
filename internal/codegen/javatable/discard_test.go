@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -45,13 +46,14 @@ table Graph
 }
 `
 
-// discardGuard is the line every Java load entry point carries before it
-// hands back a value (variableform.go, retain.go). The negative control
-// removes it from the generated code.
-const (
-	discardGuardLoad   = "if (report.malformed) { return null; } // DAMAGE DISCARDS THE WHOLE LOAD (§4)"
-	discardGuardJSON   = "if (report.malformed) { return null; } // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)"
-	discardGuardRetain = "if (report.malformed) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; } // DAMAGE DISCARDS THE WHOLE LOAD (§4)"
+// The discard every Java load entry point carries before it hands back a
+// value (variableform.go, retain.go) is named by the comment above it. The
+// negative control turns the condition under that comment into false in the
+// generated code.
+var (
+	discardGuardLoad   = regexp.MustCompile(`(// DAMAGE DISCARDS THE WHOLE LOAD \(§4\)\s*\n\s*if \()report\.malformed\)`)
+	discardGuardJSON   = regexp.MustCompile(`(// DAMAGE DISCARDS THE WHOLE TEXT READ \(§4, §16\.2\)\s*\n\s*if \()report\.malformed\)`)
+	discardGuardRetain = regexp.MustCompile(`(// DAMAGE DISCARDS THE WHOLE RETAINING LOAD \(§4, §6\.6\)\s*\n\s*if \()report\.malformed\)`)
 )
 
 // discardWireJava encodes the text as the root and then damages the nested
@@ -210,7 +212,7 @@ func runDiscardJava(t *testing.T, edit func(map[string][]byte) int) (string, err
 		{"load", "Root", fixedVec},
 		{"load", "Graph", variableVec},
 		{"json", "Graph", `{"a":5,"inner":{"n":3},"b":`},
-		{"json", "Root", `{"a":5,"inner":{"n":"three"},"b":9}`},
+		{"json", "Root", `{"a":5,"inner":{"n":3},"b":9`},
 	}})
 
 	rows, paths := discardFramingRows(t, repo)
@@ -328,7 +330,10 @@ func TestDamageDiscardsTheWholeLoadJava(t *testing.T) {
 func TestDamageDiscardsTheWholeLoadJavaNegativeControl(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name, guard, file, want string
+		name  string
+		guard *regexp.Regexp
+		file  string
+		want  string
 	}{
 		{"load", discardGuardLoad, "Variable.java", "Root load"},
 		{"fromJson", discardGuardJSON, "Variable.java", "fromJson: handed back a value"},
@@ -340,10 +345,10 @@ func TestDamageDiscardsTheWholeLoadJavaNegativeControl(t *testing.T) {
 			out, err := runDiscardJava(t, func(files map[string][]byte) int {
 				n := 0
 				for name, data := range files {
-					if !strings.HasSuffix(name, c.file) || !bytes.Contains(data, []byte(c.guard)) {
+					if !strings.HasSuffix(name, c.file) || !c.guard.Match(data) {
 						continue
 					}
-					files[name] = bytes.ReplaceAll(data, []byte(c.guard), []byte("/* NEGATIVE CONTROL: the discard is gone */"))
+					files[name] = c.guard.ReplaceAll(data, []byte("${1}false /* NEGATIVE CONTROL: the discard is gone */)"))
 					n++
 				}
 				return n
