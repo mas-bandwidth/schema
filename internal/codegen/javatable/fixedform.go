@@ -1950,6 +1950,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	}
 	g.pf("            scatter(image, 0, values[k], report);\n")
 	g.pf("            if (report.refused) { return -1; }\n")
+	g.pf("            if (report.malformed) { return -1; } // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
 	g.pf("            at += (int) recordSize;\n")
 	g.pf("        }\n")
 	g.pf("        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that\n")

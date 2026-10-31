@@ -79,13 +79,14 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    public static %sVariable.Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {\n", st.Name)
 	b.WriteString("        if (retain == null) { return " + st.Name + "Variable.load(data, report); }\n")
 	b.WriteString("        int[] path = new int[128];\n")
+	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
 	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	b.WriteString("        if (r == null) { return null; }\n")
-	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
 	if st.FixedDeclared {
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, null, retain, report, path, 0);\n")
 		b.WriteString("        if (report.refused) { return null; }\n")
+		b.WriteString("        if (report.malformed) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; } // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	} else {
@@ -123,6 +124,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); }\n", st.Name, st.Name)
 		b.WriteString("        }\n")
+		b.WriteString("        if (report.malformed) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; } // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	}

@@ -986,6 +986,15 @@
       "java": "21"
     },
     {
+      "name": "java-discard",
+      "when": "pull-request",
+      "why": "the Java leg's DAMAGE DISCARDS THE WHOLE LOAD control (docs/SPEC-TABLES.md \u00a74): it removes the discard from the generated load, the text read and the retaining load in turn and requires TestDamageDiscardsTheWholeLoadJava red on exactly that entry point. Three javac-and-run passes over four small units.",
+      "targets": [
+        "tables-java-discard-negative-control"
+      ],
+      "java": "21"
+    },
+    {
       "name": "java-wire-fuzz",
       "when": "pull-request",
       "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm\u2019s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind\u2019s count inside the map\u2019s own L and requires the plain arm to go red on listdemo.Army. Its own group so the fuzz time never crowds the java rows. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
