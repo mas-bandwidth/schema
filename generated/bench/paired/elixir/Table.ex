@@ -1465,7 +1465,7 @@ defmodule Bench.Table do
 
   def cook_carried?(table), do: table not in @cook_uncarried
 
-  @cook_build_version 0x23753A84972A054E
+  @cook_build_version 0x41D3559378BFA852
   @cook_magic 0x4B4F4F434D484353
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----

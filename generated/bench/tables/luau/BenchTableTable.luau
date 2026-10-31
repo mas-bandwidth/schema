@@ -434,7 +434,7 @@ _T.TableMixedFixedFloor = 0
 _T.TableMessageAnnouncement = (function()
 	local b = buffer.create(934)
 	local v = {
-		1,1,9,97,159,98,103,110,54,190,44,2,14,254,6,6,251,6,164,237,202,213,154,62,
+		1,1,9,105,117,90,41,223,242,92,209,2,14,254,6,6,251,6,164,237,202,213,154,62,
 		1,165,4,1,2,0,34,208,235,150,77,172,241,251,7,1,12,0,18,103,227,120,102,253,
 		252,35,7,1,12,0,14,49,103,118,53,55,75,203,4,1,15,253,255,1,193,50,103,118,
 		53,56,75,203,4,1,15,253,255,1,168,45,103,118,53,53,75,203,4,1,15,253,255,1,
@@ -480,7 +480,7 @@ end)()
 _T.TableMessageAnnouncementLength = 934
 _T.TableMessageRefBits = 7
 _T.TableMessageEntriesHere = 77
-_T.TableMessageBuildVersion = 3224074231052672865i
+_T.TableMessageBuildVersion = 0xd15cf2df295a7569i
 
 -- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)
 _schema_tables.wireIds({

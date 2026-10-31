@@ -566,7 +566,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		i2 := i1 + "    "
 		fmt.Fprintf(b, "%slet mut arr = %s.clone()%s;\n", i2, field, orElse(defExpr))
 		fmt.Fprintf(b, "%slet mut ok = true;\n", i2)
-		g.emitArrayBodyReadChecked(b, &inner, "arr", "sub", "ok", ordinal, i2, true)
+		g.emitArrayBodyReadChecked(b, &inner, "arr", "sub", "end", "ok", ordinal, i2, true)
 		fmt.Fprintf(b, "%sif ok { %s = Some(arr); }\n", i2, field)
 		fmt.Fprintf(b, "%s}\n", i1)
 		fmt.Fprintf(b, "%s*off = sub;\n", i1)
@@ -623,14 +623,16 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    let mut tmp = %s.take()%s;\n", in, field, orElse(defExpr))
 		fmt.Fprintf(b, "%s    if l >= 2 {\n", in)
 		fmt.Fprintf(b, "%s        let ek = wire[*off]; *off += 1;\n", in)
+		// THE HEADER IS READ AGAINST THE PARENT (docs/SPEC-TABLES.md §3, the
+		// oracle's arrayBody): a count spelled past this body's L still reads,
+		// and the elements are bounded by the L.
 		fmt.Fprintf(b, "%s        match leb_read(wire, off) {\n", in)
 		fmt.Fprintf(b, "%s            None => { report.malformed = true; }\n", in)
-		fmt.Fprintf(b, "%s            Some(_) if *off > sub => { report.malformed = true; }\n", in)
 		fmt.Fprintf(b, "%s            Some(count) => {\n", in)
 		fmt.Fprintf(b, "%s                if ek != %d { report.kind_mismatch += 1; }\n", in, ir.TableKindU8)
 		fmt.Fprintf(b, "%s                else {\n", in)
 		fmt.Fprintf(b, "%s                    let keep = if count > %d { report.clamped += 1; %d } else { count as usize };\n", in, f.Type.Size, f.Type.Size)
-		fmt.Fprintf(b, "%s                    let avail = sub - *off;\n", in)
+		fmt.Fprintf(b, "%s                    let avail = sub.saturating_sub(*off);\n", in)
 		fmt.Fprintf(b, "%s                    let n = if keep > avail { report.malformed = true; avail } else { keep };\n", in)
 		fmt.Fprintf(b, "%s                    tmp = wire[*off..*off + n].to_vec();\n", in)
 		fmt.Fprintf(b, "%s                }\n", in)
@@ -669,9 +671,11 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%sif l >= 2 {\n", i1)
 	i2 := i1 + "    "
 	fmt.Fprintf(b, "%slet ek = wire[*off]; *off += 1;\n", i2)
+	// THE HEADER IS READ AGAINST THE PARENT (docs/SPEC-TABLES.md §3; the
+	// oracle's keyed): a count spelled past this body's L still reads, so the
+	// element kind is judged, and the elements are bounded by the L.
 	fmt.Fprintf(b, "%smatch leb_read(wire, off) {\n", i2)
 	fmt.Fprintf(b, "%s    None => { report.malformed = true; }\n", i2)
-	fmt.Fprintf(b, "%s    Some(_) if *off > sub => { report.malformed = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
 	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.kind_mismatch += 1; }\n", i3, ek, ek)
@@ -700,6 +704,10 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s};\n", i5)
 	switch classOf(f) {
 	case vTable:
+		// A SLOT WRITTEN AGAIN replaces its body, and the records retained
+		// under the body it loses go with it (docs/SPEC-TABLES.md §6.6; the
+		// oracle's keyed forgets the slot's instance before refilling it).
+		fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard_body(ret, path.step(%d, slot as u32)); }\n", i5, ordinal)
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, slot as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
@@ -759,9 +767,11 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%sif l >= 2 {\n", i1)
 	i2 := i1 + "    "
 	fmt.Fprintf(b, "%slet ek = wire[*off]; *off += 1;\n", i2)
+	// THE HEADER IS READ AGAINST THE PARENT (docs/SPEC-TABLES.md §3; the
+	// oracle's mapField): a count spelled past this body's L still reads, so the
+	// element kind is judged, and the elements are bounded by the L.
 	fmt.Fprintf(b, "%smatch leb_read(wire, off) {\n", i2)
 	fmt.Fprintf(b, "%s    None => { report.malformed = true; }\n", i2)
-	fmt.Fprintf(b, "%s    Some(_) if *off > sub => { report.malformed = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
 	fmt.Fprintf(b, "%sif ek != %d { report.kind_mismatch += 1; }\n", i3, ir.TableKindTable)
@@ -963,7 +973,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%slet mut ok = true;\n", in)
 		switch {
 		case f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
-			g.emitArrayBodyReadChecked(b, f, "slot", aend, "ok", ordinal, in, false)
+			g.emitArrayBodyReadChecked(b, f, "slot", aend, aend, "ok", ordinal, in, false)
 		case classOf(f) == vEnum:
 			emitEnumDecode(b, f, "slot", aend, "return false;", in)
 			fmt.Fprintf(b, "%sif *off != %s { report.malformed = true; ok = false; }\n", in, aend)
@@ -993,7 +1003,14 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 // emitArrayBodyReadChecked reads an array body already framed by `aend`
 // (docs/SPEC-TABLES.md §3): element kind, count, elements. Sets `okVar` to
 // false when the element kind mismatches or the count is damaged.
-func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, aend, okVar string, ordinal int, ind string, countDamagedPresent bool) {
+//
+// The header is read against `hdr`, the bound of the body that holds it: an
+// arm's own `L`, because the oracle reads an arm out of a reader framed by that
+// L, so a count running past it is the arm's own framing damage and nothing
+// is counted before it; or `end` for an optional FIELD, whose header, like
+// every field array's, reads against the parent (docs/SPEC-TABLES.md §3). The
+// body's own leb_read is already bounded by `end`.
+func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, aend, hdr, okVar string, ordinal int, ind string, countDamagedPresent bool) {
 	ek := ir.TableKindU8
 	if f.Type.Kind != ir.TBytes || f.Type.Pointer {
 		ek = elemWireKind(f)
@@ -1001,7 +1018,11 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	fmt.Fprintf(b, "%sif (%s - *off) >= 2 {\n", ind, aend)
 	in := ind + "    "
 	fmt.Fprintf(b, "%slet ek = wire[*off]; *off += 1;\n", in)
-	fmt.Fprintf(b, "%smatch leb_read(wire, off) {\n", in)
+	if hdr == "end" {
+		fmt.Fprintf(b, "%smatch leb_read(wire, off) {\n", in)
+	} else {
+		fmt.Fprintf(b, "%smatch leb_read(wire, off).filter(|_| *off <= %s) {\n", in, hdr)
+	}
 	if countDamagedPresent {
 		// A field's optional array has ridden even if its count is damaged:
 		// §4 keeps the current value (or declared default) and marks it present.

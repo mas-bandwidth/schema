@@ -1088,3 +1088,20 @@ fuzz-tables-props:
 
 .PHONY: test-go
 test-go: deps
+
+# The same reversed witness on the MESSAGE surface (docs/SPEC-TABLES.md §3.3):
+# one byte of the login_full batch answer flipped in a copy of the driver, and
+# the matrix must go red on that message row while the wire surface stays green.
+.PHONY: conformance-negative-control-go-message
+conformance-negative-control-go-message: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control message
+
+# The generated message form's own controls (internal/codegen/gotable,
+# messageform_negative_test.go): each plants one fault in a copy of the
+# generated source and requires its gate's probe red on its own message.
+.PHONY: tables-go-message-form-negative-controls
+tables-go-message-form-negative-controls:
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -count=1 -timeout 600s \
+		-run '^(TestGoMessageFormGoldensNegativeControl|TestGoMessageFormRefusalsNegativeControl|TestGoMessageFormStrictNegativeControl|TestGoMessageFormVersioningNegativeControl|TestGoMessageFormFixedOnlyNegativeControl|TestGoWireIntegrityMessageFormNegativeControl)$$'
+
+test-go: conformance-negative-control-go-message tables-go-message-form-negative-controls

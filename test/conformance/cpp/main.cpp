@@ -1155,6 +1155,64 @@ static int surface_report( const std::string & out )
     return 0;
 }
 
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+// `report` surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read was refused. A derived line is
+// `framing <case> <unit> <root> <wire> [no-value]`.
+static int surface_framing( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "framing" ) continue;
+        const bool no_value = f.size() > 5 && f[5] == "no-value";
+        std::vector<uint8_t> wire;
+        if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        Report report;
+        bool ok = false;
+        std::vector<char> text;
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            std::vector<uint8_t> region;
+            const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
+            ok = root != NULL;
+            if ( ok && !report.refused && !no_value && !variable->to_json( root, text ) ) return 1;
+        }
+        else
+        {
+            const Codec * codec = find_codec( f[2], f[3] );
+            if ( codec == NULL )
+            {
+                // a root this leg's table carries no codec for: absent per
+                // case, which the matrix counts against the reference leg
+                if ( !spill( out, f[1] + ".absent", "", 0 ) ) return 1;
+                continue;
+            }
+            void * value = codec->make();
+            codec->reset( value );
+            ok = codec->load( value, wire.data(), (int64_t) wire.size(), &report );
+            if ( !report.refused && !no_value )
+            {
+                int64_t size = codec->to_json_measure( value );
+                if ( size < 0 ) return 1;
+                text.resize( (size_t) size + 1 );
+                if ( codec->to_json( value, text.data(), size ) != size ) return 1;
+                text.resize( (size_t) size );
+            }
+        }
+        char head[128];
+        int n = snprintf( head, sizeof( head ), "%d,%d,%d,%d,%d,%s,%s\n",
+                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
+                          ( report.malformed || ( !ok && !report.refused ) ) ? "true" : "false",
+                          report.refused ? "refused" : "read" );
+        std::vector<char> answer( head, head + n );
+        answer.insert( answer.end(), text.begin(), text.end() );
+        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
+    }
+    return 0;
+}
+
 // an instance the corpus carries on the wire alone: past the text form's depth
 // cap by the form's own rule (§16.7), so no leg is asked for its text
 static bool no_text( const std::vector<std::string> & f )
@@ -1625,7 +1683,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n" );
+        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -1638,6 +1696,7 @@ int main( int argc, char ** argv )
     if ( surface == "wire" ) return surface_wire( out );
     if ( surface == "message" ) return surface_message( out );
     if ( surface == "report" ) return surface_report( out );
+    if ( surface == "framing" ) return surface_framing( out );
     if ( surface == "retain" ) return surface_retain( out );
     if ( surface == "retain-save" ) return surface_retain_save( out );
     if ( surface == "json-read" ) return surface_json_read( out );

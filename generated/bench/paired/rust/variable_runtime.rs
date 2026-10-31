@@ -448,9 +448,9 @@ pub struct TableNodeReader {
 }
 
 impl TableNodeReader {
-    /// Gather the numbering out of a ROOT body ending at end (§3.1). None
-    /// is framing damage on the root body the gathering scan cannot pass, and
-    /// it counts malformed. A node table under a kind other than 12, a record
+    /// Gather the numbering out of a ROOT body ending at end (§3.1). Framing
+    /// damage on the root body ends the gathering scan with what it found and
+    /// is counted by the body read, not here. A node table under a kind other than 12, a record
     /// that runs past its field, bytes left over, or a node_count the scan
     /// does not match make the TABLE malformed: good is false, one malformed
     /// counts, and nothing in it is counted unknown, because the numbering it
@@ -464,19 +464,22 @@ impl TableNodeReader {
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
             if r == 0 { break; }
-            if off >= end { report.malformed = true; return None; }
+            // Damage in a field the gathering scan cannot pass ends the scan
+            // and refuses nothing: the body read meets the same damage and
+            // counts it, after decoding the fields before it (the oracle's
+            // nodeTableBytes).
+            if off >= end { break; }
             let kind = wire[off]; off += 1;
-            let Some(id) = ref_id(ids, r) else { report.malformed = true; return None; };
+            let Some(id) = ref_id(ids, r) else { break; };
             if id != NODE_TABLE_ID {
-                if !leb_skip(wire, &mut off, end, kind) { report.malformed = true; return None; }
+                if !leb_skip(wire, &mut off, end, kind) { break; }
                 continue;
             }
             if kind != 12 {
                 report.malformed = true;
                 reader.good = false;
                 reader.recs.clear();
-                if !leb_skip(wire, &mut off, end, kind) { return None; }
-                continue;
+                break;
             }
             // A truncated node-table length cannot borrow trailer bytes. The
             // root body still decodes its preceding fields with null nodes.

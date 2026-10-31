@@ -116,11 +116,21 @@ func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 // the file, a count whose `8 × count + 8` runs past the front, a count that
 // leaves no room for the form byte, or ONE ID IN TWO ENTRIES.
 func trailer(data []byte) (body []byte, ids []uint64, ok bool) {
+	return trailerBounded(data, ir.TableWireIdTableBound)
+}
+
+// trailerBounded is trailer under an explicit entry-count bound, so a test can
+// show that the bound is what refuses a table of bound + 1 entries and nothing
+// else is (docs/LAYERS/1-framing.md F6).
+func trailerBounded(data []byte, bound uint64) (body []byte, ids []uint64, ok bool) {
 	if len(data) < 9 {
 		return nil, nil, false
 	}
 	count := binary.LittleEndian.Uint64(data[len(data)-8:])
-	if count > uint64(len(data))/8 {
+	if count > uint64(len(data))/8 || count > bound {
+		// THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK): a
+		// table above it is malformed on the whole-wire rule, whatever the
+		// buffer would hold
 		return nil, nil, false
 	}
 	span := int(count)*8 + 8
@@ -981,6 +991,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			if f.Array == ir.ArrayList {
 				fv.Elems = fv.Elems[:decoded] // the prefix the body covered
 			}
+			decoded = r.textTotal(fv, decoded)
 		}
 		if counted {
 			// Entry reset initializes the unused tail. A replacement need only
@@ -1069,6 +1080,45 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 	// a scalar element decodes at the ELEMENT KIND the header carried, which
 	// is the declared kind or one it widens (§4)
 	return r.scalarAt(&fv.Elems[i], f, ek)
+}
+
+// textTotal holds a text list's `| total = N` on the read (docs/SPEC-TABLES.md
+// §2.13): it keeps the longest PREFIX of the decoded elements whose byte
+// lengths sum within N, each element already clamped at its M, drops the first
+// element that would carry the sum past N and every element after it, and
+// counts `clamped` ONCE for the field, naming it. A count clamped against
+// `[..N]` above is counted apart. It returns the count the field keeps.
+func (r *wireReader) textTotal(fv *tabletext.Field, decoded int) int {
+	f := fv.Def
+	if f.TextTotal <= 0 || !f.IsTextList() {
+		return decoded
+	}
+	var sum int64
+	keep := decoded
+	for i := 0; i < decoded; i++ {
+		if rec := fv.Elems[i].Tab; rec != nil {
+			sum += int64(len(rec.Fields[0].Cell.Str))
+		}
+		if sum > f.TextTotal {
+			keep = i
+			break
+		}
+	}
+	if keep == decoded {
+		return decoded
+	}
+	r.report.Clamped++
+	if r.report.Reason == "" {
+		r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
+	}
+	if f.Array == ir.ArrayList {
+		fv.Elems = fv.Elems[:keep]
+	} else {
+		for i := keep; i < decoded; i++ {
+			fv.Elems[i] = r.m.ElementZero(f)
+		}
+	}
+	return keep
 }
 
 // textListElement reads one element of a PLAIN text list (docs/SPEC-TABLES.md
