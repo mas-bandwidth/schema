@@ -622,6 +622,19 @@ tables-cs-leg-map-order-negative-control: bin/schema
 tables-cs-leg-region-blob-shared-negative-control: bin/schema
 	$(call cs_leg_sabotage,region-blob-shared,regionwrite.go,table-cs-region-blob-shared,FAILED: blob_shared native region writer refuses the shared blob)
 
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), one control per C#
+# load entry point that holds the discard: the managed load, the native region
+# load (the retaining load is derived from it), and the builder load. Each takes
+# that discard out, and the leg's TestDamageDiscardsTheWholeLoad must go red on
+# the body damaged inside a nested body, which the walk otherwise reads past.
+.PHONY: tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control
+tables-cs-leg-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: nested (fixed|variable): managed load answered true on damage)
+tables-cs-leg-region-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: nested variable: (region|retaining) load handed back a root on damage)
+tables-cs-leg-builder-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: nested variable: builder load answered true on damage)
+
 # THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
 # "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
 # and Java's getCurrentThreadAllocatedBytes with the runtime's own per-thread
@@ -846,6 +859,7 @@ tables-cs-release:
 	$(MAKE) tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control
 	$(MAKE) tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control
 	$(MAKE) tables-cs-leg-region-blob-shared-negative-control conformance-cs-absent-negative-control
+	$(MAKE) tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control
 	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control tables-cs-byte-order-negative-control
 	$(MAKE) conformance-negative-control-cs-framing
 

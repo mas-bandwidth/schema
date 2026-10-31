@@ -771,6 +771,25 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-leg-5",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the managed load's discard and the native region load's discard (the retaining load is derived from it) taken out, so a body damaged inside a nested body hands back what the walk decoded. Two per job because each regenerates the 46 units and builds and runs the leg once.",
+      "targets": [
+        "tables-cs-leg-discard-negative-control",
+        "tables-cs-leg-region-discard-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-6",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder load's discard taken out, so a builder load damaged inside a nested body answers true with the decoded root.",
+      "targets": [
+        "tables-cs-leg-builder-discard-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-absent",
       "when": "pull-request",
       "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case absent answers (SpillAbsent and the wire surface's blob_shared rows) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",

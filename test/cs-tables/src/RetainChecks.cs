@@ -54,10 +54,12 @@ static partial class Program
         }
         finally { NativeMemory.AlignedFree(region); NativeMemory.Free(storage); NativeMemory.Free(ids); }
     }
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a list element
+    // damaged inside its body refuses the retaining load, and the store keeps
+    // nothing it captured on the way.
     static unsafe void RetainDamagedListElement()
     {
         byte[] wire=Fixture(new byte[]{1,14,8,13,1,5,2,1,1,0,0,0},"rows","future");
-        byte[] expected=Fixture(new byte[]{1,14,7,13,1,4,2,1,1,0,0},"rows","future");
         long need=Listdemo.Schema.SheetLoadMeasure(wire);
         Check(need>=0,"damaged list element can be sized"); if(need<0) { return; }
         byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
@@ -66,9 +68,7 @@ static partial class Program
         try
         {
             var report=new Listdemo.TableReport();
-            Check(Listdemo.Schema.SheetLoadRetain((IntPtr)region,need,wire,ref store,report)!=null && report.Malformed && report.Retained==1 && store.Count==1,"body framing damage preserves its own captured unknown field");
-            byte[] saved=new byte[Listdemo.Schema.SheetMeasureRetain((IntPtr)region,ref store)];
-            Check(Listdemo.Schema.SheetSaveRetain((IntPtr)region,ref store,saved,new Listdemo.TableReport())==saved.Length && saved.AsSpan().SequenceEqual(expected),"damaged list element saves its retained field with repaired framing");
+            Check(Listdemo.Schema.SheetLoadRetain((IntPtr)region,need,wire,ref store,report)==null && report.Malformed && store.Count==0 && store.Used==0,"body framing damage discards the whole retaining load");
         }
         finally { NativeMemory.AlignedFree(region); }
     }
