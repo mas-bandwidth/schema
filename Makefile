@@ -6998,6 +6998,27 @@ release-differential-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: a variable-form sabotage was named on another wire"; exit 1; }
 	@echo "negative control: a union tag moved in the C++ packet writer, and a true bool written as 2 in the Go engine's variable form, each under an unchanged protocol id, turn the previous-release differential RED on that wire alone, naming the unit, the instance and the byte"
 
+# THE BUILD VERSION'S FORM GATE (docs/VERSIONING.md, "The release policy"):
+# `release` refuses a PATCH release whose commit's ir.BuildVersionForm differs
+# from the newest v tag's, and TestReleaseFormGate holds it for a patch, a
+# minor and a major. Its negative control hands the gate the tag's form twice
+# through a go test overlay (tools/sabotage, release-form-gate) and requires
+# that test red on the patch release alone.
+RELEASE_FORM_CONTROL := build/release-form-gate-control
+.PHONY: release-form-gate-negative-control
+release-form-gate-negative-control:
+	@rm -rf $(RELEASE_FORM_CONTROL) && mkdir -p $(RELEASE_FORM_CONTROL)
+	go run ./tools/sabotage -name release-form-gate -out $(RELEASE_FORM_CONTROL)/releasetag.gotext tools/releasetag/releasetag.go
+	@printf '{"Replace":{"%s/tools/releasetag/releasetag.go":"%s/$(RELEASE_FORM_CONTROL)/releasetag.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_FORM_CONTROL)/overlay.json
+	@if go test -count=1 -overlay $(RELEASE_FORM_CONTROL)/overlay.json -run 'TestReleaseFormGate$$' ./tools/releasetag > $(RELEASE_FORM_CONTROL)/red.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a Release that never compares the commit's form left TestReleaseFormGate green"; cat $(RELEASE_FORM_CONTROL)/red.out; exit 1; \
+	fi
+	@grep -q 'Release(v2.5.1) with the form moved 3 -> 4' $(RELEASE_FORM_CONTROL)/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: TestReleaseFormGate went red, but not on the patch release"; cat $(RELEASE_FORM_CONTROL)/red.out; exit 1; }
+	@! grep -q 'Release(v2.6.0)\|Release(v3.0.0)' $(RELEASE_FORM_CONTROL)/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the minor or the major went red too"; cat $(RELEASE_FORM_CONTROL)/red.out; exit 1; }
+	@echo "negative control: a Release that never compares the commit's form tags a patch release that moves the build version's form, and TestReleaseFormGate goes RED on that release alone"
+
 .PHONY: slow-gate-scan
 slow-gate-scan:
 	go run ./tools/slowgatescan

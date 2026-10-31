@@ -91,9 +91,10 @@ which refuses a release today: its section below says why.
     SPEC-TABLES.md §6.6. The C++ reference, C# and Go carry it; C, Rust, Java,
     JavaScript, Dart and Elixir do not yet.
 11. **This page moves with the facts.** #446's golden now reads the evolution
-    table below — `TestEvolutionTableFrames` in `internal/baseline` runs one
-    fixture per row through all three frames and pins the verdicts — and the
-    rest is review.
+    table below — `TestEvolutionTableFrames` in `internal/baseline` runs a
+    fixture per row through all three frames and pins the verdicts, and
+    `TestEvolutionTableEveryRowHasAFixture` refuses a row with neither a
+    fixture nor a named reason — and the rest is review.
 
 ## Two wires, two stories
 
@@ -546,8 +547,11 @@ at once. So: no patch release moves the build version's form; a minor release
 may bump it only together with a wire change, announced first in the release
 notes, exactly as the protocol id's rule reads; a major may. A schema edit
 moving the id is the user's own act and is priced by the cook cost model
-below. The repository today has a form version constant and no gate on which
-release may bump it; the 3.0.0 release adds the gate.
+below. `make release` holds the first rule: `tools/releasetag` reads
+`BuildVersionForm` out of `ir/buildversion.go` at the newest v tag and at the
+commit, and refuses a patch release whose form differs, by name
+(`TestReleaseFormGate`, with `release-form-gate-negative-control` beside it).
+The minor's condition, with the wire and announced, is the release's review.
 
 ## The same-build forms: cook and block
 
@@ -1180,7 +1184,11 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   refuses a release; against v2.5.0 it is red in 46 unit-target pairs, six
   units under an unchanged protocol id in all nine targets v2.5.0 carries.
 - #432: the cook triple, and the byte-order sentences in five places.
-- #446: the evolution table's fixtures.
+- #446: the evolution table's fixtures. `TestEvolutionTableFrames` pins 33
+  of §4.1's 34 rows. The one owed is an unbounded array's element retyped:
+  the row says the build version moves, and §20.1 and §20.2 give the
+  unbounded array's cook line the element's size and not its kind, so a
+  same-size retype moves nothing.
 - #525: retain-unknown in the eight ports. The C++ reference, the two report
   counters, `internal/tablewire`'s own retention, the wire fuzzer's retention
   leg, which needed it, the MESSAGE form's `LoadRetain` and the conformance
