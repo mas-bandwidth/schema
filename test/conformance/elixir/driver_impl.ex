@@ -1595,6 +1595,10 @@ defmodule WireFuzz do
 
   # the raw stdin/stdout devices: the wire-fuzz driver runs WITHOUT -noinput,
   # so the standard_io device is live and reads/writes bytes directly.
+  # a zero-length read is the empty binary: :file.read/2 of 0 bytes does not
+  # answer one, so an empty mutant (a truncation to nothing) would stall the leg
+  defp stdin_read(0), do: <<>>
+
   defp stdin_read(n) do
     case :file.read(:standard_io, n) do
       {:ok, data} -> data
