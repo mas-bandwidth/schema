@@ -115,9 +115,9 @@ tables-luau-release: toolchain-luau build/conformance-harness build/conformance-
 # tier is not blind to what the PR tier catches.
 .PHONY: tables-luau-release-negative-control
 tables-luau-release-negative-control: toolchain-luau build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
-	sh test/conformance/luau/wire-fuzz-negative-control
+	LUAU_WFNC_OUT=build/luau-release-nc sh test/conformance/luau/wire-fuzz-negative-control
 	@if $(MAKE) --no-print-directory tables-luau-release \
-		LUAU_WIREFUZZ_DRIVER="build/luaufuzzhost/luaufuzzhost build/luau-wire-fuzz-nc/test/conformance/luau/wirefuzz.luau" \
+		LUAU_WIREFUZZ_DRIVER="build/luaufuzzhost/luaufuzzhost build/luau-release-nc/test/conformance/luau/wirefuzz.luau" \
 		LUAU_WIRE_FUZZ_LOG=build/wire-fuzz/luau-release-nc.log LUAU_WIRE_FUZZ_ABSENT=build/wire-fuzz/luau-release-nc.absent \
 		LUAU_WIRE_FUZZ_FAILED=build/wire-fuzz/luau-release-nc.failed.bin \
 		> build/luau-release-nc.log 2>&1; then \
