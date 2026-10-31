@@ -1826,7 +1826,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("            // table's is the ROOT body's alone, on the numbering's own\n")
 	g.pf("            // rule — a second numbering cannot exist — and the BUILD\n")
 	g.pf("            // VERSION's rides in the announcement and nowhere else. That\n")
-	g.pf("            // body stops and the parent reads on past its L.\n")
+	g.pf("            // is damage, and damage discards the whole load (§4).\n")
 	g.pf("            r.report->malformed = true;\n")
 	g.pf("            return false;\n        }\n")
 	if len(st.Fields) > 0 {
@@ -2144,7 +2144,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	case f.Type.Kind == ir.TString:
 		g.pf("%suint64_t len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
-		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared\n%s// default, one malformed counts, and the parent reads on past L\n", ind, ind)
+		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage\n%s// discards the whole load\n", ind, ind)
 		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, len ) )\n%s{\n", ind, ind)
 		g.pf("%s    r.report->malformed = true;\n", ind)
 		savedIndent := g.indent
@@ -2164,7 +2164,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s// AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the\n%s// value is L / 2 code units, so an odd L is not a wstring at any length.\n", ind, ind)
 		g.pf("%sif ( ( len & 1 ) != 0 ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)
 		g.pf("%sconst int64_t units = (int64_t) ( len / 2 );\n", ind)
-		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero\n%s// code unit reads the declared default, one malformed counts, and the\n%s// parent reads on past L\n", ind, ind, ind)
+		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero\n%s// code unit counts malformed, and damage discards the whole load\n", ind, ind)
 		g.pf("%sif ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->malformed = true; value.%s[0] = 0; value.%s_length = 0; r.offset += (int64_t) len; break; }\n", ind, f.Name, f.Name)
 		g.pf("%sint64_t keep = units;\n", ind)
 		g.pf("%sif ( keep > %d ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, %d ); r.report->clamped++; } // never splitting a pair (§3)\n", ind, f.Type.Size, f.Type.Size)
@@ -2222,9 +2222,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    uint64_t keep = count;\n", ind)
 		g.pf("%s    if ( keep > %d ) { keep = %d; r.report->clamped++; }\n", ind, bound, bound)
 		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)
-		g.pf("%s    // cannot cover keeps the decoded prefix, flags malformed, and\n", ind)
-		g.pf("%s    // the parent continues at the next field — following fields'\n", ind)
-		g.pf("%s    // bytes are never fabricated into elements\n", ind)
+		g.pf("%s    // cannot cover is damage, which discards the whole load (§4), and\n", ind)
+		g.pf("%s    // the following fields' bytes are never fabricated into\n", ind)
+		g.pf("%s    // elements\n", ind)
 		g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 		if counted {
 			g.pf("%s    uint64_t decoded = 0;\n", ind)
@@ -2310,8 +2310,8 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 }
 
 // emitTableReadElement decodes one array element from the field-body
-// sub-reader; truncation keeps the decoded prefix and flags malformed
-// without stopping the parent decode.
+// sub-reader; truncation is damage, flags malformed, and the load that meets
+// it is discarded whole (docs/SPEC-TABLES.md §4).
 func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 	g.emitTableReadElementInto(f, kind, fmt.Sprintf("value.%s[(int32_t) i]", f.Name), ind, "sub", "")
 }
