@@ -29,6 +29,8 @@
 //   node main.mjs                 the gates
 //   node main.mjs fuzz <block> <cook> [mutants]
 //   node main.mjs alloc [iters]   bytes allocated per iteration, per path
+//   node main.mjs soak [passes]   the same paths for a pass count, the rate
+//                                 gated at every sample, drift beside it
 //
 // Run from the repository root, which is where the Makefile runs it.
 
@@ -932,6 +934,85 @@ function checkAllocation(iterations) {
   }
 }
 
+// ---- 5. THE SOAK (docs/PORTING.md I9): the count, re-measured every sample ----
+//
+// A soak that gates only on heap drift cannot see a path that allocates and
+// frees the same bytes every iteration: it reads flat forever. So this soak
+// runs the allocation gate's own paths (allocationPaths) for a PASS COUNT and
+// re-measures the BYTES PER ITERATION at every sample, gating each sample on
+// the path's ceiling; the live heap's drift after a collection, start to end,
+// is kept beside it as the weaker instrument that sees retention. The length is
+// a count and never a clock: TABLES_JS_SOAK_ITERATIONS passes per path, split
+// into SoakSamples samples. One process per path, for the reason the
+// allocation gate gives (measureAllocation).
+const SoakSamples = 16;
+// the live heap a soak may gain from its start to its end, after a collection:
+// far over the noise of a settled V8 heap, far under a path that retains a
+// record per iteration over even the short count
+const SoakDriftCeiling = 1 << 20;
+
+function soakOne(only, passes) {
+  const [what, ceiling, , body] = allocationPaths()[only];
+  settle(body, 40);
+  if (global.gc) { global.gc(); }
+  const every = intervalFor(body);
+  const per = Math.max(1, Math.floor(passes / SoakSamples));
+  const instrument = sampleBytes(per, () => {}, every);
+  // the plant (SCHEMA_JS_ALLOC_LEAK) rides the MEASURED loop alone, so the
+  // settled interval stays the clean path's
+  const measured = (i) => { body(i); leak(); };
+  if (global.gc) { global.gc(); }
+  const heap0 = v8.getHeapStatistics().used_heap_size;
+  let first = null, worst = 0, red = 0;
+  for (let s = 0; s < SoakSamples; s++) {
+    const rate = sampleBytes(per, measured, every) - instrument;
+    if (first === null) { first = rate; }
+    if (rate > worst) { worst = rate; }
+    if (ceiling !== null && rate > ceiling) { red++; }
+  }
+  if (global.gc) { global.gc(); }
+  const drift = v8.getHeapStatistics().used_heap_size - heap0;
+  return { what, ceiling, samples: SoakSamples, per, first, worst, red, drift };
+}
+
+function checkSoak(passes) {
+  const major = process.versions.node.split(".")[0];
+  if (major !== PinnedNodeMajor && process.env.SCHEMA_JS_ALLOC_ANY_NODE !== "1") {
+    console.log("FAILED: the soak holds the allocation floor of node " + PinnedNodeMajor +
+      " and is running on node " + process.versions.node + " (set SCHEMA_JS_ALLOC_ANY_NODE=1 to observe without certifying)");
+    failed = true;
+    return;
+  }
+  const count = allocationPaths().length;
+  let countRed = false, driftRed = false;
+  for (let i = 0; i < count; i++) {
+    const child = spawnSync(process.execPath, ["--expose-gc", fileURLToPath(import.meta.url), "soak-one", String(i), String(passes)],
+      { encoding: "utf8", env: process.env });
+    if (child.status !== 0) {
+      check(false, "the soak child for path " + i + " exited " + child.status + ": " + (child.stderr || "").trim());
+      return;
+    }
+    const row = JSON.parse((child.stdout || "").trim().split("\n").pop());
+    const gated = row.ceiling !== null;
+    console.log("soak: " + row.what.padEnd(26) + " " + row.samples + " x " + row.per + " passes, " +
+      "first " + Math.max(0, row.first).toFixed(1) + " worst " + Math.max(0, row.worst).toFixed(1) +
+      " bytes per iteration " + (gated ? "<= " + row.ceiling : "(reported)") +
+      ", drift " + row.drift + " bytes");
+    if (row.red > 0) {
+      check(false, "soak: " + row.what + " per-iteration allocation moved over its ceiling of " + row.ceiling +
+        " in " + row.red + " of " + row.samples + " samples (worst " + row.worst.toFixed(1) + ")");
+      countRed = true;
+    }
+    if (row.drift > SoakDriftCeiling) {
+      check(false, "soak: " + row.what + " retained " + row.drift + " bytes of live heap over the run, over the " +
+        SoakDriftCeiling + " the soak allows");
+      driftRed = true;
+    }
+  }
+  console.log(driftRed ? "soak: drift RED" : "soak: drift OK");
+  console.log(countRed ? "soak: count RED" : "soak: count OK");
+}
+
 // ---- float32 values against the oracle's bit patterns ----
 //
 // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
@@ -1053,6 +1134,12 @@ if (mode === "fuzz") {
   process.exit(failed ? 1 : 0);
 } else if (mode === "alloc") {
   checkAllocation(Number(process.argv[3] ?? 300000));
+} else if (mode === "soak-one") {
+  // one path's soak, in this process, for checkSoak — the output is one JSON line
+  process.stdout.write(JSON.stringify(soakOne(Number(process.argv[3]), Number(process.argv[4]))) + "\n");
+  process.exit(0);
+} else if (mode === "soak") {
+  checkSoak(Number(process.env.TABLES_JS_SOAK_ITERATIONS ?? process.argv[3] ?? 4000000));
 } else {
   checkForeignByteOrder();
   checkWholeSurface();
