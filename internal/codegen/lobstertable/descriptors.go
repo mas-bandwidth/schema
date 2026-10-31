@@ -119,9 +119,37 @@ func emitDescriptors(g *lobster.Gen) error {
 			}
 			g.Pf("schema_rt.keyed_keys(%s, %s, [%s]::%s.EnumVariant)\n", lobster.StringLit([]byte(t.Name)), lobster.StringLit([]byte(f.Name)), join(vs), rt)
 			g.Pf("schema_rt.keyed_enum(%s, %s, %s)\n", lobster.StringLit([]byte(t.Name)), lobster.StringLit([]byte(f.Name)), lobster.StringLit([]byte(f.KeyEnumRef.Name)))
+			emitKeyedAccessor(g, t, f)
 		}
 	}
 	return nil
+}
+
+// emitKeyedAccessor writes the KEY ACCESSOR of one enum-keyed array
+// (docs/PORTING.md M5; docs/PORT-LOBSTER.md, THE TYPE MAPPING): the array
+// stays a plain vector with key k in slot k-1, and three functions take the
+// key instead of the slot. <Owner><Field>Slot is the slot a key names, through
+// schema_rt.keyed_slot, which refuses None (key 0), a negative key and any key
+// past <Enum>Max by name in every build; <Owner><Field>At reads the value slot
+// at a key; <Owner><Field>Each yields every key beside its element, so the
+// caller never does the shift.
+func emitKeyedAccessor(g *lobster.Gen, t *ir.Struct, f *ir.Field) {
+	owner := g.TypeRef(t.Name, g.Unit.Tables[t.Name] != nil)
+	enum := g.TypeRef(f.KeyEnumRef.Name, false)
+	slot := ir.GoExportName(f.Name)
+	fn := t.Name + slot
+	what := lobster.StringLit([]byte(t.Name + "." + f.Name))
+	g.Pf("// %sSlot is the slot of %s.%s that holds key: key 1 is slot 0 and %sMax\n", fn, t.Name, f.Name, enum)
+	g.Pf("// the last; None and any key past %sMax are refused by name (docs/PORTING.md M5)\n", enum)
+	g.Pf("def %sSlot(key:%s) -> int:\n", fn, enum)
+	g.Pf("    return %s.keyed_slot(key, %sMax, %s)\n", rt, enum, what)
+	g.Pf("// %sAt is %s.%s's value at key\n", fn, t.Name, f.Name)
+	g.Pf("def %sAt(v:%s, key:%s):\n", fn, owner, enum)
+	g.Pf("    return v.%s[%sSlot(key)]\n", slot, fn)
+	g.Pf("// %sEach calls body(key, element) for every key of %s.%s, in key order\n", fn, t.Name, f.Name)
+	g.Pf("def %sEach(v:%s, body):\n", fn, owner)
+	g.Pf("    for(v.%s) e, i:\n", slot)
+	g.Pf("        body(%s(i + 1), e)\n", enum)
 }
 
 func fieldAnnotations(g *lobster.Gen, owner string, f *ir.Field) {

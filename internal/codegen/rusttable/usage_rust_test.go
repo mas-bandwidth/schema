@@ -29,7 +29,13 @@ func TestUsageRust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := os.ReadFile(filepath.Join(repo, "docs/USAGE.md"))
+	// SCHEMA_USAGE_DOC substitutes the page: tables-rust-usage-negative-control
+	// hands the gate edited copies, which must fail it.
+	doc := filepath.Join(repo, "docs/USAGE.md")
+	if alt := os.Getenv("SCHEMA_USAGE_DOC"); alt != "" {
+		doc = alt
+	}
+	page, err := os.ReadFile(doc)
 	if err != nil {
 		t.Fatal(err)
 	}

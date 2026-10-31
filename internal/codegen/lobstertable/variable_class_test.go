@@ -286,3 +286,77 @@ func TestLobsterVariableClassNegativeControl(t *testing.T) {
 	}
 	t.Logf("the value comparison went red under the shift patch: %s at byte %s", row.name, divergence(after.lob[1], after.goDump[0]))
 }
+
+// TestLobsterUnionArmNegativeControl is M18's reversed witness (docs/PORTING.md
+// M18: a union arm is a field line). It loads every instance row of the units
+// that carry a union arm with a payload, holds each value dump to the Go
+// engine unpatched, then breaks arm_read in the emitted runtime so that an
+// arm read through the field-line code lands no value on the cell, and
+// requires the value comparison red on at least one of those rows.
+func TestLobsterUnionArmNegativeControl(t *testing.T) {
+	t.Parallel()
+	units, _ := readManifest(t)
+	byUnit := map[string][]loadRow{}
+	var order []string
+	for _, r := range loadRows(t) {
+		if r.kind != "instance" {
+			continue
+		}
+		if _, seen := byUnit[r.unit]; !seen {
+			order = append(order, r.unit)
+		}
+		byUnit[r.unit] = append(byUnit[r.unit], r)
+	}
+	const anchor = "    cell.i = tag\n    cell.arm = fv\n    return true\n"
+	red, rows := 0, 0
+	for _, key := range order {
+		paths, err := compiler.GatherPaths(prefix(units[key]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := compiler.New().Load(paths)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c := vcCensus(u); c.UnionArms-c.PayloadFreeArms <= 0 {
+			continue
+		}
+		g, err := generateLoadUnit(t, paths)
+		if err != nil {
+			t.Fatal(err)
+		}
+		unitRows := byUnit[key]
+		before := runUnit(t, g, unitRows)
+		for i, row := range unitRows {
+			if before.lob[2*i+1] != before.goDump[i] {
+				t.Fatalf("the control, unpatched: %s is not the reference's", row.name)
+			}
+		}
+		path := filepath.Join(g.dir, "load.lobster")
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(string(src), anchor); n != 1 {
+			t.Fatalf("the arm's landing is in the emitted runtime %d times, want 1", n)
+		}
+		patched := strings.Replace(string(src), anchor, "    cell.i = tag\n    cell.arm = nil\n    return true\n", 1)
+		if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		after := runUnit(t, g, unitRows)
+		for i := range unitRows {
+			rows++
+			if after.lob[2*i+1] != after.goDump[i] {
+				red++
+			}
+		}
+	}
+	if rows == 0 {
+		t.Fatalf("the manifest names no instance row in a unit with a payload-carrying union arm")
+	}
+	if red == 0 {
+		t.Fatalf("an arm read that lands no value left all %d rows equal to the reference", rows)
+	}
+	t.Logf("the value comparison went red on %d of %d rows when the arm landed no value", red, rows)
+}

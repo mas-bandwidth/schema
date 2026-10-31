@@ -50,7 +50,9 @@ emit("$stage/manifest.moo",
 opendir(my $dh, "test/conformance/moo") or die "stage.pl: test/conformance/moo: $!\n";
 my @plugins = sort grep { /^[a-z][a-z0-9_]*$/ } map { /^(.*)\.moo$/ ? $1 : () } readdir($dh);
 closedir $dh;
-@plugins = grep { $_ ne "main" } @plugins;
+# main.moo is the driver and wirefuzz.moo the wire-fuzz pipe (wirefuzz-driver),
+# neither a surface module
+@plugins = grep { $_ ne "main" && $_ ne "wirefuzz" } @plugins;
 emit("$stage/plugins.moo",
 	"--!strict\n-- written by test/conformance/moo/stage.pl: the surface modules beside main.moo\nreturn table.freeze({" . join(", ", map { "\"$_\"" } @plugins) . "})\n");
 

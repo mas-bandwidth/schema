@@ -77,71 +77,9 @@ io.write(B.Dump(h))
 
 	t.Run("damaged", func(t *testing.T) {
 		t.Parallel()
-		row, ok := blockRow(rows, "block_render")
-		if !ok {
-			t.Fatal("the manifest has no block_render image")
-		}
-		paths := units[row.unit]
-		var full []string
-		for _, p := range paths {
-			full = append(full, filepath.Join(repo, p))
-		}
-		u := luarun.LoadUnit(t, full...)
-		files, err := Generate(u)
-		if err != nil {
-			t.Fatal(err)
-		}
-		dir := t.TempDir()
-		luarun.WriteFiles(t, dir, files)
-		image, err := os.ReadFile(filepath.Join(repo, row.wire))
-		if err != nil {
-			t.Fatal(err)
-		}
-		want, err := os.ReadFile(filepath.Join(repo, row.dump))
-		if err != nil {
-			t.Fatal(err)
-		}
-		root := blockRoot(t, want)
-		probe := fmt.Sprintf(`local T = require(%q)
-local B = require("block")
-local inputs = require("inputs")
-local V = 0x%016x
-local base = inputs.block
-local L = B.Layout(T, %q, true)
-local function field(name)
-  for _, fl in ipairs(L.fields) do
-    if fl.f.name == name then return fl end
-  end
-  error("no field " .. name)
-end
-local function patch(s, off, data)
-  return s:sub(1, off) .. data .. s:sub(off + 1 + #data)
-end
-local function expect(reason, s, base_offset)
-  local h, why = B.BlockOpen(T, %q, s, V, base_offset)
-  assert(h == nil, "accepted a damaged block: wanted " .. reason)
-  assert(why == reason, "want %%s, got " .. tostring(why))
-end
-expect("truncated", base:sub(1, 23))
-expect("not_a_cook", string.rep("\0", 8) .. base:sub(9))
-expect("foreign_order", string.pack("<I8", 0x5343484d41424c4b) .. base:sub(9))
-expect("wrong_build_version", patch(base, 8, string.pack("<I8", V + 1)))
-expect("not_a_cook", patch(base, 16, string.pack("<I8", 2)))
-local cameras = field("cameras")
-expect("bad_layout", patch(base, cameras.offset + 12, string.pack("<I4", 0)))
-expect("bad_layout", patch(base, cameras.offset + 8, string.pack("<I4", cameras.bound + 1)))
-expect("bad_layout", patch(base, cameras.offset, string.pack("<I8", 0x7fffffffffffffc0)))
-expect("bad_layout", patch(base, cameras.offset + 8, string.pack("<I4", 1000)))
-expect("truncated", base:sub(1, #base - 1))
-expect("unaligned_base", base, 1)
-print("block-refusals-ok")
-`, ModuleName(u), ir.BuildVersion(u), root, root)
-		if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		out := string(luarun.Run(t, dir, "main.lua", map[string][]byte{"block": image}))
-		if out != "block-refusals-ok\n" {
-			t.Fatalf("damaged-block probe: %q", out)
+		out, stderr, err := luaBlockRefusals(t, nil)
+		if err != nil || out != "block-refusals-ok\n" {
+			t.Fatalf("damaged-block probe: %q %s %v", out, stderr, err)
 		}
 	})
 
@@ -303,4 +241,83 @@ func blockRow(rows []blockManifestRow, name string) (blockManifestRow, bool) {
 		}
 	}
 	return blockManifestRow{}, false
+}
+
+// luaBlockRefusals runs the damaged-block probe over block_render: every
+// refusal of BlockOpen in §19.2's order, by its TableRefuseReason name,
+// including an intact magic with the other order word (I7). patch, when set,
+// rewrites the emitted runtime files before the probe runs, so a negative
+// control can take a clause out and require the probe to go red.
+func luaBlockRefusals(t *testing.T, patch func(files map[string][]byte)) (stdout, stderr string, err error) {
+	t.Helper()
+	repo := filepath.Join("..", "..", "..")
+	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
+	units := manifestUnits(t, manifest)
+	rows := blockManifestRows(t, manifest)
+	row, ok := blockRow(rows, "block_render")
+	if !ok {
+		t.Fatal("the manifest has no block_render image")
+	}
+	paths := units[row.unit]
+	var full []string
+	for _, p := range paths {
+		full = append(full, filepath.Join(repo, p))
+	}
+	u := luarun.LoadUnit(t, full...)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if patch != nil {
+		patch(files)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	image, err := os.ReadFile(filepath.Join(repo, row.wire))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join(repo, row.dump))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := blockRoot(t, want)
+	probe := fmt.Sprintf(`local T = require(%q)
+local B = require("block")
+local inputs = require("inputs")
+local V = 0x%016x
+local base = inputs.block
+local L = B.Layout(T, %q, true)
+local function field(name)
+  for _, fl in ipairs(L.fields) do
+    if fl.f.name == name then return fl end
+  end
+  error("no field " .. name)
+end
+local function patch(s, off, data)
+  return s:sub(1, off) .. data .. s:sub(off + 1 + #data)
+end
+local function expect(reason, s, base_offset)
+  local h, why = B.BlockOpen(T, %q, s, V, base_offset)
+  assert(h == nil, "accepted a damaged block: wanted " .. reason)
+  assert(why == reason, "want %%s, got " .. tostring(why))
+end
+expect("truncated", base:sub(1, 23))
+expect("not_a_cook", string.rep("\0", 8) .. base:sub(9))
+expect("foreign_order", string.pack("<I8", 0x5343484d41424c4b) .. base:sub(9))
+expect("wrong_build_version", patch(base, 8, string.pack("<I8", V + 1)))
+expect("not_a_cook", patch(base, 16, string.pack("<I8", 2)))
+local cameras = field("cameras")
+expect("bad_layout", patch(base, cameras.offset + 12, string.pack("<I4", 0)))
+expect("bad_layout", patch(base, cameras.offset + 8, string.pack("<I4", cameras.bound + 1)))
+expect("bad_layout", patch(base, cameras.offset, string.pack("<I8", 0x7fffffffffffffc0)))
+expect("bad_layout", patch(base, cameras.offset + 8, string.pack("<I4", 1000)))
+expect("truncated", base:sub(1, #base - 1))
+expect("unaligned_base", base, 1)
+print("block-refusals-ok")
+`, ModuleName(u), ir.BuildVersion(u), root, root)
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return luarun.Try(t, dir, "main.lua", map[string][]byte{"block": image})
 }

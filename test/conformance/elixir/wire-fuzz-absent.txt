@@ -35,7 +35,6 @@ tabledemo.LoadoutConfig form=1 uncarried
 tabledemo.ProfileConfig form=1 uncarried
 tabledemo.RootConfig form=1 uncarried
 tbla2.Root form=1 uncarried
-tblg1.Guarded form=1 no-codec
 tblm1.Msg form=1 uncarried
 tblm2.Msg form=1 uncarried
 tblr1.Cfg form=1 uncarried

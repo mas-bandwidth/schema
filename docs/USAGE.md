@@ -1403,23 +1403,23 @@ standing one rather than anything tables added.
 
 An enum-keyed array is a plain `T slots[E_MAX]` — one slot per named variant,
 nothing for `None`, the key `k` at index `k - 1`. **Index it by the ENUM
-VALUE through `TableKeyedAt`**, which is where the left shift and the `None`
+VALUE through `SCHEMA_<PACKAGE>_TABLE_KEYED_AT`**, which is where the left shift and the `None`
 refusal live; the refusal is an assert plus an abort and it stands in every
 build, exactly as C++'s accessor refuses. This fragment is compiled and run
 against the `tables/examples` unit by `make tables-c-usage`:
 
 <!-- c-table-usage -->
 ```c
-KeyedConfig config;
-keyed_config_reset( &config );
+tabledemo_keyed_config_t config;
+tabledemo_keyed_config_reset( &config );
 
-SCHEMA_TABLE_KEYED_AT( config.hulls, HULL_GUNSHIP, HULL_MAX ).health *= 2.0f;
+SCHEMA_TABLEDEMO_TABLE_KEYED_AT( config.hulls, TABLEDEMO_HULL_GUNSHIP, TABLEDEMO_HULL_MAX ).health *= 2.0f;
 
 /* walking every slot: the key is 1 .. E_MAX, never a storage index */
 int32_t key;
-for ( key = 1; key <= HULL_MAX; key++ )
+for ( key = 1; key <= TABLEDEMO_HULL_MAX; key++ )
 {
-    HullConfig * hull = &SCHEMA_TABLE_KEYED_AT( config.hulls, key, HULL_MAX );
+    tabledemo_hull_config_t * hull = &SCHEMA_TABLEDEMO_TABLE_KEYED_AT( config.hulls, key, TABLEDEMO_HULL_MAX );
     hull->health *= 2.0f;
 }
 ```
@@ -3002,6 +3002,7 @@ runtime reads it.
 schema cook --root Scene --in config/ --out Scene.cook .
 ```
 
+<!-- cpp-cook-usage-read -->
 ```cpp
 #include "GraphTable.h"
 
@@ -3026,6 +3027,7 @@ for ( const ListNode * n = graphdemo::ListNodeAt( scene->head ); n != NULL;
     printf( "  %s = %d\n", n->name, n->value );
 }
 ```
+<!-- /cpp-cook-usage-read -->
 
 `SceneOpen` takes `const void *` and a `uint64_t` length and returns
 `const Scene *` or `NULL`. The length is unsigned because every number the
@@ -3035,8 +3037,10 @@ caller holding an `int64_t` from a `stat` casts once, at the call site.
 **The same cook, from C#.** The bytes are memory your engine already holds — an
 mmap, a native allocation, or an array you pinned — and this side takes a pointer
 and a length and points at it, so the generated source is `unsafe` and your
-project sets `AllowUnsafeBlocks`:
+project sets `AllowUnsafeBlocks`. `make tables-cs-usage` compiles and runs
+this example from this page:
 
+<!-- cs-table-usage -->
 ```csharp
 using Graphdemo;
 
@@ -3060,6 +3064,7 @@ for ( ListNodeRow * n = ListNodeCook.At( &scene->Head ); n != null; n = ListNode
     Console.WriteLine( "  " + Encoding.UTF8.GetString( ListNodeCook.Name( n ) ) + " = " + n->Value );
 }
 ```
+<!-- /cs-table-usage -->
 
 There is a `ReadOnlySpan<byte>` overload beside the pointer form for a consumer
 that already holds the bytes — the same contract, spelled differently. Its length
@@ -3070,11 +3075,11 @@ Two things about the C# side worth knowing before you reach for it. **A cooked
 record is the same blittable `<Name>Row` struct the block form uses**, from the
 same layout model, so the two accelerators share one set of records; the layout
 is checked once, at start-up, and throws naming the record and the field if your
-runtime disagrees. And **a pointered unit's C# WIRE surface is refused by name**:
-you get the unit's `*Cook.cs` and `*Block.cs` and no Table sources at all, because the
-codec for the variable class is a named follow-on and neither accelerator needs
-one. Your cooked assets open in full; `Measure`, `Save` and `Load` for those
-tables are C++'s or the tool's for now.
+runtime disagrees. And **a pointered unit's C# WIRE surface is carried**: beside
+the unit's `*Cook.cs` and `*Block.cs` you get its Table sources, with `Measure`,
+`Save`, `Load` and `LoadMeasure` for every table, over the managed value and
+over a native region alike, so a cooked asset and its wire file are read by the
+same unit.
 
 **The same cook, from Rust**, on the same two terms — the records are the same
 `<Name>Row` structs the block form uses, and a pointered unit's WIRE surface is
@@ -3152,6 +3157,7 @@ the reference and the conformance harness holds the two to one file over every
 instance it carries — so a cook your editor wrote and a cook your build farm
 ran the tool for are the same artifact.
 
+<!-- cpp-cook-usage-write -->
 ```cpp
 // measure, then write: the buffer is yours and nothing here allocates
 const int64_t bytes = graphdemo::SettingsCookMeasure( settings );
@@ -3162,6 +3168,7 @@ if ( !graphdemo::SettingsCook( settings, file.data(), file.size(),
     return false; // the only refusal: a capacity short of the measure
 }
 ```
+<!-- /cpp-cook-usage-write -->
 
 A pointered root is a region and a root pointer, never a value, so its `Cook`
 takes the builder — locked or not — or a region root, the same two forms
@@ -3169,6 +3176,7 @@ takes the builder — locked or not — or a region root, the same two forms
 the numbering: a node named from three places is written once, and a data cycle
 is refused as it is everywhere else.
 
+<!-- cpp-cook-usage-write-pointered -->
 ```cpp
 // a pointered root is a region and a root pointer, so its Cook takes the
 // builder — locked or not — or a region root, and never a value. What it
@@ -3181,6 +3189,7 @@ if ( !graphdemo::SceneCook( builder, file.data(), file.size(),
     return false; // a capacity short of the measure, or a data cycle
 }
 ```
+<!-- /cpp-cook-usage-write-pointered -->
 
 The byte order is a PARAMETER and it is the TARGET's, not yours: pass
 `TableByteOrder::Big` and a little-endian machine writes the file a big-endian
@@ -4990,6 +4999,114 @@ while (node != null) {
 }
 ```
 <!-- /squirrel-table-usage -->
+
+**Luau** — Luau 0.741, no dependencies. Generated code is self-contained: a
+`<Base>Table.luau` of descriptors per schema file, with the runtime modules
+(`schema_tables`, `schema_load`, `schema_save`, `schema_cookread`, ...) beside
+them, each reached as `require("./<module>")`. A value is a plain Luau table
+built by its descriptor's constructor, its fields in UpperCamelCase slots
+(`hull.Turrets`, `turret.Damage`), and the bytes are a Luau `buffer`. An
+enum-keyed array is a plain array with key k at index k; `S.keyed(table,
+field)` is the accessor that refuses None and any key past the enum's last
+variant by name. The plain read is the strict one: it answers the value, or
+`nil` with the refusal's name in `report.reason`. This fragment is run against
+the `tables/examples` unit by `make tables-luau-usage`:
+
+<!-- luau-table-usage -->
+```luau
+local S = require("./schema_tables")
+local save = require("./schema_save")
+local load = require("./schema_load")
+require("./KeyedTable")
+
+local hulls = S.lookup("HullConfig")
+local hull = hulls.new()                            -- every field at its declared default
+local turrets = S.keyed("HullConfig", "turrets")    -- one slot per Weapon variant
+turrets.get(hull.Turrets, turrets.key("Missile")).Damage = 25
+
+local bytes = save.save(hulls, hull)                -- the id-table wire, as a buffer
+local report = {}
+local back = load.load("HullConfig", bytes, report) -- nil and report.reason on a refusal
+if back == nil then error("the hull did not read: " .. report.reason) end
+for key, turret in turrets.each(back.Turrets) do
+  use(turret.Damage)
+end
+```
+<!-- /luau-table-usage -->
+
+**moo** — moo v1.3.0 (the deterministic Luau fork whose one number is
+Q48.16), no dependencies. Generated code is self-contained: a
+`<Base>Table.moo` of descriptors per schema file, with the runtime modules
+(`schema_tables`, `table_load`, `table_save`, `table_cookread`, ...) beside
+them, each reached as `require("./<module>")`. A value is a plain table built
+by its descriptor's constructor, its fields in UpperCamelCase slots
+(`hull.Turrets`, `turret.Damage`), and the bytes are a `buffer`. moo has no
+float: a `float32` field holds its binary32 PATTERN as a number (25.0 is
+`0x41C80000`). An enum-keyed array is a plain array with key k at index k;
+`S.keyed(table, field)` is the accessor that refuses None and any key past the
+enum's last variant by name. The plain read is the strict one: it answers the
+value, or `nil` with the refusal's name in `report.reason`. This fragment is
+run against the `tables/examples` unit by `make tables-moo-usage`:
+
+<!-- moo-table-usage -->
+```lua
+local S = require("./schema_tables")
+local save = require("./table_save")
+local load = require("./table_load")
+require("./KeyedTable")
+
+local hulls = S.lookup("HullConfig")
+local hull = hulls.new()                            -- every field at its declared default
+local turrets = S.keyed("HullConfig", "turrets")    -- one slot per Weapon variant
+turrets.get(hull.Turrets, turrets.key("Missile")).Damage = 0x41C80000 -- 25.0
+
+local bytes = save.save(hulls, hull)                -- the id-table wire, as a buffer
+local report = load.newReport()
+local back = load.load("HullConfig", bytes, report) -- nil and report.reason on a refusal
+if back == nil then error("the hull did not read: " .. report.reason) end
+for key, turret in turrets.each(back.Turrets) do
+  use(turret.Damage)
+end
+```
+<!-- /moo-table-usage -->
+
+**Lobster** — the pinned Lobster release (`make dist-lobster`), no
+dependencies. Generated code is self-contained: a module per schema file, and
+for tables a `<Base>Table.lobster` module per file of descriptors and per-table
+functions, with the runtime modules (`schema_tables`, `load`, `schema_save`,
+`cook`, `json`, ...) beside them, every one in `namespace schema_rt`, so the
+directory is the whole program. Lobster has no reflection, so a load does not
+fill a generated class: it reads the table AS DATA into a `schema_rt.Record`
+(one `Slot` per field, in declaration order; `slot_named` reaches one by its
+schema name, and a name the table does not declare is refused by name), and
+the same `Record` is what a save, a cook and a text write take. A buffer is a
+Lobster string, which has no address, so a cook's `<Table>OpenReason` (in the
+unit's namespace, its package: `graphdemo.SceneOpenReason`) takes the
+buffer's lead past an aligned base and answers `"ok"` or the refusal's name
+(`unaligned_base`, a foreign build, the other byte order); `<Table>ReadCook`
+reads a cook back into a `Record`, `nil` for a corrupt one. An enum-keyed array
+is a plain vector with key k at slot k-1, and `<Owner><Field>Slot(key)`,
+`<Owner><Field>At(v, key)` and `<Owner><Field>Each(v) key, e:` take the key
+instead, refusing None and a key past the enum's `Max` by name. This fragment
+is compiled and run against the `tables/pointers` unit by
+`make tables-lobster-usage`:
+
+<!-- lobster-table-usage -->
+```lobster
+import .GraphTable
+
+// open the cook another build wrote; a refusal names a foreign build, a
+// corrupt file or the other byte order: fall back to the tolerant wire
+let why = graphdemo.SceneOpenReason(bytes, 0, false)
+assert why == "ok"
+let scene = graphdemo.SceneReadCook(bytes)      // nil for a forged cook
+assert scene
+var node = schema_rt.slot_named(scene, "head").cell.node
+while node:
+    use(schema_rt.slot_named(node, "value").cell.i)
+    node = schema_rt.slot_named(node, "next").cell.node   // nil is the null reference
+```
+<!-- /lobster-table-usage -->
 
 All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
