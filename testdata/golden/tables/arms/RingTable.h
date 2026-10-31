@@ -8097,17 +8097,21 @@ inline TableOpenVerdict NodeLoadVerdict( Node & value, const uint8_t * buffer, i
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = NodeLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { NodeReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; NodeReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { NodeReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { NodeReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // NodeLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool NodeLoadTolerant( Node & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return NodeLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -8304,9 +8308,9 @@ inline int64_t NodeSaveMessages( const Node * values, int64_t count, uint8_t * b
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool NodeLoadMessages( Node * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -8314,18 +8318,18 @@ inline bool NodeLoadMessages( Node * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !NodeLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !NodeLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { NodeReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { NodeReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 template <typename Ctx>
@@ -12241,7 +12245,6 @@ inline bool RingLoadMessages( const Ring ** roots, int64_t * count, uint8_t * re
     if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = out->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
     if ( bodies < 0 ) { return false; }
@@ -12252,11 +12255,12 @@ inline bool RingLoadMessages( const Ring ** roots, int64_t * count, uint8_t * re
     for ( int64_t b = 0; b < bodies; b++ )
     {
         roots[b] = NULL;
-        if ( !RingLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }
+        if ( !RingLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // RingLoadMeasure: the exact region bytes a wire buffer will need, and it is
@@ -12316,6 +12320,8 @@ inline const Ring * RingLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -12437,7 +12443,9 @@ inline const Ring * RingLoadTolerant( uint8_t * region, int64_t region_bytes, co
     RingLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -12479,6 +12487,8 @@ inline bool RingLoadBuilderTolerant( RingBuilder & builder, const uint8_t * wire
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -12572,6 +12582,10 @@ inline bool RingLoadBuilderTolerant( RingBuilder & builder, const uint8_t * wire
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
+    // holds nothing to use, and false says so
+    if ( out->malformed ) { return false; }
+    out->malformed = malformed_before;
     return ok;
 }
 
@@ -13275,7 +13289,6 @@ inline bool RackLoadMessages( const Rack ** roots, int64_t * count, uint8_t * re
     if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = out->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
     if ( bodies < 0 ) { return false; }
@@ -13286,11 +13299,12 @@ inline bool RackLoadMessages( const Rack ** roots, int64_t * count, uint8_t * re
     for ( int64_t b = 0; b < bodies; b++ )
     {
         roots[b] = NULL;
-        if ( !RackLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }
+        if ( !RackLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // RackLoadMeasure: the exact region bytes a wire buffer will need, and it is
@@ -13350,6 +13364,8 @@ inline const Rack * RackLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -13471,7 +13487,9 @@ inline const Rack * RackLoadTolerant( uint8_t * region, int64_t region_bytes, co
     RackLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -13513,6 +13531,8 @@ inline bool RackLoadBuilderTolerant( RackBuilder & builder, const uint8_t * wire
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -13606,6 +13626,10 @@ inline bool RackLoadBuilderTolerant( RackBuilder & builder, const uint8_t * wire
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
+    // holds nothing to use, and false says so
+    if ( out->malformed ) { return false; }
+    out->malformed = malformed_before;
     return ok;
 }
 
@@ -14305,7 +14329,6 @@ inline bool TrayLoadMessages( const Tray ** roots, int64_t * count, uint8_t * re
     if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = out->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
     if ( bodies < 0 ) { return false; }
@@ -14316,11 +14339,12 @@ inline bool TrayLoadMessages( const Tray ** roots, int64_t * count, uint8_t * re
     for ( int64_t b = 0; b < bodies; b++ )
     {
         roots[b] = NULL;
-        if ( !TrayLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }
+        if ( !TrayLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // TrayLoadMeasure: the exact region bytes a wire buffer will need, and it is
@@ -14380,6 +14404,8 @@ inline const Tray * TrayLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -14501,7 +14527,9 @@ inline const Tray * TrayLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TrayLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -14543,6 +14571,8 @@ inline bool TrayLoadBuilderTolerant( TrayBuilder & builder, const uint8_t * wire
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -14636,6 +14666,10 @@ inline bool TrayLoadBuilderTolerant( TrayBuilder & builder, const uint8_t * wire
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
+    // holds nothing to use, and false says so
+    if ( out->malformed ) { return false; }
+    out->malformed = malformed_before;
     return ok;
 }
 
@@ -16704,6 +16738,8 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -16834,7 +16870,9 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
     RingLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -16998,7 +17036,6 @@ inline bool RingLoadRetainMessages( const Ring ** roots, int64_t * count, uint8_
     if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = out->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
     if ( bodies < 0 ) { return false; }
@@ -17009,11 +17046,12 @@ inline bool RingLoadRetainMessages( const Ring ** roots, int64_t * count, uint8_
     for ( int64_t b = 0; b < bodies; b++ )
     {
         roots[b] = NULL;
-        if ( !RingLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }
+        if ( !RingLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // RingMeasureRetain and RingSaveRetain: the pair, with the retained tail in
@@ -17180,6 +17218,8 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -17310,7 +17350,9 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
     RackLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -17474,7 +17516,6 @@ inline bool RackLoadRetainMessages( const Rack ** roots, int64_t * count, uint8_
     if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = out->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
     if ( bodies < 0 ) { return false; }
@@ -17485,11 +17526,12 @@ inline bool RackLoadRetainMessages( const Rack ** roots, int64_t * count, uint8_
     for ( int64_t b = 0; b < bodies; b++ )
     {
         roots[b] = NULL;
-        if ( !RackLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }
+        if ( !RackLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // RackMeasureRetain and RackSaveRetain: the pair, with the retained tail in
@@ -17656,6 +17698,8 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -17786,7 +17830,9 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TrayLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -17946,7 +17992,6 @@ inline bool TrayLoadRetainMessages( const Tray ** roots, int64_t * count, uint8_
     if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = out->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
     if ( bodies < 0 ) { return false; }
@@ -17957,11 +18002,12 @@ inline bool TrayLoadRetainMessages( const Tray ** roots, int64_t * count, uint8_
     for ( int64_t b = 0; b < bodies; b++ )
     {
         roots[b] = NULL;
-        if ( !TrayLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }
+        if ( !TrayLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // TrayMeasureRetain and TraySaveRetain: the pair, with the retained tail in
