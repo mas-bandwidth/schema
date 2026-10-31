@@ -45,8 +45,14 @@ import (
 )
 
 // Backend is a bit per table backend, so one entry can say which of them
-// define the name. Each backend's own file declares its bit (Cpp is 1 << 0,
-// Cs is 1 << 1, and so on), and define refuses a bit two files claim.
+// define the name. The allocation:
+//
+//	Cpp 0, Cs 1, Rust 2, Go 3, Java 4, C 5, Elixir 6, Js 7,
+//	Dart 8, Lua 9, Luau 10, Squirrel 11.
+//
+// Each backend's own file declares its bit, and define refuses a bit two
+// files claim. A new port takes the next bit after the highest listed here
+// and adds its line to the allocation in the same change.
 type Backend uint16
 
 // Name is one spelling the generated table runtimes carry, and the backends

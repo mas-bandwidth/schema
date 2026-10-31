@@ -141,6 +141,20 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
 
+      # THE SQUIRREL STEP, as ci-full.yml's conformance job has it: the pinned
+      # interpreter is built from source by `make dist-squirrel` at the sha256
+      # make/squirrel.mk names, and put on PATH so the leg's `SQ=sq` (ci.json)
+      # resolves. Without it the certify run's squirrel row refuses at its
+      # toolchain gate.
+      - name: build and install the pinned Squirrel interpreter
+        if: matrix.squirrel != ''
+        run: |
+          make dist-squirrel
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$HOME/.local/bin/sq"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+
       # The two halves split so a failing build fails the run before the
       # harness's overhead shows in the log; both run with the row's env so
       # a toolchain-on-PATH leg (java, elixir, js, dart, rust) sees the

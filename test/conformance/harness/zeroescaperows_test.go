@@ -11,10 +11,10 @@ import (
 // battery to docs/SPEC-TABLES.md §16.3's zero rule: a string the read would
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
-// held first in Go and carried by C, Rust, Dart and Lobster, so the two refusals
-// state the standard's answer with `carried-by=go,c,rust,dart,lobster` and every
-// other port keeps its BASE counters; the skipped
-// value is the clean §4 report with the unknown key counted.
+// held first in Go and carried by C, Rust, Dart, moo, Lobster and Squirrel, so
+// the two refusals state the standard's answer with `carried-by=go,c,rust,dart,moo,lobster,squirrel`
+// and every other port keeps its BASE counters; the skipped value is the
+// clean §4 report with the unknown key counted.
 //
 // A Go answer of the clean counters on the value row must score red, because
 // the exemption is a different expectation and never a skip.
@@ -37,8 +37,11 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		if strings.Join(row.CarriedBy, ",") != "go,c,rust,dart,moo,lobster" {
-			t.Fatalf("%s: carried-by=%v; Go held the rule first, C, Rust, Dart, moo and Lobster carry it, and every other port keeps its behaviour", caseName, row.CarriedBy)
+		// both rows are carried by Squirrel too: the map-key row's unit,
+		// tables/maps, declares wide text, which its descriptors now carry
+		wantCarried := "go,c,rust,dart,moo,lobster,squirrel"
+		if strings.Join(row.CarriedBy, ",") != wantCarried {
+			t.Fatalf("%s: carried-by=%v; want %s: Go held the rule first, C, Rust, Dart, moo, Lobster and Squirrel carry it, and every other port keeps its behaviour", caseName, row.CarriedBy, wantCarried)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)
@@ -57,6 +60,9 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		}
 		if got := row.VerdictFor("dart"); got != "refused" {
 			t.Fatalf("%s: Dart owes %q, got %q", caseName, "refused", got)
+		}
+		if got := row.VerdictFor("squirrel"); got != "refused" {
+			t.Fatalf("%s: Squirrel owes %q, got %q", caseName, "refused", got)
 		}
 		if got := row.VerdictFor("cpp"); got != baseCounters {
 			t.Fatalf("%s: cpp owes %q, got %q", caseName, baseCounters, got)

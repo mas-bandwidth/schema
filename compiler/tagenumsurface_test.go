@@ -122,6 +122,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
 		nameFunc: "pub fn enum_name_weapon_fire_type(value: WeaponFireType) -> &'static str {",
 	},
+	"squirrel": {
+		noCount:  "  Count = ",
+		max:      "  Max = 2, // the exported extent (SPEC §4.2)",
+		nameFunc: "_M.EnumNameWeaponFireType <- function(value) {",
+	},
 }
 
 func TestUnionTagEnumExportsMaxNoCountAndItsDebugName(t *testing.T) {

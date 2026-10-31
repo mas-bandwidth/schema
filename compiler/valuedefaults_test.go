@@ -228,6 +228,24 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "squirrel" {
+			// The table surface constructs every declared default and the
+			// descriptor carries it for elision and absent-field reads
+			// (docs/SPEC-TABLES.md §4, §16.2).
+			if err != nil {
+				t.Fatalf("squirrel refused table defaults: %v", err)
+			}
+			code := string(out["VdefTables.nut"])
+			for _, want := range []string{
+				`this.Name = "untitled";`, `this.Tag = _rt_descriptor.blobOf("ab");`, `this.Caps = 3;`,
+				`def = "untitled"`, `def = "ab"`, `def = 3`,
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("squirrel default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if err == nil {
 			t.Errorf("%s emitted a unit with string, bytes and flags defaults instead of refusing it", target)
 			continue

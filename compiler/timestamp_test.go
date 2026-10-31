@@ -24,9 +24,11 @@ fixed table Session
 `
 
 // TestTimestampIsCarriedByGoAndRefusedByName pins the central refusal: Go
-// carries the kind first, and generating a unit that uses it for any other
-// target is an error naming the construct, the target and "Go carries it
-// first" — raised once, in Generate, with no other emitter edited.
+// carries the kind first, and generating a unit that uses it for any target
+// that has not lifted the refusal is an error naming the construct, the target
+// and "Go carries it first" — raised once, in Generate, with no other emitter
+// edited. A target that has registered carryTimestamp (Go, C++, and squirrel
+// under its tag) is not held to the refusal (docs/SPEC-TABLES.md §2.11, §16.2).
 func TestTimestampIsCarriedByGoAndRefusedByName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

@@ -357,6 +357,19 @@ jobs:
         if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
         run: make dist-goose
 
+      # THE SQUIRREL PIN, on the three rows that run generated Squirrel and on
+      # no other. Under SCHEMA_SLOW=1 internal/codegen/squirrel and
+      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-2;
+      # no Squirrel test matches the first half's pattern) and internal/ci's
+      # hostile-corpus runner (unit-rest) fail, never skip, without it. The
+      # slow-gate rows run plain `go test`, where every Squirrel test skips at
+      # internal/slowtest.Gate before the interpreter is resolved, so they pay
+      # nothing. make/squirrel.mk's dist-squirrel builds sq at the sha256 it
+      # names, into the dist/ path the leg's default names.
+      - name: install the Squirrel pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
+        run: make dist-squirrel
+
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
       # SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT ON THIS LANE. internal/slowtest
@@ -1001,6 +1014,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
+      # THE SQUIRREL STEP: the pinned interpreter is built from source, exactly
+      # as `make dist-squirrel` does (make/squirrel.mk), and its binary is put
+      # on PATH so the leg's `SQ=sq` (ci.json) resolves.
+      - name: build and install the pinned Squirrel interpreter
+        if: matrix.squirrel != ''
+        run: |
+          make dist-squirrel
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$HOME/.local/bin/sq"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
@@ -2081,6 +2105,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
+      # THE SQUIRREL PIN, keyed on the row's field like every toolchain above:
+      # a group naming `squirrel` runs controls that execute generated Squirrel
+      # or pass the leg's toolchain gate (make/squirrel.mk's
+      # toolchain-squirrel), which refuses by name when SQ does not resolve.
+      # dist-squirrel builds the interpreter at the sha256 it names, into the
+      # dist/ path SQ defaults to.
+      - name: install the Squirrel pin
+        if: matrix.squirrel != ''
+        run: make dist-squirrel
 
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and

@@ -125,23 +125,23 @@ public final class BenchMixedRow {
     }
 
     public static float aimX(byte[] data, int at) {
-        return TableBytes.f32(data, at + 1288);
+        return TableBytes.f32(data, at + 1288, "BenchMixed.aim_x");
     }
 
     public static float aimY(byte[] data, int at) {
-        return TableBytes.f32(data, at + 1292);
+        return TableBytes.f32(data, at + 1292, "BenchMixed.aim_y");
     }
 
     public static float aimZ(byte[] data, int at) {
-        return TableBytes.f32(data, at + 1296);
+        return TableBytes.f32(data, at + 1296, "BenchMixed.aim_z");
     }
 
     public static float recoil(byte[] data, int at) {
-        return TableBytes.f32(data, at + 1300);
+        return TableBytes.f32(data, at + 1300, "BenchMixed.recoil");
     }
 
     public static double drift(byte[] data, int at) {
-        return TableBytes.f64(data, at + 1304);
+        return TableBytes.f64(data, at + 1304, "BenchMixed.drift");
     }
 
     /** a 128-bit slot's low and high 64-bit halves (§7.2). */
