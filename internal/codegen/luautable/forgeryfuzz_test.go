@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"maps"
 	"os"
 	"path/filepath"
@@ -15,6 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -36,10 +36,9 @@ import (
 //     included) inside it, and a prologue and a base this build accepts;
 //   - a cook that opens is a cook the tool's cook-check (internal/tablecook,
 //     written from the spec and from neither backend) also accepts;
-//   - and in both, a full WALK of what opened (the block dump, the uncook)
-//     reads inside the buffer. In Luau that walk is the bounds instrument: a
-//     a buffer access past the end raises, so "the walk did not
-//     raise" is "no read left the bytes".
+//   - and in both, a full WALK of what opened (every block row byte and the
+//     cooked read) stays inside the buffer. Luau buffer access past the end
+//     raises, so "the walk did not raise" is "no read left the bytes".
 //
 // THE ORACLE RE-DERIVES ITS BOUNDS from the compiler's layout (ir.Blocks) and
 // from the triples in the mutant, never from schema_blockread.luau's own
