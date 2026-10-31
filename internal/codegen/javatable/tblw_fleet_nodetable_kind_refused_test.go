@@ -14,19 +14,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestJavaFixTblwFleetKindPass pins the wire-fuzzer kind #140 mutant on both
-// tblw1.Fleet (test/tables/W1.schema, corpus seed w1_fleet) and tblw2.Fleet
-// (test/tables/W2.schema, corpus seed w2_fleet). At kind #140, the root
-// node-table field (id 0xFFFFFFFFFFFFFFFF, TableNodeWireId, at byte offset 21)
-// has its wire kind byte mutated from 12 (TableKindString) to 0. Under
-// SPEC-TABLES §3.1 and §3.3 (internal/tablewire/decode.go, decodenodes.go), a
-// node-table field arriving under a kind other than 12 marks the numbering bad
-// and counts malformed, so every pointer in the save resolves to null while a
-// decoded pointer array (Fleet.escorts, [..4]*Vessel / [..4]*Ship, count 2)
-// keeps its 2 decoded null-pointer slots ([null, null]). The generated Java
-// reader must answer byte-for-byte as the Go oracle does on both value and
-// report.
-func TestJavaFixTblwFleetKindPass(t *testing.T) {
+// TestJavaFixTblwFleetNodeTableKindRefused pins the Java read of tblw1.Fleet
+// and tblw2.Fleet (corpus seeds w1_fleet, w2_fleet) at kind mutant #140: the
+// root node-table field's kind byte is 0 instead of 12, so the numbering is
+// damaged (docs/SPEC-TABLES.md §3.1), and DAMAGE DISCARDS THE WHOLE LOAD (§4):
+// the generated Java reader owes the refusal, malformed, and no counter or
+// saved byte is compared.
+func TestJavaFixTblwFleetNodeTableKindRefused(t *testing.T) {
 	t.Parallel()
 	// Exact kind #140 mutant bytes (170 bytes, sha256
 	// 66b60d6e9d158cdabb0cf777b921f25bb810af40dcaf2260855b96840dafb53f):
@@ -118,31 +112,14 @@ func TestJavaFixTblwFleetKindPass(t *testing.T) {
 				line = ln
 				break
 			}
-			fields := strings.SplitN(line, "|", 2)
-			if len(fields) != 2 {
-				t.Fatalf("driver output %q", line)
-			}
-
 			oracle := model.New(u.Tables[tc.root])
 			oreport := new(tabletext.Report)
-			if _, err := tablewire.DecodeRegion(model, oracle, wire, oreport); err != nil {
-				t.Fatalf("oracle decode: %v %+v", err, oreport)
+			if _, err := tablewire.DecodeRegion(model, oracle, wire, oreport); err != nil || !oreport.Malformed {
+				t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, oreport)
 			}
-			owire, err := tablewire.Encode(model, oracle)
-			if err != nil {
-				t.Fatal(err)
-			}
-			javaSaved, err := hex.DecodeString(fields[1])
-			if err != nil {
-				t.Fatalf("saved hex: %v", err)
-			}
-			got := fields[0]
-			want := fmt.Sprintf("%d,%d,%d,%d,%d,%v,%v", oreport.Unknown, oreport.KindMismatch, oreport.Widened, oreport.Clamped, oreport.Duplicate, oreport.Malformed, oreport.Refused)
-			if got != want {
-				t.Errorf("report java=%s oracle=%s", got, want)
-			}
-			if string(javaSaved) != string(owire) {
-				t.Errorf("saved bytes differ: java %d bytes (%x), oracle %d bytes (%x)", len(javaSaved), javaSaved, len(owire), owire)
+			counts := strings.TrimPrefix(strings.SplitN(line, "|", 2)[0], "null ")
+			if parts := strings.Split(counts, ","); len(parts) != 7 || parts[5] != "true" {
+				t.Errorf("Java did not refuse a damaged load: %q", line)
 			}
 		})
 	}

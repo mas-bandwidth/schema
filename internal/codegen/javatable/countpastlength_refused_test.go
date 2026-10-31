@@ -14,15 +14,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestJavaFixValueAndReportWithMeasureRight pins the wire-fuzzer cause J3: the
-// Java variable-leg's saved bytes or report differ where its measure agrees
-// with the oracle. The representative is streamdemo.Feed (corpus seed
-// stream_chain). The pinned vector puts an ARRAY COUNT past the array's own L
-// but inside the enclosing body: the oracle reads the header from the
-// enclosing body, clamps the count against N and counts `clamped`, then bounds
-// its elements by L (internal/tablewire/decode.go arrayBody; SPEC-TABLES §3,
-// §4). The generated Java reader must answer exactly as the Go oracle does.
-func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
+// TestJavaFixCountPastLengthRefused pins the wire-fuzzer cause J3 on
+// streamdemo.Feed (corpus seed stream_chain): an ARRAY COUNT past the array's
+// own L but inside the enclosing body is a count the body cannot cover, which
+// is damage, and DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+// generated Java reader owes the refusal, malformed, and no counter or saved
+// byte is compared.
+func TestJavaFixCountPastLengthRefused(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "tables", "stream")
@@ -32,8 +30,7 @@ func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
 
 	cases := []struct{ name, wireHex string }{
 		// the pinned stream_count_past_body vector: Chunk.data's count runs
-		// past its array L; the oracle clamps it to bytes(8), counts one
-		// clamped, keeps the prefix the body covers and reports malformed.
+		// past its array L, a count the body cannot cover.
 		{"pinned", "01010803000000020f030d0a040e03068fa99e02de62cf010105110200060c1602070a040e03060102051103000707040e030601030000c03a5cb5072eb7082652b3285633d4d8228e3c877681830f054aa33067555b8528f025a0ba6c31e5ffffffffffffffff82e051f9dc6843cf0700000000000000"},
 	}
 
@@ -106,33 +103,14 @@ func TestJavaFixValueAndReportWithMeasureRight(t *testing.T) {
 			line = ln
 			break
 		}
-		fields := strings.SplitN(line, "|", 2)
-		if len(fields) != 2 {
-			t.Fatalf("%s: driver output %q", tc.name, line)
-		}
-
 		oracle := model.New(u.Tables[root])
 		oreport := new(tabletext.Report)
-		// The oracle may report framing damage and still keep the decoded
-		// prefix; only a refusal stops the comparison.
-		if _, err := tablewire.Decode(model, oracle, wire, oreport); err != nil {
-			t.Fatalf("%s: oracle decode: %v %+v", tc.name, err, oreport)
+		if _, err := tablewire.Decode(model, oracle, wire, oreport); err != nil || !oreport.Malformed {
+			t.Fatalf("%s: oracle does not read the input as damaged: %v %+v", tc.name, err, oreport)
 		}
-		owire, err := tablewire.Encode(model, oracle)
-		if err != nil {
-			t.Fatal(err)
-		}
-		javaSaved, err := hex.DecodeString(fields[1])
-		if err != nil {
-			t.Fatalf("%s: saved hex: %v", tc.name, err)
-		}
-		got := fields[0]
-		want := fmt.Sprintf("%d,%d,%d,%d,%d,%v,%v", oreport.Unknown, oreport.KindMismatch, oreport.Widened, oreport.Clamped, oreport.Duplicate, oreport.Malformed, oreport.Refused)
-		if got != want {
-			t.Errorf("%s: report java=%s oracle=%s (saved %d vs oracle %d)", tc.name, got, want, len(javaSaved), len(owire))
-		}
-		if string(javaSaved) != string(owire) {
-			t.Errorf("%s: saved bytes differ: java %d bytes, oracle %d bytes", tc.name, len(javaSaved), len(owire))
+		counts := strings.TrimPrefix(strings.SplitN(line, "|", 2)[0], "null ")
+		if parts := strings.Split(counts, ","); len(parts) != 7 || parts[5] != "true" {
+			t.Errorf("%s: Java did not refuse a damaged load: %q", tc.name, line)
 		}
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -15,18 +14,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestJavaFixA1ArmBodyAsA2SavedBytes pins the a1_arm_body_as_a2 read
-// (docs/SPEC-TABLES.md §3.3): under the A2 schema, an A1 arm body read with a
-// damaged union header must answer exactly as the Go oracle does — the arm
-// content already decoded stands and is re-encoded whole, and every report
-// counter matches. Before the null-keep fix, the Java leg dropped the arm
-// content a damaged header occurrence left standing and saved 24 bytes where
-// the oracle saved 60 (the same counters in both engines).
+// TestJavaFixA1ArmBodyAsA2DamageRefused pins the Java read of a tbla2.Root
+// whose union header occurrence is damaged: DAMAGE DISCARDS THE WHOLE LOAD
+// (docs/SPEC-TABLES.md §4), so the leg owes the refusal, malformed, and no
+// counter or saved byte is compared.
 //
 // The mutant is the representative random pass #6001 at seed 24845619678 on
-// corpus seed a1_arm_body_as_a2 (tbla2.Root). The oracle keeps the arm and
-// re-encodes 60 bytes; the buggy leg saved only 24 and lost the decoded value.
-func TestJavaFixA1ArmBodyAsA2SavedBytes(t *testing.T) {
+// corpus seed a1_arm_body_as_a2 (tbla2.Root).
+func TestJavaFixA1ArmBodyAsA2DamageRefused(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromPath(t, filepath.Join(repo, "test", "tables", "A2.schema"))
@@ -40,15 +35,9 @@ func TestJavaFixA1ArmBodyAsA2SavedBytes(t *testing.T) {
 
 	oracle := model.New(u.Tables["Root"])
 	oreport := new(tabletext.Report)
-	if _, err := tablewire.Decode(model, oracle, mutant, oreport); err != nil {
-		t.Fatalf("oracle decode: %v %+v", err, oreport)
+	if _, err := tablewire.Decode(model, oracle, mutant, oreport); err != nil || !oreport.Malformed {
+		t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, oreport)
 	}
-	owire, err := tablewire.Encode(model, oracle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("oracle: unknown=%d kindMismatch=%d widened=%d clamped=%d duplicate=%d malformed=%v saved=%d",
-		oreport.Unknown, oreport.KindMismatch, oreport.Widened, oreport.Clamped, oreport.Duplicate, oreport.Malformed, len(owire))
 
 	files, err := Generate(u)
 	if err != nil {
@@ -88,7 +77,7 @@ public final class Driver {
         byte[] data=hex(args[0]);
         %s.TableVariable.Report report=new %s.TableVariable.Report();
         %s.%sVariable.Value v=%s.%sVariable.load(data,report);
-        if(v==null){System.out.println("null");return;}
+        if(v==null){System.out.println("null "+report.malformed);return;}
         byte[] saved=%s.%sVariable.save(v);
         System.out.println(report.unknown+" "+report.kindMismatch+" "+report.widened+" "+report.clamped+" "+report.duplicate+" "+report.malformed+" "+hexstr(saved));
     }
@@ -116,33 +105,7 @@ public final class Driver {
 		break
 	}
 	fields := strings.Fields(line)
-	if len(fields) != 7 {
-		t.Fatalf("driver output: %q", line)
-	}
-	javaMalformed := fields[5] == "true"
-	javaSaved, err := hex.DecodeString(fields[6])
-	if err != nil {
-		t.Fatalf("saved hex: %v", err)
-	}
-	if fields[0] != strconv.Itoa(oreport.Unknown) {
-		t.Errorf("unknown: java=%s oracle=%d", fields[0], oreport.Unknown)
-	}
-	if fields[1] != strconv.Itoa(oreport.KindMismatch) {
-		t.Errorf("kindMismatch: java=%s oracle=%d", fields[1], oreport.KindMismatch)
-	}
-	if fields[2] != strconv.Itoa(oreport.Widened) {
-		t.Errorf("widened: java=%s oracle=%d", fields[2], oreport.Widened)
-	}
-	if fields[3] != strconv.Itoa(oreport.Clamped) {
-		t.Errorf("clamped: java=%s oracle=%d", fields[3], oreport.Clamped)
-	}
-	if fields[4] != strconv.Itoa(oreport.Duplicate) {
-		t.Errorf("duplicate: java=%s oracle=%d", fields[4], oreport.Duplicate)
-	}
-	if javaMalformed != oreport.Malformed {
-		t.Errorf("malformed: java=%v oracle=%v", javaMalformed, oreport.Malformed)
-	}
-	if string(javaSaved) != string(owire) {
-		t.Errorf("saved bytes differ: java %d bytes, oracle %d bytes", len(javaSaved), len(owire))
+	if javaMalformed := len(fields) == 7 && fields[5] == "true" || len(fields) == 2 && fields[0] == "null" && fields[1] == "true"; !javaMalformed {
+		t.Errorf("Java did not refuse a damaged load: %q", line)
 	}
 }

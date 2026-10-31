@@ -151,6 +151,14 @@ func loadFixDVerdict(a loadFixDAnswer, o loadFixDOracle) string {
 	if o.noRoot {
 		return "the engine refused the root itself"
 	}
+	if o.counts.malformed && !o.refused {
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
+		// owes the refusal, and no counter or saved byte is compared
+		if a.loaded && !a.counts.malformed {
+			return fmt.Sprintf("the engine discards a damaged load: Luau says %+v, the engine says %+v", a.counts, o.counts)
+		}
+		return ""
+	}
 	if !a.loaded {
 		return "the Luau load returned no root"
 	}

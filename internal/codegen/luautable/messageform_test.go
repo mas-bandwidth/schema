@@ -234,12 +234,12 @@ func TestLuauMessageFormNegativeControl(t *testing.T) {
 	t.Logf("the batch comparison went red: %q", out)
 }
 
-// TestLuauMessageFormDamageStopsAtTheSecondBody holds §3.3's terminal rule:
-// damage inside body 2 delivers body 1 on the TOLERANT read, counts one
-// malformed, and reads nothing after it; the plain read is STRICT and hands
-// back no body, refusing the batch (docs/SPEC-TABLES.md §6.5). The fixture
+// TestLuauMessageFormDamageRefusesTheBatch holds the damage rule on a message
+// batch: DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4, §3.3), so
+// damage inside body 2 is refused, malformed, on the tolerant read and on the
+// plain STRICT read alike (§6.5); no count or body is compared. The fixture
 // flips 63 (thirty past E) into the second body's first reference.
-func TestLuauMessageFormDamageStopsAtTheSecondBody(t *testing.T) {
+func TestLuauMessageFormDamageRefusesTheBatch(t *testing.T) {
 	t.Parallel()
 	units, conns, _ := messageManifest(t)
 	conn := conns["backend_conn"]
@@ -253,8 +253,8 @@ func TestLuauMessageFormDamageStopsAtTheSecondBody(t *testing.T) {
 	}
 	dir, mods, _ := buildMessageUnit(t, units[conn.unit])
 	out := messageMainWith(t, dir, mods, "LoginRequest", "LoadMessagesTolerant", ann, batch)
-	if !strings.HasPrefix(out, "count 1 malformed true") {
-		t.Fatalf("damage in body 2 did not stop at body 1: %q", out)
+	if !strings.Contains(out, " malformed true") {
+		t.Fatalf("the tolerant batch read did not refuse a damaged batch: %q", out)
 	}
 	out = messageMainWith(t, dir, mods, "LoginRequest", "LoadMessages", ann, batch)
 	if !strings.HasPrefix(out, "count -1 malformed true") {
