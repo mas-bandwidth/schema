@@ -569,18 +569,12 @@ defmodule Driver do
   # answers `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
   # saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
   # what this port's own records cost, and the second load gets one byte less
-  # (test/conformance/README.md). The id list's capacity is a count. A
-  # retain-message row's root is a plain `table`, which carries no message verbs
-  # (§3.3), so the driver answers ABSENT for it.
+  # (test/conformance/README.md). The id list's capacity is a count.
   defp run(surface, rows, outdir) when surface in ["retain", "retain-save"] do
     saves = surface == "retain-save"
 
     for row <- rows(rows, "retain"), not (saves and List.last(row) == "-") do
       retain_row(row, saves, outdir)
-    end
-
-    for [name | _] = row <- rows(rows, "retain-message"), not (saves and List.last(row) == "-") do
-      write_absent(outdir, name)
     end
   end
 

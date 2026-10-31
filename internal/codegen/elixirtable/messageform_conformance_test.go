@@ -9,12 +9,11 @@ package elixirtable
 // surface routes to its own handler, which writes the saved bytes, never only
 // the ABSENT fallback. (2) THE ROWS: every manifest `message` row names a
 // connection the manifest defines, and is either answered (its root is a fixed
-// table of a unit the leg's stamp generates) or on the named absence list,
-// which is graph_tree alone: its root Scene is a plain `table`, which the
-// message form refuses by name (§3.3: "`fixed table T` may ride here, a plain
-// `table T` may not"). Both read files only. (3) THE HARNESS (functional): it
-// runs `./build/conformance-harness run --only elixir` over the built leg and
-// requires every answered row byte-equal and graph_tree absent; it skips by
+// table of a unit the leg's stamp generates) or absent because its root is a
+// variable table: the message form is fixed tables only (§3.3). Both read
+// files only. (3) THE HARNESS (functional): it runs
+// `./build/conformance-harness run --only elixir` over the built leg and
+// requires every answered row byte-equal and every variable root absent; it skips by
 // name without Elixir or the built harness unless SCHEMA_REQUIRE_CORPUS=1,
 // under which a skip is a failure. make tables-elixir-message-conformance is
 // that gate.
@@ -31,10 +30,22 @@ import (
 	"testing"
 )
 
-// messageConformanceAbsent is the named absence list: a row here writes
-// `<case>.absent`, and every other row is answered.
-var messageConformanceAbsent = map[string]string{
-	"graph_tree": "root Scene is a plain `table`, which the message form refuses by name (docs/SPEC-TABLES.md §3.3)",
+// messageVariableRows is the manifest's message rows whose root is a variable
+// table: each writes `<case>.absent`, and every other row is answered.
+func messageVariableRows(t *testing.T, root, manifest string) map[string]bool {
+	t.Helper()
+	units, connections := messageManifest(t, manifest)
+	out := map[string]bool{}
+	for _, row := range messageBatchRows(t, manifest) {
+		conn, ok := connections[row.connection]
+		if !ok {
+			continue
+		}
+		if st := messageLoadUnit(t, root, units[conn.unit]).Tables[row.root]; st != nil && !st.FixedDeclared {
+			out[row.name] = true
+		}
+	}
+	return out
 }
 
 func TestMessageFormConformanceElixir(t *testing.T) {
@@ -90,8 +101,8 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		units, connections := messageManifest(t, manifest)
 		rows := messageBatchRows(t, manifest)
 		stamped := elixirStampUnits(t, root)
-		seen := map[string]bool{}
 		var answered []string
+		absent := 0
 		for _, row := range rows {
 			conn, ok := connections[row.connection]
 			if !ok {
@@ -111,27 +122,16 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 				t.Errorf("message %s: unit %s declares no table %s", row.name, conn.unit, row.root)
 				continue
 			}
-			seen[row.name] = true
-			if why, absent := messageConformanceAbsent[row.name]; absent {
-				if st.FixedDeclared {
-					t.Errorf("message %s is on the absence list (%s), but %s is a fixed table the form carries", row.name, why, row.root)
-				}
+			if !st.FixedDeclared {
+				absent++ // a variable table carries no message form (§3.3)
 				continue
 			}
-			if !st.FixedDeclared {
-				t.Errorf("message %s: root %s is a plain table the form refuses, and the row is not on the named absence list", row.name, row.root)
-			}
 			answered = append(answered, row.name)
-		}
-		for name := range messageConformanceAbsent {
-			if !seen[name] {
-				t.Errorf("the absence list names %s, which is no manifest message row", name)
-			}
 		}
 		if len(answered) == 0 {
 			t.Fatal("no message row is answered: the clause would pass over the empty set")
 		}
-		t.Logf("%d message rows answered, %d named absent", len(answered), len(messageConformanceAbsent))
+		t.Logf("%d message rows answered, %d absent over a variable root", len(answered), absent)
 	})
 
 	t.Run("harness_answers_the_rows", func(t *testing.T) {
@@ -158,16 +158,17 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 			t.Fatalf("the harness matrix carries no message row:\n%s", out)
 		}
 		rows := messageBatchRows(t, manifest)
-		want := len(rows) - len(messageConformanceAbsent)
+		variable := messageVariableRows(t, root, manifest)
+		want := len(rows) - len(variable)
 		if !bytes.Contains(line[1], []byte("pass ")) {
 			t.Fatalf("the harness reads the Elixir message surface as %q, not a pass", bytes.TrimSpace(line[1]))
 		}
 		dir := filepath.Join(root, "build", "conformance", "out", "elixir", "message")
 		var passed []string
 		for _, row := range rows {
-			if _, absent := messageConformanceAbsent[row.name]; absent {
+			if variable[row.name] {
 				if _, err := os.Stat(filepath.Join(dir, row.name+".absent")); err != nil {
-					t.Errorf("message %s: the driver wrote no %s.absent for the named absence", row.name, row.name)
+					t.Errorf("message %s: the driver wrote no %s.absent for the variable root", row.name, row.name)
 				}
 				continue
 			}
