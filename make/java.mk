@@ -1643,20 +1643,14 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # retention arm's pair. The harness owns the mutants and the oracle
 # (internal/tablewire, the compiler's own engine).
 #
-# The gate runs every ENUMERATED pass and every pinned vector over the plain
-# pair, and REPLAYS the retention arm's pinned vectors through the retaining
-# pair (--retain, §6.6). Two halves are OWED (roadmap
-# java/java-wire-fuzz-every-root), and each still finds a divergence:
-#   - the seeded RANDOM pass: at the shared N and SEED, a stream_arm_first
-#     mutant whose arm body the Java leg counts one kind_mismatch fewer than
-#     the engine (random #22918, run seed 24845619678). Both reports are
-#     malformed: it is damaged input, parked under the discard-on-damage
-#     ruling, and it stops the random pass before it reaches undamaged ones;
-#   - the whole RETENTION ARM: Java's retention does not reach a pointer
-#     node's body, so an unknown field there is counted and not retained
-#     (graph_tree, enumerated pass reference #43, where the engine retains it).
-# JAVA_WIRE_FUZZ_N stays 0 and the retention arm runs its vectors alone until
-# those close; raising N to $(N) and running --retain whole closes the card.
+# The gate runs every ENUMERATED pass and every pinned vector over BOTH
+# arms: the plain pair, and the retaining pair (--retain, §6.6), whose own
+# pinned vectors it also replays. The seeded RANDOM pass stays at N = 0: at
+# the shared SEED its first finding in each arm is DAMAGED input (both
+# reports malformed, or the oracle discarding a damaged load the leg reads
+# clean: stream_arm_first random #22918 on the plain arm, parts_count_past_bound
+# random #4485 on the retaining arm), parked under the discard-on-damage
+# ruling, and each stops its pass before it reaches the mutants behind it.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
 JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army
@@ -1671,6 +1665,8 @@ tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
+		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java-retain.bin
 	@set -e; for v in $(JAVA_PLAIN_VECTORS); do \
 		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
 		./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
