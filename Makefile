@@ -6925,19 +6925,22 @@ include make/checks/reference-review.mk
 # and skips a commit already carrying one; .github/workflows/promotion-tag.yml
 # runs it on every push to main. release tags one commit on main vX.Y.Z and
 # refuses a version that does not parse, is not greater than the newest v tag,
-# or names a commit off main; .github/workflows/release.yml runs it when
-# dispatched. Without PUSH=1 both print the decision and write nothing.
+# or names a commit off main, and before any of that runs the previous-release
+# differential below and refuses on its difference; .github/workflows/release.yml
+# runs it when dispatched. Without PUSH=1 both print the decision and write nothing.
 # VERSION above defaults to `git describe`, which is never a release number:
 # release reads VERSION only when it was given on the command line or in the
 # environment, so a bare `make release` refuses on the grammar.
 RELEASE_VERSION = $(if $(filter command line environment,$(origin VERSION)),$(VERSION))
 RELEASE_COMMIT ?= HEAD
+# the ref whose ancestry is main; the release gate's own test names HEAD
+RELEASE_MAIN ?= origin/main
 .PHONY: promotion-tag release
 promotion-tag:
 	go run ./tools/releasetag promotion-tag -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
 
-release:
-	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
+release: release-differential
+	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) -main $(RELEASE_MAIN) $(if $(PUSH),-push)
 
 # THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463): the WIRE bytes
 # the newest v tag's compiler and RELEASE_COMMIT's encode for the same
@@ -6946,14 +6949,63 @@ release:
 # C++, one driver source on both), the table forms through the Go engine each
 # compiler carries (`schema pack` over every MANIFEST instance with text). A
 # differing byte refuses, naming the unit, the instance and the byte; a unit
-# whose id moved is listed, not compared. RELEASE_DIFFERENTIAL_PREV names
-# another previous release. It needs the tags and their trees (a full clone),
-# Go, a C++ compiler and $(SERIALIZE).
+# whose id moved is listed, not compared. `release` runs it first and tags
+# nothing on a difference; certify.yml runs it nightly. RELEASE_DIFFERENTIAL_PREV
+# names another previous release, and RELEASE_DIFFERENTIAL_FLAGS adds flags
+# (the release gate's own test hands it prebuilt compilers). It needs the tags
+# and their trees (a full clone), Go, a C++ compiler and the serialize C++
+# runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
 RELEASE_DIFFERENTIAL_PREV ?=
+RELEASE_DIFFERENTIAL_FLAGS ?=
 RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 .PHONY: release-differential release-differential-negative-control
-release-differential:
-	go run ./tools/releasediff $(if $(RELEASE_DIFFERENTIAL_PREV),-prev $(RELEASE_DIFFERENTIAL_PREV)) -rev $(RELEASE_COMMIT) -serialize $(SERIALIZE) -j $(RELEASE_DIFFERENTIAL_JOBS)
+release-differential: $(SERIALIZE_RUNTIME)/serialize.h
+	go run ./tools/releasediff $(if $(RELEASE_DIFFERENTIAL_PREV),-prev $(RELEASE_DIFFERENTIAL_PREV)) -rev $(RELEASE_COMMIT) -serialize $(SERIALIZE_RUNTIME) -j $(RELEASE_DIFFERENTIAL_JOBS) $(RELEASE_DIFFERENTIAL_FLAGS)
+
+# THE RELEASE REFUSES ON IT (release-refuses-on-differential). Two dry runs of
+# `make release` itself, against a version past every tag, with main taken as
+# HEAD so the branch under test is "on main": the clean compiler against itself
+# must reach the tag decision, and the clean compiler against one whose Go
+# engine writes a true bool as 2 under an unchanged protocol id must stop at
+# the differential, naming the difference, with no tag decision printed.
+RELEASE_GATE_TEST ?= build/release-gate-test
+# the same Makefile this test was read from, so its control can hand it a copy
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
+.PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
+release-refuses-on-differential:
+	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
+	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
+	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
+	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
+	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
+		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
+	@grep -q '^release: would tag v99999.0.0 ' $(RELEASE_GATE_TEST)/guard.out || \
+		{ echo "FAILED: make release with no difference printed no tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
+	@if $(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-table -corpus . -work $(RELEASE_GATE_TEST)/red" > $(RELEASE_GATE_TEST)/red.out 2>&1; then \
+		echo "FAILED: make release went through a wire difference under an unchanged protocol id"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; \
+	fi
+	@grep -q '^DIFFERENCE under an equal protocol id: table variable form, ' $(RELEASE_GATE_TEST)/red.out || \
+		{ echo "FAILED: make release refused, but not on the differential's difference"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; }
+	@! grep -q 'would tag\|tagged and pushed' $(RELEASE_GATE_TEST)/red.out || \
+		{ echo "FAILED: make release reached a tag decision past a difference"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; }
+	@echo "release gate: make release reaches its tag decision with no difference, and stops at the differential, tagging nothing, on a wire difference under an unchanged protocol id"
+
+# ITS NEGATIVE CONTROL: the test, green on this Makefile, then the same test
+# over a copy whose `release` no longer runs the differential first, which
+# must go RED on the release that went through the difference.
+RELEASE_GATE_CONTROL := build/release-gate-control
+release-refuses-on-differential-negative-control: release-refuses-on-differential
+	@rm -rf $(RELEASE_GATE_CONTROL) && mkdir -p $(RELEASE_GATE_CONTROL)
+	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
+	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
+	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a release that never runs the differential left release-refuses-on-differential green"; cat $(RELEASE_GATE_CONTROL)/red.out; exit 1; \
+	fi
+	@grep -q 'FAILED: make release went through a wire difference under an unchanged protocol id' $(RELEASE_GATE_CONTROL)/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the release that went through the difference"; cat $(RELEASE_GATE_CONTROL)/red.out; exit 1; }
+	@echo "negative control: a release that does not run the differential first turns release-refuses-on-differential RED on the release that went through the difference"
 
 # ITS NEGATIVE CONTROL: one compiler built from this tree, and two built from
 # it under an overlay each (tools/sabotage): release-differential-union-tag

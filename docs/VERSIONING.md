@@ -176,10 +176,14 @@ variable form, each under an unchanged protocol id, and each must go red on
 its own wire alone; its guard leg runs one compiler against itself and must
 pass having compared both wires.
 
-Against v2.5.0 it is green: 44 packet encodings over the three drivers and
-5 variable-form table encodings are the same bytes. The table side is thin
-because v2.5.0 reads none of the table units but `tables/blobs`; the rest
-are listed.
+`make release` runs it before anything else and tags nothing on a
+difference, held by `release-refuses-on-differential` and its negative
+control; certify.yml runs it nightly. The table forms are compared from 3.0.0
+on; before 3.0.0 the previous release cannot read most table units, so they
+are listed, not compared, and the gate's report says so. Against v2.5.0 it is
+green: 44 packet encodings over the three drivers and the 5 variable-form
+encodings of `tables/blobs`, the one table unit v2.5.0 reads, are the same
+bytes.
 
 **Variant order is the wire, and the names carry it.** An enum value rides as
 its declaration ordinal, a flags variant as its bit position, a union arm as
@@ -954,8 +958,11 @@ either by hand.
   runs `make release VERSION=vX.Y.Z PUSH=1`. It refuses, by name, a version
   that does not parse as `vMAJOR.MINOR.PATCH` (no prefix-less, pre-release or
   build forms, no leading zeros), a version that is not greater than the
-  newest `v` tag already in the repository, and a commit that is not on
-  `main`. It tags that one commit with that one annotated tag and pushes
+  newest `v` tag already in the repository, a commit that is not on
+  `main`, a patch release that moves the build version's form, and, before
+  any of those, a commit whose compiler encodes different wire bytes than the
+  newest `v` tag's under an equal protocol id (the previous-release
+  differential). It tags that one commit with that one annotated tag and pushes
   nothing else. CI must be green on the commit, including the full
   certification run across every language, before the release is dispatched.
 
@@ -1185,8 +1192,6 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   emitted nowhere.
 - #434: the reserved escape kind. The C++ reference and `internal/tablewire`
   carry it; what is owed is the eight ports (#511 to #518).
-- #463: the previous-release differential in the release path. It is built
-  and green against v2.5.0; `make release` and certify.yml do not run it yet.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #446: the evolution table's fixtures. `TestEvolutionTableFrames` pins 33
   of §4.1's 34 rows. The one owed is an unbounded array's element retyped:
