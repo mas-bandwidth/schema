@@ -4,3 +4,10 @@
 # a batch damaged inside body one: the fields decoded before the damage stand
 # (table_message.moo LoadMessages answers the partial body third)
 test/conformance/moo/wire-fuzz-pinned/login_partial_body.bin backenddemo LoginRequest message
+# a string field met twice, the second ill-formed: the field reads its declared
+# default (table_load.moo read_field), never the first occurrence's value
+test/conformance/moo/wire-fuzz-pinned/chain_illformed_text.bin tblp2 Chain
+test/conformance/moo/wire-fuzz-pinned/chain_illformed_text_p1.bin tblp1 Chain
+# a nested body damaged under retention is refilled in place, and a pointer it
+# read before the damage lands nowhere (table_load.moo sink_pending)
+test/conformance/moo/wire-fuzz-pinned/scene_refilled_body_pointer.bin graphdemo Scene retain

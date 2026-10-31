@@ -237,6 +237,17 @@ end
 
 local _table: { string } = {}
 local _pending: { any } = {}
+
+-- A BODY REFILLED IN PLACE LANDS NO POINTER IT READ (§3.1, §6.6): the engine
+-- resolves a pointer the moment it is read, so the refill that follows
+-- damage resets it; this walk resolves at the end, so a refilled body's
+-- pending slots from `mark` on are sent to a sink, still resolved and
+-- counted, exactly as the slots of a body that is replaced are
+local function sink_pending(mark: number)
+	for k = mark + 1, #_pending do
+		_pending[k].holder = {}
+	end
+end
 local _nodes: { any } = {}
 local _rootValue: any = nil
 local _rootDesc: any = nil
@@ -750,6 +761,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 				if _retain ~= nil and dst ~= nil and type(dst) == "table" then
 					_retain.forgetBody(d, dst[at]) -- the slot written again (§3.2, §6.6)
 				end
+				local mark = #_pending
 				read_body(d, payload, inst, true)
 				if payload.at ~= payload.e then
 					-- A SLOT WHOSE BODY DID NOT SPEND ITS L RESETS TO ITS DECLARED
@@ -757,6 +769,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 					report.malformed = true
 					if _retain ~= nil then
 						_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
+						sink_pending(mark)
 					else
 						inst = d.new()
 					end
@@ -969,11 +982,13 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		local sub = new_reader(r.b, r.at, r.at + n)
 		local d = S.lookup(e.t)
 		local inst = d.new()
+		local mark = #_pending
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
 			report.malformed = true
 			if _retain ~= nil then
 				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
+				sink_pending(mark)
 			else
 				inst = d.new()
 			end
@@ -1326,6 +1341,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 			end
 			v[fd.slot] = inst
 		end
+		local mark = #_pending
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
 			-- A NESTED BODY THAT DID NOT SPEND ITS L FALLS BACK ON ITS DECLARED
@@ -1333,6 +1349,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 			_report.malformed = true
 			if _retain ~= nil then
 				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
+				sink_pending(mark)
 			else
 				inst = d.new()
 			end
