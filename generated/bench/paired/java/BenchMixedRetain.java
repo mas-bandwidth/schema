@@ -1104,11 +1104,9 @@ public final class BenchMixedRetain {
             w.frame(list);
         }
         if (!v.playerName.isEmpty()) {
-            byte[] b = v.playerName.getBytes(StandardCharsets.UTF_8);
             w.putLeb(w.ref(BenchMixedVariable.F_playerName));
             w.put8(12);
-            w.putLeb(b.length);
-            w.putBytes(b, 0, b.length);
+            w.putUtf8(v.playerName);
         }
         if (v.payload != null && !java.util.Arrays.equals(v.payload, new byte[] {})) {
             w.putLeb(w.ref(BenchMixedVariable.F_payload));
@@ -1166,10 +1164,10 @@ public final class BenchMixedRetain {
             w.put8(8);
             w.put32(v.crcHint);
         }
-        if (v.hasExtra) {
+        if (v.hasExtra != true) {
             w.putLeb(w.ref(BenchMixedVariable.F_hasExtra));
             w.put8(1);
-            w.put8(1);
+            w.put8(v.hasExtra ? 1 : 0);
         }
         if (v.extra != 0) {
             w.putLeb(w.ref(BenchMixedVariable.F_extra));

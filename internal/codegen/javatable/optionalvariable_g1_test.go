@@ -54,7 +54,8 @@ func TestJavaOptionalVariableClosureG1(t *testing.T) {
 	const variableWalkAll = "        if (v.optional != null) {\n" +
 		"            if (!WrappedVariable.buildGraph(g, v.optional)) return false;\n" +
 		"        }\n"
-	const cookGate = "        return f.presentOffset >= 0 && f.storage == TableCookStorage.RECORD\n" +
+	const cookGate = "        return f.presentOffset >= 0\n" +
+		"                && f.storage == TableCookStorage.RECORD\n" +
 		"                && !Boolean.TRUE.equals(field(value, f.sourceName + \"Present\"));\n"
 	if !bytes.Contains(files["GuardedVariable.java"], []byte(variableGate)) {
 		t.Fatalf("GuardedVariable.buildGraph carries no presence gate:\n%s", files["GuardedVariable.java"])

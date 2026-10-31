@@ -39,8 +39,9 @@ package rusttable
 //
 // rust/R20 [verify]: §21.2's landing rules.
 //
-// rust/R21 [owed]: widenf is the bit-exact widening — signalling NaNs kept, the
-// quiet bit carried as the writer wrote it.
+// rust/R21 [owed]: widenf is the ordinary f32-to-f64 conversion, exact for
+// every finite value; a NaN or an infinity is refused by the finite pass
+// (docs/SPEC-TABLES.md §3.3, 2026-10-27).
 //
 // rust/R29 [owed]: the band case: the widening across the 65536 ceiling, and
 // the bounds pass clamping to the writer's bounds.
@@ -404,20 +405,20 @@ func t04R20(t *testing.T) {
 
 // ---- rust/R21 -----------------------------------------------------------------
 
-// t04R21 holds rust/R21 to §4's float rung and §5.2's table: "widenf is the f32
-// at src as an f64 at dst ... both are exact by construction, NaN payloads
-// included". The hardware f64::from(f32) QUIETS a signalling NaN and can drop a
-// payload bit, so the emitted runtime assembles every all-ones exponent by hand
-// — the sign carried, f64's all-ones exponent, and the 23-bit mantissa shifted
-// left by 29, which carries the quiet bit as the writer wrote it.
+// t04R21 holds rust/R21 to §4's float rung under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3): "every finite float32 widens to float64
+// exactly", so widenF is the ordinary conversion and the NaN bit surgery is
+// retired with the NaN. What keeps a non-finite source from landing is the
+// read's FINITE PASS, which refuses it as non_finite_float after the run and
+// before the bounds pass.
 func t04R21(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
-	t04Has(t, runtime, "bits & 0x7f80_0000 == 0x7f80_0000 && bits & 0x007f_ffff != 0", "R21 the all-ones exponent is handled on the bits")
-	t04Has(t, runtime, "| 0x7ff0_0000_0000_0000", "R21 f64's all-ones exponent")
-	t04Has(t, runtime, "<< 29", "R21 the 23-bit mantissa becomes the 52-bit one")
-	t04Has(t, runtime, "f64::from(f32::from_bits(bits)).to_bits()", "R21 every other exponent converts exactly")
-	if strings.Contains(runtime, "f64::from(f).to_le_bytes()") {
-		t.Error("R21: the float rung still widens through the hardware conversion")
+	t04Has(t, runtime, "let wide = f64::from(f32::from_bits(bits)).to_bits();", "R21 the float rung is the ordinary conversion")
+	t04Has(t, runtime, "NonFiniteFloat => \"non_finite_float\"", "R21 the refusal is named non_finite_float")
+	for _, surgery := range []string{"bits & 0x007f_ffff != 0", "| (u64::from(bits & 0x007f_ffff) << 29)"} {
+		if strings.Contains(runtime, surgery) {
+			t.Errorf("R21: the retired NaN bit surgery is still emitted: %q", surgery)
+		}
 	}
 }
 

@@ -70,6 +70,8 @@ func init() {
 		Name{Name: "TableMessageVocabularyFieldId", What: "the reserved id the announcement's vocabulary field rides under (§3.3)", RustConst: true},
 		Name{Name: "TableMessageMaxBytes", What: "the announcement's conforming byte bound (§3.3)", RustConst: true},
 		Name{Name: "TableReason", What: "the message form's refusal reasons, each one by name"},
+		Name{Name: "TableFiniteF32", What: "the raw-bits test every read runs before a float32's bits become a value (§3.3)", Scoped: true},
+		Name{Name: "TableFiniteF64", What: "the raw-bits test every read runs before a float64's bits become a value (§3.3)", Scoped: true},
 		// THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3): the bit stream,
 		// the batch bound and the writer's reference width, and the shared
 		// walkers every <base>_message.rs body calls.
@@ -82,7 +84,6 @@ func init() {
 		Name{Name: "TableMessageValueBits", What: "the bits one value of an announced entry takes on a body (§3.3)", Scoped: true},
 		Name{Name: "TableMessageCount", What: "an array's or a text's count read at its announced range (§3.3)", Scoped: true},
 		Name{Name: "TableMessageWidens", What: "the widening ladder on a batch read (§4)", Scoped: true},
-		Name{Name: "TableMessageWidenF32", What: "a float32 widened into a float64 bit-exactly, NaN payload included (§4)", Scoped: true},
 		Name{Name: "TableMessageUtf8", What: "§3's content rule for a string on a body: well-formed UTF-8 with no zero", Scoped: true},
 		Name{Name: "TableMessageUtf8Clamp", What: "a UTF-8 clamp that never cuts a character (§4)", Scoped: true},
 		Name{Name: "TableMessageSigned", What: "an endpoint's value sign-extended from its announced kind (§3.3)", Scoped: true},
@@ -109,7 +110,8 @@ func init() {
 		Name{Name: "TableWideBoundary", What: "a wstring(N) clamp at N code units that never splits a pair (§3)", Scoped: true},
 		Name{Name: "TableWideFit", What: "the writer's wstring(N) bound: over N is the save's refusal by name (§3, SPEC §4.12)", Scoped: true},
 		Name{Name: "TableWidePut", What: "wstring(N) code units written little-endian under the caller's L (§3)", Scoped: true},
-		Name{Name: "TableWidenF32", What: "a float32 widened into a float64 bit-exactly, NaN payload included (§4)", Scoped: true},
+		Name{Name: "TableRetainedFloatFinite", What: "the finite rule on a retained unknown of a float kind, tested on its raw bits like a known field (§3.3, §6.6)", Scoped: true},
+		Name{Name: "TableFloatRefuse", What: "the writer's finite rule: a NaN or an infinity is the save's refusal by name, non_finite_float (§3.3)", Scoped: true},
 		Name{Name: "TableRetainDepthCap", What: "the retain walk's nesting cap (§6.6)", RustConst: true},
 		Name{Name: "TableDesc", What: "one table's descriptor in the card descriptors (§8.1)"},
 		Name{Name: "TableFieldDesc", What: "one field's descriptor in the card descriptors (§8.1)"},

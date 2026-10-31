@@ -810,15 +810,15 @@ public final class MixedEntityRetain {
                     break;
             }
         }
-        if (v.moving) {
+        if (v.moving != false) {
             w.putLeb(w.ref(MixedEntityVariable.F_moving));
             w.put8(1);
-            w.put8(1);
+            w.put8(v.moving ? 1 : 0);
         }
-        if (v.firing) {
+        if (v.firing != false) {
             w.putLeb(w.ref(MixedEntityVariable.F_firing));
             w.put8(1);
-            w.put8(1);
+            w.put8(v.firing ? 1 : 0);
         }
     }
 
