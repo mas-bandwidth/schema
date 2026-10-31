@@ -757,17 +757,17 @@ tables-c-usage-build:
 	sed -n '/<!-- c-table-usage -->/,/<!-- \/c-table-usage -->/p' docs/USAGE.md \
 		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(C_USAGE_OUT)/usage.c
 	printf '    return 0;\n}\n' >> $(C_USAGE_OUT)/usage.c
-	grep -q 'SCHEMA_TABLE_KEYED_AT' $(C_USAGE_OUT)/usage.c || \
+	grep -q '_TABLE_KEYED_AT' $(C_USAGE_OUT)/usage.c || \
 		{ echo "MISSING: docs/USAGE.md carries no c-table-usage example"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -I$(C_USAGE_GEN) -I$(SERIALIZE_C) \
 		$(C_USAGE_OUT)/usage.c $(C_USAGE_GEN)/KeyedTable.c \
 		-o $(C_USAGE_OUT)/usage -lm
 
 # ITS NEGATIVE CONTROL: the documented surface moves and the page does not. The
-# emitter spells the keyed accessor SCHEMA_TABLE_KEYED_SLOT (its definition and
+# emitter spells the keyed accessor SCHEMA_<PACKAGE>_TABLE_KEYED_SLOT (its definition and
 # every emitted use, so the unit stays self-consistent) through `go build
 # -overlay`, tables/examples is regenerated from that compiler, and the page's
-# example must fail to compile against it, naming SCHEMA_TABLE_KEYED_AT.
+# example must fail to compile against it, naming SCHEMA_TABLEDEMO_TABLE_KEYED_AT.
 C_USAGE_NC := build/c-usage-control
 .PHONY: tables-c-usage-negative-control
 tables-c-usage-negative-control: docs/USAGE.md
@@ -780,13 +780,13 @@ tables-c-usage-negative-control: docs/USAGE.md
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(C_USAGE_NC)/overlay.json
 	go build -overlay $(C_USAGE_NC)/overlay.json -o $(C_USAGE_NC)/schema ./cmd/schema
 	$(C_USAGE_NC)/schema generate --lang c --out $(C_USAGE_NC)/examples tables/examples > /dev/null
-	@grep -q "define SCHEMA_TABLE_KEYED_SLOT(" $(C_USAGE_NC)/examples/KeyedTable.h || \
+	@grep -q "define SCHEMA_TABLEDEMO_TABLE_KEYED_SLOT(" $(C_USAGE_NC)/examples/KeyedTable.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not move the name"; exit 1; }
 	@if $(MAKE) --no-print-directory tables-c-usage-build C_USAGE_GEN=$(C_USAGE_NC)/examples C_USAGE_OUT=$(C_USAGE_NC)/out > $(C_USAGE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the documented C example compiled against an emitter that moved SCHEMA_TABLE_KEYED_AT"; \
 		cat $(C_USAGE_NC)/log; exit 1; \
 	fi
-	@grep -q "SCHEMA_TABLE_KEYED_AT" $(C_USAGE_NC)/log || \
+	@grep -q "SCHEMA_TABLEDEMO_TABLE_KEYED_AT" $(C_USAGE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the build went red, but not on the documented name"; cat $(C_USAGE_NC)/log; exit 1; }
 	@echo "negative control: the emitted surface moved under docs/USAGE.md's C example and tables-c-usage went red"
 
@@ -875,7 +875,7 @@ tables-c-block-layout-model-negative-control: bin/schema
 	@if $(CC) $(TABLES_CFLAGS) -fsyntax-only -I$(C_LAYOUT_NC)/block -I$(SERIALIZE_C) $(C_LAYOUT_NC)/block/RenderBlock.c > $(C_LAYOUT_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: C accepted a moved offset from the compiler's model"; exit 1; \
 	fi
-	@grep -q "static assert\|static_assert\|_Static_assert" $(C_LAYOUT_NC)/log || \
+	@grep -q "schema_table_assert_.* is negative\|static assertion failed" $(C_LAYOUT_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: C went red, but not on a layout static assert"; cat $(C_LAYOUT_NC)/log; exit 1; }
 	@grep -m1 "moved" $(C_LAYOUT_NC)/log || true
 	@echo "negative control: a moved offset in the compiler's model turns the C layout static asserts red"
