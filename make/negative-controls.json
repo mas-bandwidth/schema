@@ -1069,7 +1069,7 @@
     {
       "name": "go-message",
       "when": "pull-request",
-      "why": "the generated Go MESSAGE form's controls (docs/SPEC-TABLES.md \u00a73.3): the conformance driver's message surface with one byte of the login_full batch flipped (red on that row, wire green), and the in-package controls of internal/codegen/gotable/messageform_negative_test.go, each planting one fault in a copy of the generated source (batch count on write and on read, the no_vocabulary, batch_too_large and form-byte refusals, the strict build-version comparison, the unknown counter, the fixed-only verb check, the integrity trailer) and requiring its gate's probe red on its own message. MEASURE_PENDING",
+      "why": "the generated Go MESSAGE form's controls (docs/SPEC-TABLES.md \u00a73.3): the conformance driver's message surface with one byte of the login_full batch flipped (red on that row, wire green), and the in-package controls of internal/codegen/gotable/messageform_negative_test.go, each planting one fault in a copy of the generated source (batch count on write and on read, the no_vocabulary, batch_too_large and form-byte refusals, the strict build-version comparison, the unknown counter, the fixed-only verb check, the integrity trailer) and requiring its gate's probe red on its own message. Measured on hulk (17 cores, load 45 from other jobs): the message control 117 s including a cold generated-Go tree and driver build, the in-package controls 23 s with a warm build cache, 13 s through make.",
       "targets": [
         "conformance-negative-control-go-message",
         "tables-go-message-form-negative-controls"
