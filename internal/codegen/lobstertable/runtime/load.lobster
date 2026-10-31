@@ -1436,14 +1436,14 @@ def arm_read(r:Reader, cell:Value, a:FieldDescriptor, tag:int, n:int) -> bool:
     cell.arm = fv
     return true
 
-def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, sl:Slot, i:int) -> bool:
+def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, sl:Slot, index:int) -> bool:
     // A UNION WRITTEN AGAIN takes the earlier arm's retained fields with it
     // (Go's forgetArm), and the discard moves no counter: the body on the
     // cell, and the body the earlier occurrence built that damage took off it
     forget_value(cell)
     let held = active_retain_capture()
     if held:
-        held.forget_arm(sl, i)
+        held.forget_arm(sl, index)
     let rep = r.st.report
     let un = lookup_union(fd.t)
     assert un
@@ -1497,7 +1497,7 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, sl:Slot, i:int) -> bool
         elif a.s == "tab":
             let payload = new_record(table_of(a.t))
             if held:
-                held.built_arm(sl, i, payload)
+                held.built_arm(sl, index, payload)
             body_at(sr, payload, true, false)
             if r.st.count_refused:
                 return false
