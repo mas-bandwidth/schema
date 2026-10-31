@@ -3,6 +3,7 @@
 package compiler
 
 import (
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -126,7 +127,39 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 		t.Fatal(err)
 	}
 	namespace := ir.GoExportName(u.Package)
+	emitted := elixirEmittedSegments(u, files)
 
+	if len(emitted) == 0 {
+		t.Fatal("the scan found no unit-level module segment in the emitted Elixir at all — the scan, not the registry, is what broke")
+	}
+
+	names := make([]string, 0, len(emitted))
+	for name := range emitted {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !tablenames.Registered(name) {
+			t.Errorf("the Elixir table emitter defines the unit-level module %s.%s and "+
+				"internal/tablenames does not register it — a schema declaring that name would "+
+				"generate Elixir that does not compile; register it (with the backends that "+
+				"define it) in internal/tablenames", namespace, name)
+		}
+	}
+	for _, name := range tablenames.DefinedBy(tablenames.Elixir) {
+		if !emitted[name] {
+			t.Errorf("internal/tablenames says the Elixir backend defines %s, but nothing in the "+
+				"emitted Elixir names it — drop the registration or fix the backend; a claim "+
+				"nothing needs takes a name away from every schema for free", name)
+		}
+	}
+}
+
+// elixirEmittedSegments is the scan TestElixirRuntimeNamesAreClaimed holds to
+// the registry: every unit-level module segment `<Namespace>.<Name>` the
+// emitted Elixir spells outside a comment, less the author's own segments.
+func elixirEmittedSegments(u *ir.Unit, files map[string][]byte) map[string]bool {
+	namespace := ir.GoExportName(u.Package)
 	// the author's own segments: every declaration, every union's generated
 	// tag module, and every module a schema FILE produces
 	mine := map[string]bool{}
@@ -166,29 +199,32 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 			}
 		}
 	}
-	if len(emitted) == 0 {
-		t.Fatal("the scan found no unit-level module segment in the emitted Elixir at all — the scan, not the registry, is what broke")
-	}
+	return emitted
+}
 
-	names := make([]string, 0, len(emitted))
-	for name := range emitted {
-		names = append(names, name)
+// TestElixirRuntimeNameScanGoesRed is the scan's negative control (docs/PORTING.md
+// I6): a module segment planted in a copy of the emitted files, one the registry
+// does not hold, must be SEEN by the scan, and one planted only in a comment must
+// not. A scan that saw neither would leave every green run above proving nothing.
+func TestElixirRuntimeNameScanGoesRed(t *testing.T) {
+	u := unitFromSource(t, runtimeSrc)
+	files, err := New().Generate(u, "elixir", Options{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	sort.Strings(names)
-	for _, name := range names {
-		if !tablenames.Registered(name) {
-			t.Errorf("the Elixir table emitter defines the unit-level module %s.%s and "+
-				"internal/tablenames does not register it — a schema declaring that name would "+
-				"generate Elixir that does not compile; register it (with the backends that "+
-				"define it) in internal/tablenames", namespace, name)
-		}
+	namespace := ir.GoExportName(u.Package)
+	sabotaged := map[string][]byte{}
+	maps.Copy(sabotaged, files)
+	sabotaged["ProbeRuntime.ex"] = []byte("defmodule " + namespace + ".PlantedRuntime do\n  # " + namespace + ".CommentOnly\nend\n")
+	emitted := elixirEmittedSegments(u, sabotaged)
+	if !emitted["PlantedRuntime"] {
+		t.Fatalf("the scan did not see the planted module %s.PlantedRuntime — it is blind, and every green run above proves nothing", namespace)
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Elixir) {
-		if !emitted[name] {
-			t.Errorf("internal/tablenames says the Elixir backend defines %s, but nothing in the "+
-				"emitted Elixir names it — drop the registration or fix the backend; a claim "+
-				"nothing needs takes a name away from every schema for free", name)
-		}
+	if emitted["CommentOnly"] {
+		t.Fatalf("the scan read a module segment out of a comment")
+	}
+	if tablenames.Registered("PlantedRuntime") {
+		t.Fatal("the planted probe is registered, so the control proves nothing — pick a name the registry does not hold")
 	}
 }
 
