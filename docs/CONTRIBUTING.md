@@ -99,7 +99,12 @@ landing languages in main please"). A fix is one pull request into `main` per
 independent cause. A language's work is squash-merged into its branch
 `lang/<lang>` (or `lang/<lang>-300`), and that branch reaches `main` once, by
 one pull request with a merge commit. `dev` and the `sprint/*` stream branches
-are stale and take no new work. Pull requests into `main`,
+are stale and take no new work. When two branches both edit the same register
+row in [docs/PORTING.md](PORTING.md), check the file out with
+`git checkout --conflict=diff3 docs/PORTING.md` and run
+`go run ./tools/cellmerge docs/PORTING.md`. It merges each conflicted row cell
+by cell by column name, three-way, and leaves any hunk it cannot merge exactly
+for a person. Pull requests into `main`,
 `dev`, or `fixed-table-form` automatically run `ci-fast.yml` (planning by diff
 against the target branch so only touched packages and legs are selected) and
 the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
