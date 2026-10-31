@@ -124,7 +124,8 @@ defmodule AllocAudit do
   end
 
   # every `instance` whose unit has a <Unit>.Table module at the moment this
-  # runs, and whose root that codec carries; the rest are named, not measured
+  # runs, and whose root that codec loads and saves back (a blob two slots name
+  # refuses the save, docs/SPEC-TABLES.md §2.5); the rest are named, not measured
   defp cases(rows) do
     Enum.reduce(rows, {[], []}, fn [name, unit, root, wire | flags], {cs, sk} ->
       mod = Module.concat([Macro.camelize(unit), "Table"])
@@ -135,17 +136,17 @@ defmodule AllocAudit do
         json = Path.join("testdata/conformance/tables/json", name <> ".json")
         text = if flags == [] and File.exists?(json), do: File.read!(json), else: nil
 
-        case mod.load(root, bytes) do
-          {:ok, _value, _report} ->
-            c = %{name: name, mod: mod, root: root, wire: bytes, text: text}
-            {cs ++ [c], sk}
-
+        with {:ok, value, _report} <- mod.load(root, bytes),
+             {:ok, _saved} <- mod.save(root, value) do
+          c = %{name: name, mod: mod, root: root, wire: bytes, text: text}
+          {cs ++ [c], sk}
+        else
           other ->
             {cs,
              sk ++
                [
                  {name,
-                  "#{inspect(mod)} does not carry #{root} (load answers #{inspect(elem(other, 1))})"}
+                  "#{inspect(mod)} does not carry #{root} (load or save answers #{inspect(elem(other, 1))})"}
                ]}
         end
       else
