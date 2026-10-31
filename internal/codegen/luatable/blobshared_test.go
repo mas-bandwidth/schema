@@ -14,8 +14,7 @@ import (
 // TestLuaBlobNamedTwiceIsBlobShared pins docs/SPEC-TABLES.md §2.5 and §16.7 on
 // the Lua leg: a blob is owned by ONE slot, so every writer refuses a graph
 // whose two slots name the one blob record, by the name blob_shared. The wire
-// writers Save and Measure answer nil and the message writer refuses too; the
-// TOLERANT read keeps the one node and counts the extra naming. Two DISTINCT
+// writers Save and Measure answer nil; the TOLERANT read keeps the one node and counts the extra naming. Two DISTINCT
 // nodes carrying equal bytes are still two nodes and save byte for byte as the
 // Go engine's golden does (§3.1, §6.3).
 func TestLuaBlobNamedTwiceIsBlobShared(t *testing.T) {
@@ -115,20 +114,16 @@ print(string.format("%d:%s:%d", #saved, saved == inputs.wire and "same" or "diff
 	}
 
 	// A FRESH value whose slots name one boxed node refuses every writer on
-	// the same terms, and the message writer refuses by name too (§2.5, §3.3).
+	// the same terms (§2.5).
 	u := blobSharedPairUnit(t)
 	files, err := Generate(u)
 	if err != nil {
-		t.Fatalf("the message probe unit: %v", err)
+		t.Fatalf("the probe unit: %v", err)
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)
 	freshProbe := `local T = require("` + ModuleName(u) + `")
 local save = require("save")
-local vocab = {}
-for i = 1, T.MessageEntries do vocab[i] = {} end
-local ar = {}
-assert(T.AnnounceRead(vocab, T.Announcement, ar), "announce")
 local function text_shared()
   local v = T.NewPair()
   local box = { value = "one" }
@@ -144,13 +139,9 @@ end
 local function refuse(what, v)
   local saved, swhy = save.Save(T, "Pair", v)
   local measure, mwhy = save.Measure(T, "Pair", v)
-  local msaved, mswhy = T.SaveMessages("Pair", vocab, { v })
-  local mmeasure, mmwhy = T.MeasureMessages("Pair", vocab, { v })
   print(table.concat({ what,
     saved == nil and "nil" or "bytes", tostring(swhy),
-    measure == nil and "nil" or "measure", tostring(mwhy),
-    msaved == nil and "nil" or "bytes", tostring(mswhy),
-    tostring(mmeasure == -1), tostring(mmwhy) }, ","))
+    measure == nil and "nil" or "measure", tostring(mwhy) }, ","))
 end
 refuse("text", text_shared())
 refuse("bytes", bytes_shared())
@@ -159,15 +150,15 @@ refuse("bytes", bytes_shared())
 		t.Fatal(err)
 	}
 	freshOut := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", nil)), "\n")
-	wantFresh := "text,nil,blob_shared,nil,blob_shared,nil,blob_shared,true,blob_shared\n" +
-		"bytes,nil,blob_shared,nil,blob_shared,nil,blob_shared,true,blob_shared"
+	wantFresh := "text,nil,blob_shared,nil,blob_shared\n" +
+		"bytes,nil,blob_shared,nil,blob_shared"
 	if freshOut != wantFresh {
 		t.Errorf("a fresh shared blob gave\n%s\nwant\n%s", freshOut, wantFresh)
 	}
 }
 
-// blobSharedPairUnit is a unit with a fixed root, so the message form is
-// emitted, and a variable Pair holding two *string slots and two *bytes slots:
+// blobSharedPairUnit is a unit with a variable Pair holding two *string slots
+// and two *bytes slots:
 // the fresh values in TestLuaBlobNamedTwiceIsBlobShared name one boxed node
 // from each pair.
 func blobSharedPairUnit(t *testing.T) *ir.Unit {
@@ -175,7 +166,6 @@ func blobSharedPairUnit(t *testing.T) *ir.Unit {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pairs.schema")
 	const src = `package pairdemo
-fixed table Seed { n uint32 }
 table Pair {
     text_a *string
     text_b *string

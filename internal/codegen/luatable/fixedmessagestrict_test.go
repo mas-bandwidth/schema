@@ -22,6 +22,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const fixedMessageStrictSchema = `package probe
@@ -268,6 +269,9 @@ func TestLuaFixedAndMessageReadsAreStrict(t *testing.T) {
 			paths[i] = filepath.Join(repo, p)
 		}
 		u := luarun.LoadUnit(t, paths...)
+		if ir.VariableTables(u)[msg.root] {
+			continue // a variable table carries no message form (§3.3)
+		}
 		files, err := Generate(u)
 		if err != nil {
 			t.Fatalf("unit %s: %v", conn.unit, err)
