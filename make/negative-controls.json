@@ -545,6 +545,15 @@
       "moo": "pin"
     },
     {
+      "name": "moo-wire-fuzz",
+      "when": "pull-request",
+      "why": "the moo leg's harness wire-fuzz control (make/moo-fuzz.mk, test/conformance/moo/wire-fuzz-negative-control): a string frame past its body planted to read without counting malformed in a scratch copy of every generated table_load.moo, and the harness must stop on exactly that counter, through the same pipe tables-moo-wire-fuzz drives. Its own job because it builds the native pipe host tools/moofuzzhost from the moo pin's source (the VM and compiler libraries, cmake at MOO_BUILD_JOBS) on top of the pin .github/actions/moo restores; the control's own run stops on the first enumerated divergence, under 5 s on the studio.",
+      "targets": [
+        "tables-moo-wire-fuzz-negative-control"
+      ],
+      "moo": "pin"
+    },
+    {
       "name": "block-fuzz",
       "when": "pull-request",
       "why": "the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner.",

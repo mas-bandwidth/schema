@@ -1230,7 +1230,14 @@ read_field = function(fd: any, r: any, v: any): ...any
 		end
 		if fd.wide then
 			if n % 2 ~= 0 or not V.wide(r.b, r.at, n) then
+				-- ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its
+				-- declared default, one malformed counts, and the parent reads
+				-- on past L
 				_report.malformed = true
+				if fd.slot ~= nil and v ~= nil then
+					local d = buffer.fromstring(fd.def or "")
+					store_buffer(v, fd.slot, d, 0, buffer.len(d), buffer.len(d) // 2)
+				end
 				r.at += n
 				return true
 			end
@@ -1246,7 +1253,12 @@ read_field = function(fd: any, r: any, v: any): ...any
 			return true
 		end
 		if not V.utf8(r.b, r.at, n) then
+			-- ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
+			-- default, one malformed counts, and the parent reads on past L
 			_report.malformed = true
+			if fd.slot ~= nil and v ~= nil then
+				v[fd.slot] = fd.def or ""
+			end
 			r.at += n
 			return true
 		end
@@ -1267,7 +1279,11 @@ read_field = function(fd: any, r: any, v: any): ...any
 			return false
 		end
 		if not V.utf8(r.b, r.at, n) then
+			-- ill-formed text reads the field's default, absent (§3, §4)
 			_report.malformed = true
+			if fd.slot ~= nil and v ~= nil then
+				v[fd.slot] = nil
+			end
 			r.at += n
 			return true
 		end
