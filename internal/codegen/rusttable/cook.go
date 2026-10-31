@@ -163,62 +163,6 @@ const cookModuleBanner = `//
 // build version (§20).
 const cookRuntime = `// ---- the cooked form's read runtime (docs/SPEC-TABLES.md §7) ----
 
-/// A MAP'S OR A LIST'S SIXTEEN-BYTE SLOT in a cooked record (docs/SPEC-TABLES.md
-/// §2.8, §2.9, §7.2): an int64 SELF-RELATIVE delta from the slot to its array,
-/// which rides in the holder's node extent, and the int32 count. An empty
-/// container is the null reference and a zero count.
-#[repr(C)]
-pub struct TableCookSpan<T> {
-    pub reference: i64,
-    pub count: i32,
-    pub padding: i32,
-    _element: core::marker::PhantomData<T>,
-}
-
-impl<T> Clone for TableCookSpan<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<T> Copy for TableCookSpan<T> {}
-
-impl<T> Default for TableCookSpan<T> {
-    fn default() -> Self {
-        TableCookSpan { reference: 0, count: 0, padding: 0, _element: core::marker::PhantomData }
-    }
-}
-
-impl<T> TableCookSpan<T> {
-    /// How many elements the container holds.
-    pub fn len(&self) -> usize {
-        self.count.max(0) as usize
-    }
-
-    /// Whether the container is empty.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// The array, in place: one add and no copy.
-    ///
-    /// # Safety
-    /// The slot must sit in a cook whose region holds the array its delta
-    /// names (a cook is trusted input, §7).
-    pub unsafe fn as_slice(&self) -> &[T] {
-        if self.reference == 0 || self.count <= 0 {
-            return &[];
-        }
-        unsafe {
-            let at = (self as *const Self as *const u8).offset(self.reference as isize) as *const T;
-            core::slice::from_raw_parts(at, self.count as usize)
-        }
-    }
-}
-
-const _: () = assert!(core::mem::size_of::<TableCookSpan<u64>>() == 16);
-const _: () = assert!(core::mem::align_of::<TableCookSpan<u8>>() == 8);
-
 // The cook's MAGIC (§7.1), read BYTEWISE before anything else: it is what
 // establishes the byte order every other header word is written in, and it is
 // also what separates a COOK from a BLOCK — the two accelerators carry the
