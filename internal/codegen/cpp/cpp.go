@@ -292,7 +292,7 @@ func (g *gen) emitWireFile() {
 func (g *gen) emitTagEnum(name string, members []string, docs []string, comment string) {
 	g.pf("// %s: %s\n", name, comment)
 	storage := cppUint(ir.StorageBitsFor(int64(len(members))))
-	g.pf("enum class %s : %s {\n", name, storage)
+	g.pf("enum class %s : %s\n{\n", name, storage)
 	g.pf("    None = 0,\n")
 	for i, m := range members {
 		g.pf("%s", ir.DocComment(docs[i], "    ", "//"))
@@ -394,7 +394,7 @@ func (g *gen) emitArmSetters(d *ir.Union) {
 		g.needsNew = true
 		g.pf("    %s & Select%s() // sets the tag and constructs the arm with its defaults (SPEC §4.8)\n", v.Type, arm)
 		g.pf("    {\n")
-		g.pf("        ::new ( (void*) &%s ) %s{};\n", v.Name, v.Type)
+		g.pf("        ::new ( static_cast<void *>( &%s ) ) %s{};\n", v.Name, v.Type)
 		g.pf("        type = %s::%s;\n", tag, arm)
 		g.pf("        return %s;\n", v.Name)
 		g.pf("    }\n")
@@ -453,7 +453,7 @@ func (g *gen) foldComment(e ast.Expr) string {
 func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// enum %s — None = 0 implicit, variants dense from 1, wire range [0, %d] (SPEC §4.2)\n", d.Name, d.Max)
-	g.pf("enum class %s : %s {\n", d.Name, cppUint(d.StorageBits))
+	g.pf("enum class %s : %s\n{\n", d.Name, cppUint(d.StorageBits))
 	g.pf("    None = 0,\n")
 	for i, v := range d.Variants {
 		g.pf("%s", ir.DocComment(d.VariantDocs[i], "    ", "//"))
@@ -467,6 +467,11 @@ func (g *gen) emitEnum(d *ir.Enum) {
 	g.pf("        case %s::None: return \"None\";\n", d.Name)
 	for _, v := range d.Variants {
 		g.pf("        case %s::%s: return \"%s\";\n", d.Name, v, v)
+	}
+	if d.Max != int64(len(d.Variants)) {
+		// Max is an extent that no variant carries, so -Wswitch-enum wants it
+		// named; it shares the out-of-set answer
+		g.pf("        case %s::Max:\n", d.Name)
 	}
 	g.pf("        default: return \"???\";\n    }\n}\n\n")
 }
@@ -547,7 +552,7 @@ func (g *gen) emitFlagAppendHelper() {
 func (g *gen) emitStruct(d *ir.Struct) {
 	g.pf("%s", ir.DocComment(d.Doc, "", "//"))
 	g.pf("// type %s\n", d.Name)
-	g.pf("struct %s {\n", d.Name)
+	g.pf("struct %s\n{\n", d.Name)
 	g.emitFields(d.Fields)
 	g.pf("};\n\n")
 }
@@ -904,10 +909,18 @@ func (g *gen) renderable(e ast.Expr) bool {
 // renderExpr renders an expression in C++ form: constants keep the schema
 // spelling, and every reference is noted for the include graph.
 func (g *gen) renderExpr(e ast.Expr) string {
-	return ir.RenderExprIdent(e, func(name string) string {
+	return spaceParens(ir.RenderExprIdent(e, func(name string) string {
 		g.noteRef(name)
 		return name
-	})
+	}))
+}
+
+// spaceParens writes the estate's parenthesis spelling, `( a + b )`, over the
+// shared renderer's `(a + b)`: only the spaces inside each parenthesis move,
+// so the expression and the code compiled from it are unchanged.
+func spaceParens(s string) string {
+	s = strings.ReplaceAll(s, "(", "( ")
+	return strings.ReplaceAll(s, ")", " )")
 }
 
 func cppConstType(storage string) string {

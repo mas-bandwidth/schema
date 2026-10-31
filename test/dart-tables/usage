@@ -1,0 +1,64 @@
+#!/bin/sh
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Dart side.
+#
+# The table example in docs/USAGE.md (between the dart-table-usage markers) is
+# not a sketch beside the code: this gate pulls the fragment out of the page,
+# hoists its imports, wraps the rest in a main that reads a corpus wire off disk
+# and supplies the one helper the page leaves to the caller (`use`), generates
+# the `tables/pointers` unit afresh beside it, and runs it under the pinned Dart.
+# The day the emitted surface moves, the page goes red with it.
+#
+#   usage <dart> [control]     (run from the repository root)
+#
+# `control` is the gate's negative control: the same run against a generated
+# library with the page's entry point renamed (sceneWireLoad, as an emitter that
+# moved it would leave it), which must fail to compile and name the symbol. A
+# gate that stays green then is not compiling the page against generated code.
+set -eu
+
+dart=${1:-dart}
+mode=${2:-gate}
+out=build/dart-usage
+[ "$mode" = control ] && out=build/dart-usage-nc
+wire=testdata/wire/tables/graph_tree.bin
+
+rm -rf "$out"
+mkdir -p "$out"
+./bin/schema generate --lang dart --out "$out" tables/pointers >/dev/null
+
+sed -n '/<!-- dart-table-usage -->/,/<!-- \/dart-table-usage -->/p' docs/USAGE.md \
+    | sed '1,2d' | sed '$d' | sed '$d' > "$out/fragment.dart"
+grep -q 'sceneWireLoad' "$out/fragment.dart" || \
+    { echo "MISSING: docs/USAGE.md carries no dart-table-usage example" >&2; exit 1; }
+
+{
+    echo "import 'dart:io';"
+    grep '^import ' "$out/fragment.dart"
+    echo ''
+    echo 'void main(List<String> args) {'
+    echo '  final bytes = File(args[0]).readAsBytesSync();'
+    echo '  var used = 0;'
+    echo '  void use(Object? v) { used++; }'
+    grep -v '^import ' "$out/fragment.dart" | sed 's/^/  /'
+    echo "  if (used == 0) throw StateError('the wire walk read no node');"
+    echo "  print('usage: docs/USAGE.md Dart table example loaded the Scene wire and used \$used value(s)');"
+    echo '}'
+} > "$out/usage.dart"
+
+if [ "$mode" = control ]; then
+    n=$(grep -c '^Scene sceneWireLoad(' "$out/GraphdemoWire.dart")
+    [ "$n" = 1 ] || { echo "control anchor matched $n times, want exactly 1" >&2; exit 1; }
+    sed 's/^Scene sceneWireLoad(/Scene sceneWireLoadMoved(/' "$out/GraphdemoWire.dart" > "$out/moved.dart"
+    mv "$out/moved.dart" "$out/GraphdemoWire.dart"
+    if (cd "$out" && "$dart" run usage.dart "$OLDPWD/$wire") > "$out/log" 2>&1; then
+        cat "$out/log"
+        echo "NEGATIVE CONTROL FAILED: the page ran against a library with sceneWireLoad moved" >&2
+        exit 1
+    fi
+    grep -q 'sceneWireLoad' "$out/log" || { cat "$out/log"; exit 1; }
+    echo "negative control: moving sceneWireLoad out from under docs/USAGE.md turns tables-dart-usage red"
+    exit 0
+fi
+
+"$dart" analyze --fatal-infos "$out/usage.dart"
+(cd "$out" && "$dart" run usage.dart "$OLDPWD/$wire")

@@ -1,0 +1,58 @@
+name: schema-luau resource bounds
+
+# The luau port's resource-bounds lens (the card
+# schema-luau-resource-bounds-r): hostile inputs — huge counts, deep nesting,
+# recursion, giant strings, many unknown fields — must cost bounded memory and
+# time. The generated textform reader refuses past the depth cap of 128 and
+# the default text_limit bounds (docs/SPEC-TABLES.md §16.9.4), measured under
+# the pinned interpreter with Luau's GC memstat as the allocation counter. The
+# planted-pattern control proves the depth guard has a blade.
+#
+# The parts are fast: one unit's generation and a handful of small hostile
+# reads cost a second or two on the bench, so every push and pull request to
+# the merge branches runs them directly (no path filter: a change anywhere
+# that reaches the reader is a change this lens answers for), and the nightly
+# schedule repeats the same gate. The job runs on
+# the fleet (self-hosted, schema set), never a GitHub-hosted runner, and it
+# carries the fork guard: a fork's pull request gets no CI run here.
+#
+# This workflow's zero-maintenance invariant: it is one of the few that has no
+# slow-gate exception because it runs everything through the gate targets, so
+# a slowtest skip in its log is a failure, and it names every gate it proves.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  schedule:
+    # nightly, after the other language lenses
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  luau-resource-bounds:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: presence check pinned go 1.26
+        run: |
+          want='1.26'
+          got=$(go version | sed -n 's/.*go\([0-9]\+\.[0-9]\+\)\(\.\([0-9]\+\)\)\{0,1\}.*/\1/p')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want ${got:-absent} on $RUNNER_NAME"
+            exit 1
+          fi
+      # THE LUAU PIN, as make/luau.mk's dist-luau installs it: the release
+      # archive's sha256 is refused before anything is unpacked.
+      - name: Luau 0.741 (pinned release)
+        run: make dist-luau
+      - name: planted-pattern control (the depth guard fires)
+        run: make schema-luau-resource-bounds-negative-control
+      - name: hostile shape resource bounds
+        run: make schema-luau-resource-bounds

@@ -1,0 +1,2 @@
+{"targets": "build/conformance-harness build/conformance-squirrel schema-squirrel-generated-lint-gate",
+ "squirrel": "3.2", "env": "SQ=sq"}

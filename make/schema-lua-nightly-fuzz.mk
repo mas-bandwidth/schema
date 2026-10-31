@@ -1,0 +1,158 @@
+# make/schema-lua-nightly-fuzz.mk — the LUA port's nightly fuzzing leg
+# (schema-lua-nightly-fuzz). Included by the Makefile's wildcard include; the
+# Makefile needs no edit.
+#
+# THE SUBJECT: the generated readers of every table in the corpus set the
+# Makefile's own tables_generate function reads — the repository's test-schema
+# corpus, not a second one. The corpus file the harness reads, and the harness
+# itself, are BUILD ARTIFACTS under build/ (this card may not add files to the
+# port's test tree); both derive from files this card owns.
+#
+# THE FOUR READER KINDS, one entry point each in the generated harness:
+# load (runtime/load.lua L.Load, the tolerant form-1 load), strict
+# (runtime/refusal.lua R.ReadStrict), text (runtime/text.lua Text.LoadText,
+# the base64 text body) and json (runtime/json.lua J.FromJson, the JSON text
+# form). The oracle is: no crash, no hang, no assert; a refusal is a clean
+# typed error (refusal.lua's names), never a raw Lua error and never a silent
+# success.
+#
+# THE FUZZER is a seeded mutation fuzzer (xorshift64*, Lua 5.4 integers), so a
+# finding records its exact bytes and replays without a clock or a PRNG. It is
+# pinned with the interpreter: PUC-Rio Lua 5.4.8, the pin make/lua.mk carries
+# (LUA_VERSION / LUA_SHA256); LUA_FUZZ_HARNESS_REV is the harness revision,
+# bumped by hand when the fuzzer's mutation or oracle changes.
+LUA_FUZZ_HARNESS_REV := 3
+LUA_FUZZ_SECONDS ?= 600
+LUA_FUZZ_SEED    ?= 1
+LUA_FUZZ_FINDINGS ?= build/lua-fuzz/findings
+LUA_FUZZ_CORPUS  := build/lua-fuzz/corpus.txt
+LUA_FUZZ_REGRESS := build/lua-fuzz/corpus
+LUA_FUZZ_GENERATED := build/lua-fuzz/generated
+LUA_FUZZ_SCRIPT  := build/lua-fuzz/fuzz.lua
+LUA_FUZZ_SEEDDIR := build/lua-fuzz/seeds
+
+# the pinned build when `make dist-lua` has populated it; otherwise the fleet
+# Lua 5.4. The version is still 5.4, and the probe refuses by name when neither
+# resolves.
+LUA_FUZZ_LUA ?= $(if $(wildcard $(LUA)),$(LUA),$(shell command -v lua5.4 2>/dev/null || command -v lua 2>/dev/null))
+LUA_FUZZ_SEEDS := --wire-seeds $(LUA_FUZZ_SEEDDIR):testdata/wire/tables:testdata/conformance/tables:internal/fuzz/testdata \
+                  --json-seeds testdata/conformance/tables/json \
+                  --text-seeds testdata/conformance/text
+
+.PHONY: schema-lua-fuzz-toolchain
+schema-lua-fuzz-toolchain:
+	@if [ -z "$(LUA_FUZZ_LUA)" ] || [ ! -x "$(LUA_FUZZ_LUA)" ]; then \
+		echo "tool missing: lua $(LUA_VERSION) (pin LUA=$(LUA), no lua5.4 on PATH)"; \
+		exit 1; \
+	fi
+	@echo "schema-lua-fuzz: Lua $(LUA_VERSION) $(LUA_FUZZ_LUA) (harness rev $(LUA_FUZZ_HARNESS_REV))"
+
+# ONE CORPUS, THE MAKEFILE'S: the tables_generate block is the corpus the
+# repository's own generate targets read. Only its directory inputs are taken
+# (the single-file test/tables versioning schemas are a separate gate); each
+# directory becomes one unit keyed by its basename.
+$(LUA_FUZZ_CORPUS): Makefile make/schema-lua-nightly-fuzz.mk
+	@mkdir -p $(dir $@)
+	@awk '/^define tables_generate/{f=1;next} /^endef/{f=0} f' Makefile | \
+		sed -n 's|.*[[:space:]]\(tables/[A-Za-z0-9_]*\)[[:space:]]*$$|\1|p' | \
+		while read -r dir; do printf '%s\t%s\n' "$$(basename $$dir)" "$$dir"; done > $@
+	@test -s $@
+	@echo "schema-lua-fuzz: $$(wc -l < $@ | tr -d ' ') corpus units from the Makefile's tables_generate block"
+
+# THE HARNESS, as a build artifact. It is base64 in this file (so make
+# does not expand the Lua's `$` anchors) and decoded into build/; this card
+# may not add files to the port's test tree (PATHS-PROPOSED names
+# test/lua-fuzz/fuzz.lua in its report).
+LUA_FUZZ_HARNESS_B64 := LS0gdGVzdC9sdWEtZnV6ei9mdXp6Lmx1YSDigJQgdGhlIEx1YSBwb3J0J3Mgc2VlZGVkIG11dGF0aW9uIGZ1enplciBmb3IgdGhlCi0tIGdlbmVyYXRlZCByZWFkZXJzIChzY2hlbWEtbHVhLW5pZ2h0bHktZnV6eikuCi0tCi0tIFRIRSBIQVJORVNTIHJlYWRzIHRlc3QvbHVhLWZ1enovY29ycHVzLnR4dCAodGhlIHVuaXQga2V5IC0+IHNjaGVtYSBkaXJlY3RvcnkKLS0gcGFpcnMgdGhlIE1ha2VmaWxlJ3MgdGFibGVzX2dlbmVyYXRlIHJlYWRzKSwgbG9hZHMgZXZlcnkgZ2VuZXJhdGVkIHVuaXQncwotLSBUYWJsZXMgbW9kdWxlLCBhbmQgZHJpdmVzIG9uZSBlbnRyeSBwb2ludCBwZXIgcmVhZGVyIGtpbmQgb3ZlciBldmVyeSB0YWJsZQotLSBuYW1lIHRoYXQgbW9kdWxlIHJlZ2lzdGVyczoKLS0KLS0gICBsb2FkICAgIHRoZSB0b2xlcmFudCBmb3JtLTEgbG9hZCAocnVudGltZS9sb2FkLmx1YSBMLkxvYWQpCi0tICAgc3RyaWN0ICB0aGUgc3RyaWN0IHJlYWQgKHJ1bnRpbWUvcmVmdXNhbC5sdWEgUi5SZWFkU3RyaWN0KQotLSAgIHRleHQgICAgdGhlIHRleHQgZm9ybSdzIGJhc2U2NCBib2R5IChydW50aW1lL3RleHQubHVhIFRleHQuTG9hZFRleHQpCi0tICAganNvbiAgICB0aGUgdGV4dCBmb3JtJ3MgSlNPTiBib2R5IChydW50aW1lL2pzb24ubHVhIEouRnJvbUpzb24pCi0tCi0tIFRIRSBPUkFDTEU6IG5vIGNyYXNoLCBubyBoYW5nLCBubyBhc3NlcnQ7IGEgcmVmdXNhbCBpcyBhIGNsZWFuIHR5cGVkIGVycm9yCi0tIChyZWZ1c2FsLmx1YSdzIG5hbWVzKSwgbmV2ZXIgYSByYXcgTHVhIGVycm9yIGFuZCBuZXZlciBhIHNpbGVudCBzdWNjZXNzLgotLSBUaGUgc2VlZCBpcyByZWNvcmRlZCB3aXRoIGV2ZXJ5IGZpbmRpbmcgKHRoZSBmaW5kaW5nIGZpbGUncyBwYXlsb2FkIGlzIHRoZQotLSBleGFjdCBieXRlcywgc28gcmVwbGF5IG5lZWRzIG5vIGNsb2NrIGFuZCBubyBQUk5HKS4KLS0KLS0gdXNhZ2U6Ci0tICAgbHVhIHRlc3QvbHVhLWZ1enovZnV6ei5sdWEgLS1nZW5lcmF0ZWQgRElSIC0tY29ycHVzIEZJTEUKLS0gICAgICAgWy0tc2Vjb25kcyBOIHwgLS1pdGVyYXRpb25zIE5dIFstLXNlZWQgTl0gWy0tZmluZGluZ3MgRElSXQotLSAgICAgICBbLS13aXJlLXNlZWRzIERJUl0gWy0tanNvbi1zZWVkcyBESVJdIFstLXRleHQtc2VlZHMgRElSXQotLSAgIGx1YSB0ZXN0L2x1YS1mdXp6L2Z1enoubHVhIC0tZ2VuZXJhdGVkIERJUiAtLWNvcnB1cyBGSUxFCi0tICAgICAgIC0tcmVwbGF5IERJUiBbLS1maW5kaW5ncyBESVJdCgpsb2NhbCBvcHRzID0gewogIHNlY29uZHMgPSAxMCwgaXRlcmF0aW9ucyA9IDAsIHNlZWQgPSAxLAogIGZpbmRpbmdzID0gIiIsIHJlcGxheSA9ICIiLAp9CmxvY2FsIGkgPSAxCndoaWxlIGkgPD0gI2FyZyBkbwogIGxvY2FsIGEgPSBhcmdbaV0KICBsb2NhbCBrLCB2ID0gYTptYXRjaCgiXiUtJS0oWyV3LV0rKT0oLiopJCIpCiAgaWYgbm90IGsgdGhlbgogICAgayA9IGE6bWF0Y2goIl4lLSUtKFsldy1dKykkIikKICAgIGlmIGsgdGhlbiBpID0gaSArIDE7IHYgPSBhcmdbaV0gZW5kCiAgZW5kCiAgaWYgbm90IGsgdGhlbgogICAgaW8uc3RkZXJyOndyaXRlKCJmdXp6OiB1bmtub3duIGFyZ3VtZW50ICIgLi4gYSAuLiAiXG4iKQogICAgb3MuZXhpdCgyKQogIGVuZAogIGsgPSBrOmdzdWIoIiUtIiwgIl8iKQogIG9wdHNba10gPSB2CiAgaSA9IGkgKyAxCmVuZApmb3IgXywgayBpbiBpcGFpcnMoeyAiZ2VuZXJhdGVkIiwgImNvcnB1cyIgfSkgZG8KICBpZiBub3Qgb3B0c1trXSB0aGVuCiAgICBpby5zdGRlcnI6d3JpdGUoImZ1eno6IC0tIiAuLiBrOmdzdWIoIl8iLCAiLSIpIC4uICIgaXMgcmVxdWlyZWRcbiIpCiAgICBvcy5leGl0KDIpCiAgZW5kCmVuZAoKbG9jYWwgR0VORVJBVEVEID0gb3B0cy5nZW5lcmF0ZWQKCmxvY2FsIGZ1bmN0aW9uIHJlYWRGaWxlKHBhdGgpCiAgbG9jYWwgZiwgZXJyID0gaW8ub3BlbihwYXRoLCAicmIiKQogIGlmIG5vdCBmIHRoZW4gcmV0dXJuIG5pbCwgZXJyIGVuZAogIGxvY2FsIGRhdGEgPSBmOnJlYWQoIiphIikKICBmOmNsb3NlKCkKICByZXR1cm4gZGF0YQplbmQKCmxvY2FsIGZ1bmN0aW9uIHdyaXRlRmlsZShwYXRoLCBkYXRhKQogIGxvY2FsIGYgPSBhc3NlcnQoaW8ub3BlbihwYXRoLCAid2IiKSkKICBmOndyaXRlKGRhdGEpCiAgZjpjbG9zZSgpCmVuZAoKbG9jYWwgZnVuY3Rpb24gbGluZXMocGF0aCkKICBsb2NhbCBmID0gYXNzZXJ0KGlvLm9wZW4ocGF0aCwgInIiKSkKICBsb2NhbCBvdXQgPSB7fQogIGZvciByYXcgaW4gZjpsaW5lcygpIGRvCiAgICBsb2NhbCB0ZXh0ID0gcmF3OmdzdWIoIl4lcysiLCAiIik6Z3N1YigiJXMrJCIsICIiKQogICAgaWYgI3RleHQgPiAwIGFuZCB0ZXh0OnN1YigxLCAxKSB+PSAiIyIgdGhlbiBvdXRbI291dCArIDFdID0gdGV4dCBlbmQKICBlbmQKICBmOmNsb3NlKCkKICByZXR1cm4gb3V0CmVuZAoKLS0gQkFTRTY0LCB0aGUgdGV4dCBmb3JtJ3MgYm9keSBlbmNvZGluZyAodGV4dC5sdWEpLgpsb2NhbCBCNjQgPSAiQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODkrLyIKbG9jYWwgZnVuY3Rpb24gYjY0KGJ5dGVzKQogIGxvY2FsIG91dCA9IHt9CiAgZm9yIHAgPSAxLCAjYnl0ZXMsIDMgZG8KICAgIGxvY2FsIGEsIGIsIGMgPSBieXRlczpieXRlKHAsIHAgKyAyKQogICAgbG9jYWwgbiA9IChhIDw8IDE2KSB8ICgoYiBvciAwKSA8PCA4KSB8IChjIG9yIDApCiAgICBvdXRbI291dCArIDFdID0gQjY0OnN1YigoKG4gPj4gMTgpICYgNjMpICsgMSwgKChuID4+IDE4KSAmIDYzKSArIDEpCiAgICBvdXRbI291dCArIDFdID0gQjY0OnN1YigoKG4gPj4gMTIpICYgNjMpICsgMSwgKChuID4+IDEyKSAmIDYzKSArIDEpCiAgICBvdXRbI291dCArIDFdID0gYiBhbmQgQjY0OnN1YigoKG4gPj4gNikgJiA2MykgKyAxLCAoKG4gPj4gNikgJiA2MykgKyAxKSBvciAiPSIKICAgIG91dFsjb3V0ICsgMV0gPSBjIGFuZCBCNjQ6c3ViKChuICYgNjMpICsgMSwgKG4gJiA2MykgKyAxKSBvciAiPSIKICBlbmQKICByZXR1cm4gdGFibGUuY29uY2F0KG91dCkKZW5kCmxvY2FsIGZ1bmN0aW9uIHVuYjY0KHRleHQpCiAgbG9jYWwgbWFwID0ge30KICBmb3IgaiA9IDEsICNCNjQgZG8gbWFwW0I2NDpzdWIoaiwgaildID0gaiAtIDEgZW5kCiAgbG9jYWwgb3V0ID0ge30KICBsb2NhbCBuLCBiaXRzID0gMCwgMAogIGZvciBqID0gMSwgI3RleHQgZG8KICAgIGxvY2FsIGMgPSB0ZXh0OnN1YihqLCBqKQogICAgaWYgYyA9PSAiPSIgdGhlbiBicmVhayBlbmQKICAgIGxvY2FsIHYgPSBtYXBbY10KICAgIGlmIG5vdCB2IHRoZW4gcmV0dXJuIG5pbCBlbmQKICAgIG4gPSAobiA8PCA2KSB8IHYKICAgIGJpdHMgPSBiaXRzICsgNgogICAgaWYgYml0cyA+PSA4IHRoZW4KICAgICAgYml0cyA9IGJpdHMgLSA4CiAgICAgIG91dFsjb3V0ICsgMV0gPSBzdHJpbmcuY2hhcigobiA+PiBiaXRzKSAmIDI1NSkKICAgIGVuZAogIGVuZAogIHJldHVybiB0YWJsZS5jb25jYXQob3V0KQplbmQKCi0tIEEgQ09SUFVTIExJTkUgPGtpbmQ+IDx1bml0PiA8dGFibGU+IDxiYXNlNjQgcGF5bG9hZD4gaXMgYm90aCB0aGUgZmluZGluZwotLSBmaWxlIGFuZCB0aGUgcmVwbGF5IGlucHV0OiB0aGUgcGF5bG9hZCBpcyB0aGUgZXhhY3QgYnl0ZXMsIHNvIGEgcmVwbGF5Ci0tIHJlcHJvZHVjZXMgdGhlIGlucHV0IHdpdGhvdXQgdGhlIFBSTkcuCmxvY2FsIGZ1bmN0aW9uIGRlY29kZUNhc2UodGV4dCkKICB0ZXh0ID0gdGV4dDpnc3ViKCIlcyskIiwgIiIpCiAgbG9jYWwga2luZCwgdW5pdCwgdGFibGVOYW1lLCBwYXlsb2FkID0gdGV4dDptYXRjaCgiXiglUyspJXMrKCVTKyklcysoJVMrKSVzKyglUyspJCIpCiAgaWYgbm90IGtpbmQgdGhlbiByZXR1cm4gbmlsIGVuZAogIGxvY2FsIGJ5dGVzID0gdW5iNjQocGF5bG9hZCkKICBpZiBub3QgYnl0ZXMgdGhlbiByZXR1cm4gbmlsIGVuZAogIHJldHVybiB7IGtpbmQgPSBraW5kLCB1bml0ID0gdW5pdCwgdGFibGUgPSB0YWJsZU5hbWUsIGJ5dGVzID0gYnl0ZXMgfQplbmQKCmxvY2FsIGZ1bmN0aW9uIGVuY29kZUNhc2UoYykKICByZXR1cm4gYy5raW5kIC4uICIgIiAuLiBjLnVuaXQgLi4gIiAiIC4uIGMudGFibGUgLi4gIiAiIC4uIGI2NChjLmJ5dGVzKSAuLiAiXG4iCmVuZAoKLS0gVEhFIFRZUEVEIFJFRlVTQUxTOiByZWZ1c2FsLmx1YSdzIG5hbWVzIChpdHMgUmVhZFN0cmljdCBhbmQgY291bnRlcnMsIGluCi0tIFRhYmxlUmVwb3J0LkVycigpJ3Mgb3JkZXIsIGRvY3MvU1BFQy1UQUJMRVMubWQgwqc2LjUpLCBsb2FkLmx1YSdzIHN0cmljdAotLSByZWFzb25zIChjb3VudF9yZWZ1c2FsLCDCpzIuOSksIGZpeGVkLmx1YSdzIGZvcm0tMyByZWZ1c2FscyAoUmVhZFN0cmljdCBoYW5kcwotLSBhIGZpeGVkIHJvb3QncyBmb3JtLTMgYnl0ZXMgdG8gVC5SZWFkRml4ZWQpLCBwbHVzIHRleHQubHVhJ3MgYmFzZTY0X2RhbWFnZWQKLS0gYW5kIHRoZSBydW50aW1lJ3MgaW52YWxpZF92YWx1ZS4gQSBMdWEgZXJyb3Igd2hvc2UgbWVzc2FnZSBpcyBvbmUgb2YgdGhlc2UKLS0gaXMgYSBjbGVhbiByZWZ1c2FsLCBhbmQgdGhlIG9yYWNsZSBhY2NlcHRzIGl0LiBpbnRlcm5hbC9jaSdzCi0tIFRlc3RMdWFOaWdodGx5RnV6ekxhbmUgZmFpbHMgd2hlbiB0aGUgcnVudGltZSBuYW1lcyBhIHJlZnVzYWwgdGhpcyB0YWJsZQotLSBkb2VzIG5vdCBjYXJyeSwgc28gdGhlIG9yYWNsZSBjYW5ub3QgZHJpZnQgYmVoaW5kIHRoZSBwb3J0IGFnYWluLgpsb2NhbCBUWVBFRCA9IHsKICBwcmV2aW91c19mb3JtID0gdHJ1ZSwgdW5rbm93bl9mb3JtID0gdHJ1ZSwgbWVzc2FnZV9mb3JtX2FzX2ZpbGUgPSB0cnVlLAogIGludGVncml0eV9taXNtYXRjaCA9IHRydWUsIHdpcmVfZGFtYWdlZCA9IHRydWUsIG1pc3NpbmdfcmVxdWlyZWQgPSB0cnVlLAogIG1hbGZvcm1lZCA9IHRydWUsIGJsb2Jfc2hhcmVkID0gdHJ1ZSwgY2xhbXBlZCA9IHRydWUsCiAga2luZF9taXNtYXRjaCA9IHRydWUsIG5vbl9maW5pdGVfZmxvYXQgPSB0cnVlLCBjb3VudF9yZWZ1c2FsID0gdHJ1ZSwKICBkdXBsaWNhdGUgPSB0cnVlLCB1bmtub3duID0gdHJ1ZSwKICBiYXNlNjRfZGFtYWdlZCA9IHRydWUsIGludmFsaWRfdmFsdWUgPSB0cnVlLAogIGNvdW50X292ZXJfYm91bmQgPSB0cnVlLCBsZW5ndGhfb3Zlcl9ib3VuZCA9IHRydWUsIGxheW91dF9tYWxmb3JtZWQgPSB0cnVlLAogIGxheW91dF9yZWNvcmRfdG9vX2xhcmdlID0gdHJ1ZSwgbGF5b3V0X3Vuc3VwcG9ydGVkID0gdHJ1ZSwKICBub19sYXlvdXQgPSB0cnVlLCBwbGFuX3Rvb19sYXJnZSA9IHRydWUsCn0KbG9jYWwgZnVuY3Rpb24gdHlwZWQoZXJyKQogIGxvY2FsIHMgPSB0b3N0cmluZyhlcnIpCiAgaWYgVFlQRURbc10gdGhlbiByZXR1cm4gdHJ1ZSBlbmQKICBsb2NhbCBuYW1lID0gczptYXRjaCgiXihbJWFfXSspOiIpIG9yIHM6bWF0Y2goIjolZCs6IChbJWFfXSspIikKICByZXR1cm4gbmFtZSB+PSBuaWwgYW5kIFRZUEVEW25hbWVdID09IHRydWUKZW5kCgotLSBUSEUgVU5JVFMuIHBhY2thZ2UubG9hZGVkIGlzIGNsZWFyZWQgYmVmb3JlIGVhY2ggdW5pdCBiZWNhdXNlIGV2ZXJ5IHVuaXQKLS0gc2hpcHMgaXRzIG93biBkZXNjcmlwdG9yL2xvYWQvcmVmdXNhbC9qc29uL3RleHQgbW9kdWxlcyB1bmRlciB0aGUgc2FtZQotLSBuYW1lczsgcmVxdWlyZSgpIHdvdWxkIGhhbmQgYSB1bml0IHRoZSBwcmV2aW91cyB1bml0J3MgcnVudGltZSBvdGhlcndpc2UuCmxvY2FsIHVuaXRzID0ge30KZm9yIF8sIGxpbmUgaW4gaXBhaXJzKGxpbmVzKG9wdHMuY29ycHVzKSkgZG8KICBsb2NhbCBrZXksIGRpciA9IGxpbmU6bWF0Y2goIl4oJVMrKSVzKyglUyspJCIpCiAgaWYga2V5IHRoZW4gdW5pdHNbI3VuaXRzICsgMV0gPSB7IGtleSA9IGtleSwgZGlyID0gZGlyIH0gZW5kCmVuZAoKbG9jYWwgZnVuY3Rpb24gdGFibGVzTW9kdWxlKGtleSkKICBsb2NhbCBwID0gaW8ucG9wZW4oImxzICIgLi4gR0VORVJBVEVEIC4uICIvIiAuLiBrZXkgLi4gIi8qVGFibGVzLmx1YSAyPi9kZXYvbnVsbCB8IGhlYWQgLTEiKQogIGxvY2FsIHBhdGggPSBwOnJlYWQoIipsIikKICBwOmNsb3NlKCkKICByZXR1cm4gcGF0aAplbmQKCmxvY2FsIGZ1bmN0aW9uIGxvYWRVbml0KGtleSkKICBsb2NhbCBtb2RwYXRoID0gdGFibGVzTW9kdWxlKGtleSkKICBpZiBub3QgbW9kcGF0aCB0aGVuIHJldHVybiBuaWwgZW5kCiAgbG9jYWwgZGlyID0gbW9kcGF0aDptYXRjaCgiXiguKikvW14vXSskIikKICBmb3IgbmFtZSBpbiBwYWlycyhwYWNrYWdlLmxvYWRlZCkgZG8gcGFja2FnZS5sb2FkZWRbbmFtZV0gPSBuaWwgZW5kCiAgcGFja2FnZS5wYXRoID0gZGlyIC4uICIvPy5sdWE7IiAuLiBwYWNrYWdlLnBhdGgKICBsb2NhbCBUID0gZG9maWxlKG1vZHBhdGgpCiAgbG9jYWwgTCA9IGRvZmlsZShkaXIgLi4gIi9sb2FkLmx1YSIpCiAgbG9jYWwgUiA9IGRvZmlsZShkaXIgLi4gIi9yZWZ1c2FsLmx1YSIpCiAgbG9jYWwgWCA9IGRvZmlsZShkaXIgLi4gIi90ZXh0Lmx1YSIpCiAgbG9jYWwgSiA9IGRvZmlsZShkaXIgLi4gIi9qc29uLmx1YSIpCiAgbG9jYWwgbmFtZXMgPSB7fQogIGZvciBuYW1lLCBkZXNjIGluIHBhaXJzKFQuVGFibGVzIG9yIHt9KSBkbwogICAgaWYgZGVzYy50YWJsZSB0aGVuIG5hbWVzWyNuYW1lcyArIDFdID0gbmFtZSBlbmQKICBlbmQKICB0YWJsZS5zb3J0KG5hbWVzKQogIHJldHVybiB7IGtleSA9IGtleSwgVCA9IFQsIEwgPSBMLCBSID0gUiwgWCA9IFgsIEogPSBKLCBuYW1lcyA9IG5hbWVzIH0KZW5kCgpsb2NhbCBsb2FkZWQgPSB7fQpsb2NhbCB0YXJnZXRzID0ge30KZm9yIF8sIHUgaW4gaXBhaXJzKHVuaXRzKSBkbwogIGxvY2FsIG0gPSBsb2FkVW5pdCh1LmtleSkKICBpZiBtIHRoZW4KICAgIGxvYWRlZFt1LmtleV0gPSBtCiAgICBmb3IgXywgbmFtZSBpbiBpcGFpcnMobS5uYW1lcykgZG8KICAgICAgZm9yIF8sIGtpbmQgaW4gaXBhaXJzKHsgImxvYWQiLCAic3RyaWN0IiwgInRleHQiLCAianNvbiIgfSkgZG8KICAgICAgICB0YXJnZXRzWyN0YXJnZXRzICsgMV0gPSB7IHVuaXQgPSB1LmtleSwgdGFibGUgPSBuYW1lLCBraW5kID0ga2luZCB9CiAgICAgIGVuZAogICAgZW5kCiAgZW5kCmVuZAppZiAjdGFyZ2V0cyA9PSAwIHRoZW4KICBpby5zdGRlcnI6d3JpdGUoImZ1eno6IG5vIGdlbmVyYXRlZCB1bml0IHVuZGVyICIgLi4gR0VORVJBVEVEIC4uICIgKHJ1biB0aGUgbWFrZSB0YXJnZXQpXG4iKQogIG9zLmV4aXQoMikKZW5kCgotLSBUSEUgU0VFRFMuIFdpcmUgdmVjdG9ycyBkcml2ZSBsb2FkL3N0cmljdC90ZXh0ICh0ZXh0IGlzIHRoZWlyIGJhc2U2NCBib2R5KTsKLS0gSlNPTiB2ZWN0b3JzIGRyaXZlIGpzb24uIFRoZSBHbyBmdXp6IGNvcnB1cyAoaW50ZXJuYWwvZnV6ei90ZXN0ZGF0YSkgaXMKLS0gaW5jbHVkZWQgYXMgcmF3IG11dGF0aW9uIHJvb3RzLCBhcyB0aGUgY2FyZCBhc2tzLgpsb2NhbCBzZWVkcyA9IHsgbG9hZCA9IHt9LCBzdHJpY3QgPSB7fSwgdGV4dCA9IHt9LCBqc29uID0ge30gfQpsb2NhbCBmdW5jdGlvbiBhZGRTZWVkcyhraW5kLCBkaXIsIG1heCkKICBsb2NhbCBwID0gaW8ucG9wZW4oImZpbmQgIiAuLiBkaXIgLi4gIiAtdHlwZSBmIDI+L2Rldi9udWxsIHwgc29ydCIpCiAgZm9yIHBhdGggaW4gcDpsaW5lcygpIGRvCiAgICBsb2NhbCBkYXRhID0gcmVhZEZpbGUocGF0aCkKICAgIGlmIGRhdGEgYW5kICNkYXRhID4gMCBhbmQgI2RhdGEgPD0gKG1heCBvciA0MDk2KSB0aGVuCiAgICAgIHNlZWRzW2tpbmRdWyNzZWVkc1traW5kXSArIDFdID0gZGF0YQogICAgZW5kCiAgZW5kCiAgcDpjbG9zZSgpCmVuZAppZiBvcHRzLndpcmVfc2VlZHMgdGhlbgogIGZvciBkaXIgaW4gb3B0cy53aXJlX3NlZWRzOmdtYXRjaCgiW146XSsiKSBkbwogICAgYWRkU2VlZHMoImxvYWQiLCBkaXIpOyBhZGRTZWVkcygic3RyaWN0IiwgZGlyKTsgYWRkU2VlZHMoInRleHQiLCBkaXIpCiAgZW5kCmVuZAppZiBvcHRzLmpzb25fc2VlZHMgdGhlbgogIGZvciBkaXIgaW4gb3B0cy5qc29uX3NlZWRzOmdtYXRjaCgiW146XSsiKSBkbyBhZGRTZWVkcygianNvbiIsIGRpcikgZW5kCmVuZAppZiBvcHRzLnRleHRfc2VlZHMgdGhlbgogIGZvciBkaXIgaW4gb3B0cy50ZXh0X3NlZWRzOmdtYXRjaCgiW146XSsiKSBkbwogICAgZm9yIF8sIGRhdGEgaW4gaXBhaXJzKChmdW5jdGlvbigpCiAgICAgIGxvY2FsIG91dCA9IHt9CiAgICAgIGxvY2FsIHAgPSBpby5wb3BlbigiZmluZCAiIC4uIGRpciAuLiAiIC10eXBlIGYgMj4vZGV2L251bGwgfCBzb3J0IikKICAgICAgZm9yIHBhdGggaW4gcDpsaW5lcygpIGRvCiAgICAgICAgbG9jYWwgZCA9IHJlYWRGaWxlKHBhdGgpCiAgICAgICAgaWYgZCB0aGVuIG91dFsjb3V0ICsgMV0gPSBkIGVuZAogICAgICBlbmQKICAgICAgcDpjbG9zZSgpCiAgICAgIHJldHVybiBvdXQKICAgIGVuZCkoKSkgZG8gc2VlZHMudGV4dFsjc2VlZHMudGV4dCArIDFdID0gZGF0YSBlbmQKICBlbmQKZW5kCmZvciBfLCBraW5kIGluIGlwYWlycyh7ICJsb2FkIiwgInN0cmljdCIsICJ0ZXh0IiB9KSBkbwogIGlmICNzZWVkc1traW5kXSA9PSAwIHRoZW4gc2VlZHNba2luZF1bMV0gPSBzdHJpbmcuY2hhcigxKSAuLiAiXDBcMFwwXDAiIGVuZAplbmQKaWYgI3NlZWRzLmpzb24gPT0gMCB0aGVuIHNlZWRzLmpzb25bMV0gPSAie30iIGVuZAoKLS0gTVVUQVRJT04sIHNlZWRlZCBhbmQgZGV0ZXJtaW5pc3RpYzogeG9yc2hpZnQ2NCogb3ZlciBMdWEgNS40IGludGVnZXJzLgpsb2NhbCBzdGF0ZSA9IHRvbnVtYmVyKG9wdHMuc2VlZCkgb3IgMQppZiBzdGF0ZSA9PSAwIHRoZW4gc3RhdGUgPSAxIGVuZApsb2NhbCBmdW5jdGlvbiBybmQoKQogIHN0YXRlID0gc3RhdGUgfiAoc3RhdGUgPDwgMTMpCiAgc3RhdGUgPSBzdGF0ZSB+IChzdGF0ZSA+PiA3KQogIHN0YXRlID0gc3RhdGUgfiAoc3RhdGUgPDwgMTcpCiAgcmV0dXJuIHN0YXRlCmVuZApsb2NhbCBmdW5jdGlvbiBwaWNrbihuKQogIGxvY2FsIHYgPSBybmQoKSAmIDB4N2ZmZmZmZmZmZmZmZmZmZgogIHJldHVybiAodiAlIG4pICsgMQplbmQKCmxvY2FsIElOVEVSRVNUSU5HID0geyAwLCAxLCAyLCAzLCAweDdmLCAweDgwLCAweDgxLCAweGZlLCAweGZmLCAweDNkLCAweDdiLCAweDIyIH0KCmxvY2FsIGZ1bmN0aW9uIG11dGF0ZShiYXNlKQogIGxvY2FsIGJ5dGVzID0geyBiYXNlOmJ5dGUoMSwgbWF0aC5taW4oI2Jhc2UsIDQwOTYpKSB9CiAgbG9jYWwgZWRpdHMgPSBwaWNrbig2KQogIGZvciBfID0gMSwgZWRpdHMgZG8KICAgIGxvY2FsIG9wID0gcGlja24oNikKICAgIGxvY2FsIG4gPSAjYnl0ZXMKICAgIGlmIG9wID09IDEgYW5kIG4gPiAwIHRoZW4KICAgICAgbG9jYWwgYXQgPSBwaWNrbihuKQogICAgICBsb2NhbCBiaXQgPSAxIDw8IChwaWNrbig4KSAtIDEpCiAgICAgIGJ5dGVzW2F0XSA9IChieXRlc1thdF0gfiBiaXQpICYgMjU1CiAgICBlbHNlaWYgb3AgPT0gMiBhbmQgbiA+IDAgdGhlbgogICAgICBieXRlc1twaWNrbihuKV0gPSBJTlRFUkVTVElOR1twaWNrbigjSU5URVJFU1RJTkcpXQogICAgZWxzZWlmIG9wID09IDMgYW5kIG4gPCA0MDk2IHRoZW4KICAgICAgbG9jYWwgYXQgPSBwaWNrbihuICsgMSkKICAgICAgdGFibGUuaW5zZXJ0KGJ5dGVzLCBhdCwgSU5URVJFU1RJTkdbcGlja24oI0lOVEVSRVNUSU5HKV0pCiAgICBlbHNlaWYgb3AgPT0gNCBhbmQgbiA+IDEgdGhlbgogICAgICB0YWJsZS5yZW1vdmUoYnl0ZXMsIHBpY2tuKG4pKQogICAgZWxzZWlmIG9wID09IDUgYW5kIG4gPiAwIGFuZCBuIDwgNDA5NiB0aGVuCiAgICAgIGxvY2FsIGZyb20gPSBwaWNrbihuKQogICAgICBsb2NhbCBsZW4gPSBwaWNrbihtYXRoLm1pbigxNiwgbiAtIGZyb20gKyAxKSkKICAgICAgbG9jYWwgYXQgPSBwaWNrbihuICsgMSkKICAgICAgZm9yIGogPSBsZW4sIDEsIC0xIGRvIHRhYmxlLmluc2VydChieXRlcywgYXQsIGJ5dGVzW2Zyb20gKyBqIC0gMV0pIGVuZAogICAgZWxzZWlmIG9wID09IDYgYW5kIG4gPiAwIHRoZW4KICAgICAgbG9jYWwgYXQgPSBwaWNrbihuKQogICAgICBieXRlc1thdF0gPSBybmQoKSAmIDI1NQogICAgZW5kCiAgZW5kCiAgcmV0dXJuIHN0cmluZy5jaGFyKHRhYmxlLnVucGFjayhieXRlcykpCmVuZAoKLS0gVEhFIFJFQURFUlMuIEVhY2ggcmV0dXJucyB0cnVlIHdoZW4gdGhlIGlucHV0IHdhcyBoYW5kbGVkIChhIHZhbHVlIG9yIGEKLS0gY2xlYW4gdHlwZWQgcmVmdXNhbCkgYW5kIHJhaXNlcyBvbmx5IHRoZSByYXcgTHVhIGVycm9yIHRoZSBvcmFjbGUgcmVwb3J0cy4KbG9jYWwgZnVuY3Rpb24gZHJpdmUoYykKICBsb2NhbCB1ID0gbG9hZGVkW2MudW5pdF0KICBpZiBub3QgdSB0aGVuIHJldHVybiBlbmQKICBsb2NhbCBULCBuYW1lLCBieXRlcyA9IHUuVCwgYy50YWJsZSwgYy5ieXRlcwogIGlmIGMua2luZCA9PSAibG9hZCIgdGhlbgogICAgbG9jYWwgcmVwb3J0ID0gewogICAgICBtYWxmb3JtZWQgPSBmYWxzZSwgcmVmdXNlZCA9IDAsIHVua25vd24gPSAwLCBraW5kTWlzbWF0Y2ggPSAwLAogICAgICBjbGFtcGVkID0gMCwgd2lkZW5lZCA9IDAsIGR1cGxpY2F0ZSA9IDAsCiAgICB9CiAgICB1LkwuTG9hZChULCBuYW1lLCBieXRlcywgcmVwb3J0KQogIGVsc2VpZiBjLmtpbmQgPT0gInN0cmljdCIgdGhlbgogICAgdS5SLlJlYWRTdHJpY3QoVCwgbmFtZSwgYnl0ZXMpCiAgZWxzZWlmIGMua2luZCA9PSAidGV4dCIgdGhlbgogICAgdS5YLkxvYWRUZXh0KFQsIG5hbWUsIGI2NChieXRlcykpCiAgZWxzZWlmIGMua2luZCA9PSAianNvbiIgdGhlbgogICAgbG9jYWwgcmVwb3J0ID0gewogICAgICBtYWxmb3JtZWQgPSBmYWxzZSwgcmVmdXNlZCA9IDAsIHVua25vd24gPSAwLCBraW5kTWlzbWF0Y2ggPSAwLAogICAgICBjbGFtcGVkID0gMCwgd2lkZW5lZCA9IDAsIGR1cGxpY2F0ZSA9IDAsCiAgICB9CiAgICB1LkouRnJvbUpzb24oVCwgbmFtZSwgYnl0ZXMsIHJlcG9ydCkKICBlbmQKZW5kCgpsb2NhbCBmaW5kaW5nc0RpciA9IG9wdHMuZmluZGluZ3MKbG9jYWwgZnVuY3Rpb24gc2F2ZUZpbmRpbmcoYywgZXJyKQogIGlmIG5vdCBmaW5kaW5nc0RpciBvciBmaW5kaW5nc0RpciA9PSAiIiB0aGVuIHJldHVybiBlbmQKICBvcy5leGVjdXRlKCJta2RpciAtcCAiIC4uIGZpbmRpbmdzRGlyKQogIGxvY2FsIHNsdWcgPSBjLmtpbmQgLi4gIl8iIC4uIGMudW5pdCAuLiAiXyIgLi4gYy50YWJsZTpnc3ViKCJbXiV3X10iLCAiXyIpCiAgbG9jYWwgbiA9IDEKICBsb2NhbCBwYXRoCiAgcmVwZWF0CiAgICBwYXRoID0gZmluZGluZ3NEaXIgLi4gIi8iIC4uIHNsdWcgLi4gIl8iIC4uIG4gLi4gIi5jYXNlIgogICAgbG9jYWwgZiA9IGlvLm9wZW4ocGF0aCwgInIiKQogICAgaWYgZiB0aGVuIGY6Y2xvc2UoKTsgcGF0aCA9IG5pbDsgbiA9IG4gKyAxIGVuZAogIHVudGlsIHBhdGgKICB3cml0ZUZpbGUocGF0aCwgZW5jb2RlQ2FzZShjKSkKICB3cml0ZUZpbGUocGF0aCAuLiAiLmVyciIsIHRvc3RyaW5nKGVycikgLi4gIlxuIikKICByZXR1cm4gcGF0aAplbmQKCi0tIFJFUExBWTogZXZlcnkgc2F2ZWQgY2FzZSwgb25jZSwgd2l0aCBubyBjbG9jay4gQSBzYXZlZCBmaW5kaW5nIHRoYXQgbm8KLS0gbG9uZ2VyIGZpcmVzIGlzIHN0aWxsIHJlcGxheWVkOyBhIGNhc2UgdGhhdCBmaXJlcyBpcyBhIHJlZ3Jlc3Npb24uCmlmIG9wdHMucmVwbGF5IGFuZCBvcHRzLnJlcGxheSB+PSAiIiB0aGVuCiAgbG9jYWwgY2FzZXMgPSAwCiAgbG9jYWwgYmFkID0gMAogIGxvY2FsIHAgPSBpby5wb3BlbigiZmluZCAiIC4uIG9wdHMucmVwbGF5IC4uICIgLXR5cGUgZiAtbmFtZSAnKi5jYXNlJyAyPi9kZXYvbnVsbCB8IHNvcnQiKQogIGZvciBwYXRoIGluIHA6bGluZXMoKSBkbwogICAgbG9jYWwgdGV4dCA9IHJlYWRGaWxlKHBhdGgpCiAgICBsb2NhbCBjID0gdGV4dCBhbmQgZGVjb2RlQ2FzZSh0ZXh0KQogICAgaWYgYyB0aGVuCiAgICAgIGNhc2VzID0gY2FzZXMgKyAxCiAgICAgIGxvY2FsIG9rLCBlcnIgPSBwY2FsbChkcml2ZSwgYykKICAgICAgaWYgbm90IG9rIGFuZCBub3QgdHlwZWQoZXJyKSB0aGVuCiAgICAgICAgYmFkID0gYmFkICsgMQogICAgICAgIGlvLnN0ZGVycjp3cml0ZSgiUkVQTEFZIEZBSUwgIiAuLiBwYXRoIC4uICI6ICIgLi4gdG9zdHJpbmcoZXJyKSAuLiAiXG4iKQogICAgICBlbmQKICAgIGVuZAogIGVuZAogIHA6Y2xvc2UoKQogIGlvLndyaXRlKHN0cmluZy5mb3JtYXQoImx1YSBmdXp6IHJlcGxheTogJWQgY2FzZXMsICVkIGZhaWxlZFxuIiwgY2FzZXMsIGJhZCkpCiAgb3MuZXhpdChiYWQgPT0gMCBhbmQgMCBvciAxKQplbmQKCi0tIEZVWlo6IHRoZSB0aW1lIGJ1ZGdldCBpcyBhbiBhcmd1bWVudDsgLS1pdGVyYXRpb25zIGJvdW5kcyBhIGNvbnRyb2wgcnVuLgpsb2NhbCBzZWNvbmRzID0gdG9udW1iZXIob3B0cy5zZWNvbmRzKSBvciAxMApsb2NhbCBpdGVyYXRpb25zID0gdG9udW1iZXIob3B0cy5pdGVyYXRpb25zKSBvciAwCmxvY2FsIGRlYWRsaW5lID0gb3MudGltZSgpICsgc2Vjb25kcwpsb2NhbCBjb3VudCwgZmFpbHMgPSAwLCAwCndoaWxlIHRydWUgZG8KICBpZiBpdGVyYXRpb25zID4gMCB0aGVuCiAgICBpZiBjb3VudCA+PSBpdGVyYXRpb25zIHRoZW4gYnJlYWsgZW5kCiAgZWxzZWlmIG9zLnRpbWUoKSA+PSBkZWFkbGluZSB0aGVuCiAgICBicmVhawogIGVuZAogIGxvY2FsIHQgPSB0YXJnZXRzW3BpY2tuKCN0YXJnZXRzKV0KICBsb2NhbCBraW5kID0gdC5raW5kCiAgbG9jYWwgYmFzZSA9IHNlZWRzW2tpbmRdW3BpY2tuKCNzZWVkc1traW5kXSldCiAgbG9jYWwgYyA9IHsga2luZCA9IGtpbmQsIHVuaXQgPSB0LnVuaXQsIHRhYmxlID0gdC50YWJsZSwgYnl0ZXMgPSBtdXRhdGUoYmFzZSkgfQogIGxvY2FsIG9rLCBlcnIgPSBwY2FsbChkcml2ZSwgYykKICBjb3VudCA9IGNvdW50ICsgMQogIGlmIG5vdCBvayBhbmQgbm90IHR5cGVkKGVycikgdGhlbgogICAgZmFpbHMgPSBmYWlscyArIDEKICAgIGxvY2FsIHBhdGggPSBzYXZlRmluZGluZyhjLCBlcnIpCiAgICBpby5zdGRlcnI6d3JpdGUoIkZVWlogRkFJTCAiIC4uIChwYXRoIG9yICIobm8gZmluZGluZyBkaXIpIikgLi4gIjogIiAuLiB0b3N0cmluZyhlcnIpIC4uICJcbiIpCiAgICBpZiBmYWlscyA+PSAxMCB0aGVuIGJyZWFrIGVuZAogIGVuZAplbmQKaW8ud3JpdGUoc3RyaW5nLmZvcm1hdCgibHVhIGZ1eno6IHRhcmdldHM9JWQgaXRlcmF0aW9ucz0lZCBmYWlsdXJlcz0lZCBzZWVkPSVkXG4iLAogICN0YXJnZXRzLCBjb3VudCwgZmFpbHMsIHRvbnVtYmVyKG9wdHMuc2VlZCkgb3IgMSkpCm9zLmV4aXQoZmFpbHMgPT0gMCBhbmQgMCBvciAxKQo=
+
+$(LUA_FUZZ_SCRIPT): make/schema-lua-nightly-fuzz.mk
+	@mkdir -p $(dir $@)
+	@printf '%s' '$(LUA_FUZZ_HARNESS_B64)' | base64 -d > $@ 2>/dev/null || \
+		printf '%s' '$(LUA_FUZZ_HARNESS_B64)' | base64 -D > $@
+	@chmod +x $@
+	@echo "schema-lua-fuzz: harness rev $(LUA_FUZZ_HARNESS_REV) written to $@"
+
+# A SHORT WIRE ROOT: the truncated-body input the planted control needs,
+# generated (this card may not commit it to the port's test tree).
+$(LUA_FUZZ_SEEDDIR)/truncated.bin: make/schema-lua-nightly-fuzz.mk
+	@mkdir -p $(dir $@)
+	@printf '\001\000\000\000\000\000\000\000\000' > $@
+	@echo "schema-lua-fuzz: 9-byte truncated wire seed written to $@"
+
+# one generated unit per corpus line; bin/schema (its lua target) is the port's own
+# emitter, so the fuzzer and the gate cannot disagree about what was generated.
+$(LUA_FUZZ_GENERATED)/.stamp: bin/schema $(LUA_FUZZ_CORPUS) $(LUA_FUZZ_SCRIPT) $(LUA_FUZZ_SEEDDIR)/truncated.bin make/schema-lua-nightly-fuzz.mk
+	@rm -rf $(LUA_FUZZ_GENERATED) && mkdir -p $(LUA_FUZZ_GENERATED)
+	@while read -r key dir; do \
+		[ -n "$$key" ] || continue; \
+		if ! ./bin/schema generate --lang lua --out $(LUA_FUZZ_GENERATED)/$$key $$dir > $(LUA_FUZZ_GENERATED)/$$key.log 2>&1; then \
+			rm -rf $(LUA_FUZZ_GENERATED)/$$key; \
+			mv $(LUA_FUZZ_GENERATED)/$$key.log $(LUA_FUZZ_GENERATED)/$$key.refused; \
+			echo "schema-lua-fuzz: $$key refused: $$(head -1 $(LUA_FUZZ_GENERATED)/$$key.refused)"; \
+			continue; \
+		fi; \
+		rm -f $(LUA_FUZZ_GENERATED)/$$key.log; \
+	done < $(LUA_FUZZ_CORPUS)
+	@echo "schema-lua-fuzz: $$(ls -d $(LUA_FUZZ_GENERATED)/*/ | wc -l | tr -d ' ') units generated from $(LUA_FUZZ_CORPUS)"
+	@touch $@
+
+# THE NIGHTLY TARGET: the time budget is the argument (default ten minutes).
+.PHONY: schema-lua-nightly-fuzz
+schema-lua-nightly-fuzz: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)/.stamp
+	@rm -rf $(LUA_FUZZ_FINDINGS) && mkdir -p $(LUA_FUZZ_FINDINGS)
+	$(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
+		--corpus $(LUA_FUZZ_CORPUS) --seconds $(LUA_FUZZ_SECONDS) \
+		--seed $(LUA_FUZZ_SEED) --findings $(LUA_FUZZ_FINDINGS) $(LUA_FUZZ_SEEDS)
+	@if [ -n "$$(ls $(LUA_FUZZ_FINDINGS)/*.case 2>/dev/null)" ]; then \
+		echo "schema-lua-nightly-fuzz: findings under $(LUA_FUZZ_FINDINGS):"; \
+		ls $(LUA_FUZZ_FINDINGS)/*.case; exit 1; \
+	fi
+
+# THE PLANTED-BAD-PATTERN CONTROL. A scratch copy of the generated tree has the
+# short-file guard in load.lua's open removed (`if blen < 9` becomes
+# `if false`), which turns a truncated body into a raw string.unpack error.
+# The fuzzer must find it inside a bounded run, the saved case must then FAIL
+# replay against the sabotage, and the same case must PASS replay against the
+# clean tree — so the control shows both the red line and the absence of a
+# false red on the port.
+.PHONY: schema-lua-fuzz-negative-control
+schema-lua-fuzz-negative-control: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)/.stamp
+	@set -eu; \
+	nc=build/lua-fuzz-negative-control; \
+	rm -rf $$nc && mkdir -p $$nc/generated $$nc/findings $(LUA_FUZZ_REGRESS); \
+	cp -r $(LUA_FUZZ_GENERATED)/. $$nc/generated/; \
+	sed -i 's/^  if blen < 9 then$$/  if false then -- lua-fuzz-plant/' $$nc/generated/examples/load.lua; \
+	grep -q '^  if false then -- lua-fuzz-plant$$' $$nc/generated/examples/load.lua || \
+		{ echo "negative control: the plant did not land"; exit 1; }; \
+	if ! $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $$nc/generated \
+		--corpus $(LUA_FUZZ_CORPUS) --iterations 4000 --seed 7 \
+		--findings $$nc/findings --wire-seeds $(LUA_FUZZ_SEEDDIR) \
+		--json-seeds testdata/conformance/tables/json > $$nc/fuzz.log 2>&1; then \
+		: ; \
+	else \
+		echo "NEGATIVE CONTROL FAILED: the planted missing bound survived 4000 iterations"; \
+		cat $$nc/fuzz.log; exit 1; \
+	fi; \
+	case_file=$$(ls $$nc/findings/*.case 2>/dev/null | head -1); \
+	[ -n "$$case_file" ] || { echo "NEGATIVE CONTROL FAILED: no saved input"; cat $$nc/fuzz.log; exit 1; }; \
+	cp "$$case_file" $(LUA_FUZZ_REGRESS)/planted_missing_bound.case; \
+	if $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $$nc/generated \
+		--corpus $(LUA_FUZZ_CORPUS) --replay $$nc/findings > $$nc/replay-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the saved input did not fail replay on the sabotage"; \
+		cat $$nc/replay-sabotage.log; exit 1; \
+	fi; \
+	if ! $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
+		--corpus $(LUA_FUZZ_CORPUS) --replay $(LUA_FUZZ_REGRESS) > $$nc/replay-clean.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a clean tree failed the same saved input"; \
+		cat $$nc/replay-clean.log; exit 1; \
+	fi; \
+	echo "negative control: removing the reader's length bound turns the Lua fuzz oracle RED and the saved input fails replay; the clean tree stays green"
+
+# THE FAST PARTS: replay every saved input, no clock, no PRNG. This is what the
+# pull-request lane runs, after the control has written the saved input. Real
+# findings would be committed to a regression corpus (PATHS-PROPOSED); this
+# card may not add files to the port's test tree.
+.PHONY: schema-lua-fuzz-replay
+schema-lua-fuzz-replay: schema-lua-fuzz-toolchain schema-lua-fuzz-negative-control
+	$(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
+		--corpus $(LUA_FUZZ_CORPUS) --replay $(LUA_FUZZ_REGRESS)

@@ -212,6 +212,7 @@ public final class MixedEventVariable {
         if (input.fail) return null;
         if (!input.has(1)) {
             report.malformed = true;
+            input.fail = true;
             return null;
         }
         int kind = input.get8();
@@ -317,6 +318,7 @@ public final class MixedEventVariable {
         if (input.fail) return null;
         if (!input.has(1)) {
             report.malformed = true;
+            input.fail = true;
             return null;
         }
         int kind = input.get8();
