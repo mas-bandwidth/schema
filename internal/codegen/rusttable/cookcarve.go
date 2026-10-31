@@ -102,7 +102,7 @@ func (g *gen) emitCookCarver(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("/// (docs/SPEC-TABLES.md §2.8, §2.9, §7.6): with no writer it measures, with one\n")
 	b.WriteString("/// it lays every array and points every slot at its array. `at` is the record's\n")
 	b.WriteString("/// own region offset, which a measure does not read.\n")
-	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(unused_variables, unused_mut, clippy::identity_op, clippy::needless_option_as_deref)]\n")
+	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(unused_variables, unused_mut, clippy::identity_op, clippy::needless_option_as_deref, clippy::single_match)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, c: &mut TableCarve, mut w: Option<&mut TableRegionWriter>, at: i64) {\n", fn(st.Name, "cook_carve"), st.Name)
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
