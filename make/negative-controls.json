@@ -1351,10 +1351,12 @@
     {
       "name": "lobster-conformance",
       "when": "pull-request",
-      "why": "the Lobster leg's two conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11): each seds one runtime file the table emitter embeds, builds a private compiler through go build -overlay, regenerates every manifest unit with it and requires the harness red on exactly its surfaces (report: report and retain; walk: json-read and json-hostile) with the neighbours green. On the pinned v2026.8 toolchain, which the row installs through its lobster field. Measured on hulk off one warm build: 17 s and 16 s.",
+      "why": "the Lobster leg's two conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11): each seds one runtime file the table emitter embeds, builds a private compiler through go build -overlay, regenerates every manifest unit with it and requires the harness red on exactly its surfaces (report: report, framing and retain; walk: json-read and json-hostile; framing: the id table's 4096 entry bound dropped, framing alone) with the neighbours green. On the pinned v2026.8 toolchain, which the row installs through its lobster field. Measured on hulk off one warm build: 17 s and 16 s.",
       "targets": [
         "conformance-negative-control-lobster",
-        "conformance-negative-control-lobster-walk"
+        "conformance-negative-control-lobster-walk",
+        "conformance-negative-control-lobster-framing",
+        "tables-lobster-damage-discard-negative-control"
       ],
       "lobster": "v2026.8"
     },
