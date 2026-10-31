@@ -1080,3 +1080,98 @@ report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_wi
 # SKIPPED and counted (§4), never refused: the tolerant read loads the root
 # with kind_mismatch 1 in every port.
 report map_depth_root_kind mapdemo Depth testdata/wire/tables/fuzz-vectors/map_depth_root_kind.bin
+
+# THE FRAMING VECTORS (docs/LAYERS/1-framing.md), one per rule and bound of
+# layer 1, hand-built from the rule text: the byte scripts are
+# test/conformance/harness/framing_vectors_test.go, the files are the scripts'
+# bytes, and the verdict and the value on each row were derived from the law-home
+# and never from a leg. The `framing` surface runs them through every leg, and
+# the harness runs them through the engine (framing_test.go).
+#
+#   framing <case> <unit> <root> <wire> <verdict> <value file or ->
+framing frame_form_zero                       tblr1 Cfg testdata/wire/tables/framing/frame_form_zero.bin                       refused -
+framing frame_form_two_as_file                tblr1 Cfg testdata/wire/tables/framing/frame_form_two_as_file.bin                refused -
+framing frame_form_four_planned               tblr1 Cfg testdata/wire/tables/framing/frame_form_four_planned.bin               refused -
+framing frame_empty_table                     tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin                     0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
+framing frame_seven_bytes                     tblr1 Cfg testdata/wire/tables/framing/frame_seven_bytes.bin                     0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_eight_bytes                     tblr1 Cfg testdata/wire/tables/framing/frame_eight_bytes.bin                     0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_nine_bytes                      tblr1 Cfg testdata/wire/tables/framing/frame_nine_bytes.bin                      0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_count_past_front                tblr1 Cfg testdata/wire/tables/framing/frame_count_past_front.bin                0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_unreferenced_entry              tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin              0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
+framing frame_count_one_over                  tblr1 Cfg testdata/wire/tables/framing/frame_count_one_over.bin                  0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_slack_after_terminator          tblr1 Cfg testdata/wire/tables/framing/frame_slack_after_terminator.bin          0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_duplicate_entry                 tblr1 Cfg testdata/wire/tables/framing/frame_duplicate_entry.bin                 0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_entries_4096                    tblr1 Cfg testdata/wire/tables/framing/frame_entries_4096.bin                    0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
+framing frame_entries_4097                    tblr1 Cfg testdata/wire/tables/framing/frame_entries_4097.bin                    0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_ref_last_slot                   tblr1 Cfg testdata/wire/tables/framing/frame_ref_last_slot.bin                   0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_ref_above_count                 tblr1 Cfg testdata/wire/tables/framing/frame_ref_above_count.bin                 0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing frame_ref_non_canonical               tblr1 Cfg testdata/wire/tables/framing/frame_ref_non_canonical.bin               0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_terminator_non_canonical        tblr1 Cfg testdata/wire/tables/framing/frame_terminator_non_canonical.bin        0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing frame_leb_eleven_bytes                tblr1 Cfg testdata/wire/tables/framing/frame_leb_eleven_bytes.bin                0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing frame_leb_tenth_byte_overflow         tblr1 Cfg testdata/wire/tables/framing/frame_leb_tenth_byte_overflow.bin         0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing frame_kind_unknown_37                 tblr1 Cfg testdata/wire/tables/framing/frame_kind_unknown_37.bin                 1,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_kind_reserved_34                tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34.bin                1,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_kind_zero                       tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero.bin                       1,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing frame_unknown_id_fixed_width          tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_fixed_width.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_unknown_id_length               tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_length.bin               1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_unknown_id_union                tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union.bin                1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_unknown_id_union_empty          tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union_empty.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_unknown_id_reference            tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_reference.bin            1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_kind_mismatch_skips_by_wire_kind tblr1 Cfg testdata/wire/tables/framing/frame_kind_mismatch_skips_by_wire_kind.bin 0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_multiplier.json
+framing frame_repeat_last_wins                tblr1 Cfg testdata/wire/tables/framing/frame_repeat_last_wins.bin                0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_gold.json
+framing frame_reserved_build_version_id       tblr1 Cfg testdata/wire/tables/framing/frame_reserved_build_version_id.bin       0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing nested_terminator_early               tblr1 Cfg testdata/wire/tables/framing/nested_terminator_early.bin               0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing nested_L_exact                        tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver_multiplier.json
+framing nested_L_plus_one                     tblr1 Cfg testdata/wire/tables/framing/nested_L_plus_one.bin                     0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing nested_L_past_body                    tblr1 Cfg testdata/wire/tables/framing/nested_L_past_body.bin                    0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing nested_unknown_id_inside              tblr1 Cfg testdata/wire/tables/framing/nested_unknown_id_inside.bin              1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver_multiplier.json
+framing nested_ref_above_count_inside         tblr1 Cfg testdata/wire/tables/framing/nested_ref_above_count_inside.bin         0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing array_L0_inert                        tblr1 Cfg testdata/wire/tables/framing/array_L0_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing array_L1_inert                        tblr1 Cfg testdata/wire/tables/framing/array_L1_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing array_L2_empty                        tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
+framing array_count_at_bound                  tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin                  0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_grades_four.json
+framing array_count_bound_plus_one            tblr1 Cfg testdata/wire/tables/framing/array_count_bound_plus_one.bin            0,0,0,1,0,false,read testdata/conformance/tables/framing/cfg_grades_four.json
+framing array_count_over_length               tblr1 Cfg testdata/wire/tables/framing/array_count_over_length.bin               0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_grades_silver.json
+framing array_header_crosses_L_unbounded      listdemo Ints testdata/wire/tables/framing/array_header_crosses_L_unbounded.bin  0,0,0,0,0,true,read  testdata/conformance/tables/framing/ints_empty_42.json
+framing array_header_crosses_L_bounded        tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_bounded.bin        0,0,0,1,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing array_header_crosses_L_kind_mismatch  tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_kind_mismatch.bin  0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing array_elem_kind_mismatch              tblr1 Cfg testdata/wire/tables/framing/array_elem_kind_mismatch.bin              0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
+framing array_count_non_canonical             tblr1 Cfg testdata/wire/tables/framing/array_count_non_canonical.bin             0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_default.json
+framing array_header_incomplete_at_end        tblr1 Cfg testdata/wire/tables/framing/array_header_incomplete_at_end.bin        0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing array_elem_terminator_early           listdemo Bounded testdata/wire/tables/framing/array_elem_terminator_early.bin    0,0,0,0,0,true,read  testdata/conformance/tables/framing/bounded_5_0_42.json
+framing array_elem_L_past_body                listdemo Bounded testdata/wire/tables/framing/array_elem_L_past_body.bin         0,0,0,0,0,true,read  testdata/conformance/tables/framing/bounded_5_42.json
+framing map_header_crosses_L_kind_mismatch    listdemo Squad testdata/wire/tables/framing/map_header_crosses_L_kind_mismatch.bin 0,1,0,0,0,false,read testdata/conformance/tables/framing/squad_empty_50.json
+framing map_header_crosses_L                  listdemo Squad testdata/wire/tables/framing/map_header_crosses_L.bin             0,0,0,0,0,true,read  testdata/conformance/tables/framing/squad_empty_50.json
+framing map_entry_terminator_early            listdemo Squad testdata/wire/tables/framing/map_entry_terminator_early.bin       0,0,0,0,0,true,read  testdata/conformance/tables/framing/squad_2_50.json
+framing map_entry_L_past_map                  listdemo Squad testdata/wire/tables/framing/map_entry_L_past_map.bin             0,0,0,0,0,true,read  testdata/conformance/tables/framing/squad_2_50.json
+framing map_descending                        listdemo Squad testdata/wire/tables/framing/map_descending.bin                   0,0,0,0,0,true,read  testdata/conformance/tables/framing/squad_9_50.json
+framing map_count_over_length                 listdemo Squad testdata/wire/tables/framing/map_count_over_length.bin            0,0,0,0,0,true,read  testdata/conformance/tables/framing/squad_2_50.json
+framing map_L1_inert                          listdemo Squad testdata/wire/tables/framing/map_L1_inert.bin                     0,0,0,0,0,false,read testdata/conformance/tables/framing/squad_empty_50.json
+framing map_header_crosses_L_dart_mutant      listdemo Army testdata/wire/tables/framing/map_header_crosses_L_dart_mutant.bin  7,1,0,0,1,true,read  -
+framing keyed_header_crosses_L                tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L.bin                0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing keyed_header_crosses_L_kind_mismatch  tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L_kind_mismatch.bin  0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing keyed_key_zero                        tblr1 Cfg testdata/wire/tables/framing/keyed_key_zero.bin                        0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_tally_silver_7.json
+framing keyed_unknown_key                     tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin                     1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_tally_gold_3.json
+framing keyed_triple_L_past_body              tblr1 Cfg testdata/wire/tables/framing/keyed_triple_L_past_body.bin              0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_tally_silver_7.json
+framing keyed_count_over_length               tblr1 Cfg testdata/wire/tables/framing/keyed_count_over_length.bin               0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_tally_silver_7.json
+framing keyed_elem_kind_mismatch              tblr1 Cfg testdata/wire/tables/framing/keyed_elem_kind_mismatch.bin              0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
+framing keyed_L1_inert                        tblr1 Cfg testdata/wire/tables/framing/keyed_L1_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing union_arm_L_not_width                 tblr1 Cfg testdata/wire/tables/framing/union_arm_L_not_width.bin                 0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing union_arm_width_exact                 tblr1 Cfg testdata/wire/tables/framing/union_arm_width_exact.bin                 0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_amount_42.json
+framing union_arm_L_past_body                 tblr1 Cfg testdata/wire/tables/framing/union_arm_L_past_body.bin                 0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing union_body_arm_terminator_early       tblr1 Cfg testdata/wire/tables/framing/union_body_arm_terminator_early.bin       0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing union_void_arm_L_nonzero              tblr1 Cfg testdata/wire/tables/framing/union_void_arm_L_nonzero.bin              0,0,0,0,0,true,read  testdata/conformance/tables/framing/cfg_silver.json
+framing union_void_arm                        tblr1 Cfg testdata/wire/tables/framing/union_void_arm.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_ping.json
+framing union_unknown_arm                     tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin                     1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing union_arm_zero_in_field               tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing node_clean                            graphdemo ListNode testdata/wire/tables/framing/node_clean.bin                   0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2.json
+framing node_count_disagrees                  graphdemo ListNode testdata/wire/tables/framing/node_count_disagrees.bin         0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
+framing node_record_L_past_field              graphdemo ListNode testdata/wire/tables/framing/node_record_L_past_field.bin     0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
+framing node_bytes_left_over                  graphdemo ListNode testdata/wire/tables/framing/node_bytes_left_over.bin         0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
+framing node_field_wrong_kind                 graphdemo ListNode testdata/wire/tables/framing/node_field_wrong_kind.bin        0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
+framing node_type_ref_zero                    graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin           0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
+framing node_index_above_count                graphdemo ListNode testdata/wire/tables/framing/node_index_above_count.bin       0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_a_null.json
+framing node_index_null                       graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin              0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_null.json
+framing node_reserved_id_in_record            graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin   0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_to_default.json
+framing node_unknown_to_fixed_reader          tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing node_table_L_past_body                graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin       0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
