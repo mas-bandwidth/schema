@@ -9,7 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-		"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // guardField is one field of an instance by its text key.

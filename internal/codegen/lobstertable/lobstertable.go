@@ -138,6 +138,18 @@ func Refuse(u *ir.Unit) error {
 // the table wire (docs/SPEC-TABLES.md §3, kind 13; a union, kind 15), so the
 // walk needs its descriptor too. Keyed by name.
 func closure(u *ir.Unit) map[string]bool {
+	return reachFrom(u, func(*ir.Struct) bool { return true }, true)
+}
+
+// messageClosure is what the message form reaches (§3.3): the fixed tables
+// and every type and union they reach. A variable table is never in it.
+func messageClosure(u *ir.Unit) map[string]bool {
+	return reachFrom(u, func(st *ir.Struct) bool { return st.FixedDeclared }, false)
+}
+
+// reachFrom is the closure walk over the tables root keeps, and, when unions is
+// set, every table-closure union besides.
+func reachFrom(u *ir.Unit, root func(*ir.Struct) bool, unions bool) map[string]bool {
 	seen := map[string]bool{}
 	var visit func(f *ir.Field)
 	var visitStruct func(st *ir.Struct)
@@ -177,10 +189,14 @@ func closure(u *ir.Unit) map[string]bool {
 	}
 	for _, f := range u.Files {
 		for _, t := range f.Tables {
-			visitStruct(t)
+			if root(t) {
+				visitStruct(t)
+			}
 		}
-		for _, un := range f.TableUnions {
-			visitUnion(un)
+		if unions {
+			for _, un := range f.TableUnions {
+				visitUnion(un)
+			}
 		}
 	}
 	return seen

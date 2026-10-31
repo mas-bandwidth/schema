@@ -72,7 +72,7 @@ def message_unit(announcement:string, build_version:int) -> int:
     return 1
 
 // message_root registers a table that may ride the form: a FIXED table's
-// (§3.3, "a plain `table T` may not").
+// (§3.3; a variable table may not).
 def message_root(name:string) -> int:
     for(message_facts.roots) r:
         if r == name:
