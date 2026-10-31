@@ -29,6 +29,22 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// make/squirrel-serialize.mk, make/squirrel-conformance.mk,
+	// make/squirrel-fuzz.mk, make/schema-squirrel-nightly-fuzz.mk and
+	// make/schema-squirrel-all-port-differential.mk are not language backends
+	// (docs/PORT-SQUIRREL.md, THE RUNTIME LAYOUT: the type wire's bottom layer;
+	// THE CARD MAP: the conformance leg, the wire fuzzer, the nightly fuzz and
+	// the all-port differential). They carry no compiler/target_*.go and
+	// refuse no unit, so they are not legs of the wide-scalar probe; drop them
+	// from the fixture before the probe runs.
+	for _, mk := range []string{
+		"squirrel-serialize.mk", "squirrel-conformance.mk", "squirrel-fuzz.mk",
+		"schema-squirrel-nightly-fuzz.mk", "schema-squirrel-all-port-differential.mk",
+	} {
+		if err := os.Remove(filepath.Join(fixture, "make", mk)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// a tagged port in the real tree (a `schema new-leg` leg, make/<lang>.mk
 	// beside a build-tagged compiler/target_<lang>.go) is identified by the
 	// target file's first line, so the fixture carries those files too

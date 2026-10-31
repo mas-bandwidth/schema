@@ -68,4 +68,39 @@ public final class TableBytes {
     public static double f64(byte[] data, int at) {
         return Double.longBitsToDouble(i64(data, at));
     }
+
+    // A RECORD'S FLOAT ACCESSOR NEVER ANSWERS A NaN OR AN INFINITY
+    // (docs/SPEC-TABLES.md §3.3; ruling 2 of 2026-10-27): Open stays one check,
+    // so the accessor that decodes the float tests its raw bits, and a
+    // non-finite one is refused by name — thrown as NonFiniteFloat, the field
+    // spelled <Record>.<field> — and its value is never returned. A finite
+    // read allocates nothing.
+    public static float f32(byte[] data, int at, String field) {
+        int bits = i32(data, at);
+        if ((bits & 0x7f800000) == 0x7f800000) {
+            throw new NonFiniteFloat(field);
+        }
+        return Float.intBitsToFloat(bits);
+    }
+
+    public static double f64(byte[] data, int at, String field) {
+        long bits = i64(data, at);
+        if ((bits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            throw new NonFiniteFloat(field);
+        }
+        return Double.longBitsToDouble(bits);
+    }
+
+    /** the accessor's refusal of a non-finite float: non_finite_float, naming the field. */
+    public static final class NonFiniteFloat extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        /** the field the refused float sits in, as {@code <Record>.<field>}. */
+        public final String field;
+
+        public NonFiniteFloat(String field) {
+            super("non_finite_float: " + field, null, false, false);
+            this.field = field;
+        }
+    }
 }

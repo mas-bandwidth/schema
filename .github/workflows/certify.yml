@@ -649,6 +649,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
 
+      # The pinned Squirrel interpreter for a row naming `squirrel`, as
+      # ci-full.yml's leg installs it (make/squirrel.mk's dist-squirrel).
+      - name: install the Squirrel pin
+        if: matrix.squirrel != ''
+        run: make dist-squirrel
+
       - name: build bin/schema and the generated tree once
         run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
 
