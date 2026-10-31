@@ -1617,9 +1617,10 @@ test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
 # corpus with the generated writer, in both byte orders, and holds the bytes to
 # `schema cook`'s (the C++ reference's cook lands on the same bytes in the
 # conformance cook-write rows); then it opens map_full's cook and searches every
-# map of the root in place, a map inside an entry included. Its controls make
-# the carve lay a map's entries unsorted, and an array unaligned, each red on
-# its own line.
+# map of the root in place, a map inside an entry included; widelist_wide's
+# 128-bit list (sizeof = 8 mod 16) holds the node-alignment rule. Its controls
+# make the carve lay a map's entries unsorted, an array unaligned, and the
+# 128-bit holder's extent start at the floor of eight, each red on its own line.
 .PHONY: tables-rust-cook-map tables-rust-cook-map-negative-control
 tables-rust-cook-map: build/tables-generated-rust/.stamp
 	cd test/rust-cookmap && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
@@ -1628,6 +1629,7 @@ tables-rust-cook-map: build/tables-generated-rust/.stamp
 tables-rust-cook-map-negative-control: bin/schema
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control sort
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control align
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control wide
 
 test-rust: tables-rust-cook-map tables-rust-cook-map-negative-control
 

@@ -4,6 +4,8 @@
 #
 #   test/rust-cookmap/control sort     the carve lays a map's entries unsorted
 #   test/rust-cookmap/control align    the carve lays an array unaligned
+#   test/rust-cookmap/control wide     the extent of a node holding 128-bit
+#                                      elements starts at the floor of eight
 #
 # Each builds the compiler from a COPY of the generator source (go build
 # -overlay, so no tracked file is written), generates the two units the gate
@@ -22,8 +24,12 @@ align)
 	sabotage=rust-cookmap-unaligned
 	expect='first difference at byte'
 	;;
+wide)
+	sabotage=rust-cookmap-wide-extent
+	expect='widelist_wide: '
+	;;
 *)
-	echo "usage: $0 sort|align" >&2
+	echo "usage: $0 sort|align|wide" >&2
 	exit 2
 	;;
 esac
