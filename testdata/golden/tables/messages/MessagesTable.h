@@ -591,7 +591,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static MESSAGEDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1686,7 +1686,7 @@ static const int64_t kTableAnnounceBytes = 633;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x0f, 0xfd, 0x1c, 0xbf, 0xef, 0xe3, 0x37, 0x0a, 0x02,
+    0x01, 0x01, 0x09, 0x6a, 0xa3, 0x5b, 0x42, 0x2d, 0x02, 0xf7, 0x31, 0x02,
     0x0e, 0xd1, 0x04, 0x06, 0xce, 0x04, 0x07, 0x59, 0x4f, 0x69, 0xad, 0xa5,
     0x4b, 0xbf, 0x08, 0x00, 0x87, 0xf2, 0x8b, 0x62, 0x87, 0x12, 0x53, 0x5f,
     0x08, 0x00, 0x58, 0x86, 0x8e, 0x6c, 0xc4, 0xdb, 0xa4, 0xd6, 0x08, 0x00,
@@ -3907,7 +3907,7 @@ namespace messagedemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x0a37e3efbf1cfd0full;
+static const uint64_t BuildVersion = 0x31f7022d425ba36aull;
 
 } // namespace messagedemo
 

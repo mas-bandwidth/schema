@@ -3248,7 +3248,7 @@ cook's own header, and the third coordinate of the key below.
 
 ```
 $ schema build-version tables/block/
-0xe1fbe3acd0a181af
+0xc06e89a209a3dda7
 ```
 
 ```cpp
@@ -4913,6 +4913,40 @@ constants and data members are UpperCamelCase (`ship.Health`, `report.Unknown`,
 `teams.get(key)`, `report.reset()`). A field's wire name, a JSON key and a
 variant's name stay the schema's own spelling — they are data in a descriptor,
 not identifiers.
+
+**Lua** — vanilla Lua 5.4 (PUC-Rio; LuaJIT is not covered), no dependencies.
+Generated code is self-contained: a module per schema file beside the
+serialize runtime, and for tables a `<Package>Tables.lua` of descriptors with
+the runtime modules (`load`, `save`, `cook`, `uncook`, `block`, ...) beside it,
+so the directory is the whole program and `package.path = "./?.lua;"` reaches
+it. A value is a plain Lua table and its kind lives in the descriptor, never in
+the value, so a value of the wrong Lua type on write is a named refusal, not a
+coercion. A buffer is a Lua string, which has no address, so the cook's `Open`
+takes the buffer's lead past an aligned base as an optional fourth argument.
+`Open` answers a handle, or `nil` and the refusal's name (`unaligned_base`, a
+foreign build, the other byte order); `uncook.Read` runs cook-check's two
+passes over a cook nothing has checked and builds the root. This fragment is
+compiled and run against the `tables/pointers` unit by `make tables-lua-usage`:
+
+<!-- lua-table-usage -->
+```lua
+local T = require("GraphdemoTables")
+local cook = require("cook")
+local uncook = require("uncook")
+
+-- open the cook another build wrote; nil and a reason is a foreign build, a
+-- corrupt file or the other byte order: fall back to the tolerant wire
+local handle, why = cook.Open(T, "Scene", bytes)
+if handle == nil then error("the Scene cook did not open: " .. why) end
+local scene, refused = uncook.Read(T, handle)   -- nil and a reason for a forged cook
+if scene == nil then error("the Scene cook is corrupt: " .. refused) end
+local node = scene.head
+while node ~= nil do
+  use(node.value)
+  node = node.next                              -- nil is the null reference
+end
+```
+<!-- /lua-table-usage -->
 
 All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is

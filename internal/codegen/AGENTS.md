@@ -26,6 +26,8 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `jstable/` | JS table emitter | `go test ./internal/codegen/jstable` | `go test ./internal/codegen/jstable` |
 | `lobster/` | Lobster type emitter and packet wire (docs/PORT-LOBSTER.md) | `make test-lobster` | `go test ./internal/codegen/lobster/...` |
 | `lobstertable/` | Lobster table emitter (docs/PORT-LOBSTER.md) | `make test-lobster` | `go test ./internal/codegen/lobstertable` |
+| `lua/` | Lua packet emitter (docs/PORT-LUA.md) | `make test-lua` | `go test ./internal/codegen/lua` |
+| `luatable/` | Lua table emitter (docs/PORT-LUA.md) | `make test-lua` | `go test ./internal/codegen/luatable` |
 | `luau/` | Luau type emitter (docs/PORT-LUAU.md) | `go test ./internal/codegen/luau` | `go test ./internal/codegen/luau/...` |
 | `luautable/` | Luau table emitter (docs/PORT-LUAU.md) | `go test ./internal/codegen/luautable` | `go test ./internal/codegen/luautable` |
 | `moo/` | moo packet emitter | `make test-moo` | `make test-moo` |

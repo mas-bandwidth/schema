@@ -46,7 +46,9 @@ func TestSquirrelMapsInJson(t *testing.T) {
 	inputs := map[string][]byte{}
 	var names []string
 	for _, in := range readInstanceRows(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")) {
-		if in.unit != "mapdemo" {
+		// a `no-text` row has no spelling by the form's own rule (§16.7), so
+		// the corpus carries no text for it
+		if in.unit != "mapdemo" || in.noText {
 			continue
 		}
 		text, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", in.name+".json"))

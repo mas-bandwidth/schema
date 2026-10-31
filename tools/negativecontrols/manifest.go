@@ -58,7 +58,11 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
-	Luau   string `json:"luau,omitempty"`
+	// Lua is the pinned PUC-Rio interpreter's version: a row that names it
+	// builds it with `make dist-lua` (make/lua.mk holds the pin and its
+	// sha256) before its controls run.
+	Lua  string `json:"lua,omitempty"`
+	Luau string `json:"luau,omitempty"`
 	// Golangci is the golangci-lint release this row installs (no leading
 	// v), for the generated-Go lint controls. It is not a conformance
 	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
@@ -209,6 +213,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		Java     string `json:"java"`
 		OTP      string `json:"otp"`
 		Elixir   string `json:"elixir"`
+		Lua      string `json:"lua"`
 		Luau     string `json:"luau"`
 		Golangci string `json:"golangci"`
 		Moo      string `json:"moo"`
@@ -232,6 +237,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			Java:     g.Java,
 			OTP:      g.OTP,
 			Elixir:   g.Elixir,
+			Lua:      g.Lua,
 			Luau:     g.Luau,
 			Golangci: g.Golangci,
 			Moo:      g.Moo,

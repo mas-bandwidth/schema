@@ -256,7 +256,7 @@ func t05R16(t *testing.T) {
 		// clamped: once per entry per record, count and text.
 		"def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))",
 		"def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
-		"def fclamps(acc, v, lo, hi) when is_float(v) and (v < lo or v > hi), do: acc + 1",
+		"def fclamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1",
 		// the bounds pass counts a forged ordinal remapped to None.
 		"def past(acc, v, variants) when v > variants, do: acc + 1",
 	} {

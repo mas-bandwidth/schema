@@ -14,9 +14,8 @@ func TestEveryPortBackendBitIsItsOwn(t *testing.T) {
 		bit  int // the shift, 0-based: 1 << bit
 	}
 	// The allocation in tablenames.go: Cpp 0, Cs 1, Rust 2, Go 3,
-	// Java 4, C 5, Elixir 6, Js 7, Dart 8, Lua 9, Luau 10,
-	// Squirrel 11. Lua and Luau are on other streams, not defined in
-	// this tree, so they are not tested here.
+	// Java 4, C 5, Elixir 6, Js 7, Dart 8, Lua 9, Luau 10, Moo 11,
+	// Squirrel 12.
 	allocs := []alloc{
 		{"Cpp", Cpp, 0},
 		{"Cs", Cs, 1},
@@ -27,7 +26,10 @@ func TestEveryPortBackendBitIsItsOwn(t *testing.T) {
 		{"Elixir", Elixir, 6},
 		{"Js", Js, 7},
 		{"Dart", Dart, 8},
-		{"Squirrel", Squirrel, 11},
+		{"Lua", Lua, 9},
+		{"Luau", Luau, 10},
+		{"Moo", Moo, 11},
+		{"Squirrel", Squirrel, 12},
 	}
 	seen := map[Backend]string{}
 	for _, a := range allocs {

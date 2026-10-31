@@ -22,6 +22,7 @@ name: Schema squirrel resource bounds
 
 on:
   push:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-squirrel-resource-bounds.mk'
       - '.github/workflows/schema-squirrel-resource-bounds.yml'
@@ -36,8 +37,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: schema-squirrel-resource-bounds-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

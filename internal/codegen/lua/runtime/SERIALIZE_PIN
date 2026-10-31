@@ -1,0 +1,15 @@
+# Vendored from https://github.com/mas-bandwidth/serialize.lua
+# tag v2.1.1
+# commit 90e7c32695a891f6323f20878094dd992b768c3d
+# Rewrite with: make vendor-serialize-lua (make/lua-serialize.mk holds the tag and commit)
+sha256  77a14064db92949e89a2f1c8ef5cf6975d59e88d2e8a89e3da4b256c0a7679c3  serialize.lua
+sha256  390091e7ae54a157feb65e4c441c06c7a887767fc4ed1158b434f1c20d0374d6  serialize_bitpacker.lua
+sha256  3543b3091b9b69f852a222019f58ccaac49b199bdbaa7c189b5240838fb730da  serialize_bits.lua
+sha256  00a295fd7236bea310c0f64a2651f046eb519fc1ff7a1ed827f05dc57a336816  serialize_bytes.lua
+sha256  b3d84d0d48c9dfbc9d87952144e536df21069be696e6796fbaa27977c272cd06  serialize_compressed_float.lua
+sha256  625a4e929f5ee4cc20ca24b8261c0b67323bae9b68458df1227ea0f5e01213ad  serialize_fixed.lua
+sha256  7fc4dbb1312a08c4c393e9ec90465afc6550a6785d1ccefd4ada804ca0d6237d  serialize_float.lua
+sha256  45dc6439c2c6566cb0d995d85938eba4d9d3b8ad72b5ad22fcf7ce683fcfe99a  serialize_int.lua
+sha256  dd795b3ffd61f72a69dc7426c0acd1fa62663e48539222ed26bea5d4bdea0b3a  serialize_int128.lua
+sha256  002fbd4db49dd0f129d1b24d0195a09507ac97f5046dcdf5c535cbd5df6785f0  serialize_int_relative.lua
+sha256  ff6abe496c27bb13c50aabc88f15bf6058b0fe59e1ab451524d8a95ce3cc9523  serialize_stream.lua

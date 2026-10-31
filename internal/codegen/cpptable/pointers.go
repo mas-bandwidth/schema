@@ -571,9 +571,9 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 	n := st.Name
 	g.pf("// %s is a pointer target.\n", n)
 	g.pf("inline const %s * %sAt( const TableRef & ref ) // the const form's hot path: one add, no base\n{\n", n, n)
-	g.pf("    return ref.value != 0 ? (const %s *) ( (const uint8_t *) &ref + ref.value ) : NULL;\n}\n", n)
+	g.pf("    return ref.value != 0 ? (const %s *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;\n}\n", n)
 	g.pf("inline %s * %sAt( TableRef & ref )\n{\n", n, n)
-	g.pf("    return ref.value != 0 ? (%s *) ( (uint8_t *) &ref + ref.value ) : NULL;\n}\n", n)
+	g.pf("    return ref.value != 0 ? (%s *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;\n}\n", n)
 	g.pf("inline const %s * %sAt( const TableRegionCtx &, const TableRef & ref ) { return %sAt( ref ); }\n", n, n, n)
 	g.pf("inline const %s * %sAt( const TableArenaCtx & ctx, const TableRef & ref )\n{\n", n, n)
 	g.pf("    return ref.value != 0 ? (const %s *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;\n}\n", n)

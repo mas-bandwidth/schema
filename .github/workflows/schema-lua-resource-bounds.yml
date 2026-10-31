@@ -1,0 +1,58 @@
+name: schema lua resource bounds
+
+# THE LUA PORT'S BOUNDED MEMORY/TIME GATE (schema-lua-resource-bounds). A
+# hostile input (huge count, deep nesting, recursion, giant string, many
+# unknown fields) must cost bounded memory and time: allocation is bounded by
+# input size times the documented factor, and nesting past section 16.9.4's
+# depth cap of 128 is refused by name (text_limit). Time is asserted by
+# instruction count, never wall clock.
+#
+# THE HEAVY PART IS NIGHTLY ONLY, so the gate stays inside the fast lane's
+# one-minute budget: the full bounds sweep (schema-lua-resource-bounds) runs on
+# the schedule and on workflow_dispatch, never on a push. Every push and pull
+# request that touches this lane runs the planted-bad-pattern control
+# (schema-lua-resource-bounds-negative-control), which proves the gate has a
+# blade and is seconds of work.
+#
+# FORK SAFETY: as in the sibling lanes, every fleet job carries the fork guard
+# so a fork's pull request never runs on fleet hardware.
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+    paths:
+      - 'make/schema-lua-resource-bounds.mk'
+      - 'internal/ci/schema_lua_resource_bounds_test.go'
+      - '.github/workflows/schema-lua-resource-bounds.yml'
+  pull_request:
+    paths:
+      - 'make/schema-lua-resource-bounds.mk'
+      - 'internal/ci/schema_lua_resource_bounds_test.go'
+      - '.github/workflows/schema-lua-resource-bounds.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  fast:
+    runs-on: [self-hosted, linux, x64, fleet]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: dist lua
+        run: make dist-lua
+      - name: planted-bad-pattern control
+        run: make schema-lua-resource-bounds-negative-control
+  nightly:
+    runs-on: [self-hosted, linux, x64, fleet]
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: dist lua
+        run: make dist-lua
+      - name: bounded memory/time sweep
+        run: make schema-lua-resource-bounds

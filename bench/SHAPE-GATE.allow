@@ -98,6 +98,7 @@ paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
 # ---------------------------------------------------------------------------
 
 timing internal/baseline/file.go 1 the history entry's calendar date — a day written into a text log, no interval measured (prose)
+timing internal/codegen/luatable/testgen_test.go 1 the generated-test lint's list of BANNED names (os.clock among them): a string the test refuses, no clock read — the check is lexical
 
 # ---------------------------------------------------------------------------
 # GATE 2 — the spec's own MEASURED gate (docs/SPEC-TABLES.md §12.1).

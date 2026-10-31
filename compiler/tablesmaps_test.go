@@ -163,8 +163,8 @@ func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 func TestMapCarriers(t *testing.T) {
 	// squirrel registers from compiler/target_squirrel_maps.go, which carries
 	// no build tag, so it is a carrier in every build.
-	if !slices.Equal(mapTargets, []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "luau", "rust", "squirrel"}) {
-		t.Fatalf("mapTargets = %v, want [c cpp cs dart elixir go java js lobster luau rust squirrel]", mapTargets)
+	if !slices.Equal(mapTargets, []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel"}) {
+		t.Fatalf("mapTargets = %v, want [c cpp cs dart elixir go java js lobster lua luau rust squirrel]", mapTargets)
 	}
 }
 
@@ -189,11 +189,11 @@ func TestMapFreeUnitIsUntouched(t *testing.T) {
 // the fields an author wrote.
 func TestMapRefusalNamesTheCarrier(t *testing.T) {
 	u := unitFromSource(t, mapSrc)
-	err := refuseMaps(u, "lua")
+	err := refuseMaps(u, "newleg")
 	if err == nil {
 		t.Fatalf("refuseMaps accepted a map-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a map is c, cpp, cs, dart, elixir, go, java, js, lobster, luau, rust and squirrel only today", "Fleet.ships", "--lang cpp", "--lang squirrel"} {
+	for _, want := range []string{"a map is c, cpp, cs, dart, elixir, go, java, js, lobster, lua, luau, rust and squirrel only today", "Fleet.ships", "--lang cpp", "--lang squirrel"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

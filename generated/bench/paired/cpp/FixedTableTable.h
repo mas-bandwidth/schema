@@ -593,7 +593,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static BENCH_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1672,7 +1672,7 @@ static const int64_t kTableAnnounceBytes = 932;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x4e, 0x05, 0x2a, 0x97, 0x84, 0x3a, 0x75, 0x23, 0x02,
+    0x01, 0x01, 0x09, 0x52, 0xa8, 0xbf, 0x78, 0x93, 0x55, 0xd3, 0x41, 0x02,
     0x0e, 0xfc, 0x06, 0x06, 0xf9, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac,
     0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00,
     0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d,
@@ -3931,7 +3931,7 @@ namespace bench {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x23753a84972a054eull;
+static const uint64_t BuildVersion = 0x41d3559378bfa852ull;
 
 } // namespace bench
 

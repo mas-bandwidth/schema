@@ -117,6 +117,13 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "let WeaponFireTypeMax = 2 // the exported extent (SPEC §4.2)",
 		nameFunc: "def EnumNameWeaponFireType(value:int) -> string:",
 	},
+	// Lua: the tag is a table of constants, and the name function closes
+	// over its name table, so the claim spans both.
+	"lua": {
+		noCount:  "  Count = ",
+		max:      "  Missile = 2,\n  Max = 2, -- the exported extent (SPEC §4.2)",
+		nameFunc: "local names = { [0] = \"None\", [1] = \"Laser\", [2] = \"Missile\" }\n  function _M.EnumNameWeaponFireType(value)",
+	},
 	"rust": {
 		noCount:  "    pub const COUNT: ",
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",

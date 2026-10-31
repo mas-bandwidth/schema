@@ -65,13 +65,17 @@ func TestWireFuzzFindingsAreSpelledByTheEmitter(t *testing.T) {
 	msgs, _ := filepath.Glob(filepath.Join(root, "tables", "messages", "*.schema"))
 	messages := gen(msgs...)
 	guarded := gen(filepath.Join(root, "test", "tables", "G1.schema"))
+	listSchemas, _ := filepath.Glob(filepath.Join(root, "tables", "lists", "*.schema"))
+	lists := gen(listSchemas...)
 
 	tabledemo := string(examples["TabledemoWire.dart"])
 	messagedemo := string(messages["MessagedemoWire.dart"])
 	g1 := string(guarded["Tblg1Wire.dart"])
-	if tabledemo == "" || messagedemo == "" || g1 == "" {
-		t.Fatalf("a Wire library was not generated: tabledemo %d messagedemo %d g1 %d", len(tabledemo), len(messagedemo), len(g1))
+	listdemo := string(lists["ListdemoWire.dart"])
+	if tabledemo == "" || messagedemo == "" || g1 == "" || listdemo == "" {
+		t.Fatalf("a Wire library was not generated: tabledemo %d messagedemo %d g1 %d listdemo %d", len(tabledemo), len(messagedemo), len(g1), len(listdemo))
 	}
+	squadLoad := dartFunc(t, listdemo, "void squadWireLoadBody(")
 
 	weaponLoad := dartFunc(t, tabledemo, "void weaponConfigWireLoadBody(")
 	loadoutSave := dartFunc(t, tabledemo, "void loadoutConfigWireSaveBodyFields(")
@@ -135,6 +139,23 @@ func TestWireFuzzFindingsAreSpelledByTheEmitter(t *testing.T) {
 			text: toolFixed, want: "final slots = v.marks;", gone: "final fresh = List<",
 			revert: func(s string) string {
 				return strings.Replace(s, "final slots = v.marks;", "final fresh = List<Mode>.generate(2, (_) => Mode.none);\n  final slots = fresh;", 1)
+			},
+		},
+		{
+			// ci-full run 41205503830: `02 0e 02 | 0e 83`, a map header whose
+			// count crosses L under a wrong element kind (the harness pins the
+			// oracle's answer, TestWireFuzzMapHeaderCrossingItsLengthIsAKindMismatch)
+			name: "a map's header is read against the parent, so a count past L still judges the element kind (§2.8, §3)",
+			text: squadLoad, want: "final elemKind = r.readByte();", gone: "final elemKind = arr.readByte();",
+			revert: func(s string) string {
+				return strings.Replace(s, "final elemKind = r.readByte();", "final elemKind = arr.readByte();", 1)
+			},
+		},
+		{
+			name: "a keyed array's header is read against the parent, as the engine's keyed body reads it (§3.2)",
+			text: tabledemo, want: ", int elemKind, int pairs", gone: "final pairs = p.readLeb();",
+			revert: func(s string) string {
+				return strings.ReplaceAll(s, ", int elemKind, int pairs", "") + "\tfinal pairs = p.readLeb();\n"
 			},
 		},
 	}

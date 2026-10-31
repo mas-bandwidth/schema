@@ -154,6 +154,26 @@ jobs:
           ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$HOME/.local/bin/sq"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # THE LUA STEP, as ci-full.yml's conformance job has it: the pinned
+      # PUC-Rio interpreter is built from source by `make dist-lua` at the
+      # sha256 make/lua.mk names, and put on PATH so the leg's `LUA=lua`
+      # (ci.json) resolves. Without it the driver fails with "lua: not found".
+      - name: install the pinned Lua interpreter
+        if: matrix.lua != ''
+        run: |
+          make dist-lua
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$HOME/.local/bin/lua"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # THE LUAU PIN, as ci-full.yml's conformance job installs it: make/luau.mk's
+      # dist-luau, the sha256 refused before anything is unpacked, into the
+      # dist/luau-<version>/ path the driver runs. Without it the driver fails
+      # with "dist/luau-<version>/luau: not found".
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
 
       # The two halves split so a failing build fails the run before the
       # harness's overhead shows in the log; both run with the row's env so

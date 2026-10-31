@@ -54,7 +54,7 @@ func TestListsAreRefusedByNonCarriers(t *testing.T) {
 
 // TestListCarriers keeps the advertised targets in step with their codecs.
 func TestListCarriers(t *testing.T) {
-	want := []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "luau", "rust"}
+	want := []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust"}
 	if slices.Contains(listTargets, "squirrel") {
 		// the tagged leg (compiler/target_squirrel_lists.go) is a carrier too
 		want = append(want, "squirrel")

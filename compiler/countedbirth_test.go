@@ -14,12 +14,13 @@
 // point. ... checks are *DEBUG ONLY*". The count is a writer contract like any
 // other scalar range — it is caught by an assert in debug and gone in release,
 // in every target whose language HAS that idiom. Go and Elixir have none, so
-// they keep the every-build refusal their languages make native.
+// they keep the every-build refusal their languages make native, and so does
+// Lua, whose assert() is an ordinary call no build strips.
 //
 // Two claims are pinned here, one per test, so a regression in either is named
 // on its own:
 //
-//  1. the constructed form is born at the declared minimum, in all nine
+//  1. the constructed form is born at the declared minimum, in every target
 //  2. the write path holds the count in its target's own debug-only idiom
 //     where the language has one, and refuses in every build where it does not
 package compiler
@@ -51,6 +52,7 @@ var countName = map[string]string{
 	"goose":    "WindowCount",
 	"java":     "windowCount",
 	"js":       "windowCount",
+	"lua":      "WindowCount",
 	"lobster":  "WindowCount",
 	"rust":     "window_count",
 	"squirrel": "WindowCount",
@@ -70,6 +72,7 @@ var bornAtMinimum = map[string]string{
 	"goose":    "WindowCount: i32 = 2,", // the struct field's own default (docs/PORT-GOOSE.md, THE TYPE MAPPING)
 	"java":     "public int windowCount = 2;",
 	"js":       "this.windowCount = 2;",
+	"lua":      "WindowCount = 2,",
 	"lobster":  "WindowCount: 2",
 	"rust":     "window_count: 2,",
 	"squirrel": "this.WindowCount = 2;",
@@ -89,7 +92,10 @@ var refusesEveryBuild = map[string][]string{
 	// Goose's `assert` aborts in every build and the language has no
 	// build-removable check, so the writer returns the refusal kind, Go's form
 	// (internal/codegen/goose/write.go)
-	"goose":    {"if value.WindowCount < 2 || value.WindowCount > 8 { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	"goose": {"if value.WindowCount < 2 || value.WindowCount > 8 { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	// Lua's assert is a function call that no build removes, so the writer
+	// refuses (returns false) in every build, as Go's does.
+	"lua":      {"v.WindowCount < 2 or v.WindowCount > 8 then return false end"},
 	"squirrel": {`if (typeof value.WindowCount != "integer" || value.WindowCount < 2 || value.WindowCount > 8) return false;`},
 }
 
@@ -153,6 +159,7 @@ var assertToken = map[string][]string{
 	"elixir": nil,         // the BEAM has no compile-out assert, so the raise is always on
 	"go":     nil,         // the runtime returns an error, in every build
 	"goose":  {"assert("}, // the writer returns the refusal kind; an assert would abort, never compile out
+	"lua":    nil,         // assert() is always on; the writer returns false in every build
 }
 
 // generatedText renders every file the target emits for the unit, joined, so a

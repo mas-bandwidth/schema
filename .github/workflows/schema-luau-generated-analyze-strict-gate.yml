@@ -21,6 +21,7 @@ name: schema-luau generated analyze strict gate
 
 on:
   push:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-luau-generated-analyze-strict-gate.mk'
       - 'make/luau.mk'
@@ -56,6 +57,10 @@ on:
     # nightly, after the other language lenses
     - cron: '0 3 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

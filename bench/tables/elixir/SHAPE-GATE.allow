@@ -4,3 +4,4 @@
 
 names bench/tables/elixir/runner.exs 14 plan-read arm pre-clock gate P2 (BENCH-STANDARD.md, the gate before the clock): the plan read's pinned answer, the six VOLD narrowings applied to the 64 identity records by field, as the Rust leg's lineage.rs `expected` does; untimed, no timed loop names a field
 names bench/tables/elixir/plan_gate_test.exs 15 the focused test of gate P2: one named field of the plan read mutated per case to prove each is refused; no clock, no row
+names bench/tables/elixir/form1_runner.exs 3 shape-blind leg: the generated root `TableMixed` as the string the generated Save and Load take, at its three generated Save and Load call sites; no field, no pinned value, no wire size (callsite)

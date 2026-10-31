@@ -71,22 +71,23 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		"Makefile":                       makefile,
 		"go.mod":                         []byte("module probefixture\n\ngo 1.26\n"),
 		"root.go":                        []byte("package probefixture\n"),
-		"make/lua.mk":                    {},
+		"make/zig.mk":                    {},
 		"make/schema-go-example-gate.mk": []byte(".PHONY: schema-go-example-gate\nschema-go-example-gate:\n\t@true\n"),
-		"compiler/target_lua.go":         []byte("//go:build schema_leg_lua\n\npackage compiler\n"),
+		"compiler/target_zig.go":         []byte("//go:build schema_leg_zig\n\npackage compiler\n"),
 	} {
 		if err := os.WriteFile(filepath.Join(fixture, path), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// A real `schema new-leg` leg in the tree (make/<lang>.mk beside a
-	// compiler/target_<lang>.go behind its schema_leg_<lang> tag, such as
-	// lobster, docs/PORT-LOBSTER.md, luau, docs/PORT-LUAU.md, or goose,
-	// docs/PORT-GOOSE.md) is a skeleton here too: its marker file is carried
-	// into the fixture, so the gate skips it by the same rule. One entry per
-	// leg, so a real lua leg (make/lua.mk and its tagged compiler/target_lua.go,
-	// docs/PORT-LUA.md) is the planted one, not a second.
-	skeletons := map[string]bool{"lua": true} // the planted lua
+	// The planted skeleton is zig, a name no target carries, so the compiler
+	// built from this tree refuses --lang zig exactly as it refuses a fresh
+	// `schema new-leg zig` leg. A real `schema new-leg` leg in the tree
+	// (make/<lang>.mk beside a compiler/target_<lang>.go behind its
+	// schema_leg_<lang> tag, such as goose, docs/PORT-GOOSE.md) is a skeleton
+	// here too: its marker file is carried into the fixture, so the gate skips
+	// it by the same rule. A builtin target (lua among them) carries no tag and
+	// is probed like every other port.
+	skeletons := map[string]bool{"zig": true} // the planted zig
 	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +123,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	run(root, "go", "build", "-o", filepath.Join(fixture, "bin", "schema"), "./cmd/schema")
 	out := run(fixture, "make", "--no-print-directory", "tables-ports-refuse-wide-scalars")
 	t.Log(strings.TrimSpace(out))
-	if !strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") {
+	if !strings.Contains(out, "zig has no --lang yet (schema new-leg skeleton)") {
 		t.Fatalf("tagged scaffold was not identified:\n%s", out)
 	}
 	counts := regexp.MustCompile(`(\d+) ports refuse the unit by name.*; (\d+) carry the kinds`).FindStringSubmatch(out)
@@ -172,7 +173,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	// An unregistered port is skippable only when its target file proves that it
 	// is an intentional new-leg scaffold. The same compiler error without that
 	// exact marker is a disappeared live backend and must keep the gate red.
-	target := filepath.Join(fixture, "compiler", "target_lua.go")
+	target := filepath.Join(fixture, "compiler", "target_zig.go")
 	if err := os.WriteFile(target, []byte("package compiler\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -192,9 +193,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err == nil {
 		t.Fatalf("unmarked unregistered backend passed the gate:\n%s", out)
 	}
-	// a tagged leg in the tree (goose) is still a skeleton; the unmarked lua
+	// a tagged leg in the tree (goose) is still a skeleton; the unmarked zig
 	// must not be
-	if strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") || !strings.Contains(out, "the lua backend stopped for another reason") {
+	if strings.Contains(out, "zig has no --lang yet (schema new-leg skeleton)") || !strings.Contains(out, "the zig backend stopped for another reason") {
 		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
 }

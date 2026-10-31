@@ -20,7 +20,7 @@ records, framed by ids, kinds and lengths.
 
 ## Scope and performance standard
 
-The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**, and **Dart** (`bench/tables/dart/leg`).
+The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**, **Dart** (`bench/tables/dart/leg`) and Elixir (`bench/tables/elixir/leg`).
 Glenn's September 8 direction is the **fastest correct implementation for each
 language**. The shared workload fixes the work being measured; each language may
 use its best correct representation, compiler and runtime techniques. Optimize
@@ -33,12 +33,12 @@ a performance result from this fixed-table pass.
 **The FIXED form (form 3) is measured through the paired driver, not through
 this board.** `bench/paired/main.go` names the fixed rows `bench_fixed` and
 answers them to the paired corpus's own id; `bench/tables/cpp`, `bench/tables/c`
-and `bench/tables/elixir` carry that path. The Elixir leg carries **form 3 and
-nothing else** — form 1 is deferred to schema#515, so it has no `bench_table`
-row and therefore no `leg` script on this board yet; `run.sh`'s row filter
-accepts `bench_table` only. That registration is the named follow-on, and it is
-what would put Elixir on the board below rather than only in a paired
-diagnostic.
+and `bench/tables/elixir` carry that path. The Elixir leg carries both forms in two
+runners: `bench/tables/elixir/main.exs` is form 3 for the paired driver, and
+`bench/tables/elixir/form1_main.exs`, registered by `bench/tables/elixir/leg`,
+is the variable form's `bench_table` row over this page's corpus
+(`generated/bench/tables/elixir`, gated before the clock, compiled BEAM files).
+Dart's is the same split (`bench/tables/dart/leg`).
 
 ## The corpus
 

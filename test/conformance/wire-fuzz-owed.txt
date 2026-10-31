@@ -1,0 +1,11 @@
+# THE RELEASE WIRE-FUZZ GATE'S OWED ARMS (make/wire-fuzz-release.mk). One line
+# per arm a leg does not carry yet: `<leg> <arm> <why>`, where <arm> is plain or
+# retain and <why> names what is owed. An owed arm still runs where the leg has a
+# driver; once it runs green the gate is red until its line is removed here.
+# Nothing else may be skipped: a divergence on an arm the leg carries is RED.
+goose plain no form-1 reader to fuzz (test/conformance/goose/main.goose; schema-goose-table-wire-load)
+goose retain no form-1 reader to fuzz (schema-goose-table-wire-load, schema-goose-vt-retain-unknown)
+moo plain no wire-fuzz driver on a pipe yet (test/conformance/moo carries the wire surfaces, not the harness's wire-fuzz stream)
+moo retain no wire-fuzz driver on a pipe yet (test/conformance/moo/retain.moo carries the retain surface, not the harness's wire-fuzz stream)
+lua retain the wire-fuzz driver binds no retaining pair: test/conformance/lua/wirefuzz.lua answers 0 for every RETAIN entry, though the leg carries LoadRetain/SaveRetain (main.lua's retain surface)
+squirrel retain the wire-fuzz driver binds no retaining pair: test/conformance/squirrel/wirefuzz.nut answers 0 for every RETAIN entry, though the leg carries retention (main.nut's retain surface)
