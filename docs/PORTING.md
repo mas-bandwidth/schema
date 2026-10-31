@@ -189,13 +189,15 @@ and a generated codec must not depend on the compiler's inlining budget.
 
 A port may take a per-language allowance from this where performance needs it
 in an extreme case (Glenn, 2026-10-15), and JavaScript takes one: the block
-form's and the record objects' float32 accessors read the 32 bits in place as
-an integer and hand them to the unit's ONE module-level conversion
-(`TableBlockReadF32`, `internal/codegen/jstable/record.go` jsF32ReaderSource),
-whose double comes back out of the call. The allowance is held by its
-instruments, not by trust: `make tables-js-alloc` reads the block walk at zero
-bytes per iteration, and `test/js-tables/main.mjs`'s float32 oracle check
-proves the conversion moved no bit (M21).
+form's and the record objects' float accessors hand the view and the offset
+to the unit's ONE module-level reader per width (`TableBlockReadF32`,
+`TableBlockReadF64`, `internal/codegen/jstable/record.go` jsF32ReaderSource),
+which tests the raw bits (a NaN or an infinity is refused and latched on the
+view, docs/SPEC-TABLES.md §3.3) and whose double comes back out of the call.
+The allowance is held by its instruments, not by trust: `make tables-js-alloc`
+reads the block walk at zero bytes per iteration, and `test/js-tables/main.mjs`'s
+float32 oracle check proves the read moved no finite bit and refused every
+non-finite pattern.
 
 **Reference.** `internal/codegen/cpptable/cpptable.go:572-573`
 (`table_bits_to_float` and its three siblings, `inline` free functions over
@@ -320,7 +322,7 @@ enum answered `undefined` before the guard was made symmetric.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ✅ `TestKeyedArrayIndexingJava` `tables-java-keyed` `tables-java-keyed-negative-control` (`v.ships(key)` / `v.ships(key, value)`, `FleetRow.shipsByKey(data, at, key)`, `FleetRow.shipsAtKey(at, key)`; `int` key, `Integer.compareUnsigned`) | ❌ #516 (a keyed array is a plain Array indexed from slot 0: no accessor takes the key, so the caller does the shift and the slot past Max answers undefined) | ✅ `TestDartKeyedArraysAreHeldAtBothEnds` `tables-dart-keyed-negative-control` (Dart indexes by slot: key k rides at slot k-1, and the language's own RangeError — the typed list's bound — is the refusal) | ✅ `TestKeyedAccessorCoversBothEndsElixir` `tables-elixir-keyed` `tables-elixir-keyed-none-negative-control` `tables-elixir-keyed-max-negative-control` | ❌ #2236 — card schema-goose-vt-optionals (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `tables-keyed-none-refusal-ndebug` `tables-keyed-max-refusal-ndebug` | ✅ `TestCTableKeyedBounds` `tables-c-keyed-none-refusal-ndebug` `tables-c-keyed-max-refusal-ndebug` | ❌ #518 | ✅ `TestKeyedRefusesNone` `TestKeyedRefusesPastMax` `TestKeyedPlacesByKey` | ✅ `TestCsKeyedAccessorCoversBothEnds` (`RefuseKey`, both ends) | ✅ `TestKeyedArrayIndexingJava` `tables-java-keyed` `tables-java-keyed-negative-control` (`v.ships(key)` / `v.ships(key, value)`, `FleetRow.shipsByKey(data, at, key)`, `FleetRow.shipsAtKey(at, key)`; `int` key, `Integer.compareUnsigned`) | ✅ `TestKeyedArrayAccessorsJavaScript` `tables-js-keyed` (`internal/codegen/jstable/keyed.go`: the variable and fixed classes' static `T.<field>At(value, key)` / `T.set<Field>At(value, key, element)` / `T.<field>Entries(value)`, the block row's `<Field>ByKey(block, key)` / `<Field>AtKey(key)`; an integer compare at both ends and a `RangeError` naming the field and the key, in every build; the test plants the None-only guard, the Max-only guard and the missing shift back) | ✅ `TestDartKeyedArraysAreHeldAtBothEnds` `tables-dart-keyed-negative-control` (Dart indexes by slot: key k rides at slot k-1, and the language's own RangeError — the typed list's bound — is the refusal) | ✅ `TestKeyedAccessorCoversBothEndsElixir` `tables-elixir-keyed` `tables-elixir-keyed-none-negative-control` `tables-elixir-keyed-max-negative-control` | ❌ #2236 — card schema-goose-vt-optionals (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### M6 — The variable class on the wire: a flat node table and an identity map
 
@@ -436,7 +438,7 @@ offset arithmetic and requires red.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ❌ #516 (the text walk is one runtime, byte-identical in every generated `<Package>Variable.js`, but no json-walk target compares the units) | ❌ #514 | ❌ #515 | ❌ #2236 — card schema-goose-text-form (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `tables-json-walk` `tables-json-graph-walk` | ✅ `tables-c-json-walk` | ❌ #518 | ✅ `tables-go-json-walk` | ✅ `tables-cs-json-walk` | ❌ #517 | ✅ `tables-js-json-walk` (`internal/codegen/jstable/variableform.go`, the text form and the arms' text half between the markers in every `<Package>Variable.js`; `tables-js-json-walk-negative-control`) | ❌ #514 | ❌ #515 | ❌ #2236 — card schema-goose-text-form (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### M10 — Hooks and the allocator contract
 
@@ -562,7 +564,7 @@ plain-cache line.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ✅ `TestCsDescriptorsAreSafelyPublished` | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 (block and cook descriptors are `Object.freeze`d, but the variable codec descriptors are mutable objects TableVariableLink fills at module load, and no test holds either constant) | ❌ #514 | ❌ #515 | ✅ `internal/codegen/goosetable/runtime/schema_tables.goose` (every descriptor a global `let` of the runtime's descriptor types; `TestGooseTableDescriptorsLoad` holds each to a fresh record) |
+| ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ✅ `TestCsDescriptorsAreSafelyPublished` | ✅ `TestJavaDescriptorsAreSafelyPublished` | ✅ `TestJavaScriptDescriptorsAreConstants` (`tables-js-descriptors`): block and cook descriptors are `Object.freeze`d as they are made; the variable codec and union descriptors are frozen whole by `TableVariableFreeze` once `TableVariableLink` has filled them at module load (`internal/codegen/jstable/variableform.go` `emitCodecs`), and the exported `<Name>TableType`, `<Package>UnitRegistry` and `TableRetainKnown` are frozen as they are made; the test's reversed witness drops the freeze and must find a descriptor open | ❌ #514 | ❌ #515 | ✅ `internal/codegen/goosetable/runtime/schema_tables.goose` (every descriptor a global `let` of the runtime's descriptor types; `TestGooseTableDescriptorsLoad` holds each to a fresh record) |
 
 **C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points read fields directly and use compile-time ordinal indexing: scalar leaves and child scalar arrays are typed; everything else is descriptor-driven. For those direct-read paths (scalar leaves and child scalar arrays), typed `<Name>Save` does not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations across all fields.
 
@@ -634,7 +636,7 @@ post-order numbering the same way.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 Java has only the numbering walk (`buildGraph` in `internal/codegen/javatable/variableform.go`); it has no pack-measure or pack walk to share it with (`loadMeasure`, `variableform.go:1689`, measures a load region, not a pack), so no Java test can hold numbering, pack measure and pack to one declaration-order DFS; `TestVariableClassBeyondCardConstructsJava` round-trips the wire and text only | ✅ `internal/codegen/jstable/variableruntime.go:141` `TestMapsAndUnionArmsOnTheTableWireJavaScript` `TestVariableClassBeyondCardConstructsJavaScript` (ONE edge walk in declaration order, by-value edges and set arms descended in place, numbers the nodes; `Measure` is the save's length, and the save and the cook lay nodes in that walk's list; `arms_ptr`, `maps_pointers` and `list_before_pointer` go red under the grouped walk) | ❌ #349 | ❌ #349 | ❌ #2236 — card schema-goose-table-wire-save (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `internal/codegen/cpptable/pointers.go:150` `conformance` | ✅ `internal/codegen/ctable/graph.go:24` `TestCTableCookCanonical` `tables-c-wire-fuzz` | ❌ #349 | ✅ `internal/codegen/gotable/regions.go` (`tableRegionEdges`, `tableNumber`) `TestAllocatorOwnershipAndStandaloneWriters` `tables-go-builders` | ✅ `tables-cs-pack-negative-control` `tables-cs-leg` (root and node extent equality) | ❌ #349 Java has only the numbering walk (`buildGraph` in `internal/codegen/javatable/variableform.go`); it has no pack-measure or pack walk to share it with (`loadMeasure`, `variableform.go:1689`, measures a load region, not a pack), so no Java test can hold numbering, pack measure and pack to one declaration-order DFS; `TestVariableClassBeyondCardConstructsJava` round-trips the wire and text only | ✅ `internal/codegen/jstable/variableruntime.go:207` (`TableVariableNumber`) `TestMapsAndUnionArmsOnTheTableWireJavaScript` `TestVariableClassBeyondCardConstructsJavaScript` (ONE edge walk in declaration order, by-value edges and set arms descended in place, numbers the nodes; `Measure` is the save's length, and the save and the cook lay nodes in that walk's list; `arms_ptr`, `maps_pointers` and `list_before_pointer` go red under the grouped walk; the OPTIONAL presence gate, schema#526: an absent `?T` or `?[N]T` is `null` and the walk returns on it before it descends, `TestOptionalVariableClosureJavaScript` against the Go oracle for save, measure, load, text and cook, red with the gate removed, and G1's four `wire` rows in `conformance`) | ❌ #349 | ❌ #349 | ❌ #2236 — card schema-goose-table-wire-save (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### M16 — The presence companion rides beside the array walks
 
@@ -839,7 +841,7 @@ shared control.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ❌ #502 (the ascending entry array, `[N]T` map values in `map_cells` and `map_pairs` included, rides byte for byte against the oracle, but no test pins the writer's sort: dropping it from the entry walk leaves every map case green, because a loaded Map is already in key order; and a map is a JavaScript Map, with no sixteen-byte holder and no node extent; still refused by name: a key other than `string(N)` or an integer up to 64 bits, and a map value holding `wstring(N)` or a string/bytes array) | ❌ #502 | ❌ #502 | ❌ #2236 — card schema-goose-vt-collections (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `tables-maps` `tables-json-map-walk` `tables-maps-negative-controls` `tables-maps-cook-check-negative-control`, and the TOOL's wire and text halves and its cook-check clause (`TestTheToolWritesTheReferencesMapBytes`, `TestCookCheckMapSlot`) | ✅ `TestCTableWireMaps` `TestCTableMapWideningCount` `tables-c-collections-fuzz` | ❌ #502 | ✅ `tables-go-containers` `tables-go-containers-negative-controls` `tables-go-wire-fuzz` | ✅ `tables-cs-leg` `tables-cs-wire-fuzz` `tables-cs-builder-fuzz` (stable sorted entries and native holder extents) | ❌ #502 | ✅ `tables-js-variable-arms` (`TestMapsAndUnionArmsOnTheTableWireJavaScript`, `TestNestedTypesAndFixedArraysOnTheTableWireJavaScript`: the ascending entry array, `[N]T` map values in `map_cells` and `map_pairs` included, byte for byte against the oracle; `TestMapWriterSortJavaScript`: the WRITER holds the sort, a Map built out of key order saves, measures and writes text in ascending order, with a reversed witness that drops the sort), the cook's entry arrays and holder extents through the conformance cook-write rows, `tables-js-wire-fuzz-all`. The value form is a JavaScript Map; the region (sixteen-byte holder, entries in the node extent) is the cook's. A key other than `string(N)`, `string` or an integer up to 64 bits is refused by name as §2.8 refuses it | ❌ #502 | ❌ #502 | ❌ #2236 — card schema-goose-vt-collections (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### M20 — The id-table wire
 
@@ -1441,7 +1443,7 @@ check removed reds on the report.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #492 | ❌ #2236 — card schema-goose-fuzz-differential (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `tables-wire-fuzz` `tables-wire-fuzz-negative-control` | ✅ `tables-c-wire-fuzz` `tables-c-wire-fuzz-negative-control` | ❌ #492 | ✅ `tables-go-wire-fuzz` `tables-go-wire-fuzz-negative-control` `tables-go-builders` `tables-go-retain-wire-fuzz` | ✅ `tables-cs-wire-fuzz` `tables-cs-region-fuzz` `tables-cs-builder-fuzz` `tables-cs-retain-fuzz` `conformance-negative-control-cs` | ❌ #492 | ✅ `tables-js-wire-fuzz-all` `tables-js-wire-fuzz-plain` `tables-js-wire-fuzz-retain` `tables-js-wire-fuzz-negative-control` `cards-js-wire-fuzz` `cards-js-retain-fuzz` | ❌ #492 | ❌ #492 | ❌ #2236 — card schema-goose-fuzz-differential (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### J1 — Accessor and descriptor agreement
 
