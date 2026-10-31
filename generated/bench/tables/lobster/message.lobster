@@ -1097,14 +1097,6 @@ def load_messages_tolerant(root:string, v:MessageVocabulary, data:string, rep:Lo
 
 // The caller receives no usable bodies from a damaged read (§4).
 def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
-    let count, ok = load_messages_walk(root, v, data, rep, capacity, batch)
-    if rep.malformed:
-        for(batch) rec: release(rec)
-        truncate(batch, 0)
-        return 0, false
-    return count, ok
-
-def load_messages_walk(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
     if length(data) == 0:
         rep.malformed = true
         return 0, false
@@ -1132,12 +1124,16 @@ def load_messages_walk(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         let rec = new_record(d)
         push(batch, rec)
         if not message_body(m, rec):
-            return i, false
+            for(batch) value: release(value)
+            truncate(batch, 0)
+            return 0, false
         i++
     // THE TRAILING PAD IS VERIFIED ZERO, AND BYTES AFTER IT ARE MALFORMED
     if not mb_align(bits) or bits.off != bits.n:
         rep.malformed = true
-        return count, false
+        for(batch) value: release(value)
+        truncate(batch, 0)
+        return 0, false
     return count, true
 
 // load_messages is the plain batch read, and it is STRICT (§6.5; Go's
