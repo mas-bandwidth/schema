@@ -77,7 +77,25 @@ cards-cpp-conformance-hash-negative-control: build/conformance-harness build/car
 	done
 	@echo 'cards-cpp hash negative control: hashing needs turns taskhash red; the other eight surfaces stay green'
 
-test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-control cards-cpp-conformance-upgrade-negative-control cards-cpp-conformance-hash-negative-control
+test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-control cards-cpp-conformance-upgrade-negative-control cards-cpp-conformance-hash-negative-control tables-cpp-text-differential tables-cpp-text-differential-negative-control
+
+# I13 (docs/PORTING.md): the C++ leg's text differential against a third
+# implementation. A C++ probe (compiled with the generated probeTable.cpp)
+# draws 200 random float-only instances of a root (seed 24845619678,
+# splitmix64, the Go cell's schema and draw order) and writes each as
+# (wire, text) with the generated RootSave and RootToJson; the Go engine
+# (internal/tabletext, internal/tablepack) writes its own text from the leg's
+# wire, byte-compared, and packs the leg's text back to wire, byte-compared.
+# The control caps the emitted float32 writer at six significant digits in
+# memory and must go red on the text comparison. SCHEMA_REQUIRE_CORPUS=1 makes
+# a missing C++ compiler a FAILURE rather than a skip.
+.PHONY: tables-cpp-text-differential tables-cpp-text-differential-negative-control
+tables-cpp-text-differential:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
+	@echo 'tables C++ text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
+tables-cpp-text-differential-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
+	@echo 'tables C++ text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C++ TABLES SOAK (docs/PORTING.md I9, issue #416's C++ half). The one-shot
 # tables-cpp-alloc counts operator new across ONE pass on the richest root; a

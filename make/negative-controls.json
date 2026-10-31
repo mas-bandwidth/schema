@@ -3,7 +3,7 @@
     {
       "name": "base-1",
       "when": "pull-request",
-      "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, float-NaN and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
+      "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, C++ finite-float read and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
         "check-enum-bound-negative-control",
         "tables-cpp-bench-gate-negative-control",
@@ -25,6 +25,7 @@
         "tables-block-race-negative-control",
         "tables-c-accessor-negative-control",
         "tables-cpp-names-negative-control",
+        "tables-cpp-text-differential-negative-control",
         "tables-fixedform-run-copy-negative-control",
         "tables-json-list-walk-negative-controls",
         "tables-json-map-walk-negative-controls",
@@ -45,6 +46,7 @@
         "tables-c-ref-ordinal-negative-control",
         "tables-c-two-units-negative-controls",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-runtime-home-bytes-negative-control",
         "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",

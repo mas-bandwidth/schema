@@ -435,7 +435,7 @@ var messageTextSabotages = map[string][]edit{
 // says a field was lost. What goes red is the pinned batch's own row.
 var messageRetainSabotages = map[string][]edit{
 	"message-retain-no-capture": {{
-		old: "\t\tg.pf(\"                TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at );\\n\")\n",
+		old: "\t\tg.pf(\"                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)\\n\")\n",
 		new: "\t\tg.pf(\"                (void) unknown_at; // SABOTAGED: the message path never enters the resolving walk\\n\")\n",
 	}},
 }

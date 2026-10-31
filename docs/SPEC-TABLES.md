@@ -6972,12 +6972,17 @@ legs agree byte for byte on every value except that one. Each other leg owes
 three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
 included, which today gives `-0` C's `==`), and the finite rule of
 2026-10-27: the writer's refusal and every read's `non_finite_float`
-refusal, in all three binary forms. The Go leg and the tool's engines
-(`internal/tablewire`, `internal/tablecook`) keep the rule, held by
+refusal, in all three binary forms. The Go leg, the C++ leg and the tool's
+engines (`internal/tablewire`, `internal/tablecook`) keep the rule, held by
 `internal/codegen/gotable/floatspecial_test.go`
-(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) and
-`internal/tablewire/floatnan_test.go`, which reads the reference's NaN pin
-(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. Until a leg
+(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`),
+`test/tables/floatnan_main.cpp` (`make tables-float-nan`, whose negative
+control blinds the C++ read's mask test) and
+`internal/tablewire/floatnan_test.go`, which read the reference's NaN pin
+(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. The C++
+leg's report names the refusal (`non_finite_float`, `non_finite_floats`
+counting what the read met) and not the field: its report carries no field
+names for any refusal. Until a leg
 lands the rule it keeps the 2026-10-18/19 behaviour (a NaN or an infinity
 rides, and only a strict read, where the leg has one, refuses it as
 `non_finite`); each leg's work is its card in docs/roadmap.sexp
