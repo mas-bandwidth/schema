@@ -59,18 +59,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// kind byte a reader compares rides in the LAYOUT the emitter already
 	// writes.
 	//
-	// THE FIXED FORM HAS LANDED HERE, so `fixedForm` is now this backend's OWN
-	// answer rather than the `false` every leg passed while none of them
-	// carried a form-3 codec. It is not ir.TableFixedAnyEmitted: that is the
-	// answer a port whose coverage is the reference's passes, and this leg
-	// narrows further, because coverage is a port's own state and every leg
-	// answers from its own roots for that reason. So the answer is THIS LEG'S
-	// OWN ROOTS (fixedRoots, which narrows on ir.TableFixedSupported — the ONE
-	// closure test, this leg holding no private copy of it).
-	// A unit whose wide kinds cost it the accelerators and
-	// that has no fixed form to put in their place still has nothing to emit
-	// and is still refused WHOLE and by name.
-	scope := ir.WideTableKinds(u, "Elixir", len(fixedRoots(u)) > 0)
+	// THE VARIABLE FORM CARRIES THE WIDE KINDS (docs/SPEC-TABLES.md §3) and is
+	// emitted for every unit, the cook writer on its Table module with it, so
+	// there is always something left to emit: `fixedForm`, the answer to "is
+	// there a codec beside the accelerators", is true for this leg whatever its
+	// fixed roots are, and only the accelerators stand down.
+	scope := ir.WideTableKinds(u, "Elixir", true)
 	if scope.Unit {
 		return nil, scope.Refusal
 	}
