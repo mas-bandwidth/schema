@@ -64,7 +64,7 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	for _, tc := range []struct{ name, files, want string }{
 		{"cpp witness", "test/tables/versioning_numbers.cpp", "no| cpp"},
 		{"cpp header", "test/tables/floatnan.h", "no| cpp"},
-		{"shared schema", "test/tables/VNEW_floor.schema", "yes|cpp go c rust js cs java dart elixir luau"},
+		{"shared schema", "test/tables/VNEW_floor.schema", "yes|cpp go c rust js cs java dart elixir goose luau"},
 		{"documentation", "README.md", "no|"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -132,6 +132,11 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			want:  `no|./internal/codegen/luautable|["luau"]`,
 		},
 		{
+			name:  "goose leg only",
+			files: "internal/codegen/goosetable/fixedform.go",
+			want:  `no|./internal/codegen/goosetable|["goose"]`,
+		},
+		{
 			name:  "dart leg only",
 			files: "internal/codegen/darttable/darttable.go",
 			want:  `no|./internal/codegen/darttable|["dart"]`,
@@ -149,7 +154,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "broad compiler change",
 			files: "compiler/compiler.go",
-			want:  `yes|./...|["c","cpp","cs","dart","elixir","go","java","js","luau","rust"]`,
+			want:  `yes|./...|["c","cpp","cs","dart","elixir","go","goose","java","js","luau","rust"]`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

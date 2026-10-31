@@ -1010,7 +1010,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 				errs = append(errs, fmt.Sprintf("push to %s did not select self-hosted %s (err=%v)", branch, wantKey, err))
 			}
 		}
-		for _, fullJob := range []string{"generated", "conformance", "cs-fuzz", "cs-tables", "big-endian", "lint", "vuln", "windows", "msvc", "shape-gate", "cpp-lock", "negative-controls"} {
+		for _, fullJob := range []string{"generated", "conformance", "cs-fuzz", "js-fuzz", "cs-tables", "big-endian", "lint", "vuln", "windows", "msvc", "shape-gate", "cpp-lock", "negative-controls"} {
 			if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], fullJob, pushEv); err != nil || !ok {
 				errs = append(errs, fmt.Sprintf("push to %s did not run ci-full.yml:%s (err=%v)", branch, fullJob, err))
 			}

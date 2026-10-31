@@ -16,7 +16,8 @@
 namespace example {
 
 // type Vec2
-struct Vec2 {
+struct Vec2
+{
     double x = 0.0;
     double y = 0.0;
 };
@@ -25,7 +26,8 @@ inline constexpr int64_t Vec2MaxBits = 128; // longest wire path; align pads at 
 inline constexpr int64_t Vec2MaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type SpanF64
-struct SpanF64 {
+struct SpanF64
+{
     double values[2] = {};
 };
 
@@ -33,7 +35,8 @@ inline constexpr int64_t SpanF64MaxBits = 128; // longest wire path; align pads 
 inline constexpr int64_t SpanF64MaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type SpanU64
-struct SpanU64 {
+struct SpanU64
+{
     uint64_t values[2] = {};
 };
 
@@ -41,7 +44,8 @@ inline constexpr int64_t SpanU64MaxBits = 128; // longest wire path; align pads 
 inline constexpr int64_t SpanU64MaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type SpanI64
-struct SpanI64 {
+struct SpanI64
+{
     int64_t values[2] = {};
 };
 
@@ -49,7 +53,8 @@ inline constexpr int64_t SpanI64MaxBits = 128; // longest wire path; align pads 
 inline constexpr int64_t SpanI64MaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type SpanOne
-struct SpanOne {
+struct SpanOne
+{
     uint64_t values[1] = {};
 };
 
@@ -57,7 +62,8 @@ inline constexpr int64_t SpanOneMaxBits = 64; // longest wire path; align pads a
 inline constexpr int64_t SpanOneMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type SpanChunk
-struct SpanChunk {
+struct SpanChunk
+{
     uint16_t values[4] = {};
 };
 
@@ -65,7 +71,8 @@ inline constexpr int64_t SpanChunkMaxBits = 64; // longest wire path; align pads
 inline constexpr int64_t SpanChunkMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type SpanTail
-struct SpanTail {
+struct SpanTail
+{
     double values[2] = {};
     uint32_t tail = 0;
 };
@@ -74,7 +81,8 @@ inline constexpr int64_t SpanTailMaxBits = 160; // longest wire path; align pads
 inline constexpr int64_t SpanTailMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type SpanTwice
-struct SpanTwice {
+struct SpanTwice
+{
     double a[2] = {};
     double b[2] = {};
 };
@@ -83,7 +91,8 @@ inline constexpr int64_t SpanTwiceMaxBits = 256; // longest wire path; align pad
 inline constexpr int64_t SpanTwiceMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type Trio
-struct Trio {
+struct Trio
+{
     uint32_t a = 0;
     uint32_t b = 0;
     uint32_t c = 0;
@@ -93,7 +102,8 @@ inline constexpr int64_t TrioMaxBits = 64; // longest wire path; align pads at w
 inline constexpr int64_t TrioMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type TrioSole
-struct TrioSole {
+struct TrioSole
+{
     Trio inner;
 };
 
@@ -101,7 +111,8 @@ inline constexpr int64_t TrioSoleMaxBits = 64; // longest wire path; align pads 
 inline constexpr int64_t TrioSoleMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type Vec3Sole
-struct Vec3Sole {
+struct Vec3Sole
+{
     ::VecMath v;
 };
 
@@ -109,7 +120,8 @@ inline constexpr int64_t Vec3SoleMaxBits = 192; // longest wire path; align pads
 inline constexpr int64_t Vec3SoleMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type TrioFirst
-struct TrioFirst {
+struct TrioFirst
+{
     Trio inner;
     uint32_t trailer = 0;
 };
@@ -118,7 +130,8 @@ inline constexpr int64_t TrioFirstMaxBits = 80; // longest wire path; align pads
 inline constexpr int64_t TrioFirstMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type TrioStraddle
-struct TrioStraddle {
+struct TrioStraddle
+{
     uint64_t pad0 = 0;
     uint64_t pad1 = 0;
     uint64_t pad2 = 0;

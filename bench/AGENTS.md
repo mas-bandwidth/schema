@@ -11,6 +11,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `dart/` | Dart runner | `bench/run.sh --only dart` | `bench/run.sh --only dart` |
 | `elixir/` | Elixir runner | `bench/run.sh --only elixir` | `bench/run.sh --only elixir` |
 | `go/` | Go runner | `bench/run.sh --only go` | `bench/run.sh --only go` |
+| `goose/` | Goose runner | `bench/run.sh --only goose` | `bench/run.sh --only goose` |
 | `java/` | Java runner | `bench/run.sh --only java` | `bench/run.sh --only java` |
 | `js/` | JavaScript runner | `bench/run.sh --only js` | `bench/run.sh --only js` |
 | `luau/` | Luau runner | `make bench-luau-gate` | `bench/run.sh --only luau` |
