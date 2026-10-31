@@ -261,6 +261,10 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		w.putBool(p.Offset, fv.Present)
 	}
 	switch {
+	case f.IsMap():
+		// THE SLOT IS THE EXTENT WRITER'S, as a list's is (docs/SPEC-TABLES.md
+		// §2.8): the carve points it at the entry array it lays
+		return nil
 	case f.Array == ir.ArrayList:
 		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.9): the
 		// reference is a delta to an array this record's own extent holds, and
