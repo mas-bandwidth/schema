@@ -1,0 +1,37 @@
+// THE LOAD DISPATCH TABLE of the table wire (docs/PORT-GOOSE.md, THE TABLE
+// WIRE; load.goose's loader_of): each value's descriptor names its Loader, the
+// first row that matches by shape, array kind (0: any) and wstring. A narrower
+// row takes a lower rank than the wider row it shadows. LoadReg is declared in
+// load.goose.
+declare enum Loader
+add Loader 10 Scalar  // a fixed-width kind: bool, the integers, the floats
+add Loader 20 Pointer // kind 17: *T, *string, *bytes (§3.1)
+add Loader 30 Text    // kind 12: string(N), an unbounded string
+add Loader 40 Wide    // kind 33: wstring(N)
+add Loader 50 Enum    // kind 30: the variant name's id (§5, §2.15)
+add Loader 60 Body    // kind 13: a table or packet type by value
+add Loader 70 Array   // kind 14 (or bytes, kind 6): fixed, counted and list arrays
+add Loader 80 Keyed   // kind 16 over an enum key: [E]T (§3.2)
+add Loader 90 Map     // map[K]V (§2.8)
+add Loader 100 Union  // kind 15 (§2.6)
+add Loader 110 Void   // a payload-free union arm
+
+declare array load_registry LoadReg
+add load_registry 10 LoadReg { shape: ShapeBool, array: 0, wide: false, loader: Loader.Scalar }
+add load_registry 10 LoadReg { shape: ShapeInt, array: 0, wide: false, loader: Loader.Scalar }
+add load_registry 10 LoadReg { shape: ShapeFloat, array: 0, wide: false, loader: Loader.Scalar }
+add load_registry 10 LoadReg { shape: ShapeStr, array: 0, wide: true, loader: Loader.Wide }
+add load_registry 20 LoadReg { shape: ShapeStr, array: 0, wide: false, loader: Loader.Text }
+add load_registry 10 LoadReg { shape: ShapeText, array: 0, wide: true, loader: Loader.Wide }
+add load_registry 20 LoadReg { shape: ShapeText, array: 0, wide: false, loader: Loader.Text }
+add load_registry 10 LoadReg { shape: ShapeBytes, array: 0, wide: false, loader: Loader.Array }
+add load_registry 10 LoadReg { shape: ShapeEnum, array: 0, wide: false, loader: Loader.Enum }
+add load_registry 10 LoadReg { shape: ShapePtr, array: 0, wide: false, loader: Loader.Pointer }
+add load_registry 10 LoadReg { shape: ShapeSBlob, array: 0, wide: false, loader: Loader.Pointer }
+add load_registry 10 LoadReg { shape: ShapeBBlob, array: 0, wide: false, loader: Loader.Pointer }
+add load_registry 10 LoadReg { shape: ShapeTab, array: 0, wide: false, loader: Loader.Body }
+add load_registry 10 LoadReg { shape: ShapeUnion, array: 0, wide: false, loader: Loader.Union }
+add load_registry 10 LoadReg { shape: ShapeArr, array: ArrayKeyed, wide: false, loader: Loader.Keyed }
+add load_registry 20 LoadReg { shape: ShapeArr, array: 0, wide: false, loader: Loader.Array }
+add load_registry 10 LoadReg { shape: ShapeMap, array: 0, wide: false, loader: Loader.Map }
+add load_registry 10 LoadReg { shape: ShapeVoid, array: 0, wide: false, loader: Loader.Void }

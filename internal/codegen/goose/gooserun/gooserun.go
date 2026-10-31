@@ -80,17 +80,24 @@ func repoRoot() (string, error) {
 // when the compile or the program fails.
 func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	t.Helper()
-	return run(t, dir, main, inputs, "run")
+	return run(t, dir, main, inputs, []string{"run"}, nil)
 }
 
 // RunDebug is [Run] under `goose run --debug`: signed overflow and the
 // range checks of `as` abort the program (docs/PORT-GOOSE.md, THE HARNESS).
 func RunDebug(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	t.Helper()
-	return run(t, dir, main, inputs, "run", "--debug")
+	return run(t, dir, main, inputs, []string{"run", "--debug"}, nil)
 }
 
-func run(t testing.TB, dir, main string, inputs map[string][]byte, args ...string) []byte {
+// RunArgs is [Run] with the program's own arguments, passed after `--`
+// (without it `goose run` takes them as more input files).
+func RunArgs(t testing.TB, dir, main string, inputs map[string][]byte, argv ...string) []byte {
+	t.Helper()
+	return run(t, dir, main, inputs, []string{"run"}, argv)
+}
+
+func run(t testing.TB, dir, main string, inputs map[string][]byte, args, argv []string) []byte {
 	t.Helper()
 	goose, why := Compiler()
 	if goose == "" {
@@ -104,7 +111,11 @@ func run(t testing.TB, dir, main string, inputs map[string][]byte, args ...strin
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(goose, append(args, main)...)
+	line := append(append([]string{}, args...), main)
+	if len(argv) > 0 {
+		line = append(append(line, "--"), argv...)
+	}
+	cmd := exec.Command(goose, line...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

@@ -977,7 +977,8 @@
       "when": "pull-request",
       "why": "the Goose leg's fixed-form control (docs/PORT-GOOSE.md): the target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
       "targets": [
-        "tables-goose-fixedform-negative-control"
+        "tables-goose-fixedform-negative-control",
+        "tables-goose-tablewire-negative-control"
       ]
     },
     {
@@ -987,7 +988,8 @@
       "targets": [
         "tables-goose-runtime-home-negative-control",
         "tables-goose-strict-emitter-negative-control",
-        "tables-goose-strict-negative-control"
+        "tables-goose-strict-negative-control",
+        "tables-goose-unit-home-negative-control"
       ]
     },
     {

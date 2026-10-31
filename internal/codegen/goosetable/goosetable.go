@@ -91,6 +91,42 @@ type part struct {
 
 var parts []part
 
+// unitParts are the contributions to the unit's PACKAGE MODULES: data that
+// spans every file (the table wire's registry, the message form's
+// vocabulary, the accelerators' record numbers), one module per surface,
+// <package>_<surface>.goose. Each lives at a home named for the package, so a
+// file that sorts earlier relocates nothing (docs/PORTING.md J2), and every
+// file's modules name it rather than copy its numbers. A surface keeps its
+// own module, so a consumer that never reads it imports nothing of it (the
+// zero-cost rule, docs/SPEC-TABLES.md §19).
+var unitParts []unitPart
+
+type unitPart struct {
+	name, surface string
+	fn            Part
+}
+
+// RegisterUnit joins a later form to the unit's package module for surface;
+// parts run in name order.
+func RegisterUnit(name, surface string, fn Part) {
+	unitParts = append(unitParts, unitPart{name, surface, fn})
+	sort.Slice(unitParts, func(i, j int) bool { return unitParts[i].name < unitParts[j].name })
+}
+
+// PackageModule is the base of the unit's package module for surface,
+// without .goose: the package, an underscore, then the surface (tabledemo,
+// "cook" -> tabledemo_cook). It is spelled like the runtime's own modules,
+// never like a schema file's (<Base>, <Base>Table, <Base>Cook, <Base>Block),
+// so a file named for its package cannot land on it.
+func PackageModule(u *ir.Unit, surface string) string {
+	p := goose.Namespace(u)
+	return p + "_" + surface
+}
+
+// UnitModule is the package module that holds the unit registry:
+// tabledemo_unit.
+func UnitModule(u *ir.Unit) string { return PackageModule(u, "unit") }
+
 // Register joins a later form to every table module; parts run in name
 // order (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
 func Register(name string, fn Part) {
@@ -133,6 +169,29 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[f.Base+"Table.goose"] = g.Assemble()
 	}
+	gens := map[string]*goose.Gen{}
+	var surfaces []string
+	for _, p := range unitParts {
+		g := gens[p.surface]
+		if g == nil {
+			g = goose.NewGen(u, &ir.File{Base: PackageModule(u, p.surface)}, names)
+			g.Kind, g.ForPackage = "package module", true
+			gens[p.surface] = g
+			surfaces = append(surfaces, p.surface)
+		}
+		if err := p.fn(g); err != nil {
+			return nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
+		}
+	}
+	for _, s := range surfaces {
+		g := gens[s]
+		if err := g.Err(); err != nil {
+			return nil, err
+		}
+		if !g.Empty() {
+			out[g.Module()+".goose"] = g.Assemble()
+		}
+	}
 	maps.Copy(out, Runtime())
 	return out, nil
 }
@@ -147,6 +206,18 @@ func Refuse(u *ir.Unit) error {
 	bases := map[string]bool{}
 	for _, f := range u.Files {
 		bases[strings.ToLower(f.Base)] = true
+	}
+	// a file's own modules (<Base>, <Base>Table, <Base>Block, <Base>Cook) may
+	// not land where a package module lives
+	for _, p := range unitParts {
+		m := PackageModule(u, p.surface)
+		for _, f := range u.Files {
+			for _, own := range []string{"", "Table", "Block", "Cook"} {
+				if strings.EqualFold(f.Base+own, m) {
+					return fmt.Errorf("schema file %s collides with the package module %s.goose, which the Goose table surface writes for package %s; rename the file", f.Base, m, u.Package)
+				}
+			}
+		}
 	}
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {
