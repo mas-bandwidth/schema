@@ -157,7 +157,7 @@ var cookWriteCarried = []cookWriteUnit{
 			"message_empty", "message_batch", "message_arms", "message_arm_edits", "message_ack", "message_trace"}},
 	}},
 	{"../../../tables/stream", "streamdemo", "streamdemo", []cookWriteRoot{
-		{"Feed", []string{"stream_chain", "stream_header", "stream_parts", "stream_arm_first", "stream_arm_pointer"}},
+		{"Feed", []string{"stream_chain", "stream_header", "stream_parts", "stream_arm_first", "stream_arm_pointer", "stream_arm_tag"}},
 	}},
 	{"../../../test/tables/M1.schema", "tblm1", "tblm1", []cookWriteRoot{
 		{"Msg", []string{"m1_open"}},
