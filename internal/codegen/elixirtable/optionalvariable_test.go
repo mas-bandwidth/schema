@@ -510,3 +510,70 @@ IO.puts("ok")
 		t.Fatalf("the load without its node events pass still passed: the probe does not see the rule\n%s", out)
 	}
 }
+
+// TestTimestampSkipsByItsWidthElixir pins a wire fuzzer misread of
+// well-framed input (pass kind, graphdemo.Scene): a field whose kind byte is
+// 36, the timestamp, is an eight-byte value (docs/SPEC-TABLES.md §3's skip
+// table), so a reader that does not declare it there steps over it by its
+// width and counts one kind mismatch, as the engine does; the leg's skip
+// table had no row for 36 and called the record damaged. The expected report
+// is the oracle's own answer.
+//
+// THE REVERSED WITNESS takes 36 back out of the skip table and the probe must
+// go red.
+func TestTimestampSkipsByItsWidthElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "tables", "pointers")
+	u := loadUnit(t, filepath.Join(dir, "Graph.schema"), filepath.Join(dir, "Marks.schema"), filepath.Join(dir, "Parts.schema"))
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "graph_tree.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the node table's first record's first field, ListNode.value (int32,
+	// kind 4), retyped to kind 36
+	at := strings.Index(string(wire), "\x06\x07\x0e\x08\x04")
+	if at < 0 {
+		t.Fatalf("graph_tree.bin no longer opens its node table with the record this probe retypes: %x", wire)
+	}
+	mutantBytes := append([]byte{}, wire...)
+	mutantBytes[at+4] = 36
+	m := tabletext.NewModel(u)
+	var orep tabletext.Report
+	if _, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), mutantBytes, &orep); err != nil {
+		t.Fatal(err)
+	}
+	if orep.KindMismatch != 1 || orep.Malformed || orep.Unknown != 0 {
+		t.Fatalf("the oracle does not answer the probe as one kind mismatch on well-framed input: %+v", orep)
+	}
+	probe := fmt.Sprintf(`
+{:ok, _v, r} = Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower))
+if {r.unknown, r.kind_mismatch, r.widened, r.clamped, r.malformed} != {0, 1, 0, 0, false} do
+  IO.puts(:stderr, "FAIL: a timestamp under an int32 field: " <> inspect(r))
+  System.halt(1)
+end
+IO.puts("ok")
+`, hex.EncodeToString(mutantBytes))
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir reader cannot step over a timestamp: %v\n%s", err, out)
+	}
+	const row = "when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), row)
+		planted[name] = []byte(strings.ReplaceAll(string(data), row, "when kind in [5, 9, 11, 23, 28], do: take(bin, 8)"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no timestamp row in the generated skip table")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the reader without its timestamp row still passed: the probe does not see the rule\n%s", out)
+	}
+}

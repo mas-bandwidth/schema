@@ -1060,7 +1060,7 @@ test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance/manifest.txt
-	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundClampsBeforeReadingElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir|TestPointerToAnotherTablesRecordIsAKindMismatchElixir|TestNodeRecordEventsCountOnceElixir'
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundClampsBeforeReadingElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir|TestPointerToAnotherTablesRecordIsAKindMismatchElixir|TestNodeRecordEventsCountOnceElixir|TestTimestampSkipsByItsWidthElixir'
 	./build/conformance-harness run --only elixir
 
 test-elixir: tables-elixir-variable-class
