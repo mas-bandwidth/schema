@@ -186,7 +186,7 @@ test-luau: conformance-negative-control-luau conformance-negative-control-luau-e
 # §4: damage refuses the entire file/retaining load and message batch.
 .PHONY: tables-luau-damage-discard tables-luau-damage-discard-negative-control
 tables-luau-damage-discard: toolchain-luau
-	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run 'TestLuauDamageDiscardsFileAndRetainingLoads|TestLuauMessageFormDamageRefusesTheBatch' -count=1
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run 'TestLuauDamageDiscardsFileAndRetainingLoads|TestLuauDamagePreservesStrictDiagnostics|TestLuauMessageFormDamageRefusesTheBatch' -count=1
 tables-luau-damage-discard-negative-control: toolchain-luau
 	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run '^TestLuauDamageDiscardNegativeControls$$' -count=1
 

@@ -116,3 +116,39 @@ func TestLuauDamageDiscardNegativeControls(t *testing.T) {
 		}
 	})
 }
+
+// Discarding a decoded value must not collapse framing refusal and field damage
+// into one diagnostic. The unopened cases previously returned wire_damaged;
+// the successfully opened field case retains its malformed witness.
+func TestLuauDamagePreservesStrictDiagnostics(t *testing.T) {
+	slowtest.Gate(t, "Luau (it runs the emitted readers)")
+	t.Parallel()
+	units, _ := readManifest(t)
+	for _, tc := range []struct{ unit, root, file, want string }{
+		{"tblr1", "Cfg", "framing/frame_empty_buffer.bin", "wire_damaged -"},
+		{"tblr1", "Cfg", "framing/frame_duplicate_entry.bin", "wire_damaged -"},
+		{"tblr1", "Cfg", "framing/frame_entries_4097.bin", "wire_damaged -"},
+		{"streamdemo", "Feed", "parts_index_out_of_range.bin", "malformed parts"},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			dir, mods, _ := buildMessageUnit(t, units[tc.unit])
+			var b strings.Builder
+			b.WriteString("local L = require(\"./schema_load\")\nlocal inputs = require(\"./inputs\")\n")
+			for _, mod := range mods {
+				fmt.Fprintf(&b, "require(%q)\n", "./"+mod)
+			}
+			fmt.Fprintf(&b, "local report = {}\nlocal value = L.ReadStrict(%q, inputs.wire, report)\nassert(value == nil and report.malformed)\nprint(report.reason .. \" \" .. (report.field or \"-\"))\n", tc.root)
+			if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(b.String()), 0644); err != nil {
+				t.Fatal(err)
+			}
+			wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables", tc.file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := strings.TrimSpace(string(luaurun.Run(t, dir, "main.luau", map[string][]byte{"wire": wire})))
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

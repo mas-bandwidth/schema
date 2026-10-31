@@ -1465,12 +1465,10 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 	return false
 end
 
--- loadTolerant loads a form-1 wire at the table descriptor `root`, fills
--- report, and returns the root only when the wire is whole. Tolerant
--- evolution is not damage: malformed input is discarded on every read (§4).
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
-	local o = open(bytes, report)
-	if o == nil then return nil end
+-- Walk a file whose id table has opened. Keeping this separate lets the
+-- strict wrapper retain wire_damaged for unopened input and its field/counter
+-- diagnostics for a decoded value that the damage rule now discards (§4).
+local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	_table = o.table
 	_report = report
 	_countRefused = false
@@ -1552,6 +1550,14 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	end
 	if report.malformed then return nil end
 	return v
+end
+
+-- loadTolerant returns a value only when the wire is whole. Tolerant
+-- evolution is not damage: malformed input is discarded on every read (§4).
+function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	local o = open(bytes, report)
+	if o == nil then return nil end
+	return loadOpened(root, bytes, report, o)
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
@@ -1986,7 +1992,12 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	local v = L.loadTolerant(root, b, rep)
+	local opened = open(b, rep)
+	if opened == nil then
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local v = loadOpened(root, b, rep, opened)
 	if rep.nonFiniteFloat ~= nil then
 		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
 		rep.reason = "non_finite_float"
@@ -1998,11 +2009,6 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		-- tablewire.CountRefusal): both reads discard the damaged value;
 		-- the strict read keeps the specific refusal reason
 		rep.reason = "count_refusal"
-		return nil
-	end
-	if v == nil and rep.malformed then
-		rep.reason = "malformed"
-		rep.field = witness(root, b, "malformed")
 		return nil
 	end
 	for _, k in REFUSING do
