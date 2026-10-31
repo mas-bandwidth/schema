@@ -63,8 +63,6 @@ check_value = function(T, where, d, v, elem)
     if math.type(v) ~= "float" or not (elem or v == d.default) then return fail(where, "float at its default") end
   elseif s == "string" or s == "bytes" then
     if type(v) ~= "string" or not (elem or v == d.default) then return fail(where, "byte string at its default") end
-  elseif s == "wstring" then
-    if type(v) ~= "table" or #v ~= 0 then return fail(where, "wide text is born empty") end
   elseif s == "enum" then
     -- a table enum is its variant NAME (§5); None is nil, and false in a sequence
     if elem then
@@ -584,12 +582,6 @@ local function reset_elem(T, e, x)
     return 0.0
   elseif s == "string" or s == "bytes" then
     return ""
-  elseif s == "wstring" then
-    if type(x) == "table" then
-      reset_clear(x)
-      return x
-    end
-    return {}
   elseif s == "wide" then
     if type(x) == "table" then
       x.lo, x.hi = 0, 0
@@ -633,7 +625,7 @@ reset_value = function(T, fd, v)
   local name, s = fd.name, fd.shape
   if s == "array" then
     v[name] = reset_array(T, fd, v[name])
-  elseif s == "map" or s == "wstring" then
+  elseif s == "map" then
     local x = v[name]
     if type(x) == "table" then
       reset_clear(x)

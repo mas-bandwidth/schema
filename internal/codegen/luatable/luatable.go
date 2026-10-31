@@ -721,7 +721,7 @@ func fieldPieces(u *ir.Unit, f *ir.Field) []ir.BlockFieldPiece {
 }
 
 // needsCompanion reports a field whose storage carries a count companion the
-// cook's check bounds (§7.4): a by-value string, bytes or wstring, and a
+// cook's check bounds (§7.4): a by-value string or bytes, and a
 // counted array.
 func needsCompanion(f *ir.Field) bool {
 	if f.Array == ir.ArrayCounted {

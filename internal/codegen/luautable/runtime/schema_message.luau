@@ -233,7 +233,7 @@ local function shapeRead(r: any, k: number): any
 			return s
 		end
 	end
-	if k == 12 or k == 33 then
+	if k == 12 then
 		s.max = rLeb(r)
 	elseif k == 14 then
 		s.min = rLeb(r)
@@ -250,19 +250,19 @@ local function entryRead(r: any): any
 	e.id = buffer.readinteger(r.b, r.at)
 	r.at = r.at + 8
 	local kind = rU8(r)
-	if kind > 33 then r.bad = true; return e end
+	if kind > 32 then r.bad = true; return e end
 	e.shape = shapeRead(r, kind)
 	if r.bad then return e end
 	if kind == 14 or kind == 16 then
 		local elem = rU8(r)
-		if elem > 33 or elem == 12 or elem == 33 then r.bad = true; return e end
+		if elem > 32 or elem == 12 then r.bad = true; return e end
 		e.shape.elem = elem
 		e.element = shapeRead(r, elem)
 		e.shape.element = e.element
 		if r.bad then return e end
 		if elem == 14 or elem == 16 then
 			local inner = rU8(r)
-			if inner > 33 or inner == 12 or inner == 33 then r.bad = true; return e end
+			if inner > 32 or inner == 12 then r.bad = true; return e end
 		end
 	end
 	return e
@@ -276,7 +276,7 @@ local function skipStep(r: any, kind: number): boolean
 		if r.at + w // 8 > r.e then return false end
 		r.at = r.at + w // 8
 		return true
-	elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 or kind == 33 then
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 then
 		local n = rLeb(r)
 		if r.bad or r.at + n > r.e then return false end
 		r.at = r.at + n
@@ -510,7 +510,7 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		end
 		if armFd ~= nil then st.owner = fd.t end
 		return skipShape(r, st, arm, armFd, dep)
-	elseif k == 12 or k == 33 then
+	elseif k == 12 then
 		local n, ok = countOf(r, e.shape)
 		if not ok then return false end
 		if k == 12 and not align(r) then return false end

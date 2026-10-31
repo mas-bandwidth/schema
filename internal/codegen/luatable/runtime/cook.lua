@@ -264,7 +264,7 @@ element = function(s, at, elem)
   end
   if elem.shape == "pointer" or elem.shape == "string_blob" or elem.shape == "bytes_blob" then
     return ref(s, at, elem)
-  elseif elem.shape == "string" or elem.shape == "bytes" or elem.shape == "wstring" then
+  elseif elem.shape == "string" or elem.shape == "bytes" then
     return companion(s, at + elem.companion, elem.bound)
   elseif elem.shape == "table" then
     return record(s, at, s.h.T.Tables[elem.target])
@@ -387,7 +387,7 @@ field = function(s, at, f)
     end
     return true
   end
-  if shape == "string" or shape == "bytes" or shape == "wstring" then return companion(s, at + f.companion, f.bound) end
+  if shape == "string" or shape == "bytes" then return companion(s, at + f.companion, f.bound) end
   return element(s, at, f)
 end
 

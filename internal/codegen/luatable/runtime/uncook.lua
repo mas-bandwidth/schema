@@ -95,8 +95,6 @@ local function present_offset(T, f)
   local cur
   if s == "string" then
     cur = align_up(at + (f.bound or 0) + 1, 4) + 4
-  elseif s == "wstring" then
-    cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
   elseif s == "bytes" then
     cur = align_up(at + (f.bound or 0), 4) + 4
   elseif s == "array" then
@@ -190,15 +188,6 @@ read_field = function(ctx, f, base)
     local n = i32(ctx, at + f.companion)
     if n < 0 then n = 0 end
     v = string.sub(ctx.data, at + 1, at + n)
-  elseif s == "wstring" then
-    -- the used length is in CODE UNITS and each unit is two bytes in the
-    -- cook's order (§7.2)
-    local n = i32(ctx, at + f.companion)
-    local units = {}
-    for i = 0, n - 1 do
-      units[#units + 1] = u16(ctx, at + i * 2)
-    end
-    v = units
   elseif s == "enum" then
     -- an ENUM slot holds the ORDINAL, not the wire's variant-name hash
     -- (§7.2); zero is None, and the output stores nil (false in a sequence)
@@ -236,7 +225,6 @@ local function zero_elem(T, e)
   if s == "int" or s == "flags" then return 0 end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
-  if s == "wstring" then return {} end
   if s == "enum" then return false end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
   if s == "table" then

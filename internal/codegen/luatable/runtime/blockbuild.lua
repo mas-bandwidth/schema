@@ -108,9 +108,6 @@ local function pieces(T, d, projection)
   elseif s == "string" then
     out[#out + 1] = { size = d.bound + 1, align = 1 }
     out[#out + 1] = { size = 4, align = 4 }
-  elseif s == "wstring" then
-    out[#out + 1] = { size = (d.bound + 1) * 2, align = 2 }
-    out[#out + 1] = { size = 4, align = 4 }
   elseif s == "bytes" then
     out[#out + 1] = { size = d.bound, align = 1 }
     out[#out + 1] = { size = 4, align = 4 }

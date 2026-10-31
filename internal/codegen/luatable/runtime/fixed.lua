@@ -169,16 +169,6 @@ encode_value = function(T, d, v, size, elemSize)
     local cap = size - 4
     if n > cap then error("length_over_bound") end
     return string.pack("<i4", n) .. string.sub(v, 1, n) .. zeros(cap - n)
-  elseif s == "wstring" then
-    local n = #v
-    local cap = math.floor((size - 4) / 2)
-    if n > cap then error("length_over_bound") end
-    local parts = { string.pack("<i4", n) }
-    for i = 1, n do
-      parts[#parts + 1] = string.pack("<I2", v[i] or 0)
-    end
-    parts[#parts + 1] = zeros((size - 4) - 2 * n)
-    return table.concat(parts)
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     local ord = 0
@@ -244,15 +234,6 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local cap = size - 4
     if n < 0 or n > cap then error("length_over_bound") end
     return string.sub(buf, pos + 4, pos + 4 + n - 1), pos + size
-  elseif s == "wstring" then
-    local n = string.unpack("<i4", buf, pos)
-    local cap = math.floor((size - 4) / 2)
-    if n < 0 or n > cap then error("length_over_bound") end
-    local t = {}
-    for i = 1, n do
-      t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2)
-    end
-    return t, pos + size
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     local raw = unpack_int(buf, pos, w, false)
@@ -413,15 +394,6 @@ decode_old_value = function(T, d, node, buf, pos)
     local cap = node.size - 4
     if n < 0 or n > cap then error("length_over_bound") end
     return string.sub(buf, pos + 4, pos + 4 + n - 1)
-  elseif s == "wstring" then
-    local n = string.unpack("<i4", buf, pos)
-    local cap = math.floor((node.size - 4) / 2)
-    if n < 0 or n > cap then error("length_over_bound") end
-    local t = {}
-    for i = 1, n do
-      t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2)
-    end
-    return t
   elseif s == "enum" then
     local raw = unpack_int(buf, pos, node.size, false)
     local var = raw ~= 0 and d.variants[raw] or nil

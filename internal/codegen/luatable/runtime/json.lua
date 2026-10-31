@@ -269,40 +269,6 @@ local function scan_string(inp, cap)
   return table.concat(out), clamped, true, nul
 end
 
--- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2). The
--- fourth truth is §16.3's zero: a U+0000 unit bound for wide text storage.
-local function scan_wstring(inp, cap)
-  if peek(inp) ~= '"' then
-    inp.bad = true
-    return nil, false, false
-  end
-  inp.p = inp.p + 1
-  local out, n, clamped, nul = {}, 0, false, false
-  while true do
-    local unit, done, ok = scan_unit(inp)
-    if not ok then return nil, false, false, false end
-    if done then break end
-    local code = utf8_decode(unit)
-    local units
-    if code < 0x10000 then
-      units = { code }
-    else
-      local rest = code - 0x10000
-      units = { 0xd800 + (rest >> 10), 0xdc00 + (rest & 0x3ff) }
-    end
-    if code == 0 then nul = true end
-    if clamped or (cap >= 0 and n + #units > cap) then
-      clamped = true
-    else
-      for i = 1, #units do
-        out[#out + 1] = units[i]
-      end
-      n = n + #units
-    end
-  end
-  return out, clamped, true, nul
-end
-
 -- ONE RFC 8259 number; the token kept for conversion
 local function scan_number(inp)
   space(inp)
@@ -476,7 +442,6 @@ local function zero_elem(T, e)
   if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
-  if s == "wstring" then return {} end
   if s == "enum" then return false end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
   if s == "table" then return fresh(T, T.Tables[e.target]) end
@@ -491,7 +456,7 @@ local function shape_of(d)
   -- §2.11, §16.2); its storage is still the int64 count.
   if d.timestamp then return "s" end
   if s == "bool" then return "b" end
-  if s == "string" or s == "wstring" or s == "bytes" then return "s" end
+  if s == "string" or s == "bytes" then return "s" end
   if s == "string_blob" or s == "bytes_blob" then return "s" end
   if s == "enum" then return "s" end
   if s == "flags" then return "a" end
@@ -1760,19 +1725,6 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
     return true
-  elseif s == "wstring" then
-    local out, clamped, ok, nul = scan_wstring(inp, d.bound)
-    if not ok then return false end
-    if nul then
-      -- §16.3: a U+0000 unit bound for wide text storage refuses the read
-      -- with the same name a narrow field takes.
-      report.Reason = "text_holds_zero: " .. table_name .. "." .. field_name
-      inp.bad = true
-      return false
-    end
-    if clamped then report.clamped = report.clamped + 1 end
-    holder[key] = out
-    return true
   elseif s == "bytes" then
     local out = read_base64(inp, d.bound, report)
     if out == nil then return false end
@@ -2276,44 +2228,6 @@ local function write_string(w, s)
   put(w, '"')
 end
 
-local function write_wstring(w, units)
-  local hex = "0123456789abcdef"
-  put(w, '"')
-  local i = 1
-  while i <= #units do
-    local code = units[i]
-    if code >= 0xd800 and code <= 0xdbff and i + 1 <= #units then
-      local low = units[i + 1]
-      if low >= 0xdc00 and low <= 0xdfff then
-        code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00)
-        i = i + 1
-      end
-    end
-    if code >= 0xd800 and code <= 0xdfff then code = 0xfffd end
-    if code == 34 then
-      raw(w, '\\"')
-    elseif code == 92 then
-      raw(w, "\\\\")
-    elseif code == 8 then
-      raw(w, "\\b")
-    elseif code == 12 then
-      raw(w, "\\f")
-    elseif code == 10 then
-      raw(w, "\\n")
-    elseif code == 13 then
-      raw(w, "\\r")
-    elseif code == 9 then
-      raw(w, "\\t")
-    elseif code < 0x20 then
-      raw(w, "\\u00" .. hex:sub((code >> 4) + 1, (code >> 4) + 1) .. hex:sub((code & 0xf) + 1, (code & 0xf) + 1))
-    else
-      raw(w, utf8_encode(code))
-    end
-    i = i + 1
-  end
-  put(w, '"')
-end
-
 local function write_base64(w, data)
   put(w, '"')
   local i = 1
@@ -2708,9 +2622,6 @@ write_value = function(T, d, val, depth, g, w, _elem)
     return write_pointer(T, d.target, val, depth, g, w)
   elseif s == "string" then
     write_string(w, val or "")
-    return true
-  elseif s == "wstring" then
-    write_wstring(w, val or {})
     return true
   elseif s == "bytes" then
     write_base64(w, val or "")

@@ -584,7 +584,7 @@ func (g *ltgGen) bytesValue(j *ltgJSON, n int64) {
 }
 
 // pointer writes `*T` as the pointee's object, or null when T is on the path;
-// `*bytes`, `*string` and `*wstring` as their blob (§2.5, §16.2).
+// `*bytes` and `*string` as their blob (§2.5, §16.2).
 func (g *ltgGen) pointer(j *ltgJSON, f *ir.Field) error {
 	t := f.Type
 	switch t.Kind {

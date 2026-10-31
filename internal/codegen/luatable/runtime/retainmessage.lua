@@ -127,7 +127,7 @@ local function file_minimum(kind)
   if kind == 13 then return 16 end
   if kind == 14 or kind == 16 then return 10 end
   if kind == 15 or kind == 30 then return 8 end
-  if kind == 12 or kind == 31 or kind == 32 or kind == 33 then return 1 end
+  if kind == 12 or kind == 31 or kind == 32 then return 1 end
   if kind == 17 then return -1 end
   return -1
 end
@@ -203,7 +203,7 @@ message_skip = function(r, vocab, indexBits, e, depth)
       and arm.kind ~= 0
       and message_skip(r, vocab, indexBits, arm, depth + 1)
   end
-  if k == 12 or k == 33 then
+  if k == 12 then
     local n, ok = message_count(r, s)
     if not ok then return false end
     local width = 16
@@ -349,14 +349,9 @@ function In:scalar(e)
 end
 function In:opaque(e, framed)
   local n, ok
-  if e.kind == 12 or e.kind == 33 then
+  if e.kind == 12 then
     n, ok = message_count(self.bits, e)
-    if not ok then return false end
-    if e.kind == 33 then
-      n = n * 2
-    elseif not self.bits:align() then
-      return false
-    end
+    if not ok or not self.bits:align() then return false end
   else
     if not self.bits:align() then return false end
     n, ok = self.bits:get(32)
@@ -401,7 +396,7 @@ function In:content(e, depth)
     return self:payload(e, depth)
   elseif k == 32 then
     return true
-  elseif k == 12 or k == 31 or k == 33 then
+  elseif k == 12 or k == 31 then
     return self:opaque(e, false)
   end
   return self:scalar(e)
@@ -461,7 +456,7 @@ function In:payload(e, depth)
     return self:framed(arm, depth + 1)
   end
   if k == 13 or k == 14 or k == 16 then return self:framed(e, depth + 1) end
-  if k == 12 or k == 31 or k == 33 then return self:opaque(e, true) end
+  if k == 12 or k == 31 then return self:opaque(e, true) end
   return self:scalar(e)
 end
 
@@ -592,18 +587,6 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
     if raw == nil then return false end
     if n > f.bound then raw = raw:sub(1, f.bound) end
     holder[key] = raw
-    return true
-  elseif s == "wstring" then
-    local w = bits_range(0, f.bound)
-    local n, ok = reader:get(w)
-    if not ok then return false end
-    local out = {}
-    for i = 1, n do
-      local u, ok2 = reader:get(16)
-      if not ok2 then return false end
-      out[i] = u
-    end
-    holder[key] = out
     return true
   elseif s == "enum" then
     local ref, ok = reader:get(vocab.refBits)

@@ -127,7 +127,7 @@ local function elemLayout(fd: any): Layout
 		return { size = 8, align = 8 }
 	end
 	if s == "str" then
-		local w = if fd.wide then 2 else 1
+		local w = 1
 		return { size = ((fd.bound or 0) + 1) * w, align = w }
 	end
 	if s == "bytes" then
@@ -154,7 +154,7 @@ local function layoutField(fd: any, offset: number): { start: number, size: numb
 	elseif s == "ptr" or s == "sblob" or s == "bblob" or s == "text" then
 		add(8, 8)
 	elseif s == "str" then
-		local w = if fd.wide then 2 else 1
+		local w = 1
 		add(((fd.bound or 0) + 1) * w, w)
 		add(4, 4)
 	elseif s == "bytes" then
@@ -285,15 +285,10 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 		return as_number(i_at(ctx.b, at, w, false))
 	end
 	if s == "str" then
-		local w = if fd.wide then 2 else 1
+		local w = 1
 		local lenAt = align_up(at + ((fd.bound or 0) + 1) * w, 4)
 		local n = buffer.readi32(ctx.b, lenAt)
 		if n < 0 then n = 0 end
-		if fd.wide then
-			local out = buffer.create(n * 2)
-			buffer.copy(out, 0, ctx.b, at, n * 2)
-			return out
-		end
 		local out = buffer.create(n)
 		buffer.copy(out, 0, ctx.b, at, n)
 		return out
@@ -442,8 +437,7 @@ function putField(value: any, fd: any, got: any)
 		end
 		buffer.fill(dst, 0, 0)
 		buffer.copy(dst, 0, got, 0, buffer.len(got))
-		local units = if fd.s == "str" and fd.wide then buffer.len(got) // 2 else buffer.len(got)
-		value[fd.slot .. "Length"] = units
+		value[fd.slot .. "Length"] = buffer.len(got)
 		return
 	end
 	value[fd.slot] = got

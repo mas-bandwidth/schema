@@ -116,7 +116,6 @@ local function zero_elem(T, e)
   if s == "int" or s == "flags" then return 0 end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
-  if s == "wstring" then return {} end
   if s == "enum" then return nil end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
   if s == "table" then
@@ -150,8 +149,6 @@ local function field_value(T, f, v)
     return {}
   elseif s == "union" then
     return { tag = 0 }
-  elseif s == "wstring" then
-    return {}
   elseif s == "array" or s == "map" then
     return x or {}
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
@@ -214,14 +211,6 @@ write_field_value = function(T, f, x, at, w, index)
     if f.bound and #str > f.bound then str = str:sub(1, f.bound) end
     put(w, at, str)
     put_uint(w, at + (f.companion or 0), #str, 4)
-    return true
-  elseif s == "wstring" then
-    local units = x or {}
-    local n = math.min(#units, f.bound or #units)
-    for i = 1, n do
-      put(w, at + (i - 1) * 2, string.pack(ORD .. "I2", units[i] & 0xffff))
-    end
-    put_uint(w, at + (f.companion or 0), n, 4)
     return true
   elseif s == "bool" then
     put_uint(w, at, x and 1 or 0, 1)
@@ -343,8 +332,6 @@ present_offset = function(T, f)
   local cur
   if s == "string" then
     cur = align_up(at + (f.bound or 0) + 1, 4) + 4
-  elseif s == "wstring" then
-    cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
   elseif s == "bytes" then
     cur = align_up(at + (f.bound or 0), 4) + 4
   elseif s == "array" then

@@ -959,7 +959,7 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 		if def {
 			d = fmt.Sprintf(", def = %q", string(f.DefBytes))
 		}
-		return fmt.Sprintf("s = \"str\", bound = %d, wide = %v%s", t.Size, d)
+		return fmt.Sprintf("s = \"str\", bound = %d%s", t.Size, d)
 	case t.Kind == ir.TBytes:
 		d := ""
 		if def {

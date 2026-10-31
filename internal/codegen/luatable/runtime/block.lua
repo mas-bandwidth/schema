@@ -118,9 +118,6 @@ local function pieces(T, f, projection)
   elseif s == "string" then
     p[#p + 1] = { size = f.bound + 1, align = 1 }
     p[#p + 1] = { size = 4, align = 4 }
-  elseif s == "wstring" then
-    p[#p + 1] = { size = 2 * (f.bound + 1), align = 2 }
-    p[#p + 1] = { size = 4, align = 4 }
   elseif s == "bytes" then
     p[#p + 1] = { size = f.bound, align = 1 }
     p[#p + 1] = { size = 4, align = 4 }
@@ -193,11 +190,11 @@ function B.Layout(T, name, projection)
       fl.bound = f.bound
       fl.elemSize = 0
       fl.countOffset = offsets[1].offset + 8
-    elseif f.shape == "string" or f.shape == "wstring" or f.shape == "bytes" then
+    elseif f.shape == "string" or f.shape == "bytes" then
       fl.counted = true
       fl.isArray = f.shape == "bytes"
       fl.bound = f.bound
-      fl.elemSize = f.shape == "wstring" and 2 or 1
+      fl.elemSize = 1
       fl.countOffset = offsets[2].offset
       fl.element = nil
     elseif f.shape == "array" and not f.list then

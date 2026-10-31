@@ -612,21 +612,9 @@ local field: any
 local scalar: any
 local record: any
 
-local function text(r: ResolverT, v: Node, bound: number, wide: boolean): boolean
+local function text(r: ResolverT, v: Node, bound: number): boolean
 	if v.kind ~= '"' then return r:fail(KIND_MISMATCH, v, v.start) end
 	local size = #v.text
-	if wide then
-		size = 0
-		local i = 1
-		while i <= #v.text do
-			local n = utf8_seq(v.text, i)
-			if n < 0 then n = 1 end
-			local c = v.text:byte(i)
-			size = size + 1
-			if c >= 0xF0 then size = size + 1 end
-			i = i + n
-		end
-	end
 	if bound >= 0 and size > bound then return r:fail(BOUND, v, v.start) end
 	v.canon = v.text
 	json_string(r, v.text)
@@ -835,7 +823,7 @@ local function mapping(r: ResolverT, v: Node, f: any, path: string, owner: any):
 		local ok
 		if key.s == "str" then
 			local bound = key.bound or -1
-			ok = text(r, k, bound, key.wide == true)
+			ok = text(r, k, bound)
 		else
 			ok = int_value(r, k, key)
 		end
@@ -978,12 +966,6 @@ record = function(r: ResolverT, n: Node, info: any, path: string, first: number,
 		local active = guard_ok(info, fd, seen, items)
 		if seen[j] ~= nil and not active then return r:fail(INACTIVE_FIELD, seen[j], seen[j].start) end
 		if seen[j] == nil and active and fd.required then return r:fail(MISSING_REQUIRED, n, n.stop - 1) end
-		if seen[j] == nil and active and fd.s == "str" and fd.wide then
-			if wrote then r:raw(",") end
-			json_string(r, fd.json)
-			r:raw(':\"\"')
-			wrote = true
-		end
 	end
 	r:raw("}")
 	return true
@@ -1002,13 +984,13 @@ field = function(r: ResolverT, v: Node, f: any, path: string, owner: any): boole
 		return sequence(r, v, f, path, owner)
 	end
 	if f.s == "text" then return text(r, v, -1, false) end
-	if f.s == "str" then return text(r, v, f.bound or -1, f.wide == true) end
+	if f.s == "str" then return text(r, v, f.bound or -1) end
 	if f.s == "bytes" then return blob(r, v, f.bound or -1) end
 	return scalar(r, v, f, path, owner)
 end
 
 scalar = function(r: ResolverT, v: Node, f: any, path: string, owner: any): boolean
-	if f.s == "str" then return text(r, v, f.bound or -1, f.wide == true) end
+	if f.s == "str" then return text(r, v, f.bound or -1) end
 	if f.s == "text" then return text(r, v, -1, false) end
 	if f.s == "ptr" or f.s == "sblob" or f.s == "bblob" then return pointer(r, v, f, path, owner) end
 	if f.s == "union" then return union(r, v, f, path, owner) end

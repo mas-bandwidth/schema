@@ -264,7 +264,6 @@ local function elem_zero(d)
   if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
-  if s == "wstring" then return {} end
   if s == "enum" or s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
   if s == "union" then return { tag = 0 } end
   return nil
@@ -339,8 +338,6 @@ local function elem_rides(T, d, v)
     return not same_float(d.f32, v, 0.0)
   elseif s == "string" or s == "bytes" then
     return #v > 0
-  elseif s == "wstring" then
-    return #v > 0
   end
   return true
 end
@@ -362,7 +359,6 @@ rides = function(T, f, v)
   end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return v ~= nil and v ~= false end
   if s == "string" or s == "bytes" then return v ~= f.default end
-  if s == "wstring" then return #v > 0 end
   return not same_scalar(f, v)
 end
 
@@ -455,18 +451,6 @@ read_value = function(R, T, f, holder, key, ctx)
     if raw == nil then return false end
     if n > f.bound then raw = raw:sub(1, f.bound) end
     holder[key] = raw
-    return true
-  elseif s == "wstring" then
-    local w = bits_range(0, f.bound)
-    local n, ok = R:get(w)
-    if not ok then return false end
-    local out = {}
-    for i = 1, n do
-      local u, ok2 = R:get(16)
-      if not ok2 then return false end
-      out[i] = u
-    end
-    holder[key] = out
     return true
   elseif s == "enum" then
     local ref, ok = R:get(ctx.refBits)
@@ -648,11 +632,6 @@ write_value = function(W, T, f, holder, key, ctx)
   elseif s == "string" or s == "bytes" then
     W:put(#v, bits_range(0, f.bound))
     W:raw(v)
-  elseif s == "wstring" then
-    W:put(#v, bits_range(0, f.bound))
-    for i = 1, #v do
-      W:put(v[i], 16)
-    end
   elseif s == "enum" then
     if v == nil then
       W:put(0, ctx.refBits)
@@ -931,7 +910,7 @@ end
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
 -- not an entry's to give (§3.3).
 local function known_kind(kind)
-  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29) or (kind >= 30 and kind <= 33)
+  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29) or (kind >= 30 and kind <= 32)
 end
 
 -- skip_shape steps over one announced shape, which is what makes the entry
@@ -983,7 +962,7 @@ local function skip_shape(kind, s, at)
     if at == nil then return nil end
     if at + 15 > #s then return nil end
     return at + 16
-  elseif kind == 12 or kind == 33 then
+  elseif kind == 12 then
     return leb(at)
   elseif kind == 14 then
     at = leb(at)
@@ -993,7 +972,7 @@ local function skip_shape(kind, s, at)
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
-    if elem == 12 or elem == 33 then return nil end
+    if elem == 12 then return nil end
     return skip_shape(elem, s, at)
   elseif kind == 16 then
     at = leb(at)
@@ -1001,7 +980,7 @@ local function skip_shape(kind, s, at)
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
-    if elem == 12 or elem == 33 then return nil end
+    if elem == 12 then return nil end
     return skip_shape(elem, s, at)
   end
   return nil

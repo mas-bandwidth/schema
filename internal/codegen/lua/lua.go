@@ -25,8 +25,7 @@
 // table { lo = <low 64 bits>, hi = <high 64 bits> }, each half an integer.
 // Floats are Lua floats (IEEE-754 doubles); a float32 field holds the double
 // that is exactly its float32 value. string(N) and bytes(N) are Lua strings
-// (immutable byte strings: the length IS the used length). wstring(N) is a
-// sequence of UTF-16 code units. Arrays are 1-based sequences pre-filled to
+// (immutable byte strings: the length IS the used length). Arrays are 1-based sequences pre-filled to
 // their bound (the storage principle, SPEC §6.1), and a counted array carries
 // <Name>Count beside its storage, as the JavaScript target does.
 package lua

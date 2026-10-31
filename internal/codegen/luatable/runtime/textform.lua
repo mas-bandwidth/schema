@@ -493,17 +493,6 @@ local function integer_text(d, node)
   return digits
 end
 
-local function utf16_units(s)
-  local n, i = 0, 1
-  while i <= #s do
-    local len = utf8_seq(s, i)
-    local c = utf8_decode(s:sub(i, i + len - 1))
-    n = n + (c >= 0x10000 and 2 or 1)
-    i = i + len
-  end
-  return n
-end
-
 local function key_name(node)
   if node.k == "kw" or node.k == "str" then return node.v end
   fail("text_kind_mismatch", node.pos)
@@ -711,10 +700,6 @@ resolve_value = function(T, d, node, labels)
   elseif s == "string" then
     if node.k ~= "str" then fail("text_kind_mismatch", node.pos) end
     if d.bound ~= nil and #node.v > d.bound then fail("text_bound", node.pos) end
-    return quote(node.v)
-  elseif s == "wstring" then
-    if node.k ~= "str" then fail("text_kind_mismatch", node.pos) end
-    if d.bound ~= nil and utf16_units(node.v) > d.bound then fail("text_bound", node.pos) end
     return quote(node.v)
   elseif s == "bytes" then
     if node.k ~= "str" then fail("text_kind_mismatch", node.pos) end
