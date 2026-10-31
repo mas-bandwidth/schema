@@ -1731,6 +1731,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
         f ->
           cond do
+            payload == <<>> and (kind == f.kind or widens?(kind, f)) ->
+              # a field the walk could not delimit (its slice failed) is not
+              # placed: the value keeps what it had and the enclosing read's
+              # malformed is the one event (§3, §4)
+              {:cont, {value, report}}
+
             kind == f.kind ->
               case read_payload(f, payload, nodes, ids, report) do
                 {:cont, v, report} -> {:cont, {Map.put(value, f.name, v), report}}
@@ -4881,6 +4887,9 @@ const variableRetainSource = `
 
         f ->
           cond do
+            payload == <<>> and (kind == f.kind or widens?(kind, f)) ->
+              {:cont, {value, report, retain}}
+
             kind == f.kind ->
               case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
                 {:cont, v, report, retain} -> {:cont, {Map.put(value, f.name, v), report, retain}}
