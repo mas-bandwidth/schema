@@ -986,6 +986,7 @@
         "tables-dart-retain-negative-control",
         "tables-dart-identity-negative-control",
         "tables-dart-map-sort-negative-control",
+        "tables-dart-cook-map-negative-control",
         "tables-dart-byte-order-negative-control"
       ],
       "dart": "3.13.2"
