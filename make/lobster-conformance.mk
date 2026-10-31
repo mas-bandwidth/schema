@@ -21,3 +21,6 @@ conformance-negative-control-lobster: lobster-dist-present build/conformance-har
 
 conformance-negative-control-lobster-walk: lobster-dist-present build/conformance-harness
 	sh test/conformance/lobster/negative-control walk
+
+# The controls ride the leg: `make test` reaches them through test-lobster.
+test-lobster: conformance-negative-control-lobster conformance-negative-control-lobster-walk

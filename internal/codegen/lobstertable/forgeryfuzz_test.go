@@ -262,7 +262,7 @@ type lobsterForgeryImage struct {
 	u                *ir.Unit
 	bytes            []byte
 	words            []int
-	bl               *ir.BlockLayout   // a block
+	bl               *ir.BlockLayout  // a block
 	m                *tabletext.Model // a cook
 }
 
