@@ -1048,10 +1048,14 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
-	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
-	g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
-	g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
+	// THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
+	// (internal/tablewire mapField, subTo; docs/SPEC-TABLES.md §2.8, §3):
+	// a count LEB128 that runs past the map's L still reads, the element
+	// kind is judged, and the entries walk an empty body.
+	g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
+	g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
 	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
 	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
 	// Commit a replacement only after its array header is readable and
 	// compatible (internal/tablewire/decode.go mapField): a skipped repeat
