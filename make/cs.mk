@@ -450,6 +450,47 @@ conformance-cs-absent-negative-control: build-conformance-cs build/conformance-h
 
 test-cs: conformance-cs-absent
 
+# THE FRAMING SURFACE'S CONTROL (docs/LAYERS/1-framing.md). The `framing`
+# surface runs every layer-1 vector through the C# leg; its gate is
+# `make conformance` (the cs leg answering framing pass N/N). Each sabotage
+# below takes one framing rule out of a COPY of the generated C# runtime and
+# requires the framing surface RED on that rule's own vectors, with every other
+# surface still passing:
+#   cap:   the 4096-entry id-table cap (§3) is removed, so frame_entries_4097
+#          reads instead of refusing;
+#   cycle: the open-node walk (§3.1) is removed, so node_cycle_self and
+#          node_cycle_to_root read instead of refusing.
+CS_FRAMING_NC := build/conformance-cs-framing-nc
+.PHONY: tables-cs-framing-negative-control
+tables-cs-framing-negative-control: build-conformance-cs build/conformance-harness
+	@set -e; for mode in cap cycle; do \
+		dir=$(CS_FRAMING_NC)/$$mode; rm -rf $$dir && mkdir -p $$dir/proj; \
+		cp -R build/tables-generated-cs $$dir/generated; \
+		case $$mode in \
+			cap) from='if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }'; \
+			     to='if (false) { /* SABOTAGED: no id-table cap */ }'; rows='frame_entries_4097'; ;; \
+			cycle) from='if (type.Variable && !Acyclic(value, type))'; \
+			     to='if (false /* SABOTAGED: no open-node walk */)'; rows='node_cycle_self node_cycle_to_root'; ;; \
+		esac; \
+		files=$$(grep -rlF "$$from" $$dir/generated); [ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $$mode sabotage matches no generated line"; exit 1; }; \
+		FROM="$$from" TO="$$to" perl -pi -e 's/\Q$$ENV{FROM}\E/$$ENV{TO}/g' $$files; \
+		grep -rqF 'SABOTAGED' $$dir/generated || { echo "NEGATIVE CONTROL FAILED: the $$mode sabotage patched nothing"; exit 1; }; \
+		cp -R test/conformance/cs/src test/conformance/cs/schemaconformance.csproj $$dir/proj/; \
+		$(DOTNET) build $$dir/proj --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$$dir/generated \
+			-p:CardsGeneratedDir=$(CURDIR)/$$dir/generated/cards -o $$dir/checker > $$dir/build.log 2>&1 || \
+			{ cat $$dir/build.log; echo "NEGATIVE CONTROL FAILED: the $$mode-sabotaged driver does not compile"; exit 1; }; \
+		printf 'cs %s %s/checker/schemaconformance.dll\n' "$(DOTNET)" "$$dir" > $$dir/drivers; \
+		if ./build/conformance-harness run --drivers $$dir/drivers --work $$dir/run > $$dir/log 2>&1; then \
+			cat $$dir/log; echo "NEGATIVE CONTROL FAILED: the $$mode sabotage left the C# framing surface green"; exit 1; \
+		fi; \
+		grep -Eq '^framing +FAIL' $$dir/log || { cat $$dir/log; echo "NEGATIVE CONTROL FAILED: red, but not on framing"; exit 1; }; \
+		for row in $$rows; do grep -q "cs / framing: $$row:" $$dir/log || { cat $$dir/log; echo "NEGATIVE CONTROL FAILED: $$row stayed green"; exit 1; }; done; \
+		if grep '^  cs / ' $$dir/log | grep -v '^  cs / framing:' > /dev/null; then \
+			cat $$dir/log; echo "NEGATIVE CONTROL FAILED: the $$mode sabotage reached a surface other than framing"; exit 1; \
+		fi; \
+		echo "negative control ($$mode): $$rows turn the C# framing surface red"; \
+	done
+
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cs
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
@@ -822,6 +863,7 @@ tables-cs-release:
 	$(MAKE) tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control
 	$(MAKE) tables-cs-leg-region-blob-shared-negative-control conformance-cs-absent-negative-control
 	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control tables-cs-byte-order-negative-control
+	$(MAKE) tables-cs-framing-negative-control
 
 # J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
 # The C# table leg's `--gate` verb round-trips all 64 corpus variants and
