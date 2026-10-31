@@ -127,6 +127,8 @@ tables-luau-release-negative-control: toolchain-luau build/conformance-harness b
 		echo "NEGATIVE CONTROL FAILED: the release gate went red, but not on the report the plant moves"; exit 1; }
 	@echo "luau release negative control: the planted reader turns the release gate RED on the report"
 
+test-luau: tables-luau-release-negative-control
+
 # M19: the writer holds the map sort (map_sort_test.go): every mapdemo instance
 # saved as read and saved with every map's entries reversed must be the same
 # committed bytes; the control removes the sort from the emitted save and
