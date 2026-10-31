@@ -1391,6 +1391,20 @@ conformance-negative-control-js-walk: build/conformance-harness build/tables-gen
 
 test-js: conformance-negative-control-js-walk
 
+# THE JAVASCRIPT LEG's FRAMING NEGATIVE CONTROL (docs/LAYERS/1-framing.md): one
+# framing rule of the generated variable reader is dropped in a COPY of
+# build/tables-generated-js, and the framing surface must go red on exactly the
+# rows that rule owns while the wire surface stays green. entry-bound drops the
+# 4096-entry id-table cap (F6) and turns frame_entries_4097 red; cycle drops the
+# open-node walk after the load (§3.1, §4) and turns node_cycle_self and
+# node_cycle_to_root red. Nothing tracked is written to.
+.PHONY: tables-js-framing-negative-control
+tables-js-framing-negative-control: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control-framing entry-bound
+	sh test/conformance/js/negative-control-framing cycle
+
+test-js: tables-js-framing-negative-control
+
 # THE GENERIC-WALK GATE, JavaScript side (docs/PORTING.md M9, docs/SPEC-TABLES.md
 # §16). The text form is one walk over the descriptors, emitted between the
 # `---- json walk: begin/end ----` markers into each unit's <Package>Variable.js

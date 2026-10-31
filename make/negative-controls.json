@@ -827,6 +827,15 @@
       "node": "26"
     },
     {
+      "name": "js-framing",
+      "when": "pull-request",
+      "why": "the JavaScript leg's framing control (docs/LAYERS/1-framing.md): two plants in a copy of the generated variable reader, the 4096-entry id-table cap dropped and the open-node walk after the load dropped, each requiring the framing surface red on its own rows with the wire surface green. Its own row because the js group already carries 28 controls; each plant is one js conformance run of a few seconds over the warm generated tree.",
+      "targets": [
+        "tables-js-framing-negative-control"
+      ],
+      "node": "26"
+    },
+    {
       "name": "js-proof",
       "when": "pull-request",
       "node": "26",
