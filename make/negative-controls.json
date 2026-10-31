@@ -1296,10 +1296,11 @@
     {
       "name": "goose-text",
       "when": "pull-request",
-      "why": "the Goose leg's JSON text form controls (make/goose-text.mk): the walk's field dispatch sabotaged in generated code, and the float32 writer capped at six digits under the text differential. Each installs the pinned Goose compiler itself (make dist-goose) and needs Go and nothing else; a group of its own so the goose group's other surfaces land without touching these lines.",
+      "why": "the Goose leg's JSON text form controls (make/goose-text.mk): the walk's field dispatch sabotaged in generated code, and the float32 writer capped at six digits under the text differential. Each installs the pinned Goose compiler itself (make dist-goose) and needs Go and nothing else; the emitter-overlay conformance control additionally regenerates tabledemo, establishes the unchanged baseline, and requires json-read and json-hostile red while wire and json-write remain green (16 s on hetzner1). A group of its own so the goose group's other surfaces land without touching these lines.",
       "targets": [
         "tables-goose-json-differential-negative-control",
-        "tables-goose-json-walk-negative-control"
+        "tables-goose-json-walk-negative-control",
+        "conformance-negative-control-goose-walk"
       ]
     },
     {
