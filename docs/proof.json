@@ -21,6 +21,7 @@
     "surface wire",
     "surface message",
     "surface report",
+    "surface framing",
     "surface retain",
     "surface retain-save",
     "surface json-read",
@@ -437,6 +438,96 @@
       "gate": "make conformance: 61 case(s) pass, e.g. report/a1_arm_as_body_as_a2",
       "job": "CI full / conformance (squirrel)",
       "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))"
+    },
+    {
+      "row": "surface framing",
+      "lang": "cpp",
+      "status": "red",
+      "why": "20 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 17 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "c",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "cs",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "dart",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "elixir",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "go",
+      "status": "red",
+      "why": "9 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/map_L1_inert and 6 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "goose",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "java",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "js",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "lobster",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "lua",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "luau",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "moo",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "rust",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
+    },
+    {
+      "row": "surface framing",
+      "lang": "squirrel",
+      "status": "red",
+      "why": "86 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 83 more"
     },
     {
       "row": "surface retain",
@@ -935,8 +1026,10 @@
     {
       "row": "surface json-hostile",
       "lang": "dart",
-      "status": "red",
-      "why": "1 case(s) answered absent with no ruling: json-hostile/list-map-dup-key"
+      "status": "proven",
+      "gate": "make conformance: 135 case(s) pass, e.g. json-hostile/arm-pointer-null",
+      "job": "CI full / conformance (dart)",
+      "control": "conformance-negative-control-dart-block (CI full / negative controls (dart-conformance))"
     },
     {
       "row": "surface json-hostile",
@@ -2813,48 +2906,40 @@
     {
       "row": "cases graphdemo",
       "lang": "cpp",
-      "status": "proven",
-      "gate": "make conformance: 43 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (cpp)",
-      "control": "conformance-negative-control-cpp (CI full / negative controls (base-conformance-cpp))"
+      "status": "red",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "c",
-      "status": "proven",
-      "gate": "make conformance: 43 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (c)",
-      "control": "conformance-negative-control-c (CI full / negative controls (base-c-conformance))"
+      "status": "red",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "cs",
-      "status": "proven",
-      "gate": "make conformance: 43 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (cs)",
-      "control": "conformance-negative-control-cs (CI full / negative controls (cs-1))"
+      "status": "red",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "dart",
-      "status": "proven",
-      "gate": "make conformance: 42 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-block (CI full / negative controls (dart-conformance))",
-      "ruling": "message-form-fixed-only"
+      "status": "red",
+      "ruling": "message-form-fixed-only",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "elixir",
       "status": "red",
       "ruling": "message-form-fixed-only",
-      "why": "the elixir conformance leg has no negative control (no conformance-negative-control-elixir in make/negative-controls.json)"
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 42 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 52 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))",
       "ruling": "message-form-fixed-only"
@@ -2864,72 +2949,60 @@
       "lang": "goose",
       "status": "red",
       "ruling": "message-form-fixed-only",
-      "why": "42 case(s) answered absent with no ruling: cook/Album, cook/Depot, cook/ListNode and 39 more"
+      "why": "52 case(s) answered absent with no ruling: cook/Album, cook/Depot, cook/ListNode and 49 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "java",
-      "status": "proven",
-      "gate": "make conformance: 42 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java))",
-      "ruling": "message-form-fixed-only"
+      "status": "red",
+      "ruling": "message-form-fixed-only",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "js",
-      "status": "proven",
-      "gate": "make conformance: 42 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-walk (CI full / negative controls (js))",
-      "ruling": "message-form-fixed-only"
+      "status": "red",
+      "ruling": "message-form-fixed-only",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "lobster",
       "status": "red",
       "ruling": "message-form-fixed-only",
-      "why": "the lobster conformance leg has no negative control (no conformance-negative-control-lobster in make/negative-controls.json)"
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "lua",
-      "status": "proven",
-      "gate": "make conformance: 43 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua))"
+      "status": "red",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "luau",
-      "status": "proven",
-      "gate": "make conformance: 43 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau))"
+      "status": "red",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "moo",
       "status": "red",
-      "why": "the moo conformance leg has no negative control (no conformance-negative-control-moo in make/negative-controls.json)"
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "rust",
-      "status": "proven",
-      "gate": "make conformance: 42 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))",
-      "ruling": "message-form-fixed-only"
+      "status": "red",
+      "ruling": "message-form-fixed-only",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "squirrel",
-      "status": "proven",
-      "gate": "make conformance: 42 case(s) pass, e.g. cook/Album",
-      "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))",
-      "ruling": "message-form-fixed-only"
+      "status": "red",
+      "ruling": "message-form-fixed-only",
+      "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases blockdemo",
@@ -4391,45 +4464,39 @@
       "row": "cases tblr1",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
+      "gate": "make conformance: 72 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (CI full / negative controls (base-conformance-cpp))"
     },
     {
       "row": "cases tblr1",
       "lang": "c",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (c)",
-      "control": "conformance-negative-control-c (CI full / negative controls (base-c-conformance))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "cs",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (cs)",
-      "control": "conformance-negative-control-cs (CI full / negative controls (cs-1))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "dart",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-block (CI full / negative controls (dart-conformance))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "elixir",
       "status": "red",
-      "why": "the elixir conformance leg has no negative control (no conformance-negative-control-elixir in make/negative-controls.json)"
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
+      "gate": "make conformance: 72 case(s) pass, e.g. framing/array_L0_inert",
       "job": "CI full / conformance (go)",
       "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))"
     },
@@ -4437,67 +4504,55 @@
       "row": "cases tblr1",
       "lang": "goose",
       "status": "red",
-      "why": "7 case(s) answered absent with no ruling: json-read/r1_cfg, json-read/r1_ping, json-write/r1_cfg.json and 4 more"
+      "why": "72 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 69 more"
     },
     {
       "row": "cases tblr1",
       "lang": "java",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "js",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-walk (CI full / negative controls (js))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "lobster",
       "status": "red",
-      "why": "the lobster conformance leg has no negative control (no conformance-negative-control-lobster in make/negative-controls.json)"
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "lua",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "luau",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "moo",
       "status": "red",
-      "why": "the moo conformance leg has no negative control (no conformance-negative-control-moo in make/negative-controls.json)"
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "rust",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr1",
       "lang": "squirrel",
-      "status": "proven",
-      "gate": "make conformance: 7 case(s) pass, e.g. json-read/r1_cfg",
-      "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))"
+      "status": "red",
+      "why": "65 case(s) answered absent with no ruling: framing/array_L0_inert, framing/array_L1_inert, framing/array_L2_empty and 62 more"
     },
     {
       "row": "cases tblr2",
@@ -5297,112 +5352,92 @@
     {
       "row": "cases listdemo",
       "lang": "cpp",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (cpp)",
-      "control": "conformance-negative-control-cpp (CI full / negative controls (base-conformance-cpp))"
+      "status": "red",
+      "why": "10 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 7 more"
     },
     {
       "row": "cases listdemo",
       "lang": "c",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (c)",
-      "control": "conformance-negative-control-c (CI full / negative controls (base-c-conformance))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "cs",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (cs)",
-      "control": "conformance-negative-control-cs (CI full / negative controls (cs-1))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "dart",
       "status": "red",
-      "why": "1 case(s) answered absent with no ruling: json-hostile/list-map-dup-key"
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "elixir",
       "status": "red",
-      "why": "the elixir conformance leg has no negative control (no conformance-negative-control-elixir in make/negative-controls.json)"
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "go",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))"
+      "status": "red",
+      "why": "9 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/map_L1_inert and 6 more"
     },
     {
       "row": "cases listdemo",
       "lang": "goose",
       "status": "red",
-      "why": "32 case(s) answered absent with no ruling: json-hostile/list-map-dup-key, json-read/list_before_pointer, json-read/list_empty and 29 more"
+      "why": "43 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 40 more"
     },
     {
       "row": "cases listdemo",
       "lang": "java",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "js",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-walk (CI full / negative controls (js))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "lobster",
       "status": "red",
-      "why": "the lobster conformance leg has no negative control (no conformance-negative-control-lobster in make/negative-controls.json)"
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "lua",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "luau",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "moo",
       "status": "red",
-      "why": "the moo conformance leg has no negative control (no conformance-negative-control-moo in make/negative-controls.json)"
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "rust",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases listdemo",
       "lang": "squirrel",
-      "status": "proven",
-      "gate": "make conformance: 32 case(s) pass, e.g. json-hostile/list-map-dup-key",
-      "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))"
+      "status": "red",
+      "why": "11 case(s) answered absent with no ruling: framing/array_elem_L_past_body, framing/array_elem_terminator_early, framing/array_header_crosses_L_unbounded and 8 more"
     },
     {
       "row": "cases mapdemo",
@@ -5649,7 +5684,8 @@
       "row": "porting M6",
       "lang": "dart",
       "status": "red",
-      "why": "❌ #349"
+      "gate": "tables-dart-identity",
+      "why": "✅ but its gate tables-dart-identity has no negative control"
     },
     {
       "row": "porting M6",
@@ -5755,14 +5791,16 @@
     {
       "row": "porting M10",
       "lang": "dart",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the runtime allocates inside itself and says so (docs/SPEC-TABLES.md)"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M10",
       "lang": "elixir",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the BEAM allocates every term; the count is pinned instead (docs/SPEC-TABLES.md)"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M10",
@@ -5776,7 +5814,7 @@
       "row": "porting M10",
       "lang": "goose",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: Goose has no allocator to hook: storage is the compiler's data stacks, grown by a pointer bump and freed by a scope exit"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: Goose has no allocator to hook: storage is the compiler's data stacks, grown by a pointer bump and freed by a scope exit"
     },
     {
       "row": "porting M10",
@@ -5787,44 +5825,50 @@
     {
       "row": "porting M10",
       "lang": "js",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the runtime allocates inside itself and says so; every unavoidable allocation is named in the floor (docs/SPEC-TABLES.md)"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M10",
       "lang": "lobster",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: memory is Lobster's compile-time reference counting over the VM's own allocator, out of a program's reach; generated Lobster allocates only …"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M10",
       "lang": "lua",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the Lua VM allocates every table and string itself and a script cannot hand it an allocator; the count is pinned instead (docs/PORT-LUA.md)"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M10",
       "lang": "luau",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the allocator is the host's (`lua_Alloc`, set at `lua_newstate`), out of a script's reach; generated Luau allocates only tables and buffers,…"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M10",
       "lang": "moo",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the allocator is the host's (`lua_Alloc`, set at `lua_newstate`), out of a script's reach; generated moo allocates only tables and buffers, …"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M10",
       "lang": "rust",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc`)"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: no allocating path exists: a pointered unit's wire is refused and the fixed class allocates nothing (`tables-rust-alloc`)"
     },
     {
       "row": "porting M10",
       "lang": "squirrel",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the VM allocates inside itself and offers a script no allocator to hook"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M11",
@@ -5850,13 +5894,13 @@
       "row": "porting M11",
       "lang": "dart",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TAB…"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TAB…"
     },
     {
       "row": "porting M11",
       "lang": "elixir",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codeg…"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codeg…"
     },
     {
       "row": "porting M11",
@@ -5886,7 +5930,7 @@
       "row": "porting M11",
       "lang": "lobster",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: a Lobster class has no layout a program can assert; the block reader reads byte strings at the compiler's offsets, and the build version is …"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: a Lobster class has no layout a program can assert; the block reader reads byte strings at the compiler's offsets, and the build version is …"
     },
     {
       "row": "porting M11",
@@ -5900,13 +5944,13 @@
       "row": "porting M11",
       "lang": "luau",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: a Luau table has no layout to assert; the accelerators, when carded, read buffers at the compiler's offsets"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: a Luau table has no layout to assert; the accelerators, when carded, read buffers at the compiler's offsets"
     },
     {
       "row": "porting M11",
       "lang": "moo",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: a moo table has no layout to assert; the accelerators, when built, read buffers at the compiler's offsets"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: a moo table has no layout to assert; the accelerators, when built, read buffers at the compiler's offsets"
     },
     {
       "row": "porting M11",
@@ -5919,7 +5963,7 @@
       "row": "porting M11",
       "lang": "squirrel",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no struct layout to check against: a blob is read at the descriptor's offsets, which ARE the model, and the build version refuses a producer…"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: no struct layout to check against: a blob is read at the descriptor's offsets, which ARE the model, and the build version refuses a producer…"
     },
     {
       "row": "porting M12",
@@ -5994,7 +6038,7 @@
       "row": "porting M12",
       "lang": "luau",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the pinned Luau's `buffer` library reads and writes little-endian on every host by definition, so no read can consult the host's order; the …"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: the pinned Luau's `buffer` library reads and writes little-endian on every host by definition, so no read can consult the host's order; the …"
     },
     {
       "row": "porting M12",
@@ -6041,7 +6085,8 @@
       "row": "porting M14",
       "lang": "dart",
       "status": "red",
-      "why": "❌ #349"
+      "gate": "tables-dart-variable-class",
+      "why": "✅ but its gate tables-dart-variable-class has no negative control"
     },
     {
       "row": "porting M14",
@@ -6141,14 +6186,16 @@
     {
       "row": "porting M17",
       "lang": "dart",
-      "status": "red",
-      "why": "❌ #259"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M17",
       "lang": "elixir",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the BEAM owns all memory; a blob lives in a managed binary and there is no caller-visible arena or address-space span (docs/SPEC-TABLES.md)"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M17",
@@ -6173,20 +6220,23 @@
     {
       "row": "porting M17",
       "lang": "js",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no arena and no slab: every blob is its own `Uint8Array` or string at exactly its length, so there is no slab for a large blob to outgrow; t…"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M17",
       "lang": "lobster",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no caller-visible arena: a blob is one Lobster `string` the VM allocates at its exact size, so there is no slab to outgrow and no address-sp…"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M17",
       "lang": "lua",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no arena and no slab: every blob is one Lua string of exactly its length, so there is no slab for a large blob to outgrow; `blob_large`'s 66…"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M17",
@@ -6204,13 +6254,14 @@
       "row": "porting M17",
       "lang": "rust",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no arena and no slab: the Rust leg's storage owns every node and blob through `Rc` (a `*bytes` is an `Option\u003cRc\u003c[u8]\u003e\u003e`, `internal/codegen/r…"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: no arena and no slab: the Rust leg's storage owns every node and blob through `Rc` (a `*bytes` is an `Option\u003cRc\u003c[u8]\u003e\u003e`, `internal/codegen/r…"
     },
     {
       "row": "porting M17",
       "lang": "squirrel",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: no arena and no slab: every blob is its own Squirrel blob or string at exactly its length, so there is no slab for a large node to outgrow"
+      "status": "n/a",
+      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M18",
@@ -6239,8 +6290,10 @@
     {
       "row": "porting M18",
       "lang": "dart",
-      "status": "red",
-      "why": "❌ #392"
+      "status": "proven",
+      "gate": "tables-dart-variable-arms",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "tables-dart-wire-fuzz-negative-control (CI full / negative controls (dart-conformance))"
     },
     {
       "row": "porting M18",
@@ -6343,7 +6396,8 @@
       "row": "porting M19",
       "lang": "dart",
       "status": "red",
-      "why": "❌ #502"
+      "gate": "tables-dart-variable-arms",
+      "why": "✅ but its gate tables-dart-variable-arms has no negative control"
     },
     {
       "row": "porting M19",
@@ -6444,8 +6498,10 @@
     {
       "row": "porting M20",
       "lang": "dart",
-      "status": "red",
-      "why": "❌ #514"
+      "status": "proven",
+      "gate": "tables-dart-wire-fuzz",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "tables-dart-wire-fuzz-negative-control (CI full / negative controls (dart-conformance))"
     },
     {
       "row": "porting M20",
@@ -6526,8 +6582,9 @@
     {
       "row": "porting M21",
       "lang": "cpp",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: retired: the C++ leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`tables-float-nan`…"
+      "status": "n/a",
+      "cites": "docs/SPEC-TABLES.md: \"the NaN bit surgery this paragraph used to require is retired with the NaN\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M21",
@@ -6547,8 +6604,9 @@
     {
       "row": "porting M21",
       "lang": "dart",
-      "status": "red",
-      "why": "❌ #366"
+      "status": "n/a",
+      "cites": "docs/SPEC-TABLES.md: \"the NaN bit surgery this paragraph used to require is retired with the NaN\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M21",
@@ -6559,8 +6617,9 @@
     {
       "row": "porting M21",
       "lang": "go",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingN…"
+      "status": "n/a",
+      "cites": "docs/SPEC-TABLES.md: \"the NaN bit surgery this paragraph used to require is retired with the NaN\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M21",
@@ -6584,20 +6643,23 @@
     {
       "row": "porting M21",
       "lang": "lobster",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: retired: the lobster leg is finite only, a NaN or an infinity is refused on its raw bits in every form (`TestLobsterTablesAreFiniteOnly`, `T…"
+      "status": "n/a",
+      "cites": "docs/SPEC-TABLES.md: \"the NaN bit surgery this paragraph used to require is retired with the NaN\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M21",
       "lang": "lua",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: retired: the Lua leg refuses a NaN or an infinity on its raw bits in every read (variable, retained, message, fixed, cook check and uncook, …"
+      "status": "n/a",
+      "cites": "docs/SPEC-TABLES.md: \"the NaN bit surgery this paragraph used to require is retired with the NaN\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M21",
       "lang": "luau",
-      "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: retired: the Luau leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestLuauTablesAr…"
+      "status": "n/a",
+      "cites": "docs/SPEC-TABLES.md: \"the NaN bit surgery this paragraph used to require is retired with the NaN\"",
+      "why": "not applicable by design, by the clause it cites"
     },
     {
       "row": "porting M21",
@@ -6847,7 +6909,7 @@
       "row": "porting I4",
       "lang": "cpp",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the reference leg may not answer absent (`test/conformance/README.md`)"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: the reference leg may not answer absent (`test/conformance/README.md`)"
     },
     {
       "row": "porting I4",
@@ -7076,7 +7138,7 @@
       "row": "porting I7",
       "lang": "elixir",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md)"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: the host's order is never consulted and no platform query exists for a gate to catch; the two foreign surfaces hold it (docs/SPEC-TABLES.md)"
     },
     {
       "row": "porting I7",
@@ -7141,7 +7203,7 @@
       "row": "porting I7",
       "lang": "squirrel",
       "status": "red",
-      "why": "— (the platform cannot) with no ruling in docs/rulings.json: the host's order is never consulted (every word is composed from bytes) and no platform query exists for a gate to catch; the block-foreign …"
+      "why": "— (the platform cannot) with no ruling in docs/rulings.json and no cited clause of docs/PORTING.md or docs/SPEC-TABLES.md: the host's order is never consulted (every word is composed from bytes) and no platform query exists for a gate to catch; the block-foreign …"
     },
     {
       "row": "porting I11",
