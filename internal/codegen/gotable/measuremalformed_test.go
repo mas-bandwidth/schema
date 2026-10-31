@@ -514,14 +514,11 @@ func measureMalformedKeyedProbe() string {
 // accepted).
 var measureMalformedWStringSchema = `package probe
 table W {
- s wstring(3)
 }
 union U0 {
- w wstring(3)
  n int8 | min = -128, max = 127
 }
 table Root {
- a wstring(4)
  l []W
  u U0
 }

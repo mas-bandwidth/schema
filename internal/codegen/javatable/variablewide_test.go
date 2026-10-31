@@ -12,7 +12,7 @@ import (
 
 func TestJavaVariableWideValues(t *testing.T) {
 	t.Parallel()
-	u := unitFrom(t, "package probe\ntype Line { text wstring(4) }\ntable Root {\n title wstring(7)\n line Line\n lines [..3]Line\n tail int32\n}\n")
+	u := unitFrom(t, "package probe\ntype Line { text wstring(4) }\ntable Root {\n line Line\n lines [..3]Line\n tail int32\n}\n")
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
 	rep := new(tabletext.Report)

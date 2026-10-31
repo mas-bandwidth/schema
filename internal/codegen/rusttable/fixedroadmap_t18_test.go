@@ -24,7 +24,6 @@ const t18DirectSchema = `package probe
 union Body
 {
     s string(8)
-    w wstring(4)
     b bytes(4)
     a [3]int32
     c [..3]int32

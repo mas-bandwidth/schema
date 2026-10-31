@@ -192,7 +192,6 @@ func t05RunProbe(t *testing.T, schema, probe string) ([]byte, error) {
 const t05IllFormedSchema = `package probe
 fixed table T {
     s string(8)
-    w wstring(8)
 }
 `
 

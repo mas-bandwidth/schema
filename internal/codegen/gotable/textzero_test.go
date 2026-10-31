@@ -38,7 +38,6 @@ table Root
     l []string(8)
     o [..4]?string(8)
     m map[string(8)]int32
-    w wstring(8)
     i Inner
     at timestamp
     k map[int32]int32

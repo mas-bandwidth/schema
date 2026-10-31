@@ -72,10 +72,9 @@ type jsVersionRow struct {
 	// grown element width, which §5.9 #33 says is FOUR widen entries and never a
 	// folded run — and `widened > 0` cannot tell the two apart.
 	widenedExact int
-	// unported is a row whose schema this backend refuses to generate at all —
-	// kind 33, `wstring(N)`, is still refused in a JavaScript table
-	// (compiler/target_javascript.go, refuseWideText). It is NOT a §5 red: the
-	// row is named here, skipped by name, and owed the day the kind lands.
+	// unported is a row whose schema this backend refuses to generate at all.
+	// It is NOT a §5 red: the row is named here, skipped by name, and owed the
+	// day the construct lands.
 	unported string
 	// check is JavaScript asserting the landed values, over `back[0]`.
 	check string
@@ -163,7 +162,6 @@ var jsVersionRows = []jsVersionRow{
   if (back[0].pick.alpha.y !== 55) {
     fail("the arm's reader-appended field is not its declared default: " + show(back[0]));
   }`},
-	{row: "wstring_grow", unported: "kind 33, wstring(N), is refused in a JavaScript table (schema#366 / refuseWideText)"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -563,10 +561,7 @@ if (!(got.head === 81 && got.tail === 88)) {
 // array's slots are named by their ENUM ORDINAL (`slots[1]` is the first slot),
 // so that one index comes back by one. The manifest names a field AS THE WIRE
 // NAMES IT, so a `was =` rename pairs by wire id for free (§5.9 #41).
-//
-// A value form this leg cannot express as one comparison — a wstring literal —
-// is LEFT OUT BY NAME rather than weakened into a pass; every row carrying one
-// is already unported (§5.9 #44).
+
 func jsManifestChecks(t *testing.T, corpus, file string, readerSchema string) string {
 	t.Helper()
 	records, values := jsManifestRow(t, corpus, file)
@@ -802,8 +797,7 @@ func jsManifestNonFinite(t *testing.T, path string) map[string]bool {
 }
 
 // jsManifestCompare is ONE assertion for one manifest value, or nothing where
-// the form is one this leg cannot express (a wstring literal — and every row
-// carrying one is unported, §5.9 #44).
+// the form is one this leg cannot express.
 func jsManifestCompare(path, want string) (string, bool) {
 	fail := func(cond string) (string, bool) {
 		return fmt.Sprintf("if (%s) { fail(%q + \" is \" + %s + \", and the manifest says %s\"); }\n",
@@ -812,8 +806,6 @@ func jsManifestCompare(path, want string) (string, bool) {
 	switch {
 	case want == "true" || want == "false":
 		return fail(fmt.Sprintf("%s !== %s", path, want))
-	case strings.HasPrefix(want, `u"`):
-		return "", false // a wstring literal: named, never weakened into a pass
 	case strings.HasPrefix(want, `"`):
 		lit, err := strconv.Unquote(want)
 		if err != nil {

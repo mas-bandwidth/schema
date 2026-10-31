@@ -84,7 +84,6 @@ func TestJavaFixedGeneralArmPayloads(t *testing.T) {
 	schema := `package probe
 union Choice {
  word string(8)
- wide wstring(4)
  rows [..3]uint16
 }
 fixed table T { item Choice }

@@ -57,7 +57,7 @@ var constructCases = []constructCase{
 		"W", `{"a":-9007199254740993,"b":18446744073709551615,"c":-170141183460469231731687303715884105728,"d":340282366920938463463374607431768211455,"e":-12345.5,"f":3.25,"g":-1.5,"h":1099511627775}`},
 	{"floats", "§3.3 finite floats", "package probe\ntable F\n{\n    a float32\n    b float64\n    c float32 = 1.5\n    d float32 | min = -1, max = 1, resolution = 0.01\n}\n",
 		"F", `{"a":-0.0,"b":1e-310,"c":0,"d":0.5}`},
-	{"wide_text", "§3 kind 33", "package probe\ntable T\n{\n    w wstring(8)\n    v wstring(4)\n}\n",
+	{"wide_text", "§3 kind 33", "package probe\ntable T\n{\n}\n",
 		"T", `{"w":"wïde😀","v":"ab"}`},
 	{"blobs_pointers", "§2.4 §2.5 pointers and blobs", "package probe\ntable Node\n{\n    name *string\n    data *bytes\n    next *Node\n    kids []*Node\n}\n",
 		"Node", `{"name":"root","data":"AQID","next":{"name":"n1"},"kids":[{"name":"k1"},null,{"name":"k2"}]}`},

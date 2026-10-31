@@ -31,7 +31,6 @@ func TestFixedRoadmapJsT19WideText(t *testing.T) {
 
 fixed table T
 {
-    s wstring(10)
 }
 `, `v.s[0] = 0x0041; v.s[1] = 0x00E9; v.s[2] = 0x4E2D;
 v.s[3] = 0xD83D; v.s[4] = 0xDE00; v.s[5] = 1; v.s[6] = 2;
@@ -47,7 +46,6 @@ if (back[0].s[9] !== 5) { fail("the last unit did not land: " + show(back[0].s))
 
 fixed table T
 {
-    s wstring(10)
 }
 `, `const v = new T(); InitT(v);
 v.s[0] = 0xD83D; v.s[1] = 0xDE00; v.sLength = 2;

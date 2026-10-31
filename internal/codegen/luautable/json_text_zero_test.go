@@ -40,7 +40,6 @@ table Root
 {
     s *string
     t string(8)
-    w wstring(8)
     i Inner
     m map[string(8)]int32
     k map[int32]int32

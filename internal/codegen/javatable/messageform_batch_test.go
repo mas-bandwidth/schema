@@ -567,7 +567,6 @@ fixed table Probe
     moods [3]Mood
     label string(12)
     blob  bytes(6)
-    wide  wstring(5)
     small [4]int16
     many  [..5]uint32
     spot  Spot

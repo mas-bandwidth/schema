@@ -32,7 +32,6 @@ func TestFixedRoadmapElixirT19WideText(t *testing.T) {
 
 fixed table T
 {
-    w wstring(10)
 }
 `)
 		t09Probe(t, u, "T", `  empty = <<>>

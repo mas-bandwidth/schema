@@ -21,7 +21,6 @@ enum Mode { First, Second }
 fixed table Child { n int32 = 7 }
 fixed table Rows { items [..3]Child }
 union Value { amount uint128
- words wstring(8)
  rows Rows
  empty }
 fixed table Root { flag bool

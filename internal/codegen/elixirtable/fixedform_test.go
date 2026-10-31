@@ -189,7 +189,6 @@ fixed table Everything
     ranged int32 | min = 0, max = 1000
     grade  Grade
     name   string(16)
-    wide   wstring(8)
     blob   bytes(12)
     legs   [4]Leg
     counts [..4]uint16

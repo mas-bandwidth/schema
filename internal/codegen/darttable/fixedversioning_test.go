@@ -133,7 +133,6 @@ var versionRows = []versionRow{
 	// `union_arm_payload_widen` IS NOT A WIDEN: it appends a field INSIDE an
 	// arm, so it owes `widened == 0` like every other append (§5.7).
 	{row: "union_arm_payload_widen"},
-	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------

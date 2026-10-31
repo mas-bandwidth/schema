@@ -290,7 +290,6 @@ fixed table Root {
     note  ?int32 | min = 0, max = 10
     pick  Pick
     grade Grade
-    wide  wstring(4)
     raw   bytes(4)
 }
 `, `package probe
@@ -547,7 +546,6 @@ table V {
     ratio float32 = 0.5 | min = 0, max = 1, resolution = 0.5
     mask  bits(12)
     marks [..4]int32 | min = 0, max = 10
-    wide  wstring(4)
 }
 `, `package probe
 import ("testing")

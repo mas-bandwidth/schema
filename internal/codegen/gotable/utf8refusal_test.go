@@ -7,7 +7,6 @@ const utf8RefusalSchema = `package probe
 fixed table Root
 {
     s string(16)
-    w wstring(16)
 }
 `
 

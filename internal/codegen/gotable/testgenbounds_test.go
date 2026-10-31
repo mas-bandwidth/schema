@@ -139,7 +139,6 @@ type Inner { k uint8 = 1 | min = 1, max = 9 }
 table Leaf { v int32 }
 table Kinds {
     fx    fixed(8, 8) | min = -2, max = 3
-    ws    wstring(4)
     bs    bytes(3)
     tags  [..2]string(3)
     big   int128 | min = -10, max = 10

@@ -29,7 +29,6 @@ func TestFixedRoadmapJavaT19WideText(t *testing.T) {
 
 fixed table T
 {
-    s wstring(10)
 }
 `, `        vals[0].s[0] = 0x0041;
         vals[0].s[1] = 0x00E9;

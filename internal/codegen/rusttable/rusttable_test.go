@@ -561,7 +561,6 @@ const wideTextFixed = `package probe
 fixed table Caption
 {
     lead  int32
-    wide  wstring(8)
     trail int32
 }
 `

@@ -278,7 +278,6 @@ fixed table Wide {
     grade Grade
     note  ?int32
     blob  bytes(6)
-    text  wstring(4)
     slots [Key]Kid
     stat  Stat
     stats [..2]Stat

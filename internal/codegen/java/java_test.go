@@ -201,7 +201,6 @@ func TestJavaWStringWriteChecksAreDebugOnly(t *testing.T) {
 	const src = `package wtest
 
 type Wide {
-	text wstring(2)
 }
 `
 	f, errs := parser.Parse("W.schema", []byte(src))

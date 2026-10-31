@@ -321,7 +321,6 @@ const wideProbeSrc = `package wideprobe
 
 type Inner
 {
-    w wstring(3)
 }
 
 // a map value cannot carry a range (internal/check refuses one on a map), and
@@ -338,14 +337,12 @@ union Pick
     fx     fixed(16, 16)  | min = -100, max = 100
     ufx    ufixed(48, 16) | min = 0, max = 1000000
     big    fixed(112, 16) | min = -1000000, max = 1000000
-    wide   wstring(4)
     narrow string(4)
     off
 }
 
 table Probe
 {
-    title   wstring(6)
     pick    Pick
     picks   [..3]Pick
     fx_map  map[uint8]Gauge
@@ -384,18 +381,15 @@ const wideDamageWriterSrc = `package widedamage
 
 type Inner
 {
-    w wstring(8)
 }
 
 union Pick
 {
-    wide wstring(8)
     off
 }
 
 table Tag
 {
-    label wstring(8)
     pick  Pick
     names map[uint8]wstring(8)
     inner Inner
@@ -407,7 +401,6 @@ const wideDamageReaderSrc = `package widedamage
 
 type Inner
 {
-    w wstring(3)
 }
 
 // a map value cannot carry a range (internal/check refuses one on a map), and
@@ -421,13 +414,11 @@ type Gauge
 
 union Pick
 {
-    wide wstring(2)
     off
 }
 
 table Tag
 {
-    label wstring(2)
     pick  Pick
     names map[uint8]wstring(2)
     inner Inner

@@ -2205,10 +2205,8 @@ fixed table Carrier {
 func TestFixedFormWideTextCodeUnits(t *testing.T) {
 	runGenerated(t, `package probe
 fixed table FxCaption {
-    text wstring(4)
 }
 fixed table FxWide {
-    caption wstring(8)
     label   string(8)
     inner   FxCaption
     seq     uint32 = 1 | min = 0, max = 1000

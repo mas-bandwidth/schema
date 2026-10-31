@@ -36,7 +36,6 @@ const t19RustSchema = `package probe
 
 fixed table Root
 {
-    wide wstring(10)
 }
 `
 

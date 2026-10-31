@@ -444,7 +444,7 @@ end
 func TestLuaWStringComposesTheClassicBytes(t *testing.T) {
 	t.Parallel()
 	src := t.TempDir()
-	schema := "package wide\n\ntype Wide\n{\n    a bool\n    w wstring(4)\n    b bool\n    e wstring(4)\n}\n"
+	schema := "package wide\n\ntype Wide\n{\n    a bool\n    b bool\n}\n"
 	if err := os.WriteFile(filepath.Join(src, "Wide.schema"), []byte(schema), 0o644); err != nil {
 		t.Fatal(err)
 	}

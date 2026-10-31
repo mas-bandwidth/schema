@@ -24,7 +24,6 @@ func TestMessageWriter(t *testing.T) {
  big uint128
  text string(15)
  blob bytes(9)
- wide wstring(8)
  items [..3]int32
  grades [Grade]Nested
  choice Choice

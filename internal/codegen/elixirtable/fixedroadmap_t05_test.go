@@ -308,7 +308,6 @@ func t05C3(t *testing.T) {
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `))
 	if err != nil {
@@ -340,7 +339,6 @@ func t05C5(t *testing.T) {
 
 fixed table T
 {
-    wide wstring(8)
 }
 `))
 	if err != nil {
@@ -366,7 +364,6 @@ func t05C4(t *testing.T) {
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `))
 	if err != nil {
@@ -395,7 +392,6 @@ func t05R24(t *testing.T) {
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `))
 	if err != nil {

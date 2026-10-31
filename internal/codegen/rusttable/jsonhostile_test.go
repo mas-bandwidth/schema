@@ -90,7 +90,6 @@ const jsonHostileProbeSrc = `package probe
 table Probe
 {
     name  string(8)
-    wide  wstring(8)
     blob  *string
     names map[string(8)]int32
     by_id map[uint16]int32

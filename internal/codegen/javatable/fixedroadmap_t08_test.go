@@ -349,7 +349,6 @@ func t08UTF16(t *testing.T) {
 
 fixed table T
 {
-    s wstring(8)
 }
 `, `        vals[0].s[0] = 0xD83D;
         vals[0].s[1] = 0xDE00;

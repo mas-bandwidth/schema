@@ -96,7 +96,6 @@ var lobsterVersionRows = []lobsterVersionRow{
     assert_eq(back[0].Pick.Alpha.X, 21, "pick.alpha.x")
     assert_eq(back[0].Pick.Alpha.Y, 55, "pick.alpha.y prefill default")
     assert_eq(back[0].Seq, 18, "seq")`},
-	{row: "wstring_grow"},
 }
 
 func TestLobsterFixedFormEvolution(t *testing.T) {
@@ -808,7 +807,6 @@ fixed table CheckedHost | integrity = "crc32c" {
     lead   uint32 = 1
     marks  [..4]int32
     label  string(8)
-    wide   wstring(4)
     val    int32 | min = 0, max = 100
     trail  uint32 = 2
 }

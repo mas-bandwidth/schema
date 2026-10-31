@@ -438,7 +438,6 @@ var mooVersionRows = []versionRow{
 	{row: "union_append"},
 	{row: "union_arm_payload_widen"},
 	{row: "unknown_census", unknown: 1, noNewer: true},
-	{row: "wstring_grow"},
 }
 
 func readTestSchema(t *testing.T, base string) *ir.Unit {

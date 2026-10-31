@@ -115,7 +115,6 @@ check(v.LinkPresent == true, "a T read into ?T is present")`},
 	// union_arm_payload_widen is NOT a widen: it appends a field inside an arm,
 	// so it owes widened == 0 like every other append (§5.7)
 	{row: "union_arm_payload_widen"},
-	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -702,16 +701,6 @@ func luauValueCheck(t *testing.T, expr string, f *ir.Field, kind, value string) 
 			t.Fatalf("the manifest text %s does not unquote: %v", value, err)
 		}
 		return fmt.Sprintf("buffer.readstring(%s, 0, %d) == %s", expr, len(s), luauQuote(s))
-	case "wstring":
-		if !strings.HasPrefix(value, "u\"") || !strings.HasSuffix(value, "\"") {
-			t.Fatalf("the manifest wide text %s is not u\"...\"", value)
-		}
-		units := luauWideUnits(value)
-		var parts []string
-		for i, u := range units {
-			parts = append(parts, fmt.Sprintf("buffer.readu16(%s, %d) == %d", expr, 2*i, u))
-		}
-		return strings.Join(parts, " and ")
 	case "f32", "f64":
 		_, hexBits, ok := strings.Cut(value, "|0x")
 		if !ok {
@@ -761,27 +750,6 @@ func luauWidenF32(b uint32) uint64 {
 		return sign | 0x7ff<<52 | frac
 	}
 	return math.Float64bits(float64(math.Float32frombits(b)))
-}
-
-// luauWideUnits is the UTF-16 code units of the manifest's wide text: its
-// \uXXXX escapes are units as they are, lone surrogates included.
-func luauWideUnits(raw string) []uint16 {
-	body := strings.TrimSuffix(strings.TrimPrefix(raw, "u\""), "\"")
-	var out []uint16
-	for i := 0; i < len(body); {
-		if strings.HasPrefix(body[i:], "\\u") && i+6 <= len(body) {
-			v, err := strconv.ParseUint(body[i+2:i+6], 16, 16)
-			if err == nil {
-				out = append(out, uint16(v))
-				i += 6
-				continue
-			}
-		}
-		r := []rune(body[i:])[0]
-		out = append(out, utf16.Encode([]rune{r})...)
-		i += len(string(r))
-	}
-	return out
 }
 
 // luauQuote is s as a Luau string literal, every byte past printable ASCII
