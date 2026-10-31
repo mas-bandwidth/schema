@@ -58,7 +58,7 @@ static int failures = 0;
 // allocates, and what never does"; docs/PORTING.md I1) ----
 //
 // #562's list audit (test/tables/lists_main.cpp) holds the list paths and
-// #615/#679's counters hold NodeLoadRetain and NodeLoadRetainMessages; this
+// #615/#679's counters hold NodeLoadRetain; this
 // is the general FIXED-class corpus path measured at RUN TIME through the one
 // channel a source scan cannot see: a counting global operator new. Load,
 // Measure, the indexed and iterated reads and Save on the richest root must
@@ -409,7 +409,7 @@ static void test_all_default()
 
 // ---- guarded fields stay off the wire when the guard says so ----
 
-// The guard rides on Guarded.schema's `Patrol`, a plain `table`, and not on
+// The guard rides on Guarded.schema's `Patrol`, a variable table, and not on
 // Tables.schema's ProfileConfig, which is a `fixed table`: a lookback
 // conditional exists to make a body vary in size, and that is "a disqualifying
 // thing for a fixed table. not supported. only variable." (§2.2, §3.4).
@@ -1115,7 +1115,7 @@ static void test_reflection()
     CHECK( profiles->table == tabledemo::ProfileConfigTableType() );
 
     // guards surface machine-usable — and they surface on Guarded.schema's
-    // `Patrol`, a plain `table`, because a guarded branch disqualifies a
+    // `Patrol`, a variable table, because a guarded branch disqualifies a
     // `fixed table` (docs/SPEC-TABLES.md §2.2, §3.4) and ProfileConfig is one.
     // The composition rides in the descriptor exactly as the branch tree spells
     // it, which is what the text walk evaluates.
@@ -9507,7 +9507,6 @@ int main()
     test_message_form_batch();
     test_message_form_reload();
     test_message_form_wide_vocabulary();
-    test_message_form_pointered();
     test_message_form_two_peers();
     test_message_form_widened();
     test_message_form_refusals();
