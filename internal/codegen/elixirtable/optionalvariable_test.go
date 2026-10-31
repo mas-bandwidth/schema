@@ -375,3 +375,51 @@ IO.puts("ok")
 		t.Fatalf("the reader without its nested node-id check still passed: the probe does not see the rule\n%s", out)
 	}
 }
+
+// TestPointerToAnotherTablesRecordIsAKindMismatchElixir pins a wire fuzzer
+// misread of well-framed input (pass index, graphdemo.Scene): a `*T` slot
+// whose node index names a record of ANOTHER table reads null and counts one
+// kind_mismatch, as the engine's resolveCell (internal/tablewire) answers; the
+// leg resolved it to the other table's record and counted nothing. The
+// expected report is the oracle's own answer for this mutant.
+//
+// THE REVERSED WITNESS resolves the slot without the type check and the probe
+// must go red.
+func TestPointerToAnotherTablesRecordIsAKindMismatchElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "tables", "pointers")
+	u := loadUnit(t, filepath.Join(dir, "Graph.schema"), filepath.Join(dir, "Marks.schema"), filepath.Join(dir, "Parts.schema"))
+	// graph_tree with one pointer's node index moved to a record of another table
+	const mutant = "01010c0474726565020402000000031106041104051107060c4d06070e080401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c057269676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b0"
+	probe := fmt.Sprintf(`
+{:ok, _v, r} = Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower))
+if {r.unknown, r.kind_mismatch, r.widened, r.clamped, r.malformed} != {0, 1, 0, 0, false} do
+  IO.puts(:stderr, "FAIL: a pointer to another table's record: " <> inspect(r))
+  System.halt(1)
+end
+IO.puts("ok")
+`, mutant)
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir reader resolves a *T slot to another table's record: %v\n%s", err, out)
+	}
+	const check = "case table_node(nodes, idx, ids, f.elem) do"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), check)
+		planted[name] = []byte(strings.ReplaceAll(string(data), check, "case node_value(nodes, idx, ids) do"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no typed node resolution in the generated reader")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the reader without its typed node resolution still passed: the probe does not see the rule\n%s", out)
+	}
+}
