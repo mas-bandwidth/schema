@@ -309,6 +309,7 @@
         "tables-lists-preorder-negative-control",
         "tables-lists-shared-negative-control",
         "tables-lists-tool-cook-negative-control",
+        "tables-maps-tool-cook-negative-control",
         "tables-lists-unreached-negative-control",
         "tables-lists-walk-order-negative-control"
       ]
