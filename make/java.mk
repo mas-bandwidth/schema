@@ -1640,7 +1640,9 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # java/java-wire-fuzz-every-root), and each still finds a divergence:
 #   - the seeded RANDOM pass: at the shared N and SEED, a stream_arm_first
 #     mutant whose arm body the Java leg counts one kind_mismatch fewer than
-#     the engine (random #22918, run seed 24845619678);
+#     the engine (random #22918, run seed 24845619678). Both reports are
+#     malformed: it is damaged input, parked under the discard-on-damage
+#     ruling, and it stops the random pass before it reaches undamaged ones;
 #   - the whole RETENTION ARM: Java's retention does not reach a pointer
 #     node's body, so an unknown field there is counted and not retained
 #     (graph_tree, enumerated pass reference #43, where the engine retains it).
