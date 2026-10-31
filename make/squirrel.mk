@@ -218,8 +218,8 @@ tables-squirrel-runtime-home-negative-control: bin/schema tables-squirrel-runtim
 	@rm -rf build/runtime-home-squirrel/base-sabotage build/runtime-home-squirrel/added-sabotage
 	@./build/schema-squirrel-runtime-home-sabotaged generate --lang squirrel --out build/runtime-home-squirrel/base-sabotage tables/examples 2>/dev/null
 	@./build/schema-squirrel-runtime-home-sabotaged generate --lang squirrel --out build/runtime-home-squirrel/added-sabotage build/runtime-home-squirrel/src 2>/dev/null
-	@base=$$(cd build/runtime-home-squirrel/base-sabotage && ls *Tables.nut); \
-	 added=$$(cd build/runtime-home-squirrel/added-sabotage && ls *Tables.nut); \
+	@base=$$(cd build/runtime-home-squirrel/base-sabotage && ls *Tables.nut | grep -v '^Tables.nut$$'); \
+	 added=$$(cd build/runtime-home-squirrel/added-sabotage && ls *Tables.nut | grep -v '^Tables.nut$$'); \
 	 if [ "$$base" = "$$added" ]; then \
 		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the table module in $$base — the gate is watching nothing"; exit 1; \
 	 fi; \
