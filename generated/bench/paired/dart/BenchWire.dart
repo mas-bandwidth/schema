@@ -4512,9 +4512,9 @@ String _jsonFloat(double v, bool single) {
 String _formatG(double value, int prec) {
   if (prec < 1) prec = 1;
   final bd = ByteData(8);
-  bd.setFloat64(0, value);
-  final hi = bd.getUint32(0);
-  final lo = bd.getUint32(4);
+  bd.setFloat64(0, value, Endian.big);
+  final hi = bd.getUint32(0, Endian.big);
+  final lo = bd.getUint32(4, Endian.big);
   final sign = (hi >> 31) != 0 ? '-' : '';
   final biased = (hi >> 20) & 0x7FF;
   var mant = (BigInt.from(hi & 0xFFFFF) << 32) | BigInt.from(lo);

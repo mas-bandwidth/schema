@@ -384,9 +384,7 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 	// THE PACKET WIRE: one driver source on both sides, the first tree whose
 	// copy builds against both compilers' C++
 	for _, d := range drivers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			var why []string
@@ -436,16 +434,14 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 				return
 			}
 			add(&r.Uncompared, fmt.Sprintf("packet %s: no driver source builds on both sides: %s", d.Name, strings.Join(why, "; ")))
-		}()
+		})
 	}
 
 	// THE TABLE FORMS: the Go engine each compiler carries
 	var tableCompared [2]int
 	for _, j := range tableJobs {
 		for _, message := range []bool{false, true} {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 				form, k := "variable form", 0
@@ -470,7 +466,7 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 						add(&r.Differences, fmt.Sprintf("table %s, unit %s, instance %s: %s", form, j.inst.Unit, j.inst.Name, d))
 					}
 				}
-			}()
+			})
 		}
 	}
 	wg.Wait()
@@ -579,9 +575,9 @@ func (b binary) ID(unit []string) (string, error) {
 		return "", err
 	}
 	f := strings.Fields(out)
-	for i := len(f) - 1; i >= 0; i-- {
-		if strings.HasPrefix(f[i], "0x") {
-			return f[i], nil
+	for _, v := range slices.Backward(f) {
+		if strings.HasPrefix(v, "0x") {
+			return v, nil
 		}
 	}
 	return "", fmt.Errorf("`id` printed no id: %q", out)

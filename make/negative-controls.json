@@ -131,7 +131,7 @@
     {
       "name": "lua",
       "when": "pull-request",
-      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). Beside them, two reversed witnesses on the same build: the release tier's wire fuzz at its release count on seed 2 over a copy of the units whose load counts every unknown field twice (red at the first divergence, J3), and a copy of the driver whose absent() writes nothing (one harness run over the leg; red because an unanswered case never passes, I4). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
@@ -140,7 +140,9 @@
         "schema-lua-resource-bounds-negative-control",
         "tables-lua-alloc-negative-control",
         "tables-lua-alloc-runtime-negative-control",
-        "tables-lua-soak-negative-control"
+        "tables-lua-soak-negative-control",
+        "tables-lua-release-negative-control",
+        "conformance-negative-control-lua-absent"
       ],
       "lua": "5.4.8"
     },
@@ -360,7 +362,7 @@
     {
       "name": "base-cook-2",
       "when": "pull-request",
-      "why": "the cook's controls and the C++ soak's control (its sabotaged soak compile is 32 s to 42 s on the runner; it goes red on its first sample): one cooked corpus, built once, that every one of them reads, and the same generated tables tree the C++ soak compiles. One half of what was the single `base-cook` group, cut on 2026-10-28 because that group ran 200 s median and 218 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 146 s of control time over 14 controls). Measured about 76 s of control time on run 40684770225 and 93 s on run 40684051433.",
+      "why": "the cook's controls and the C++ soak's control (its sabotaged soak compile is 32 s to 42 s on the runner; it goes red on its first sample): one cooked corpus, built once, that every one of them reads, and the same generated tables tree the C++ soak compiles. One half of what was the single `base-cook` group, cut on 2026-10-28 because that group ran 200 s median and 218 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 146 s of control time over 14 controls). Measured about 76 s of control time on run 40684770225 and 93 s on run 40684051433. The C++ usage control (docs/PORTING.md I12) rides here beside the cook it documents: one overlay compiler build and one compile of the page's examples.",
       "targets": [
         "tables-cpp-soak-negative-control",
         "tables-cook-fuzz-negative-control",
@@ -368,7 +370,8 @@
         "tables-cook-open-root-negative-control",
         "tables-cook-open-walk-negative-control",
         "tables-cook-write-hooks-negative-control",
-        "tables-cook-write-negative-control"
+        "tables-cook-write-negative-control",
+        "tables-cpp-usage-negative-control"
       ]
     },
     {
@@ -436,6 +439,42 @@
       ]
     },
     {
+      "name": "base-c-proof",
+      "when": "pull-request",
+      "why": "the C leg's 3.0.0 proof controls that rebuild the compiler under one overlay each and compile one small C unit (docs/PORTING.md M11, M17, I12): the layout model moved under the block unit's static asserts, the blob span denied, and the documented keyed accessor renamed under docs/USAGE.md's example. Go and the host C compiler only.",
+      "targets": [
+        "tables-c-block-layout-model-negative-control",
+        "tables-c-blob-span-negative-control",
+        "tables-c-usage-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-probes",
+      "when": "pull-request",
+      "why": "the C wire probes' controls (docs/PORTING.md M14, M19): each runs one compiler/tablescwire_test.go probe under `go test -overlay` with one C emitter line sabotaged (the `&node` label dropped; the map save's sort removed), so each pays one compiler test build. Kept apart from base-c-proof so neither job carries both test builds and three compiler builds.",
+      "targets": [
+        "tables-c-json-label-negative-control",
+        "tables-c-map-sort-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-absent",
+      "when": "pull-request",
+      "why": "the C driver's per-case absence control (docs/PORTING.md I4): a complete C conformance driver rebuilt from a sabotaged main.c and one harness run of the C leg. Alone for the reason base-c-foreign is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "conformance-negative-control-c-absent"
+      ]
+    },
+    {
+      "name": "base-c-format",
+      "when": "pull-request",
+      "clang_format": "pin",
+      "why": "the C format gate's drift control (docs/PORTING.md J4): one K&R struct brace planted in the C packet emitter under an overlay, the examples corpus generated with it, and tables-c-clean's engine (make/checks/c-clean-format.sh) must go red naming Types.h. It needs the pinned clang-format, which this row alone installs.",
+      "targets": [
+        "tables-c-format-negative-control"
+      ]
+    },
+    {
       "name": "base-c-finite",
       "when": "pull-request",
       "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS), so well inside the rule on its own row.",
@@ -448,6 +487,7 @@
       "when": "pull-request",
       "why": "the tolerant-wire oracle, nested-arm trailing and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
+        "tables-wire-fuzz-discard-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-node-type-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
@@ -589,12 +629,13 @@
     {
       "name": "cs-tables",
       "when": "pull-request",
-      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout.",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds).",
       "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
-        "tables-cs-json-differential-negative-control"
+        "tables-cs-json-differential-negative-control",
+        "tables-cs-byte-order-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -647,13 +688,15 @@
     {
       "name": "cs-cook",
       "when": "pull-request",
-      "why": "the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner.",
+      "why": "the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner. With them, the cross-endian refusal's control (the magic made not to refuse, so the refuse verb sees a later guard's reason instead of foreign_order) and the I12 usage control (SceneCook.Open moved out from under docs/USAGE.md's C# example), 3 s and 2 s on amd-1.",
       "targets": [
         "tables-block-home-negative-control",
         "tables-block-inline-array-negative-control",
         "tables-cook-open-cs-lengths-negative-control",
         "tables-cook-open-cs-root-negative-control",
-        "tables-cook-open-cs-walk-negative-control"
+        "tables-cook-open-cs-walk-negative-control",
+        "tables-cook-open-cs-order-negative-control",
+        "tables-cs-usage-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -673,6 +716,54 @@
       "targets": [
         "tables-block-padding-negative-control",
         "tables-block-pitch-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-1",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M5's None-only guard planted back (the past-Max key reaches the slot array) and M6's identity map made to forget a closed node (list_shared writes a node twice). Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-keyed-negative-control",
+        "tables-cs-leg-identity-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-2",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M10's caller free dropped (the hook pair no longer balances) and M14's &node label never written (list_shared's text reads back as two nodes). Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-allocator-negative-control",
+        "tables-cs-leg-label-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-3",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M17's span test made never to fire (a 100,000-byte blob is bump-allocated in a slab and the nodes after it overwrite it) and M19's builder map appending instead of inserting at its key. Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-blob-span-negative-control",
+        "tables-cs-leg-map-order-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-4",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. The native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots name. Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-region-blob-shared-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-absent",
+      "when": "pull-request",
+      "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case absent answers (SpillAbsent and the wire surface's blob_shared rows) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",
+      "targets": [
+        "conformance-cs-absent-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -753,6 +844,26 @@
       "node": "26"
     },
     {
+      "name": "js-proof",
+      "when": "pull-request",
+      "node": "26",
+      "why": "the JavaScript leg's 3.0.0 proof controls (docs/PORTING.md M5, M6, M11, M12, M14, M18, M21, I4, I6, I7, I12, J3): each copies one internal/codegen/jstable source through tools/sabotage, reaches it by a Go overlay, and requires the gate the register cell names red on that property's own line; plus the conformance leg with its per-case absent writers silenced. A group of its own so the js group's job keeps its measured time. 4 s to 10 s per control on hulk, about 70 s for the twelve, with bin/schema and the generated tree already built.",
+      "targets": [
+        "tables-js-keyed-shift-negative-control",
+        "tables-js-variable-class-identity-negative-control",
+        "tables-js-variable-class-label-negative-control",
+        "tables-js-variable-arms-length-negative-control",
+        "tables-js-float-bits-negative-control",
+        "tables-js-names-negative-control",
+        "tables-js-block-pitch-negative-control",
+        "tables-js-byte-order-negative-control",
+        "tables-js-order-word-negative-control",
+        "tables-js-usage-negative-control",
+        "tables-js-release-negative-control",
+        "conformance-negative-control-js-absent"
+      ]
+    },
+    {
       "name": "dart-conformance",
       "when": "pull-request",
       "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point, and the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host.",
@@ -760,6 +871,8 @@
       "targets": [
         "conformance-negative-control-dart-walk",
         "conformance-negative-control-dart-zero",
+        "conformance-negative-control-dart-share",
+        "conformance-negative-control-dart-absent",
         "conformance-negative-control-dart-block",
         "tables-dart-wire-fuzz-negative-control",
         "schema-dart-runs-hostile-corpus-negative-control",
@@ -800,7 +913,10 @@
         "tables-dart-finite-float-negative-control",
         "tables-dart-cookwrite-negative-control",
         "tables-dart-clean-negative-control",
-        "tables-dart-retain-negative-control"
+        "tables-dart-retain-negative-control",
+        "tables-dart-identity-negative-control",
+        "tables-dart-map-sort-negative-control",
+        "tables-dart-byte-order-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -1120,6 +1236,21 @@
       ]
     },
     {
+      "name": "go-proof",
+      "when": "pull-request",
+      "why": "the Go leg's proof-cell controls (docs/PORTING.md M5, M11, M14, I4, I12, J3, J4, J6): each sabotages the generated unit or the emitter its gate guards through a go build or go test overlay and requires that gate red on its own words. Go and the serialize.go sibling, nothing else. Measured 45 s of control time together on amd-1 and 78 s on hulk (2026-10-31; hulk: keyed 13 s, layout 5 s, graph label 5 s, usage 3 s, absent 11 s, cards 8 s, clean 11 s, release 22 s), inside the 120 s rule.",
+      "targets": [
+        "tables-go-keyed-negative-control",
+        "tables-go-layout-contract-negative-control",
+        "tables-go-graph-label-negative-control",
+        "tables-go-usage-negative-control",
+        "conformance-negative-control-go-absent",
+        "cards-conformance-go-negative-control",
+        "tables-go-clean-negative-control",
+        "tables-go-release-negative-control"
+      ]
+    },
+    {
       "name": "squirrel",
       "when": "pull-request",
       "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur neutralizes the emitted kind-mismatch counter, so report goes red and wire stays green; the walk saboteur breaks the text reader's bool arm, so json-read goes red and json-write and wire stay green; the block saboteur drops the Open's pitch check, so forgery goes red and block and block-dump stay green; the retain saboteur drops the retained-id capacity, so retain goes red and wire and report stay green. Each rebuilds the compiler under an overlay and regenerates the corpus, about 12 s on the studio. The packet wide-text control removes the generated reader's surrogate pairing and requires the harness's bit-flip agreement with C++ to fail. Beside them, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds. Beside them, the resource-bounds negative control (make/schema-squirrel-resource-bounds.mk) runs the planted-pattern gate over the port's allocation counter and depth cap: pure Go, no sq interpreter, so it is another pull-request blade for the Squirrel lens. The packet FINITE-FLOAT control (SPEC.md §4.3) drops the vendored serialize.nut's read test at both widths in memory (internal/codegen/squirrel/finite_test.go) and must red exactly the sixty-three non_finite_float read vectors of test/packet-finite/squirrel/main.nut while its write traps and bit-exact round trips stay green; one generate and one sq run, well under a second. The TABLE finite-float controls (docs/SPEC-TABLES.md §3.3) remove one check at a time in memory (internal/codegen/squirreltable/nonfinite_test.go and nonfinite_forms_test.go): the variable read, the retained unknown entry's test and the variable writer, then the message read and writer and the fixed read and writer; each must red exactly that check's rows while the rest stay green; seven sq runs, about two seconds. The FLOAT-PARITY controls (internal/codegen/squirreltable/floatparity_test.go) put the old behaviour back in memory and must red exactly the rows the Go engine says it gets wrong: the variable read's compressed-float clamp removed (the rows the engine clamps), the message quantizer at one rounding in double (the fuzz rows where it parts from ir.TableMessageQuantize), an over-count message index clamped rather than refused (the over-count rows), and CookMeasure without its walk (the non-finite rows); four sq runs, under a second. Beside them, the hostile-corpus runner's planted reader (2.6 s on the studio) must go red; the nightly fuzzer's control patches the emitted load's array-frame bound and requires the wire differential to go red (1.8 s on the studio: it is the differential under a plant, not the nightly campaign, which schema-squirrel-nightly-fuzz.yml runs on its own schedule); and the generated-code lint gate's three plants (a refused statement, a trailing space, a blank-line run, each named by file and rule) run in under a second. The row installs the pinned interpreter (make/squirrel.mk's dist-squirrel) through its squirrel field, which must match test/conformance/squirrel/ci.json.",
@@ -1248,6 +1379,10 @@
     }
   ],
   "excluded": [
+    {
+      "target": "conformance-big-endian-negative-control",
+      "reason": "the Go big-endian leg's control (docs/PORTING.md M12, I7): it runs the Go conformance driver cross-built for s390x under qemu-s390x, which the shared negative-control rows do not install. ci-full.yml's big-endian job runs it by name in its own row (go-control), beside the conformance-big-endian row it controls, with the pinned emulator, exactly as the C++ and C big-endian controls run there."
+    },
     {
       "target": "tables-moo-json-negative-controls",
       "reason": "the moo text forms' controls (make/moo-text.mk: the walk control, the float tie rule both ways, the I13 tie-break, the JSONTestSuite end-of-text rule, the carrier pad bits) are go tests of internal/codegen/mootable named *NegativeControl: every pull request already runs them in ci-full's unit-codegen row with the moo pin installed, and the target is a prerequisite of test-moo. A manifest group would run them a second time."

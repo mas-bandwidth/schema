@@ -577,7 +577,7 @@ namespace Wide
             int len_text = value.Text != null ? value.TextLength : 0;
             System.Diagnostics.Debug.Assert(len_text <= 4);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(0), len_text);
-            if (len_text > 0) { MemoryMarshal.AsBytes(value.Text.AsSpan(0, len_text)).CopyTo(b.Slice(4)); }
+            if (len_text > 0) { TableFixedWire.WriteLittle<char>(value.Text.AsSpan(0, len_text), b.Slice(4)); }
         }
 
         // Caption's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -588,7 +588,7 @@ namespace Wide
             int len_title = value.Title != null ? value.TitleLength : 0;
             System.Diagnostics.Debug.Assert(len_title <= 7);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(0), len_title);
-            if (len_title > 0) { MemoryMarshal.AsBytes(value.Title.AsSpan(0, len_title)).CopyTo(b.Slice(4)); }
+            if (len_title > 0) { TableFixedWire.WriteLittle<char>(value.Title.AsSpan(0, len_title), b.Slice(4)); }
             LineFixedWriteBody(b.Slice(18), value.Line);
             int count_lines = value.LinesCount;
             System.Diagnostics.Debug.Assert(count_lines >= 0 && count_lines <= 3); // the declared count is the bound (§3.4)
@@ -609,7 +609,7 @@ namespace Wide
                         int len_Body_wide = value.Body.Wide != null ? value.Body.WideLength : 0;
                         System.Diagnostics.Debug.Assert(len_Body_wide <= 4);
                         BinaryPrimitives.WriteInt32LittleEndian(b.Slice(70).Slice(1), len_Body_wide);
-                        if (len_Body_wide > 0) { MemoryMarshal.AsBytes(value.Body.Wide.AsSpan(0, len_Body_wide)).CopyTo(b.Slice(70).Slice(5)); }
+                        if (len_Body_wide > 0) { TableFixedWire.WriteLittle<char>(value.Body.Wide.AsSpan(0, len_Body_wide), b.Slice(70).Slice(5)); }
                         break;
                     case BodyType.Narrow:
                         int len_Body_narrow = value.Body.Narrow != null ? value.Body.NarrowLength : 0;
@@ -633,7 +633,7 @@ namespace Wide
             int len_label = value.Label != null ? value.LabelLength : 0;
             System.Diagnostics.Debug.Assert(len_label <= 4);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(0), len_label);
-            if (len_label > 0) { MemoryMarshal.AsBytes(value.Label.AsSpan(0, len_label)).CopyTo(b.Slice(4)); }
+            if (len_label > 0) { TableFixedWire.WriteLittle<char>(value.Label.AsSpan(0, len_label), b.Slice(4)); }
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.Seq);
         }
 
@@ -729,19 +729,19 @@ namespace Wide
 
         public static readonly TableFixedSlot<Caption>[] CaptionFixedSlots = new TableFixedSlot<Caption>[] {
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.TitleLength = (int)v, reset: (t) => { t.TitleLength = 0; }),
-            new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Title != null) c.Slice(0, Math.Min(c.Length, t.Title.Length)).CopyTo(t.Title); }, reset: (t) => { if (t.Title != null) { Array.Clear(t.Title, 0, t.Title.Length); } }),
+            new TableFixedSlot<Caption>(setChars: (t, b, l) => { if (t.Title != null) TableFixedWire.ReadLittle<char>(b, t.Title); }, reset: (t) => { if (t.Title != null) { Array.Clear(t.Title, 0, t.Title.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Line.TextLength = (int)v, reset: (t) => { t.Line.TextLength = 0; }),
-            new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Line.Text != null) c.Slice(0, Math.Min(c.Length, t.Line.Text.Length)).CopyTo(t.Line.Text); }, reset: (t) => { if (t.Line.Text != null) { Array.Clear(t.Line.Text, 0, t.Line.Text.Length); } }),
+            new TableFixedSlot<Caption>(setChars: (t, b, l) => { if (t.Line.Text != null) TableFixedWire.ReadLittle<char>(b, t.Line.Text); }, reset: (t) => { if (t.Line.Text != null) { Array.Clear(t.Line.Text, 0, t.Line.Text.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.LinesCount = (int)v, reset: (t) => { t.LinesCount = 0; }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Lines[0].TextLength = (int)v, reset: (t) => { t.Lines[0].TextLength = 0; }),
-            new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[0].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[0].Text.Length)).CopyTo(t.Lines[0].Text); }, reset: (t) => { if (t.Lines[0].Text != null) { Array.Clear(t.Lines[0].Text, 0, t.Lines[0].Text.Length); } }),
+            new TableFixedSlot<Caption>(setChars: (t, b, l) => { if (t.Lines[0].Text != null) TableFixedWire.ReadLittle<char>(b, t.Lines[0].Text); }, reset: (t) => { if (t.Lines[0].Text != null) { Array.Clear(t.Lines[0].Text, 0, t.Lines[0].Text.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Lines[1].TextLength = (int)v, reset: (t) => { t.Lines[1].TextLength = 0; }),
-            new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[1].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[1].Text.Length)).CopyTo(t.Lines[1].Text); }, reset: (t) => { if (t.Lines[1].Text != null) { Array.Clear(t.Lines[1].Text, 0, t.Lines[1].Text.Length); } }),
+            new TableFixedSlot<Caption>(setChars: (t, b, l) => { if (t.Lines[1].Text != null) TableFixedWire.ReadLittle<char>(b, t.Lines[1].Text); }, reset: (t) => { if (t.Lines[1].Text != null) { Array.Clear(t.Lines[1].Text, 0, t.Lines[1].Text.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Lines[2].TextLength = (int)v, reset: (t) => { t.Lines[2].TextLength = 0; }),
-            new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[2].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[2].Text.Length)).CopyTo(t.Lines[2].Text); }, reset: (t) => { if (t.Lines[2].Text != null) { Array.Clear(t.Lines[2].Text, 0, t.Lines[2].Text.Length); } }),
+            new TableFixedSlot<Caption>(setChars: (t, b, l) => { if (t.Lines[2].Text != null) TableFixedWire.ReadLittle<char>(b, t.Lines[2].Text); }, reset: (t) => { if (t.Lines[2].Text != null) { Array.Clear(t.Lines[2].Text, 0, t.Lines[2].Text.Length); } }),
             new TableFixedSlot<Caption>(setRawReport: (t, v, rep) => { t.Body.Type = (BodyType)v; }, reset: (t) => { t.Body.Type = BodyType.None; }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.WideLength = (int)v, reset: (t) => { t.Body.WideLength = 0; }),
-            new TableFixedSlot<Caption>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Body.Wide != null) c.Slice(0, Math.Min(c.Length, t.Body.Wide.Length)).CopyTo(t.Body.Wide); }, reset: (t) => { if (t.Body.Wide != null) { Array.Clear(t.Body.Wide, 0, t.Body.Wide.Length); } }),
+            new TableFixedSlot<Caption>(setChars: (t, b, l) => { if (t.Body.Wide != null) TableFixedWire.ReadLittle<char>(b, t.Body.Wide); }, reset: (t) => { if (t.Body.Wide != null) { Array.Clear(t.Body.Wide, 0, t.Body.Wide.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.NarrowLength = (int)v, reset: (t) => { t.Body.NarrowLength = 0; }),
             new TableFixedSlot<Caption>(setBytes: (t, b, l) => { if (t.Body.Narrow != null) b.Slice(0, Math.Min(b.Length, t.Body.Narrow.Length)).CopyTo(t.Body.Narrow); }, reset: (t) => { if (t.Body.Narrow != null) { Array.Clear(t.Body.Narrow, 0, t.Body.Narrow.Length); } }),
             new TableFixedSlot<Caption>(setRaw: (t, v) => t.Body.Tally = unchecked((int)v), reset: (t) => { t.Body.Tally = 0; }),
@@ -794,12 +794,12 @@ namespace Wide
         {
             switch (slot)
             {
-                case 1: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Title != null) c.Slice(0, Math.Min(c.Length, t.Title.Length)).CopyTo(t.Title); } break;
-                case 3: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Line.Text != null) c.Slice(0, Math.Min(c.Length, t.Line.Text.Length)).CopyTo(t.Line.Text); } break;
-                case 6: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[0].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[0].Text.Length)).CopyTo(t.Lines[0].Text); } break;
-                case 8: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[1].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[1].Text.Length)).CopyTo(t.Lines[1].Text); } break;
-                case 10: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Lines[2].Text != null) c.Slice(0, Math.Min(c.Length, t.Lines[2].Text.Length)).CopyTo(t.Lines[2].Text); } break;
-                case 13: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Body.Wide != null) c.Slice(0, Math.Min(c.Length, t.Body.Wide.Length)).CopyTo(t.Body.Wide); } break;
+                case 1: { if (t.Title != null) TableFixedWire.ReadLittle<char>(b, t.Title); } break;
+                case 3: { if (t.Line.Text != null) TableFixedWire.ReadLittle<char>(b, t.Line.Text); } break;
+                case 6: { if (t.Lines[0].Text != null) TableFixedWire.ReadLittle<char>(b, t.Lines[0].Text); } break;
+                case 8: { if (t.Lines[1].Text != null) TableFixedWire.ReadLittle<char>(b, t.Lines[1].Text); } break;
+                case 10: { if (t.Lines[2].Text != null) TableFixedWire.ReadLittle<char>(b, t.Lines[2].Text); } break;
+                case 13: { if (t.Body.Wide != null) TableFixedWire.ReadLittle<char>(b, t.Body.Wide); } break;
                 default: break;
             }
         }
@@ -1322,7 +1322,7 @@ namespace Wide
 
         public static readonly TableFixedSlot<Stamp>[] StampFixedSlots = new TableFixedSlot<Stamp>[] {
             new TableFixedSlot<Stamp>(setRaw: (t, v) => t.LabelLength = (int)v, reset: (t) => { t.LabelLength = 0; }),
-            new TableFixedSlot<Stamp>(setChars: (t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Label != null) c.Slice(0, Math.Min(c.Length, t.Label.Length)).CopyTo(t.Label); }, reset: (t) => { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } }),
+            new TableFixedSlot<Stamp>(setChars: (t, b, l) => { if (t.Label != null) TableFixedWire.ReadLittle<char>(b, t.Label); }, reset: (t) => { if (t.Label != null) { Array.Clear(t.Label, 0, t.Label.Length); } }),
             new TableFixedSlot<Stamp>(setRaw: (t, v) => t.Seq = unchecked((uint)v), reset: (t) => { t.Seq = 0; }),
         };
 
@@ -1364,7 +1364,7 @@ namespace Wide
         {
             switch (slot)
             {
-                case 1: { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (t.Label != null) c.Slice(0, Math.Min(c.Length, t.Label.Length)).CopyTo(t.Label); } break;
+                case 1: { if (t.Label != null) TableFixedWire.ReadLittle<char>(b, t.Label); } break;
                 default: break;
             }
         }
