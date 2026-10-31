@@ -1,4 +1,4 @@
 {
-  "targets": "build/conformance-harness build/conformance-moo cards-moo-test cards-moo-conformance",
+  "targets": "build/conformance-harness build/conformance-moo cards-moo-test cards-moo-conformance tables-moo-block-forgery-fuzz",
   "moo": "pin"
 }
