@@ -518,6 +518,15 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-finite",
+      "when": "pull-request",
+      "why": "the C# finite rule (docs/SPEC-TABLES.md §3.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. A job of its own for the cs-tables group's 5-minute timeout; four probe builds, 8 s on the author's machine.",
+      "targets": [
+        "tables-cs-finite-float-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-packet",
       "when": "pull-request",
       "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the finite-float read rule (float-finite and double-finite each deleted in serialize.cs, each required to red exactly its own vectors), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
@@ -902,7 +911,8 @@
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
-      ]
+      ],
+      "golangci": "2.12.2"
     },
     {
       "name": "dart-nightly",
@@ -910,7 +920,8 @@
       "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
       "targets": [
         "schema-dart-nightly-fuzz-negative-control"
-      ]
+      ],
+      "dart": "3.13.2"
     },
     {
       "name": "go-containers",

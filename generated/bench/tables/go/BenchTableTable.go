@@ -4923,7 +4923,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				mark := w.Ids.Count
 				payload16 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := range int(value.EntitiesCount) {
+				for i := range arrayLengths[:value.EntitiesCount] {
 					n := TableEntityMeasureBody(&value.Entities[i], payload16.Ids)
 					if n < 0 {
 						return false
@@ -4950,7 +4950,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := range int(value.EntitiesCount) {
+					for i := range arrayLengths[:value.EntitiesCount] {
 						if !w.putLebPair(uint64(arrayLengths[i])) {
 							w.putLebWide(uint64(arrayLengths[i]))
 						}
@@ -4977,7 +4977,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				mark := w.Ids.Count
 				payload19 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
-				for i := range int(value.StatsCount) {
+				for i := range arrayLengths[:value.StatsCount] {
 					n := TableStatMeasureBody(&value.Stats[i], payload19.Ids)
 					if n < 0 {
 						return false
@@ -5004,7 +5004,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 					if !w.putLebPair(pairs) {
 						w.putLebWide(pairs)
 					}
-					for i := range int(value.StatsCount) {
+					for i := range arrayLengths[:value.StatsCount] {
 						if !w.putLebPair(uint64(arrayLengths[i])) {
 							w.putLebWide(uint64(arrayLengths[i]))
 						}
