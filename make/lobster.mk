@@ -97,6 +97,70 @@ generated/bench/tables/lobster/.stamp: bin/schema bench/corpus/BenchTable.schema
 	./bin/schema generate --lang lobster --out generated/bench/tables/lobster bench/corpus/BenchTable.schema
 	@touch $@
 
+# J6 (docs/PORTING.md) — THE CARD CONFORMANCE CHECK, this leg's half
+# (tables/cards/conformance/FORMAT.md). tables/cards/lobster is the facade
+# (cards.lobster) and its driver (driver, driver.lobster) over the Card unit
+# generated for Lobster; the driver stages both files into the unit's
+# directory, where Lobster resolves their imports:
+#
+#   cards-lobster-generate                the Card unit generated for Lobster,
+#                                         the runtime modules beside it
+#   cards-lobster-test                    the facade's unit tests (no clock, no
+#                                         socket, no process)
+#   cards-lobster-conformance             the harness `cards` subcommand over
+#                                         the Lobster driver, all nine surfaces
+#   cards-lobster-conformance-negative-control, -upgrade-, -hash-
+#                                         one damaged answer each, through the
+#                                         driver's test-only switches, and the
+#                                         check must go red on that surface and
+#                                         on no other
+#
+# They live in this leg's own fragment (the wide-scalar refusal gate discovers
+# every make/*.mk as a live port, docs/SPEC-TABLES.md §11). The unit is a
+# STAMP, not a phony name: the targets that read it run side by side under -j
+# and in sub-makes, and a phony rule's rm -rf would empty the directory under a
+# sibling's driver mid-read.
+CARDS_LOBSTER_GENERATED := build/tables-generated-lobster/cards
+CARDS_REQUIRE_LOBSTER := load,save,render,parse,bounds,upgrade,edit,taskhash,view
+
+.PHONY: cards-lobster-generate cards-lobster-test cards-lobster-conformance cards-lobster-conformance-negative-control cards-lobster-conformance-upgrade-negative-control cards-lobster-conformance-hash-negative-control
+cards-lobster-generate: $(CARDS_LOBSTER_GENERATED)/.stamp
+
+$(CARDS_LOBSTER_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/cards/schema.lock $(wildcard internal/codegen/lobster/runtime/*.lobster) $(wildcard internal/codegen/lobstertable/runtime/*.lobster)
+	@rm -rf $(CARDS_LOBSTER_GENERATED)
+	@mkdir -p $(CARDS_LOBSTER_GENERATED)
+	./bin/schema generate --lang lobster --out $(CARDS_LOBSTER_GENERATED) tables/cards
+	@touch $@
+
+# the unit tests are staged beside the facade, as the driver stages it
+cards-lobster-test: lobster-dist-present cards-lobster-generate tables/cards/lobster/cards.lobster tables/cards/lobster/cards_test.lobster
+	@cp tables/cards/lobster/cards.lobster $(CARDS_LOBSTER_GENERATED)/.cards.lobster.test && mv -f $(CARDS_LOBSTER_GENERATED)/.cards.lobster.test $(CARDS_LOBSTER_GENERATED)/cards.lobster
+	@cp tables/cards/lobster/cards_test.lobster $(CARDS_LOBSTER_GENERATED)/cards_test.lobster
+	$(LOBSTER) $(CARDS_LOBSTER_GENERATED)/cards_test.lobster -- $(CURDIR)
+
+cards-lobster-conformance: lobster-dist-present build/conformance-harness cards-lobster-generate
+	./build/conformance-harness cards --work build/cards-lobster-conformance --corpus tables/cards/conformance --driver 'tables/cards/lobster/driver' --require $(CARDS_REQUIRE_LOBSTER)
+
+# $(1) the sabotage switch, $(2) the surface that must go red, $(3) the
+# surfaces that must stay green, $(4) the work and log name.
+define cards-lobster-control
+	@if $(1)=1 ./build/conformance-harness cards --work build/cards-lobster-conformance-$(4) --corpus tables/cards/conformance --driver 'tables/cards/lobster/driver' --require $(CARDS_REQUIRE_LOBSTER) > build/cards-lobster-conformance-$(4).log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the damaged $(2) answer left the card conformance check green'; exit 1; fi
+	@grep -qE 'cards $(2) .*FAIL' build/cards-lobster-conformance-$(4).log || { echo 'NEGATIVE CONTROL FAILED: $(2) did not go red'; cat build/cards-lobster-conformance-$(4).log; exit 1; }
+	@for s in $(3); do grep -qE "cards $$s pass" build/cards-lobster-conformance-$(4).log || { echo "NEGATIVE CONTROL FAILED: $$s did not stay green"; cat build/cards-lobster-conformance-$(4).log; exit 1; }; done
+	@echo "cards Lobster negative control ($(2)): the damaged answer fails $(2) and no other surface"
+endef
+
+cards-lobster-conformance-negative-control: lobster-dist-present build/conformance-harness cards-lobster-generate
+	$(call cards-lobster-control,CARDS_LOBSTER_SABOTAGE_RENDER,render,load save parse bounds upgrade edit taskhash view,neg)
+
+cards-lobster-conformance-upgrade-negative-control: lobster-dist-present build/conformance-harness cards-lobster-generate
+	$(call cards-lobster-control,CARDS_LOBSTER_SABOTAGE_UPGRADE,upgrade,load save render parse bounds edit taskhash view,upgrade-neg)
+
+cards-lobster-conformance-hash-negative-control: lobster-dist-present build/conformance-harness cards-lobster-generate
+	$(call cards-lobster-control,CARDS_LOBSTER_SABOTAGE_HASH,taskhash,load save render parse bounds upgrade edit view,hash-neg)
+
+test-lobster: cards-lobster-test cards-lobster-conformance cards-lobster-conformance-negative-control cards-lobster-conformance-upgrade-negative-control cards-lobster-conformance-hash-negative-control
 
 TEST_LEGS         += test-lobster
 TOOLCHAIN_LEGS    += lobster
