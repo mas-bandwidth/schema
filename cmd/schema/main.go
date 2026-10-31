@@ -336,7 +336,7 @@ func main() {
 		// The unit is loaded as generate loads it, so the tests are of the
 		// same tables.
 		fs := flag.NewFlagSet("testgen", flag.ExitOnError)
-		lang := fs.String("lang", "go", "target language (go or lua; every other target refuses testgen by name)")
+		lang := fs.String("lang", "go", "target language (go, lua or squirrel: every other target refuses testgen by name)")
 		out := fs.String("out", "generated", "output directory: the directory generate wrote")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
@@ -770,7 +770,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
   schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
   schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
-  schema testgen    [--lang go|lua] [--out generated] [--verbose] [dir|files...]
+  schema testgen    [--lang go|lua|squirrel] [--out generated] [--verbose] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -799,9 +799,11 @@ a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
 
-testgen writes round-trip and damage tests beside the code generate wrote:
-Go emits one <Base>Table_gen_test.go per schema file (docs/SPEC-TABLES.md
-§16.11), and Lua one <Base>Table_gen_test.lua. Every other --lang is refused by name.
+testgen writes the round-trip and damage tests of every table beside the code
+generate wrote: Go emits one <Base>Table_gen_test.go, Lua one
+<Base>Table_gen_test.lua and Squirrel one <Base>Table_gen_test.nut per schema
+file (docs/SPEC-TABLES.md §16.11); go test, the lua leg and the squirrel leg run
+them. Every other --lang is refused by name.
 
 A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
 form past 65536, which is the size no conforming reader decodes

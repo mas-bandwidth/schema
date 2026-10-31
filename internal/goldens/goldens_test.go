@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -306,7 +307,7 @@ func TestGoldenWideSource(t *testing.T) {
 
 // The packet file is isolated from examples-wide's table kind 33 and its
 // baseline. Each port pins the exact same packet declarations as C++.
-var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lua"}
+var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lua", "lobster", "squirrel"}
 
 func TestGoldenPacketWideSource(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(corpusWideDir, "WideText.schema"))
@@ -331,6 +332,15 @@ func TestGoldenPacketWideSource(t *testing.T) {
 			t.Errorf("%s must refuse unported packet wide text by name: %v", target, err)
 		}
 	}
+	// moo carries packet wide text in its emitter (test/packet-wide/moo); its
+	// compiler target stays behind the schema_leg_moo tag until the port joins
+	// the builtins, so its pin comes from the emitter. Only the schema's own
+	// module: the runtime beside it is SERIALIZE_PIN's (internal/codegen/moo).
+	mooFiles, err := moo.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "packet-wide", "moo"), map[string][]byte{"WideText.moo": mooFiles["WideText.moo"]})
 	pinDir(t, filepath.Join(goldenDir, "packet-wide", "identity"), map[string][]byte{"id.txt": []byte(fmt.Sprintf("0x%016x\n", u.ProtocolId))})
 }
 
@@ -356,7 +366,7 @@ func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 		// by-name refusal itself. Lua joined as a builtin on 2026-10-28
 		// and generates this unit too.
 		switch target {
-		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir", "lua":
+		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir", "lua", "lobster", "squirrel":
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

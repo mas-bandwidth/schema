@@ -112,6 +112,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		max:      "export const WeaponFireTypeMax = 2; // the exported extent (SPEC §4.2)",
 		nameFunc: "export function EnumNameWeaponFireType(value) {",
 	},
+	"lobster": {
+		noCount:  "WeaponFireTypeCount",
+		max:      "let WeaponFireTypeMax = 2 // the exported extent (SPEC §4.2)",
+		nameFunc: "def EnumNameWeaponFireType(value:int) -> string:",
+	},
 	// Lua: the tag is a table of constants, and the name function closes
 	// over its name table, so the claim spans both.
 	"lua": {
@@ -123,6 +128,11 @@ var tagEnumSurface = map[string]tagEnumClaim{
 		noCount:  "    pub const COUNT: ",
 		max:      "    pub const MAX: WeaponFireType = WeaponFireType(2); // the exported extent (SPEC §4.2)",
 		nameFunc: "pub fn enum_name_weapon_fire_type(value: WeaponFireType) -> &'static str {",
+	},
+	"squirrel": {
+		noCount:  "  Count = ",
+		max:      "  Max = 2, // the exported extent (SPEC §4.2)",
+		nameFunc: "_M.EnumNameWeaponFireType <- function(value) {",
 	},
 }
 

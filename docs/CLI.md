@@ -19,12 +19,10 @@ option `runtime=standalone` embeds that machinery in the unit instead
 `runtime` value is refused by name, and the refusal names shared as the
 default.
 
-`schema testgen --lang go` writes the generated round-trip and damage tests of
-every root table beside what `generate` wrote: one `<Base>Table_gen_test.go`
-per schema file (SPEC-TABLES.md §16.11). A table whose `forms` leave out `wire`
-or `json` is refused by name.
-
-`schema testgen --lang lua` writes `<Base>Table_gen_test.lua` beside the Lua
-table module `generate --lang lua` writes; the generated tests run under the
-pinned Lua 5.4.8 interpreter (`make dist-lua`). Go and Lua are the testgen
-targets; every other `--lang` is refused by name (docs/SPEC-TABLES.md §16.11).
+`schema testgen --lang go|lua|squirrel` writes the generated round-trip and
+damage tests of every root table beside what `generate` wrote: one
+`<Base>Table_gen_test.go` for Go, one `<Base>Table_gen_test.lua` for Lua (run
+under the pinned Lua 5.4.8 interpreter, `make dist-lua`) and one
+`<Base>Table_gen_test.nut` for Squirrel per schema file (SPEC-TABLES.md
+§16.11). A table whose `forms` leave out `wire` or `json` is refused by name;
+every other `--lang` is refused by name.

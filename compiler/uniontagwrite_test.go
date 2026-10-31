@@ -54,6 +54,8 @@ var tagAssertsInDebug = map[string][]string{
 	"cs":   {`Debug.Assert(tagValue <= 2, "the union tag is outside the variant set [0, 2]");`},
 	"dart": {"assert(value.type >= 0);", "assert(value.type <= 2);"},
 	"java": {"assert (value.type & 0xffL) >= 0;", "assert (value.type & 0xffL) <= 2;"},
+	// --runtime-no-asserts removes a Lobster assert from the build
+	"lobster": {"assert v.Type >= 0 and v.Type <= 2"},
 	// js is not here: its debug-only idiom is the PRODUCTION/checked fork of
 	// the flat writer, not a statement. Checked separately below.
 }
@@ -62,9 +64,10 @@ var tagAssertsInDebug = map[string][]string{
 // carry. An assert BESIDE a live refusal removes nothing, so none of it may
 // survive.
 var tagGoneFromRelease = map[string][]string{
-	"c":   {"if ( value->type > TAGUNIT_SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
-	"cpp": {"not a ShotType value; nothing was written"},
-	"cs":  {"if (tagValue > 2)"},
+	"c":       {"if ( value->type > TAGUNIT_SHOT_TYPE_MAX )", "not a ShotType value; nothing was written"},
+	"cpp":     {"not a ShotType value; nothing was written"},
+	"cs":      {"if (tagValue > 2)"},
+	"lobster": {"if v.Type < 0 or v.Type > 2: return false"},
 }
 
 // tagRefusesEveryBuild is the write's UNCONDITIONAL tag refusal, for the
@@ -79,7 +82,8 @@ var tagRefusesEveryBuild = map[string][]string{
 	"goose": {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
 	// Lua's assert() is an ordinary call no build strips, so the writer
 	// refuses an out-of-set tag (returns false) in every build, as Go does.
-	"lua": {`if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end`},
+	"lua":      {`if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end`},
+	"squirrel": {`if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;`},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the

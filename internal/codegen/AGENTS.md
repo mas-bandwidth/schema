@@ -24,7 +24,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../../AGENTS.md
 | `javatable/` | Java table emitter | `go test ./internal/codegen/javatable` | `go test ./internal/codegen/javatable` |
 | `js/` | JS packet emitter | `go test ./internal/codegen/js` | `go test ./internal/codegen/js` |
 | `jstable/` | JS table emitter | `go test ./internal/codegen/jstable` | `go test ./internal/codegen/jstable` |
+| `lobster/` | Lobster type emitter and packet wire (docs/PORT-LOBSTER.md) | `make test-lobster` | `go test ./internal/codegen/lobster/...` |
+| `lobstertable/` | Lobster table emitter (docs/PORT-LOBSTER.md) | `make test-lobster` | `go test ./internal/codegen/lobstertable` |
 | `lua/` | Lua packet emitter (docs/PORT-LUA.md) | `make test-lua` | `go test ./internal/codegen/lua` |
 | `luatable/` | Lua table emitter (docs/PORT-LUA.md) | `make test-lua` | `go test ./internal/codegen/luatable` |
+| `moo/` | moo packet emitter | `make test-moo` | `make test-moo` |
+| `mootable/` | moo table emitter | `make test-moo-tables` | `make test-moo-tables` |
 | `rust/` | Rust packet emitter | `go test ./internal/codegen/rust` | `go test ./internal/codegen/rust` |
 | `rusttable/` | Rust table emitter | `go test ./internal/codegen/rusttable` | `go test ./internal/codegen/rusttable` |
+| `squirrel/` | Squirrel packet emitter | `go test ./internal/codegen/squirrel` | `go test ./internal/codegen/squirrel` |
+| `squirreltable/` | Squirrel table emitter | `go test ./internal/codegen/squirreltable` | `go test ./internal/codegen/squirreltable` |

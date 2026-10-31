@@ -919,6 +919,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-java-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
@@ -972,6 +973,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"ci-full.yml:pins",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
+		"schema-java-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
@@ -995,6 +997,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			"schema-dart-generated-strict-analyze-gate.yml:fast",
 			"schema-elixir-runs-hostile-corpus.yml:corpus",
 			"schema-go-generated-golangci-lint-gate.yml:gate",
+			"schema-java-runs-hostile-corpus.yml:corpus",
 		} {
 			wfName, jobName, _ := strings.Cut(wantKey, ":")
 			if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, pushEv); err != nil || !ok {
@@ -1024,6 +1027,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-java-runs-hostile-corpus.yml:corpus",
+		"schema-java-runs-hostile-corpus.yml:negative-control",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, schedEv); err != nil || !ok {
@@ -1083,6 +1088,9 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-java-runs-hostile-corpus.yml:corpus",
+		"schema-java-runs-hostile-corpus.yml:negative-control",
+		"schema-lobster-generated-strict-gate.yml:strict",
 		"schema-lua-generated-luacheck-gate.yml:luacheck",
 		"schema-lua-nightly-fuzz.yml:fast",
 		"schema-lua-nightly-fuzz.yml:nightly",
@@ -1090,6 +1098,14 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-lua-resource-bounds.yml:nightly",
 		"schema-lua-runs-hostile-corpus.yml:fast",
 		"schema-lua-runs-hostile-corpus.yml:nightly",
+		"schema-squirrel-all-port-differential.yml:fast",
+		"schema-squirrel-all-port-differential.yml:nightly",
+		"schema-squirrel-nightly-fuzz.yml:fuzz",
+		"schema-squirrel-nightly-fuzz.yml:harness",
+		"schema-squirrel-resource-bounds.yml:fast",
+		"schema-squirrel-resource-bounds.yml:nightly",
+		"schema-squirrel-runs-hostile-corpus.yml:fast",
+		"schema-squirrel-runs-hostile-corpus.yml:nightly",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
 		t.Fatalf("enumerated self-hosted jobs = %v, want %v", gotKeys, wantKeys)
@@ -1144,6 +1160,13 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			wantErr:   "schema-elixir-runs-hostile-corpus.yml:corpus admits fork PR",
 		},
 		{
+			name:      "drop Java corpus same-repo PR guard",
+			workflow:  "schema-java-runs-hostile-corpus.yml",
+			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
+			newSubstr: "",
+			wantErr:   "schema-java-runs-hostile-corpus.yml:corpus admits fork PR",
+		},
+		{
 			name:      "drop ci-full pins same-repo PR guard",
 			workflow:  "ci-full.yml",
 			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n    runs-on: [self-hosted, Linux, X64, fleet, schema]",
@@ -1177,6 +1200,13 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			oldSubstr: "branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
 			newSubstr: "branches: [ main, 'sprint/**' ]",
 			wantErr:   "stream-to-dev PR did not select self-hosted schema-elixir-runs-hostile-corpus.yml:corpus",
+		},
+		{
+			name:      "drop dev from Java hostile-corpus triggers",
+			workflow:  "schema-java-runs-hostile-corpus.yml",
+			oldSubstr: "branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
+			newSubstr: "branches: [ main, 'sprint/**' ]",
+			wantErr:   "stream-to-dev PR did not select self-hosted schema-java-runs-hostile-corpus.yml:corpus",
 		},
 		{
 			name:      "serialize ci-fast concurrency across refs",

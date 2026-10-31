@@ -1,0 +1,9 @@
+# serialize.moo, vendored verbatim: src/*.moo of mas-bandwidth/serialize.moo
+tag v2.1.2
+commit 5deed76ce9814b049b90547664bb12bbc0d54448
+11868117c539e69bf246137c9a8ad42e7fe0ee9ede603b484f56905c0f2db473  serialize.moo
+549b54aade95f9a554d0f2e519c5289e1cef540202deec053d7437bdac26f347  serialize_bitpacker.moo
+d197d642bf8bb2ed2a4b4635270cc31cb0e9d15b1b762437eebe16a94c16f860  serialize_float.moo
+30a2025e6f8246efc93b1726fc8e73b95b1633925cee283c077b20cfeacee198  serialize_stream.moo
+4c9f146216072fde25cafcd980d7398ca42ed5f71e0ef032ca8dfff9c182fa6c  serialize_wide.moo
+8ab5e15bd075633a6ba162e42f84c197f3b732a7b547a2cdcdf5509c00ba6246  LICENSE
