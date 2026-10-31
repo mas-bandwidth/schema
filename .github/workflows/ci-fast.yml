@@ -244,6 +244,7 @@ jobs:
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
             esac
             case "$f" in
+              internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
               internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
               internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
             esac
@@ -251,7 +252,7 @@ jobs:
           $files
           EOF
           if [ "$broad" = yes ]; then
-            legs="cpp go c rust js cs java dart elixir goose lobster"
+            legs="cpp go c rust js cs java dart elixir goose lobster luau"
           fi
 
           # THE PACKAGES. Every directory holding a changed .go file, as the
@@ -503,6 +504,12 @@ jobs:
             exit 1
           fi
 
+      # THE LUAU PIN: the Luau packages, the compiler's Luau testgen gate and
+      # the Luau lanes under internal/ci run generated Luau under the pinned
+      # interpreter and fail, never skip, without it
+      # (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
+      - name: install the Luau pin
+        run: make dist-luau
       # THE Goose PIN, when a Goose package is touched: internal/codegen/goose
       # and internal/codegen/goosetable (the only importers of gooserun) run
       # generated Goose under the pinned compiler and fail, never skip,
@@ -711,6 +718,9 @@ jobs:
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            luau)   make dist-luau
+                    make tables-luau-fixed-form tables-luau-versioning
+                    make bench-luau-gate ;;
             # the Goose leg's fixed form against the reference's bytes (make/goose.mk;
             # its versioning rows are owed, schema#2236), under the pinned compiler
             goose)  make dist-goose test-goose ;;

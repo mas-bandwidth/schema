@@ -223,6 +223,15 @@ it under the same nine rules as the type board's:
 
 Stated so a reader knows what is not here, and why:
 
+- **`bench/tables/luau` carries the tolerant leg at a rescaled count.** The
+  Luau port's form-1 codec is one runtime walk over the generated descriptors
+  (`schema_load`'s `loadTolerant`, `schema_save`'s `save`), so that walk is what
+  the leg times, under the pinned interpreter with native codegen OFF (rows
+  `linkage=pkg`, `checks=always`; `bench/README.md`, "The Luau leg"). The
+  interpreter loads one record in about 0.6 ms, so the count is 6,400 against
+  the reference's 400,000, recorded in `iters`. `make bench-luau-gate` is its
+  golden gate and `bench-luau-gate-negative-control` its control.
+
 - **A Go leg's `opt` column is `default`.** Go has one optimisation
   configuration and no flag to name, so the column says what is true rather
   than borrowing C++'s spelling. `linkage` is `pkg`: the generated table codec

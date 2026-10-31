@@ -20,14 +20,16 @@ rust, cs and js runners (`bench/c`, `bench/go`, `bench/rust`, `bench/cs`,
 `bench/js`) are its ports, wired per the contract below. Three further
 legs — `bench/java`, `bench/dart`, `bench/elixir` — measure those
 backends' GENERATED codecs over the same shape under the same contract
-(see "The codegen-only legs" below), and `bench/goose` measures the Goose
-port's generated codec over its vendored serialize.goose the same way.
+(see "The codegen-only legs" below), `bench/goose` measures the Goose
+port's generated codec over its vendored serialize.goose the same way, and
+`bench/luau` measures the Luau backend's generated codec on its vendored
+serialize.luau (see "The Luau leg" below).
 
 ## Running
 
     bench/run.sh                 # Release, results in bench/results/<date>-<arch>-<host>.csv
     bench/run.sh --debug         # also the Debug pair (matched-pair methodology)
-    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster   # one language leg
+    bench/run.sh --only c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau   # one language leg
     bench/run.sh --quick         # the iteration instrument: bench_mixed only,
                                  # 3 measured runs per leg, golden gate intact,
                                  # and the blended table (per-message time
@@ -451,6 +453,43 @@ iteration counts all differ, and the measured harness-contract term alone
 moves a number up to ~20% on the read paths (issue #170's decomposition).
 Toolchains are the repo-pinned `dist/` installs (the Makefile's own
 defaults; `JAVA`/`JAVAC`/`DART`/`BEAM_PATH` override).
+
+## The Luau leg
+
+`bench/luau/` measures the Luau backend's generated type-wire codec
+(`generated/bench/luau`) over the same shape and committed variant corpus,
+against the vendored `serialize.luau` the unit carries beside it, under the
+pinned Luau 0.741 interpreter (`dist/luau-0.741/luau`, `$LUAU` overrides),
+and `bench/tables/luau/` measures the tolerant table wire the same way
+(`bench/tables/README.md`). Both are driven as `bench/run.sh --only luau` and
+`bench/tables/run.sh --only luau`; the quiet-window and fleet-only rules
+apply as to every leg.
+
+- **The build measured is the stock CLI, native codegen OFF** (no
+  `--codegen`): what an embedding host gets unless it enables the JIT. No
+  codegen row is measured or estimated; the pass preamble says so. The rows
+  carry **family `gen`** (`table` for the tables leg), `linkage=pkg` (modules
+  required into one VM), `checks=always` (a generated writer checks its
+  contract in every build: Luau has no compile-out assert), `opt=default`,
+  `inline=unknown`.
+- **The iteration count is rescaled, and recorded in `iters`**: 12,800 packet
+  and 6,400 table operations, against 4,000,000 and 400,000 elsewhere. The
+  interpreter writes one message in about 0.3 ms and round-trips it in about
+  0.9 ms, so the standard count is hours a run; the count keeps every measured
+  run far over §2.1's 200 ms floor, and is a whole number of rotations of the
+  64 records. This is the elixir precedent (BENCH-STANDARD §2.8), and rates
+  are per second, so the rows stay comparable; the count is printed.
+- **The interpreter has no io**, so `bench/luau/route.sh` stages a scratch
+  directory (`build/bench-luau/<leg>/`: the generated unit, `harness.luau`,
+  the runner, and `inputs.luau`, the committed goldens and variant file as one
+  `\x` string each) and runs it from there. The harness folds `corpus_id`
+  over the same bytes, so the id equals every other leg's. Each output line is
+  tagged (`csv`, `log`) and the wrapper refuses an untagged one.
+- The clock is `os.clock()`. `make bench-luau-gate` runs both gates with no
+  clock (variant 0 against the golden, all 64 variants round-tripped, a reused
+  holder twice over) and `make bench-luau-gate-negative-control` plants a
+  flipped golden under each leg, a stray line, a clock and a corpus name, each
+  refused by name.
 
 ## Runner contract (how go/rust/cs plug in)
 

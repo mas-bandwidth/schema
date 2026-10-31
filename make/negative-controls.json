@@ -1063,6 +1063,31 @@
       "dart": "3.13.2"
     },
     {
+      "name": "luau",
+      "when": "pull-request",
+      "why": "the Luau leg's own controls on the pinned interpreter (make dist-luau): the bench legs' control (bench/luau/negative-control.sh) flips each leg's golden, plants a stray untagged line under the packet runner and an os.clock() clock and a corpus name in .luau files under a copy of bench/, and requires each refused by name beside clean baselines, about 3 s; the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row, and the four packet-runtime controls of make/luau-packet.mk (UTF-8 read validation, wstring surrogate pairing, constructor default bytes and the fixed-point writer contract on examples128, each removed from the generator through an overlay and required to fail its own marker). The packet FINITE-FLOAT controls (SPEC.md \u00a74.3) ride here too: each removes one direction of the vendored serialize.luau v2.1.3 float check at both widths, in the copy the generator emitted (tools/sabotage/packet_finite_luau.go), and test/packet-finite/luau/main.luau must fail exactly the 36 read or the 37 write vectors its .expected names; one schema build and two interpreter runs, a few seconds. The packet FINITE-FLOAT controls (SPEC.md \u00a74.3) ride here too: each removes one direction of the vendored serialize.luau v2.1.3 float check at both widths, in the copy the generator emitted (tools/sabotage/packet_finite_luau.go), and test/packet-finite/luau/main.luau must fail exactly the 36 read or the 37 write vectors its .expected names; one schema build and two interpreter runs, a few seconds. The TABLE finite-float control (docs/SPEC-TABLES.md \u00a73.3) removes each of eleven rules' checks from the emitted table runtime in turn (variable read and write, retained unknown float, message read and write, fixed read and write, cook read and write, block accessor, JSON writer) and TestLuauTablesAreFiniteOnly's probe must red on exactly that rule's rows; one Go test, under a second. the Luau leg's own controls on the pinned interpreter (make dist-luau): the conformance driver's planted fault and the nightly fuzz host's planted crash replayed, each required to go red on its own row; and the text form's, each a sabotage of a scratch copy of the emitted runtime or output required to red exactly its own cases (the strict FromJson and the JSON required close, the text differential's float32 digits, the one-walk gate, the JSONTestSuite depth cap). Luau, Go and the host C++ compiler, nothing else. The last two run in about a second each on hulk once built: the wire-fuzz control's prerequisites (the units and the native host) are the ones the first two build, and the hostile control's is the internal/ci test binary. Luau and the host C++ compiler, nothing else. The fixed form's two gates (docs/FIXED-FORM-ALGORITHM.md \u00a75.9 #11) ride here too: a text length one off the writer must red the reference byte match, and layout_unknown answered as layout_malformed must red the OLD-REFUSES-NEW column, each over the C++ reference corpus.",
+      "targets": [
+        "bench-luau-gate-negative-control",
+        "conformance-negative-control-luau",
+        "luau-ludicrous-negative-control",
+        "luau-nightly-fuzz-negative-control",
+        "packet-defaults-luau-negative-control",
+        "packet-finite-luau-negative-control",
+        "packet-utf8-luau-negative-control",
+        "packet-wide-luau-negative-control",
+        "schema-luau-runs-hostile-corpus-negative-control",
+        "tables-luau-finite-float-negative-control",
+        "tables-luau-fixed-form-negative-control",
+        "tables-luau-json-strict-negative-control",
+        "tables-luau-json-walk-negative-control",
+        "tables-luau-jsontestsuite-negative-control",
+        "tables-luau-text-differential-negative-control",
+        "tables-luau-versioning-negative-control",
+        "tables-luau-wire-fuzz-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
       "name": "lobster",
       "when": "pull-request",
       "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio. The bench legs' control (bench/lobster/negative-control.sh) flips each leg's golden, plants a compiler warning under the packet runner and a seconds_elapsed() clock and a corpus name in .lobster files under a copy of bench/, and requires each refused by name beside clean baselines; about 3 s. Both fit the per-commit rule with room.",
@@ -1146,6 +1171,14 @@
     {
       "target": "schema-shared-hostile-corpus-negative-control",
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+    },
+    {
+      "target": "schema-luau-generated-analyze-strict-gate-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-generated-analyze-strict-gate.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) beside the gate it controls, so this leg would run it a second time."
+    },
+    {
+      "target": "schema-luau-resource-bounds-negative-control",
+      "reason": "runs in its own workflow, .github/workflows/schema-luau-resource-bounds.yml, on every pull request and nightly, which installs the pinned Luau (make dist-luau) beside the gate it controls, so this leg would run it a second time."
     },
     {
       "target": "packet-defaults-moo-negative-control",

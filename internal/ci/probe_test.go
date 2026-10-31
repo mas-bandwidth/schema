@@ -81,9 +81,12 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	}
 	// A real `schema new-leg` leg in the tree (make/<lang>.mk beside a
 	// compiler/target_<lang>.go behind its schema_leg_<lang> tag, such as
-	// goose, docs/PORT-GOOSE.md) is a skeleton here too: its marker file is carried into the fixture, so the gate skips
-	// it by the same rule.
-	skeletons := 1 // the planted lua
+	// lobster, docs/PORT-LOBSTER.md, luau, docs/PORT-LUAU.md, or goose,
+	// docs/PORT-GOOSE.md) is a skeleton here too: its marker file is carried
+	// into the fixture, so the gate skips it by the same rule. One entry per
+	// leg, so a real lua leg (make/lua.mk and its tagged compiler/target_lua.go,
+	// docs/PORT-LUA.md) is the planted one, not a second.
+	skeletons := map[string]bool{"lua": true} // the planted lua
 	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -104,7 +107,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(fixture, "compiler", filepath.Base(src)), []byte(first+"\n\npackage compiler\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		skeletons++
+		skeletons[lang] = true
 	}
 	run := func(dir, name string, args ...string) string {
 		t.Helper()
@@ -138,6 +141,8 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A hyphenated make/<leg>-<surface>.mk is a companion fragment of a leg
+	// (make/luau-serialize.mk, docs/PORT-LUAU.md), not a port.
 	var legs []string
 	for _, mk := range mkFiles {
 		stem := strings.TrimSuffix(filepath.Base(mk), ".mk")
@@ -145,7 +150,7 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 			legs = append(legs, mk)
 		}
 	}
-	if len(legs) == 0 || refused+carried != len(legs)-skeletons {
+	if len(legs) == 0 || refused+carried != len(legs)-len(skeletons) {
 		t.Fatalf("probe checked %d ports, registry has %d", refused+carried, len(legs))
 	}
 	if _, err := os.Stat(filepath.Join(fixture, "build", "tables-wide-refusal", "go", "Scalars.go")); err != nil {
