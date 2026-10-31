@@ -41,10 +41,6 @@ table 2492f5fb1b05b45e.14e2eaab9cde925b
     field key id=0x3dc94a19365b10ec kind=4
     field value id=0x7ce4fd9430e80cea kind=14 elem=6 size=10
 
-table 2492f5fb1b05b45e.a633f1f655715cca
-    field key id=0x3dc94a19365b10ec kind=7
-    field value id=0x7ce4fd9430e80cea kind=33 size=6
-
 table 2492f5fb1b05b45e.afb728fff268814f
     field key id=0x3dc94a19365b10ec kind=12 size=8
     field value id=0x7ce4fd9430e80cea kind=12 size=16
@@ -120,7 +116,6 @@ table Squad
 
 table Text
     field names id=0xafb728fff268814f kind=14 elem=13 array=map keykind=12 keybound=8
-    field wide id=0xa633f1f655715cca kind=14 elem=13 array=map keykind=7
     field blobs id=0x14e2eaab9cde925b kind=14 elem=13 array=map keykind=4
     field past id=0xbf82010f6f71eae9 kind=4 was=after
 
@@ -176,6 +171,11 @@ union Force
     arm squad id=0xd5c2bb95d63e6331 payload=Squad
     arm plain id=0xfd4d194e1652b207 kind=4
 
+## retired
+    field 2492f5fb1b05b45e.a633f1f655715cca.key id=0x3dc94a19365b10ec date=2026-10-31
+    field 2492f5fb1b05b45e.a633f1f655715cca.value id=0x7ce4fd9430e80cea date=2026-10-31
+    field Text.wide id=0xa633f1f655715cca date=2026-10-31
+
 ## history
 ### 2026-09-04 — the map corpus's first baseline: the generated entry is ANONYMOUS in the projection, keyed by the holder's wire id and the map field's (docs/SPEC-TABLES.md §2.8, §18.1)
 - baseline created over 12 tables — data written BEFORE this point is not covered by it
@@ -213,3 +213,9 @@ union Force
 - Text.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - Trails.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - WideRow.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
+
+### 2026-10-31 (UTC) — wstring is removed: text is UTF-8 string(N), so Text.wide is retired
+- table 2492f5fb1b05b45e.a633f1f655715cca: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- retired field 2492f5fb1b05b45e.a633f1f655715cca.key id=0x3dc94a19365b10ec — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field 2492f5fb1b05b45e.a633f1f655715cca.value id=0x7ce4fd9430e80cea — a re-added name or id is refused until this entry is acknowledged (issue #441)
+- retired field Text.wide id=0xa633f1f655715cca — a re-added name or id is refused until this entry is acknowledged (issue #441)
