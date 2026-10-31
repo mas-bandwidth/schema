@@ -1443,6 +1443,15 @@ defmodule WireFuzz do
           # §3.3), and the refusal is the answer the oracle compares
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
+        {:error, :newer_form, _report} ->
+          # only a FIXED-CLASS root gets here (a variable root's measure
+          # refused the form first): its value starts at its declared defaults
+          # (docs/SPEC-TABLES.md §3, §4), a form this reader does not carry is
+          # refused and leaves it there, and that value is what is saved back
+          {:ok, bytes} = mod.save(r.root, mod.new(r.root))
+          stdout_write(header(1, %{refused: true}, measure) <> <<byte_size(bytes)::little-signed-64>>)
+          stdout_write(bytes)
+
         _ ->
           stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
       end
