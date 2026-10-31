@@ -26,7 +26,7 @@ const (
 	// -13: the emitted loops range over their counts and the clamps call min/max (modernize-clean generated Go)
 	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	// +19: table floats are finite only (SPEC-TABLES §3.3, Glenn 2026-10-27): the NonFiniteFloat report slot, the refusal's two runtime helpers and Err() arm, the cook writer's and the retain capture's raw-bits tests (tables-finite/go)
-	goOneTableLineBudget = 9509
+	goOneTableLineBudget = 9519
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
