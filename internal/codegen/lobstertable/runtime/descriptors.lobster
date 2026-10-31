@@ -153,6 +153,18 @@ def keyed_enum_of(owner:string, field:string) -> string:
             return k.enum_name
     return ""
 
+// keyed_slot is the slot an enum-keyed array keeps key in (docs/PORTING.md
+// M5): key 1 is slot 0 and max the last. None (key 0), a negative key and any
+// key past max are REFUSED BY NAME in every build: one unsigned compare of
+// key - 1 against max covers both ends, and the refusal is a VM error that
+// names the array and the key. It is an index past a one-element vector
+// rather than an assert, because --runtime-no-asserts compiles asserts away
+// and keeps the VM's bounds check.
+def keyed_slot(key:int, max:int, what:string) -> int:
+    if not ult(key - 1, max):
+        return length(["keyed key refused: " + what + " key " + string(key)][1])
+    return key - 1
+
 // THE DEPRECATED ENUM VARIANT (§2.15): the variant keeps its id, but a read
 // yields the field's declared default (an element's zero). The marker is
 // registered from the descriptors, and this file replaces the enum shape.
