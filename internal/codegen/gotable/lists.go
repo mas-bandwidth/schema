@@ -211,7 +211,6 @@ func containerRegionSourceCommon(s string) string {
 	s = tableSourceReplace(s, "body.Nodes=nodes;t.LoadBody(body,p)", "carve:=TableExtentCarve{Base:p,At:tableRegionRound(int64(t.Size)),Limit:tableWireNodeBytes(body,t)};body.Nodes=nodes;body.Nodes.Carve=carve;t.LoadBody(body,p)", 1)
 	s = tableSourceReplace(s, "r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base)", "carve:=TableExtentCarve{Base:base,At:tableRegionRound(int64(root.Size)),Limit:tableWireNodeBytes(r,root)};r.Nodes=nodes;r.Nodes.Carve=carve;r.Nested=false;root.LoadBody(r,base)", 1)
 	s = tableSourceReplace(s, "tableRegionEdges(p,t,func", "tableRegionEdges(p,t,a,func", 1)
-	s = tableSourceReplace(s, "tableRegionEdges(p,t,w.edge)", "tableRegionEdges(p,t,w.arena,w.edge)", 1)
 	s = tableSourceReplace(s, "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,visit", "tableRegionEdges(base unsafe.Pointer,info *TableTypeInfo,a *TableArena,visit", 1)
 	s = tableSourceReplace(s, "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,visit", "tableRegionValueEdges(p unsafe.Pointer,f *TableFieldInfo,a *TableArena,visit", 1)
 	s = tableSourceReplace(s, "tableRegionEdges(p,f.Table(),visit)", "tableRegionEdges(p,f.Table(),a,visit)", 1)

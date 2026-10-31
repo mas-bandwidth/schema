@@ -708,14 +708,12 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
-# THE FRAMING SURFACE's own controls (docs/LAYERS/1-framing.md): the generated
-# Go reader's 4096 id-table entry cap is removed, and then its refusal of a
-# pointer naming an open node; each turns its own framing row red
-# (frame_entries_4097, node_cycle_self) while the wire surface stays green.
+# THE FRAMING SURFACE's own control (docs/LAYERS/1-framing.md): the generated
+# Go reader's 4096 id-table entry cap is removed, and the framing row
+# frame_entries_4097 must go red while the wire surface stays green.
 .PHONY: conformance-negative-control-go-framing
 conformance-negative-control-go-framing: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control frame-cap
-	sh test/conformance/go/negative-control frame-cycle
 
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its

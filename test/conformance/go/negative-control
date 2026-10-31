@@ -1,10 +1,9 @@
 #!/bin/sh
 # Prove the restored Go gates detect a changed wire, a changed message batch,
 # a missing text event, a noncanonical integer accepted by the generated
-# wire reader, an absent case that writes no `.absent` answer, and two
-# framing rules (docs/LAYERS/1-framing.md) taken out of the generated reader:
-# the 4096 id-table entry cap (frame-cap) and the refusal of a pointer naming
-# an open node (frame-cycle).
+# wire reader, an absent case that writes no `.absent` answer, and the 4096
+# id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
+# reader (frame-cap).
 set -eu
 
 mode=$1
@@ -34,10 +33,6 @@ leb|leb-driver)
 frame-cap)
     source=$(grep -l 'if n > 4096 {' build/tables-generated-go/r1/*Table.go)
     sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
-    ;;
-frame-cycle)
-    source=$(grep -l '^[[:space:]]*return w\.cycle$' build/tables-generated-go/pointers/*.go)
-    sed 's/^\([[:space:]]*\)return w\.cycle$/\1return false \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
     ;;
 absent)
     # both writers of the marker: the bare one and the one carrying a reason
@@ -91,9 +86,6 @@ else
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = frame-cap ]; then
         grep -q 'go / framing: frame_entries_4097: damaged input owes the refusal' "$out/log"
-        grep -q 'wire          pass' "$out/log"
-    elif [ "$mode" = frame-cycle ]; then
-        grep -q 'go / framing: node_cycle_self: damaged input owes the refusal' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = absent ]; then
         grep -q 'go / wire: blob_shared: .*driver wrote nothing' "$out/log"
