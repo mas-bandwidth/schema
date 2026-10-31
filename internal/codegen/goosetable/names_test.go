@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -54,8 +55,8 @@ func generateUnit(paths []string) (map[string][]byte, error) {
 func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
-	runtime := goosetable.Runtime()
-	maps.Copy(runtime, goose.Runtime())
+	runtimeFiles := goosetable.Runtime()
+	maps.Copy(runtimeFiles, goose.Runtime())
 	var keys []string
 	for k := range units {
 		keys = append(keys, k)
@@ -64,7 +65,7 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 	var mu sync.Mutex
 	checked := 0
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, runtime.NumCPU())
 	for _, key := range keys {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
@@ -81,7 +82,7 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 		seen := map[string]bool{}
 		var names []string
 		for file, data := range files {
-			if _, ok := runtime[file]; ok {
+			if _, ok := runtimeFiles[file]; ok {
 				continue
 			}
 			for _, m := range topLevel.FindAllSubmatch(data, -1) {
