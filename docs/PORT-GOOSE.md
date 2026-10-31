@@ -400,7 +400,12 @@ The `goose` column of docs/PORTING.md is filled, every cell with its reason:
 - **✅ carried now:** M13 (descriptors are global constants:
   `schema_tables.goose`, held by `TestGooseTableDescriptorsLoad`), I4
   (per-case absent, in the driver's line grammar), I10 (the zero-cost gate,
-  `TestGooseTableFreeUnitAddsNothing`).
+  `TestGooseTableFreeUnitAddsNothing`); and the gates over what the leg emits,
+  make/goose-gates.mk: J4 (`tables-goose-strict`: every generated module and
+  runtime module checked on its own by the pinned compiler, zero warnings),
+  J2 (`tables-goose-runtime-home`), J3 (`tables-goose-release`) and I2 (the
+  strict gate's and the runtime home's controls sabotage the emitter through
+  `go build -overlay`).
 - **— the platform cannot:** M3 (an `f32`/`f64` is a C scalar by value and
   nothing allocates), M10 (Goose has no allocator to hook: data stacks and
   scope exit).
@@ -448,8 +453,7 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 
 Not yet carded, and named so in the register: the layout assertion (M11), a
 node larger than a slab (M17), the allocation instrument and its pin (I1,
-I14), the soak (I9), the documented surface (I12) and the analyzer half of
-J4.
+I14), the soak (I9) and the documented surface (I12).
 
 ## DEEPEN
 
