@@ -56,6 +56,8 @@
 #include "AssetsTable.h"
 // the MAP unit: §2.8's text rows name Text, whose maps read into a builder
 #include "TextTable.h"
+// the LIST unit: §2.8's duplicate-key row names Army, a list of tables that hold maps
+#include "HoldersTable.h"
 
 static int failures = 0;
 static int checked = 0;
@@ -224,25 +226,46 @@ static void check_case( const char * name, const char * text, long text_size,
     free( resaved );
 }
 
+// a variable root's codec, named once so one check serves every unit whose
+// text reads into a builder and whose bytes load into a region
+#define REGION_CODEC( codec, ns, type )                                                                     \
+    struct codec                                                                                            \
+    {                                                                                                       \
+        typedef ns::type##Builder Builder;                                                                  \
+        typedef ns::type Root;                                                                              \
+        typedef ns::TableReport Report;                                                                     \
+        static bool FromJson( Builder & b, const char * t, int64_t n, Report * r )                          \
+        {                                                                                                   \
+            return ns::type##FromJsonTolerant( b, t, n, r );                                                \
+        }                                                                                                   \
+        static int64_t Measure( const Builder & b ) { return ns::type##Measure( b ); }                      \
+        static int64_t Measure( const Root * v ) { return ns::type##Measure( v ); }                         \
+        static int64_t Save( const Builder & b, uint8_t * o, int64_t n ) { return ns::type##Save( b, o, n ); } \
+        static int64_t Save( const Root * v, uint8_t * o, int64_t n ) { return ns::type##Save( v, o, n ); }   \
+        static int64_t LoadMeasure( const uint8_t * b, int64_t n ) { return ns::type##LoadMeasure( b, n ); } \
+        static const Root * LoadTolerant( uint8_t * region, int64_t bytes, const uint8_t * b, int64_t n,     \
+                                          Report * r )                                                      \
+        {                                                                                                   \
+            return ns::type##LoadTolerant( region, bytes, b, n, r );                                        \
+        }                                                                                                   \
+    }
+
+REGION_CODEC( SceneCodec, graphdemo, Scene );
+REGION_CODEC( ArmyCodec, listdemo, Army );
+
 // the same three questions over the VARIABLE class (docs/SPEC-TABLES.md §16.7):
 // the text reads into a BUILDER, the bytes it saves are compared with the pack's,
 // and the pack's bytes load into a REGION and re-save byte-identically
-static bool same_graph_report( const graphdemo::TableReport & got, const Expected & want )
-{
-    return got.unknown == want.unknown && got.kind_mismatch == want.kind_mismatch &&
-           got.widened == want.widened && got.clamped == want.clamped && got.duplicate == want.duplicate &&
-           got.malformed == want.malformed;
-}
-
-static void check_scene_case( const char * name, const char * text, long text_size,
-                              const uint8_t * packed, long size, bool refused, const Expected & want )
+template <typename C>
+static void check_region_case( const char * name, const char * text, long text_size,
+                               const uint8_t * packed, long size, bool refused, const Expected & want )
 {
     checked++;
 
     // 1. the same text, through the generated walk, into a builder
-    graphdemo::SceneBuilder from_text;
-    graphdemo::TableReport text_report;
-    bool text_ok = graphdemo::SceneFromJsonTolerant( from_text, text, text_size, &text_report );
+    typename C::Builder from_text;
+    typename C::Report text_report;
+    bool text_ok = C::FromJson( from_text, text, text_size, &text_report );
     if ( refused )
     {
         if ( text_ok && !text_report.malformed )
@@ -258,7 +281,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
         failures++;
         return;
     }
-    if ( !same_graph_report( text_report, want ) )
+    if ( !same_report( text_report, want ) )
     {
         printf( "FAIL %s: FromJson reports %d,%d,%d,%d,%d; the manifest (and schema pack) say %d,%d,%d,%d,%d\n",
                 name, text_report.unknown, text_report.kind_mismatch, text_report.clamped,
@@ -269,7 +292,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
     if ( packed == NULL ) { return; } // an uncarried row of a refused standard: no engine bytes
 
     // 2. and the bytes the builder saves are the bytes schema pack wrote
-    int64_t from_text_size = graphdemo::SceneMeasure( from_text );
+    int64_t from_text_size = C::Measure( from_text );
     if ( from_text_size != size )
     {
         printf( "FAIL %s: FromJson -> Save is %lld bytes, schema pack wrote %ld\n",
@@ -279,7 +302,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
     else
     {
         uint8_t * text_bytes = (uint8_t *) malloc( (size_t) from_text_size );
-        if ( graphdemo::SceneSave( from_text, text_bytes, from_text_size ) != from_text_size ||
+        if ( C::Save( from_text, text_bytes, from_text_size ) != from_text_size ||
              memcmp( text_bytes, packed, (size_t) size ) != 0 )
         {
             for ( long i = 0; i < size; i++ )
@@ -297,10 +320,10 @@ static void check_scene_case( const char * name, const char * text, long text_si
     }
 
     // 3. and the bytes load clean, into a region, and re-save
-    int64_t region_bytes = graphdemo::SceneLoadMeasure( packed, size );
+    int64_t region_bytes = C::LoadMeasure( packed, size );
     uint8_t * region = (uint8_t *) calloc( 1, (size_t) region_bytes );
-    graphdemo::TableReport report;
-    const graphdemo::Scene * value = graphdemo::SceneLoadTolerant( region, region_bytes, packed, size, &report );
+    typename C::Report report;
+    const typename C::Root * value = C::LoadTolerant( region, region_bytes, packed, size, &report );
     if ( value == NULL )
     {
         printf( "FAIL %s: the backend refused bytes schema pack wrote\n", name );
@@ -319,7 +342,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
         free( region );
         return;
     }
-    int64_t again = graphdemo::SceneMeasure( value );
+    int64_t again = C::Measure( value );
     if ( again != size )
     {
         printf( "FAIL %s: resave is %lld bytes, pack wrote %ld\n", name, (long long) again, size );
@@ -328,7 +351,7 @@ static void check_scene_case( const char * name, const char * text, long text_si
         return;
     }
     uint8_t * resaved = (uint8_t *) malloc( (size_t) again );
-    if ( graphdemo::SceneSave( value, resaved, again ) != again || memcmp( resaved, packed, (size_t) again ) != 0 )
+    if ( C::Save( value, resaved, again ) != again || memcmp( resaved, packed, (size_t) again ) != 0 )
     {
         printf( "FAIL %s: resave differs from what pack wrote\n", name );
         failures++;
@@ -713,7 +736,7 @@ int main( int argc, char ** argv )
         }
         else if ( strcmp( root, "Scene" ) == 0 )
         {
-            check_scene_case( name, (const char *) text, text_size, packed, size, refused, want );
+            check_region_case<SceneCodec>( name, (const char *) text, text_size, packed, size, refused, want );
         }
         else if ( strcmp( root, "ToolMessage" ) == 0 )
         {
@@ -734,6 +757,10 @@ int main( int argc, char ** argv )
             check_case<scalardemo::SimState>( name, (const char *) text, text_size, packed, size, refused, want,
                                               scalardemo::SimStateFromJsonTolerant, scalardemo::SimStateLoad,
                                               scalardemo::SimStateMeasure, scalardemo::SimStateSave );
+        }
+        else if ( strcmp( root, "Army" ) == 0 )
+        {
+            check_region_case<ArmyCodec>( name, (const char *) text, text_size, packed, size, refused, want );
         }
         else if ( strcmp( root, "Text" ) == 0 )
         {
