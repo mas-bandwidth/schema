@@ -5,6 +5,7 @@ package ir_test
 // and not only the number.
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -44,7 +45,7 @@ fixed table ShipConfig
 // §20.2's worked example, to the character. Every number in it derives from a
 // rule on a page and none of it is declared, so a second implementation
 // reproduces it — and a reader did, independently, before this one existed.
-const workedProjection = `schema-build-version 4
+const workedProjection = `schema-build-version 5
 protocol 0123456789abcdef
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
@@ -69,8 +70,8 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 	if got != workedProjection {
 		t.Errorf("the cook projection is not the page's (docs/SPEC-TABLES.md §20.2).\n--- got ---\n%s\n--- want ---\n%s", got, workedProjection)
 	}
-	if v := ir.BuildVersion(u); v != 0x91cc2ade8160c4c7 {
-		t.Errorf("build version = 0x%016x, want 0x91cc2ade8160c4c7 (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0x482a6d07fc09a843 {
+		t.Errorf("build version = 0x%016x, want 0x482a6d07fc09a843 (docs/SPEC-TABLES.md §20.2)", v)
 	}
 }
 
@@ -80,13 +81,13 @@ func TestCookProjectionMatchesThePagesWorkedExample(t *testing.T) {
 func TestCookProjectionOfATablelessUnit(t *testing.T) {
 	u := unitFrom(t, "package demo\n\ntype Point\n{\n    x float32\n}\n")
 	u.ProtocolId = 0x0123456789abcdef
-	want := "schema-build-version 4\nprotocol 0123456789abcdef\nbyteorder little\n" +
+	want := "schema-build-version 5\nprotocol 0123456789abcdef\nbyteorder little\n" +
 		"block prologue=magic:8,build_version:8,byte_order:8\n"
 	if got := ir.CookProjection(u); got != want {
 		t.Errorf("a table-free unit projects its header lines alone.\n--- got ---\n%s", got)
 	}
-	if v := ir.BuildVersion(u); v != 0xb0834916acb6dd3c {
-		t.Errorf("build version = 0x%016x, want 0xb0834916acb6dd3c (docs/SPEC-TABLES.md §20.2)", v)
+	if v := ir.BuildVersion(u); v != 0xfb3cc9032b967207 {
+		t.Errorf("build version = 0x%016x, want 0xfb3cc9032b967207 (docs/SPEC-TABLES.md §20.2)", v)
 	}
 	if v := ir.BuildVersion(u); v == u.ProtocolId {
 		t.Error("the two ids are equal — one could be substituted for the other by accident")
@@ -317,15 +318,16 @@ table Save
 `
 
 // TestTheUnboundedArrayProjectsAsAnArrayWithNoBound (docs/SPEC-TABLES.md §2.9,
-// §20.2): `kind=14`, `array=unbounded` and `elem=` the ELEMENT'S OWN storage
-// size, beside the `size=` the sixteen-byte slot produces. No `bound=`,
+// §20.2): `kind=14`, `array=unbounded`, `elem=` the ELEMENT'S OWN storage
+// size and `elemkind=` its kind, beside the `size=` the sixteen-byte slot
+// produces. No `bound=`,
 // because it declares no extent and its count is a wire fact.
 func TestTheUnboundedArrayProjectsAsAnArrayWithNoBound(t *testing.T) {
 	text := ir.CookProjection(unitFrom(t, listSource))
 	for _, want := range []string{
 		"record Save sizeof=32 alignof=8",
-		"kind=14 offset=0 size=16 type=Placement elem=8 array=unbounded",
-		"kind=14 offset=16 size=16 elem=4 array=unbounded",
+		"kind=14 offset=0 size=16 type=Placement elem=8 elemkind=13 array=unbounded",
+		"kind=14 offset=16 size=16 elem=4 elemkind=4 array=unbounded",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the projection does not carry %q:\n%s", want, text)
@@ -333,6 +335,23 @@ func TestTheUnboundedArrayProjectsAsAnArrayWithNoBound(t *testing.T) {
 	}
 	if strings.Contains(text, "array=unbounded bound=") {
 		t.Errorf("an unbounded array projects no bound=:\n%s", text)
+	}
+}
+
+// TestTheBuildVersionMovesWhenTheListElementIsRetyped (docs/SPEC-TABLES.md
+// §4.1, §20.2): a retype that keeps the element's size moves the id through
+// `elemkind=`, and so does a move to `[]*T`, so a cooked list never reads
+// under the other kind.
+func TestTheBuildVersionMovesWhenTheListElementIsRetyped(t *testing.T) {
+	base := ir.BuildVersion(unitFrom(t, listSource))
+	for _, edit := range [][2]string{
+		{"scores     []int32", "scores     []float32"},
+		{"scores     []int32", "scores     []uint32"},
+		{"placements []Placement", "placements []*Placement"},
+	} {
+		if moved := ir.BuildVersion(unitFrom(t, strings.Replace(listSource, edit[0], edit[1], 1))); moved == base {
+			t.Errorf("%s -> %s does not move the build version: %016x", edit[0], edit[1], base)
+		}
 	}
 }
 
@@ -411,8 +430,8 @@ table Rack
 	base := ir.BuildVersion(baseUnit)
 	text := ir.CookProjection(baseUnit)
 
-	if !strings.Contains(text, "schema-build-version 4") {
-		t.Errorf("the header does not read schema-build-version 4:\n%s", text)
+	if !strings.Contains(text, fmt.Sprintf("schema-build-version %d", ir.BuildVersionForm)) {
+		t.Errorf("the header does not read schema-build-version %d:\n%s", ir.BuildVersionForm, text)
 	}
 	for _, want := range []string{
 		"block Frame sizeof=",

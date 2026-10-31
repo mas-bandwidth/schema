@@ -7073,6 +7073,61 @@ release-form-gate-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the minor or the major went red too"; cat $(RELEASE_FORM_CONTROL)/red.out; exit 1; }
 	@echo "negative control: a Release that never compares the commit's form tags a patch release that moves the build version's form, and TestReleaseFormGate goes RED on that release alone"
 
+# THE LIST ELEMENT KIND IN THE BUILD VERSION (docs/SPEC-TABLES.md §4.1,
+# §20.2). Form 5 puts an unbounded array's element kind on its cook line as
+# `elemkind=`. Take the token out of a COPY of the rendering and the retype
+# gate must go red, and so must §4.1's row in the frames golden: without the
+# token `[]int32` and `[]float32` share a build version.
+.PHONY: build-version-elemkind-negative-control
+build-version-elemkind-negative-control:
+	@mkdir -p build
+	@sed -e 's|fmt.Fprintf(&b, " elem=%d elemkind=%d array=unbounded", elementPiece(u, f).size, TableWireElemKind(f))|fmt.Fprintf(\&b, " elem=%d array=unbounded", elementPiece(u, f).size) // SABOTAGED: no element kind|' \
+		ir/buildversion.go > build/buildversion-no-elemkind.gotext
+	@grep -q SABOTAGED build/buildversion-no-elemkind.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not remove the elemkind token"; exit 1; }
+	@printf '{"Replace":{"%s/ir/buildversion.go":"%s/build/buildversion-no-elemkind.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/buildversion-no-elemkind-overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/buildversion-no-elemkind-overlay.json \
+		./ir -run TestTheBuildVersionMovesWhenTheListElementIsRetyped > build/buildversion-no-elemkind.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the retype gate passed with elemkind gone"; \
+		cat build/buildversion-no-elemkind.log; exit 1; \
+	fi
+	@grep -q "scores     \[\]int32 -> scores     \[\]float32 does not move the build version" build/buildversion-no-elemkind.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the same-size retype"; \
+		  cat build/buildversion-no-elemkind.log; exit 1; }
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/buildversion-no-elemkind-overlay.json \
+		./internal/baseline -run 'TestEvolutionTableFrames' > build/buildversion-no-elemkind-frames.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the §4.1 frames golden passed with elemkind gone"; \
+		cat build/buildversion-no-elemkind-frames.log; exit 1; \
+	fi
+	@grep -q "an_unbounded_array's_element_retyped" build/buildversion-no-elemkind-frames.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the frames golden went red, but not on the element-retype row"; \
+		  cat build/buildversion-no-elemkind-frames.log; exit 1; }
+	@echo "negative control: removing elemkind from the list's cook line turns the retype gate and §4.1's row RED"
+
+# THE TEXT TOTAL ON THE ENGINE'S READ (docs/SPEC-TABLES.md §2.13): the engine
+# is the oracle, so it keeps the prefix within the reader's total. Make the
+# clamp return the decoded count unchanged in a COPY of the decoder and the
+# total test must go red.
+.PHONY: tables-wire-text-total-negative-control
+tables-wire-text-total-negative-control:
+	@mkdir -p build
+	@sed -e 's@^[[:space:]]*if f.TextTotal <= 0 || !f.IsTextList() {$$@if true { // SABOTAGED: the total is never held@' \
+		internal/tablewire/decode.go > build/tablewire-no-total.gotext
+	@grep -q SABOTAGED build/tablewire-no-total.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch the total clamp"; exit 1; }
+	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/tablewire-no-total.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/tablewire-no-total-overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/tablewire-no-total-overlay.json \
+		./internal/tablewire -run TestTextTotalClampsTheReadToAPrefix > build/tablewire-no-total.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the total test passed with the clamp gone"; \
+		cat build/tablewire-no-total.log; exit 1; \
+	fi
+	@grep -q "want clamped 4" build/tablewire-no-total.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the missing clamp"; \
+		  cat build/tablewire-no-total.log; exit 1; }
+	@echo "negative control: removing the engine's total clamp turns the text-total test RED"
+
 .PHONY: slow-gate-scan
 slow-gate-scan:
 	go run ./tools/slowgatescan
