@@ -1,6 +1,9 @@
 # THE MUTANTS THE MOO WIRE-FUZZ LEG DIVERGED ON, each fixed in the moo table
 # runtime and replayed alone by make/moo-fuzz.mk tables-moo-wire-fuzz-pinned:
 # <mutant file> <unit> <root> [message|retain]
-# a batch damaged inside body one: the fields decoded before the damage stand
-# (table_message.moo LoadMessages answers the partial body third)
-test/conformance/moo/wire-fuzz-pinned/login_partial_body.bin backenddemo LoginRequest message
+# a map header whose count runs past the field's L: the count is bounded by the
+# enclosing body, as an array's is (docs/LAYERS/1-framing.md H3; table_load.moo
+# read_map, read_keyed)
+test/conformance/moo/wire-fuzz-pinned/crews_map_count_past_l.bin mapdemo Crews retain
+test/conformance/moo/wire-fuzz-pinned/slots_map_count_past_l.bin mapdemo Slots retain
+test/conformance/moo/wire-fuzz-pinned/fleet_map_count_past_l.bin mapdemo Fleet
