@@ -60,10 +60,9 @@ func MessageCount(data []byte, v *Vocabulary) (int, error) {
 //     `malformed` does not fire. The returned count is the WIRE's `M`, so the
 //     caller holds the number it was short by and calls again with storage at
 //     or above it.
-//   - DAMAGE INSIDE BODY `k` DELIVERS BODIES 1 TO `k - 1`: the returned count
-//     says `k - 1`, one `malformed` counts, and nothing at or after body `k`
-//     is read. The storage for body `k` holds whatever the decode had put in
-//     it, and the COUNT is what says it is not a body.
+//   - DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md
+//     §4): the returned count is zero, `malformed` is reported, and every
+//     body's storage holds its declared defaults.
 func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte, v *Vocabulary, report *tabletext.Report) (int, bool, error) {
 	return decodeMessagesWith(m, insts, data, v, report, nil)
 }
@@ -77,11 +76,29 @@ func decodeMessagesWith(m *tabletext.Model, insts []*tabletext.Instance, data []
 	// §3.3): no body of it is delivered, so the count is zero.
 	prior := report.NonFiniteFloat
 	report.NonFiniteFloat = ""
+	priorMalformed := report.Malformed
+	report.Malformed = false
 	n, ok, err := decodeMessagesWalk(m, insts, data, v, report, states)
 	if refusal := refusedNonFinite(report); refusal != nil {
+		report.Malformed = report.Malformed || priorMalformed
 		return 0, false, refusal
 	}
 	report.NonFiniteFloat = prior
+	if report.Malformed {
+		// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4, §3.3): no
+		// body is delivered, so the count is zero and every body the walk
+		// touched returns to its declared defaults.
+		for _, inst := range insts {
+			m.Clear(inst)
+		}
+		for _, st := range states {
+			if st != nil {
+				st.store.reset()
+			}
+		}
+		return 0, false, err
+	}
+	report.Malformed = priorMalformed
 	return n, ok, err
 }
 
@@ -126,8 +143,8 @@ func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []
 	// THE TRAILING PAD IS VERIFIED ZERO, which is the packet wire's rule for
 	// the same reason (SPEC.md §4.3), and BYTES AFTER THE PAD ARE MALFORMED:
 	// the batch ends at the pad and a buffer with bytes left over describes no
-	// batch this reader can name. Both are damage AFTER the last body, so the
-	// count stands at `M` and the bodies stand with it.
+	// batch this reader can name. Both are damage, and damage after the last
+	// body discards the batch like damage inside one (§4).
 	if !r.align() || r.off != r.n {
 		report.Malformed = true
 		return count, false, nil
