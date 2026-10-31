@@ -693,6 +693,9 @@ const wireRows = [
   ["listdemo", "Save", "lists/ListdemoVariable.js"],
   ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
   ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  // the extent's alignment is its arrays' (§2.8, §6.2): 128-bit elements in
+  // holders aligned eight, the widelist unit
+  ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],
   // the message roots on the file form (§3.3): the backend unit's three and
   // the wide-vocabulary units' roots on both sides of the one-byte boundary
   ["backenddemo", "LoginRequest", "backend/BackenddemoVariable.js"],
@@ -840,6 +843,7 @@ const textUnits = {
   tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
   widedemo: "wide/WideVariable.js",
   listdemo: "lists/ListdemoVariable.js",
+  widelist: "widelist/WidelistdemoVariable.js",
 };
 
 async function textCodec(unit, root) {
@@ -987,6 +991,27 @@ const cookWriteRows = [
   ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
+  // maps and lists (docs/PORTING.md M19): the holder's sixteen bytes, the
+  // entries and elements in its node extent, pre-order
+  ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Chunks", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Crews", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Depth", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Docs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Fleet", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Pairs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Runs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Slots", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Spans", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Text", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Trails", "maps/MapdemoVariable.js"],
+  ["listdemo", "Album", "lists/ListdemoVariable.js"],
+  ["listdemo", "Army", "lists/ListdemoVariable.js"],
+  ["listdemo", "Mixed", "lists/ListdemoVariable.js"],
+  ["listdemo", "Save", "lists/ListdemoVariable.js"],
+  ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
+  ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],
 ];
 
 function cookWriteAbsent(outDir, name) {

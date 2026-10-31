@@ -190,6 +190,11 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 		if f.Type.Kind == ir.TBytes {
 			kind = tkU8
 		}
+		if f.IsList() || f.IsMap() {
+			emitRowHolder(pf, u, name, f, pieces[0].Offset)
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %sDelta(view, at)", f.Name, member))
+			continue
+		}
 		switch {
 		case f.Type.Pointer:
 			// A *T SLOT IS EIGHT BYTES (docs/SPEC-TABLES.md §6.3, §7.2), holding
@@ -256,6 +261,13 @@ func recordMembers(u *ir.Unit, ml *ir.MemberLayout) []string {
 		f := fl.Field
 		member := ir.GoExportName(f.Name)
 		facts := ir.BlockFieldOf(u, f, fl.Offset, false)
+		if f.IsList() || f.IsMap() {
+			out = append(out, member+"Slot", member+"Delta", member+"Count", member+"Stride", member+"At")
+			if rowFindKey(f) != nil {
+				out = append(out, member+"Find")
+			}
+			continue
+		}
 		switch {
 		case f.Type.Pointer:
 			out = append(out, member+"Slot", member+"Delta")
@@ -277,4 +289,104 @@ func recordMembers(u *ir.Unit, ml *ir.MemberLayout) []string {
 		}
 	}
 	return out
+}
+
+// emitRowHolder is a LIST's or a MAP's sixteen-byte holder (docs/SPEC-TABLES.md
+// §2.8, §2.9, §7.2; docs/PORTING.md M19): the slot holds the SIGNED
+// SELF-RELATIVE delta to the element array in the holder's node extent (zero
+// for an empty one) and the int32 count beside it. `<F>At(view, at, i)` is the
+// i-th element's offset IN PLACE: the slot's own offset plus the delta plus i
+// strides, one add and one multiply, with nothing parsed and nothing copied.
+// The delta is read as its two 32-bit halves, so the span allocates nothing
+// (a cook's references stay below 2^53, the region's own bound). A MAP adds
+// `<F>Find`, a binary search over the ascending entries where they lie.
+func emitRowHolder(pf func(string, ...any), u *ir.Unit, owner string, f *ir.Field, slot int64) {
+	member := ir.GoExportName(f.Name)
+	var stride int64
+	if f.IsMap() {
+		stride = ir.RecordLayout(u, f.MapEntry).Size
+	} else {
+		stride, _ = ir.ListElementLayout(u, f)
+	}
+	pf("  // %s: the holder's slot, its delta and its count; %sAt is element i where it lies (§2.8, §2.9)\n",
+		ir.FieldTypeSpelling(f), member)
+	pf("  function %sSlot(at) { return at + %d; }\n", member, slot)
+	pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, slot)
+	pf("  function %sCount(view, at) { const n = view.getInt32(at + %d, true); return n < 0 ? 0 : n; }\n", member, slot+8)
+	pf("  const %sStride = %d;\n", member, stride)
+	pf("  function %sAt(view, at, i = 0) {\n", member)
+	pf("    return at + %d + view.getInt32(at + %d, true) * 4294967296 + view.getUint32(at + %d, true) + i * %d;\n",
+		slot, slot+4, slot, stride)
+	pf("  }\n")
+	key := rowFindKey(f)
+	if key == nil {
+		return
+	}
+	entry := ir.RecordLayout(u, f.MapEntry)
+	var keyAt int64
+	for _, efl := range entry.Fields {
+		if efl.Field == key {
+			keyAt = efl.Offset
+		}
+	}
+	pieces := ir.FieldPieces(u, key, keyAt)
+	pf("  // the entry whose key is `key`, where the entries lie, or -1: a binary search over\n")
+	pf("  // the ascending array (§2.8), floor(log2 n) + 1 key compares and no allocation.\n")
+	if key.Type.Kind == ir.TString {
+		pf("  // `key` is the key's UTF-8 bytes, ordered as bytes, unsigned, a prefix first.\n")
+		pf("  function %sFind(bytes, view, at, key) {\n", member)
+		pf("    const base = %sAt(view, at, 0);\n", member)
+		pf("    let low = 0, high = %sCount(view, at);\n", member)
+		pf("    while (low < high) {\n")
+		pf("      const mid = (low + high) >>> 1;\n")
+		pf("      const e = base + mid * %d;\n", stride)
+		pf("      let used = view.getInt32(e + %d, true);\n", pieces[1].Offset)
+		pf("      if (!(used >= 0) || used > %d) { used = 0; }\n", key.Type.Size)
+		pf("      const m = used < key.length ? used : key.length;\n")
+		pf("      let order = 0;\n")
+		pf("      for (let i = 0; i < m && order === 0; i++) { order = bytes[e + %d + i] - key[i]; }\n", pieces[0].Offset)
+		pf("      if (order === 0) { order = used - key.length; }\n")
+		pf("      if (order === 0) { return e; }\n")
+		pf("      if (order < 0) { low = mid + 1; } else { high = mid; }\n")
+		pf("    }\n")
+		pf("    return -1;\n")
+		pf("  }\n")
+		return
+	}
+	width := pieces[0].Size
+	want := "Number(key)"
+	if width == 8 {
+		want = `typeof key === "bigint" ? key : BigInt(key)`
+	}
+	pf("  // `key` is the integer, ordered by value (signed for a signed kind).\n")
+	pf("  function %sFind(view, at, key) {\n", member)
+	pf("    const want = %s;\n", want)
+	pf("    const base = %sAt(view, at, 0);\n", member)
+	pf("    let low = 0, high = %sCount(view, at);\n", member)
+	pf("    while (low < high) {\n")
+	pf("      const mid = (low + high) >>> 1;\n")
+	pf("      const e = base + mid * %d;\n", stride)
+	pf("      const k = %s;\n", jsScalarRead(tableScalarKind(key), width, fmt.Sprintf("e + %d", pieces[0].Offset), owner+"."+f.Name))
+	pf("      if (k === want) { return e; }\n")
+	pf("      if (k < want) { low = mid + 1; } else { high = mid; }\n")
+	pf("    }\n")
+	pf("    return -1;\n")
+	pf("  }\n")
+}
+
+// rowFindKey is a map's key when the cooked entry array can be searched in
+// place: a bounded string(N), compared as bytes, or an integer up to 64 bits.
+// A list has none.
+func rowFindKey(f *ir.Field) *ir.Field {
+	if !f.IsMap() {
+		return nil
+	}
+	key := ir.MapKeyField(f)
+	switch {
+	case key.Type.Kind == ir.TString && !key.Type.Pointer && !key.Type.Unbounded && key.Type.Size > 0:
+		return key
+	case key.Type.Kind == ir.TInt && key.Type.Width <= 64:
+		return key
+	}
+	return nil
 }

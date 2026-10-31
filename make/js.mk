@@ -79,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -106,6 +106,11 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	# carries the listdemo roots, so their instances answer the text form
 	# (json-read, json-write, json-hostile, §16) like every other generated unit.
 	./bin/schema generate --lang js --out build/tables-generated-js/lists tables/lists
+	# the WIDE-LIST unit (tables/widelist, docs/SPEC-TABLES.md §2.8, §6.2):
+	# 128-bit list elements in holders aligned eight, on the variable wire and
+	# its cook writer (WidelistdemoVariable.js); the accelerators stand down for
+	# the wide kinds (§15)
+	./bin/schema generate --lang js --out build/tables-generated-js/widelist tables/widelist
 	./bin/schema generate --lang js --out build/tables-generated-js/block tables/block
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
@@ -621,6 +626,40 @@ tables-js-cook-write-rows:
 	@echo 'tables JS cook-write rows: every cook-write row in MANIFEST.txt matches the golden bytes in both byte orders'
 
 test-js: tables-js-cook-write-rows
+
+# THE COOK OF MAPS AND LISTS (docs/PORTING.md M19): the writer holds the sort
+# (every map-bearing cook-write row cooked from a value whose Maps were built
+# out of key order is the reference's bytes in both orders) and a cooked map
+# is searched in place (map_full's maps, at depth too, spanned by <F>At and
+# found by <F>Find). The rows' bytes themselves are tables-js-cook-write-rows.
+.PHONY: tables-js-cook-map
+tables-js-cook-map:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
+	@echo 'tables JS cook map: a Map built out of key order cooks the reference bytes, and a cooked map is found in place'
+
+test-js: tables-js-cook-map
+
+# ITS CONTROLS, each a sabotage of internal/codegen/jstable/cookwrite.go
+# through tools/sabotage and a Go overlay: the carve laying a map's entries in
+# the Map's own order must red the sort gate; an array laid at the running
+# offset, an extent begun at the floor of eight rather than
+# ir.CookExtentStart, and a node aligned to its record alone rather than
+# ir.CookNodeAlign, must each red the cook-write rows on a row they move.
+.PHONY: tables-js-cook-map-unsorted-negative-control tables-js-cook-map-unaligned-negative-control tables-js-cook-map-extent-start-negative-control tables-js-cook-map-node-align-negative-control
+tables-js-cook-map-unsorted-negative-control:
+	$(call js_jstable_control,js-cookmap-unsorted,internal/codegen/jstable/cookwrite.go,^TestCookMapWriterHoldsTheSortJavaScript$$,./internal/codegen/jstable/,map_full (mapdemo.Fleet): the cook of a value whose Maps were built out of key order is "DIFF_LITTLE")
+
+tables-js-cook-map-unaligned-negative-control:
+	$(call js_jstable_control,js-cookmap-unaligned,internal/codegen/jstable/cookwrite.go,^TestCookWriteAnswersEveryCookWriteRowJavaScript$$,./internal/codegen/jstable/,map_full little-endian cook mismatch)
+
+tables-js-cook-map-extent-start-negative-control:
+	$(call js_jstable_control,js-cookmap-extent-start,internal/codegen/jstable/cookwrite.go,^TestCookWriteAnswersEveryCookWriteRowJavaScript$$,./internal/codegen/jstable/,widelist_wide little-endian cook mismatch)
+
+tables-js-cook-map-node-align-negative-control:
+	$(call js_jstable_control,js-cookmap-node-align,internal/codegen/jstable/cookwrite.go,^TestCookWriteAnswersEveryCookWriteRowJavaScript$$,./internal/codegen/jstable/,widelist_wide little-endian cook mismatch)
+
+test-js: tables-js-cook-map-unsorted-negative-control tables-js-cook-map-unaligned-negative-control
+test-js: tables-js-cook-map-extent-start-negative-control tables-js-cook-map-node-align-negative-control
 
 # THE VARIABLE CLASS BEYOND THE CARD CONSTRUCTS (docs/SPEC-TABLES.md §2.1, §2.5,
 # §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested

@@ -879,7 +879,7 @@
       "name": "js-proof",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's 3.0.0 proof controls (docs/PORTING.md M5, M6, M11, M12, M14, M18, M21, I4, I6, I7, I12, J3): each copies one internal/codegen/jstable source through tools/sabotage, reaches it by a Go overlay, and requires the gate the register cell names red on that property's own line; plus the conformance leg with its per-case absent writers silenced. A group of its own so the js group's job keeps its measured time. 4 s to 10 s per control on hulk, about 70 s for the twelve, with bin/schema and the generated tree already built.",
+      "why": "the JavaScript leg's 3.0.0 proof controls (docs/PORTING.md M5, M6, M11, M12, M14, M18, M21, I4, I6, I7, I12, J3): each copies one internal/codegen/jstable source through tools/sabotage, reaches it by a Go overlay, and requires the gate the register cell names red on that property's own line; plus the conformance leg with its per-case absent writers silenced. A group of its own so the js group's job keeps its measured time. 4 s to 10 s per control on hulk, about 70 s for the twelve, with bin/schema and the generated tree already built. The cook of maps and lists' four controls (docs/PORTING.md M19: the carve laying a map's entries in the Map's own order, an array laid unaligned, the extent begun at the floor of eight, the node aligned to its record alone, each a tools/sabotage copy of internal/codegen/jstable/cookwrite.go through go test -overlay, required red on map_full's sort line, map_full's bytes and widelist_wide's bytes) ride here too: about 3 s each on intel.",
       "targets": [
         "tables-js-keyed-shift-negative-control",
         "tables-js-variable-class-identity-negative-control",
@@ -892,7 +892,11 @@
         "tables-js-order-word-negative-control",
         "tables-js-usage-negative-control",
         "tables-js-release-negative-control",
-        "conformance-negative-control-js-absent"
+        "conformance-negative-control-js-absent",
+        "tables-js-cook-map-unsorted-negative-control",
+        "tables-js-cook-map-unaligned-negative-control",
+        "tables-js-cook-map-extent-start-negative-control",
+        "tables-js-cook-map-node-align-negative-control"
       ]
     },
     {
