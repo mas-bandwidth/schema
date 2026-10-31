@@ -82,14 +82,14 @@ build/tables-generated/examples/Keyed.h covered-switch-default
 build/tables-generated/examples/KeyedBlock.cpp old-style-cast
 build/tables-generated/examples/KeyedBlock.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/examples/KeyedTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
-build/tables-generated/examples/KeyedTable.h allocator-wrappers,cast-align,comma,covered-switch-default,float-equal,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/examples/KeyedTable.h allocator-wrappers,cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/examples/NestedTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/examples/NestedTable.h cast-align,old-style-cast,padded
 build/tables-generated/examples/Pack.h covered-switch-default
 build/tables-generated/examples/PackBlock.cpp old-style-cast
 build/tables-generated/examples/PackBlock.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/examples/PackTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
-build/tables-generated/examples/PackTable.h allocator-wrappers,cast-align,comma,covered-switch-default,float-equal,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/examples/PackTable.h allocator-wrappers,cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/examples/RangesBlock.cpp old-style-cast
 build/tables-generated/examples/RangesBlock.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/examples/RangesTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
