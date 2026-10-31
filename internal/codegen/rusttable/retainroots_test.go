@@ -119,6 +119,21 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 		if carried["listdemo.Mixed"] {
 			seeds = append(seeds, repeatedUnionSeeds(t)...)
 		}
+		// A POINTER UNDER A FALSE GUARD IS NOT AN EDGE (docs/SPEC-TABLES.md
+		// §3.1, test/tables/G1.schema): guard_true_both_edges with its
+		// `at_rest` byte cleared still carries `resting` and its record, which
+		// the reader places and the save, numbering included, must drop.
+		if carried["tblg1.Guarded"] {
+			both, err := os.ReadFile(filepath.Join(repo, "testdata/wire/tables/guard_true_both_edges.bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if both[3] != 1 {
+				t.Fatalf("guard_true_both_edges no longer opens with at_rest = true: % x", both[:4])
+			}
+			both[3] = 0
+			seeds = append(seeds, rosterSeed{name: "guard_false_resting_rides", unit: "tblg1", root: "Guarded", data: both})
+		}
 		for _, retain := range []bool{false, true} {
 			driveSeeds(t, repo, bin, units, seeds, retain)
 		}
@@ -473,8 +488,18 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 		if retain && s.retainWant != "" {
 			want = s.retainWant
 		}
-		if retain && strings.HasSuffix(s.name, "+unknown") && !strings.Contains(want, "retained=1 ") {
-			t.Errorf("%s (%s.%s): the planted unknown was not retained by the oracle (%s), so this seed proves nothing", s.name, s.unit, s.root, want)
+		if retain && strings.HasSuffix(s.name, "+unknown") {
+			// the planted field is ONE MORE retained record than the seed it
+			// was planted in already carries: a seed read by a later build
+			// (tblscalars2 over scalars_full) retains its own unknowns too
+			base, err := os.ReadFile(filepath.Join(repo, s.wire))
+			if err != nil {
+				t.Fatal(err)
+			}
+			baseWant, _ := oracleSeed(t, units[s.unit].unit, s.root, base, true)
+			if retainedOf(want) != retainedOf(baseWant)+1 {
+				t.Errorf("%s (%s.%s): the planted unknown was not retained by the oracle (%s, unplanted %s), so this seed proves nothing", s.name, s.unit, s.root, want, baseWant)
+			}
 		}
 		if leg != want {
 			t.Errorf("%s (%s.%s, retain=%t): the leg reports %s, the oracle %s", s.name, s.unit, s.root, retain, leg, want)
@@ -596,4 +621,16 @@ fn main() {
 	if !bytes.Equal(saved, want) {
 		t.Errorf("the widened value saves %d bytes, the oracle %d, first difference at byte %d", len(saved), len(want), firstDiff(saved, want))
 	}
+}
+
+// retainedOf is the `retained=N` count of one report line, -1 when it has none.
+func retainedOf(report string) int {
+	_, after, ok := strings.Cut(report, "retained=")
+	n := -1
+	if ok {
+		if _, err := fmt.Sscanf(after, "%d", &n); err != nil {
+			return -1
+		}
+	}
+	return n
 }

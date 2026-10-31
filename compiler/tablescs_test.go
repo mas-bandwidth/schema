@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -137,16 +138,24 @@ func TestCsCarriesBlobs(t *testing.T) {
 			t.Errorf("blob field %q missing from generated C#", want)
 		}
 	}
-	// every built-in target now registers blobs (dart, compiler/target_dart.go,
-	// was the last), so the refusal is asked for lua, a port the reserved-word
-	// table names that has no target yet. refuseBlobs leaves java out of the
+	// every built-in target now registers blobs (lua, compiler/target_lua.go,
+	// was the last), so the refusal is asked for a new leg's name, which has
+	// no target. refuseBlobs leaves java out of the
 	// carrier list it spells (compiler/builtin.go), so the list below does not
-	// name it.
-	err = refuseBlobs(u, "lua")
+	// name it. squirrel is registered as a carrier under its build tag
+	// (compiler/target_squirrel_blobs.go), so it is named only in that build.
+	err = refuseBlobs(u, "newleg")
 	if err == nil {
-		t.Fatal("refuseBlobs accepted a blob-bearing unit for lua")
+		t.Fatal("refuseBlobs accepted a blob-bearing unit for a new leg")
 	}
-	for _, want := range []string{"*bytes and *string are c, cpp, cs, dart, elixir, go, js and rust only today", "--lang cs", "--lang js", "--lang rust"} {
+	carry := "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau and rust"
+	wants := []string{"--lang cs", "--lang js", "--lang rust"}
+	if slices.Contains(blobTargets, "squirrel") {
+		carry = "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau, rust and squirrel"
+		wants = append(wants, "--lang squirrel")
+	}
+	wants = append(wants, "*bytes and *string are "+carry+" only today")
+	for _, want := range wants {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)
 		}

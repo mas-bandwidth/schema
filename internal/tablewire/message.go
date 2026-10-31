@@ -187,9 +187,10 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked here and
 // never again: a `bits` above 128, a `min` or a `max` above what its kind can
 // hold, an array whose `min` exceeds its `max`, an element kind outside the
-// closed set, an element kind of `12` or `33`, two entries that agree on all
-// three parts, and a shape running past the vocabulary field's own length are
-// each malformed on the announcement, which is a file and takes §3's rule that
+// closed set, two entries that agree on all three parts, and a shape running
+// past the vocabulary field's own length are each malformed on the
+// announcement (an element kind of `12` is not among them: a text list, §2.13,
+// announces one), which is a file and takes §3's rule that
 // a wire it cannot read whole is malformed whole.
 //
 // A refused announcement sets NO VOCABULARY, and a malformed one sets none

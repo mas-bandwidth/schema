@@ -34,6 +34,9 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 | `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
+| `conformance-negative-control-lua` | the load report's unknown counter in the Lua runtime, in the emitter | `lua / report`, `lua / retain` | `wire`, `json-read`, `retain-save` |
+| `conformance-negative-control-lua-walk` | the field-key match in the Lua `FromJson`, in the emitter | `lua / json-read`, `lua / json-hostile` | `json-write`, `wire`, `cook-write` |
+| `conformance-negative-control-rust-walk` | the field-key match in the Rust emitter's `json_fields` reader | `rust / json-read` | `json-write`, `wire` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
 why `block-dump` is separate from `block`: `Open` reads the prologue and the
@@ -160,6 +163,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes | the message-form golden |
 | `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n` | `reports.txt` |
+| `framing` | `framing` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value unless the row says `no-value` or the read was refused | the verdict and the value file on the row (docs/LAYERS/1-framing.md) |
 | `retain` | `retain`, `retain-message` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES, one body after another | the pinned saves, back to back |
 | `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
@@ -313,6 +317,7 @@ conformance job reads it as the leg's matrix row:
 | `env` | `VAR=value` assignments the make and run steps carry — a toolchain on PATH rather than in `dist/` |
 | `runtime`, `runtime_tag` | the sibling checkout the leg needs (`serialize.cs`) and the workflow variable that pins it (`SERIALIZE_CS_TAG`) |
 | `node`, `rust`, `dart`, `java`, `otp` + `elixir` | the toolchain step to run, and the version it installs |
+| `moo` | the moo pin step to run (`./.github/actions/moo`, which builds `make/moo.mk`'s `MOO_PIN` into `dist/moo/` and caches it): the field's value is the release the pin names, held equal to a negative-control group's `moo` by `tools/negativecontrols` |
 | `dotnet` | the .NET SDK step to run, and the file holding the version — `.github/dotnet-version`, the repo's one pin, because nine `csproj` files under `test/` and `bench/` target it and `certify.yml` builds all of them (issue #470) |
 
 A leg that names a toolchain with no step yet adds one step to the workflow,

@@ -1,0 +1,121 @@
+#!/bin/sh
+# THE C# FINITE RULE'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27, "tables go finite-only too, same rule as packets").
+#
+# One probe holds three vectors and one finite control: the form-1 read must
+# refuse a NaN on its raw bits, the fixed read's finite pass must refuse one,
+# and the form-1 writer must refuse a NaN array element. The probe runs on the
+# emitter as it is (every vector green), then once per blade with that blade
+# sabotaged through a go build -overlay (tools/sabotage), and each sabotaged run
+# must turn EXACTLY its own vector red: a blade that reddens nothing is not a
+# gate, and one that reddens a neighbour is not the blade it claims to be.
+set -eu
+dotnet=$1
+control=build/cs-finite-control
+rm -rf "$control"
+mkdir -p "$control"
+cat > "$control/Case.schema" <<'SCHEMA'
+package finitecontrol
+fixed table Probe
+{
+    lead int32
+    v    float32
+    arr  [2]float32
+}
+SCHEMA
+cat > "$control/control.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="Program.cs"/><Compile Include="generated/*.cs"/></ItemGroup>
+</Project>
+PROJECT
+cat > "$control/Program.cs" <<'CS'
+using System;
+using Finitecontrol;
+class Program
+{
+    static void Say(string vector, bool ok) { Console.WriteLine("VECTOR " + vector + ": " + (ok ? "ok" : "red")); }
+    static int Main()
+    {
+        // finite: a -0 and a subnormal ride every form bit-exact
+        {
+            Probe p = new Probe(); p.Lead = 7; p.V = -0.0f; p.Arr[1] = BitConverter.UInt32BitsToSingle(1u);
+            byte[] file = new byte[Schema.ProbeMeasure(p)]; Schema.ProbeSave(p, file);
+            Probe back = new Probe(); TableReport r = new TableReport();
+            bool ok = Schema.ProbeLoad(back, file, r) && BitConverter.SingleToUInt32Bits(back.V) == 0x80000000u && BitConverter.SingleToUInt32Bits(back.Arr[1]) == 1u;
+            Probe[] batch = { p }; byte[] fixedFile = new byte[Schema.ProbeFixedMeasure(1)];
+            Probe[] fixedBack = { new Probe() };
+            ok &= Schema.ProbeFixedSave(batch, fixedFile) == fixedFile.Length &&
+                Schema.ProbeFixedLoad(fixedBack, fixedFile, new TableFixedEntry[256], new TableReport()) == 1 &&
+                BitConverter.SingleToUInt32Bits(fixedBack[0].V) == 0x80000000u;
+            Say("finite", ok);
+        }
+        // read: the form-1 read refuses a NaN on its raw bits
+        {
+            Probe p = new Probe(); p.V = 1234.5f;
+            byte[] file = new byte[Schema.ProbeMeasure(p)]; Schema.ProbeSave(p, file);
+            int at = file.AsSpan().IndexOf(BitConverter.GetBytes(1234.5f));
+            BitConverter.GetBytes(0x7f812345u).CopyTo(file, at);
+            Probe back = new Probe(); TableReport r = new TableReport();
+            Say("read", at > 0 && !Schema.ProbeLoad(back, file, r) && r.Reason == "non_finite_float: Probe.v");
+        }
+        // fixed: the fixed read's finite pass refuses a NaN
+        {
+            Probe p = new Probe(); p.V = 1234.5f; Probe[] batch = { p };
+            byte[] file = new byte[Schema.ProbeFixedMeasure(1)]; Schema.ProbeFixedSave(batch, file);
+            int at = file.AsSpan().IndexOf(BitConverter.GetBytes(1234.5f));
+            BitConverter.GetBytes(0x7f812345u).CopyTo(file, at);
+            Probe[] back = { new Probe() }; TableReport r = new TableReport();
+            Say("fixed", at > 0 && Schema.ProbeFixedLoad(back, file, new TableFixedEntry[256], r) == -1 && r.Reason == "non_finite_float: Probe.v");
+        }
+        // write: the form-1 writer refuses a NaN array element
+        {
+            Probe p = new Probe(); p.Arr[1] = float.NaN;
+            Say("write", Schema.ProbeMeasure(p) == -1 && Schema.ProbeSave(p, new byte[256]) == -1);
+        }
+        return 0;
+    }
+}
+CS
+# run <name> <sabotage|none> <file>: generate, build and run the probe on the
+# emitter as given; prints the probe's vector lines into $control/<name>.out
+run() {
+    name=$1; blade=$2; file=$3
+    schema=./bin/schema
+    if [ "$blade" != none ]; then
+        go run ./tools/sabotage -name "$blade" -out "$control/$name.gotext" "internal/codegen/cstable/$file"
+        printf '{"Replace":{"%s/internal/codegen/cstable/%s":"%s/%s/%s.gotext"}}\n' "$PWD" "$file" "$PWD" "$control" "$name" > "$control/$name.overlay.json"
+        go build -overlay="$control/$name.overlay.json" -o "$control/schema-$name" ./cmd/schema
+        schema="$control/schema-$name"
+    fi
+    rm -rf "$control/generated"
+    "$schema" generate --lang cs --out "$control/generated" "$control/Case.schema"
+    "$dotnet" build "$control/control.csproj" -v q --nologo > "$control/$name.build" 2>&1 || { cat "$control/$name.build"; exit 1; }
+    "$dotnet" "$control/bin/Debug/net10.0/control.dll" > "$control/$name.out"
+    cat "$control/$name.out"
+}
+# expect <name> <red vector or none>: every vector but the named one is ok
+expect() {
+    name=$1; red=$2
+    for vector in finite read fixed write; do
+        want=ok
+        [ "$vector" = "$red" ] && want=red
+        if ! grep -qx "VECTOR $vector: $want" "$control/$name.out"; then
+            echo "C# finite control ($name): vector $vector is not $want"
+            exit 1
+        fi
+    done
+}
+run clean none wire.go
+expect clean none
+run read table-cs-finite-read wire.go
+expect read read
+run fixed table-cs-finite-fixed fixedform.go
+expect fixed fixed
+run write table-cs-finite-write wire.go
+expect write write
+echo "C# finite control: the read, fixed and writer blades each redden exactly their own vector"

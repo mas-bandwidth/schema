@@ -325,6 +325,13 @@ public final class BenchBitsRetain {
             return;
         }
         int pEnd = r.off;
+        if (kind == 10 && pEnd - pStart == 4 && (get32(r.buf, pStart) & 0x7f800000) == 0x7f800000
+                || kind == 11
+                        && pEnd - pStart == 8
+                        && (get64(r.buf, pStart) & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            TableVariable.nonFiniteFloat(report, TableVariable.retainedFloatName("BenchBits", id));
+            return;
+        }
         byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);
         if (resolved == null) {
             report.retainLost++;
@@ -416,7 +423,7 @@ public final class BenchBitsRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow ? -1 : w.off;
+        return w.overflow || ids.nonFinite ? -1 : w.off;
     }
 
     static void writeFieldsRetain(
@@ -512,12 +519,14 @@ public final class BenchBitsRetain {
                 int listMark = retain.idUsed;
                 TableVariable.Writer rec = w.sub(new byte[1 << 20]);
                 int[] pat = new int[] {at + hdr};
-                long ref = TableRetain.ref(rec, retain, id, report);
+                // the record is ONE loss however deep it fails, counted once
+                // below, so the walk itself is handed no report (§6.6)
+                long ref = TableRetain.ref(rec, retain, id, null);
                 boolean ok = ref != 0;
                 if (ok) {
                     rec.putLeb(ref);
                     rec.put8(kind);
-                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);
+                    ok = TableRetain.emit(rec, retain, null, retain.bytes, pat, kind);
                 }
                 if (ok) {
                     w.putBytes(rec.buf, 0, rec.off);

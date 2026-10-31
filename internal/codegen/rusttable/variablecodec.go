@@ -53,6 +53,9 @@ func (g *gen) variableCodecModule() []byte {
 			syms = append(syms, n, fn(n, "number"), fn(n, "save_body"), fn(n, "load_body"), fn(n, "json_count"), fn(n, "json_write"), fn(n, "json_read"), fn(n, "json_fields"), fn(n, "json_ptr"))
 		}
 		fmt.Fprintf(&b, "#[allow(unused_imports)]\nuse super::%s_table::{%s};\n", strings.ToLower(other.Base), strings.Join(syms, ", "))
+		if cooked := cookWriteImports(g.unit, g.vc, otherNames); len(cooked) > 0 {
+			fmt.Fprintf(&b, "#[cfg(feature = \"cook\")]\n#[allow(unused_imports)]\nuse super::%s_table::{%s};\n", strings.ToLower(other.Base), strings.Join(cooked, ", "))
+		}
 	}
 	// the table enums live once per crate (table_enums.rs), not per file; the
 	// import is placed once the body shows it names one (a key enum is only
@@ -90,6 +93,7 @@ func (g *gen) variableCodecModule() []byte {
 		}
 	}
 	g.emitVariableText(&b)
+	g.emitCookWriteFromStorage(&b, names)
 	body := b.String()
 	importLine := ""
 	for _, e := range g.collectVariableEnums(names) {
@@ -209,7 +213,7 @@ func scalarWireKind(f *ir.Field) int {
 }
 
 // scalarRust is a scalar's Rust storage: bits(N) in the narrowest unsigned
-// integer that holds N bits.
+// integer that holds N bits, and fixed(I, F) as its raw storage integer.
 func scalarRust(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TBool:
@@ -220,7 +224,9 @@ func scalarRust(f *ir.Field) string {
 		return "f64"
 	case ir.TBits:
 		return rustUint(f.Type.Width)
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		// a FIXED value is the raw integer its storage holds, units × 2^F
+		// (docs/SPEC-TABLES.md §3, kinds 20–29), as the oracle's storage is
 		if f.Type.Signed {
 			return rustInt(f.Type.Width)
 		}
@@ -522,66 +528,74 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s — the numbering walk over one %s body (docs/SPEC-TABLES.md §3.1).\n", fn(st.Name, "number"), st.Name)
 	fmt.Fprintf(b, "#[allow(unused_variables)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, g: &mut TableNodeGraph) {\n", fn(st.Name, "number"), st.Name)
+	conds := guardConds(st, "v")
 	for _, f := range st.Fields {
-		x := "v." + ir.RustSnake(f.Name)
-		if f.Type.Optional {
-			switch classOf(f) {
-			case vPointer:
-				if f.Array != ir.ArrayNone {
-					fmt.Fprintf(b, "    if let Some(arr) = &%s { for n in arr.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }\n", x, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
-				}
-			case vTable:
-				if f.Array != ir.ArrayNone {
-					fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() { %s(e, g); } }\n", x, fn(f.Type.Name, "number"))
-				} else {
-					fmt.Fprintf(b, "    if let Some(inner) = &%s { %s(inner, g); }\n", x, fn(f.Type.Name, "number"))
-				}
-			case vUnion:
-				if f.Array != ir.ArrayNone {
-					fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() {\n", x)
-					g.emitUnionNumber(b, f, "(*e)")
-					fmt.Fprintf(b, "    } }\n")
-				} else {
-					fmt.Fprintf(b, "    if let Some(inner) = &%s {\n", x)
-					g.emitUnionNumber(b, f, "(*inner)")
-					fmt.Fprintf(b, "    }\n")
-				}
-			}
-			continue
-		}
-		switch classOf(f) {
-		case vBlob:
-			bytes := "b.as_bytes()"
-			if f.Type.Kind == ir.TBytes {
-				bytes = "&b[..]"
-			}
-			fmt.Fprintf(b, "    if let Some(b) = &%s { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); }\n", x, blobTypeConst(f), bytes)
-		case vPointer:
-			id, number := ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number")
-			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-				fmt.Fprintf(b, "    for n in %s.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } }\n", x, id, number)
-			} else {
-				fmt.Fprintf(b, "    if let Some(n) = &%s && g.visit_table(0x%016x, n.clone()) { %s(n, g); }\n", x, id, number)
-			}
-		case vTable:
-			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-				fmt.Fprintf(b, "    for e in %s.iter() { %s(e, g); }\n", x, fn(f.Type.Name, "number"))
-			} else {
-				fmt.Fprintf(b, "    %s(&%s, g);\n", fn(f.Type.Name, "number"), x)
-			}
-		case vMap:
-			g.emitMapNumber(b, f, x)
-		case vUnion:
-			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-				fmt.Fprintf(b, "    for e in %s.iter() {\n", x)
-				g.emitUnionNumber(b, f, "(*e)")
-				fmt.Fprintf(b, "    }\n")
-			} else {
-				g.emitUnionNumber(b, f, x)
-			}
-		}
+		// a field under a false guard is not written, so it is not an edge
+		// (§3.1): the numbering does not visit what it holds
+		guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldNumber(b, f) })
 	}
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// emitFieldNumber emits one field's step of the numbering walk.
+func (g *gen) emitFieldNumber(b *strings.Builder, f *ir.Field) {
+	x := "v." + ir.RustSnake(f.Name)
+	if f.Type.Optional {
+		switch classOf(f) {
+		case vPointer:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    if let Some(arr) = &%s { for n in arr.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }\n", x, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
+			}
+		case vTable:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() { %s(e, g); } }\n", x, fn(f.Type.Name, "number"))
+			} else {
+				fmt.Fprintf(b, "    if let Some(inner) = &%s { %s(inner, g); }\n", x, fn(f.Type.Name, "number"))
+			}
+		case vUnion:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() {\n", x)
+				g.emitUnionNumber(b, f, "(*e)")
+				fmt.Fprintf(b, "    } }\n")
+			} else {
+				fmt.Fprintf(b, "    if let Some(inner) = &%s {\n", x)
+				g.emitUnionNumber(b, f, "(*inner)")
+				fmt.Fprintf(b, "    }\n")
+			}
+		}
+		return
+	}
+	switch classOf(f) {
+	case vBlob:
+		bytes := "b.as_bytes()"
+		if f.Type.Kind == ir.TBytes {
+			bytes = "&b[..]"
+		}
+		fmt.Fprintf(b, "    if let Some(b) = &%s { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); }\n", x, blobTypeConst(f), bytes)
+	case vPointer:
+		id, number := ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number")
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "    for n in %s.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } }\n", x, id, number)
+		} else {
+			fmt.Fprintf(b, "    if let Some(n) = &%s && g.visit_table(0x%016x, n.clone()) { %s(n, g); }\n", x, id, number)
+		}
+	case vTable:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "    for e in %s.iter() { %s(e, g); }\n", x, fn(f.Type.Name, "number"))
+		} else {
+			fmt.Fprintf(b, "    %s(&%s, g);\n", fn(f.Type.Name, "number"), x)
+		}
+	case vMap:
+		g.emitMapNumber(b, f, x)
+	case vUnion:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "    for e in %s.iter() {\n", x)
+			g.emitUnionNumber(b, f, "(*e)")
+			fmt.Fprintf(b, "    }\n")
+		} else {
+			g.emitUnionNumber(b, f, x)
+		}
+	}
 }
 
 func blobTypeConst(f *ir.Field) string {
@@ -602,8 +616,13 @@ func (g *gen) emitVariableSaveBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// before its zero reference (docs/SPEC-TABLES.md §6.6); None on the plain path.\n")
 	fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, clippy::too_many_arguments)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph, mut retain: Option<&mut TableRetain>, mut report: Option<&mut TableReport>, path: TableRetainPath) {\n", fnName, st.Name)
+	conds := guardConds(st, "v")
 	for i, f := range st.Fields {
-		g.emitVariableSaveField(b, f, i, "v."+ir.RustSnake(f.Name), "    ")
+		// a field under a false guard is not written (§4), nor anything it
+		// holds, on the plain and the retaining path alike
+		guardedField(b, conds[f.Name], func(b *strings.Builder) {
+			g.emitVariableSaveField(b, f, i, "v."+ir.RustSnake(f.Name), bodyIndent)
+		})
 	}
 	fmt.Fprintf(b, "}\n\n")
 }
@@ -848,7 +867,10 @@ func intRange(f *ir.Field) (lo, hi string, ok bool) {
 // for the C and C++ legs. "" when there is no declared range or neither end
 // can fire.
 func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) string {
-	if !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+	// a fixed field clamps on the RAW scale: its whole-unit bounds shifted by
+	// F (docs/SPEC-TABLES.md §4), the integers' bounds as they are
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
 		return ""
 	}
 	localMin, localMax := new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
@@ -856,10 +878,10 @@ func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) 
 		localMin = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)))
 		localMax = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
 	}
-	lo, hi := f.IntMin.String(), f.IntMax.String()
+	lo, hi := rlo.String(), rhi.String()
 	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s += 1; }", lo, suffix, lo, suffix, counter)
 	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s += 1; }", hi, suffix, hi, suffix, counter)
-	switch canLow, canHigh := f.IntMin.Cmp(localMin) > 0, f.IntMax.Cmp(localMax) < 0; {
+	switch canLow, canHigh := rlo.Cmp(localMin) > 0, rhi.Cmp(localMax) < 0; {
 	case canLow && canHigh:
 		return ind + low + " else " + high + "\n"
 	case canLow:
@@ -895,7 +917,7 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 		fmt.Fprintf(b, "%s%s = if %s == %d { table_widen_f32(raw as u32) } else { f64::from_bits(raw) };\n", ind, dst, kvar, ir.TableKindF32)
 		return
 	}
-	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
 	// the local is mutable only when a clamp below can write it
 	mut := func(clamps string) string {
 		if clamps == "" {

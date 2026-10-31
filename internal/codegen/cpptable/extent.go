@@ -766,7 +766,7 @@ func (g *tableGen) emitCookNode(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("    if ( !%sCookBody( ctx, region, at, value, order ) ) { return false; }\n", st.Name)
 	} else {
-		g.pf("    %sCookBody( at, value, order );\n", st.Name)
+		g.pf("    if ( !%sCookBody( at, value, order ) ) { return false; }\n", st.Name)
 	}
 	g.pf("    int64_t extent_at = 0;\n")
 	if !g.hasExtent(st) {

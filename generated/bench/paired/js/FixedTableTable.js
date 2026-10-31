@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTableFixedCheckBody, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -365,6 +365,9 @@ export function FixedTableFixedMeasure(count) {
 export function FixedTableFixedSave(values, count, bytes) {
   const need = FixedTableFixedMeasure(count);
   if (count < 0 || bytes === null || bytes.length < need) { return -1; }
+  // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md
+  // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.
+  for (let k = 0; k < count; k++) { if (!FixedTableFixedCheckBody(values[k])) { return -1; } }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   bytes.fill(0, 0, TableFixedHeaderBytes); // the seven reserved bytes, and the rest of the header
   bytes[0] = TableFixedForm;
@@ -547,7 +550,16 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
   if (count < 0) { return -1; }
   if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return count; }
   for (let i = 0; i < count; i++) {
-    if (!FixedTableLoadMessageBody(r, values[i])) { return i; }
+    if (!FixedTableLoadMessageBody(r, values[i])) {
+      // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+      // §3.3), the tolerant read included: no body of it is delivered.
+      if (report.NonFiniteFloat) {
+        for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+        TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
+        return -1;
+      }
+      return i;
+    }
   }
   if (!tableMessageBatchClose(r)) { return count; }
   return count;

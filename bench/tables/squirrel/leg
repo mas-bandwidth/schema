@@ -1,0 +1,14 @@
+#!/bin/sh
+# THE SQUIRREL LEG of the tables bench (bench/tables/README.md).
+# Scaffolded by `schema new-leg squirrel`. There is no table codec to
+# build or measure yet, so both actions report ABSENT without producing rows.
+set -e
+case "$1" in
+build|run)
+	exit 2
+	;;
+*)
+	echo "usage: $0 build | run [args...]" >&2
+	exit 1
+	;;
+esac

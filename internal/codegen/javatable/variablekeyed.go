@@ -2,6 +2,8 @@ package javatable
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -34,6 +36,21 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 		return expr + ".length==0"
 	case ir.TBytes:
 		return "java.util.Arrays.equals(" + expr + "," + variableDefault(f) + ")"
+	case ir.TFloat32:
+		// A FLOAT IS ITS DEFAULT BY ITS BITS (docs/SPEC-TABLES.md §3.3): a -0
+		// under a +0 default rides. The default's bits are a constant, parsed
+		// from the same literal javac reads, so the test stays one short line.
+		def := variableDefault(f)
+		if v, err := strconv.ParseFloat(strings.TrimSuffix(def, "f"), 32); err == nil {
+			return fmt.Sprintf("Float.floatToRawIntBits(%s)==0x%08x", expr, math.Float32bits(float32(v)))
+		}
+		return "Float.floatToRawIntBits(" + expr + ")==Float.floatToRawIntBits(" + def + ")"
+	case ir.TFloat64:
+		def := variableDefault(f)
+		if v, err := strconv.ParseFloat(strings.TrimSuffix(def, "d"), 64); err == nil {
+			return fmt.Sprintf("Double.doubleToRawLongBits(%s)==0x%016xL", expr, math.Float64bits(v))
+		}
+		return "Double.doubleToRawLongBits(" + expr + ")==Double.doubleToRawLongBits(" + def + ")"
 	case ir.TNamed:
 		switch f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -98,7 +115,11 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 					writeVariablePayload(b, u, st.Name, one, expr, "w", 0)
 				}
 				if retainedBody {
-					b.WriteString("if(w.off>body+1){")
+					// the slot's payload is leb(length) then the body, and an
+					// EMPTY body — a default element with no retained tail — is
+					// the one terminator byte, two bytes framed: elided, as the
+					// plain write elides a default slot (§2.4, §6.6)
+					b.WriteString("if(w.off>body+2){")
 				}
 				fmt.Fprintf(b, "        w.frameEntry(body,key,%s);count++;", variablePayloadStart(one, "w", "body"))
 				if retainedBody {

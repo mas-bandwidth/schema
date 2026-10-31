@@ -22,7 +22,7 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "message", "report", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"cook-reason", "block-reason"}
 
@@ -210,6 +210,15 @@ func deriveManifest(m *Manifest, path string) error {
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
 	}
+	for _, fc := range m.Framings {
+		// the verdict and the value file are the answer and stay withheld; a
+		// driver still has to know which rows owe the report alone
+		marker := ""
+		if fc.Value == "" {
+			marker = " no-value"
+		}
+		fmt.Fprintf(&b, "framing %s %s %s %s%s\n", fc.Name, fc.Unit, fc.Root, fc.Wire, marker)
+	}
 	for _, h := range m.Hostiles {
 		fmt.Fprintf(&b, "json-hostile %s %s %s %s\n", h.Name, h.Unit, h.Root, h.Tree)
 	}
@@ -339,6 +348,21 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				return nil, fmt.Errorf("reports.txt names no case %q — run: make conformance-generate", r.Name)
 			}
 			out = append(out, expectation{r.Name, []byte(c.String() + "\n")})
+		}
+	case "framing":
+		// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the report line the
+		// row owes, then the §16 text of the value where the row owes one.
+		// Both are hand-authored, so neither is regenerated from any leg.
+		for _, fc := range m.Framings {
+			want := []byte(fc.Verdict() + "\n")
+			if fc.Value != "" {
+				text, err := os.ReadFile(fc.Value)
+				if err != nil {
+					return nil, err
+				}
+				want = append(want, text...)
+			}
+			out = append(out, expectation{fc.Name, want})
 		}
 	case "cook":
 		for _, c := range m.Cooks {

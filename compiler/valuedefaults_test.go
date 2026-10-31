@@ -39,6 +39,45 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "luau" {
+			// the descriptors carry each declared default as the value the
+			// absent-field answer returns: text, bytes and the flags word
+			if err != nil {
+				t.Fatalf("luau refused table defaults: %v", err)
+			}
+			var all strings.Builder
+			for _, b := range out {
+				all.Write(b)
+			}
+			for _, want := range []string{`def = "untitled"`, `def = "ab"`, `def = 3i`, `def = "new"`, `def = 1i`} {
+				if !strings.Contains(all.String(), want) {
+					t.Errorf("luau descriptors lack %q", want)
+				}
+			}
+			continue
+		}
+		if target == "lobster" {
+			// the table runtime carries the defaults (docs/PORT-LOBSTER.md,
+			// THE LOAD): the constructor writes each into its buffer, and the
+			// descriptor carries it for the load's absent field
+			if err != nil {
+				t.Fatalf("lobster refused table defaults: %v", err)
+			}
+			code := string(out["ProbeTable.lobster"])
+			for _, want := range []string{
+				`value.Name = schema_rt.put(value.Name, "untitled")`,
+				"value.NameLength = 8",
+				`value.Tag = schema_rt.put(value.Tag, "ab")`,
+				"value.TagLength = 2",
+				"Caps: 3 // specified default (SPEC §5)",
+				`has_def: true, def_str: "untitled"`,
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("lobster default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "dart" {
 			if err != nil {
 				t.Fatalf("dart refused table defaults: %v", err)
@@ -131,6 +170,23 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "lua" {
+			// a table's constructor is internal/codegen/luatable's own, and
+			// it lays every declared default into the fresh value
+			if err != nil {
+				t.Fatalf("lua refused supported table defaults: %v", err)
+			}
+			code := string(out["VdefTables.lua"])
+			for _, want := range []string{
+				"function _M.NewShip()\n  return {\n    name = \"untitled\",\n    tag = \"ab\",\n    caps = 3,\n",
+				"function _M.NewBadge()\n  return {\n    label = \"new\",\n    caps = 1,\n",
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("lua default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "elixir" {
 			// THE PREFILL IS WHERE A TABLE DEFAULT LIVES IN THIS PORT
 			// (internal/codegen/elixirtable/fixeddefaults.go): the fixed form's
@@ -202,6 +258,24 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			} {
 				if !strings.Contains(code, want) {
 					t.Errorf("java default output lacks %q", want)
+				}
+			}
+			continue
+		}
+		if target == "squirrel" {
+			// The table surface constructs every declared default and the
+			// descriptor carries it for elision and absent-field reads
+			// (docs/SPEC-TABLES.md §4, §16.2).
+			if err != nil {
+				t.Fatalf("squirrel refused table defaults: %v", err)
+			}
+			code := string(out["VdefTables.nut"])
+			for _, want := range []string{
+				`this.Name = "untitled";`, `this.Tag = _rt_descriptor.blobOf("ab");`, `this.Caps = 3;`,
+				`def = "untitled"`, `def = "ab"`, `def = 3`,
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("squirrel default output lacks %q", want)
 				}
 			}
 			continue

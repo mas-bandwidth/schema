@@ -1,0 +1,44 @@
+#!/bin/sh
+# THE LUAU LEG of the tables bench (bench/tables/README.md, "Registering a
+# port"; docs/PORT-LUAU.md, THE HARNESS). Run from the repository root:
+#
+#   leg build        check the pinned interpreter and the generated unit; the
+#                    interpreter has nothing to compile ahead of the run
+#   leg run [args]   run bench/tables/luau/table_main.luau: --gate (no
+#                    timing), --csv, --round K, --iterations N, --wire-dir,
+#                    --variant-dir
+#
+# The unit is generated/bench/tables/luau (make/luau.mk registers its stamp in
+# BENCH_TABLES_LEGS). LUAU overrides the interpreter.
+#
+# THE BUILD IT MEASURES: the pin's stock `luau` CLI, native codegen OFF, every
+# row linkage pkg, checks always, opt default. No codegen row is printed or
+# estimated. The staging, the corpus-as-source and the output grammar (and its
+# refusal of any untagged line) are bench/luau/route.sh's.
+set -e
+
+ROOT="$(pwd -P)"
+LUAU="${LUAU:-$ROOT/dist/luau-0.741/luau}"
+export LUAU
+GEN=generated/bench/tables/luau
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableTable.luau" ]; then
+        echo "missing $GEN — run \`make generated/bench/tables/luau/.stamp\`" >&2
+        exit 2
+    fi
+    if [ ! -x "$LUAU" ]; then
+        echo "no luau at $LUAU (\`make dist-luau\`, or set LUAU)" >&2
+        exit 2
+    fi
+    ;;
+run)
+    shift
+    exec bench/luau/route.sh tables bench/tables/luau/table_main.luau "$GEN" bench_table -- "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

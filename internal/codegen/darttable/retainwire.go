@@ -54,19 +54,26 @@ final class TableRetain {
   }
 }
 
+// A record names the BODY it came from by that body's storage object, the
+// value its load filled: a nested table by value, an array element, a union
+// arm, a map value and a pointer's node are each their own object, so the
+// save re-emits a record at the end of exactly the body it was read from,
+// wherever that body sits in the tree. path is the field walk that reached it,
+// kept for the record's cost.
 final class _RetainRecord {
+  final Object owner;
   final List<int> path;
   final int id;
   final int kind;
   final List<int> resolved;
-  _RetainRecord(this.path, this.id, this.kind, this.resolved);
+  _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
 
 // the ids this build can name (docs/SPEC-TABLES.md §6.6): a retained id is by
 // definition not here, and takes its entry from the caller's list rather than
 // the generated table.
-final Set<int> _retainKnown = <int>{%s};
+const Set<int> _retainKnown = <int>{%s};
 
 int _retainWidth(int kind) {
   switch (kind) {
@@ -431,23 +438,16 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
   return o;
 }
 
-// _retainTail re-emits the retained records whose path names the body being
-// written, in the order retained, at the end of that body (§6.6). A record
-// whose id cannot be interned (the caller's list is full) or whose walk is
-// damaged is dropped and counted one retainLost.
-void _retainTail(TableWireWriter w) {
+// _retainTail re-emits the retained records read from the body being written
+// — the ones whose owner is that body's storage object — in the order
+// retained, at the end of that body (§6.6). A record whose id cannot be
+// interned (the caller's list is full) or whose walk is damaged is dropped and
+// counted one retainLost.
+void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
   for (final rec in t.records) {
-    if (rec.path.length != w.path.length) continue;
-    var same = true;
-    for (var i = 0; i < w.path.length; i++) {
-      if (rec.path[i] != w.path[i]) {
-        same = false;
-        break;
-      }
-    }
-    if (!same) continue;
+    if (!identical(rec.owner, owner)) continue;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -482,6 +482,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")
@@ -495,12 +496,18 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tr.scanNodeTable();\n")
 	g.pf("\tr.pos = 1;\n")
 	g.pf("\t%s(r, v, false);\n", d+"WireLoadBody")
+	// A NON-FINITE FLOAT REFUSES THE READ (docs/SPEC-TABLES.md §3.3, §6.6):
+	// nothing lands, the retained store included.
+	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) {\n")
+	g.pf("\t\tretain.reset();\n")
+	g.pf("\t\treturn %s();\n", n)
+	g.pf("\t}\n")
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 
 	g.pf("Uint8List %sWireSaveRetain(%s v, TableRetain retain, TableWireReport report) {\n", d, n)
 	g.pf("\tretain.idUsed = 0;\n")
-	g.pf("\tfinal state = WireState();\n")
+	g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
 	g.pf("\tstate.retain = retain;\n")
 	g.pf("\tstate.report = report;\n")
 	g.pf("\tstate.indexRoot(v);\n")

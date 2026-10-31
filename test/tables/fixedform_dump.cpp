@@ -462,9 +462,9 @@ static bool emit( const char * dir, const char * name, const std::vector<T> & va
 }
 
 
-// A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, schema#480), so
-// a SIGNALLING NaN has to be put in place through its bits: a literal would be
-// quieted by the compiler before the writer ever saw it.
+// A FLOAT IS FINITE AND RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3,
+// §3.3), so a -0 and a subnormal are put in place through their bits, where a
+// literal's spelling cannot be mistaken for the value meant.
 static float float_from_bits( uint32_t bits ) { float f; std::memcpy( (void *) &f, &bits, 4 ); return f; }
 static double double_from_bits( uint64_t bits ) { double d; std::memcpy( (void *) &d, &bits, 8 ); return d; }
 
@@ -706,11 +706,15 @@ static bool fxw_file( const char * dir )
 //                        the SIGN-EXTENDED read into FU2's `int32` has a true
 //                        case at both ends and a false one: a leg that zero-
 //                        extends lands 65535 for -1 and cannot hide it
-//   THE FLOAT RUNG       `heat float32` as a SIGNALLING NaN with the smallest
-//                        payload, as a negative signalling NaN with a rich one,
-//                        and as an ordinary 1.5 beside them — the rung where a
-//                        leg that widens through a hardware conversion quiets
-//                        the NaN and loses the payload
+//   THE FLOAT RUNG       `heat float32` as the SMALLEST SUBNORMAL, as -0, and
+//                        as an ordinary 1.5 beside them — finite values only
+//                        (docs/SPEC-TABLES.md §3.3, 2026-10-27), the two a
+//                        widening that renormalized wrongly or dropped a sign
+//                        would move. A NaN is not a value of the type, and no
+//                        file here carries one: the corpus is what every leg
+//                        reads whole, so the hand-made refusal record is
+//                        forged by each leg's own test from old_float_widen.bin
+//                        (test/tables/fixedform_main.cpp, fu_refusal_case)
 //   THE TWO FORGED BYTES `flag` and `note`'s presence, which §3.4 spells as one
 //                        byte that is true when it is NOT ZERO; the writer puts
 //                        1 here and the leg's own forging case does the rest
@@ -731,7 +735,7 @@ static bool fu1_file( const char * dir )
     MS( v[0].pick.labelled.trail, 202 );
     MS( v[0].tail, 11 );
     MS( v[0].mark, -1 );                                   // the rung's headline case
-    MS( v[0].heat, float_from_bits( 0x7F800001u ) );       // signalling, smallest payload
+    MS( v[0].heat, float_from_bits( 0x00000001u ) );       // the smallest subnormal
 
     // the FIRST arm, a bare scalar, and the optional ABSENT
     tblfu1::FuRootReset( v[1] );
@@ -742,7 +746,7 @@ static bool fu1_file( const char * dir )
     MS( v[1].pick.plain.n, 303 );
     MS( v[1].tail, 12 );
     MS( v[1].mark, -32768 );                               // INT16_MIN: every sign bit set
-    MS( v[1].heat, float_from_bits( 0xFFA5A5A5u ) );       // negative, signalling, rich payload
+    MS( v[1].heat, float_from_bits( 0x80000000u ) );       // -0: the sign is the whole value
 
     // the SECOND arm again with its text WHOLLY UNUSED, so the eight bytes of
     // the span are slack and a positive `mark` gives the sign rung a false case
@@ -756,7 +760,7 @@ static bool fu1_file( const char * dir )
     MS( v[2].pick.labelled.trail, 606 );
     MS( v[2].tail, 13 );
     MS( v[2].mark, 32767 );                                // INT16_MAX: positive, nothing to extend
-    MS( v[2].heat, 1.5f );                                 // an ordinary float beside the NaNs
+    MS( v[2].heat, 1.5f );                                 // an ordinary float beside them
 
     return emit( dir, "fu1.bin", v, tblfu1::FuRootFixedMeasure, tblfu1::FuRootFixedSave );
 }
@@ -781,7 +785,7 @@ static bool fu2_file( const char * dir )
     MS( v[0].pick.labelled.trail, 222 );
     MS( v[0].tail, 21 );
     MS( v[0].mark, -70000 );                               // past everything an int16 holds
-    MS( v[0].heat, double_from_bits( 0x7FF00DEFACED0001ull ) ); // signalling at sixty-four bits
+    MS( v[0].heat, double_from_bits( 0x800FFFFFFFFFFFFFull ) ); // the largest negative subnormal at sixty-four bits
     MS( v[0].extra, 909 );
 
     tblfu2::FuRootReset( v[1] );
@@ -888,10 +892,14 @@ static bool versioning_numbers_files( const char * dir )
     VROW( vnew_uint_widen, UintWiden, "new_uint_widen.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 0xDEADBEEFu ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
-    // A SIGNALLING NaN WITH A PAYLOAD: the bits are the value (the FU ruling)
+    // A NEGATIVE FLOAT WITH A RICH MANTISSA AND A SHORT EXACT DECIMAL: finite,
+    // so the bits are the value and the rung is the ordinary conversion
+    // (docs/SPEC-TABLES.md §3.3). Its decimal is the same at both widths, which
+    // is what a leg comparing two builds by decimal needs; the subnormal and the
+    // -0 ride in fu1/fu2's `heat`.
     {
-        const uint32_t kSignalling = 0x7F8ABCDEu;
-        float f; std::memcpy( (void *) &f, &kSignalling, 4 );
+        const uint32_t kWritten = 0xC49A5200u; // -1234.5625f
+        float f; std::memcpy( (void *) &f, &kWritten, 4 );
         VROW( vold_float_widen, FloatWiden, "old_float_widen.bin",
               MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, f ); MS( v[0].trail, 0xBBBBBBBBu ); );
     }

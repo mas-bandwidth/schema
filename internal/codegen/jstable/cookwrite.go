@@ -5,7 +5,8 @@ package jstable
 // attribution length, alignment, and the two reserved words left zero.
 // Measure before write. A buffer shorter than the measure is not touched,
 // and CookFrom answers false. CookMeasureReason's refusal is the reference
-// spelling invalid_value, and a variable cycle is data_cycle.
+// spelling invalid_value, a variable cycle is data_cycle, and a NaN or an
+// infinity is non_finite_float (docs/SPEC-TABLES.md §3.3).
 
 import (
 	"fmt"
@@ -503,17 +504,12 @@ func cookWriteTextJS(variable bool) string {
 	return b.String()
 }
 
-const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
-  function narrowF32(v) {
-    if (v !== v) {
-      f32Scratch.setFloat64(0, v, true);
-      const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
-      let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
-      if (payload === 0) { payload = 0x400000; }
-      return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
-    }
-    f32Scratch.setFloat32(0, v, true);
-    return f32Scratch.getUint32(0, true);
+const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the cook writer
+  // refuses a NaN or an infinity, a float32 one past the float32 range
+  // included, and names it to the measure's reason as non_finite_float
+  function refuseFloat(ctx) {
+    if (ctx !== null) { ctx.nonFinite = true; }
+    return false;
   }
   function fit(v, width, signed) {
     let b;
@@ -608,10 +604,12 @@ const cookEngineShared = `  const f32Scratch = new DataView(new ArrayBuffer(8));
         return true;
       case "f32":
         if (typeof value !== "number") { return false; }
-        if (view !== null) { view.setUint32(at, narrowF32(value), le); }
+        if (!Number.isFinite(Math.fround(value))) { return refuseFloat(ctx); }
+        if (view !== null) { view.setFloat32(at, value, le); }
         return true;
       case "f64":
         if (typeof value !== "number") { return false; }
+        if (!Number.isFinite(value)) { return refuseFloat(ctx); }
         if (view !== null) { view.setFloat64(at, value, le); }
         return true;
       case "int":
@@ -793,10 +791,10 @@ const cookEngineVariable = `  function alignUp(n, a) {
       data += size;
     }
     data = alignUp(data, align);
-    const ctx = { entries, nodes };
+    const ctx = { entries, nodes, nonFinite: false };
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: "invalid_value" }; }
+      if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: ctx.nonFinite ? "non_finite_float" : "invalid_value" }; }
     }
     return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
   }

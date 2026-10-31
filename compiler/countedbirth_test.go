@@ -14,12 +14,13 @@
 // point. ... checks are *DEBUG ONLY*". The count is a writer contract like any
 // other scalar range — it is caught by an assert in debug and gone in release,
 // in every target whose language HAS that idiom. Go and Elixir have none, so
-// they keep the every-build refusal their languages make native.
+// they keep the every-build refusal their languages make native, and so does
+// Lua, whose assert() is an ordinary call no build strips.
 //
 // Two claims are pinned here, one per test, so a regression in either is named
 // on its own:
 //
-//  1. the constructed form is born at the declared minimum, in all nine
+//  1. the constructed form is born at the declared minimum, in every target
 //  2. the write path holds the count in its target's own debug-only idiom
 //     where the language has one, and refuses in every build where it does not
 package compiler
@@ -42,15 +43,19 @@ type T
 // countName is the count's spelling in each target's storage. It is the
 // identifier every claim below is made about.
 var countName = map[string]string{
-	"c":      "window_count",
-	"cpp":    "window_count",
-	"cs":     "WindowCount",
-	"dart":   "windowCount",
-	"elixir": "window", // the list IS the count: length(value.window)
-	"go":     "WindowCount",
-	"java":   "windowCount",
-	"js":     "windowCount",
-	"rust":   "window_count",
+	"c":        "window_count",
+	"cpp":      "window_count",
+	"cs":       "WindowCount",
+	"dart":     "windowCount",
+	"elixir":   "window", // the list IS the count: length(value.window)
+	"go":       "WindowCount",
+	"goose":    "WindowCount",
+	"java":     "windowCount",
+	"js":       "windowCount",
+	"lua":      "WindowCount",
+	"lobster":  "WindowCount",
+	"rust":     "window_count",
+	"squirrel": "WindowCount",
 }
 
 // bornAtMinimum is the text each target's CONSTRUCTED form carries when the
@@ -58,27 +63,40 @@ var countName = map[string]string{
 // here: it is all-zero by rule in every target, and a specified default does
 // not reach it either.
 var bornAtMinimum = map[string]string{
-	"c":      "value.window_count = 2;",
-	"cpp":    "int32_t window_count = 2;",
-	"cs":     "value.WindowCount = 2;", // a struct: Init, run by its constructor, births the count
-	"dart":   "int windowCount = 2;",
-	"elixir": "defstruct window: List.duplicate(0, 2)",
-	"go":     "value.WindowCount = 2",
-	"java":   "public int windowCount = 2;",
-	"js":     "this.windowCount = 2;",
-	"rust":   "window_count: 2,",
+	"c":        "value.window_count = 2;",
+	"cpp":      "int32_t window_count = 2;",
+	"cs":       "value.WindowCount = 2;", // a struct: Init, run by its constructor, births the count
+	"dart":     "int windowCount = 2;",
+	"elixir":   "defstruct window: List.duplicate(0, 2)",
+	"go":       "value.WindowCount = 2",
+	"goose":    "WindowCount: i32 = 2,", // the struct field's own default (docs/PORT-GOOSE.md, THE TYPE MAPPING)
+	"java":     "public int windowCount = 2;",
+	"js":       "this.windowCount = 2;",
+	"lua":      "WindowCount = 2,",
+	"lobster":  "WindowCount: 2",
+	"rust":     "window_count: 2,",
+	"squirrel": "this.WindowCount = 2;",
 }
 
 // refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the
 // targets that still hold the count that way. Go and Elixir are here by the
 // ruling — "For each language, do not force this in. If the language simply
 // doesn't have this concept (Golang) then it is not something we can do" — an
-// error-returning runtime in Go, an always-on raise in Elixir. They are the
-// only two: every other target has a build-removable idiom and is held to it
-// by assertsInDebug.
+// error-returning runtime in Go, an always-on raise in Elixir. Goose joins
+// them for the same reason (its `assert` aborts in every build), returning
+// the refusal kind. Every other target has a build-removable idiom and is
+// held to it by assertsInDebug.
 var refusesEveryBuild = map[string][]string{
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
 	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	// Goose's `assert` aborts in every build and the language has no
+	// build-removable check, so the writer returns the refusal kind, Go's form
+	// (internal/codegen/goose/write.go)
+	"goose": {"if value.WindowCount < 2 || value.WindowCount > 8 { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	// Lua's assert is a function call that no build removes, so the writer
+	// refuses (returns false) in every build, as Go's does.
+	"lua":      {"v.WindowCount < 2 or v.WindowCount > 8 then return false end"},
+	"squirrel": {`if (typeof value.WindowCount != "integer" || value.WindowCount < 2 || value.WindowCount > 8) return false;`},
 }
 
 // assertsInDebug is the count's DEBUG-ONLY form in each target that has one:
@@ -89,9 +107,35 @@ var assertsInDebug = map[string][]string{
 	"cs":   {`Debug.Assert(value.WindowCount >= 2 && value.WindowCount <= 8, "value.WindowCount out of range [2, 8]");`},
 	"dart": {"assert(value.windowCount >= 2);", "assert(value.windowCount <= 8);"},
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
+	// --runtime-no-asserts removes a Lobster assert from the build
+	"lobster": {"assert v.WindowCount >= 2 and v.WindowCount <= 8"},
 	// js is not here: its debug-only idiom is not an assert statement but the
 	// PRODUCTION/checked fork of the flat writer, checked separately below.
 	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
+}
+
+// packetWriterOwed is each target whose type surface is emitted but whose
+// packet WRITER has not landed: it has no write path for a write-side claim to
+// be made about, so the claim is owed, by the card named here, rather than
+// waived. The gate holds the debt honest: an owed target that starts emitting
+// a writer (a Goose `fn Write...`) turns the gate red until that card moves
+// the target out of this map and into assertsInDebug or refusesEveryBuild,
+// and into the tag maps of uniontagwrite_test.go (docs/PORT-GOOSE.md, THE
+// CARD MAP).
+var packetWriterOwed = map[string]string{}
+
+// writerStillOwed reports whether target's write-side claim is owed, and
+// fails the test when the owed target already emits a writer.
+func writerStillOwed(t *testing.T, target, text string) bool {
+	t.Helper()
+	card, owed := packetWriterOwed[target]
+	if !owed {
+		return false
+	}
+	if strings.Contains(text, "fn Write") {
+		t.Errorf("%s: a packet writer is emitted while its write-side claim is still owed to %s; move %s out of packetWriterOwed and give it its claim", target, card, target)
+	}
+	return true
 }
 
 // goneFromRelease is the every-build refusal each assert target used to carry.
@@ -101,18 +145,21 @@ var goneFromRelease = map[string][]string{
 	"cpp": {
 		"if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )",
 	},
-	"cs":   {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
-	"dart": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"java": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"rust": {"if value.window_count < 2 || value.window_count > 8 {"},
+	"cs":      {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
+	"dart":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"java":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"lobster": {"if v.WindowCount < 2 or v.WindowCount > 8: return false"},
+	"rust":    {"if value.window_count < 2 || value.window_count > 8 {"},
 }
 
 // assertToken is the build-removable predicate each target spells its writer
 // contracts with. For a refusesEveryBuild target, none of them may reach the
 // count.
 var assertToken = map[string][]string{
-	"elixir": nil, // the BEAM has no compile-out assert, so the raise is always on
-	"go":     nil, // the runtime returns an error, in every build
+	"elixir": nil,         // the BEAM has no compile-out assert, so the raise is always on
+	"go":     nil,         // the runtime returns an error, in every build
+	"goose":  {"assert("}, // the writer returns the refusal kind; an assert would abort, never compile out
+	"lua":    nil,         // assert() is always on; the writer returns false in every build
 }
 
 // generatedText renders every file the target emits for the unit, joined, so a
@@ -171,6 +218,10 @@ func TestCountedArrayIsBornAtItsDeclaredMinimum(t *testing.T) {
 func TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 	for _, target := range New().Targets() {
 		text := generatedText(t, countedAboveZero, target)
+
+		if writerStillOwed(t, target, text) {
+			continue
+		}
 
 		if target == "js" {
 			// the fork, not a statement: the contract lives in the checked

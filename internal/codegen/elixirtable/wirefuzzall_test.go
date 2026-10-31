@@ -37,7 +37,7 @@ func TestWireFuzzAllTargetElixir(t *testing.T) {
 	recipe := makeTargetRecipe(t, text, target)
 	run := regexp.MustCompile(`\s+`).ReplaceAllString(recipe, " ")
 
-	const command = "ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
+	const command = "ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N)"
 	if !strings.Contains(run, command) {
 		t.Errorf("the %s recipe does not run %q:\n%s", target, command, recipe)
 	}
@@ -89,7 +89,7 @@ func TestWireFuzzAllTargetElixir(t *testing.T) {
 	if len(names) != want {
 		t.Errorf("%s names %d absent roots, ELIXIR_WIRE_FUZZ_ABSENT_COUNT pins %d", pin, len(names), want)
 	}
-	const pinnedCount = 35
+	const pinnedCount = 33
 	if want != pinnedCount {
 		t.Errorf("ELIXIR_WIRE_FUZZ_ABSENT_COUNT is %d, this test pins %d: a change in the roots the Elixir leg opens is a reviewed change to both", want, pinnedCount)
 	}

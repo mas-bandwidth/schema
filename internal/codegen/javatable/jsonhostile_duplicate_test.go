@@ -85,8 +85,11 @@ func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
 		if expected == 0 {
 			continue
 		}
+		// this harness generates tabledemo only; a duplicate row of another
+		// unit (list-map-dup-key, listdemo) is held by the conformance
+		// harness's json-hostile surface, which every leg runs
 		if fields[2] != u.Package {
-			t.Fatalf("%s: unit %q is not the generated %q", fields[1], fields[2], u.Package)
+			continue
 		}
 		st := model.Lookup(fields[3])
 		if st == nil {

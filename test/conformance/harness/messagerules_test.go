@@ -736,13 +736,6 @@ func TestAHostileShape(t *testing.T) {
 		// A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
 		// agree on the id, the kind and every fact of the shape are malformed
 		{"two entries that agree on all three parts", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...), base[0]))},
-		// AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED AT THE ANNOUNCEMENT: no
-		// declaration this language accepts is an array of `string(N)`, so it
-		// is one rule's business rather than a skip's
-		{"an array over element kind 12", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
-			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 3, Elem: ir.TableKindString, Inner: &ir.TableMessageShape{Max: 8}}}))},
-		{"a keyed entry over element kind 33", ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
-			ir.TableVocabularyEntry{Id: ir.TableWireId("hostile"), Kind: ir.TableKindKeyed, Shape: ir.TableMessageShape{Max: 3, Elem: ir.TableKindWstring, Inner: &ir.TableMessageShape{Max: 8}}}))},
 		{"a shape running past the vocabulary's L", ir.TableVocabularyBytes(base)[:len(ir.TableVocabularyBytes(base))-3]},
 	}
 	for _, row := range rows {
@@ -758,6 +751,19 @@ func TestAHostileShape(t *testing.T) {
 		if ok || !asRefusal(derr, &refused) || refused.Reason != tablewire.ReasonNoVocabulary || !bodyReport.Refused || instU64(t, inst, "client_build") != 0 {
 			t.Errorf("%s: a body after the refused announcement was read: ok=%v err=%v", row.name, ok, derr)
 		}
+	}
+	// AN ELEMENT KIND OF 12 OR 33 IS A SHAPE LIKE ANY OTHER (§3.3): a text
+	// list (§2.13) is a kind 14 array of element kind 12, so a unit that
+	// declares one announces one. The row was a refusal until that was written
+	// down, and a Go unit with a text list was refused its own announcement.
+	textLists := ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
+		ir.TableVocabularyEntry{Id: ir.TableWireId("text_list"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 3, Elem: ir.TableKindString, Inner: &ir.TableMessageShape{Max: 8}}},
+		ir.TableVocabularyEntry{Id: ir.TableWireId("wide_keyed"), Kind: ir.TableKindKeyed, Shape: ir.TableMessageShape{Max: 3, Elem: ir.TableKindWstring, Inner: &ir.TableMessageShape{Max: 8}}}))
+	sbody := append(versionField(backendVocabulary.BuildVersion()), vocabularyField(textLists)...)
+	sbody = append(sbody, 0)
+	sv, sreport, serr := readAnnouncement(forgeAnnouncement(sbody, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
+	if serr != nil || sreport.Malformed || !sv.Announced() || len(sv.Entries()) != len(base)+2 {
+		t.Errorf("an array over element kind 12 and a keyed entry over 33: err=%v report=%+v announced=%v entries=%d", serr, sreport, sv.Announced(), len(sv.Entries()))
 	}
 	// AND EACH CEILING'S OWN VALUE IS ACCEPTED, because an unbounded array
 	// announces the array one (§2.9) and a `string(N)` may declare the other

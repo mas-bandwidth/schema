@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 )
 
 // TestBlockBuildAndCookWriteJava pins the producer entries of the two
@@ -139,15 +141,6 @@ var cookWriteCarried = []cookWriteUnit{
 	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"KeyedConfig", []string{"keyed_config", "keyed_default"}},
 		{"WideBlob", []string{"wide_blob"}},
-	}},
-}
-
-// cookWriteStub: the root's closure holds a union, which the Java cook form
-// does not carry yet, so cook.go emits <Root>Cook as the STUB (a private
-// constructor, no method). The conformance driver answers these rows absent
-// on exactly that evidence, and cook_absent_is_structural pins it here.
-var cookWriteStub = []cookWriteUnit{
-	{"../../../tables/examples", "tabledemo", "tabledemo", []cookWriteRoot{
 		{"RootConfig", []string{"root_full", "root_default"}},
 		{"ProfileConfig", []string{"profile_elide"}},
 		{"LoadoutConfig", []string{"loadout_full"}},
@@ -172,16 +165,24 @@ var cookWriteStub = []cookWriteUnit{
 	{"../../../test/tables/M2.schema", "tblm2", "tblm2", []cookWriteRoot{
 		{"Msg", []string{"m2_open"}},
 	}},
-}
-
-// cookWriteNoForm: the wide-kind unit (§15) gets no accelerators, so the
-// generator emits no cook form for it at all: no <Root>Cook and no
-// TableCookInfo. The driver answers these rows absent on that evidence.
-var cookWriteNoForm = []cookWriteUnit{
 	{"../../../tables/scalars", "scalars", "scalardemo", []cookWriteRoot{
 		{"SimState", []string{"scalars_full", "scalars_default", "scalars_edges"}},
 	}},
 }
+
+// cookWriteStub: a root whose closure holds a construct the Java cook form
+// does not carry, so cook.go emits <Root>Cook as the STUB (a private
+// constructor, no method). The conformance driver answers these rows absent
+// on exactly that evidence, and cook_absent_is_structural pins it here. It is
+// empty since the cook form carries unions (§7.2): every union root moved to
+// cookWriteCarried.
+var cookWriteStub = []cookWriteUnit{}
+
+// cookWriteNoForm: a unit for which the generator emits no cook form at all:
+// no <Root>Cook and no TableCookInfo. The driver answers these rows absent on
+// that evidence. It is empty since the cook form carries the wide kinds (§15,
+// §7.2): the wide-kind unit moved to cookWriteCarried.
+var cookWriteNoForm = []cookWriteUnit{}
 
 type cookManifest struct {
 	instance map[string][3]string // row -> unit, root, wire path (repo-relative)
@@ -268,9 +269,22 @@ func cookUnitFiles(t *testing.T, schema string) map[string][]byte {
 			t.Fatal(err)
 		}
 	}
-	files, err := Generate(unitFromDir(t, dir))
+	u := unitFromDir(t, dir)
+	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate %s: %v", schema, err)
+	}
+	// the PACKET emitter's half rides beside the table half, as the java
+	// target assembles them (compiler/target_java.go): the wide-kind unit's
+	// Int128 and UInt128 are its files
+	packet, err := javapkt.Generate(u)
+	if err != nil {
+		t.Fatalf("generate %s (packet half): %v", schema, err)
+	}
+	for name, body := range packet {
+		if _, dup := files[name]; !dup {
+			files[name] = body
+		}
 	}
 	return files
 }

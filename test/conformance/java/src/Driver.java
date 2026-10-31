@@ -577,6 +577,12 @@ public final class Driver {
                 // than drifting.
                 fail("the dump met a float, whose canonical cross-language spelling this gate does not fix");
                 return "";
+            case UNION:
+            case WIDE:
+                // no cook fixture holds a union or a 128-bit slot; their dump
+                // spelling is the reference walk's to fix first, not this one's
+                fail("the dump met a " + storage + " slot, whose canonical spelling this gate does not fix");
+                return "";
             case SIGNED:
                 switch (width) {
                     case 1: return Byte.toString(graphdemo.TableBytes.i8(data, at));
@@ -703,6 +709,12 @@ public final class Driver {
         Files.write(Path.of(out, name + ".absent"), new byte[0]);
     }
 
+    // spillAbsentReason is spillAbsent with the reason the spec gives, written
+    // into the marker so the matrix's absence names its rule.
+    private static void spillAbsentReason(String out, String name, String reason) throws IOException {
+        Files.write(Path.of(out, name + ".absent"), reason.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     // Resolve only public root codecs actually emitted for this unit. Entry
     // body helpers are package-private and cannot appear as conformance roots.
     private static final class VariableCodec {
@@ -741,8 +753,6 @@ public final class Driver {
             case "scalars": return "scalardemo";
             case "widedemo": return "wide";
             case "tblscalars2": return "scalardemo2";
-            case "tblk1": return "kind1";
-            case "tblk2": return "kind2";
             default: return unit;
         }
     }
@@ -937,7 +947,8 @@ public final class Driver {
     // (docs/SPEC-TABLES.md §7.6), never because a lookup failed:
     //   - the root's <Root>Cook is the generated STUB (cook.go emits a class
     //     with a private constructor and no method when the root's closure
-    //     holds a construct the Java cook form does not carry, a union), or
+    //     holds a construct the Java cook form does not carry, an unbounded
+    //     array), or
     //   - the unit has no cook form in this leg at all: neither <Root>Cook nor
     //     the unit's TableCookInfo exists (the wide-kind unit gets no
     //     accelerators, and a unit off this classpath has neither).
@@ -1100,7 +1111,11 @@ public final class Driver {
             try {
                 MessageCodec codec = messageCodec(conn[2], f[3]);
                 if (codec == null) {
-                    spillAbsent(out, f[1]);
+                    // a message row whose root is a plain `table` carries no
+                    // message verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T`
+                    // may not" ride the form), so the leg answers ABSENT and
+                    // names the reason, as the Go reference does
+                    spillAbsentReason(out, f[1], "plain table: §3.3");
                     continue;
                 }
                 Object vocab = codec.vocab();
@@ -1130,6 +1145,73 @@ public final class Driver {
         return 0;
     }
 
+    // ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6; FORMAT.md, `retain`)
+    //
+    // RT1 loads what RT2 wrote, with retention on, into caller-owned storage:
+    // a byte buffer and an id list, never grown. `short` is ONE BYTE SHORT OF
+    // THE LAST RECORD, found the way the page says: load once at a roomy
+    // capacity, read what it used, and load again one byte under that. The
+    // `retain` surface answers the load's three counters and the retain_lost
+    // the save adds; `retain-save` answers the saved file itself.
+    private static final int RETAIN_BYTES = 1 << 20;
+    private static final int RETAIN_IDS = 1 << 17;
+
+    private static tblrt1.TableRetain retainStore(String ids) {
+        return new tblrt1.TableRetain(RETAIN_BYTES, ids.equals("full") ? RETAIN_IDS : Integer.parseInt(ids));
+    }
+
+    private static int surfaceRetain(String out, boolean saved) throws IOException {
+        for (String[] f : lines) {
+            if (!f[0].equals("retain") && !f[0].equals("retain-message")) {
+                continue;
+            }
+            boolean message = f[0].equals("retain-message");
+            int at = message ? 1 : 0;
+            if (!f[2 + at].equals("tblrt1") || !f[3 + at].equals("Node")) {
+                return failInt(f[1] + ": no retaining codec for " + f[2 + at] + " " + f[3 + at]);
+            }
+            byte[] wire = Files.readAllBytes(Paths.get(f[4 + at]));
+            tblrt1.TableVariable.Report report = new tblrt1.TableVariable.Report();
+            List<tblrt1.NodeVariable.Value> roots = new ArrayList<>();
+            List<tblrt1.TableRetain> stores = new ArrayList<>();
+            if (message) {
+                // RT1's Node is a plain `table`, which carries no message verbs
+                // (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
+                // the form), so the leg answers ABSENT and names the reason, as
+                // the Go reference does
+                spillAbsentReason(out, f[1], "plain table: §3.3");
+                continue;
+            } else {
+                tblrt1.TableRetain store = retainStore(f[6]);
+                if (f[5].equals("short")) {
+                    tblrt1.NodeRetain.loadRetain(wire, store, new tblrt1.TableVariable.Report());
+                    store.capacity = store.used - 1;
+                }
+                roots.add(tblrt1.NodeRetain.loadRetain(wire, store, report));
+                stores.add(store);
+            }
+            if (report.malformed || report.refused || roots.contains(null)) {
+                return failInt(f[1] + ": the retaining load refused " + f[4 + at]);
+            }
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            tblrt1.TableVariable.Report save = new tblrt1.TableVariable.Report();
+            for (int i = 0; i < roots.size(); i++) {
+                long size = tblrt1.NodeRetain.measureRetain(roots.get(i), stores.get(i));
+                byte[] file = tblrt1.NodeRetain.saveRetain(roots.get(i), stores.get(i), save);
+                if (size < 0 || file == null || file.length != size) {
+                    return failInt(f[1] + ": the retaining save refused or disagreed with its measure");
+                }
+                bytes.write(file);
+            }
+            if (saved) {
+                spill(out, f[1], bytes.toByteArray());
+            } else {
+                spill(out, f[1], report.retained + "," + report.retainLost + "," + report.unknown + " " + save.retainLost + "\n");
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -1143,6 +1225,7 @@ public final class Driver {
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
             System.out.print("wire\nreport\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
+                    + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
             return 0;
@@ -1161,6 +1244,8 @@ public final class Driver {
             case "json-write": return surfaceJsonWrite(out);
             case "json-hostile": return surfaceJsonHostile(out);
             case "message": return surfaceMessage(out);
+            case "retain": return surfaceRetain(out, false);
+            case "retain-save": return surfaceRetain(out, true);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);

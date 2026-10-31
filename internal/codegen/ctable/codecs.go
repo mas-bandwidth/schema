@@ -426,8 +426,12 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 	case tkBool:
 		g.pf("%stable_writer_put8( w, %s ? 1 : 0 );\n", ind, expr)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3): the measure and the save share this body, so both refuse it
+		g.pf("%sif ( !table_float_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
 	case tkF64:
+		g.pf("%sif ( !table_double_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
@@ -445,18 +449,34 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	g.pf("%sif ( !table_reader_has( &%s, %d ) ) { %s }\n", ind, rdr, width, onTrunc)
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = table_reader_get8( &%s ) != 0;\n", ind, lvalue, rdr)
+		// A BOOL BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3): any other byte
+		// reads true and counts one malformed, and the body reads on
+		g.pf("%s{\n%s    uint8_t bool_byte = table_reader_get8( &%s );\n", ind, ind, rdr)
+		g.pf("%s    if ( bool_byte > 1 ) { r->report->malformed = true; }\n", ind)
+		g.pf("%s    %s = bool_byte != 0;\n%s}\n", ind, lvalue, ind)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value and before the field is written (docs/SPEC-TABLES.md
+		// §3.3): the read is refused as non_finite_float and the walk goes on,
+		// so the framing verdict is the one a finite wire gets, and the load
+		// that started it answers the refusal at its end and lands nothing. A
+		// compressed float takes the test before its bounds.
+		g.pf("%s{\n%s    uint32_t decoded_bits = table_reader_get32( &%s );\n", ind, ind, rdr)
+		g.pf("%s    if ( !table_bits_finite32( decoded_bits ) ) { table_non_finite_float( r->report ); }\n", ind)
 		if f.HasFloatRange {
-			g.pf("%s{\n%s    float decoded_f = table_bits_to_float( table_reader_get32( &%s ) );\n", ind, ind, rdr)
-			g.pf("%s    if ( decoded_f < %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
-			g.pf("%s    else if ( decoded_f > %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
-			g.pf("%s    %s = decoded_f;\n%s}\n", ind, lvalue, ind)
-			return
+			g.pf("%s    else\n%s    {\n", ind, ind)
+			g.pf("%s        float decoded_f = table_bits_to_float( decoded_bits );\n", ind)
+			g.pf("%s        if ( decoded_f < %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
+			g.pf("%s        else if ( decoded_f > %s ) { decoded_f = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			g.pf("%s        %s = decoded_f;\n%s    }\n", ind, lvalue, ind)
+		} else {
+			g.pf("%s    else { %s = table_bits_to_float( decoded_bits ); }\n", ind, lvalue)
 		}
-		g.pf("%s%s = table_bits_to_float( table_reader_get32( &%s ) );\n", ind, lvalue, rdr)
+		g.pf("%s}\n", ind)
 	case tkF64:
-		g.pf("%s%s = table_bits_to_double( table_reader_get64( &%s ) );\n", ind, lvalue, rdr)
+		g.pf("%s{\n%s    uint64_t decoded_bits = table_reader_get64( &%s );\n", ind, ind, rdr)
+		g.pf("%s    if ( !table_bits_finite64( decoded_bits ) ) { table_non_finite_float( r->report ); }\n", ind)
+		g.pf("%s    else { %s = table_bits_to_double( decoded_bits ); }\n%s}\n", ind, lvalue, ind)
 	default:
 		width = int(g.intBytes(g.ownerName(), f.Name, int64(width)))
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))

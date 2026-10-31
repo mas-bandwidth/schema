@@ -7,6 +7,7 @@ name: schema Go generated golangci-lint gate
 # make/checks/schema-go-generated-golangci-lint-gate.ratchet.tsv.
 on:
   push:
+    branches: [ main, dev, fixed-table-form ]
   pull_request:
     branches: [ main, fixed-table-form, sprint/schema-go ]
   schedule:
@@ -14,11 +15,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: schema-go-golangci-gate-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  SERIALIZE_GO_TAG: v2.0.1
+  SERIALIZE_GO_TAG: v2.1.1
 
 jobs:
   gate:

@@ -378,9 +378,9 @@ pub struct TableNodeReader {
 }
 
 impl TableNodeReader {
-    /// Gather the numbering out of a ROOT body ending at end (§3.1). None
-    /// is framing damage on the root body the gathering scan cannot pass, and
-    /// it counts malformed. A node table under a kind other than 12, a record
+    /// Gather the numbering out of a ROOT body ending at end (§3.1). Framing
+    /// damage on the root body ends the gathering scan with what it found and
+    /// is counted by the body read, not here. A node table under a kind other than 12, a record
     /// that runs past its field, bytes left over, or a node_count the scan
     /// does not match make the TABLE malformed: good is false, one malformed
     /// counts, and nothing in it is counted unknown, because the numbering it
@@ -394,19 +394,22 @@ impl TableNodeReader {
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
             if r == 0 { break; }
-            if off >= end { report.malformed = true; return None; }
+            // Damage in a field the gathering scan cannot pass ends the scan
+            // and refuses nothing: the body read meets the same damage and
+            // counts it, after decoding the fields before it (the oracle's
+            // nodeTableBytes).
+            if off >= end { break; }
             let kind = wire[off]; off += 1;
-            let Some(id) = ref_id(ids, r) else { report.malformed = true; return None; };
+            let Some(id) = ref_id(ids, r) else { break; };
             if id != NODE_TABLE_ID {
-                if !leb_skip(wire, &mut off, end, kind) { report.malformed = true; return None; }
+                if !leb_skip(wire, &mut off, end, kind) { break; }
                 continue;
             }
             if kind != 12 {
                 report.malformed = true;
                 reader.good = false;
                 reader.recs.clear();
-                if !leb_skip(wire, &mut off, end, kind) { return None; }
-                continue;
+                break;
             }
             // A truncated node-table length cannot borrow trailer bytes. The
             // root body still decodes its preceding fields with null nodes.
@@ -561,18 +564,19 @@ impl TableNodeReader {
 /// size, 0 for every framed or reference-shaped kind.
 pub fn table_kind_width(kind: u8) -> usize {
     match kind {
-        1 | 2 | 6 => 1,
-        3 | 7 => 2,
-        4 | 8 | 10 => 4,
-        5 | 9 | 11 | 36 => 8,
-        18 | 19 => 16,
+        1 | 2 | 6 | 20 | 25 => 1,
+        3 | 7 | 21 | 26 => 2,
+        4 | 8 | 10 | 22 | 27 => 4,
+        5 | 9 | 11 | 23 | 28 | 36 => 8,
+        18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
 }
 
 /// Whether a payload under kind decodes EXACTLY into a field declared at
 /// declared (§4): an integer into a WIDER integer of the same signedness, and
-/// f32 into f64. Every other pair is a kind mismatch.
+/// f32 into f64. Every other pair is a kind mismatch, the fixed-point kinds
+/// 20–29 every way: a raw value read at another F is another number (§4).
 pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
     match declared {
         3..=5 => (2..declared).contains(&kind),
@@ -597,7 +601,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
         raw |= (buf[*off + i] as u64) << (8 * i);
     }
     *off += w;
-    if matches!(kind, 2..=5) && w < 8 {
+    if matches!(kind, 2..=5 | 20..=23) && w < 8 {
         let s = 64 - 8 * w as u32;
         raw = (((raw << s) as i64) >> s) as u64;
     }
@@ -606,6 +610,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
 
 /// Read one 128-bit scalar (or a narrower integer widened into it) at kind's
 /// own width (§3, §4): little-endian, sign-extended into u128 for signed kinds.
+/// A fixed128 or ufixed128 (kinds 24, 29) is its sixteen raw bytes.
 pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u128> {
     let w = table_kind_width(kind);
     if w == 0 || *off + w > end {
@@ -1345,6 +1350,7 @@ pub static KNOWN_IDS: &[u64] = &[
 	}
 	b.WriteString("];\n")
 	b.WriteString(textHelpers())
+	b.WriteString(cookRegionWriterRust)
 	text := b.String()
 	text = strings.Replace(text, "STRING_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.StringWireTypeId), 1)
 	text = strings.Replace(text, "BYTES_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.BytesWireTypeId), 1)

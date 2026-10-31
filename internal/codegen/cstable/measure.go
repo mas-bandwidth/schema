@@ -18,7 +18,7 @@ const tableLoadMeasureSource = `
         if (f.IsArray)
         {
             Reader a = r;
-            if (framed && !r.Slice(out a)) { return true; }
+            if (framed && !r.Slice(out a)) { r.Offset = r.Buffer.Length; return true; }
             if (!a.Has(2)) { return true; }
             byte sourceKind = a.Byte();
             if (sourceKind != f.Kind && !Widen(sourceKind, f.Kind) || !a.Var(out ulong n)) { return true; }
@@ -29,7 +29,7 @@ const tableLoadMeasureSource = `
                 if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
                 at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
             }
-            for (ulong i = 0; i < n; i++)
+            for (ulong i = 0; i < n && a.Has(1); i++)
             {
                 Reader source = a;
                 if (f.KeyId != null)
@@ -53,18 +53,27 @@ const tableLoadMeasureSource = `
         if (f.Kind == 13)
         {
             Reader body = r;
-            if (framed && !r.Slice(out body)) { return true; }
+            if (framed && !r.Slice(out body)) { r.Offset = r.Buffer.Length; return true; }
             return ExtentBody(body, f.Table, ref at, ref reason);
         }
         if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
-        if (framed) { r.Skip(f.Kind); } else { r.Offset = r.Buffer.Length; }
+        // A value the skip cannot honour ENDS the record's scan, as the reference scan's
+        // does: the reader goes to its end rather than resuming at the bytes after it.
+        if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
         return true;
     }
     static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
     {
-        if (!r.Ref(out ulong reference, out ulong id) || reference == 0 || !r.Has(1)) { return true; }
+        // A frame that does not parse ENDS the record's scan, as the reference
+        // scan's does (internal/tablewire/extent.go): the reader goes to its
+        // end rather than resuming at the bytes after a length or a reference
+        // it could not honour, which would read a payload as fields and
+        // measure storage the framing never commanded.
+        if (!r.Ref(out ulong reference, out ulong id)) { r.Offset = r.Buffer.Length; return true; }
+        if (reference == 0) { return true; }
+        if (!r.Has(1)) { r.Offset = r.Buffer.Length; return true; }
         r.Byte(); // the framing scan follows a named arm even if its value kind mismatches
-        if (!r.Slice(out Reader body)) { return true; }
+        if (!r.Slice(out Reader body)) { r.Offset = r.Buffer.Length; return true; }
         int tag = FindVariant(f, id, false);
         if (tag == 0) { return true; }
         TableFieldInfo arm = f.Arms.Arms[tag].Field;

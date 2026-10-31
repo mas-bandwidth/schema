@@ -131,13 +131,13 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 	if fname, owner, ok := firstOneSidedField(u); !carries(carrier, carryOneSidedRange) && ok {
 		return nil, fmt.Errorf("the %s target does not carry a one-sided integer range — %s: Go carries it first, and every other target refuses the construct by name until its own turn (SPEC §4.6, docs/SPEC-TABLES.md §4)", carrier, owner+"."+fname)
 	}
-	// GO, C, C# AND C++ CARRY `?T` AND THE BY-VALUE `?[N]T` OVER A VARIABLE
+	// GO, C, C#, C++, DART, JAVA AND RUST CARRY `?T` AND THE BY-VALUE `?[N]T` OVER A VARIABLE
 	// CLOSURE (docs/SPEC-TABLES.md §2.3): every walk that follows pointer
 	// edges gates on the presence companion, and every other target refuses
 	// the construct here, once, by name, so none can write an edge an absent
 	// value does not own.
 	if fields := ir.TableOptionalPointerClosures(u); !carries(carrier, carryOptionalVariableClosure) && len(fields) > 0 {
-		return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go, C, C#, C++ and Dart carry ?T and the by-value ?[N]T over a variable closure; every other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
+		return nil, fmt.Errorf("target %q refuses the construct optional over a variable closure on field %s — Go, C, C#, C++, Dart, Java and Rust carry ?T and the by-value ?[N]T over a variable closure; every other target gates its walks on presence until its turn (docs/SPEC-TABLES.md §2.3)", carrier, fields[0])
 	}
 	// GO CARRIES THE OPTIONAL MAP FIRST (docs/SPEC-TABLES.md §2.8)
 	if err := refuseOptionalMaps(u, carrier); err != nil {

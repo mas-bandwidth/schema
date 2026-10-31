@@ -12,9 +12,11 @@
 // in Dart the read after an escaping delta would be a RangeError, and a
 // reader that throws on hostile bytes is not one that refuses them.
 
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'BenchCook.dart';
+import 'BenchWire.dart' as wire;
 
 // FixedTable as a cooked RECORD: a view and an offset, and every field read where
 // it lies. the offset is settable so a walk reuses one cursor (§7.2). A POINTER
@@ -967,4 +969,431 @@ final class FixedTableCook {
   // FixedTable has no fixed-root cook writer here: BenchMixed.game_event is a union, which this writer does not carry; FixedTableCookWire cooks the form-1 value (docs/SPEC-TABLES.md §2.6, §7.6).
 }
 
-// FixedTable has no form-1 cook writer here: BenchMixed.server_time's storage (?) is not carried by the form-1 cook writer yet (docs/SPEC-TABLES.md §7.2).
+// FixedTable's FORM-1 COOK (docs/SPEC-TABLES.md §7.6): the wire library's value of
+// this fixed table cooked to `schema cook`'s bytes, measured before written.
+final class FixedTableCookWire {
+  // THE VARIABLE COOK (docs/SPEC-TABLES.md §7.6): the extent, measured by the
+  // walk the write repeats; negative when the value is refused.
+  static int cookMeasure(
+    wire.FixedTable value, {
+    TableCookWriteReport? report,
+  }) => _writeRegion(value, null, Endian.little, report);
+
+  // Measure before write: a refusal changes no byte of output (§7.6).
+  static bool cook(
+    wire.FixedTable value,
+    Uint8List output,
+    Endian order, {
+    TableCookWriteReport? report,
+  }) => _writeRegion(value, output, order, report) >= 0;
+
+  static int _writeRegion(
+    wire.FixedTable value,
+    Uint8List? output,
+    Endian order,
+    TableCookWriteReport? report,
+  ) {
+    if (report != null) report.reason = 'ok';
+    if (order != Endian.little && order != Endian.big) {
+      if (report != null) report.reason = 'invalid_value';
+      return -1;
+    }
+    // §3.1's numbering, the wire's own: node 1 is the root.
+    final s = wire.WireState();
+    s.indexRoot(value);
+    try {
+      wire.fixedTableNumber(s, value, <Object>{value});
+    } on StateError {
+      if (report != null) report.reason = 'data_cycle';
+      return -1;
+    }
+    final count = s.nodes.length + 1;
+    final ids = List<int>.filled(count, 0);
+    final c = TableCookGraph(order, count, s.indexOf, s.blobIndex);
+    var data = 0;
+    var align = 8;
+    for (var i = 0; i < count; i++) {
+      final Object? node = i == 0 ? value : s.nodeObjs[i - 1];
+      final id = i == 0 ? -8800255099513911629 : s.nodeTypes[i - 1];
+      ids[i] = id;
+      var size = 0;
+      var alignment = 8;
+      if (node == null) {
+        size = 8 + s.nodes[i - 1].length;
+        if (id == 8091808378024623192) size++;
+      } else {
+        switch (id) {
+          case -8800255099513911629:
+            size = 1376;
+            alignment = 16;
+          case -1476952163658023588:
+            size = 1376;
+            alignment = 16;
+          case -6007833022727458345:
+            size = 16;
+            alignment = 4;
+          case -6977028372880211830:
+            size = 8;
+            alignment = 4;
+          case 4432242110510439820:
+            size = 8;
+            alignment = 4;
+          case -7825083188096938557:
+            size = 64;
+            alignment = 8;
+          case -4311785701174641750:
+            size = 8;
+            alignment = 4;
+        }
+        if (!_writeNode(id, node, c, 0)) {
+          if (report != null) report.reason = 'invalid_value';
+          return -1;
+        }
+      }
+      if (alignment > align) align = alignment;
+      data = (data + alignment - 1) & -alignment;
+      c.offsets[i] = data;
+      data += size;
+    }
+    data = (data + align - 1) & -align;
+    final total = 64 + data + count * 16;
+    if (output == null) return total;
+    if (output.length < total) {
+      if (report != null) report.reason = 'invalid_value';
+      return -1;
+    }
+    output.fillRange(0, total, 0);
+    final view = ByteData.sublistView(output);
+    c.out = view;
+    view.setUint64(0, tableCookMagic, order);
+    view.setUint64(8, tableBuildVersion, order);
+    view.setUint64(16, order == Endian.little ? 1 : 2, order);
+    view.setUint64(24, data, order);
+    view.setUint64(32, count * 16, order);
+    view.setUint64(40, align, order);
+    for (var i = 0; i < count; i++) {
+      final at = 64 + c.offsets[i];
+      final Object? node = i == 0 ? value : s.nodeObjs[i - 1];
+      if (node == null) {
+        final blob = s.nodes[i - 1];
+        view.setUint32(at, blob.length, order);
+        output.setRange(at + 8, at + 8 + blob.length, blob);
+      } else {
+        _writeNode(ids[i], node, c, at);
+      }
+      view.setUint64(64 + data + i * 16, c.offsets[i], order);
+      view.setUint64(64 + data + i * 16 + 8, ids[i], order);
+    }
+    return total;
+  }
+
+  // One node of the graph by its type id; out null measures (§7.6).
+  static bool _writeNode(int id, Object node, TableCookGraph c, int at) {
+    switch (id) {
+      case -8800255099513911629:
+        return _cookFixedTable(node as wire.FixedTable, c, at);
+      case -1476952163658023588:
+        return _cookBenchMixed(node as wire.BenchMixed, c, at);
+      case -6007833022727458345:
+        return _cookMixedHitEvent(node as wire.MixedHitEvent, c, at);
+      case -6977028372880211830:
+        return _cookMixedChatEvent(node as wire.MixedChatEvent, c, at);
+      case 4432242110510439820:
+        return _cookMixedPickupEvent(node as wire.MixedPickupEvent, c, at);
+      case -7825083188096938557:
+        return _cookMixedEntity(node as wire.MixedEntity, c, at);
+      case -4311785701174641750:
+        return _cookMixedStat(node as wire.MixedStat, c, at);
+    }
+    return false;
+  }
+
+  // The shared ABI's field pieces at the cook's offsets (§7.2).
+  static bool _cookFixedTable(wire.FixedTable value, TableCookGraph c, int at) {
+    if (!_cookBenchMixed(value.value, c, at + 0)) return false;
+    return true;
+  }
+
+  // The shared ABI's field pieces at the cook's offsets (§7.2).
+  static bool _cookBenchMixed(wire.BenchMixed value, TableCookGraph c, int at) {
+    final out = c.out;
+    final order = c.order;
+    if (out != null) {
+      out.setUint32(at + 0, value.sequence, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 4, value.ackSequence, order);
+    }
+    if (out != null) {
+      out.setUint32(at + 8, value.ackBits, order);
+    }
+    if (out != null) {
+      out.setUint64(at + 16, value.sessionId, order);
+    }
+    if (out != null) {
+      out.setUint32(at + 24, value.clientId, order);
+    }
+    if (out != null) {
+      out.setUint64(at + 32, value.nonce, order);
+    }
+    if (out != null) {
+      out.setInt64(at + 40, value.worldTime, order);
+    }
+    if (out != null) {
+      out.setUint64(at + 48, value.frameTick, order);
+    }
+    if (out != null) {
+      for (var b = 0; b < 4; b++) {
+        var shift = order == Endian.little ? b : 4 - 1 - b;
+        out.setUint8(
+          at + 56 + b,
+          (value.serverTime >> (shift * 8)).toUnsigned(8).toInt(),
+        );
+      }
+    }
+    if (value.entities.length > 8) return false;
+    out?.setInt32(at + 576, value.entities.length, order);
+    for (var i = 0; i < 8; i++) {
+      final e = i < value.entities.length
+          ? value.entities[i]
+          : wire.MixedEntity();
+      if (!_cookMixedEntity(e, c, at + 64 + i * 64)) return false;
+    }
+    if (value.stats.length > 80) return false;
+    out?.setInt32(at + 1220, value.stats.length, order);
+    for (var i = 0; i < 80; i++) {
+      final e = i < value.stats.length ? value.stats[i] : wire.MixedStat();
+      if (!_cookMixedStat(e, c, at + 580 + i * 8)) return false;
+    }
+    final gameEventArm = value.gameEvent.armTag;
+    if (gameEventArm < 0 || gameEventArm > 3) return false;
+    out?.setUint8(at + 1224, gameEventArm);
+    switch (gameEventArm) {
+      case 1:
+        if (!_cookMixedHitEvent(value.gameEvent.hit, c, at + 1228))
+          return false;
+      case 2:
+        if (!_cookMixedChatEvent(value.gameEvent.chat, c, at + 1228))
+          return false;
+      case 3:
+        if (!_cookMixedPickupEvent(value.gameEvent.pickup, c, at + 1228))
+          return false;
+    }
+    if (value.loadout.length != 4) return false;
+    for (var i = 0; i < 4; i++) {
+      final e = value.loadout[i];
+      if (out != null) {
+        out.setUint8(at + 1244 + i * 1, e);
+      }
+    }
+    final playerNameText = utf8.encode(value.playerName);
+    if (playerNameText.length > 15) return false;
+    if (out != null) {
+      out.setInt32(at + 1264, playerNameText.length, order);
+      for (var i = 0; i < playerNameText.length; i++) {
+        out.setUint8(at + 1248 + i, playerNameText[i]);
+      }
+    }
+    final payloadBytes = latin1.encode(value.payload);
+    if (payloadBytes.length > 16) return false;
+    if (out != null) {
+      out.setInt32(at + 1284, payloadBytes.length, order);
+      for (var i = 0; i < payloadBytes.length; i++) {
+        out.setUint8(at + 1268 + i, payloadBytes[i]);
+      }
+    }
+    if (!value.aimX.isFinite) return false;
+    if (out != null) {
+      out.setUint32(
+        at + 1288,
+        TableCookWriteReport.float32Bits(value.aimX),
+        order,
+      );
+    }
+    if (!value.aimY.isFinite) return false;
+    if (out != null) {
+      out.setUint32(
+        at + 1292,
+        TableCookWriteReport.float32Bits(value.aimY),
+        order,
+      );
+    }
+    if (!value.aimZ.isFinite) return false;
+    if (out != null) {
+      out.setUint32(
+        at + 1296,
+        TableCookWriteReport.float32Bits(value.aimZ),
+        order,
+      );
+    }
+    if (!value.recoil.isFinite) return false;
+    if (out != null) {
+      out.setUint32(
+        at + 1300,
+        TableCookWriteReport.float32Bits(value.recoil),
+        order,
+      );
+    }
+    if (!value.drift.isFinite) return false;
+    if (out != null) {
+      out.setFloat64(at + 1304, value.drift, order);
+    }
+    if (out != null) {
+      final wLow = value.wideKey.toSigned(64).toInt();
+      final wHigh = (value.wideKey >> 64).toSigned(64).toInt();
+      out.setUint64(at + 1312, order == Endian.little ? wLow : wHigh, order);
+      out.setUint64(at + 1320, order == Endian.little ? wHigh : wLow, order);
+    }
+    if (out != null) {
+      final wLow = value.flux.toSigned(64).toInt();
+      final wHigh = (value.flux >> 64).toSigned(64).toInt();
+      out.setUint64(at + 1328, order == Endian.little ? wLow : wHigh, order);
+      out.setUint64(at + 1336, order == Endian.little ? wHigh : wLow, order);
+    }
+    if (out != null) {
+      for (var b = 0; b < 2; b++) {
+        var shift = order == Endian.little ? b : 2 - 1 - b;
+        out.setUint8(
+          at + 1344 + b,
+          (value.ping >> (shift * 8)).toUnsigned(8).toInt(),
+        );
+      }
+    }
+    if (out != null) {
+      out.setUint32(at + 1348, value.crcHint, order);
+    }
+    if (out != null) {
+      out.setUint8(at + 1352, value.hasExtra ? 1 : 0);
+    }
+    if (out != null) {
+      out.setInt32(at + 1356, value.extra, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 1360, value.idleTicks, order);
+    }
+    return true;
+  }
+
+  // The shared ABI's field pieces at the cook's offsets (§7.2).
+  static bool _cookMixedHitEvent(
+    wire.MixedHitEvent value,
+    TableCookGraph c,
+    int at,
+  ) {
+    final out = c.out;
+    final order = c.order;
+    if (out != null) {
+      out.setUint32(at + 0, value.targetId, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 4, value.damage, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 8, value.hitKind, order);
+    }
+    if (out != null) {
+      out.setUint8(at + 12, value.crit ? 1 : 0);
+    }
+    return true;
+  }
+
+  // The shared ABI's field pieces at the cook's offsets (§7.2).
+  static bool _cookMixedChatEvent(
+    wire.MixedChatEvent value,
+    TableCookGraph c,
+    int at,
+  ) {
+    final out = c.out;
+    final order = c.order;
+    if (out != null) {
+      out.setInt32(at + 0, value.channel, order);
+    }
+    if (out != null) {
+      out.setUint32(at + 4, value.speaker, order);
+    }
+    return true;
+  }
+
+  // The shared ABI's field pieces at the cook's offsets (§7.2).
+  static bool _cookMixedPickupEvent(
+    wire.MixedPickupEvent value,
+    TableCookGraph c,
+    int at,
+  ) {
+    final out = c.out;
+    final order = c.order;
+    if (out != null) {
+      out.setUint32(at + 0, value.itemId, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 4, value.amount, order);
+    }
+    return true;
+  }
+
+  // The shared ABI's field pieces at the cook's offsets (§7.2).
+  static bool _cookMixedEntity(
+    wire.MixedEntity value,
+    TableCookGraph c,
+    int at,
+  ) {
+    final out = c.out;
+    final order = c.order;
+    if (out != null) {
+      out.setUint32(at + 0, value.entityId, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 4, value.posX, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 8, value.posY, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 12, value.posZ, order);
+    }
+    if (out != null) {
+      out.setUint32(at + 16, value.yaw, order);
+    }
+    if (out != null) {
+      out.setUint32(at + 20, value.pitch, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 24, value.velX, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 28, value.velY, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 32, value.velZ, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 36, value.health, order);
+    }
+    if (out != null) {
+      out.setUint8(at + 40, value.weapon);
+    }
+    if (out != null) {
+      out.setUint64(at + 48, value.damage, order);
+    }
+    if (out != null) {
+      out.setUint8(at + 56, value.moving ? 1 : 0);
+    }
+    if (out != null) {
+      out.setUint8(at + 57, value.firing ? 1 : 0);
+    }
+    return true;
+  }
+
+  // The shared ABI's field pieces at the cook's offsets (§7.2).
+  static bool _cookMixedStat(wire.MixedStat value, TableCookGraph c, int at) {
+    final out = c.out;
+    final order = c.order;
+    if (out != null) {
+      out.setUint32(at + 0, value.statId, order);
+    }
+    if (out != null) {
+      out.setInt32(at + 4, value.delta, order);
+    }
+    return true;
+  }
+}

@@ -249,11 +249,48 @@ struct TableReport
     // the plain names and ReadStrict on every refusal and ok otherwise.
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
+    // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+    // an infinity is refused on its raw bits by every read, the tolerant one
+    // included, so a read that moves this refuses as non_finite_float and
+    // lands nothing. It is a count only so a read can tell its own refusal
+    // from a caller's report that already held one.
+    int32_t non_finite_floats = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
+// packet wire's own): a NaN or an infinity, whatever its
+// sign or payload, has an all-ones exponent, and that is the whole test. Every
+// read runs it on the RAW BITS, before they become a float and before the
+// field is written; every writer runs it on the bits of the value it was
+// handed. -0 and the subnormals are finite and ride bit-exact.
+inline bool TableBitsFinite32( uint32_t bits ) { return ( bits & 0x7F800000u ) != 0x7F800000u; }
+inline bool TableBitsFinite64( uint64_t bits ) { return ( bits & 0x7FF0000000000000ull ) != 0x7FF0000000000000ull; }
+
+// TableNonFiniteFloat is a read meeting one: the read is REFUSED by name,
+// non_finite_float, and the caller that started it lands nothing.
+inline void TableNonFiniteFloat( TableReport * report )
+{
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    report->non_finite_floats++;
+}
+
+// TableNonFiniteRefused is the load's own end: true when the walk met a
+// non-finite float since before, with the refusal stamped again over
+// whatever the walk met after it, because it outranks any damage (§3.3).
+inline bool TableNonFiniteRefused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return false; }
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    return true;
+}
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -554,7 +591,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static MESSAGEDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1649,7 +1686,7 @@ static const int64_t kTableAnnounceBytes = 633;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x0f, 0xfd, 0x1c, 0xbf, 0xef, 0xe3, 0x37, 0x0a, 0x02,
+    0x01, 0x01, 0x09, 0x6a, 0xa3, 0x5b, 0x42, 0x2d, 0x02, 0xf7, 0x31, 0x02,
     0x0e, 0xd1, 0x04, 0x06, 0xce, 0x04, 0x07, 0x59, 0x4f, 0x69, 0xad, 0xa5,
     0x4b, 0xbf, 0x08, 0x00, 0x87, 0xf2, 0x8b, 0x62, 0x87, 0x12, 0x53, 0x5f,
     0x08, 0x00, 0x58, 0x86, 0x8e, 0x6c, 0xc4, 0xdb, 0xa4, 0xd6, 0x08, 0x00,
@@ -2245,6 +2282,10 @@ inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+// the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
+// never written, and measure answers -1 for it as save answers false
+inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
+inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -3866,7 +3907,7 @@ namespace messagedemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x0a37e3efbf1cfd0full;
+static const uint64_t BuildVersion = 0x31f7022d425ba36aull;
 
 } // namespace messagedemo
 
@@ -4832,7 +4873,10 @@ inline TableOpenVerdict UserLoadVerdict( User & value, const uint8_t * buffer, i
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !UserLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = UserLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { UserReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -5028,13 +5072,14 @@ inline bool UserLoadMessages( User * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !UserLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !UserLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -5216,7 +5261,10 @@ inline TableOpenVerdict ScriptLoadVerdict( Script & value, const uint8_t * buffe
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !ScriptLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = ScriptLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { ScriptReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -5460,13 +5508,14 @@ inline bool ScriptLoadMessages( Script * values, int64_t * count, const TableVoc
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ScriptLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !ScriptLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -5666,7 +5715,10 @@ inline TableOpenVerdict SelectionLoadVerdict( Selection & value, const uint8_t *
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !SelectionLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = SelectionLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { SelectionReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -5885,13 +5937,14 @@ inline bool SelectionLoadMessages( Selection * values, int64_t * count, const Ta
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !SelectionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !SelectionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -6740,7 +6793,10 @@ inline TableOpenVerdict InsertTextLoadVerdict( InsertText & value, const uint8_t
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !InsertTextLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = InsertTextLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { InsertTextReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -7466,13 +7522,14 @@ inline bool InsertTextLoadMessages( InsertText * values, int64_t * count, const 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !InsertTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !InsertTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -7628,7 +7685,10 @@ inline TableOpenVerdict RemoveTextLoadVerdict( RemoveText & value, const uint8_t
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !RemoveTextLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = RemoveTextLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { RemoveTextReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -7815,13 +7875,14 @@ inline bool RemoveTextLoadMessages( RemoveText * values, int64_t * count, const 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !RemoveTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !RemoveTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -8331,7 +8392,10 @@ inline TableOpenVerdict EditLoadVerdict( Edit & value, const uint8_t * buffer, i
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !EditLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = EditLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { EditReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -8841,13 +8905,14 @@ inline bool EditLoadMessages( Edit * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !EditLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !EditLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -9078,7 +9143,10 @@ inline TableOpenVerdict OpenDocumentLoadVerdict( OpenDocument & value, const uin
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !OpenDocumentLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = OpenDocumentLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { OpenDocumentReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -9343,13 +9411,14 @@ inline bool OpenDocumentLoadMessages( OpenDocument * values, int64_t * count, co
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !OpenDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !OpenDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -9519,7 +9588,10 @@ inline TableOpenVerdict SaveDocumentLoadVerdict( SaveDocument & value, const uin
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !SaveDocumentLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = SaveDocumentLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { SaveDocumentReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -9739,13 +9811,14 @@ inline bool SaveDocumentLoadMessages( SaveDocument * values, int64_t * count, co
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !SaveDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !SaveDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -10646,7 +10719,10 @@ inline TableOpenVerdict TransactionLoadVerdict( Transaction & value, const uint8
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !TransactionLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = TransactionLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { TransactionReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -11407,13 +11483,14 @@ inline bool TransactionLoadMessages( Transaction * values, int64_t * count, cons
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TransactionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !TransactionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -13205,7 +13282,10 @@ inline TableOpenVerdict ToolMessageLoadVerdict( ToolMessage & value, const uint8
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !ToolMessageLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = ToolMessageLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { ToolMessageReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -14572,13 +14652,14 @@ inline bool ToolMessageLoadMessages( ToolMessage * values, int64_t * count, cons
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ToolMessageLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !ToolMessageLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -14754,7 +14835,10 @@ inline TableOpenVerdict CursorLoadVerdict( Cursor & value, const uint8_t * buffe
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !CursorLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = CursorLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { CursorReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -15005,13 +15089,14 @@ inline bool CursorLoadMessages( Cursor * values, int64_t * count, const TableVoc
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !CursorLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !CursorLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -15155,7 +15240,10 @@ inline TableOpenVerdict PingLoadVerdict( Ping & value, const uint8_t * buffer, i
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !PingLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = PingLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { PingReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -15358,13 +15446,14 @@ inline bool PingLoadMessages( Ping * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PingLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !PingLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -23961,49 +24050,52 @@ inline const ToolMessage * ToolMessageOpen( const void * bytes, uint64_t length,
 // content-addressed by (asset hash, build version), so two writers of one
 // instance produce ONE artifact or the pair means nothing.
 
-inline void UserCookBody( uint8_t * at, const User & value, TableByteOrder order );
-inline void ScriptCookBody( uint8_t * at, const Script & value, TableByteOrder order );
-inline void SelectionCookBody( uint8_t * at, const Selection & value, TableByteOrder order );
-inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByteOrder order );
-inline void RemoveTextCookBody( uint8_t * at, const RemoveText & value, TableByteOrder order );
-inline void EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order );
-inline void OpenDocumentCookBody( uint8_t * at, const OpenDocument & value, TableByteOrder order );
-inline void SaveDocumentCookBody( uint8_t * at, const SaveDocument & value, TableByteOrder order );
-inline void TransactionCookBody( uint8_t * at, const Transaction & value, TableByteOrder order );
-inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableByteOrder order );
-inline void CursorCookBody( uint8_t * at, const Cursor & value, TableByteOrder order );
-inline void PingCookBody( uint8_t * at, const Ping & value, TableByteOrder order );
+inline bool UserCookBody( uint8_t * at, const User & value, TableByteOrder order );
+inline bool ScriptCookBody( uint8_t * at, const Script & value, TableByteOrder order );
+inline bool SelectionCookBody( uint8_t * at, const Selection & value, TableByteOrder order );
+inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByteOrder order );
+inline bool RemoveTextCookBody( uint8_t * at, const RemoveText & value, TableByteOrder order );
+inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order );
+inline bool OpenDocumentCookBody( uint8_t * at, const OpenDocument & value, TableByteOrder order );
+inline bool SaveDocumentCookBody( uint8_t * at, const SaveDocument & value, TableByteOrder order );
+inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableByteOrder order );
+inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableByteOrder order );
+inline bool CursorCookBody( uint8_t * at, const Cursor & value, TableByteOrder order );
+inline bool PingCookBody( uint8_t * at, const Ping & value, TableByteOrder order );
 
-inline void UserCookBody( uint8_t * at, const User & value, TableByteOrder order )
+inline bool UserCookBody( uint8_t * at, const User & value, TableByteOrder order )
 {
     table_cook_bytes( at + 0, value.name, value.name_length, 17 );
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.name_length, 4, order );
+    return true;
 }
 
-inline void ScriptCookBody( uint8_t * at, const Script & value, TableByteOrder order )
+inline bool ScriptCookBody( uint8_t * at, const Script & value, TableByteOrder order )
 {
     table_cook_bytes( at + 0, value.path, value.path_length, 65 );
     table_cook_put( at + 68, (uint64_t) (uint32_t) value.path_length, 4, order );
     table_cook_put( at + 72, (uint64_t) value.line, 4, order );
+    return true;
 }
 
-inline void SelectionCookBody( uint8_t * at, const Selection & value, TableByteOrder order )
+inline bool SelectionCookBody( uint8_t * at, const Selection & value, TableByteOrder order )
 {
-    CursorCookBody( at + 0, value.start, order );
-    CursorCookBody( at + 8, value.stop, order );
+    if ( !CursorCookBody( at + 0, value.start, order ) ) { return false; }
+    if ( !CursorCookBody( at + 8, value.stop, order ) ) { return false; }
+    return true;
 }
 
-inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByteOrder order )
+inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByteOrder order )
 {
-    CursorCookBody( at + 0, value.at, order );
+    if ( !CursorCookBody( at + 0, value.at, order ) ) { return false; }
     table_cook_bytes( at + 8, value.text, value.text_length, 33 );
     table_cook_put( at + 44, (uint64_t) (uint32_t) value.text_length, 4, order );
     {
         table_cook_put( at + 48, (uint64_t) value.origin.type, 1, order ); // the tag; None is the tag alone
         switch ( value.origin.type )
         {
-            case OriginType::User: UserCookBody( at + 48 + 4, value.origin.user, order ); break;
-            case OriginType::Script: ScriptCookBody( at + 48 + 4, value.origin.script, order ); break;
+            case OriginType::User: if ( !UserCookBody( at + 48 + 4, value.origin.user, order ) ) { return false; } break;
+            case OriginType::Script: if ( !ScriptCookBody( at + 48 + 4, value.origin.script, order ) ) { return false; } break;
             case OriginType::Pid:
             {
                 table_cook_put( at + 48 + 4, (uint64_t) value.origin.pid, 4, order );
@@ -24025,8 +24117,8 @@ inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
             table_cook_put( at + 128 + i * 80, (uint64_t) value.origins[ i ].type, 1, order ); // the tag; None is the tag alone
             switch ( value.origins[ i ].type )
             {
-                case OriginType::User: UserCookBody( at + 128 + i * 80 + 4, value.origins[ i ].user, order ); break;
-                case OriginType::Script: ScriptCookBody( at + 128 + i * 80 + 4, value.origins[ i ].script, order ); break;
+                case OriginType::User: if ( !UserCookBody( at + 128 + i * 80 + 4, value.origins[ i ].user, order ) ) { return false; } break;
+                case OriginType::Script: if ( !ScriptCookBody( at + 128 + i * 80 + 4, value.origins[ i ].script, order ) ) { return false; } break;
                 case OriginType::Pid:
                 {
                     table_cook_put( at + 128 + i * 80 + 4, (uint64_t) value.origins[ i ].pid, 4, order );
@@ -24050,22 +24142,24 @@ inline void InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
         table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[ i ], 1, order );
     }
     table_cook_put( at + 296, (uint64_t) (uint32_t) value.modes_count, 4, order );
+    return true;
 }
 
-inline void RemoveTextCookBody( uint8_t * at, const RemoveText & value, TableByteOrder order )
+inline bool RemoveTextCookBody( uint8_t * at, const RemoveText & value, TableByteOrder order )
 {
-    SelectionCookBody( at + 0, value.span, order );
+    if ( !SelectionCookBody( at + 0, value.span, order ) ) { return false; }
+    return true;
 }
 
-inline void EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order )
+inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.revision, 4, order );
     {
         table_cook_put( at + 4, (uint64_t) value.body.type, 1, order ); // the tag; None is the tag alone
         switch ( value.body.type )
         {
-            case EditBodyType::Insert: InsertTextCookBody( at + 4 + 4, value.body.insert, order ); break;
-            case EditBodyType::Remove: RemoveTextCookBody( at + 4 + 4, value.body.remove, order ); break;
+            case EditBodyType::Insert: if ( !InsertTextCookBody( at + 4 + 4, value.body.insert, order ) ) { return false; } break;
+            case EditBodyType::Remove: if ( !RemoveTextCookBody( at + 4 + 4, value.body.remove, order ) ) { return false; } break;
             case EditBodyType::Tally:
             {
                 table_cook_put( at + 4 + 4, (uint64_t) value.body.tally, 4, order );
@@ -24095,31 +24189,34 @@ inline void EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
             default: break; // every byte outside the set arm stays zero
         }
     }
+    return true;
 }
 
-inline void OpenDocumentCookBody( uint8_t * at, const OpenDocument & value, TableByteOrder order )
+inline bool OpenDocumentCookBody( uint8_t * at, const OpenDocument & value, TableByteOrder order )
 {
     table_cook_bytes( at + 0, value.path, value.path_length, 65 );
     table_cook_put( at + 68, (uint64_t) (uint32_t) value.path_length, 4, order );
     table_cook_put( at + 72, (uint64_t) value.mode, 1, order );
-    CursorCookBody( at + 76, value.cursor, order );
+    if ( !CursorCookBody( at + 76, value.cursor, order ) ) { return false; }
+    return true;
 }
 
-inline void SaveDocumentCookBody( uint8_t * at, const SaveDocument & value, TableByteOrder order )
+inline bool SaveDocumentCookBody( uint8_t * at, const SaveDocument & value, TableByteOrder order )
 {
     table_cook_bytes( at + 0, value.path, value.path_length, 65 );
     table_cook_put( at + 68, (uint64_t) (uint32_t) value.path_length, 4, order );
     table_cook_put( at + 72, (uint64_t) ( value.force ? 1 : 0 ), 1, order );
+    return true;
 }
 
-inline void TransactionCookBody( uint8_t * at, const Transaction & value, TableByteOrder order )
+inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableByteOrder order )
 {
     table_cook_bytes( at + 0, value.reason, value.reason_length, 17 );
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.reason_length, 4, order );
     // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        EditCookBody( at + 24 + i * 312, value.edits[ i ], order );
+        if ( !EditCookBody( at + 24 + i * 312, value.edits[ i ], order ) ) { return false; }
     }
     table_cook_put( at + 960, (uint64_t) (uint32_t) value.edits_count, 4, order );
     for ( int32_t i = 0; i < 2; i++ )
@@ -24128,8 +24225,8 @@ inline void TransactionCookBody( uint8_t * at, const Transaction & value, TableB
             table_cook_put( at + 964 + i * 308, (uint64_t) value.pending[ i ].type, 1, order ); // the tag; None is the tag alone
             switch ( value.pending[ i ].type )
             {
-                case EditBodyType::Insert: InsertTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].insert, order ); break;
-                case EditBodyType::Remove: RemoveTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].remove, order ); break;
+                case EditBodyType::Insert: if ( !InsertTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].insert, order ) ) { return false; } break;
+                case EditBodyType::Remove: if ( !RemoveTextCookBody( at + 964 + i * 308 + 4, value.pending[ i ].remove, order ) ) { return false; } break;
                 case EditBodyType::Tally:
                 {
                     table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[ i ].tally, 4, order );
@@ -24168,21 +24265,22 @@ inline void TransactionCookBody( uint8_t * at, const Transaction & value, TableB
     table_cook_put( at + 1624, (uint64_t) ( value.snapshots_present ? 1 : 0 ), 1, order ); // ?T's presence companion
     for ( int32_t i = 0; i < 2; i++ )
     {
-        SelectionCookBody( at + 1592 + i * 16, value.snapshots[ i ], order );
+        if ( !SelectionCookBody( at + 1592 + i * 16, value.snapshots[ i ], order ) ) { return false; }
     }
+    return true;
 }
 
-inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableByteOrder order )
+inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.sequence, 4, order );
     {
         table_cook_put( at + 8, (uint64_t) value.body.type, 1, order ); // the tag; None is the tag alone
         switch ( value.body.type )
         {
-            case ToolBodyType::Open: OpenDocumentCookBody( at + 8 + 8, value.body.open, order ); break;
-            case ToolBodyType::Save: SaveDocumentCookBody( at + 8 + 8, value.body.save, order ); break;
-            case ToolBodyType::Transact: TransactionCookBody( at + 8 + 8, value.body.transact, order ); break;
-            case ToolBodyType::Ping: PingCookBody( at + 8 + 8, value.body.ping, order ); break;
+            case ToolBodyType::Open: if ( !OpenDocumentCookBody( at + 8 + 8, value.body.open, order ) ) { return false; } break;
+            case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 8 + 8, value.body.save, order ) ) { return false; } break;
+            case ToolBodyType::Transact: if ( !TransactionCookBody( at + 8 + 8, value.body.transact, order ) ) { return false; } break;
+            case ToolBodyType::Ping: if ( !PingCookBody( at + 8 + 8, value.body.ping, order ) ) { return false; } break;
             case ToolBodyType::Caps:
             {
                 table_cook_put( at + 8 + 8, (uint64_t) value.body.caps, 8, order ); // a mask rides raw, in every target
@@ -24202,8 +24300,8 @@ inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                     table_cook_put( at + 8 + 8, (uint64_t) value.body.origin.type, 1, order ); // the tag; None is the tag alone
                     switch ( value.body.origin.type )
                     {
-                        case OriginType::User: UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ); break;
-                        case OriginType::Script: ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ); break;
+                        case OriginType::User: if ( !UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ) ) { return false; } break;
+                        case OriginType::Script: if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; } break;
                         case OriginType::Pid:
                         {
                 table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
@@ -24230,10 +24328,10 @@ inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
             table_cook_put( at + 1648 + i * 1640, (uint64_t) value.history[ i ].type, 1, order ); // the tag; None is the tag alone
             switch ( value.history[ i ].type )
             {
-                case ToolBodyType::Open: OpenDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].open, order ); break;
-                case ToolBodyType::Save: SaveDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].save, order ); break;
-                case ToolBodyType::Transact: TransactionCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].transact, order ); break;
-                case ToolBodyType::Ping: PingCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].ping, order ); break;
+                case ToolBodyType::Open: if ( !OpenDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].open, order ) ) { return false; } break;
+                case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].save, order ) ) { return false; } break;
+                case ToolBodyType::Transact: if ( !TransactionCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].transact, order ) ) { return false; } break;
+                case ToolBodyType::Ping: if ( !PingCookBody( at + 1648 + i * 1640 + 8, value.history[ i ].ping, order ) ) { return false; } break;
                 case ToolBodyType::Caps:
                 {
                     table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[ i ].caps, 8, order ); // a mask rides raw, in every target
@@ -24253,8 +24351,8 @@ inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                         table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[ i ].origin.type, 1, order ); // the tag; None is the tag alone
                         switch ( value.history[ i ].origin.type )
                         {
-                            case OriginType::User: UserCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[ i ].origin.user, order ); break;
-                            case OriginType::Script: ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[ i ].origin.script, order ); break;
+                            case OriginType::User: if ( !UserCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[ i ].origin.user, order ) ) { return false; } break;
+                            case OriginType::Script: if ( !ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[ i ].origin.script, order ) ) { return false; } break;
                             case OriginType::Pid:
                             {
                 table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[ i ].origin.pid, 4, order );
@@ -24280,7 +24378,7 @@ inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        ScriptCookBody( at + 4932 + i * 76, value.trace[ i ], order );
+        if ( !ScriptCookBody( at + 4932 + i * 76, value.trace[ i ], order ) ) { return false; }
     }
     table_cook_put( at + 5160, (uint64_t) (uint32_t) value.trace_count, 4, order );
     table_cook_put( at + 5167, (uint64_t) ( value.marks_present ? 1 : 0 ), 1, order ); // ?T's presence companion
@@ -24288,17 +24386,20 @@ inline void ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     {
         table_cook_put( at + 5165 + i * 1, (uint64_t) value.marks[ i ], 1, order );
     }
+    return true;
 }
 
-inline void CursorCookBody( uint8_t * at, const Cursor & value, TableByteOrder order )
+inline bool CursorCookBody( uint8_t * at, const Cursor & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.line, 4, order );
     table_cook_put( at + 4, (uint64_t) value.column, 4, order );
+    return true;
 }
 
-inline void PingCookBody( uint8_t * at, const Ping & value, TableByteOrder order )
+inline bool PingCookBody( uint8_t * at, const Ping & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.nonce, 4, order );
+    return true;
 }
 
 // UserCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -24344,7 +24445,7 @@ inline bool UserCook( const User & value, void * out, uint64_t capacity, TableBy
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    UserCookBody( raw + 64, value, order );
+    if ( !UserCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24396,7 +24497,7 @@ inline bool ScriptCook( const Script & value, void * out, uint64_t capacity, Tab
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    ScriptCookBody( raw + 64, value, order );
+    if ( !ScriptCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24448,7 +24549,7 @@ inline bool SelectionCook( const Selection & value, void * out, uint64_t capacit
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    SelectionCookBody( raw + 64, value, order );
+    if ( !SelectionCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24500,7 +24601,7 @@ inline bool InsertTextCook( const InsertText & value, void * out, uint64_t capac
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    InsertTextCookBody( raw + 64, value, order );
+    if ( !InsertTextCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24552,7 +24653,7 @@ inline bool RemoveTextCook( const RemoveText & value, void * out, uint64_t capac
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    RemoveTextCookBody( raw + 64, value, order );
+    if ( !RemoveTextCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24604,7 +24705,7 @@ inline bool EditCook( const Edit & value, void * out, uint64_t capacity, TableBy
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    EditCookBody( raw + 64, value, order );
+    if ( !EditCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24656,7 +24757,7 @@ inline bool OpenDocumentCook( const OpenDocument & value, void * out, uint64_t c
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    OpenDocumentCookBody( raw + 64, value, order );
+    if ( !OpenDocumentCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24708,7 +24809,7 @@ inline bool SaveDocumentCook( const SaveDocument & value, void * out, uint64_t c
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    SaveDocumentCookBody( raw + 64, value, order );
+    if ( !SaveDocumentCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24760,7 +24861,7 @@ inline bool TransactionCook( const Transaction & value, void * out, uint64_t cap
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    TransactionCookBody( raw + 64, value, order );
+    if ( !TransactionCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -24812,7 +24913,7 @@ inline bool ToolMessageCook( const ToolMessage & value, void * out, uint64_t cap
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    ToolMessageCookBody( raw + 64, value, order );
+    if ( !ToolMessageCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)

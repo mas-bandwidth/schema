@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -561,8 +562,9 @@ func t03E3FixedArrayElement(t *testing.T) {
 // cases". Every widen row of the ladder the corpus carries beside the
 // fixed-array element: the leg writes the row's own boundary and non-default
 // values, reads them back exact, and the older reader refuses the file. The
-// uint rung's 65535 is the 65536 band edge R29 names; the float rung's NaN
-// is the bit-exact payload R21 names; the enum rung's 256th variant is the
+// uint rung's 65535 is the 65536 band edge R29 names; the float rung's value
+// is the largest float32 subnormal, which a finite widening carries exactly
+// (R21; a NaN is refused, docs/SPEC-TABLES.md §3.3); the enum rung's 256th variant is the
 // ordinal the old byte cannot hold.
 func t03E3OtherWidens(t *testing.T) {
 	for _, tc := range []struct {
@@ -580,9 +582,9 @@ func t03E3OtherWidens(t *testing.T) {
         vals[0].lead = 0xAAAAAAAA; vals[0].trail = 0xBBBBBBBB;`,
 			map[string]string{"v": "65535", "lead": "-1431655766", "trail": "-1145324613"}},
 		{"float_widen", "FloatWiden", `
-        vals[0].v = Double.longBitsToDouble(0x7FF1579BC0000000L); // an exact-widened sNaN
+        vals[0].v = Double.longBitsToDouble(0x380FFFFFC0000000L); // the largest float32 subnormal, exactly widened
         vals[0].lead = 0xAAAAAAAA; vals[0].trail = 0xBBBBBBBB;`,
-			map[string]string{"v": "NaN|0x7FF1579BC0000000", "lead": "-1431655766", "trail": "-1145324613"}},
+			map[string]string{"v": "1.1754942106924411E-38|0x380FFFFFC0000000", "lead": "-1431655766", "trail": "-1145324613"}},
 		{"bits_grow", "BitsGrow", `
         vals[0].v = 4095;      // 2^12 - 1: the grown width's own top
         vals[0].lead = 0xAAAAAAAA; vals[0].trail = 0xBBBBBBBB;`,
@@ -758,24 +760,60 @@ func t03R20(t *testing.T) {
 	}
 }
 
-// t03R21: R21 "widenf is the bit-exact widening — signalling NaNs kept, the
-// quiet bit carried as the writer wrote it". The corpus's old_float_wide file
-// carries a SIGNALLING NaN, 0x7F8ABCDE, whose bits are the value; the
-// widened f64 must be the PATTERN widened — sign, exponent and payload
-// carried, the quiet bit as the writer wrote it (clear) — and never through
-// the hardware's conversion, which sets the quiet bit.
+// t03R21: R21 under the finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3,
+// §21.2): "widenF ... by the ordinary conversion (every finite f32 is exact in
+// an f64; a non-finite source is refused as non_finite_float)". The runtime's
+// widenf arm is the ordinary conversion and carries no NaN surgery; the
+// corpus's old_float_widen file is read through the compiled plan, and the
+// manifest decides what it must answer: while the C++ reference still writes a
+// NaN there (owed by tables-finite/cpp) both builds refuse it by name as
+// nonFiniteFloat; once the value is finite, the widened f64 is the f32 exactly
+// and the old build's identity read is the oracle.
 func t03R21(t *testing.T) {
+	widen := tableFixedRuntime
+	if i := strings.Index(widen, "case opWidenF:"); i >= 0 {
+		widen = widen[i:]
+		if j := strings.Index(widen, "case opConst:"); j >= 0 {
+			widen = widen[:j]
+		}
+	} else {
+		widen = ""
+	}
+	if widen == "" {
+		t.Fatal("R21: the runtime has no opWidenF arm")
+	}
+	if !strings.Contains(widen, "Double.doubleToRawLongBits(Float.intBitsToFloat(bits))") {
+		t.Errorf("R21: the widenf arm is not the ordinary conversion:\n%s", widen)
+	}
+	for _, retired := range []string{"<< 29", "0x7FF0000000000000L"} {
+		if strings.Contains(widen, retired) {
+			t.Errorf("R21: the widenf arm still carries the retired NaN surgery %q", retired)
+		}
+	}
+	corpus := corpusDir(t)
 	oldFile := t03CorpusFile(t, "old_float_widen.bin")
 	_, classes := buildRow(t, t.TempDir(), "float_widen", []sideSpec{
 		{key: "reads", schema: "VNEW_float_widen.schema", older: []string{"VOLD_float_widen.schema"}},
 		{key: "refuses", schema: "VOLD_float_widen.schema"},
 	})
 	got := runProbe(t, classes, "Probe_reads", oldFile)
+	oracle := runProbe(t, classes, "Probe_refuses", oldFile)
+	if leaf := manifestNonFinite(t, corpus)["old_float_widen.bin"]; leaf != "" {
+		for _, side := range []struct {
+			name string
+			r    probeRun
+		}{{"the widened read", got}, {"the old build's identity read", oracle}} {
+			if side.r.n != -1 || !side.r.refused || side.r.reason != "nonFiniteFloat" || side.r.nonFiniteFloat != "FloatWiden."+leaf {
+				t.Errorf("R21: %s of the reference's non-finite %s was not refused by name: %+v", side.name, leaf, side.r)
+			}
+		}
+		return
+	}
 	if got.n != 1 || got.refused || got.malformed {
 		t.Fatalf("R21: the old file must read: %+v", got)
 	}
-	const sNaN = uint32(0x7F8ABCDE)
-	want := uint64(sNaN&0x80000000)<<32 | 0x7FF0000000000000 | uint64(sNaN&0x7FFFFF)<<29
+	src := parseDumpedFloatBits(t, oracle.value["v"])
+	want := math.Float64bits(float64(math.Float32frombits(src)))
 	v, ok := got.value["v"]
 	if !ok {
 		t.Fatal("R21: the probe dumped no v")
@@ -789,16 +827,10 @@ func t03R21(t *testing.T) {
 		t.Fatalf("R21: the probe's v bits %q: %v", hexBits, err)
 	}
 	if bits != want {
-		t.Errorf("R21: widenf landed 0x%016X, want the pattern widened 0x%016X — the quiet bit carried as the writer wrote it, never set by the conversion", bits, want)
+		t.Errorf("R21: widenf landed 0x%016X, want the f32 0x%08X widened exactly, 0x%016X", bits, src, want)
 	}
 	if got.widened != 1 || got.clamped != 0 {
 		t.Errorf("R21: the counters: widened=%d clamped=%d, want widened == 1 and nothing else", got.widened, got.clamped)
-	}
-	// The OLD build's own identity read is the oracle: its f32 bits are the
-	// writer's pattern, unchanged (SPEC §3: no canonicalisation).
-	oracle := runProbe(t, classes, "Probe_refuses", oldFile)
-	if o, ok := oracle.value["v"]; !ok || o != "NaN|0x7F8ABCDE" {
-		t.Errorf("R21: the oracle's own read = %v, want NaN|0x7F8ABCDE", o)
 	}
 }
 

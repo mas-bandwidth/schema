@@ -648,7 +648,11 @@ public final class MixedEntityVariable {
             } else if (id == F_moving) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.moving = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.moving = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -660,7 +664,11 @@ public final class MixedEntityVariable {
             } else if (id == F_firing) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.firing = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.firing = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -934,6 +942,9 @@ public final class MixedEntityVariable {
         }
         w.put8(0);
         w.trailer();
+        if (w.ids.nonFinite) {
+            return null;
+        }
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 

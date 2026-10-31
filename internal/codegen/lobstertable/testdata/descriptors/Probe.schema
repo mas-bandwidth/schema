@@ -1,0 +1,47 @@
+package descprobe
+
+/// The mode vocabulary.
+enum Mode | inspected
+{
+    /// The fast mode.
+    Fast,
+
+    /// The slow mode.
+    Slow
+}
+
+/// A retired vocabulary.
+enum Old
+{
+    /// The current variant.
+    Fresh,
+
+    /// The retired variant.
+    Gone | deprecated
+}
+
+/// A type no table reaches.
+type Unreached | inspected
+{
+    /// An unreached field.
+    n int32
+}
+
+/// The holder table.
+table Holder | inspected
+{
+    /// The mode field.
+    mode Mode | annotated
+
+    nums [Mode]int32
+
+    entries map[string(8)]int32
+
+    retired Old
+
+    old int32 = 7 | deprecated
+
+    stamped timestamp
+
+    ratio float32 = 1.0 | min = 0.0, max = 10.0, resolution = 0.5
+}

@@ -250,11 +250,48 @@ struct TableReport
     // the plain names and ReadStrict on every refusal and ok otherwise.
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
+    // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+    // an infinity is refused on its raw bits by every read, the tolerant one
+    // included, so a read that moves this refuses as non_finite_float and
+    // lands nothing. It is a count only so a read can tell its own refusal
+    // from a caller's report that already held one.
+    int32_t non_finite_floats = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
+// packet wire's own): a NaN or an infinity, whatever its
+// sign or payload, has an all-ones exponent, and that is the whole test. Every
+// read runs it on the RAW BITS, before they become a float and before the
+// field is written; every writer runs it on the bits of the value it was
+// handed. -0 and the subnormals are finite and ride bit-exact.
+inline bool TableBitsFinite32( uint32_t bits ) { return ( bits & 0x7F800000u ) != 0x7F800000u; }
+inline bool TableBitsFinite64( uint64_t bits ) { return ( bits & 0x7FF0000000000000ull ) != 0x7FF0000000000000ull; }
+
+// TableNonFiniteFloat is a read meeting one: the read is REFUSED by name,
+// non_finite_float, and the caller that started it lands nothing.
+inline void TableNonFiniteFloat( TableReport * report )
+{
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    report->non_finite_floats++;
+}
+
+// TableNonFiniteRefused is the load's own end: true when the walk met a
+// non-finite float since before, with the refusal stamped again over
+// whatever the walk met after it, because it outranks any damage (§3.3).
+inline bool TableNonFiniteRefused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return false; }
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    return true;
+}
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -555,7 +592,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static BENCH_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -858,20 +895,6 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
         case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
         default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
     }
-}
-
-// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
-// the hardware conversion would set the quiet bit (§4)
-inline double TableWidenF32( uint32_t bits )
-{
-    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-    {
-        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-        double d; memcpy( &d, &nan_bits, 8 ); return d;
-    }
-    float f; memcpy( &f, &bits, 4 ); return (double) f;
 }
 
 // ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
@@ -1648,7 +1671,7 @@ static const int64_t kTableAnnounceBytes = 932;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x4e, 0x05, 0x2a, 0x97, 0x84, 0x3a, 0x75, 0x23, 0x02,
+    0x01, 0x01, 0x09, 0x52, 0xa8, 0xbf, 0x78, 0x93, 0x55, 0xd3, 0x41, 0x02,
     0x0e, 0xfc, 0x06, 0x06, 0xf9, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac,
     0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00,
     0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d,
@@ -2269,6 +2292,10 @@ inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+// the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
+// never written, and measure answers -1 for it as save answers false
+inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
+inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -3903,7 +3930,7 @@ namespace bench {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x23753a84972a054eull;
+static const uint64_t BuildVersion = 0x41d3559378bfa852ull;
 
 } // namespace bench
 
@@ -4987,7 +5014,10 @@ inline TableOpenVerdict MixedEntityLoadVerdict( MixedEntity & value, const uint8
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !MixedEntityLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = MixedEntityLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedEntityReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -5843,13 +5873,14 @@ inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, cons
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedEntityLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !MixedEntityLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -6018,7 +6049,10 @@ inline TableOpenVerdict MixedStatLoadVerdict( MixedStat & value, const uint8_t *
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !MixedStatLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = MixedStatLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedStatReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -6266,13 +6300,14 @@ inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const Ta
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedStatLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !MixedStatLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -6510,7 +6545,10 @@ inline TableOpenVerdict MixedHitEventLoadVerdict( MixedHitEvent & value, const u
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !MixedHitEventLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = MixedHitEventLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedHitEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -6859,13 +6897,14 @@ inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedHitEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !MixedHitEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -7047,7 +7086,10 @@ inline TableOpenVerdict MixedChatEventLoadVerdict( MixedChatEvent & value, const
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !MixedChatEventLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = MixedChatEventLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedChatEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -7312,13 +7354,14 @@ inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedChatEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !MixedChatEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -7500,7 +7543,10 @@ inline TableOpenVerdict MixedPickupEventLoadVerdict( MixedPickupEvent & value, c
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !MixedPickupEventLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = MixedPickupEventLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedPickupEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -7765,13 +7811,14 @@ inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * c
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedPickupEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !MixedPickupEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -7883,11 +7930,16 @@ inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
         bytes += TableLebBytes( ids.ref_at( 67, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
+    if ( !TableFloatFinite( value.aim_x ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( value.aim_x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ) ) + 1 + 4; } // aim_x
+    if ( !TableFloatFinite( value.aim_y ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( value.aim_y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ) ) + 1 + 4; } // aim_y
+    if ( !TableFloatFinite( value.aim_z ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( value.aim_z != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xdbaf79e5e2429363ull ) ) + 1 + 4; } // aim_z
-    if ( value.recoil != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 47, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
-    if ( value.drift != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
+    if ( !TableFloatFinite( value.recoil ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) ) { bytes += TableLebBytes( ids.ref_at( 47, 0x9cef31fff7e2e457ull ) ) + 1 + 4; } // recoil
+    if ( !TableFloatFinite( value.drift ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 25, 0x5ab3f9c9341f6c04ull ) ) + 1 + 8; } // drift
     if ( value.wide_key != 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0xa3348580461faf16ull ) ) + 1 + 16; } // wide_key
     if ( value.flux != 0 ) { bytes += TableLebBytes( ids.ref_at( 68, 0xd61bdd7908af2642ull ) ) + 1 + 16; } // flux
     if ( value.ping != 0 ) { bytes += TableLebBytes( ids.ref_at( 61, 0xbf30e00dc53307a9ull ) ) + 1 + 2; } // ping
@@ -8094,26 +8146,31 @@ BENCH_TABLE_INLINE bool BenchMixedSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.aim_x != 0.0f )
     {
         w.header( ids.ref_at( 72, 0xdbaf7be5e24296c9ull ), 10 ); // aim_x
+        if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.aim_x ) );
     }
     if ( value.aim_y != 0.0f )
     {
         w.header( ids.ref_at( 71, 0xdbaf7ae5e2429516ull ), 10 ); // aim_y
+        if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.aim_y ) );
     }
     if ( value.aim_z != 0.0f )
     {
         w.header( ids.ref_at( 70, 0xdbaf79e5e2429363ull ), 10 ); // aim_z
+        if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.aim_z ) );
     }
-    if ( value.recoil != 0.0f )
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
     {
         w.header( ids.ref_at( 47, 0x9cef31fff7e2e457ull ), 10 ); // recoil
+        if ( !TableFloatFinite( value.recoil ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put32( table_float_to_bits( value.recoil ) );
     }
-    if ( value.drift != 0.0 )
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) )
     {
         w.header( ids.ref_at( 25, 0x5ab3f9c9341f6c04ull ), 11 ); // drift
+        if ( !TableFloatFinite( value.drift ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put64( table_double_to_bits( value.drift ) );
     }
     if ( value.wide_key != 0 )
@@ -8759,10 +8816,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     break;
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                float decoded_f = table_bits_to_float( r.get32() );
-                if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
-                else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
-                value.aim_x = decoded_f;
+                {
+                    const uint32_t decoded_bits = r.get32();
+                    if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
+                    else
+                    {
+                        float decoded_f = table_bits_to_float( decoded_bits );
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
+                        value.aim_x = decoded_f;
+                    }
+                }
                 break;
             }
             case 0xdbaf7ae5e2429516ull: // aim_y
@@ -8776,10 +8840,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     break;
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                float decoded_f = table_bits_to_float( r.get32() );
-                if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
-                else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
-                value.aim_y = decoded_f;
+                {
+                    const uint32_t decoded_bits = r.get32();
+                    if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
+                    else
+                    {
+                        float decoded_f = table_bits_to_float( decoded_bits );
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
+                        value.aim_y = decoded_f;
+                    }
+                }
                 break;
             }
             case 0xdbaf79e5e2429363ull: // aim_z
@@ -8793,10 +8864,17 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     break;
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                float decoded_f = table_bits_to_float( r.get32() );
-                if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
-                else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
-                value.aim_z = decoded_f;
+                {
+                    const uint32_t decoded_bits = r.get32();
+                    if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
+                    else
+                    {
+                        float decoded_f = table_bits_to_float( decoded_bits );
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r.report->clamped++; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r.report->clamped++; }
+                        value.aim_z = decoded_f;
+                    }
+                }
                 break;
             }
             case 0x9cef31fff7e2e457ull: // recoil
@@ -8810,7 +8888,14 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     break;
                 }
                 if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                value.recoil = table_bits_to_float( r.get32() );
+                {
+                    const uint32_t decoded_bits = r.get32();
+                    if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
+                    else
+                    {
+                        value.recoil = table_bits_to_float( decoded_bits );
+                    }
+                }
                 break;
             }
             case 0x5ab3f9c9341f6c04ull: // drift
@@ -8822,7 +8907,11 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                        value.drift = TableWidenF32( r.get32() );
+                        {
+                            const uint32_t widened_bits = r.get32();
+                            if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
+                            else { value.drift = (double) table_bits_to_float( widened_bits ); }
+                        }
                         r.report->widened++;
                         break;
                     }
@@ -8833,7 +8922,11 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     break;
                 }
                 if ( !r.has( 8 ) ) { r.report->malformed = true; return false; }
-                value.drift = table_bits_to_double( r.get64() );
+                {
+                    const uint64_t decoded_bits = r.get64();
+                    if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
+                    else { value.drift = table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xa3348580461faf16ull: // wide_key
@@ -9061,7 +9154,10 @@ inline TableOpenVerdict BenchMixedLoadVerdict( BenchMixed & value, const uint8_t
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !BenchMixedLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = BenchMixedLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { BenchMixedReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -9249,26 +9345,31 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
     if ( value.aim_x != 0.0f )
     {
         bits += kTableMessageRefBitsHere;
+        if ( !TableFloatFinite( value.aim_x ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 8;
     }
     if ( value.aim_y != 0.0f )
     {
         bits += kTableMessageRefBitsHere;
+        if ( !TableFloatFinite( value.aim_y ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 8;
     }
     if ( value.aim_z != 0.0f )
     {
         bits += kTableMessageRefBitsHere;
+        if ( !TableFloatFinite( value.aim_z ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 8;
     }
-    if ( value.recoil != 0.0f )
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
     {
         bits += kTableMessageRefBitsHere;
+        if ( !TableFloatFinite( value.recoil ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 32;
     }
-    if ( value.drift != 0.0 )
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) )
     {
         bits += kTableMessageRefBitsHere;
+        if ( !TableFloatFinite( value.drift ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
         bits += 64;
     }
     if ( value.wide_key != 0 )
@@ -9439,26 +9540,31 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.aim_x != 0.0f )
     {
         w.put( 16, kTableMessageRefBitsHere );
+        if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) TableMessageQuantize( float( value.aim_x ), -1.0f, 2.0f, 200u ), 8 );
     }
     if ( value.aim_y != 0.0f )
     {
         w.put( 17, kTableMessageRefBitsHere );
+        if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) TableMessageQuantize( float( value.aim_y ), -1.0f, 2.0f, 200u ), 8 );
     }
     if ( value.aim_z != 0.0f )
     {
         w.put( 18, kTableMessageRefBitsHere );
+        if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) TableMessageQuantize( float( value.aim_z ), -1.0f, 2.0f, 200u ), 8 );
     }
-    if ( value.recoil != 0.0f )
+    if ( table_float_to_bits( value.recoil ) != table_float_to_bits( 0.0f ) )
     {
         w.put( 19, kTableMessageRefBitsHere );
+        if ( !TableFloatFinite( value.recoil ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( (uint64_t) table_float_to_bits( value.recoil ), 32 );
     }
-    if ( value.drift != 0.0 )
+    if ( table_double_to_bits( value.drift ) != table_double_to_bits( 0.0 ) )
     {
         w.put( 20, kTableMessageRefBitsHere );
+        if ( !TableFloatFinite( value.drift ) ) { return false; } // a NaN or an infinity is refused (§3.3)
         w.put( table_double_to_bits( value.drift ), 64 );
     }
     if ( value.wide_key != 0 )
@@ -10131,6 +10237,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     {
                         uint64_t raw = 0;
                         if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->clamped++; }
@@ -10163,6 +10270,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     {
                         uint64_t raw = 0;
                         if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->clamped++; }
@@ -10195,6 +10303,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     {
                         uint64_t raw = 0;
                         if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     if ( decoded_f < -1.0f ) { decoded_f = -1.0f; report->clamped++; }
@@ -10227,6 +10336,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     {
                         uint64_t raw = 0;
                         if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.recoil = decoded_f;
@@ -10254,7 +10364,8 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                             {
                                 uint64_t raw = 0;
                                 if ( !r.get( raw, 32 ) ) { report->malformed = true; return false; }
-                                value.drift = TableWidenF32( (uint32_t) raw );
+                                if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                                value.drift = (double) table_bits_to_float( (uint32_t) raw );
                             }
                         }
                         report->widened++;
@@ -10264,7 +10375,7 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } value.drift = table_bits_to_double( raw ); }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->malformed = true; return false; } if ( !TableBitsFinite64( raw ) ) { TableNonFiniteFloat( report ); return false; } value.drift = table_bits_to_double( raw ); }
                 break;
             }
             case 0xa3348580461faf16ull: // wide_key
@@ -10593,13 +10704,14 @@ inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !BenchMixedLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !BenchMixedLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -11083,6 +11195,18 @@ inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & TABLE_CLAMP_
     value.idle_ticks = ( value.idle_ticks < 0 ) ? 0 : ( ( value.idle_ticks > 15 ) ? 15 : value.idle_ticks );
 }
 
+// BenchMixed's finite rule (docs/SPEC-TABLES.md §3.3): false when a float it
+// holds is a NaN or an infinity, which no read lands and no writer writes.
+TABLE_FIXED_INLINE bool BenchMixedFixedFiniteBody( const BenchMixed & value )
+{
+    if ( !TableFloatFinite( value.aim_x ) ) { return false; }
+    if ( !TableFloatFinite( value.aim_y ) ) { return false; }
+    if ( !TableFloatFinite( value.aim_z ) ) { return false; }
+    if ( !TableFloatFinite( value.recoil ) ) { return false; }
+    if ( !TableFloatFinite( value.drift ) ) { return false; }
+    return true;
+}
+
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
 //
 // A fixed-class root is a VALUE: no region, no node directory, and so no
@@ -11318,14 +11442,14 @@ inline void BenchMixedSaveRetainMessages( Args &&... )
 // content-addressed by (asset hash, build version), so two writers of one
 // instance produce ONE artifact or the pair means nothing.
 
-inline void MixedEntityCookBody( uint8_t * at, const MixedEntity & value, TableByteOrder order );
-inline void MixedStatCookBody( uint8_t * at, const MixedStat & value, TableByteOrder order );
-inline void MixedHitEventCookBody( uint8_t * at, const MixedHitEvent & value, TableByteOrder order );
-inline void MixedChatEventCookBody( uint8_t * at, const MixedChatEvent & value, TableByteOrder order );
-inline void MixedPickupEventCookBody( uint8_t * at, const MixedPickupEvent & value, TableByteOrder order );
-inline void BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByteOrder order );
+inline bool MixedEntityCookBody( uint8_t * at, const MixedEntity & value, TableByteOrder order );
+inline bool MixedStatCookBody( uint8_t * at, const MixedStat & value, TableByteOrder order );
+inline bool MixedHitEventCookBody( uint8_t * at, const MixedHitEvent & value, TableByteOrder order );
+inline bool MixedChatEventCookBody( uint8_t * at, const MixedChatEvent & value, TableByteOrder order );
+inline bool MixedPickupEventCookBody( uint8_t * at, const MixedPickupEvent & value, TableByteOrder order );
+inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByteOrder order );
 
-inline void MixedEntityCookBody( uint8_t * at, const MixedEntity & value, TableByteOrder order )
+inline bool MixedEntityCookBody( uint8_t * at, const MixedEntity & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.entity_id, 4, order );
     table_cook_put( at + 4, (uint64_t) value.pos_x, 4, order );
@@ -11341,35 +11465,40 @@ inline void MixedEntityCookBody( uint8_t * at, const MixedEntity & value, TableB
     table_cook_put( at + 48, (uint64_t) value.damage, 8, order ); // a mask rides raw, in every target
     table_cook_put( at + 56, (uint64_t) ( value.moving ? 1 : 0 ), 1, order );
     table_cook_put( at + 57, (uint64_t) ( value.firing ? 1 : 0 ), 1, order );
+    return true;
 }
 
-inline void MixedStatCookBody( uint8_t * at, const MixedStat & value, TableByteOrder order )
+inline bool MixedStatCookBody( uint8_t * at, const MixedStat & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.stat_id, 4, order );
     table_cook_put( at + 4, (uint64_t) value.delta, 4, order );
+    return true;
 }
 
-inline void MixedHitEventCookBody( uint8_t * at, const MixedHitEvent & value, TableByteOrder order )
+inline bool MixedHitEventCookBody( uint8_t * at, const MixedHitEvent & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.target_id, 4, order );
     table_cook_put( at + 4, (uint64_t) value.damage, 4, order );
     table_cook_put( at + 8, (uint64_t) value.hit_kind, 4, order );
     table_cook_put( at + 12, (uint64_t) ( value.crit ? 1 : 0 ), 1, order );
+    return true;
 }
 
-inline void MixedChatEventCookBody( uint8_t * at, const MixedChatEvent & value, TableByteOrder order )
+inline bool MixedChatEventCookBody( uint8_t * at, const MixedChatEvent & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.channel, 4, order );
     table_cook_put( at + 4, (uint64_t) value.speaker, 4, order );
+    return true;
 }
 
-inline void MixedPickupEventCookBody( uint8_t * at, const MixedPickupEvent & value, TableByteOrder order )
+inline bool MixedPickupEventCookBody( uint8_t * at, const MixedPickupEvent & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.item_id, 4, order );
     table_cook_put( at + 4, (uint64_t) value.amount, 4, order );
+    return true;
 }
 
-inline void BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByteOrder order )
+inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.sequence, 4, order );
     table_cook_put( at + 4, (uint64_t) value.ack_sequence, 4, order );
@@ -11383,22 +11512,22 @@ inline void BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     // all 8 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 8; i++ )
     {
-        MixedEntityCookBody( at + 64 + i * 64, value.entities[ i ], order );
+        if ( !MixedEntityCookBody( at + 64 + i * 64, value.entities[ i ], order ) ) { return false; }
     }
     table_cook_put( at + 576, (uint64_t) (uint32_t) value.entities_count, 4, order );
     // all 80 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 80; i++ )
     {
-        MixedStatCookBody( at + 580 + i * 8, value.stats[ i ], order );
+        if ( !MixedStatCookBody( at + 580 + i * 8, value.stats[ i ], order ) ) { return false; }
     }
     table_cook_put( at + 1220, (uint64_t) (uint32_t) value.stats_count, 4, order );
     {
         table_cook_put( at + 1224, (uint64_t) value.game_event.type, 1, order ); // the tag; None is the tag alone
         switch ( value.game_event.type )
         {
-            case MixedEventType::Hit: MixedHitEventCookBody( at + 1224 + 4, value.game_event.hit, order ); break;
-            case MixedEventType::Chat: MixedChatEventCookBody( at + 1224 + 4, value.game_event.chat, order ); break;
-            case MixedEventType::Pickup: MixedPickupEventCookBody( at + 1224 + 4, value.game_event.pickup, order ); break;
+            case MixedEventType::Hit: if ( !MixedHitEventCookBody( at + 1224 + 4, value.game_event.hit, order ) ) { return false; } break;
+            case MixedEventType::Chat: if ( !MixedChatEventCookBody( at + 1224 + 4, value.game_event.chat, order ) ) { return false; } break;
+            case MixedEventType::Pickup: if ( !MixedPickupEventCookBody( at + 1224 + 4, value.game_event.pickup, order ) ) { return false; } break;
             default: break; // every byte outside the set arm stays zero
         }
     }
@@ -11410,10 +11539,15 @@ inline void BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 1264, (uint64_t) (uint32_t) value.player_name_length, 4, order );
     table_cook_bytes( at + 1268, value.payload, value.payload_length, 16 );
     table_cook_put( at + 1284, (uint64_t) (uint32_t) value.payload_length, 4, order );
+    if ( !TableFloatFinite( value.aim_x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint32_t bits = 0; memcpy( &bits, &value.aim_x, 4 ); table_cook_put( at + 1288, (uint64_t) bits, 4, order ); }
+    if ( !TableFloatFinite( value.aim_y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint32_t bits = 0; memcpy( &bits, &value.aim_y, 4 ); table_cook_put( at + 1292, (uint64_t) bits, 4, order ); }
+    if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint32_t bits = 0; memcpy( &bits, &value.aim_z, 4 ); table_cook_put( at + 1296, (uint64_t) bits, 4, order ); }
+    if ( !TableFloatFinite( value.recoil ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint32_t bits = 0; memcpy( &bits, &value.recoil, 4 ); table_cook_put( at + 1300, (uint64_t) bits, 4, order ); }
+    if ( !TableFloatFinite( value.drift ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     { uint64_t bits = 0; memcpy( &bits, &value.drift, 8 ); table_cook_put( at + 1304, bits, 8, order ); }
     { serialize::uint128_t raw_v = serialize::uint128_t( value.wide_key ); table_cook_put128( at + 1312, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order ); }
     { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ); table_cook_put128( at + 1328, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order ); }
@@ -11422,6 +11556,7 @@ inline void BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 1352, (uint64_t) ( value.has_extra ? 1 : 0 ), 1, order );
     table_cook_put( at + 1356, (uint64_t) value.extra, 4, order );
     table_cook_put( at + 1360, (uint64_t) value.idle_ticks, 4, order );
+    return true;
 }
 
 // ---- relocatability, enforced: the wire is a pure length-prefixed

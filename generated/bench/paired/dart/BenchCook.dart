@@ -19,7 +19,7 @@ import 'Bench.dart' show MixedWeapon;
 // THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on. It rides here because this unit has no block
 // form to carry it — exactly one accelerator defines it (§20.7).
-const int tableBuildVersion = 0x23753a84972a054e;
+const int tableBuildVersion = 0x41d3559378bfa852;
 
 // The reason beside a refused Open (docs/SPEC-TABLES.md §7, §19.2): the FIRST
 // failing clause, as the reference leg's TableRefuseReason names it. word is the
@@ -214,21 +214,15 @@ final class TableCookInfo {
 final class TableCookWriteReport {
   String reason = 'ok';
 
-  static final Float32List _cookFloat32 = Float32List(2);
+  static final Float32List _cookFloat32 = Float32List(1);
   static final Uint32List _cook32Words = _cookFloat32.buffer.asUint32List();
-  static final Float64List _cookFloat64 = _cookFloat32.buffer.asFloat64List();
-  static final Uint64List _cook64Words = _cookFloat32.buffer.asUint64List();
 
+  // A cooked float is finite (docs/SPEC-TABLES.md §3.3): the writer refused a
+  // NaN or an infinity before it reaches here, so this is the ordinary
+  // narrowing, exact for every finite float32 value.
   static int float32Bits(double value) {
-    if (!value.isNaN) {
-      _cookFloat32[0] = value;
-      return _cook32Words[0];
-    }
-    _cookFloat64[0] = value;
-    final bits = _cook64Words[0];
-    var mantissa = (bits >>> 29) & 0x7fffff;
-    if (mantissa == 0) mantissa = 0x400000;
-    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+    _cookFloat32[0] = value;
+    return _cook32Words[0];
   }
 }
 
@@ -276,10 +270,14 @@ final class BenchMixedRow {
   static const int rowSize = 1376;
   static const int rowAlign = 16;
 
-  static final Float32List _float32Cell = Float32List(2);
+  static final Float32List _float32Cell = Float32List(1);
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
-  static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
-  static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
+
+  /// THE FIRST NaN OR INFINITY a float accessor met (docs/SPEC-TABLES.md
+  /// §3.3), as <Table>.<field>: the refusal non_finite_float, latched on this
+  /// view, '' while every float read was finite. The accessor that met one
+  /// answered 0 in its place and never the value.
+  String nonFiniteFloat = '';
 
   int get sequence => view.getUint16(at + 0, Endian.little);
   int get ackSequence => view.getInt32(at + 4, Endian.little);
@@ -325,49 +323,63 @@ final class BenchMixedRow {
       Uint8List.sublistView(buffer, at + 1268, at + 1268 + payloadLength);
   double get aimX {
     final bits = view.getUint32(at + 1288, Endian.little);
-    if ((bits & 0x7fffffff) <= 0x7f800000) {
+    if ((bits & 0x7f800000) != 0x7f800000) {
       _float32Words[0] = bits;
       return _float32Cell[0];
     }
-    _float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);
-    _float64Words[0] |= 0x7ff0000000000000;
-    return _float64Cell[0];
+    if (nonFiniteFloat.isEmpty) {
+      nonFiniteFloat = 'BenchMixed.aim_x';
+    }
+    return 0.0;
   }
 
   double get aimY {
     final bits = view.getUint32(at + 1292, Endian.little);
-    if ((bits & 0x7fffffff) <= 0x7f800000) {
+    if ((bits & 0x7f800000) != 0x7f800000) {
       _float32Words[0] = bits;
       return _float32Cell[0];
     }
-    _float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);
-    _float64Words[0] |= 0x7ff0000000000000;
-    return _float64Cell[0];
+    if (nonFiniteFloat.isEmpty) {
+      nonFiniteFloat = 'BenchMixed.aim_y';
+    }
+    return 0.0;
   }
 
   double get aimZ {
     final bits = view.getUint32(at + 1296, Endian.little);
-    if ((bits & 0x7fffffff) <= 0x7f800000) {
+    if ((bits & 0x7f800000) != 0x7f800000) {
       _float32Words[0] = bits;
       return _float32Cell[0];
     }
-    _float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);
-    _float64Words[0] |= 0x7ff0000000000000;
-    return _float64Cell[0];
+    if (nonFiniteFloat.isEmpty) {
+      nonFiniteFloat = 'BenchMixed.aim_z';
+    }
+    return 0.0;
   }
 
   double get recoil {
     final bits = view.getUint32(at + 1300, Endian.little);
-    if ((bits & 0x7fffffff) <= 0x7f800000) {
+    if ((bits & 0x7f800000) != 0x7f800000) {
       _float32Words[0] = bits;
       return _float32Cell[0];
     }
-    _float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);
-    _float64Words[0] |= 0x7ff0000000000000;
-    return _float64Cell[0];
+    if (nonFiniteFloat.isEmpty) {
+      nonFiniteFloat = 'BenchMixed.recoil';
+    }
+    return 0.0;
   }
 
-  double get drift => view.getFloat64(at + 1304, Endian.little);
+  double get drift {
+    final bits = view.getUint64(at + 1304, Endian.little);
+    if ((bits & 0x7ff0000000000000) != 0x7ff0000000000000) {
+      return view.getFloat64(at + 1304, Endian.little);
+    }
+    if (nonFiniteFloat.isEmpty) {
+      nonFiniteFloat = 'BenchMixed.drift';
+    }
+    return 0.0;
+  }
+
   BigInt get wideKey => tableCookGetWide(view, at + 1312, 16, false);
   BigInt get flux => tableCookGetWide(view, at + 1328, 16, true);
   BigInt get ping => tableCookGetWide(view, at + 1344, 2, false);

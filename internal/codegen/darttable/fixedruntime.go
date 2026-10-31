@@ -188,6 +188,11 @@ abstract final class TableFixedRefusal {
   /// disagree). Both text kinds and the compiled plan's text op answer it.
   static const int textIllFormed = 17; // ill-formed text in the USED units
 
+  /// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the same rule as packets):
+  /// a NaN or an infinity in a record refuses the whole
+  /// read by name, the report naming the field, and nothing lands.
+  static const int nonFiniteFloat = 18;
+
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
     switch (refusal) {
@@ -227,6 +232,8 @@ abstract final class TableFixedRefusal {
         return 'layout_unsupported';
       case textIllFormed:
         return 'text_ill_formed';
+      case nonFiniteFloat:
+        return 'non_finite_float';
       default:
         return '???';
     }
@@ -248,6 +255,11 @@ final class TableFixedReport {
   /// the layout a 'no_layout' refusal names
   int hash = 0;
 
+  /// THE FLOAT a 'non_finite_float' refusal names, as <Table>.<field>: the
+  /// first cell whose raw bits the read found to be a NaN or an infinity
+  /// (docs/SPEC-TABLES.md §3.3), '' on every other path.
+  String nonFiniteFloat = '';
+
   /// THE FILE'S HASH, and the LAST member of the report: it is set by the two
   /// LAYOUT refusals — 'layout_newer' and 'layout_unsupported' — and is zero on
   /// every other path (§5.9 #15). An operator deciding between "ship the
@@ -264,6 +276,12 @@ final class TableFixedReport {
     duplicate = 0;
     hash = 0;
     layoutHash = 0;
+    nonFiniteFloat = '';
+  }
+
+  /// Names the first non-finite float a decode met; the load then refuses.
+  void refuseNonFiniteFloat(String field) {
+    if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
   }
 }
 
@@ -349,50 +367,25 @@ final class TableFixedLayout {
 
   /// A FLOAT32 CELL RIDES AS ITS BITS (docs/FIXED-FORM-ALGORITHM.md §3.1: the
   /// cell stores what the record held; SPEC-TABLES §3: no canonicalisation of
-  /// a float). A Dart double is a float64, and the hardware float32<->float64
-  /// conversion QUIETS a signalling NaN on the way in, so a reference file
-  /// holding 0x7F800001 would rewrite as 0x7FC00001. Every exponent but the
-  /// all-ones one converts exactly; a NaN is assembled by hand, the f32
-  /// mantissa's 23 bits shifted up by 29 into the f64 one and back, the quiet
-  /// bit carried as the writer wrote it: the same surgery the plan's
-  /// widenFloat rung and the packet emitter's float32 helpers do. A generated
-  /// float32 store or load converts through these two and nowhere else
-  /// (TestFixedFloat32CellsStoreBitsNotDoubles).
-  static final Float32List _f32 = Float32List(2);
+  /// a float). A table float is FINITE (docs/SPEC-TABLES.md §3.3): the save's
+  /// finite pass refuses a NaN or an infinity before the first byte and every
+  /// read refuses one on its raw bits before it reaches these, so both are the
+  /// ordinary conversion, exact for every finite value, -0 and the subnormals
+  /// included. A generated float32 store or load converts through these two
+  /// and nowhere else (TestFixedFloat32CellsStoreBitsNotDoubles).
+  static final Float32List _f32 = Float32List(1);
   static final Uint32List _f32Words = _f32.buffer.asUint32List();
-  static final Float64List _f64 = _f32.buffer.asFloat64List();
-  static final Uint64List _f64Words = _f32.buffer.asUint64List();
 
-  /// the float32 bits a double holding a float32 value carries, a NaN's
-  /// payload and signalling bit included
+  /// the float32 bits of a finite double holding a float32 value
   @pragma('vm:prefer-inline')
   static int float32Bits(double value) {
-    if (!value.isNaN) {
-      _f32[0] = value;
-      return _f32Words[0];
-    }
-    _f64[0] = value;
-    final bits = _f64Words[0];
-    var mantissa = (bits >>> 29) & 0x7fffff;
-    if (mantissa == 0) {
-      // a float64 NaN whose payload lies only below float32's 23 bits has no
-      // float32 spelling; it stays a NaN, quiet
-      mantissa = 0x400000;
-    }
-    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+    _f32[0] = value;
+    return _f32Words[0];
   }
 
-  /// the double a float32 cell's bits widen to, exactly: a NaN keeps its
-  /// payload and its signalling bit
+  /// the double a finite float32 cell's bits widen to, exactly
   @pragma('vm:prefer-inline')
   static double float32Value(int bits) {
-    if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x7fffff) != 0) {
-      _f64Words[0] =
-          ((bits >>> 31) << 63) |
-          0x7ff0000000000000 |
-          ((bits & 0x7fffff) << 29);
-      return _f64[0];
-    }
     _f32Words[0] = bits;
     return _f32[0];
   }
@@ -1191,26 +1184,15 @@ int tableFixedRun(
         report.widened++;
         break;
       case TableFixedOp.widenFloat:
-        // widenF IS THE BIT-EXACT WIDENING (§4's float rung, §5.2's table):
-        // a plain conversion is exact for every exponent but the all-ones
-        // one. The hardware conversion QUIETS a signalling NaN and can drop a
-        // payload bit, so an all-ones exponent with a non-zero payload is
-        // assembled by hand — f64's all-ones exponent, and the f32 mantissa's
-        // 23 bits shifted up by 29 — and the quiet bit is carried as the
-        // writer wrote it. Every other exponent converts exactly.
-        final bits = sourceView.getUint32(s, Endian.little);
-        if ((bits & 0x7f800000) == 0x7f800000 && (bits & 0x007fffff) != 0) {
-          final sign = (bits & 0x80000000) << 32; // the f64 sign bit
-          final exp = 0x7ff0000000000000; // f64's all-ones exponent
-          final mant = (bits & 0x007fffff) << 29; // 23 bits up to 52
-          conv.setUint64(0, sign | exp | mant, Endian.little);
-        } else {
-          conv.setFloat64(
-            0,
-            sourceView.getFloat32(s, Endian.little),
-            Endian.little,
-          );
-        }
+        // widenF IS THE ORDINARY CONVERSION (§4's float rung, §5.2's table;
+        // docs/SPEC-TABLES.md §3.3): exact for every finite float32. A NaN
+        // stays a NaN and an infinity an infinity, and the decode's raw-bits
+        // test on the widened cell refuses either as non_finite_float.
+        conv.setFloat64(
+          0,
+          sourceView.getFloat32(s, Endian.little),
+          Endian.little,
+        );
         for (var k = 0; k < 8; k++) {
           image[d + k] = conv.getUint8(k);
         }

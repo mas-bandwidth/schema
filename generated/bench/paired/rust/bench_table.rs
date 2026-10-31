@@ -1776,3 +1776,69 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
     }
 }
 
+// ---- the COOK WRITE side from the storage value (docs/SPEC-TABLES.md §7.6) ----
+
+/// mixed_chat_event_cook_body — one MixedChatEvent record (8 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_chat_event_cook_body(v: &MixedChatEvent, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.channel as u64, 4);
+    w.put(at + 4, v.speaker as u64, 4);
+}
+
+/// mixed_entity_cook_body — one MixedEntity record (64 bytes, aligned 8) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_entity_cook_body(v: &MixedEntity, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.entity_id as u64, 4);
+    w.put(at + 4, v.pos_x as u64, 4);
+    w.put(at + 8, v.pos_y as u64, 4);
+    w.put(at + 12, v.pos_z as u64, 4);
+    w.put(at + 16, v.yaw as u64, 4);
+    w.put(at + 20, v.pitch as u64, 4);
+    w.put(at + 24, v.vel_x as u64, 4);
+    w.put(at + 28, v.vel_y as u64, 4);
+    w.put(at + 32, v.vel_z as u64, 4);
+    w.put(at + 36, v.health as u64, 4);
+    w.put(at + 40, v.weapon as u64, 1);
+    w.put(at + 48, v.damage, 8);
+    w.put(at + 56, if v.moving { 1 } else { 0 }, 1);
+    w.put(at + 57, if v.firing { 1 } else { 0 }, 1);
+}
+
+/// mixed_hit_event_cook_body — one MixedHitEvent record (16 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_hit_event_cook_body(v: &MixedHitEvent, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.target_id as u64, 4);
+    w.put(at + 4, v.damage as u64, 4);
+    w.put(at + 8, v.hit_kind as u64, 4);
+    w.put(at + 12, if v.crit { 1 } else { 0 }, 1);
+}
+
+/// mixed_pickup_event_cook_body — one MixedPickupEvent record (8 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_pickup_event_cook_body(v: &MixedPickupEvent, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.item_id as u64, 4);
+    w.put(at + 4, v.amount as u64, 4);
+}
+
+/// mixed_stat_cook_body — one MixedStat record (8 bytes, aligned 4) at `at` in the region
+/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte
+/// order, every byte the fields do not cover left zero.
+#[cfg(feature = "cook")]
+#[allow(unused_variables, clippy::identity_op)]
+pub fn mixed_stat_cook_body(v: &MixedStat, w: &mut TableRegionWriter, at: i64) {
+    w.put(at, v.stat_id as u64, 4);
+    w.put(at + 4, v.delta as u64, 4);
+}
+

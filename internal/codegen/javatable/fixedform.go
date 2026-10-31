@@ -502,6 +502,9 @@ func fixedValue(name string) string { return fixedClass(name) + ".Value" }
 type fixedGen struct {
 	unit *ir.Unit
 	b    strings.Builder
+	// owner is the declaration whose scatter is being emitted, the <Owner>
+	// of a non_finite_float refusal's <Owner>.<field> (docs/SPEC-TABLES.md §3.3)
+	owner string
 	// lineage is the locked layouts per fixed table, OLDEST FIRST, as the build
 	// handed them in (§5.2). Empty is a build with no lock.
 	lineage map[string][]FixedLineageEntry
@@ -658,6 +661,7 @@ func (g *fixedGen) emitType(st *ir.Struct, root bool) {
 	g.emitBodyConstant(st, body)
 	g.emitWriteBody(st)
 	g.emitScatter(st)
+	g.emitFinite(st.Fields)
 	if root {
 		g.emitRoot(st, body)
 	}
@@ -1231,6 +1235,7 @@ func (g *fixedGen) emitScatter(st *ir.Struct) {
 	g.pf("    /** land one record image into a value. The image is this reader's own\n")
 	g.pf("     *  body layout, so every offset here is a constant. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
+	g.owner = st.DeclaredName()
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitScatterField(f, off, "b", "at", "v", "r", 8)
@@ -1382,37 +1387,38 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		// A BOOL LANDS AS `byte != 0`: an endpoint's 2 is true and never damage.
 		g.pf("%s%s = %s[%s + %d] != 0;\n", ind, expr, buf, at, off)
 		return
-	case ir.TFloat32:
+	case ir.TFloat32, ir.TFloat64:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value and before the field is written (docs/SPEC-TABLES.md
+		// §3.3; Glenn, 2026-10-27, "same rule as packets"), and before any
+		// bounds: the read refuses by name as nonFiniteFloat and lands nothing
+		// past it. A compiled plan's float rung (widenf) is the ordinary
+		// conversion, which keeps a NaN a NaN, so this test is also where a
+		// widened one is refused.
+		//
 		// A RANGED FLOAT CLAMPS ON LOAD AND COUNTS, exactly as the ranged
 		// integer below does, and against THIS READER'S OWN min and max
 		// (schema#1164, ruled statement B): in the fixed form a compressed
 		// float rides AS THE FLOAT (SPEC §3.4), the bounds are DEFINITIONS in
 		// the digest and the compiled plan carries no range, so the pass can
-		// only be the reader's. `<` and `>` are IEEE comparisons on purpose: a
-		// NaN is below no min and above no max, so it survives uncounted, and
-		// a negative zero is not below a min of +0.
+		// only be the reader's. The value is finite here, so `<` and `>` see
+		// every case, and a negative zero is not below a min of +0.
+		typ, bits, get, mask, conv := "float", "int", "get32", "0x7f800000", "Float.intBitsToFloat"
+		if f.Type.Kind == ir.TFloat64 {
+			typ, bits, get, mask, conv = "double", "long", "get64", "0x7ff0000000000000L", "Double.longBitsToDouble"
+		}
+		g.pf("%s{\n", ind)
+		g.pf("%s    final %s fbits = TableFixed.%s(%s, %s + %d);\n", ind, bits, get, buf, at, off)
+		g.pf("%s    if ((fbits & %s) == %s) { %s.refuseNonFinite(%q); return; }\n", ind, mask, mask, rep, g.owner+"."+f.Name)
 		if lo, hi, ok := fixedFloatRange(owner); ok {
-			g.pf("%s{\n", ind)
-			g.pf("%s    float q = Float.intBitsToFloat(TableFixed.get32(%s, %s + %d));\n", ind, buf, at, off)
+			g.pf("%s    %s q = %s(fbits);\n", ind, typ, conv)
 			g.pf("%s    if (q < %s) { q = %s; %s.clamped++; } else if (q > %s) { q = %s; %s.clamped++; }\n",
 				ind, lo, lo, rep, hi, hi, rep)
 			g.pf("%s    %s = q;\n", ind, expr)
-			g.pf("%s}\n", ind)
-			return
+		} else {
+			g.pf("%s    %s = %s(fbits);\n", ind, expr, conv)
 		}
-		g.pf("%s%s = Float.intBitsToFloat(TableFixed.get32(%s, %s + %d));\n", ind, expr, buf, at, off)
-		return
-	case ir.TFloat64:
-		if lo, hi, ok := fixedFloatRange(owner); ok {
-			g.pf("%s{\n", ind)
-			g.pf("%s    double q = Double.longBitsToDouble(TableFixed.get64(%s, %s + %d));\n", ind, buf, at, off)
-			g.pf("%s    if (q < %s) { q = %s; %s.clamped++; } else if (q > %s) { q = %s; %s.clamped++; }\n",
-				ind, lo, lo, rep, hi, hi, rep)
-			g.pf("%s    %s = q;\n", ind, expr)
-			g.pf("%s}\n", ind)
-			return
-		}
-		g.pf("%s%s = Double.longBitsToDouble(TableFixed.get64(%s, %s + %d));\n", ind, expr, buf, at, off)
+		g.pf("%s}\n", ind)
 		return
 	}
 	if w == 16 {
@@ -1562,6 +1568,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
+	g.owner = un.Name
 	switch tag {
 	case 4:
 		g.pf("        v.type = TableFixed.get32(b, at + 0);\n")
@@ -1586,7 +1593,129 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	}
 	g.pf("            default: break;\n")
 	g.pf("        }\n    }\n")
+	var arms []*ir.Field
+	for _, v := range un.Variants {
+		if v.F != nil {
+			arms = append(arms, v.F)
+		}
+	}
+	if fixedCarriesFloat(arms, map[string]bool{}) {
+		g.pf("\n    /** the SELECTED arm's floats are finite (docs/SPEC-TABLES.md §3.3). */\n")
+		g.pf("    static boolean finite(Value v) {\n")
+		g.pf("        switch (v.type) {\n")
+		for i, v := range un.Variants {
+			if v.F == nil || !fixedCarriesFloat([]*ir.Field{v.F}, map[string]bool{}) {
+				continue
+			}
+			g.pf("            case %d:\n", i+1)
+			g.emitFiniteField(v.F, "v", 16)
+			g.pf("                break;\n")
+		}
+		g.pf("            default:\n                break;\n")
+		g.pf("        }\n        return true;\n    }\n")
+	}
 	g.pf("}\n")
+}
+
+// fixedCarriesFloat answers whether a body of these fields holds a float32 or
+// a float64 anywhere in its closure, by value: the bodies a writer's finite
+// pass has to walk (docs/SPEC-TABLES.md §3.3).
+func fixedCarriesFloat(fields []*ir.Field, seen map[string]bool) bool {
+	for _, f := range fields {
+		switch f.Type.Kind {
+		case ir.TFloat32, ir.TFloat64:
+			return true
+		case ir.TNamed:
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				if !seen[r.Name] {
+					seen[r.Name] = true
+					if fixedCarriesFloat(r.Fields, seen) {
+						return true
+					}
+				}
+			case *ir.Union:
+				if !seen[r.Name] {
+					seen[r.Name] = true
+					for _, v := range r.Variants {
+						if v.F != nil && fixedCarriesFloat([]*ir.Field{v.F}, seen) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFinite is the WRITER'S FINITE PASS for one type (docs/SPEC-TABLES.md
+// §3.3; Glenn, 2026-10-27, "same rule as packets"): true when every float the
+// value would store is finite. It is real code and not an assert, unlike
+// checkWrite: a NaN or an infinity is refused by every build, and save answers
+// -1 for it. A type with no float in its closure has no pass.
+func (g *fixedGen) emitFinite(fields []*ir.Field) {
+	if !fixedCarriesFloat(fields, map[string]bool{}) {
+		return
+	}
+	g.pf("    /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */\n")
+	g.pf("    static boolean finite(Value v) {\n")
+	for _, f := range fields {
+		if fixedCarriesFloat([]*ir.Field{f}, map[string]bool{}) {
+			g.emitFiniteField(f, "v", 8)
+		}
+	}
+	g.pf("        return true;\n    }\n\n")
+}
+
+// emitFiniteField tests one field's floats: the present payload of an
+// optional, every stored slot of an array (a counted one's live count), and a
+// nested type through its own pass.
+func (g *fixedGen) emitFiniteField(f *ir.Field, val string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	name := javaName(f.Name)
+	expr := val + "." + name
+	if f.Type.Optional {
+		g.pf("%sif (%sPresent) {\n", ind, expr)
+		ind += "    "
+	}
+	element := expr
+	switch {
+	case f.KeyEnum != "":
+		g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, f.KeyEnumRef.Max)
+		element = expr + "[i]"
+	case f.Array == ir.ArrayFixed:
+		g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, f.ArrayBound)
+		element = expr + "[i]"
+	case f.Array == ir.ArrayCounted:
+		g.pf("%sfor (int i = 0; i < %sCount && i < %d; i++) {\n", ind, expr, f.ArrayBound)
+		element = expr + "[i]"
+	}
+	test := ""
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		test = "!Float.isFinite(" + element + ")"
+	case ir.TFloat64:
+		test = "!Double.isFinite(" + element + ")"
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			test = "!" + fixedClass(r.Name) + ".finite(" + element + ")"
+		case *ir.Union:
+			test = "!" + fixedClass(r.Name) + ".finite(" + element + ")"
+		}
+	}
+	inner := ind
+	if element != expr {
+		inner += "    "
+	}
+	g.pf("%sif (%s) { return false; }\n", inner, test)
+	if element != expr {
+		g.pf("%s}\n", ind)
+	}
+	if f.Type.Optional {
+		g.pf("%s}\n", ind[:len(ind)-4])
+	}
 }
 
 // ---- the root's surface ---------------------------------------------------
@@ -1667,6 +1796,14 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        if (values == null || buffer == null || count < 0 || count > values.length) { return -1; }\n")
 	g.pf("        final int need = measure(count);\n")
 	g.pf("        if (buffer.length < need) { return -1; }\n")
+	if fixedCarriesFloat(st.Fields, map[string]bool{}) {
+		// A NaN OR AN INFINITY IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md
+		// §3.3): every value is tested before the first byte is stored, so a
+		// refused save leaves the caller's buffer as it was.
+		g.pf("        for (int k = 0; k < count; k++) {\n")
+		g.pf("            if (!finite(values[k])) { return -1; }\n")
+		g.pf("        }\n")
+	}
 	g.pf("        int at = writeHeader(buffer);\n")
 	g.pf("        for (int k = 0; k < count; k++) {\n")
 	g.pf("            TableFixed.put64(buffer, at, hash);\n")

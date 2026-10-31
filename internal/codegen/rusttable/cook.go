@@ -1350,6 +1350,12 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 		if i >= len(pieces) {
 			break
 		}
+		// names[0] is the FIELD ITSELF, never its companion: a scalar whose own
+		// name ends in _count (Keyed.schema's spawn_count) read itself as its
+		// count and refused every non-zero value against a bound of zero
+		if i == 0 {
+			continue
+		}
 		if strings.HasSuffix(name, "_length") || strings.HasSuffix(name, "_count") {
 			countOffset = pieces[i].Offset
 		}

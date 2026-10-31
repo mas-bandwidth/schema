@@ -351,7 +351,7 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.pf("    }\n")
 
 	default:
-		g.pf("    if ( value.%s != %s )\n    {\n", name, g.fieldDefaultExpr(f))
+		g.pf("    if ( %s )\n    {\n", g.fieldDiffers(f, "value."+name))
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageScalar(f, entry.Kind, shape, "value."+name, "        ", pass)
 		g.pf("    }\n")
@@ -489,6 +489,12 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 	default:
 		width := msgValueBits(shape.Elem, inner)
 		if pass == messagePassMeasure {
+			if int(shape.Elem) == tkF32 || int(shape.Elem) == tkF64 {
+				// THE WRITER'S FINITE RULE over every element (§3.3): the
+				// measure refuses what the save refuses
+				g.pf("%s", loop)
+				g.pf("%s    if ( !TableFloatFinite( %s ) ) { return -1; } // a NaN or an infinity is refused (§3.3)\n%s}\n", ind, elem, ind)
+			}
 			g.pf("%sbits += (int64_t) ( %s ) * %d;\n", ind, count, width)
 			return
 		}
@@ -519,6 +525,12 @@ func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messag
 // its storage width, a `flags` mask at its declared W bits.
 func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMessageShape, expr, ind string, pass messagePass) {
 	width := msgValueBits(kind, shape)
+	if int(kind) == tkF32 || int(kind) == tkF64 {
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3), a compressed float's too, before it is quantized: the measure
+		// and the save refuse it at the same place
+		g.pf("%sif ( !TableFloatFinite( %s ) ) { return %s; } // a NaN or an infinity is refused (§3.3)\n", ind, expr, messageBad(pass))
+	}
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)
 		return
@@ -776,7 +788,7 @@ func (g *tableGen) emitMessageKeyedRides(f *ir.Field, kind int, idx, ind string,
 		g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, elem, g.fieldDefaultExpr(f))
 		g.pf("%sif ( !TableEnumNamed( %s ) ) { return %s; }\n", ind, elem, messageBad(pass))
 	default:
-		g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, elem, g.fieldDefaultExpr(f))
+		g.pf("%sif ( %s ) { continue; } // a default slot elides\n", ind, g.fieldIsDefault(f, elem))
 	}
 }
 
@@ -803,8 +815,8 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 			ind, f.ArrayBound, f.Name, f.Type.Name, f.Name)
 	default:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { rides_%s = true; break; } }\n",
-			ind, f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { rides_%s = true; break; } }\n",
+			ind, f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 	}
 }
 

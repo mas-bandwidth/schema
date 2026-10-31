@@ -138,6 +138,30 @@ func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
 	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
 }
 
+// fieldDiffers is the default-elision test: the C++ condition that is true
+// when `expr` differs from the field's default and so rides. A PLAIN float
+// compares BIT PATTERNS, not values (docs/SPEC-TABLES.md §3.3): under !=, -0
+// equals +0 and would be elided and read back as +0. A compressed float keeps
+// !=, because its -0 IS +0 by §3.3's compressed-float rule, and so does every
+// other kind. The Go oracle is internal/codegen/gotable's elideDiffers.
+func (g *tableGen) fieldDiffers(f *ir.Field, expr string) string {
+	if !f.HasFloatRange && !f.Type.Pointer {
+		switch f.Type.Kind {
+		case ir.TFloat32:
+			return fmt.Sprintf("table_float_to_bits( %s ) != table_float_to_bits( %s )", expr, g.fieldDefaultExpr(f))
+		case ir.TFloat64:
+			return fmt.Sprintf("table_double_to_bits( %s ) != table_double_to_bits( %s )", expr, g.fieldDefaultExpr(f))
+		}
+	}
+	return fmt.Sprintf("%s != %s", expr, g.fieldDefaultExpr(f))
+}
+
+// fieldIsDefault is fieldDiffers' complement, spelled as an equality: the
+// condition under which a slot elides.
+func (g *tableGen) fieldIsDefault(f *ir.Field, expr string) string {
+	return strings.Replace(g.fieldDiffers(f, expr), " != ", " == ", 1)
+}
+
 // fieldDefaultExpr renders the C++ expression a field's default compares
 // against on the write side (elision) — identical literals to the NSDMIs.
 func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
@@ -902,8 +926,35 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 		g.pf("%s}\n", ind)
 	default:
 		g.emitEnumElementCheckAt(f, access, n, ind, onBad, sfx)
+		g.emitFloatElementCheckAt(elemKind, access, n, ind, onBad, sfx)
 		g.pf("%s%s += (int64_t) ( %s ) * %d;\n", ind, into, n, tableKindWidth(elemKind))
 	}
+}
+
+// emitFloatCheck is the MEASURE's half of the writer's finite rule
+// (docs/SPEC-TABLES.md §3.3): a NaN or an infinity has no place on any wire,
+// so the measure refuses it exactly where the save does. Nothing for a kind
+// that is not a float.
+func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
+	if kind != tkF32 && kind != tkF64 {
+		return
+	}
+	g.pf("%sif ( !TableFloatFinite( %s ) ) { %s } // a NaN or an infinity is refused (§3.3)\n", ind, expr, onBad)
+}
+
+// emitFloatElementCheckAt is that rule over a float ARRAY's elements, the twin
+// of emitEnumElementCheckAt: `expr` may carry one %s, which takes the loop
+// variable, and the locals carry `sfx`.
+func (g *tableGen) emitFloatElementCheckAt(kind int, expr, count, ind, onBad, sfx string) {
+	if kind != tkF32 && kind != tkF64 {
+		return
+	}
+	i := "finite_i" + sfx
+	if strings.Contains(expr, "%s") {
+		expr = fmt.Sprintf(expr, i)
+	}
+	g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ ) // every element must be finite (§3.3)\n", ind, i, i, count, i)
+	g.pf("%s{\n%s    if ( !TableFloatFinite( %s ) ) { %s }\n%s}\n", ind, ind, expr, onBad, ind)
 }
 
 // emitSlotIndexMeasure adds ONE node index's canonical length to `into`: an
@@ -975,6 +1026,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + TableLebBytes( variant_%s ); // %s: the variant's reference\n", f.Name, f.Name, f.Name)
 		default:
+			g.emitFloatCheck(kind, "value."+f.Name, "        ", "return -1;")
 			g.pf("        bytes += %s + %d; // %s\n", g.hdrBytes(id), width, f.Name)
 		}
 		g.pf("    }\n")
@@ -1099,8 +1151,8 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    {\n")
 		g.pf("        bool all_default_%s = true;\n", f.Name)
-		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
-			f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { all_default_%s = false; break; } }\n",
+			f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 		g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
 		g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("            int64_t body_%s = 0;\n", f.Name)
@@ -1133,7 +1185,8 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return -1; }\n", f.Name, f.Name)
 		g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + TableLebBytes( variant_%s ); // %s: the variant's reference\n    }\n", f.Name, f.Name, f.Name)
 	default:
-		g.pf("    if ( value.%s != %s ) { bytes += %s + %d; } // %s\n", f.Name, g.fieldDefaultExpr(f), g.hdrBytes(id), width, f.Name)
+		g.emitFloatCheck(kind, "value."+f.Name, "    ", "return -1;")
+		g.pf("    if ( %s ) { bytes += %s + %d; } // %s\n", g.fieldDiffers(f, "value."+f.Name), g.hdrBytes(id), width, f.Name)
 	}
 }
 
@@ -1196,7 +1249,8 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
 			g.pf("%sif ( !TableEnumNamed( %s ) ) { %s } // no variant names this value\n", ind, expr, onBad)
 		default:
-			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
+			g.emitFloatCheck(kind, expr, ind, onBad)
+			g.pf("%sif ( %s ) { continue; } // a default slot elides\n", ind, g.fieldIsDefault(f, expr))
 		}
 	}
 	if kind == tkTable {
@@ -1599,8 +1653,8 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		// (parity with the reader's prefill)
 		g.pf("    {\n")
 		g.pf("        bool all_default_%s = true;\n", f.Name)
-		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i] != %s ) { all_default_%s = false; break; } }\n",
-			f.ArrayBound, f.Name, g.fieldDefaultExpr(f), f.Name)
+		g.pf("        for ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { all_default_%s = false; break; } }\n",
+			f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 		g.pf("        if ( !all_default_%s )\n        {\n", f.Name)
 		g.emitArrayField(f, id, elemKind, strconv.FormatInt(f.ArrayBound, 10), "value."+f.Name+"[%s]", "            ")
 		g.pf("        }\n    }\n")
@@ -1640,7 +1694,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
 		g.pf("        w.header( ref_%s, %d ); w.putleb( variant_%s ); // %s\n    }\n", f.Name, tkEnum, f.Name, f.Name)
 	default:
-		g.pf("    if ( value.%s != %s )\n    {\n", f.Name, g.fieldDefaultExpr(f))
+		g.pf("    if ( %s )\n    {\n", g.fieldDiffers(f, "value."+f.Name))
 		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), kind, f.Name)
 		g.emitTableWriteElement(f, kind, "value."+f.Name, "        ", "")
 		g.pf("    }\n")
@@ -1680,8 +1734,11 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 	case tkBool:
 		g.pf("%sw.put8( %s ? 1 : 0 );\n", ind, expr)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md §3.3)
+		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.pf("%sw.put32( table_float_to_bits( %s ) );\n", ind, expr)
 	case tkF64:
+		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
 	case tkTable:
 		g.pf("%s{\n", ind)
@@ -1910,7 +1967,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        return TableOpenDamaged;\n    }\n")
 	g.pf("    TableReader r( buffer + 1, body_bytes, to, &table );\n")
 	g.pf("    r.nested = false; // the ROOT body, the one that may carry a node table\n")
-	g.pf("    if ( !%sLoadBody( r, value ) ) { return TableOpenBodyStopped; }\n", st.Name)
+	g.pf("    const int32_t non_finite_before = to->non_finite_floats;\n")
+	g.pf("    const bool whole = %sLoadBody( r, value );\n", st.Name)
+	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+	// any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing lands.
+	g.pf("    if ( TableNonFiniteRefused( to, non_finite_before ) ) { %sReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)\n", st.Name)
+	g.pf("    if ( !whole ) { return TableOpenBodyStopped; }\n")
 	g.pf("    return TableOpenOk;\n}\n\n")
 	g.pf("// %sLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
 	g.pf("// the recovered value and its report, counting clamped, kind_mismatch and\n")
@@ -2332,16 +2394,28 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 		// (internal/tablewire scalarAt) counts it.
 		g.pf("%s{ const uint8_t bool_byte = %s.get8(); if ( bool_byte > 1 ) { r.report->malformed = true; } %s = bool_byte != 0; }\n", ind, rdr, lvalue)
 	case tkF32:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value and before the field is written (docs/SPEC-TABLES.md
+		// §3.3): the read is refused as non_finite_float and the walk goes on,
+		// so the framing verdict is the one a finite wire gets, and the load
+		// that started it answers the refusal at its end and lands nothing. A
+		// compressed float takes the test before its bounds.
+		g.pf("%s{\n%s    const uint32_t decoded_bits = %s.get32();\n", ind, ind, rdr)
+		g.pf("%s    if ( !TableBitsFinite32( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }\n", ind)
+		g.pf("%s    else\n%s    {\n", ind, ind)
 		if f.HasFloatRange {
-			g.pf("%sfloat decoded_f = table_bits_to_float( %s.get32() );\n", ind, rdr)
-			g.pf("%sif ( decoded_f < %s ) { decoded_f = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
-			g.pf("%selse if ( decoded_f > %s ) { decoded_f = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
-			g.pf("%s%s = decoded_f;\n", ind, lvalue)
-			return
+			g.pf("%s        float decoded_f = table_bits_to_float( decoded_bits );\n", ind)
+			g.pf("%s        if ( decoded_f < %s ) { decoded_f = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
+			g.pf("%s        else if ( decoded_f > %s ) { decoded_f = %s; r.report->clamped++; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			g.pf("%s        %s = decoded_f;\n", ind, lvalue)
+		} else {
+			g.pf("%s        %s = table_bits_to_float( decoded_bits );\n", ind, lvalue)
 		}
-		g.pf("%s%s = table_bits_to_float( %s.get32() );\n", ind, lvalue, rdr)
+		g.pf("%s    }\n%s}\n", ind, ind)
 	case tkF64:
-		g.pf("%s%s = table_bits_to_double( %s.get64() );\n", ind, lvalue, rdr)
+		g.pf("%s{\n%s    const uint64_t decoded_bits = %s.get64();\n", ind, ind, rdr)
+		g.pf("%s    if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }\n", ind)
+		g.pf("%s    else { %s = table_bits_to_double( decoded_bits ); }\n%s}\n", ind, lvalue, ind)
 	default:
 		// A TIMESTAMP IS THE INT64'S PAYLOAD under its own kind 36: the bytes
 		// are two's complement and the storage is int64_t, so the decode takes

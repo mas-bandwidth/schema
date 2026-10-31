@@ -615,6 +615,17 @@ func refusalsMain(u *ir.Unit) string {
         if (TableVocabulary.announceRead(smallEntries, ann, e1) || !e1.refused || !"vocabulary_too_large".equals(e1.reason) || e1.malformed || smallEntries.announced) {
             fail("entry count bound was not refused by name");
         }
+        // The entry bound is maxEntries too, not the storage's capacity alone:
+        // a receiver that keeps room for every entry and sets maxEntries = 1
+        // refuses an announcement of more than one (the hostile corpus's
+        // announce-entries-too-large; the Go engine's Vocabulary.MaxEntries).
+        final TableVocabulary narrowEntries = new TableVocabulary();
+        narrowEntries.reset(%d);
+        narrowEntries.maxEntries = 1;
+        final TableVocabulary.Report e3 = new TableVocabulary.Report();
+        if (TableVocabulary.announceRead(narrowEntries, ann, e3) || !e3.refused || !"vocabulary_too_large".equals(e3.reason) || e3.malformed || narrowEntries.announced) {
+            fail("maxEntries bound was not refused by name");
+        }
         final TableVocabulary smallBytes = new TableVocabulary();
         smallBytes.reset(%d);
         smallBytes.maxBytes = 4;
@@ -643,5 +654,5 @@ func refusalsMain(u *ir.Unit) string {
         }
         System.out.println("ok");
     }
-`, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, cases.String(), len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, hexOf(announcement(append(versionField(version), 2, 13))), version)
+`, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, cases.String(), len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, hexOf(announcement(append(versionField(version), 2, 13))), version)
 }

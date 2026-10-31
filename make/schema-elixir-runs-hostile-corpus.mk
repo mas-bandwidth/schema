@@ -23,12 +23,12 @@ ELIXIR_HOSTILE_FINDINGS ?= test/elixir-hostile/known-findings.tsv
 ELIXIR_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
 	graphdemo:tables/pointers scalardemo:tables/scalars \
-	streamdemo:tables/stream mapdemo:tables/maps probe:test/elixir-hostile/probe.schema
+	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists probe:test/elixir-hostile/probe.schema
 
 $(ELIXIR_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-elixir-runs-hostile-corpus.mk \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
-			tables/maps/*.schema) \
+			tables/maps/*.schema tables/lists/*.schema) \
 		test/elixir-hostile/probe.schema
 	@rm -rf $(ELIXIR_HOSTILE_BUILD)/generated && mkdir -p $(ELIXIR_HOSTILE_BUILD)/generated
 	@for unit in $(ELIXIR_HOSTILE_UNITS); do \

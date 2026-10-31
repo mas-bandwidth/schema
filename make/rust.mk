@@ -296,7 +296,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists \
 	messagedemo:tables/messages streamdemo:tables/stream \
-	scalars:tables/scalars blockdemo:tables/block blockhome:tables/blockhome \
+	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
@@ -307,6 +307,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
+	tblg1:test/tables/G1.schema \
 	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
 	widedemo:examples-wide/Caption.schema
 
@@ -319,7 +320,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -501,6 +502,62 @@ tables-rust-soak-negative-control: build/tables-generated-rust/.stamp build/fixe
 	@grep -m1 "SOAK FAILED" build/rust-soak-sabotage/log
 	@echo "negative control: a matched alloc/free pair per iteration is INVISIBLE to the drift gate and turns the Rust soak's CALL COUNT red"
 
+# THE RUST ALLOCATION GATE (docs/PORTING.md M1 and I1), the twin of Go's
+# TestLoadAllocatesNothing and C++'s tables-cpp-alloc: a counting
+# #[global_allocator] (test/rust-alloc/src/main.rs) over the generated code's
+# read paths, ONE ROW PER PATH — the fixed form's load, measure and save into
+# caller storage, the block open and row walk, the cook write, open and deref
+# chain walk, and the variable wire's load of scalar-only records — each gated
+# at exactly zero allocator calls. A path that allocates by its struct's own
+# declaration (a String or Vec field, a save that answers a Vec) is REPORTED
+# with its count and the reason printed at the row. Where the soak above
+# watches the count over time, this gate names the PATH. RELEASE, the build a
+# caller ships; copied into build/ like the soak so the checkout stays clean.
+RUST_ALLOC_SRCS := test/rust-alloc/Cargo.toml test/rust-alloc/src/main.rs
+
+.PHONY: tables-rust-alloc
+tables-rust-alloc: build/tables-generated-rust/.stamp build/cook-fuzz/.stamp $(RUST_ALLOC_SRCS)
+	@mkdir -p build/rust-alloc/src
+	@cp test/rust-alloc/Cargo.toml build/rust-alloc/Cargo.toml
+	@cp test/rust-alloc/src/main.rs build/rust-alloc/src/main.rs
+	cd build/rust-alloc && PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --quiet --release -- -D warnings
+	cd build/rust-alloc && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release
+	./build/rust-alloc/target/release/rust-alloc build/cook-fuzz
+
+# THE ALLOCATION GATE'S NEGATIVE CONTROL: LOCALIZATION, as Java's
+# tables-java-alloc-negative-control. The crate's `negative-control` feature
+# (a cfg flag in the gate binary, never a change to generated code) plants one
+# Box per row of the block row walk — 192 rows a call. The run must exit
+# non-zero, that row must be red on EXACTLY 192 allocations per call, and it
+# must be the ONLY red row: the open beside it, and every other path, stay
+# green.
+.PHONY: tables-rust-alloc-negative-control
+tables-rust-alloc-negative-control: build/tables-generated-rust/.stamp build/cook-fuzz/.stamp $(RUST_ALLOC_SRCS)
+	@mkdir -p build/rust-alloc-sabotage/src
+	@cp test/rust-alloc/Cargo.toml build/rust-alloc-sabotage/Cargo.toml
+	@cp test/rust-alloc/src/main.rs build/rust-alloc-sabotage/src/main.rs
+	@grep -q '#\[cfg(feature = "negative-control")\]' build/rust-alloc-sabotage/src/main.rs || \
+		{ echo "NEGATIVE CONTROL: the gate carries no planted allocation to turn on"; exit 1; }
+	cd build/rust-alloc-sabotage && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --features negative-control
+	@if ./build/rust-alloc-sabotage/target/release/rust-alloc build/cook-fuzz > build/rust-alloc-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: one Box per walked row left the Rust allocation gate green"; \
+		cat build/rust-alloc-sabotage/log; exit 1; \
+	fi
+	@grep -q "SABOTAGED build" build/rust-alloc-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the negative-control feature did not reach the binary"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@grep -q "ALLOC FAILED: block.RenderFrame row walk (ships, lasers): .* (192 per call; ceiling 0)" build/rust-alloc-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the row walk did not go red on exactly the planted 192 per call"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@[ "$$(grep -c 'ALLOC FAILED' build/rust-alloc-sabotage/log)" = "1" ] || \
+		{ echo "NEGATIVE CONTROL FAILED: a row beside the planted one went red too - the gate does not localize"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@grep -q "ok   block.RenderFrame open:" build/rust-alloc-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the block open beside the planted row is not green"; \
+		  cat build/rust-alloc-sabotage/log; exit 1; }
+	@grep "ALLOC FAILED" build/rust-alloc-sabotage/log
+	@echo "negative control: one Box per walked row turns the Rust allocation gate RED on the row walk alone"
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
@@ -524,6 +581,10 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	# and the control that watches the count go red on a planted pair
 	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=4194304
 	$(MAKE) tables-rust-soak-negative-control
+	# THE ALLOCATION GATE (docs/PORTING.md M1, I1): every read path at zero
+	# allocator calls, row by row, and the control that localizes a plant
+	$(MAKE) tables-rust-alloc
+	$(MAKE) tables-rust-alloc-negative-control
 	$(MAKE) tables-rust-runtime-home
 	$(MAKE) tables-rust-runtime-home-negative-control
 	# the generated Rust table surface CHECKED for a big-endian target, layout
@@ -663,6 +724,39 @@ tables-rust-variable-arms:
 
 test-rust: tables-rust-variable-arms
 
+# ONE WALK IN DECLARATION ORDER (docs/PORTING.md M15; docs/SPEC-TABLES.md
+# §3.1): the numbering walk (<t>_number) is the one walk the save and the cook
+# writer lay nodes in, and it descends by-value edges and set arms in place.
+# This control puts the GROUPED walk back — every pointer field first, then
+# every by-value nesting, map and union — through a `go test -overlay` of
+# internal/codegen/rusttable/variablecodec.go (no tracked file is edited), and
+# TestMapsAndUnionArmsOnTheTableWireRust must go red on arms_ptr and
+# maps_pointers, the probes whose by-value edge reaches a node before a later
+# pointer field does.
+.PHONY: tables-rust-number-walk-negative-control
+tables-rust-number-walk-negative-control:
+	@rm -rf build/rust-number-walk-control && mkdir -p build/rust-number-walk-control
+	@sed 's|^		guardedField(b, conds\[f.Name\], func(b \*strings.Builder) { g.emitFieldNumber(b, f) })$$|		if classOf(f) == vPointer { guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldNumber(b, f) }) } }; for _, f := range st.Fields { if classOf(f) != vPointer { guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldNumber(b, f) }) } /* SABOTAGED: the grouped walk */|' \
+		internal/codegen/rusttable/variablecodec.go > build/rust-number-walk-control/variablecodec.go.txt
+	@test "$$(grep -c 'SABOTAGED: the grouped walk' build/rust-number-walk-control/variablecodec.go.txt)" = 1 || \
+		{ echo "NEGATIVE CONTROL: the grouped-walk sabotage did not apply exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-number-walk-control/variablecodec.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-number-walk-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 900s \
+			-overlay=build/rust-number-walk-control/overlay.json \
+			-run 'TestMapsAndUnionArmsOnTheTableWireRust$$' ./internal/codegen/rusttable/ > build/rust-number-walk-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the variable wire stayed green under the grouped numbering walk"; \
+		exit 1; \
+	fi
+	@for c in arms_ptr maps_pointers; do \
+		grep -q "the probe did not print \"WIRE $$c OK\"" build/rust-number-walk-control/log || \
+			{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on $$c's wire"; \
+			  cat build/rust-number-walk-control/log; exit 1; }; \
+	done
+	@echo "rust number-walk negative control: the grouped walk turns arms_ptr and maps_pointers RED on the wire"
+
+test-rust: tables-rust-number-walk-negative-control
+
 # THE FIXED CLASS ON THE TABLE WIRE (docs/SPEC-TABLES.md §2.2, §3, §4.2, §5):
 # a `fixed table` rides the VARIABLE FORM as well as the fixed one, so a
 # closure holding a fixed table gets the form-1 codec — load, save and the text
@@ -680,6 +774,46 @@ tables-rust-variable-fixed-class:
 
 test-rust: tables-rust-variable-fixed-class
 
+# THE COOK WRITE SIDE on the Rust leg (docs/SPEC-TABLES.md §7.6): every
+# manifest cook-write row the Rust writer reaches, loaded through the root's
+# form-1 reader and cooked in both byte orders by the generated
+# <t>_cook_write, byte for byte against the engine `schema cook` runs; the
+# reversed witnesses plant each layout rule's wrong answer into the oracle and
+# hold that the bytes this leg wrote tell it apart. SCHEMA_REQUIRE_CORPUS=1
+# turns the rustc skip into a failure, so the target never passes on a SKIP.
+.PHONY: tables-rust-cook-write
+tables-rust-cook-write:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteStandsDownOnTheExtent' -v
+	@echo 'tables Rust cook write: the storage value cooks to the bytes schema cook writes, in both byte orders'
+
+test-rust: tables-rust-cook-write
+
+# THE COOK WRITE's FINITE-FLOAT NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.3):
+# the generated put_f32/put_f64 refusal of a NaN or an infinity is sabotaged
+# away through a `go test -overlay` of internal/codegen/rusttable/cookwrite.go
+# (no tracked file is edited), and TestCookWriteRust must go red on its FINITE
+# probe and on nothing else.
+.PHONY: tables-rust-cook-write-negative-control
+tables-rust-cook-write-negative-control:
+	@rm -rf build/rust-cook-write-control && mkdir -p build/rust-cook-write-control
+	@sed 's|if !value.is_finite() {|if false \&\& !value.is_finite() {|' \
+		internal/codegen/rusttable/cookwrite.go > build/rust-cook-write-control/cookwrite.go.txt
+	@cmp -s internal/codegen/rusttable/cookwrite.go build/rust-cook-write-control/cookwrite.go.txt && \
+		{ echo "NEGATIVE CONTROL: the finite-float sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/cookwrite.go":"%s/build/rust-cook-write-control/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-cook-write-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-cook-write-control/overlay.json \
+			-run 'TestCookWriteRust$$' ./internal/codegen/rusttable/ > build/rust-cook-write-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the cook write stayed green with its finite-float refusal turned off"; \
+		exit 1; \
+	fi
+	@grep -q 'FINITE: ' build/rust-cook-write-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the finite probe"; \
+		  cat build/rust-cook-write-control/log; exit 1; }
+	@grep -m1 'FINITE: ' build/rust-cook-write-control/log
+	@echo "rust cook write negative control: a cook writer that lays a NaN down turns TestCookWriteRust RED on it"
+
 # THE MESSAGE FORM's BATCH on the Rust leg (docs/SPEC-TABLES.md §3.3):
 # MeasureMessages, SaveMessages and LoadMessages, byte for byte against the
 # manifest's message rows and the Go codec, beside the announcement.
@@ -691,6 +825,44 @@ tables-rust-message-batch:
 	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
 
 test-rust: tables-rust-message-batch
+
+# A FLOAT CROSSES TWO WIDTHS BY BIT SURGERY (docs/PORTING.md M21; SPEC.md
+# §4.3, docs/SPEC-TABLES.md §4): the variable runtime's table_widen_f32 and
+# the message runtime's table_message_widen_f32, cut out of the generated
+# modules as emitted and run over every float32 class, must keep a NaN's
+# payload and its quiet bit exactly as written, and the codec's kind-10 rung
+# into a float64 cell must go through the first. SCHEMA_REQUIRE_CORPUS=1 turns
+# the rustc skip into a failure, so the target never passes on a SKIP.
+.PHONY: tables-rust-float-nan tables-rust-float-nan-negative-control
+tables-rust-float-nan:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run 'TestRustFloatWideningKeepsNaNPayloads$$' -v
+	@echo 'tables Rust float NaN: a float32 widens into a float64 cell by bit surgery, NaN payloads kept'
+
+# Its negative control puts the hardware conversion back in table_widen_f32
+# through a `go test -overlay` of internal/codegen/rusttable/variable.go (no
+# tracked file is edited): the signalling NaNs come back with the quiet bit
+# set, and the test must go red on table_widen_f32's NAN probe.
+tables-rust-float-nan-negative-control:
+	@rm -rf build/rust-float-nan-control && mkdir -p build/rust-float-nan-control
+	@sed 's|if bits \& 0x7F80_0000 == 0x7F80_0000 \&\& bits \& 0x007F_FFFF != 0 {|if false \&\& bits \& 0x7F80_0000 == 0x7F80_0000 {|' \
+		internal/codegen/rusttable/variable.go > build/rust-float-nan-control/variable.go.txt
+	@cmp -s internal/codegen/rusttable/variable.go build/rust-float-nan-control/variable.go.txt && \
+		{ echo "NEGATIVE CONTROL: the bit-surgery sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variable.go":"%s/build/rust-float-nan-control/variable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-float-nan-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-float-nan-control/overlay.json \
+			-run 'TestRustFloatWideningKeepsNaNPayloads$$' ./internal/codegen/rusttable/ > build/rust-float-nan-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the widening stayed green with the hardware conversion put back"; \
+		exit 1; \
+	fi
+	@grep -q 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the signalling NaN's payload"; \
+		  cat build/rust-float-nan-control/log; exit 1; }
+	@grep -m1 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log
+	@echo "rust float NaN negative control: the hardware conversion in table_widen_f32 turns the probe RED on a signalling NaN"
+
+test-rust: tables-rust-float-nan tables-rust-float-nan-negative-control
 
 # THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
 # listing oracle as the reference, through the Rust surface, mirroring
@@ -735,6 +907,32 @@ tables-rust-view: bin/schema test/rust-view/src/main.rs test/rust-view/Cargo.tom
 
 test-rust: tables-rust-view
 
+# THE ACCESSOR/DESCRIPTOR AGREEMENT GATE (docs/PORTING.md J1; issue #421). Every
+# row of the block images, every node of the cook images and every record type
+# either descriptor graph reaches is read through the generated row struct (and
+# the generated `<record>_at` for a reference slot) and through the
+# descriptor's offset and width, and the two must agree. It prints the counts it
+# read: a gate that read nothing says so and fails.
+#
+# Its two negative controls build the compiler from a sabotaged COPY of
+# rusttable/cook.go (tools/sabotage, go build -overlay) and require the gate to
+# turn red on the named fields and on nothing else: the ACCESSOR control swaps
+# RenderCamera's camera_id and camera_type declarations (and withdraws the
+# compile-time offset_of! asserts that would stop the build first), the SLOT
+# control describes TreeNode.left one reference slot on.
+.PHONY: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
+tables-rust-accessor-descriptor-agreement: build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
+	cd test/rust-agree && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
+	./test/rust-agree/target/debug/rust-agree
+
+tables-rust-accessor-negative-control: bin/schema
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control accessor
+
+tables-rust-slot-negative-control: bin/schema
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control slot
+
+test-rust: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
+
 # THE RUST LEG OVER EVERY ROOT (docs/SPEC-TABLES.md §3, §4, §4.2, §6.6): the
 # wire fuzzer and retain-unknown over every variable-class FILE root of the
 # harness's default roster whose unit the Rust generator gives a codec, not the
@@ -752,7 +950,7 @@ test-rust: tables-rust-view
 # the all-roots driver; each must report 0 divergences. The roster roots the
 # harness counts absent are the ones no Rust codec exists for: fixed-class
 # roots' form-1 files, form-2 message entries, and units the generator refuses.
-.PHONY: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+.PHONY: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-rust-json-hostile-negative-control
 build/tables-generated-rust/tblrt1/src/lib.rs: bin/schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-rust/tblrt1/src
 	./bin/schema generate --lang rust --out build/tables-generated-rust/tblrt1/src test/tables/RT1.schema
@@ -771,6 +969,98 @@ tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 		cat build/rust-wire-fuzz-all.log; \
 		grep -q ' 0 divergences' build/rust-wire-fuzz-all.log; \
 	done
+
+# THE WIRE-FUZZ NEGATIVE CONTROL (docs/PORTING.md I15; docs/SPEC-TABLES.md
+# §2.5, §3.1): the generated node reader's range check on a pointer's or a
+# blob's node index keeps its refusal but loses its verdict — an index past the
+# node table still reads null, and the report no longer says malformed. The
+# sabotage goes through a `go build -overlay` of
+# internal/codegen/rusttable/variable.go, so no tracked file is edited; the
+# all-roots driver is rebuilt from that generator and the harness's enumerated
+# passes (--n 0) must go red on the REPORT, which is the half of the
+# differential a value comparison alone would never see.
+.PHONY: tables-rust-wire-fuzz-negative-control
+tables-rust-wire-fuzz-negative-control: build/conformance-harness
+	@rm -rf build/rust-wire-fuzz-control && mkdir -p build/rust-wire-fuzz-control
+	@sed '/index - 2 >= self.slots.len() as u64 {/{n;s|report.malformed = true;|/* SABOTAGED */|;}' \
+		internal/codegen/rusttable/variable.go > build/rust-wire-fuzz-control/variable.go.txt
+	@test "$$(grep -c SABOTAGED build/rust-wire-fuzz-control/variable.go.txt)" = 2 || \
+		{ echo "NEGATIVE CONTROL: the node-index sabotage did not apply twice"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variable.go":"%s/build/rust-wire-fuzz-control/variable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-wire-fuzz-control/overlay.json
+	go build -overlay=build/rust-wire-fuzz-control/overlay.json -o build/rust-wire-fuzz-control/schema ./cmd/schema
+	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build build/rust-wire-fuzz-control/driver build/rust-wire-fuzz-control/schema
+	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/rust --driver build/rust-wire-fuzz-control/driver \
+			--n 0 --failed build/rust-wire-fuzz-control/failed.bin > build/rust-wire-fuzz-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
+		cat build/rust-wire-fuzz-control/log; exit 1; \
+	fi
+	@grep -q '^harness: FAILED after [0-9]* mutants: the report differs' build/rust-wire-fuzz-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the report"; \
+		  cat build/rust-wire-fuzz-control/log; exit 1; }
+	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
+	@echo "rust wire-fuzz negative control: an out-of-range node index read without its malformed verdict turns the differential RED on the report"
+
+test-rust: tables-rust-wire-fuzz-negative-control
+
+# THE FORGERY FUZZER (docs/PORTING.md I3; docs/SPEC-TABLES.md §19.5) runs on
+# `make test` as well as under the shared both-bounds control
+# (tables-block-fuzz-extent-negative-control), which already reds this leg: a
+# fuzzer that only ever ran sabotaged proved the control, not the reader.
+test-rust: tables-rust-fuzz
+
+# THE DOCUMENTED SURFACE (docs/PORTING.md I12): docs/USAGE.md's Rust table
+# example, between its rust-table-usage markers, compiled against the
+# tables/examples crate and run. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip
+# into a failure, so the target never passes on a SKIP.
+.PHONY: tables-rust-usage
+tables-rust-usage:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$'
+	@echo "tables Rust usage: docs/USAGE.md's Rust example compiles and runs"
+
+test-rust: tables-rust-usage
+
+# I13 (docs/PORTING.md): the Rust leg's text differential against a third
+# implementation. A Rust probe (rustc, no cargo) draws 200 random float instances
+# per seed (splitmix64, seeds 24845619678 and 1, the Go, Dart and Java cells'
+# draw order) of a VARIABLE root and of a fixed-class unit's root, and writes each
+# as (wire, text) with the generated root_save and root_to_json_checked; the Go
+# engine (internal/tabletext, internal/tablepack) writes its own text from the
+# leg's wire, byte-compared, packs the leg's text back to wire, byte-compared, and
+# the leg's root_from_json_bytes reads the engine's text back to the same wire
+# (TestTextDifferentialRust). The control caps the emitted float32 window at six
+# significant digits in memory and must go red on the TEXT comparison
+# (TestTextDifferentialRustNegativeControl). SCHEMA_REQUIRE_CORPUS=1 makes a
+# missing rustc a FAILURE rather than a skip.
+.PHONY: tables-rust-json-differential tables-rust-json-differential-negative-control
+tables-rust-json-differential:
+	@mkdir -p build
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRust$$' -v 2>&1 | tee build/rust-json-differential.log
+	@grep -q -- '--- PASS: TestTextDifferentialRust ' build/rust-json-differential.log || { echo 'tables-rust-json-differential: TestTextDifferentialRust did not pass'; exit 1; }
+	@echo 'tables Rust text differential: 200 random float instances at each of two seeds, variable and fixed-class roots, agree with the Go engine byte for byte, both directions'
+tables-rust-json-differential-negative-control:
+	@mkdir -p build
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRustNegativeControl$$' -v 2>&1 | tee build/rust-json-differential-control.log
+	@grep -q -- '--- PASS: TestTextDifferentialRustNegativeControl' build/rust-json-differential-control.log || { echo 'tables-rust-json-differential-negative-control: the control did not pass'; exit 1; }
+	@echo 'tables Rust text differential negative control: a six-digit float32 writer is red on the text comparison'
+
+test-rust: tables-rust-json-differential tables-rust-json-differential-negative-control
+
+# THE RELEASE TIER (docs/PORTING.md J3): certify.yml derives every
+# tables-<lang>-release target from the Makefile and runs it under its 60-minute
+# cap. This SCALES the PR-tier instruments and adds none: the all-roots wire
+# fuzzer and the forgery fuzzer at ten times the random pass on a second seed,
+# the wire fuzzer's control, and the soak at four times make test's count with
+# its control beside it.
+RUST_RELEASE_SEED ?= 68719476731
+RUST_RELEASE_N ?= 1000000
+TABLES_RUST_RELEASE_SOAK_ITERATIONS ?= 16777216
+.PHONY: tables-rust-release
+tables-rust-release:
+	$(MAKE) tables-rust-wire-fuzz-all tables-rust-fuzz N=$(RUST_RELEASE_N) SEED=$(RUST_RELEASE_SEED)
+	$(MAKE) tables-rust-wire-fuzz-negative-control
+	$(MAKE) tables-rust-soak TABLES_RUST_SOAK_ITERATIONS=$(TABLES_RUST_RELEASE_SOAK_ITERATIONS)
+	$(MAKE) tables-rust-soak-negative-control
 
 # THE RETENTION NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): the generated
 # retaining load's capacity check is sabotaged to keep nothing, through a
@@ -798,7 +1088,202 @@ tables-rust-retain-negative-control:
 	@grep -m1 'retain=true): the leg reports' build/rust-retain-control/log
 	@echo "rust retention negative control: turning retention off turns the every-root gate RED on it"
 
-test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+# THE JSON-HOSTILE NEGATIVE CONTROL (docs/SPEC-TABLES.md §16.3): the Rust JSON
+# reader's two refusals, text_holds_zero and string_not_utf8, are planted back
+# to the old reader — a decoded U+0000 never flags the string, and the string's
+# bytes decode lossily to U+FFFD — through a `go test -overlay` of
+# internal/codegen/rusttable/variabletext.go, so no tracked file is edited.
+# TestJsonHostileTextRefusalsRust must go red on EXACTLY its fifteen refusal
+# rows, and its five rows that are not the event (a skipped zero, a zero object
+# key, a `\u0001`, a well-formed clamp, a lone surrogate) must stay green: a
+# control that reddened those would localise nothing.
+tables-rust-json-hostile-negative-control:
+	@rm -rf build/rust-json-hostile-control && mkdir -p build/rust-json-hostile-control
+	@sed -e 's|self.zero [|]= cp == 0;|/* SABOTAGED */|' \
+		-e 's|match String::from_utf8(out) {|match Ok::<String, ()>(String::from_utf8_lossy(\&out).into_owned()) { /* SABOTAGED */|' \
+		internal/codegen/rusttable/variabletext.go > build/rust-json-hostile-control/variabletext.go.txt
+	@test "$$(grep -c SABOTAGED build/rust-json-hostile-control/variabletext.go.txt)" = 2 || \
+		{ echo "NEGATIVE CONTROL: the json-hostile sabotage did not apply twice"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variabletext.go":"%s/build/rust-json-hostile-control/variabletext.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-json-hostile-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 300s \
+			-overlay=build/rust-json-hostile-control/overlay.json \
+			-run TestJsonHostileTextRefusalsRust ./internal/codegen/rusttable/ > build/rust-json-hostile-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
+		cat build/rust-json-hostile-control/log; exit 1; \
+	fi
+	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = 15 || \
+		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the fifteen refusal rows"; \
+		  cat build/rust-json-hostile-control/log; exit 1; }
+	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound|lone-lead-then-escape):' build/rust-json-hostile-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: a row that is not the event went red"; exit 1; }
+	@grep -m1 'MISMATCH illformed-at-bound' build/rust-json-hostile-control/log
+	@grep -m1 'MISMATCH zero-map-key:' build/rust-json-hostile-control/log
+	@echo "rust json-hostile negative control: the old reader turns exactly the fifteen §16.3 refusal rows RED"
+
+# THE GUARD NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.1, §4; test/tables/G1.schema):
+# the generated guard gate is taken out of the numbering, the save and the
+# text writer, through a `go test -overlay` of
+# internal/codegen/rusttable/variableguard.go so no tracked file is edited, and
+# TestGuardAndOptionalEdgesRust must go red on the false-guard cases (the
+# witness's save, every false-guard text's `resting` key) and never on
+# guard_true_both_edges, whose guard holds: a guard that has never been turned
+# off proves nothing.
+.PHONY: tables-rust-guard-negative-control
+tables-rust-guard-negative-control:
+	@rm -rf build/rust-guard-control && mkdir -p build/rust-guard-control
+	@sed 's|walk(st.Items, nil)|walk(st.Items[:0], nil)|' \
+		internal/codegen/rusttable/variableguard.go > build/rust-guard-control/variableguard.go.txt
+	@cmp -s internal/codegen/rusttable/variableguard.go build/rust-guard-control/variableguard.go.txt && \
+		{ echo "NEGATIVE CONTROL: the guard sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variableguard.go":"%s/build/rust-guard-control/variableguard.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-guard-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-guard-control/overlay.json \
+			-run TestGuardAndOptionalEdgesRust ./internal/codegen/rusttable/ > build/rust-guard-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the G1 suite stayed green with the Rust guard gate turned off"; \
+		exit 1; \
+	fi
+	@grep -q 'case guard_false_resting_set: the Rust save' build/rust-guard-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the false-guard save"; \
+		  cat build/rust-guard-control/log; exit 1; }
+	@! grep -E 'case guard_true_both_edges:' build/rust-guard-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage turned the case whose guard holds red"; exit 1; }
+	@grep -m1 'case guard_false_resting_set: the Rust save' build/rust-guard-control/log
+	@echo "rust guard negative control: turning the guard gate off turns exactly the false-guard G1 cases RED"
+
+
+# THE WIDE-SCALAR NEGATIVE CONTROLS (docs/SPEC-TABLES.md §3, §4, §16.2): the
+# fixed-point family and the 128-bit integers on the variable wire and in the
+# text form. Each sabotages ONE rule in the generator through a `go run
+# -overlay`, so no tracked file is edited, regenerates the two scalar units
+# (scalars, tblscalars2) into build/rust-wide-control, rebuilds the conformance
+# driver against them (the other units are the ones the driver already built,
+# and the shared target directory compiles nothing but the two crates and the
+# driver again), and requires the matrix to go RED on that rule's rows and on
+# nothing else:
+#   - clamp: a fixed field's declared range is not shifted by F onto the raw
+#     scale, so the stored raw values clamp to the whole-unit bounds — report
+#     goes red (the clamps scalars_full_as_2 counts move), json-hostile's
+#     wide rows go red, the other units' rows stay green;
+#   - text: the Q-grid exactness check never fires, so a fraction finer than
+#     F rounds instead of counting kind_mismatch — json-hostile goes red on
+#     fixed-fraction-too-fine, and wire, report and json-read stay green.
+RUST_WIDE_CONTROL := build/rust-wide-control
+RUST_WIDE_CONTROL_UNITS := scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema
+
+define rust-wide-control
+	@rm -rf $(RUST_WIDE_CONTROL)/$(1) && mkdir -p $(RUST_WIDE_CONTROL)/$(1)/driver
+	@sed '$(2)' internal/codegen/rusttable/$(3) > $(RUST_WIDE_CONTROL)/$(1)/$(3).txt
+	@cmp -s internal/codegen/rusttable/$(3) $(RUST_WIDE_CONTROL)/$(1)/$(3).txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/$(3)":"%s/$(RUST_WIDE_CONTROL)/$(1)/$(3).txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_WIDE_CONTROL)/$(1)/overlay.json
+	@for unit in $(RUST_WIDE_CONTROL_UNITS); do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		go run -overlay=$(RUST_WIDE_CONTROL)/$(1)/overlay.json ./cmd/schema generate --lang rust \
+			--out $(RUST_WIDE_CONTROL)/$(1)/$$name/src $$path 2>/dev/null || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$name \
+			> $(RUST_WIDE_CONTROL)/$(1)/$$name/Cargo.toml; \
+	done
+	@sed -e 's|^name = "conformance-rust"|name = "conformance-rust-wide-$(1)"|' \
+		-e 's|^path = "src/main.rs"|path = "../../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|"\.\./\.\./\.\./build/|"../../../../build/|' \
+		-e 's|build/tables-generated-rust/scalars"|$(RUST_WIDE_CONTROL)/$(1)/scalars"|' \
+		-e 's|build/tables-generated-rust/tblscalars2"|$(RUST_WIDE_CONTROL)/$(1)/tblscalars2"|' \
+		test/conformance/rust/Cargo.toml > $(RUST_WIDE_CONTROL)/$(1)/driver/Cargo.toml
+	cd $(RUST_WIDE_CONTROL)/$(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/test/conformance/rust/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/test/conformance/rust/target/debug/conformance-rust-wide-$(1)" "$$@"\n' "$(CURDIR)" \
+		> $(RUST_WIDE_CONTROL)/$(1)/driver/driver && chmod +x $(RUST_WIDE_CONTROL)/$(1)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(RUST_WIDE_CONTROL)/$(1)" > $(RUST_WIDE_CONTROL)/$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(RUST_WIDE_CONTROL)/$(1)/drivers.txt \
+			--work $(RUST_WIDE_CONTROL)/$(1)/work > $(RUST_WIDE_CONTROL)/$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left the Rust matrix green"; \
+		cat $(RUST_WIDE_CONTROL)/$(1)/log; exit 1; \
+	fi
+endef
+
+# the two sabotages, held in variables because a `$(call)` argument cannot
+# carry a comma
+RUST_WIDE_CLAMP_SED := s@rlo, rhi, ok := ir.TableRawRange(f)@rlo, rhi, ok := f.IntMin, f.IntMax, f.HasIntRange \&\& f.IntMin != nil \&\& f.IntMax != nil@
+RUST_WIDE_TEXT_SED := s@if fd\[\.\.n\]\.iter()\.any(|&d| d != 0) {@if false {@
+# every failing row a control may name: the wide scalars' own rows
+RUST_WIDE_ROWS := scalars_|field_scalar_widen|fixed-|ufixed-|int128-|uint128-
+
+.PHONY: tables-rust-wide-clamp-negative-control tables-rust-wide-text-negative-control
+tables-rust-wide-clamp-negative-control: build/conformance-harness build/conformance-rust
+	$(call rust-wide-control,clamp,$(RUST_WIDE_CLAMP_SED),variablecodec.go)
+	@grep -q '^  rust / report: scalars_full_as_2' $(RUST_WIDE_CONTROL)/clamp/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on report scalars_full_as_2"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; }
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars went red"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; fi
+	@echo "rust wide-scalar clamp negative control: a fixed range left on the whole-unit scale turns exactly the wide-scalar rows red"
+
+tables-rust-wide-text-negative-control: build/conformance-harness build/conformance-rust
+	$(call rust-wide-control,text,$(RUST_WIDE_TEXT_SED),variabletext.go)
+	@grep -q '^  rust / json-hostile: fixed-fraction-too-fine' $(RUST_WIDE_CONTROL)/text/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-fraction-too-fine"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; }
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/text/log | grep -v -E '^  rust / json-hostile: ($(RUST_WIDE_ROWS))' | grep -q .; then \
+		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars' json-hostile rows went red"; cat $(RUST_WIDE_CONTROL)/text/log; exit 1; fi
+	@echo "rust wide-scalar text negative control: rounding a too-fine fixed fraction turns exactly the wide json-hostile rows red"
+
+test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-rust-json-hostile-negative-control
+
+# THE CONFORMANCE WALK CONTROL (docs/PORTING.md I11): the Rust leg's json-read
+# is the table JSON READER's walk, which the EMITTER writes (variabletext.go).
+# tools/sabotage guards every field-key arm of the emitted reader with
+# `if false` in a COPY of that source; `go build -overlay` makes a private
+# compiler from it (I2), every unit the driver reads is regenerated with that
+# compiler into build/rust-conformance-walk-control/generated, the conformance
+# driver is rebuilt against them (its own target directory, so the normal driver
+# is not touched) and the matrix must go red on `rust / json-read` while
+# `json-write` and `wire` stay green: the break is the reader's, and the matrix
+# localizes it. No tracked file is written to.
+RUST_CONFORMANCE_WALK := build/rust-conformance-walk-control
+.PHONY: conformance-negative-control-rust-walk
+conformance-negative-control-rust-walk: build/conformance-harness
+	@rm -rf $(RUST_CONFORMANCE_WALK) && mkdir -p $(RUST_CONFORMANCE_WALK)/driver
+	@go run ./tools/sabotage -name rust-text-walk-field-match \
+		-out $(RUST_CONFORMANCE_WALK)/variabletext.go.txt internal/codegen/rusttable/variabletext.go
+	@cmp -s internal/codegen/rusttable/variabletext.go $(RUST_CONFORMANCE_WALK)/variabletext.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust text-walk sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variabletext.go":"%s/$(RUST_CONFORMANCE_WALK)/variabletext.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_CONFORMANCE_WALK)/overlay.json
+	go build -overlay=$(RUST_CONFORMANCE_WALK)/overlay.json -o $(RUST_CONFORMANCE_WALK)/schema ./cmd/schema
+	@for unit in $(RUST_TABLE_UNITS) tblrt1:test/tables/RT1.schema; do \
+		name=$${unit%%:*}; path=$${unit#*:}; \
+		$(RUST_CONFORMANCE_WALK)/schema generate --lang rust --out $(RUST_CONFORMANCE_WALK)/generated/$$name/src $$path || exit 1; \
+		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$name \
+			> $(RUST_CONFORMANCE_WALK)/generated/$$name/Cargo.toml; \
+	done
+	@grep -rlq 'SABOTAGED: no field key ever matches' $(RUST_CONFORMANCE_WALK)/generated/*/src || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged reader"; exit 1; }
+	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|build/tables-generated-rust/|$(RUST_CONFORMANCE_WALK)/generated/|' \
+		test/conformance/rust/Cargo.toml > $(RUST_CONFORMANCE_WALK)/driver/Cargo.toml
+	cd $(RUST_CONFORMANCE_WALK)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_CONFORMANCE_WALK)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(RUST_CONFORMANCE_WALK)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(RUST_CONFORMANCE_WALK)/driver/driver && chmod +x $(RUST_CONFORMANCE_WALK)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(RUST_CONFORMANCE_WALK)" > $(RUST_CONFORMANCE_WALK)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(RUST_CONFORMANCE_WALK)/drivers.txt \
+			--work $(RUST_CONFORMANCE_WALK)/work > $(RUST_CONFORMANCE_WALK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the sabotaged reader walk left the Rust matrix green"; \
+		cat $(RUST_CONFORMANCE_WALK)/log; exit 1; \
+	fi
+	@cat $(RUST_CONFORMANCE_WALK)/log
+	@grep -q 'rust / json-read' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on rust / json-read"; exit 1; }
+	@grep -q 'json-read     FAIL' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-read is not marked FAIL"; exit 1; }
+	@grep -Eq '^ *json-write +pass' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: json-write did not stay green"; exit 1; }
+	@grep -Eq '^ *wire +pass' $(RUST_CONFORMANCE_WALK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: wire did not stay green"; exit 1; }
+	@echo "Rust walk negative control: a reader that matches no field key is detected by rust / json-read, and by no other surface"
+
+test-rust: conformance-negative-control-rust-walk
 
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's

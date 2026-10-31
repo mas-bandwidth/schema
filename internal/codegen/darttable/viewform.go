@@ -6,6 +6,7 @@ package darttable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -34,8 +35,24 @@ func cardFieldShape(f *ir.Field) string {
 }
 
 // emitDescriptors emits the descriptor classes and the cardDescriptors()
-// registry into the wire library (docs/SPEC-TABLES.md §8.1, §8.3).
+// registry into the wire library (docs/SPEC-TABLES.md §8.1, §8.3). The
+// registry is CONSTANT data (docs/PORTING.md M13): one const map built by the
+// compiler, so a read allocates nothing, runs no initializer and cannot be
+// written to. A field's storage accessors are static members of
+// TableFieldInfo, because a static tear-off is a constant and a closure is not;
+// the members live in that already-claimed class so no schema name can collide
+// with them (SPEC §4.6).
 func (g *wireGen) emitDescriptors() {
+	var rows, access strings.Builder
+	n := 0
+	for _, st := range g.closure {
+		fmt.Fprintf(&rows, "\t\t'%s': TableTypeInfo('%s', <TableFieldInfo>[\n", st.Name, st.Name)
+		for _, f := range st.Fields {
+			emitFieldDescriptor(&rows, &access, f, n)
+			n++
+		}
+		fmt.Fprintf(&rows, "\t\t], %s, %s),\n", viewDartString(st.Doc), viewDartTags(st.Tags))
+	}
 	g.pf("// THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.3): one TableFieldInfo\n")
 	g.pf("// per carried field, with its storage accessors, annotation and wire\n")
 	g.pf("// identity; one TableTypeInfo per table. The optional unit registry\n")
@@ -54,31 +71,28 @@ func (g *wireGen) emitDescriptors() {
 	g.pf("\tfinal List<String> tags;\n")
 	g.pf("\tfinal dynamic Function(dynamic) read;\n")
 	g.pf("\tfinal void Function(dynamic, dynamic) write;\n")
-	g.pf("\tTableFieldInfo(this.name, this.kind, this.shape, this.bound, this.min, this.max, this.json, this.typeName, this.id, this.optional, this.elemSize, this.read, this.write, this.doc, this.tags);\n")
+	g.pf("\tconst TableFieldInfo(this.name, this.kind, this.shape, this.bound, this.min, this.max, this.json, this.typeName, this.id, this.optional, this.elemSize, this.read, this.write, this.doc, this.tags);\n")
+	g.pf("%s", access.String())
 	g.pf("}\n\n")
 	g.pf("final class TableTypeInfo {\n")
 	g.pf("\tfinal String name;\n")
 	g.pf("\tfinal String doc;\n")
 	g.pf("\tfinal List<String> tags;\n")
 	g.pf("\tfinal List<TableFieldInfo> fields;\n")
-	g.pf("\tTableTypeInfo(this.name, this.fields, this.doc, this.tags);\n")
+	g.pf("\tconst TableTypeInfo(this.name, this.fields, this.doc, this.tags);\n")
+	g.pf("\tstatic const Map<String, TableTypeInfo> _all = <String, TableTypeInfo>{\n")
+	g.pf("%s", rows.String())
+	g.pf("\t};\n")
 	g.pf("}\n\n")
-	g.pf("Map<String, TableTypeInfo> cardDescriptors() => <String, TableTypeInfo>{\n")
-	for _, st := range g.closure {
-		g.pf("\t'%s': TableTypeInfo('%s', <TableFieldInfo>[\n", st.Name, st.Name)
-		for _, f := range st.Fields {
-			g.emitFieldDescriptor(f)
-		}
-		g.pf("\t], %s, %s),\n", viewDartString(st.Doc), viewDartTags(st.Tags))
-	}
-	g.pf("};\n\n")
+	g.pf("Map<String, TableTypeInfo> cardDescriptors() => TableTypeInfo._all;\n\n")
 }
 
-// emitFieldDescriptor emits one field's TableFieldInfo row: its name, its
-// kind, its shape, and its declared bound — the string(N) length, or the
-// declared min/max of a ranged integer, null where the declaration bounds
-// nothing (§8.1).
-func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
+// emitFieldDescriptor emits one field's TableFieldInfo row into rows — its
+// name, its kind, its shape, and its declared bound: the string(N) length, or
+// the declared min/max of a ranged integer, null where the declaration bounds
+// nothing (§8.1) — and its two storage accessors into access, as the n-th pair
+// of static members of TableFieldInfo.
+func emitFieldDescriptor(rows, access *strings.Builder, f *ir.Field, n int) {
 	bound := "null"
 	min := "null"
 	max := "null"
@@ -94,9 +108,11 @@ func (g *wireGen) emitFieldDescriptor(f *ir.Field) {
 		max = dartBoundLiteral(f.IntMax)
 	}
 	member := fieldMember(f)
-	g.pf("\t\tTableFieldInfo(%s, %d, %q, %s, %s, %s, %s, %s, %s, %t, %s, (dynamic v) => v.%s, (dynamic v, dynamic x) { v.%s = x; }, %s, %s), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design\n",
+	fmt.Fprintf(access, "\tstatic dynamic _r%d(dynamic v) => v.%s; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design\n", n, member)
+	fmt.Fprintf(access, "\tstatic void _w%d(dynamic v, dynamic x) { v.%s = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design\n", n, member)
+	fmt.Fprintf(rows, "\t\t\tTableFieldInfo(%s, %d, %q, %s, %s, %s, %s, %s, %s, %t, %s, TableFieldInfo._r%d, TableFieldInfo._w%d, %s, %s),\n",
 		viewDartString(f.Name), cardFieldKind(f), cardFieldShape(f), bound, min, max,
 		viewDartString(ir.TableFieldJsonKey(f)), viewDartString(ir.TableTypeSpelling(f)),
 		dartU64Literal(ir.TableFieldWireId(f)), f.Type.Optional, viewDartElementSize(f),
-		member, member, viewDartString(f.Doc), viewDartTags(f.Tags))
+		n, n, viewDartString(f.Doc), viewDartTags(f.Tags))
 }

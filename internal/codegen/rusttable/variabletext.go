@@ -197,6 +197,38 @@ pub fn json_format_g(v: f64, prec: usize) -> String {
     trim(&format!("{:.*}", (prec as i32 - 1 - exp) as usize, v))
 }
 
+/// A FIXED value's text (docs/SPEC-TABLES.md §16.2): WHOLE UNITS, the shortest
+/// EXACT decimal with at least one fractional digit (` + "`1.0`, `-0.25`" + `),
+/// spelled from the raw integer at F fractional bits with no float between.
+/// A signed raw value arrives sign-extended into the u128.
+#[allow(dead_code)]
+pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
+    let mut m = raw;
+    if signed && (raw as i128) < 0 {
+        out.push('-');
+        m = raw.wrapping_neg();
+    }
+    let whole = m.checked_shr(frac).unwrap_or(0);
+    out.push_str(&whole.to_string());
+    out.push('.');
+    let mask = if frac >= 128 { u128::MAX } else { (1u128 << frac) - 1 };
+    let mut f = m & mask;
+    if f == 0 {
+        out.push('0');
+        return;
+    }
+    while f != 0 {
+        // f × 10 across 132 bits: the digit is what rises past bit F
+        let lo = (f as u64 as u128) * 10;
+        let hi = (f >> 64) * 10 + (lo >> 64);
+        let low = (hi << 64) | (lo & 0xffff_ffff_ffff_ffff);
+        let carry = hi >> 64;
+        let digit = if frac >= 128 { carry } else { (low >> frac) | (carry << (128 - frac)) };
+        out.push((b'0' + digit as u8) as char);
+        f = low & mask;
+    }
+}
+
 /// A float at the SHORTEST precision that reads back as the same value at the
 /// field's own width (docs/SPEC-TABLES.md §16.2), exactly as the reference
 /// writes it. A non-finite value has no JSON spelling; the writer marks it.
@@ -271,13 +303,15 @@ pub struct Jr<'a> {
     pub clamped: u64,
     pub duplicate: u64,
     pub malformed: bool,
+    /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
+    pub zero: bool,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
-        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, labels: HashMap::new() }
+        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -391,12 +425,18 @@ impl<'a> Jr<'a> {
                             && self.b[self.p] == b'\\'
                             && self.b[self.p + 1] == b'u'
                         {
+                            let mark = self.p;
                             self.p += 2;
                             let lo = self.hex4();
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
+                            } else {
+                                // a lone lead surrogate rides as itself, and the
+                                // escape after it is read on its own
+                                self.p = mark;
                             }
                         }
+                        self.zero |= cp == 0;
                         let ch = char::from_u32(cp).unwrap_or('\u{fffd}');
                         let mut buf = [0u8; 4];
                         out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
@@ -411,7 +451,28 @@ impl<'a> Jr<'a> {
                 self.p += 1;
             }
         }
-        Some(String::from_utf8_lossy(&out).into_owned())
+        // §16.3: bytes that are not well-formed UTF-8 spell no code point,
+        // so the read refuses them by name (string_not_utf8) at every string
+        // site, before any clamp, and never replaces them with U+FFFD
+        match String::from_utf8(out) {
+            Ok(s) => Some(s),
+            Err(_) => {
+                self.malformed = true;
+                None
+            }
+        }
+    }
+    /// read_text reads a string the read PLACES in text storage: a U+0000 in
+    /// it refuses the read (text_holds_zero, docs/SPEC-TABLES.md §16.3), while
+    /// a string the read only compares or skips goes through read_string.
+    pub fn read_text(&mut self) -> Option<String> {
+        self.zero = false;
+        let s = self.read_string()?;
+        if self.zero {
+            self.malformed = true;
+            return None;
+        }
+        Some(s)
     }
     pub fn read_null(&mut self) -> bool {
         self.space();
@@ -523,64 +584,159 @@ impl<'a> Jr<'a> {
         }
         Some(if neg { -(mag as i128) } else { mag as i128 })
     }
-    pub fn read_i128(&mut self) -> Option<i128> {
+    /// A WIDE value (docs/SPEC-TABLES.md §16.2): a 128-bit integer (frac 0)
+    /// or a fixed(I, F)'s raw integer, read EXACTLY from any number token whose
+    /// value the Q I.F grid holds — ` + "`2`, `2.0` and `20e-1`" + ` are one value —
+    /// with no binary float between, as two's complement in a u128. A digit
+    /// the grid cannot hold is kind_mismatch, the wrong shape, never rounded;
+    /// a magnitude past 128 bits saturates and counts clamped; a value of
+    /// another JSON type is kind_mismatch, skipped. The caller clamps to the
+    /// field's raw range.
+    pub fn read_wide(&mut self, signed: bool, frac: u32) -> Option<u128> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
         }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            return Some(match t.parse::<i128>() {
-                Ok(v) => v,
-                Err(_) => {
-                    self.clamped += 1;
-                    if t.starts_with('-') { i128::MIN } else { i128::MAX }
-                }
-            });
+        let token = self.number_token()?;
+        let t = token.as_bytes();
+        let negative = t.first() == Some(&b'-');
+        let mut i = usize::from(negative);
+        let int_start = i;
+        while i < t.len() && t[i].is_ascii_digit() {
+            i += 1;
         }
-        let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
-            self.kind_mismatch += 1;
-            return None;
-        }
-        Some(f as i128)
-    }
-    pub fn read_u128(&mut self) -> Option<u128> {
-        let c = self.peek();
-        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.kind_mismatch += 1;
-            self.skip_value();
-            return None;
-        }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            if let Some(rest) = t.strip_prefix('-') {
-                if rest.bytes().all(|b| b == b'0') {
-                    return Some(0);
-                }
-                self.clamped += 1;
-                return Some(0);
+        let int_len = i - int_start;
+        let mut frac_start = i;
+        let mut frac_len = 0;
+        if i < t.len() && t[i] == b'.' {
+            i += 1;
+            frac_start = i;
+            while i < t.len() && t[i].is_ascii_digit() {
+                i += 1;
             }
-            return Some(match t.parse::<u128>() {
-                Ok(v) => v,
-                Err(_) => {
-                    self.clamped += 1;
-                    u128::MAX
-                }
-            });
+            frac_len = i - frac_start;
         }
-        let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
+        let mut exp: i64 = 0;
+        if i < t.len() && (t[i] == b'e' || t[i] == b'E') {
+            i += 1;
+            let mut eneg = false;
+            if i < t.len() && (t[i] == b'-' || t[i] == b'+') {
+                eneg = t[i] == b'-';
+                i += 1;
+            }
+            while i < t.len() && t[i].is_ascii_digit() {
+                if exp < 100000 {
+                    exp = exp * 10 + i64::from(t[i] - b'0');
+                }
+                i += 1;
+            }
+            if eneg {
+                exp = -exp;
+            }
+        }
+        let digit = |k: usize| if k < int_len { t[int_start + k] } else { t[frac_start + k - int_len] };
+        let (mut start, mut end) = (0usize, int_len + frac_len);
+        let mut point = int_len as i64 + exp;
+        while start < end && digit(start) == b'0' {
+            start += 1;
+            point -= 1;
+        }
+        while end > start && digit(end - 1) == b'0' {
+            end -= 1;
+        }
+        let signed_max = i128::MAX as u128;
+        let signed_min = 1u128 << 127;
+        let mut raw = 0u128;
+        let mut saturated = false;
+        if start == end {
+            // zero, in any spelling, -0 included
+        } else if point > 40 {
+            saturated = true;
+            raw = match (negative, signed) {
+                (false, true) => signed_max,
+                (false, false) => u128::MAX,
+                (true, true) => signed_min,
+                (true, false) => 0,
+            };
+        } else if point < -40 {
             self.kind_mismatch += 1;
             return None;
+        } else {
+            // the decimal fraction, at most 128 places: Q I.F holds I + F <= 128
+            // bits, so a nonzero digit past the 128th place is inexact
+            let mut fd = [0u8; 128];
+            let mut n = point.min(0).unsigned_abs() as usize;
+            let mut k = (point.max(0) as usize) + start;
+            while k < end {
+                if n >= 128 {
+                    if digit(k) != b'0' {
+                        self.kind_mismatch += 1;
+                        return None;
+                    }
+                } else {
+                    fd[n] = digit(k) - b'0';
+                    n += 1;
+                }
+                k += 1;
+            }
+            let mut fraction = 0u128;
+            for _ in 0..frac {
+                let mut carry = 0u8;
+                for d in fd[..n].iter_mut().rev() {
+                    let x = *d * 2 + carry;
+                    *d = x % 10;
+                    carry = x / 10;
+                }
+                fraction = (fraction << 1) | u128::from(carry);
+            }
+            if fd[..n].iter().any(|&d| d != 0) {
+                self.kind_mismatch += 1;
+                return None;
+            }
+            let mut whole = 0u128;
+            let mut k = start as i64;
+            while k < start as i64 + point && !saturated {
+                let d = if (k as usize) < end { u128::from(digit(k as usize) - b'0') } else { 0 };
+                match whole.checked_mul(10).and_then(|w| w.checked_add(d)) {
+                    Some(w) => whole = w,
+                    None => saturated = true,
+                }
+                k += 1;
+            }
+            if !saturated && frac > 0 && whole.checked_shr(128 - frac).unwrap_or(0) != 0 {
+                saturated = true;
+            }
+            if !saturated {
+                raw = whole.checked_shl(frac).unwrap_or(0) | fraction;
+            }
+            if signed {
+                if !saturated && !negative && raw >> 127 != 0 {
+                    saturated = true;
+                }
+                if !saturated && negative && raw > signed_min {
+                    saturated = true;
+                }
+                if saturated {
+                    raw = if negative { signed_min } else { signed_max };
+                } else if negative {
+                    raw = raw.wrapping_neg();
+                }
+            } else {
+                if saturated {
+                    raw = u128::MAX;
+                }
+                if negative && raw != 0 {
+                    raw = 0;
+                    saturated = true;
+                }
+            }
         }
-        if f < 0.0 {
+        if saturated {
             self.clamped += 1;
-            return Some(0);
         }
-        Some(f as u128)
+        Some(raw)
     }
     /// A float field's value (docs/SPEC-TABLES.md §16.2).
     pub fn read_float(&mut self) -> Option<f64> {
@@ -799,9 +955,12 @@ func emitEnumText(b *strings.Builder, e *ir.Enum) {
 func (g *gen) emitTextCount(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "#[allow(unused_variables, dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, w: &mut Jw) {\n", fn(st.Name, "json_count"), st.Name)
+	conds := guardConds(st, "v")
 	for _, f := range st.Fields {
 		x := "v." + ir.RustSnake(f.Name)
-		g.emitFieldTextCount(b, f, x, "    ")
+		// a field under a false guard has no key in the text (§4, §16.1), so
+		// it names no node either
+		guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldTextCount(b, f, x, bodyIndent) })
 	}
 	fmt.Fprintf(b, "}\n\n")
 }
@@ -862,32 +1021,39 @@ func (g *gen) emitTextWrite(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        w.out.push_str(&label.to_string());\n")
 	fmt.Fprintf(b, "        sep = true;\n")
 	fmt.Fprintf(b, "    }\n")
+	conds := guardConds(st, "v")
 	for _, f := range st.Fields {
-		if f.Type.Optional {
-			inner := *f
-			inner.Type.Optional = false
-			fmt.Fprintf(b, "    if let Some(opt) = &v.%s {\n", ir.RustSnake(f.Name))
-			fmt.Fprintf(b, "        if sep { w.out.push(','); }\n")
-			fmt.Fprintf(b, "        sep = true;\n")
-			fmt.Fprintf(b, "        json_newline(&mut w.out, depth + 1);\n")
-			fmt.Fprintf(b, "        json_escape(%q, &mut w.out);\n", g.fieldKey(f))
-			fmt.Fprintf(b, "        w.out.push_str(\": \");\n")
-			g.emitTextWriteValue(b, &inner, "(*opt)", "depth + 1", "        ")
-			fmt.Fprintf(b, "    }\n")
-			continue
-		}
-		fmt.Fprintf(b, "    if sep { w.out.push(','); }\n")
-		fmt.Fprintf(b, "    sep = true;\n")
-		fmt.Fprintf(b, "    json_newline(&mut w.out, depth + 1);\n")
-		fmt.Fprintf(b, "    json_escape(%q, &mut w.out);\n", g.fieldKey(f))
-		fmt.Fprintf(b, "    w.out.push_str(\": \");\n")
-		g.emitTextWriteValue(b, f, "v."+ir.RustSnake(f.Name), "depth + 1", "    ")
+		// a field under a false guard is not written (§4, §16.1): no key
+		guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldTextWrite(b, f) })
 	}
 	fmt.Fprintf(b, "    if sep {\n")
 	fmt.Fprintf(b, "        json_newline(&mut w.out, depth);\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    w.out.push('}');\n")
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// emitFieldTextWrite emits one field's key and value in the JSON write.
+func (g *gen) emitFieldTextWrite(b *strings.Builder, f *ir.Field) {
+	if f.Type.Optional {
+		inner := *f
+		inner.Type.Optional = false
+		fmt.Fprintf(b, "    if let Some(opt) = &v.%s {\n", ir.RustSnake(f.Name))
+		fmt.Fprintf(b, "        if sep { w.out.push(','); }\n")
+		fmt.Fprintf(b, "        sep = true;\n")
+		fmt.Fprintf(b, "        json_newline(&mut w.out, depth + 1);\n")
+		fmt.Fprintf(b, "        json_escape(%q, &mut w.out);\n", g.fieldKey(f))
+		fmt.Fprintf(b, "        w.out.push_str(\": \");\n")
+		g.emitTextWriteValue(b, &inner, "(*opt)", "depth + 1", "        ")
+		fmt.Fprintf(b, "    }\n")
+		return
+	}
+	fmt.Fprintf(b, "    if sep { w.out.push(','); }\n")
+	fmt.Fprintf(b, "    sep = true;\n")
+	fmt.Fprintf(b, "    json_newline(&mut w.out, depth + 1);\n")
+	fmt.Fprintf(b, "    json_escape(%q, &mut w.out);\n", g.fieldKey(f))
+	fmt.Fprintf(b, "    w.out.push_str(\": \");\n")
+	g.emitTextWriteValue(b, f, "v."+ir.RustSnake(f.Name), "depth + 1", "    ")
 }
 
 func (g *gen) fieldKey(f *ir.Field) string {
@@ -1020,6 +1186,9 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 			fmt.Fprintf(b, "%sjson_float(%s as f64, true, w);\n", ind, x)
 		case ir.TFloat64:
 			fmt.Fprintf(b, "%sjson_float(%s, false, w);\n", ind, x)
+		case ir.TFixed:
+			// WHOLE UNITS, exact, from the raw integer (§16.2)
+			fmt.Fprintf(b, "%sjson_fixed(&mut w.out, %s, %v, %d);\n", ind, wideRaw(f, x), f.Type.Signed, f.Type.FracBits)
 		default:
 			fmt.Fprintf(b, "%sw.out.push_str(&%s.to_string());\n", ind, x)
 		}
@@ -1276,7 +1445,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", in, dst)
 		fmt.Fprintf(b, "%selse if jr.peek() == b'\"' {\n", in)
 		if f.Type.Kind == ir.TString {
-			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() { %s = Some(Rc::from(s)); }\n", in, dst)
+			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_text() { %s = Some(Rc::from(s)); }\n", in, dst)
 		} else {
 			fmt.Fprintf(b, "%s    if let Some(s) = jr.read_string() {\n", in)
 			fmt.Fprintf(b, "%s        match json_unb64(&s) { Some(d) => %s = Some(Rc::from(d)), None => { jr.kind_mismatch += 1; %s = None; } }\n", in, dst, dst)
@@ -1284,10 +1453,10 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		}
 		fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vString:
-		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_string() { %s = json_clamp(s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
+		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_clamp(s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
 		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vWString:
-		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_string() { %s = json_wide_clamp(&s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
+		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_wide_clamp(&s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
 		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vBytes:
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)
@@ -1353,26 +1522,8 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x; } else { jr.kind_mismatch += 1; }\n", in, dst)
 			fmt.Fprintf(b, "%s}\n", in)
 		default:
-			if f.Type.Width == 128 {
-				if f.Type.Signed {
-					fmt.Fprintf(b, "%sif let Some(mut x) = jr.read_i128() {\n", in)
-					if lo, hi, ok := intRange(f); ok {
-						fmt.Fprintf(b, "%s    if x < %si128 { x = %si128; jr.clamped += 1; } else if x > %si128 { x = %si128; jr.clamped += 1; }\n", in, lo, lo, hi, hi)
-					} else {
-						fmt.Fprintf(b, "%s    let _ = &mut x;\n", in)
-					}
-					fmt.Fprintf(b, "%s    %s = x;\n", in, dst)
-					fmt.Fprintf(b, "%s}\n", in)
-				} else {
-					fmt.Fprintf(b, "%sif let Some(mut x) = jr.read_u128() {\n", in)
-					if lo, hi, ok := intRange(f); ok {
-						fmt.Fprintf(b, "%s    if x < %su128 { x = %su128; jr.clamped += 1; } else if x > %su128 { x = %su128; jr.clamped += 1; }\n", in, lo, lo, hi, hi)
-					} else {
-						fmt.Fprintf(b, "%s    let _ = &mut x;\n", in)
-					}
-					fmt.Fprintf(b, "%s    %s = x;\n", in, dst)
-					fmt.Fprintf(b, "%s}\n", in)
-				}
+			if f.Type.Kind == ir.TFixed || f.Type.Width == 128 {
+				emitTextReadWide(b, f, dst, in)
 				return
 			}
 			lo, hi := textIntRange(f)
@@ -1411,9 +1562,16 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "}\n\n")
 
 	read := fn(st.Name, "from_json")
+	readBytes := fn(st.Name, "from_json_bytes")
 	fmt.Fprintf(b, "/// %s — the tolerant read of one text into one %s (docs/SPEC-TABLES.md §16.2).\n", read, st.Name)
 	fmt.Fprintf(b, "pub fn %s(text: &str, report: &mut TableReport) -> Option<%s> {\n", read, st.Name)
-	fmt.Fprintf(b, "    let mut jr = Jr::new(text.as_bytes());\n")
+	fmt.Fprintf(b, "    %s(text.as_bytes(), report)\n", readBytes)
+	fmt.Fprintf(b, "}\n\n")
+	fmt.Fprintf(b, "/// %s — the same read over the text's raw bytes, which a `&str` cannot\n", readBytes)
+	fmt.Fprintf(b, "/// hold ill-formed: bytes that are not well-formed UTF-8 refuse the read\n")
+	fmt.Fprintf(b, "/// (string_not_utf8, docs/SPEC-TABLES.md §16.3) rather than reading as U+FFFD.\n")
+	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
+	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    %s(&mut jr, &mut v);\n", fn(st.Name, "json_read"))
 	fmt.Fprintf(b, "    jr.space();\n")
@@ -1444,4 +1602,71 @@ func unparen(x string) string {
 		return x[1 : len(x)-1]
 	}
 	return x
+}
+
+// wideRaw is a wide value's raw integer as the u128 the text helpers take: a
+// signed storage sign-extended through i128 (docs/SPEC-TABLES.md §16.2).
+func wideRaw(f *ir.Field, x string) string {
+	t := scalarRust(f)
+	if f.Type.Signed {
+		return rustCast(x, t, "i128") + " as u128"
+	}
+	if t == "u128" {
+		return x
+	}
+	return x + " as u128"
+}
+
+// emitTextReadWide emits the read of a WIDE value — a 128-bit integer or a
+// fixed(I, F) — into dst (docs/SPEC-TABLES.md §16.2): the exact raw integer
+// from any number token (Jr::read_wide), then the field's declared range on
+// the RAW scale, or, with none declared, the storage's own, each counted
+// clamped.
+func emitTextReadWide(b *strings.Builder, f *ir.Field, dst, in string) {
+	t := scalarRust(f)
+	wide := "u128"
+	if f.Type.Signed {
+		wide = "i128"
+	}
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok && f.Type.Width < 128 {
+		lo, hi = textStorageRange(f)
+		ok = true
+	}
+	fmt.Fprintf(b, "%sif let Some(raw) = jr.read_wide(%v, %d) {\n", in, f.Type.Signed, f.Type.FracBits)
+	if !ok {
+		fmt.Fprintf(b, "%s    %s = %s;\n", in, dst, rustCastStmt("raw", "u128", t))
+		fmt.Fprintf(b, "%s}\n", in)
+		return
+	}
+	// an end ON the u128/i128 limit cannot fire, and clippy denies the
+	// comparison (absurd_extreme_comparisons): it is elided
+	wmin, wmax := textStorageRange(&ir.Field{Type: ir.FieldType{Width: 128, Signed: f.Type.Signed}})
+	var clamps []string
+	if lo.Cmp(wmin) > 0 {
+		clamps = append(clamps, fmt.Sprintf("if x < %s%s { x = %s%s; jr.clamped += 1; }", lo, wide, lo, wide))
+	}
+	if hi.Cmp(wmax) < 0 {
+		clamps = append(clamps, fmt.Sprintf("if x > %s%s { x = %s%s; jr.clamped += 1; }", hi, wide, hi, wide))
+	}
+	if len(clamps) == 0 {
+		fmt.Fprintf(b, "%s    %s = %s;\n", in, dst, rustCastStmt("raw", "u128", t))
+		fmt.Fprintf(b, "%s}\n", in)
+		return
+	}
+	fmt.Fprintf(b, "%s    let mut x = %s;\n", in, rustCastStmt("raw", "u128", wide))
+	fmt.Fprintf(b, "%s    %s\n", in, strings.Join(clamps, " else "))
+	fmt.Fprintf(b, "%s    %s = %s;\n", in, dst, rustCastStmt("x", wide, t))
+	fmt.Fprintf(b, "%s}\n", in)
+}
+
+// textStorageRange is a storage width's own range, for a wide value no
+// declaration bounds.
+func textStorageRange(f *ir.Field) (lo, hi *big.Int) {
+	w := uint(f.Type.Width)
+	if f.Type.Signed {
+		lo = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), w-1))
+		return lo, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+	}
+	return new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
 }

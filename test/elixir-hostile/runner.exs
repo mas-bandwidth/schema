@@ -33,6 +33,7 @@ tables = %{
   "tables/scalars" => Scalardemo.Table,
   "tables/stream" => Streamdemo.Table,
   "tables/maps" => Mapdemo.Table,
+  "tables/lists" => Listdemo.Table,
   "schemas/probe.schema" => Probe.Table
 }
 

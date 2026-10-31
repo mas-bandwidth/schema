@@ -28,10 +28,10 @@ on:
 # them: a sibling merging mid-day must not change what a certify run proves.
 # The three files move together; bumping a pin here is the same edit as there.
 env:
-  SERIALIZE_TAG: v2.1.0
+  SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.0.2
-  SERIALIZE_GO_TAG: v2.0.1
-  SERIALIZE_RS_TAG: v3.1.0
+  SERIALIZE_GO_TAG: v2.1.1
+  SERIALIZE_RS_TAG: v5.0.0
   SERIALIZE_CS_TAG: v2.0.1
   SERIALIZE_JS_TAG: v2.0.1
 
@@ -123,6 +123,57 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
+
+      # THE LOBSTER PIN, installed as make/lobster.mk's dist-lobster does, at
+      # the row's version; the linux release links libOpenGL and libGLX, which
+      # the hosted ubuntu image does not carry.
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
+      # THE SQUIRREL STEP, as ci-full.yml's conformance job has it: the pinned
+      # interpreter is built from source by `make dist-squirrel` at the sha256
+      # make/squirrel.mk names, and put on PATH so the leg's `SQ=sq` (ci.json)
+      # resolves. Without it the certify run's squirrel row refuses at its
+      # toolchain gate.
+      - name: build and install the pinned Squirrel interpreter
+        if: matrix.squirrel != ''
+        run: |
+          make dist-squirrel
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$HOME/.local/bin/sq"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # THE LUA STEP, as ci-full.yml's conformance job has it: the pinned
+      # PUC-Rio interpreter is built from source by `make dist-lua` at the
+      # sha256 make/lua.mk names, and put on PATH so the leg's `LUA=lua`
+      # (ci.json) resolves. Without it the driver fails with "lua: not found".
+      - name: install the pinned Lua interpreter
+        if: matrix.lua != ''
+        run: |
+          make dist-lua
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$HOME/.local/bin/lua"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # THE LUAU PIN, as ci-full.yml's conformance job installs it: make/luau.mk's
+      # dist-luau, the sha256 refused before anything is unpacked, into the
+      # dist/luau-<version>/ path the driver runs. Without it the driver fails
+      # with "dist/luau-<version>/luau: not found".
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+
 
       # The two halves split so a failing build fails the run before the
       # harness's overhead shows in the log; both run with the row's env so

@@ -17,6 +17,7 @@ name: schema Dart generated strict analyze gate
 
 on:
   push:
+    branches: [ main, dev, fixed-table-form ]
   pull_request:
   schedule:
     - cron: '23 7 * * *'
@@ -26,8 +27,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: schema-dart-strict-analyze-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   fast:

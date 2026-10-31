@@ -582,6 +582,9 @@ public final class BenchBitsVariable {
         }
         w.put8(0);
         w.trailer();
+        if (w.ids.nonFinite) {
+            return null;
+        }
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 

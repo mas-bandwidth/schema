@@ -1,0 +1,5 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
+# Paths are repository-relative.
+
+names bench/luau/main.luau 1 shape-blind leg: the generated root `BenchMixed` named once, as the string its New/Write/Read functions are looked up by (callsite)

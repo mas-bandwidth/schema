@@ -12,11 +12,11 @@ func init() {
 
 var packetArmSabotages = map[string][]edit{
 	"packet-arm-zero-cpp": {{
-		old: `		g.pf("            ::new ( (void*) &value.%s ) %s{};\n", v.Name, v.Type)`,
-		new: `		g.pf("            ::new ( (void*) &value.%s ) %s{};\n", v.Name, v.Type)
+		old: `		g.pf("            ::new ( static_cast<void *>( &value.%s ) ) %s{};\n", v.Name, v.Type)`,
+		new: `		g.pf("            ::new ( static_cast<void *>( &value.%s ) ) %s{};\n", v.Name, v.Type)
 		// SABOTAGED: keep the payload's lifetime valid, then erase its defaults.
 		g.needsCstring = true
-		g.pf("            memset( (void*) &value.%s, 0, sizeof( value.%s ) );\n", v.Name, v.Name)`,
+		g.pf("            memset( static_cast<void *>( &value.%s ), 0, sizeof( value.%s ) );\n", v.Name, v.Name)`,
 	}},
 	"packet-arm-zero-c": {{
 		old: `			g.pf("            value->as.%s = new_%s();\n", v.Name, snake(v.Type))`,

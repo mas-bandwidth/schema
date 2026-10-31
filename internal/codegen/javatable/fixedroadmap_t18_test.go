@@ -371,6 +371,7 @@ public final class @CLASS@ {
            .append(" kindMismatch=").append(report.kindMismatch)
            .append(" widened=").append(report.widened)
            .append(" clamped=").append(report.clamped)
+           .append(" nonFiniteFloat=").append(report.nonFiniteFloat)
            .append('\n');
         for (int i = 0; i < n; i++) { walk("r" + i, vals[i]); }
         System.out.print(out);
@@ -764,6 +765,7 @@ func t18R27(t *testing.T) {
 	}
 
 	_, javaBin := javaTools(t)
+	nonFinite := manifestNonFinite(t, corpus)
 	var loaded, clampedKeys []string
 	values := 0
 	for _, tk := range tasks {
@@ -774,6 +776,17 @@ func t18R27(t *testing.T) {
 			continue
 		}
 		l := t18Parse(t, string(out))
+		if leaf := nonFinite[m.File]; leaf != "" {
+			// A REFERENCE FILE HOLDING A NaN OR AN INFINITY is a must-refuse
+			// vector under the finite rule (docs/SPEC-TABLES.md §3.3) until
+			// tables-finite/cpp regenerates the corpus: the load refuses it by
+			// name and there is no value to compare.
+			if l.n != -1 || !l.refused || l.reason != "nonFiniteFloat" || !strings.HasSuffix(l.nonFiniteFloat, "."+leaf) {
+				t.Errorf("R27: %s: the reference's non-finite %s was not refused by name: n=%d refused=%v reason=%s nonFiniteFloat=%s", m.File, leaf, l.n, l.refused, l.reason, l.nonFiniteFloat)
+			}
+			refused = append(refused, m.File+" (a non-finite "+leaf+", refused by name as nonFiniteFloat: owed finite by tables-finite/cpp)")
+			continue
+		}
 		if l.n != int(m.Records) || l.refused || l.malformed {
 			t.Errorf("R27: %s: the load answered n=%d refused=%v reason=%s malformed=%v, the manifest holds %d records", m.File, l.n, l.refused, l.reason, l.malformed, m.Records)
 			continue

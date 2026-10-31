@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -194,6 +195,22 @@ func TestGoldenSourceElixir(t *testing.T) {
 	pinDir(t, filepath.Join(goldenDir, "elixir"), files)
 }
 
+// TestGoldenSourceLua pins the generated Lua byte-for-byte (SPEC §7.2 gate 1,
+// tenth target): the unit modules and the serialize runtime written beside them.
+func TestGoldenSourceLua(t *testing.T) {
+	u := loadCorpus(t)
+	files := generate(t, u, "lua", nil)
+	pinDir(t, filepath.Join(goldenDir, "lua"), files)
+}
+
+// TestGoldenSourceLuau pins the generated Luau byte-for-byte (SPEC §7.2
+// gate 1, tenth target).
+func TestGoldenSourceLuau(t *testing.T) {
+	u := loadCorpus(t)
+	files := generate(t, u, "luau", nil)
+	pinDir(t, filepath.Join(goldenDir, "luau"), files)
+}
+
 // The enum `Count` export moves NEITHER WIRE. Count is generated-code
 // surface: it enters no wire-shape projection and no cook projection, so the
 // packet wire's protocol id and the table wire's build version must both
@@ -211,8 +228,8 @@ func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 		protocolId   uint64
 		buildVersion uint64
 	}{
-		{"examples", corpusDir, 0xeb26c970fde3fd71, 0x837f65ae78e49c44},
-		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0xed877961fe248833},
+		{"examples", corpusDir, 0xeb26c970fde3fd71, 0x61b2298959c31bb9},
+		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0x0443c050d3bac7a8},
 	} {
 		t.Run(unit.name, func(t *testing.T) {
 			u := loadCorpusDir(t, unit.dir)
@@ -298,7 +315,7 @@ func TestGoldenWideSource(t *testing.T) {
 
 // The packet file is isolated from examples-wide's table kind 33 and its
 // baseline. Each port pins the exact same packet declarations as C++.
-var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir"}
+var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lua", "lobster", "squirrel", "luau"}
 
 func TestGoldenPacketWideSource(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join(corpusWideDir, "WideText.schema"))
@@ -323,6 +340,15 @@ func TestGoldenPacketWideSource(t *testing.T) {
 			t.Errorf("%s must refuse unported packet wide text by name: %v", target, err)
 		}
 	}
+	// moo carries packet wide text in its emitter (test/packet-wide/moo); its
+	// compiler target stays behind the schema_leg_moo tag until the port joins
+	// the builtins, so its pin comes from the emitter. Only the schema's own
+	// module: the runtime beside it is SERIALIZE_PIN's (internal/codegen/moo).
+	mooFiles, err := moo.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinDir(t, filepath.Join(goldenDir, "packet-wide", "moo"), map[string][]byte{"WideText.moo": mooFiles["WideText.moo"]})
 	pinDir(t, filepath.Join(goldenDir, "packet-wide", "identity"), map[string][]byte{"id.txt": []byte(fmt.Sprintf("0x%016x\n", u.ProtocolId))})
 }
 
@@ -345,9 +371,10 @@ func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 		// refuse THIS unit only for its `was =` arm. Every built-in target now
 		// carries the construct, so the loop is the guard for the next target;
 		// compiler's TestWideTextInATableClosureRefusesMissingCarriers pins the
-		// by-name refusal itself.
+		// by-name refusal itself. Lua joined as a builtin on 2026-10-28
+		// and generates this unit too.
 		switch target {
-		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir":
+		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir", "lua", "lobster", "squirrel", "luau":
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

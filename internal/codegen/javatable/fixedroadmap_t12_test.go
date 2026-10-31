@@ -278,7 +278,7 @@ public final class ProbeFu1Oracle {
         v[0].pick.labelled.trail = 202;
         v[0].tail = 11;
         v[0].mark = (short) -1;
-        v[0].heat = Float.intBitsToFloat(0x7F800001);
+        v[0].heat = Float.intBitsToFloat(Integer.parseUnsignedInt(args[1], 16));
 
         v[1].flag = false;
         v[1].notePresent = false;
@@ -287,7 +287,7 @@ public final class ProbeFu1Oracle {
         v[1].pick.plain.n = 303;
         v[1].tail = 12;
         v[1].mark = (short) -32768;
-        v[1].heat = Float.intBitsToFloat(0xFFA5A5A5);
+        v[1].heat = Float.intBitsToFloat(Integer.parseUnsignedInt(args[2], 16));
 
         v[2].flag = true;
         v[2].note = -7;
@@ -298,9 +298,24 @@ public final class ProbeFu1Oracle {
         v[2].pick.labelled.trail = 606;
         v[2].tail = 13;
         v[2].mark = (short) 32767;
-        v[2].heat = 1.5f;
+        v[2].heat = Float.intBitsToFloat(Integer.parseUnsignedInt(args[3], 16));
 
         byte[] got = new byte[tblfu1.FuRootFixed.measure(3)];
+        // THE MANIFEST'S heat VALUES ARE THE REFERENCE'S OWN. While the C++
+        // dump still writes a NaN there (owed by tables-finite/cpp), the finite
+        // rule (docs/SPEC-TABLES.md §3.3) makes the file a must-refuse vector:
+        // the writer refuses the value and the reader refuses the file by name.
+        if (args[4].equals("nonfinite")) {
+            check(tblfu1.FuRootFixed.save(v, 3, got) == -1, "fu1: the writer refuses a non-finite heat");
+            tblfu1.TableFixed.Report rep = new tblfu1.TableFixed.Report();
+            int n = tblfu1.FuRootFixed.load(new tblfu1.FuRootFixed.Value[] {
+                    new tblfu1.FuRootFixed.Value(), new tblfu1.FuRootFixed.Value(), new tblfu1.FuRootFixed.Value() },
+                    3, ref, tblfu1.TableFixed.plan(1 << 14), new short[1 << 14], tblfu1.FuRootFixed.image(), rep);
+            check(n == -1 && rep.refused && rep.reason == tblfu1.TableFixed.Reason.nonFiniteFloat
+                    && "FuRoot.heat".equals(rep.nonFiniteFloat), "fu1: the reader refuses the non-finite heat by name");
+            System.out.println("OK fu1.bin");
+            return;
+        }
         check(tblfu1.FuRootFixed.save(v, 3, got) == got.length, "fu1 save length");
         check(Arrays.equals(got, ref), "fu1 saved bytes must equal C++ reference fu1.bin");
 
@@ -327,7 +342,17 @@ public final class ProbeFu1Oracle {
 }
 `
 	fu1Classes := t12BuildRegistered(t, "tblfu1", map[string]string{"FU1.schema": string(fu1Bytes)}, "ProbeFu1Oracle", fu1Probe)
-	fu1Out := t12RunJava(t, fu1Classes, "ProbeFu1Oracle", filepath.Join(corpus, "fu1.bin"))
+	rows := manifestRows(t, corpus)
+	nonFinite := manifestNonFinite(t, corpus)
+	spell := func(file string) string {
+		if nonFinite[file] != "" {
+			return "nonfinite"
+		}
+		return "finite"
+	}
+	fu1Out := t12RunJava(t, fu1Classes, "ProbeFu1Oracle", filepath.Join(corpus, "fu1.bin"),
+		manifestBitsHex(t, rows, "fu1.bin", "r0.heat"), manifestBitsHex(t, rows, "fu1.bin", "r1.heat"),
+		manifestBitsHex(t, rows, "fu1.bin", "r2.heat"), spell("fu1.bin"))
 	if !strings.Contains(fu1Out, "OK fu1.bin") {
 		t.Fatalf("fu1.bin oracle: got %q", fu1Out)
 	}
@@ -357,7 +382,7 @@ public final class ProbeFu2Oracle {
         v[0].pick.labelled.trail = 222;
         v[0].tail = 21;
         v[0].mark = -70000;
-        v[0].heat = Double.longBitsToDouble(0x7FF00DEFACED0001L);
+        v[0].heat = Double.longBitsToDouble(Long.parseUnsignedLong(args[1], 16));
         v[0].extra = 909;
 
         v[1].flag = false;
@@ -366,10 +391,21 @@ public final class ProbeFu2Oracle {
         v[1].pick.plain.n = 404;
         v[1].tail = 22;
         v[1].mark = 70000;
-        v[1].heat = -2.25;
+        v[1].heat = Double.longBitsToDouble(Long.parseUnsignedLong(args[2], 16));
         v[1].extra = -11;
 
         byte[] got = new byte[tblfu2.FuRootFixed.measure(2)];
+        if (args[3].equals("nonfinite")) {
+            check(tblfu2.FuRootFixed.save(v, 2, got) == -1, "fu2: the writer refuses a non-finite heat");
+            tblfu2.TableFixed.Report rep = new tblfu2.TableFixed.Report();
+            int n = tblfu2.FuRootFixed.load(new tblfu2.FuRootFixed.Value[] {
+                    new tblfu2.FuRootFixed.Value(), new tblfu2.FuRootFixed.Value() },
+                    2, ref, tblfu2.TableFixed.plan(1 << 14), new short[1 << 14], tblfu2.FuRootFixed.image(), rep);
+            check(n == -1 && rep.refused && rep.reason == tblfu2.TableFixed.Reason.nonFiniteFloat
+                    && "FuRoot.heat".equals(rep.nonFiniteFloat), "fu2: the reader refuses the non-finite heat by name");
+            System.out.println("OK fu2.bin");
+            return;
+        }
         check(tblfu2.FuRootFixed.save(v, 2, got) == got.length, "fu2 save length");
         check(Arrays.equals(got, ref), "fu2 saved bytes must equal C++ reference fu2.bin");
         System.out.println("OK fu2.bin");
@@ -377,7 +413,8 @@ public final class ProbeFu2Oracle {
 }
 `
 	fu2Classes := t12BuildRegistered(t, "tblfu2", map[string]string{"FU2.schema": string(fu2Bytes)}, "ProbeFu2Oracle", fu2Probe)
-	fu2Out := t12RunJava(t, fu2Classes, "ProbeFu2Oracle", filepath.Join(corpus, "fu2.bin"))
+	fu2Out := t12RunJava(t, fu2Classes, "ProbeFu2Oracle", filepath.Join(corpus, "fu2.bin"),
+		manifestBitsHex(t, rows, "fu2.bin", "r0.heat"), manifestBitsHex(t, rows, "fu2.bin", "r1.heat"), spell("fu2.bin"))
 	if !strings.Contains(fu2Out, "OK fu2.bin") {
 		t.Fatalf("fu2.bin oracle: got %q", fu2Out)
 	}

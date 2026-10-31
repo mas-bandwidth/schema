@@ -20,7 +20,9 @@ public final class FixedTableMessage {
         }
         {
             TableMessage.Writer probe1 = new TableMessage.Writer(null, 0, true);
-            BenchMixedMessage.saveMessageBody(probe1, v.value);
+            if (!BenchMixedMessage.saveMessageBody(probe1, v.value)) {
+                return false;
+            }
             if (probe1.bits != 7L) {
                 w.put(28L, 7);
                 if (!BenchMixedMessage.saveMessageBody(w, v.value)) {
@@ -206,7 +208,14 @@ public final class FixedTableMessage {
             if (values[i] == null) {
                 values[i] = new FixedTableFixed.Value();
             }
-            if (!loadMessageBody(r, values[i])) {
+            boolean read = loadMessageBody(r, values[i]);
+            if (report.refused) {
+                for (int j = 0; j <= i; j++) {
+                    reset(values[j]);
+                }
+                return 0;
+            }
+            if (!read) {
                 return i;
             }
         }

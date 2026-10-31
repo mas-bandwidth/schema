@@ -12,7 +12,8 @@
 namespace example {
 
 // type ArmsAgree
-struct ArmsAgree {
+struct ArmsAgree
+{
     uint32_t lead = 0;
     bool flag = false;
 
@@ -31,7 +32,8 @@ inline constexpr int64_t ArmsAgreeMaxBits = 24; // longest wire path; align pads
 inline constexpr int64_t ArmsAgreeMaxBytes = 8; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ArmsDisagree
-struct ArmsDisagree {
+struct ArmsDisagree
+{
     uint32_t lead = 0;
     bool flag = false;
 
@@ -50,7 +52,8 @@ inline constexpr int64_t ArmsDisagreeMaxBits = 24; // longest wire path; align p
 inline constexpr int64_t ArmsDisagreeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ArmEmpty
-struct ArmEmpty {
+struct ArmEmpty
+{
     uint32_t lead = 0;
     bool flag = false;
 
@@ -65,7 +68,8 @@ inline constexpr int64_t ArmEmptyMaxBits = 32; // longest wire path; align pads 
 inline constexpr int64_t ArmEmptyMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ArmsNested
-struct ArmsNested {
+struct ArmsNested
+{
     uint32_t lead = 0;
     bool outer = false;
 
@@ -92,7 +96,8 @@ inline constexpr int64_t ArmsNestedMaxBits = 40; // longest wire path; align pad
 inline constexpr int64_t ArmsNestedMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ArmAlign
-struct ArmAlign {
+struct ArmAlign
+{
     uint32_t lead = 0;
     bool flag = false;
 
@@ -112,7 +117,8 @@ inline constexpr int64_t ArmAlignMaxBits = 55; // longest wire path; align pads 
 inline constexpr int64_t ArmAlignMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ArmArray
-struct ArmArray {
+struct ArmArray
+{
     uint32_t lead = 0;
     bool flag = false;
 
@@ -132,7 +138,8 @@ inline constexpr int64_t ArmArrayMaxBits = 54; // longest wire path; align pads 
 inline constexpr int64_t ArmArrayMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type Narrow
-struct Narrow {
+struct Narrow
+{
     uint32_t n = 0;
 };
 
@@ -140,7 +147,8 @@ inline constexpr int64_t NarrowMaxBits = 3; // longest wire path; align pads at 
 inline constexpr int64_t NarrowMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type Wide
-struct Wide {
+struct Wide
+{
     uint64_t w = 0;
 };
 
@@ -148,7 +156,8 @@ inline constexpr int64_t WideMaxBits = 37; // longest wire path; align pads at w
 inline constexpr int64_t WideMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // UnevenType: union Uneven's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class UnevenType : uint8_t {
+enum class UnevenType : uint8_t
+{
     None = 0,
     Narrow = 1,
     Wide = 2,
@@ -187,14 +196,14 @@ struct Uneven
 
     Narrow & SelectNarrow() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &narrow ) Narrow{};
+        ::new ( static_cast<void *>( &narrow ) ) Narrow{};
         type = UnevenType::Narrow;
         return narrow;
     }
 
     Wide & SelectWide() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &wide ) Wide{};
+        ::new ( static_cast<void *>( &wide ) ) Wide{};
         type = UnevenType::Wide;
         return wide;
     }
@@ -204,7 +213,8 @@ inline constexpr int64_t UnevenMaxBits = 39; // tag + the largest arm; None cost
 inline constexpr int64_t UnevenMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type HoldsUneven
-struct HoldsUneven {
+struct HoldsUneven
+{
     uint32_t lead = 0;
     Uneven u;
     uint32_t tail = 0;
@@ -214,7 +224,8 @@ inline constexpr int64_t HoldsUnevenMaxBits = 55; // longest wire path; align pa
 inline constexpr int64_t HoldsUnevenMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ArrUneven
-struct ArrUneven {
+struct ArrUneven
+{
     uint32_t lead = 0;
     Uneven items[3] = {}; // used count beside it; wire count in [0, 3]
     int32_t items_count = 0;
@@ -225,7 +236,8 @@ inline constexpr int64_t ArrUnevenMaxBits = 127; // longest wire path; align pad
 inline constexpr int64_t ArrUnevenMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type RegainAfterAlign
-struct RegainAfterAlign {
+struct RegainAfterAlign
+{
     uint32_t lead = 0;
     uint16_t items[3] = {}; // used count beside it; wire count in [0, 3]
     int32_t items_count = 0;

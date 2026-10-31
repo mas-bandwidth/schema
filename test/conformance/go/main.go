@@ -264,6 +264,63 @@ func surfaceReport(lines []line, out string) error {
 	return nil
 }
 
+// surfaceFraming is THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read
+// report as the `report` surface prints it, then the §16 text of the value the
+// read left, unless the row says `no-value` or the read was refused. A derived
+// line is `framing <case> <unit> <root> <wire> [no-value]`.
+func surfaceFraming(lines []line, out string) error {
+	for _, f := range lines {
+		if f[0] != "framing" {
+			continue
+		}
+		c := findCodec(f[2], f[3])
+		if c == nil {
+			if err := spillAbsent(out, f[1]); err != nil {
+				return err
+			}
+			continue
+		}
+		wire, err := os.ReadFile(f[4])
+		if err != nil {
+			return err
+		}
+		value := c.fresh()
+		var rep report
+		ok := c.load(value, wire, &rep)
+		malformed := "false"
+		if rep.malformed || !ok && !rep.refused {
+			malformed = "true"
+		}
+		verdict := "read"
+		if rep.refused {
+			verdict = "refused"
+		}
+		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
+		noValue := len(f) > 5 && f[5] == "no-value"
+		if !rep.refused && !noValue {
+			if c.toJson == nil {
+				if err := spillAbsent(out, f[1]); err != nil {
+					return err
+				}
+				continue
+			}
+			size := c.toJsonMeasure(value)
+			if size < 0 {
+				return fmt.Errorf("%s: ToJSONMeasure refused the value", f[1])
+			}
+			buffer := make([]byte, size)
+			if c.toJson(value, buffer) != size {
+				return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
+			}
+			text = append(text, buffer...)
+		}
+		if err := spill(out, f[1], text); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func surfaceJsonRead(lines []line, out string) error {
 	for _, f := range lines {
 		if f[0] != "instance" || noText(f) {
@@ -507,6 +564,8 @@ func main() {
 		run = surfaceWire
 	case "report":
 		run = surfaceReport
+	case "framing":
+		run = surfaceFraming
 	case "json-read":
 		run = surfaceJsonRead
 	case "json-write":

@@ -1,0 +1,19 @@
+# The vendored serialize port (schema-squirrel-serialize-vendor; docs/PORT-SQUIRREL.md,
+# THE RUNTIME LAYOUT): the type wire's bottom layer. Every serialize*.nut here is copied
+# VERBATIM from the repository at the commit, and the sha256 below is each file's. The
+# test TestVendoredSquirrelSerializeIsThePin pins this file; make/squirrel-serialize.mk's
+# vendor-serialize-squirrel rewrites it on a bump (edit release and commit, then run it).
+repository https://github.com/mas-bandwidth/serialize.nut
+release v2.1.1
+commit d5fc46fe2adee1a4a299c14e7744ee09098e7a92
+sha256 16dfb43629e05f6d5685d3104cfb1af717653202b51623c99f76575a7288b3af serialize.nut
+sha256 4a77fff383c2c4df895dfa46e8a95634b29fee3fd3773b7e9fa38b1f5ccea1e0 serialize_bitpacker.nut
+sha256 0ddb32128835857f75c6f0c437e3fcef12126f060f0d78b09da10a1332f928fe serialize_bits.nut
+sha256 7056b67064aea09f9fc0bcc6d428e3f6c1c3a4657dcbcc0976e0acafedf01e83 serialize_bytes.nut
+sha256 1d2067138607bed17da1b5c2ec6df4717093f082569ea2d927c877c37f7f58eb serialize_compressed_float.nut
+sha256 dc4440496335778a2371770bc72946a983b0cf9a1476476b33b42d3a648c3029 serialize_fixed.nut
+sha256 598a8de2437c27e2c83c90fee453c1de72a071e5f3fccba20af86605db7c173d serialize_float.nut
+sha256 aa0e1e3684831dfc3c4a8321e2f7c4b1863ddeb141e455e85958e0b08ee79ab4 serialize_int.nut
+sha256 cf322b217be31ccc495779944a22896b5ff1653ae81b2a3eca9183b88c8b60ec serialize_int128.nut
+sha256 09cc6061ac7cc0dbfd8e4aef190654e11462b6fa45ab9647189b69956c5c09e0 serialize_int_relative.nut
+sha256 684fa51c6f433735f195b8bf1988d7158869fe4a10af2f7656d81b89b621b9c2 serialize_stream.nut

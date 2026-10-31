@@ -341,17 +341,23 @@ fixed table T
 
 // ---- elixir/R21 -------------------------------------------------------------
 
-// t04R21 holds elixir/R21 to FIXED-FORM-ALGORITHM.md §5.2 EMIT: widenf is the
-// bit-exact float widening — every f32 is exactly representable in an f64, so
-// infinities and NaN payloads are kept; a signalling NaN is quieted because
-// that is what the reference does and the payload is carried.
+// t04R21 holds elixir/R21 to FIXED-FORM-ALGORITHM.md §5.2 EMIT, under the
+// finite rule (docs/SPEC-TABLES.md §3.3, 2026-10-27): widenf is the ordinary
+// float widening — every FINITE f32 is exactly representable in an f64, so
+// there is nothing to round and no bit surgery. A NaN or an infinity never
+// reaches a value: it stays non-finite in the image and the projection's
+// f64_value refuses it as non_finite_float, so no NaN payload is carried and
+// widen_float is gone.
 func t04R21(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "{:widenf, their_at, at}", "R21 the f32->f64 rung is its own op")
 	t04Has(t, fixedRuntimeBody, "defp step([{:widenf, src, dst} | rest]", "R21 widenf is stepped")
-	t04Has(t, fixedRuntimeBody, "defp widen_float({:nonfinite, bits})", "R21 a nonfinite f32 is carried as bits")
-	t04Has(t, fixedRuntimeBody, "mantissa = bits &&& 0x7FFFFF", "R21 the f32 payload is carried into the f64 mantissa")
-	t04Has(t, fixedRuntimeBody, "wide = sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29", "R21 the f32 pattern widens into the f64 pattern")
-	t04Has(t, fixedRuntimeBody, "wide ||| 0x8000000000000", "R21 the quiet bit is carried as the writer wrote it")
+	t04Has(t, fixedRuntimeBody, "else: f64_bits(f32_value(bits))", "R21 a finite f32 widens by the ordinary conversion")
+	t04Has(t, fixedRuntimeBody, "do: throw({:refuse, :non_finite_float})", "R21 a non-finite float is refused, not carried")
+	for _, gone := range []string{"widen_float", "{:nonfinite, bits}", "mantissa <<< 29", "0x8000000000000)"} {
+		if strings.Contains(fixedRuntimeBody, gone) {
+			t.Errorf("R21 the NaN bit surgery is gone under the finite rule, but the runtime still holds %q", gone)
+		}
+	}
 }
 
 // ---- elixir/R29 -------------------------------------------------------------

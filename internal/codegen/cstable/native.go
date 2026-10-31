@@ -125,6 +125,8 @@ const tableNativeSource = `
         }
         for (int i = 0; i < count; i++)
         {
+            // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a NaN or an infinity refuses the cook
+            if ((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))) { return false; }
             long element = at + (long)i * f.NativeElementSize, before = extent;
             if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
             if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }

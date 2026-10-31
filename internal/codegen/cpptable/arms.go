@@ -187,6 +187,7 @@ func (g *tableGen) emitArmMeasure(v ir.UnionVariant, base, into, ind, onBad, sfx
 		g.emitUnionPayloadMeasure(f, value, into, ind+"    ", sfx+"a")
 		g.pf("%s}\n", ind)
 	default:
+		g.emitFloatCheck(kind, value, ind, onBad)
 		g.pf("%s%s += %d; // %s\n", ind, into, tableKindWidth(kind), ir.FieldTypeSpelling(f))
 	}
 }

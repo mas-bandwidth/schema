@@ -623,14 +623,15 @@ void uint_widen_case()
 }
 
 // ---------------------------------------------------------------------------
-// 10. float_widen — float32 -> float64, BY THE BITS.
+// 10. float_widen — float32 -> float64, EXACTLY, and a NaN never rides.
 //
-// THE FU RULING (#895, for #876 to settle): the fixed form's float rung is a
-// plain `(double) f`, so a SIGNALLING NaN comes back QUIET and the one payload
-// bit that said "signalling" is gone. §4's own TableWidenF32 does the bit
-// surgery and keeps it. This case pins WHAT THE REFERENCE DOES TODAY and asserts
-// the 22 payload bits BELOW THE QUIET BIT ride exactly — the half no ruling can
-// change — so the day the quiet bit is ruled on, one line moves.
+// THE FINITE RULE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// finite-only too, same rule as packets"): every finite float32 widens to
+// float64 exactly, so the rung is the ordinary conversion and nothing about a
+// NaN's quiet bit is left to rule on (#876). A NEGATIVE SUBNORMAL with a rich
+// mantissa is the value a widening that renormalized wrongly or dropped a sign
+// would move. The OLD writer refuses a signalling NaN, and a record FORGED to
+// carry one is refused by the NEW reader as non_finite_float, nothing landed.
 
 uint64_t bits64( double d ) { uint64_t b; std::memcpy( (void *) &b, &d, 8 ); return b; }
 float f_from( uint32_t b ) { float f; std::memcpy( (void *) &f, &b, 4 ); return f; }
@@ -640,12 +641,11 @@ void float_widen_case()
     ROW_MOVES_THE_HASH( vold_float_widen::FloatWidenFixedHash,
                         vnew_float_widen::FloatWidenFixedHash, "float_widen" );
 
-    // signalling (quiet bit CLEAR), with a payload in the 22 bits below it
-    const uint32_t kSignalling = 0x7F8ABCDEu;
+    const uint32_t kSubnormal = 0x807ABCDEu;
     vold_float_widen::FloatWiden old;
     vold_float_widen::FloatWidenReset( old );
     old.lead = 0xAAAAAAAAu;
-    old.v = f_from( kSignalling );
+    old.v = f_from( kSubnormal );
     old.trail = 0xBBBBBBBBu;
     std::vector<uint8_t> ob = one( old, vold_float_widen::FloatWidenFixedMeasure,
                                    vold_float_widen::FloatWidenFixedSave, "float_widen: OLD save" );
@@ -659,26 +659,42 @@ void float_widen_case()
                "float_widen/NEW-READS-OLD: one record" );
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "float_widen/NEW-READS-OLD: lead and trail bracket the row exactly" );
-        const uint64_t got = bits64( back.v );
-        // the sign and the exponent: a NaN stays a NaN of the same sign
-        check( ( got >> 63 ) == ( kSignalling >> 31 ), "float_widen/NEW-READS-OLD: the SIGN bit rides" );
-        check( ( ( got >> 52 ) & 0x7FFull ) == 0x7FFull, "float_widen/NEW-READS-OLD: a NaN stays a NaN" );
-        // THE HALF NO RULING CAN MOVE: the 22 payload bits below f32's quiet
-        // bit, where they land in f64 (mantissa bits 51..30 of the double).
-        // f32's mantissa bits 22..0 land in f64's 51..29: the quiet bit at 51,
-        // the 22 payload bits below it at 50..29.
-        const uint32_t payload22 = kSignalling & 0x003FFFFFu;
-        check( (uint32_t) ( ( got >> 29 ) & 0x003FFFFFull ) == payload22,
-               "float_widen/NEW-READS-OLD: the 22 payload bits BELOW the quiet bit ride exactly (the FU ruling)" );
-        check( ( got & 0x1FFFFFFFull ) == 0, "float_widen/NEW-READS-OLD: the 29 bits f32 never had are zero" );
-        // AND THE QUIET BIT, pinned to what the reference does TODAY and named
-        // so the ruling in #876 moves ONE line.
-        const uint64_t quiet_today = 1ull << 51; // `(double) f` sets it; TableWidenF32 would not
-        check( ( got & ( 1ull << 51 ) ) == quiet_today,
-               "float_widen/NEW-READS-OLD: the QUIET BIT is what the reference does today (#876 to rule)" );
+        check( bits64( back.v ) == bits64( (double) f_from( kSubnormal ) ) && ( bits64( back.v ) >> 63 ) == 1u,
+               "float_widen/NEW-READS-OLD: a negative subnormal widens to exactly its own value, sign and all" );
         check( r.widened == 1, "float_widen/NEW-READS-OLD: `widened` += 1" );
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "float_widen/NEW-READS-OLD: nothing else fired" );
+    }
+    {
+        // THE WRITER REFUSES A NaN, and a record forged to carry one is refused
+        // by the NEW reader on the float32's bits before widenf
+        const uint32_t kSignalling = 0x7F8ABCDEu;
+        vold_float_widen::FloatWiden bad = old;
+        bad.v = f_from( kSignalling );
+        std::vector<uint8_t> refused( (size_t) vold_float_widen::FloatWidenFixedMeasure( 1 ) );
+        check( vold_float_widen::FloatWidenFixedSave( &bad, 1, refused.data(), (int64_t) refused.size() ) == -1,
+               "float_widen/OLD save: a signalling NaN is refused, never written" );
+        std::vector<uint8_t> forged = ob;
+        bool found = false;
+        for ( size_t i = 0; i + 4 <= forged.size() && !found; ++i )
+        {
+            const uint32_t w = (uint32_t) forged[i] | (uint32_t) forged[i + 1] << 8 | (uint32_t) forged[i + 2] << 16 | (uint32_t) forged[i + 3] << 24;
+            if ( w == kSubnormal )
+            {
+                for ( int k = 0; k < 4; ++k ) { forged[i + (size_t) k] = (uint8_t) ( kSignalling >> ( 8 * k ) ); }
+                found = true;
+            }
+        }
+        check( found, "float_widen/forge: the float32 is where the record holds it" );
+        vnew_float_widen::FloatWiden back;
+        vnew_float_widen::FloatWidenReset( back );
+        vnew_float_widen::TableReport r;
+        std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
+        check( vnew_float_widen::FloatWidenFixedLoadTolerant( &back, 1, forged.data(), (int64_t) forged.size(),
+                                                      plan.data(), 4096, NULL, &r ) == -1 &&
+               r.refused && r.refuse_reason == vnew_float_widen::non_finite_float,
+               "float_widen/NEW-READS-OLD: a forged NaN is refused as non_finite_float" );
+        check( back.lead == 1u && back.trail == 2u, "float_widen/NEW-READS-OLD: nothing of the refused record lands" );
     }
     vnew_float_widen::FloatWiden nv;
     vnew_float_widen::FloatWidenReset( nv );

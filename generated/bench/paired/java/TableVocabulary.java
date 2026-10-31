@@ -21,14 +21,14 @@ public final class TableVocabulary {
                 (byte) 0x01,
                 (byte) 0x01,
                 (byte) 0x09,
-                (byte) 0x4e,
-                (byte) 0x05,
-                (byte) 0x2a,
-                (byte) 0x97,
-                (byte) 0x84,
-                (byte) 0x3a,
-                (byte) 0x75,
-                (byte) 0x23,
+                (byte) 0x52,
+                (byte) 0xa8,
+                (byte) 0xbf,
+                (byte) 0x78,
+                (byte) 0x93,
+                (byte) 0x55,
+                (byte) 0xd3,
+                (byte) 0x41,
                 (byte) 0x02,
                 (byte) 0x0e,
                 (byte) 0xfc,
@@ -1162,14 +1162,18 @@ public final class TableVocabulary {
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
-        // The ENTRY bound is the caller's capacity, and an announcement above it
-        // is refused by name as vocabulary_too_large before an entry is touched
-        // (§3.3).
+        // The ENTRY bound is the caller's capacity, narrowed by maxEntries when
+        // the receiver sets one, and an announcement above it is refused by
+        // name as vocabulary_too_large before an entry is touched (§3.3).
+        int entryBound = v.entries.length;
+        if (v.maxEntries > 0 && v.maxEntries < entryBound) {
+            entryBound = v.maxEntries;
+        }
         Reader src = new Reader(vocab, 0);
         int count = 0;
         boolean nodeSeen = false;
         while (src.at < vocab.length) {
-            if (count >= v.entries.length) {
+            if (count >= entryBound) {
                 report.refused = true;
                 report.reason = "vocabulary_too_large";
                 return false;

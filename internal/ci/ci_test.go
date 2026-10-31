@@ -933,6 +933,10 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-java-runs-hostile-corpus.yml:corpus",
+		"schema-luau-nightly-fuzz.yml:replay",
+		"schema-luau-resource-bounds.yml:luau-resource-bounds",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
@@ -986,6 +990,10 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"ci-full.yml:pins",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
+		"schema-java-runs-hostile-corpus.yml:corpus",
+		"schema-luau-nightly-fuzz.yml:replay",
+		"schema-luau-resource-bounds.yml:luau-resource-bounds",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
@@ -1009,13 +1017,17 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			"schema-dart-generated-strict-analyze-gate.yml:fast",
 			"schema-elixir-runs-hostile-corpus.yml:corpus",
 			"schema-go-generated-golangci-lint-gate.yml:gate",
+			"schema-java-runs-hostile-corpus.yml:corpus",
+			"schema-luau-nightly-fuzz.yml:replay",
+			"schema-luau-resource-bounds.yml:luau-resource-bounds",
+			"schema-luau-runs-hostile-corpus.yml:corpus",
 		} {
 			wfName, jobName, _ := strings.Cut(wantKey, ":")
 			if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, pushEv); err != nil || !ok {
 				errs = append(errs, fmt.Sprintf("push to %s did not select self-hosted %s (err=%v)", branch, wantKey, err))
 			}
 		}
-		for _, fullJob := range []string{"generated", "conformance", "cs-fuzz", "cs-tables", "big-endian", "lint", "vuln", "windows", "msvc", "shape-gate", "cpp-lock", "negative-controls"} {
+		for _, fullJob := range []string{"generated", "conformance", "cs-fuzz", "js-fuzz", "cs-tables", "big-endian", "lint", "vuln", "windows", "msvc", "shape-gate", "cpp-lock", "negative-controls"} {
 			if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], fullJob, pushEv); err != nil || !ok {
 				errs = append(errs, fmt.Sprintf("push to %s did not run ci-full.yml:%s (err=%v)", branch, fullJob, err))
 			}
@@ -1038,6 +1050,12 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-java-runs-hostile-corpus.yml:corpus",
+		"schema-java-runs-hostile-corpus.yml:negative-control",
+		"schema-luau-nightly-fuzz.yml:nightly",
+		"schema-luau-resource-bounds.yml:luau-resource-bounds",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-luau-runs-hostile-corpus.yml:negative-control",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, schedEv); err != nil || !ok {
@@ -1065,8 +1083,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// 9. Concurrency groups in ci-fast.yml and ci-full.yml must include
 	// ${{ github.ref }} so independent stream PRs never serialize all CI.
 	for _, wfName := range []string{"ci-fast.yml", "ci-full.yml"} {
-		if !strings.Contains(wfs[wfName], "${{ github.event_name }}-${{ github.ref }}") {
-			errs = append(errs, fmt.Sprintf("%s concurrency group does not key on ${{ github.event_name }}-${{ github.ref }} (would serialize CI across refs)", wfName))
+		if !strings.Contains(wfs[wfName], "${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}") {
+			errs = append(errs, fmt.Sprintf("%s concurrency group does not key on the pull request number or ${{ github.event_name }}-${{ github.ref }} (would serialize CI across refs)", wfName))
 		}
 	}
 
@@ -1102,6 +1120,30 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-java-runs-hostile-corpus.yml:corpus",
+		"schema-java-runs-hostile-corpus.yml:negative-control",
+		"schema-lobster-generated-strict-gate.yml:strict",
+		"schema-lua-generated-luacheck-gate.yml:luacheck",
+		"schema-lua-nightly-fuzz.yml:fast",
+		"schema-lua-nightly-fuzz.yml:nightly",
+		"schema-lua-resource-bounds.yml:fast",
+		"schema-lua-resource-bounds.yml:nightly",
+		"schema-lua-runs-hostile-corpus.yml:fast",
+		"schema-lua-runs-hostile-corpus.yml:nightly",
+		"schema-luau-generated-analyze-strict-gate.yml:luau-analyze-strict",
+		"schema-luau-nightly-fuzz.yml:nightly",
+		"schema-luau-nightly-fuzz.yml:replay",
+		"schema-luau-resource-bounds.yml:luau-resource-bounds",
+		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-squirrel-all-port-differential.yml:fast",
+		"schema-squirrel-all-port-differential.yml:nightly",
+		"schema-squirrel-nightly-fuzz.yml:fuzz",
+		"schema-squirrel-nightly-fuzz.yml:harness",
+		"schema-squirrel-resource-bounds.yml:fast",
+		"schema-squirrel-resource-bounds.yml:nightly",
+		"schema-squirrel-runs-hostile-corpus.yml:fast",
+		"schema-squirrel-runs-hostile-corpus.yml:nightly",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
 		t.Fatalf("enumerated self-hosted jobs = %v, want %v", gotKeys, wantKeys)
@@ -1156,6 +1198,13 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			wantErr:   "schema-elixir-runs-hostile-corpus.yml:corpus admits fork PR",
 		},
 		{
+			name:      "drop Java corpus same-repo PR guard",
+			workflow:  "schema-java-runs-hostile-corpus.yml",
+			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
+			newSubstr: "",
+			wantErr:   "schema-java-runs-hostile-corpus.yml:corpus admits fork PR",
+		},
+		{
 			name:      "drop ci-full pins same-repo PR guard",
 			workflow:  "ci-full.yml",
 			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n    runs-on: [self-hosted, Linux, X64, fleet, schema]",
@@ -1191,11 +1240,18 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			wantErr:   "stream-to-dev PR did not select self-hosted schema-elixir-runs-hostile-corpus.yml:corpus",
 		},
 		{
+			name:      "drop dev from Java hostile-corpus triggers",
+			workflow:  "schema-java-runs-hostile-corpus.yml",
+			oldSubstr: "branches: [ main, dev, fixed-table-form, 'sprint/**' ]",
+			newSubstr: "branches: [ main, 'sprint/**' ]",
+			wantErr:   "stream-to-dev PR did not select self-hosted schema-java-runs-hostile-corpus.yml:corpus",
+		},
+		{
 			name:      "serialize ci-fast concurrency across refs",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "group: ci-fast-${{ github.event_name }}-${{ github.ref }}",
+			oldSubstr: "group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}",
 			newSubstr: "group: ci-fast-global",
-			wantErr:   "ci-fast.yml concurrency group does not key on ${{ github.event_name }}-${{ github.ref }}",
+			wantErr:   "ci-fast.yml concurrency group does not key on the pull request number or ${{ github.event_name }}-${{ github.ref }}",
 		},
 	}
 

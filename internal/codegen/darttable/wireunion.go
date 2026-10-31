@@ -360,9 +360,9 @@ func (g *wireGen) emitPutElem(f *ir.Field, ek int, e, p, ind string) {
 	case wireKindBool:
 		g.pf("%s%s.putByte(%s ? 1 : 0);\n", ind, p, e)
 	case wireKindF32:
-		g.pf("%s%s.putU32(_f32Bits(%s));\n", ind, p, e)
+		g.pf("%s%s.putU32(_f32Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
 	case wireKindF64:
-		g.pf("%s%s.putU64(_f64Bits(%s));\n", ind, p, e)
+		g.pf("%s%s.putU64(_f64Write(%s, '%s'));\n", ind, p, e, g.floatOwner(f))
 	default:
 		if ir.TableKindWide(ek) { // kinds 18-29, raw at the width (§3, §15)
 			g.pf("%s_putWide(%s, %s, %d);\n", ind, p, e, ir.TableKindWidth(ek))
@@ -396,13 +396,16 @@ func (g *wireGen) emitUnionLoad(un *ir.Union) {
 	g.pf("bool %s(TableWireReader r, %s v) {\n", unionFn(un, "LoadArm"), un.Name)
 	g.pf("\tfinal ref = r.readLeb();\n")
 	g.pf("\tif (ref == null) { r.report.malformed = true; return false; }\n")
-	g.pf("\tv.armTag = 0;\n")
-	g.pf("\tif (ref == 0) return true;\n")
+	g.pf("\tif (ref == 0) { v.armTag = 0; return true; }\n")
 	g.pf("\tfinal armId = r.refToId[ref];\n")
 	g.pf("\tif (armId == null || !r.has(1)) { r.report.malformed = true; return false; }\n")
 	g.pf("\tfinal kind = r.readByte();\n")
 	g.pf("\tfinal n = r.readLeb();\n")
 	g.pf("\tif (n == null || !r.has(n)) { r.report.malformed = true; return false; }\n")
+	// The value is RESET once the arm's framing has held (internal/tablewire
+	// unionCell): framing damage before that leaves an earlier occurrence's
+	// arm standing, and every outcome after it replaces it.
+	g.pf("\tv.armTag = 0;\n")
 	g.pf("\tfinal p = TableWireReader.sub(r, r.pos, r.pos + n);\n")
 	g.pf("\tswitch (armId) {\n")
 	for i, arm := range un.Variants {
@@ -447,14 +450,14 @@ func armWidens(arm ir.UnionVariant) []int {
 		return nil
 	}
 	f := arm.F
-	switch f.Type.Kind {
-	case ir.TInt, ir.TBits:
+	switch {
+	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || isFlags(f):
 		var out []int
 		for _, w := range widenKinds(ir.TableWireScalarKind(f), f.Type.Kind == ir.TInt && f.Type.Signed) {
 			out = append(out, w.k)
 		}
 		return out
-	case ir.TFloat64:
+	case f.Type.Kind == ir.TFloat64:
 		return []int{wireKindF32}
 	}
 	return nil
@@ -503,6 +506,17 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sif (idx == null || %s.pos != %s.limit) %s\n", ind, p, p, bad)
 		g.pf("%s%s = %s.resolveTable(idx, %s) as %s?;\n", ind, dest, p, typeConst(ref), ref.Name)
 		g.pf("%sreturn true;\n", ind)
+	case isByValueTable(f) && g.lenientPayload:
+		// a keyed slot's body: damage inside it is the slot's own, so the slot
+		// falls back on its declared defaults and the array reads on past it
+		// (internal/tablewire keyed: the slot is Refilled, read, and Refilled
+		// again when its terminator is not the last byte of its L)
+		ref := tableRef(f)
+		g.pf("%svar b = %s();\n", ind, ref.Name)
+		g.pf("%s%sWireLoadBody(%s, b, true);\n", ind, dartName(ref.Name), p)
+		g.pf("%sif (%s.pos != %s.limit) { %s.report.malformed = true; b = %s(); }\n", ind, p, p, p, ref.Name)
+		g.pf("%s%s = b;\n", ind, dest)
+		g.pf("%sreturn true;\n", ind)
 	case isByValueTable(f):
 		ref := tableRef(f)
 		g.pf("%sfinal b = %s();\n", ind, ref.Name)
@@ -520,22 +534,34 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		if f.Type.Pointer {
 			ek = wireKindPtr
 		}
-		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
+		// A payload too short for its own header (the element kind and the
+		// count, under two bytes) is INERT (§4): the arm is selected holding the
+		// value it has, which is the empty array.
+		g.pf("%sif (%s.limit - %s.pos < 2) { %s = <%s>[]; return true; }\n", ind, p, p, dest, g.listElemType(f))
 		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
 		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
 		g.pf("%sif (count == null) %s\n", ind, bad)
 		// the payload declares another array's element kind: the arm is not
 		// this one, so the union reads None (§3)
-		g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, ek, p)
-		if f.Array == ir.ArrayCounted {
-			g.pf("%sif (count > %d) %s\n", ind, f.ArrayBound, bad)
+		wc := widenCond(ek)
+		if wc == "" || f.Type.Pointer {
+			g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, ek, p)
+		} else {
+			g.pf("%sif (elemKind != %d && !(%s)) { %s.report.kindMismatch++; return false; }\n", ind, ek, wc, p)
 		}
 		et := g.listElemType(f)
 		g.pf("%sfinal out = <%s>[];\n", ind, et)
-		g.pf("%sfor (var i = 0; i < count; i++) {\n", ind)
-		g.emitGetElem(f, ek, "out", p, ind+"\t")
-		g.pf("%s}\n", ind)
-		g.pf("%sif (%s.pos != %s.limit) %s\n", ind, p, p, bad)
+		// a count past a counted array's bound keeps the bound's prefix and
+		// counts one clamp; elements stop at framing damage and keep the prefix
+		// they decoded; the excess and any slack skip via the arm's L (§4,
+		// internal/tablewire arrayBody, which an arm shares with a field)
+		g.pf("%svar keep = count;\n", ind)
+		if f.Array == ir.ArrayCounted {
+			g.pf("%sif (keep > %d || keep < 0) { keep = %d; %s.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound, p)
+		} else {
+			g.pf("%sif (keep < 0 || keep > 0x7FFFFFFF) %s\n", ind, bad)
+		}
+		g.emitArmElems(f, ek, wc, p, ind)
 		g.pf("%s%s = out;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
 	case f.Array == ir.ArrayFixed:
@@ -543,16 +569,20 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// does not carry at its default
 		ek := arrayElemKind(f)
 		et := g.listElemType(f)
-		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
+		g.pf("%sif (%s.limit - %s.pos < 2) { %s = List<%s>.generate(%d, (_) => %s); return true; }\n", ind, p, p, dest, et, f.ArrayBound, g.elemDefault(f))
 		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
 		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
 		g.pf("%sif (count == null) %s\n", ind, bad)
-		g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, ek, p)
+		wc := widenCond(ek)
+		if wc == "" || f.Type.Pointer {
+			g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, ek, p)
+		} else {
+			g.pf("%sif (elemKind != %d && !(%s)) { %s.report.kindMismatch++; return false; }\n", ind, ek, wc, p)
+		}
 		g.pf("%sfinal out = <%s>[];\n", ind, et)
-		g.pf("%sfor (var i = 0; i < count; i++) {\n", ind)
-		g.emitGetElem(f, ek, "out", p, ind+"\t")
-		g.pf("%s}\n", ind)
-		g.pf("%sif (%s.pos != %s.limit) %s\n", ind, p, p, bad)
+		g.pf("%svar keep = count;\n", ind)
+		g.pf("%sif (keep > %d || keep < 0) { keep = %d; %s.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound, p)
+		g.emitArmElems(f, ek, wc, p, ind)
 		g.pf("%sfinal fresh = List<%s>.generate(%d, (_) => %s);\n", ind, et, f.ArrayBound, g.elemDefault(f))
 		g.pf("%sfor (var i = 0; i < out.length && i < %d; i++) { fresh[i] = out[i]; }\n", ind, f.ArrayBound)
 		g.pf("%s%s = fresh;\n", ind, dest)
@@ -561,7 +591,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.emitWStringGetPayload(f, dest, p, ind)
 	case isWide(f): // kinds 18-29: exactly the width, clamped raw (§3, §4, §15)
 		w := ir.TableKindWidth(wideKind(f))
-		g.pf("%sif (%s.limit - %s.pos != %d) %s\n", ind, p, p, w, bad)
+		g.pf("%sif (%s.limit - %s.pos %s %d) %s\n", ind, p, p, g.widthCmp(), w, bad)
 		g.pf("%svar x = _getWide(%s, %d, %v);\n", ind, p, w, ir.TableKindSigned(wideKind(f)))
 		g.emitWideClamp(f, "x", p, ind)
 		g.pf("%s%s = x;\n", ind, dest)
@@ -575,21 +605,22 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
 		g.pf("%sreturn true;\n", ind)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
+		// a payload under two bytes is INERT (§4); the elements are bounded by
+		// the arm's L, the prefix it covers is kept and the slack skips (arrayBody)
+		g.pf("%sif (%s.limit - %s.pos < 2) { %s = ''; return true; }\n", ind, p, p, dest)
 		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
 		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
-		g.pf("%sif (count == null || !%s.has(count)) %s\n", ind, p, bad)
+		g.pf("%sif (count == null) %s\n", ind, bad)
 		g.pf("%sif (elemKind != %d) { %s.report.kindMismatch++; return false; }\n", ind, wireKindU8, p)
 		g.pf("%svar keep = count;\n", ind)
-		g.pf("%sif (keep > %d) { keep = %d; %s.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size, p)
+		g.pf("%sif (keep > %d || keep < 0) { keep = %d; %s.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size, p)
+		g.pf("%sif (keep > %s.limit - %s.pos) { keep = %s.limit - %s.pos; %s.report.malformed = true; }\n", ind, p, p, p, p, p)
 		g.pf("%s%s = latin1.decode(%s.data.sublist(%s.pos, %s.pos + keep));\n", ind, dest, p, p, p)
-		g.pf("%s%s.pos += count;\n", ind, p)
-		g.pf("%sif (%s.pos != %s.limit) %s\n", ind, p, p, bad)
 		g.pf("%sreturn true;\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
 		g.pf("%sfinal vref = %s.readLeb();\n", ind, p)
-		g.pf("%sif (vref == null || %s.pos != %s.limit) %s\n", ind, p, p, bad)
+		g.pf("%sif (vref == null%s) %s\n", ind, g.tailCheck(p), bad)
 		g.pf("%sif (vref == 0) { %s = %s; return true; }\n", ind, dest, g.enumConst(e, 0))
 		g.pf("%sfinal vid = %s.refToId[vref];\n", ind, p)
 		g.pf("%sif (vid == null) %s\n", ind, bad)
@@ -601,27 +632,29 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s}\n", ind)
 		g.pf("%sreturn true;\n", ind)
 	case f.Type.Kind == ir.TBool:
-		g.pf("%sif (%s.limit - %s.pos != 1) %s\n", ind, p, p, bad)
-		g.pf("%s%s = %s.readByte() != 0;\n", ind, dest, p)
+		g.pf("%sif (%s.limit - %s.pos %s 1) %s\n", ind, p, p, g.widthCmp(), bad)
+		g.pf("%s%s = %s.readBool();\n", ind, dest, p)
 		g.pf("%sreturn true;\n", ind)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		g.pf("%sif (kind == %d) {\n", ind, wireKindF32)
-		g.pf("%s\tif (%s.limit - %s.pos != 4) %s\n", ind, p, p, bad)
-		g.pf("%s\t%s = _f32FromBits(readU32(%s.data, %s.pos));\n", ind, dest, p, p)
+		g.pf("%s\tif (%s.limit - %s.pos %s 4) %s\n", ind, p, p, g.widthCmp(), bad)
+		g.pf("%s\t%s = %s.readF32(%s.pos, '%s');\n", ind, dest, p, p, g.floatOwner(f))
 		g.pf("%s} else {\n", ind)
-		g.pf("%s\tif (%s.limit - %s.pos != 8) %s\n", ind, p, p, bad)
-		g.pf("%s\t%s = _f64FromBits(readU64(%s.data, %s.pos));\n", ind, dest, p, p)
+		g.pf("%s\tif (%s.limit - %s.pos %s 8) %s\n", ind, p, p, g.widthCmp(), bad)
+		g.pf("%s\t%s = %s.readF64(%s.pos, '%s');\n", ind, dest, p, p, g.floatOwner(f))
 		g.pf("%s}\n", ind)
 		if f.HasFloatRange {
+			// a -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES)
 			g.pf("%sif (%s < %s) { %s = %s; %s.report.clamped++; }\n", ind, dest, fmtFloat(f.FMin), dest, fmtFloat(f.FMin), p)
 			g.pf("%sif (%s > %s) { %s = %s; %s.report.clamped++; }\n", ind, dest, fmtFloat(f.FMax), dest, fmtFloat(f.FMax), p)
+			g.pf("%sif (%s == 0) %s = 0.0;\n", ind, dest, dest)
 		}
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
 		g.pf("%sreturn true;\n", ind)
 	default: // an integer or bits arm, at the wire kind's width (§4)
 		signed := f.Type.Kind == ir.TInt && f.Type.Signed
 		g.pf("%sfinal width = _kindWidth(kind);\n", ind)
-		g.pf("%sif (%s.limit - %s.pos != width) %s\n", ind, p, p, bad)
+		g.pf("%sif (%s.limit - %s.pos %s width) %s\n", ind, p, p, g.widthCmp(), bad)
 		g.pf("%svar raw = 0;\n", ind)
 		g.pf("%sfor (var b = 0; b < width; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, p)
 		if signed {
@@ -633,6 +666,47 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%s%s = value;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
 	}
+}
+
+// widthCmp is the comparison a fixed-width scalar payload's length check uses.
+// An ARM's payload is framed by its own L and must be exactly the kind's width
+// (§3); a keyed array's element is read at the wire kind's width and the rest
+// of its L skips (internal/tablewire keyed, scalarAt), so it is only too short
+// when it is short.
+func (g *wireGen) widthCmp() string {
+	if g.lenientPayload {
+		return "<"
+	}
+	return "!="
+}
+
+// tailCheck is the " || p.pos != p.limit" a single-value payload adds to its
+// framing check, and nothing for a keyed element, whose slack skips.
+func (g *wireGen) tailCheck(p string) string {
+	if g.lenientPayload {
+		return ""
+	}
+	return fmt.Sprintf(" || %s.pos != %s.limit", p, p)
+}
+
+// emitArmElems reads an array arm's `keep` elements into `out`: at the declared
+// element kind, or WIDENED from a narrower one (§4). Framing damage stops the
+// loop and keeps the prefix.
+func (g *wireGen) emitArmElems(f *ir.Field, ek int, wc, p, ind string) {
+	bad := fmt.Sprintf("{ %s.report.malformed = true; break; }", p)
+	if wc != "" && !f.Type.Pointer {
+		g.pf("%sif (elemKind != %d) {\n", ind, ek)
+		g.emitWidenedElems(f, ek, "out", p, ind+"\t")
+		g.pf("%s} else {\n", ind)
+		g.pf("%s\tfor (var i = 0; i < keep; i++) {\n", ind)
+		g.emitGetElemBad(f, ek, "out", p, ind+"\t\t", bad)
+		g.pf("%s\t}\n", ind)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.pf("%sfor (var i = 0; i < keep; i++) {\n", ind)
+	g.emitGetElemBad(f, ek, "out", p, ind+"\t", bad)
+	g.pf("%s}\n", ind)
 }
 
 // emitIntClamp clamps an integer to its declared range and its bits mask (§4),
@@ -655,11 +729,11 @@ func (g *wireGen) emitIntClamp(f *ir.Field, value, p, ind string) {
 	}
 }
 
-// emitGetElem reads one array element at the DECLARED element kind ek and
-// appends it to out (§3); on framing damage it counts malformed and returns
-// false out of the enclosing arm reader.
-func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
-	bad := fmt.Sprintf("{ %s.report.malformed = true; return false; }", p)
+// emitGetElemBad reads one array element at the DECLARED element kind ek and
+// appends it to out (§3); bad is the statement framing damage runs. An ARM
+// reader returns false (the union reads None, §3); a FIELD's array stops the
+// loop and keeps the prefix it decoded (§4, internal/tablewire arrayBody).
+func (g *wireGen) emitGetElemBad(f *ir.Field, ek int, out, p, ind, bad string) {
 	switch ek {
 	case wireKindPtr:
 		ref := tableRef(f)
@@ -678,7 +752,7 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		g.pf("%s%s.add(e);\n", ind, out)
 	case wireKindUnion:
 		g.pf("%sfinal e = %s();\n", ind, f.Type.Name)
-		g.pf("%sif (!%s(%s, e)) return false;\n", ind, unionFn(unionRef(f), "LoadArm"), p)
+		g.pf("%sif (!%s(%s, e)) %s\n", ind, unionFn(unionRef(f), "LoadArm"), p, bad)
 		g.pf("%s%s.add(e);\n", ind, out)
 	case wireKindString:
 		g.pf("%sfinal elen = %s.readLeb();\n", ind, p)
@@ -693,22 +767,27 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		g.pf("%sif (vid == null) %s\n", ind, bad)
 		// an element naming no variant this reader knows reads None and
 		// counts unknown, exactly as an enum field does (§4)
-		g.pf("%sswitch (vid) {\n", ind)
-		g.pf("%s\tcase 0: %s.add(%s);\n", ind, out, g.enumConst(e, 0))
+		// reference 0 is the enum's None; a nonzero reference whose id is 0 is
+		// a named id that matches no variant, and counts unknown like any other
+		g.pf("%sif (vref == 0) {\n", ind)
+		g.pf("%s\t%s.add(%s);\n", ind, out, g.enumConst(e, 0))
+		g.pf("%s} else {\n", ind)
+		g.pf("%s\tswitch (vid) {\n", ind)
 		for i := range e.Variants {
-			g.pf("%s\tcase %s: %s.add(%s);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, g.enumConst(e, i+1))
+			g.pf("%s\t\tcase %s: %s.add(%s);\n", ind, dartU64Literal(ir.TableWireId(e.VariantWireName(i))), out, g.enumConst(e, i+1))
 		}
-		g.pf("%s\tdefault: %s.add(%s); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, g.enumConst(e, 0), p, p, p)
+		g.pf("%s\t\tdefault: %s.add(%s); %s.report.unknown++; if (%s.retain != null) %s.report.retainLost++;\n", ind, out, g.enumConst(e, 0), p, p, p)
+		g.pf("%s\t}\n", ind)
 		g.pf("%s}\n", ind)
 	case wireKindBool:
 		g.pf("%sif (!%s.has(1)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(%s.readByte() != 0);\n", ind, out, p)
+		g.pf("%s%s.add(%s.readBool());\n", ind, out, p)
 	case wireKindF32:
 		g.pf("%sif (!%s.has(4)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(_f32FromBits(readU32(%s.data, %s.pos))); %s.pos += 4;\n", ind, out, p, p, p)
+		g.pf("%s%s.add(%s.readF32(%s.pos, '%s')); %s.pos += 4;\n", ind, out, p, p, g.floatOwner(f), p)
 	case wireKindF64:
 		g.pf("%sif (!%s.has(8)) %s\n", ind, p, bad)
-		g.pf("%s%s.add(_f64FromBits(readU64(%s.data, %s.pos))); %s.pos += 8;\n", ind, out, p, p, p)
+		g.pf("%s%s.add(%s.readF64(%s.pos, '%s')); %s.pos += 8;\n", ind, out, p, p, g.floatOwner(f), p)
 	default:
 		w := ir.TableKindWidth(ek)
 		if ir.TableKindWide(ek) { // kinds 18-29 (§3, §15)
@@ -724,12 +803,29 @@ func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
 		g.pf("%sif (!%s.has(%d)) %s\n", ind, p, w, bad)
 		g.pf("%svar raw = 0;\n", ind)
 		g.pf("%sfor (var b = 0; b < %d; b++) { raw |= %s.readByte() << (8 * b); }\n", ind, w, p)
-		if signed {
-			g.pf("%s%s.add(_signExtend(raw, %d));\n", ind, out, w)
-		} else {
-			g.pf("%s%s.add(raw);\n", ind, out)
-		}
+		g.emitElemInt(f, fmt.Sprintf("_signExtend(raw, %d)", w), signed, out, p, ind)
 	}
+}
+
+// emitElemInt appends one decoded integer element, clamped to the field's
+// declared range and bits mask and counted, as a scalar field's value is (§4).
+func (g *wireGen) emitElemInt(f *ir.Field, signedExpr string, signed bool, out, p, ind string, unsignedExpr ...string) {
+	expr := "raw"
+	if len(unsignedExpr) > 0 {
+		expr = unsignedExpr[0]
+	}
+	if signed {
+		expr = signedExpr
+	}
+	if !f.HasIntRange && (f.Type.Kind != ir.TBits || f.Type.Width >= 64) {
+		g.pf("%s%s.add(%s);\n", ind, out, expr)
+		return
+	}
+	g.pf("%s{\n", ind)
+	g.pf("%s\tvar x = %s;\n", ind, expr)
+	g.emitIntClamp(f, "x", p, ind+"\t")
+	g.pf("%s\t%s.add(x);\n", ind, out)
+	g.pf("%s}\n", ind)
 }
 
 // emitUnionNumber emits _<u>Number: the set arm is an edge of its own kind
@@ -952,10 +1048,14 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 	g.pf("%s\t\tfinal end = r.pos + len;\n", ind)
 	g.pf("%s\t\tif (end - r.pos < 2) { r.pos = end; break; }\n", ind)
-	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end);\n", ind)
-	g.pf("%s\t\tfinal elemKind = arr.readByte();\n", ind)
-	g.pf("%s\t\tfinal count = arr.readLeb();\n", ind)
+	// THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
+	// (internal/tablewire mapField, subTo; docs/SPEC-TABLES.md §2.8, §3):
+	// a count LEB128 that runs past the map's L still reads, the element
+	// kind is judged, and the entries walk an empty body.
+	g.pf("%s\t\tfinal elemKind = r.readByte();\n", ind)
+	g.pf("%s\t\tfinal count = r.readLeb();\n", ind)
 	g.pf("%s\t\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+	g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
 	g.pf("%s\t\tif (elemKind != %d) { r.report.kindMismatch++; r.pos = end; break; }\n", ind, wireKindTable)
 	// Commit a replacement only after its array header is readable and
 	// compatible (internal/tablewire/decode.go mapField): a skipped repeat

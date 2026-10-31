@@ -394,9 +394,9 @@ pub struct TableNodeReader {
 }
 
 impl TableNodeReader {
-    /// Gather the numbering out of a ROOT body ending at end (§3.1). None
-    /// is framing damage on the root body the gathering scan cannot pass, and
-    /// it counts malformed. A node table under a kind other than 12, a record
+    /// Gather the numbering out of a ROOT body ending at end (§3.1). Framing
+    /// damage on the root body ends the gathering scan with what it found and
+    /// is counted by the body read, not here. A node table under a kind other than 12, a record
     /// that runs past its field, bytes left over, or a node_count the scan
     /// does not match make the TABLE malformed: good is false, one malformed
     /// counts, and nothing in it is counted unknown, because the numbering it
@@ -410,19 +410,22 @@ impl TableNodeReader {
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
             if r == 0 { break; }
-            if off >= end { report.malformed = true; return None; }
+            // Damage in a field the gathering scan cannot pass ends the scan
+            // and refuses nothing: the body read meets the same damage and
+            // counts it, after decoding the fields before it (the oracle's
+            // nodeTableBytes).
+            if off >= end { break; }
             let kind = wire[off]; off += 1;
-            let Some(id) = ref_id(ids, r) else { report.malformed = true; return None; };
+            let Some(id) = ref_id(ids, r) else { break; };
             if id != NODE_TABLE_ID {
-                if !leb_skip(wire, &mut off, end, kind) { report.malformed = true; return None; }
+                if !leb_skip(wire, &mut off, end, kind) { break; }
                 continue;
             }
             if kind != 12 {
                 report.malformed = true;
                 reader.good = false;
                 reader.recs.clear();
-                if !leb_skip(wire, &mut off, end, kind) { return None; }
-                continue;
+                break;
             }
             // A truncated node-table length cannot borrow trailer bytes. The
             // root body still decodes its preceding fields with null nodes.
@@ -577,18 +580,19 @@ impl TableNodeReader {
 /// size, 0 for every framed or reference-shaped kind.
 pub fn table_kind_width(kind: u8) -> usize {
     match kind {
-        1 | 2 | 6 => 1,
-        3 | 7 => 2,
-        4 | 8 | 10 => 4,
-        5 | 9 | 11 | 36 => 8,
-        18 | 19 => 16,
+        1 | 2 | 6 | 20 | 25 => 1,
+        3 | 7 | 21 | 26 => 2,
+        4 | 8 | 10 | 22 | 27 => 4,
+        5 | 9 | 11 | 23 | 28 | 36 => 8,
+        18 | 19 | 24 | 29 => 16,
         _ => 0,
     }
 }
 
 /// Whether a payload under kind decodes EXACTLY into a field declared at
 /// declared (§4): an integer into a WIDER integer of the same signedness, and
-/// f32 into f64. Every other pair is a kind mismatch.
+/// f32 into f64. Every other pair is a kind mismatch, the fixed-point kinds
+/// 20–29 every way: a raw value read at another F is another number (§4).
 pub fn table_kind_widens(kind: u8, declared: u8) -> bool {
     match declared {
         3..=5 => (2..declared).contains(&kind),
@@ -613,7 +617,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
         raw |= (buf[*off + i] as u64) << (8 * i);
     }
     *off += w;
-    if matches!(kind, 2..=5) && w < 8 {
+    if matches!(kind, 2..=5 | 20..=23) && w < 8 {
         let s = 64 - 8 * w as u32;
         raw = (((raw << s) as i64) >> s) as u64;
     }
@@ -622,6 +626,7 @@ pub fn table_scalar_read(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> O
 
 /// Read one 128-bit scalar (or a narrower integer widened into it) at kind's
 /// own width (§3, §4): little-endian, sign-extended into u128 for signed kinds.
+/// A fixed128 or ufixed128 (kinds 24, 29) is its sixteen raw bytes.
 pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Option<u128> {
     let w = table_kind_width(kind);
     if w == 0 || *off + w > end {
@@ -1581,6 +1586,38 @@ pub fn json_format_g(v: f64, prec: usize) -> String {
     trim(&format!("{:.*}", (prec as i32 - 1 - exp) as usize, v))
 }
 
+/// A FIXED value's text (docs/SPEC-TABLES.md §16.2): WHOLE UNITS, the shortest
+/// EXACT decimal with at least one fractional digit (`1.0`, `-0.25`),
+/// spelled from the raw integer at F fractional bits with no float between.
+/// A signed raw value arrives sign-extended into the u128.
+#[allow(dead_code)]
+pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
+    let mut m = raw;
+    if signed && (raw as i128) < 0 {
+        out.push('-');
+        m = raw.wrapping_neg();
+    }
+    let whole = m.checked_shr(frac).unwrap_or(0);
+    out.push_str(&whole.to_string());
+    out.push('.');
+    let mask = if frac >= 128 { u128::MAX } else { (1u128 << frac) - 1 };
+    let mut f = m & mask;
+    if f == 0 {
+        out.push('0');
+        return;
+    }
+    while f != 0 {
+        // f × 10 across 132 bits: the digit is what rises past bit F
+        let lo = (f as u64 as u128) * 10;
+        let hi = (f >> 64) * 10 + (lo >> 64);
+        let low = (hi << 64) | (lo & 0xffff_ffff_ffff_ffff);
+        let carry = hi >> 64;
+        let digit = if frac >= 128 { carry } else { (low >> frac) | (carry << (128 - frac)) };
+        out.push((b'0' + digit as u8) as char);
+        f = low & mask;
+    }
+}
+
 /// A float at the SHORTEST precision that reads back as the same value at the
 /// field's own width (docs/SPEC-TABLES.md §16.2), exactly as the reference
 /// writes it. A non-finite value has no JSON spelling; the writer marks it.
@@ -1655,13 +1692,15 @@ pub struct Jr<'a> {
     pub clamped: u64,
     pub duplicate: u64,
     pub malformed: bool,
+    /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
+    pub zero: bool,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
-        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, labels: HashMap::new() }
+        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -1775,12 +1814,18 @@ impl<'a> Jr<'a> {
                             && self.b[self.p] == b'\\'
                             && self.b[self.p + 1] == b'u'
                         {
+                            let mark = self.p;
                             self.p += 2;
                             let lo = self.hex4();
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
+                            } else {
+                                // a lone lead surrogate rides as itself, and the
+                                // escape after it is read on its own
+                                self.p = mark;
                             }
                         }
+                        self.zero |= cp == 0;
                         let ch = char::from_u32(cp).unwrap_or('\u{fffd}');
                         let mut buf = [0u8; 4];
                         out.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
@@ -1795,7 +1840,28 @@ impl<'a> Jr<'a> {
                 self.p += 1;
             }
         }
-        Some(String::from_utf8_lossy(&out).into_owned())
+        // §16.3: bytes that are not well-formed UTF-8 spell no code point,
+        // so the read refuses them by name (string_not_utf8) at every string
+        // site, before any clamp, and never replaces them with U+FFFD
+        match String::from_utf8(out) {
+            Ok(s) => Some(s),
+            Err(_) => {
+                self.malformed = true;
+                None
+            }
+        }
+    }
+    /// read_text reads a string the read PLACES in text storage: a U+0000 in
+    /// it refuses the read (text_holds_zero, docs/SPEC-TABLES.md §16.3), while
+    /// a string the read only compares or skips goes through read_string.
+    pub fn read_text(&mut self) -> Option<String> {
+        self.zero = false;
+        let s = self.read_string()?;
+        if self.zero {
+            self.malformed = true;
+            return None;
+        }
+        Some(s)
     }
     pub fn read_null(&mut self) -> bool {
         self.space();
@@ -1907,64 +1973,159 @@ impl<'a> Jr<'a> {
         }
         Some(if neg { -(mag as i128) } else { mag as i128 })
     }
-    pub fn read_i128(&mut self) -> Option<i128> {
+    /// A WIDE value (docs/SPEC-TABLES.md §16.2): a 128-bit integer (frac 0)
+    /// or a fixed(I, F)'s raw integer, read EXACTLY from any number token whose
+    /// value the Q I.F grid holds — `2`, `2.0` and `20e-1` are one value —
+    /// with no binary float between, as two's complement in a u128. A digit
+    /// the grid cannot hold is kind_mismatch, the wrong shape, never rounded;
+    /// a magnitude past 128 bits saturates and counts clamped; a value of
+    /// another JSON type is kind_mismatch, skipped. The caller clamps to the
+    /// field's raw range.
+    pub fn read_wide(&mut self, signed: bool, frac: u32) -> Option<u128> {
         let c = self.peek();
         if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
             self.kind_mismatch += 1;
             self.skip_value();
             return None;
         }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            return Some(match t.parse::<i128>() {
-                Ok(v) => v,
-                Err(_) => {
-                    self.clamped += 1;
-                    if t.starts_with('-') { i128::MIN } else { i128::MAX }
-                }
-            });
+        let token = self.number_token()?;
+        let t = token.as_bytes();
+        let negative = t.first() == Some(&b'-');
+        let mut i = usize::from(negative);
+        let int_start = i;
+        while i < t.len() && t[i].is_ascii_digit() {
+            i += 1;
         }
-        let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
-            self.kind_mismatch += 1;
-            return None;
-        }
-        Some(f as i128)
-    }
-    pub fn read_u128(&mut self) -> Option<u128> {
-        let c = self.peek();
-        if matches!(c, b'{' | b'[' | b'"' | b't' | b'f' | b'n') {
-            self.kind_mismatch += 1;
-            self.skip_value();
-            return None;
-        }
-        let t = self.number_token()?;
-        if !t.contains(['.', 'e', 'E']) {
-            if let Some(rest) = t.strip_prefix('-') {
-                if rest.bytes().all(|b| b == b'0') {
-                    return Some(0);
-                }
-                self.clamped += 1;
-                return Some(0);
+        let int_len = i - int_start;
+        let mut frac_start = i;
+        let mut frac_len = 0;
+        if i < t.len() && t[i] == b'.' {
+            i += 1;
+            frac_start = i;
+            while i < t.len() && t[i].is_ascii_digit() {
+                i += 1;
             }
-            return Some(match t.parse::<u128>() {
-                Ok(v) => v,
-                Err(_) => {
-                    self.clamped += 1;
-                    u128::MAX
-                }
-            });
+            frac_len = i - frac_start;
         }
-        let f: f64 = t.parse().ok()?;
-        if f.fract() != 0.0 {
+        let mut exp: i64 = 0;
+        if i < t.len() && (t[i] == b'e' || t[i] == b'E') {
+            i += 1;
+            let mut eneg = false;
+            if i < t.len() && (t[i] == b'-' || t[i] == b'+') {
+                eneg = t[i] == b'-';
+                i += 1;
+            }
+            while i < t.len() && t[i].is_ascii_digit() {
+                if exp < 100000 {
+                    exp = exp * 10 + i64::from(t[i] - b'0');
+                }
+                i += 1;
+            }
+            if eneg {
+                exp = -exp;
+            }
+        }
+        let digit = |k: usize| if k < int_len { t[int_start + k] } else { t[frac_start + k - int_len] };
+        let (mut start, mut end) = (0usize, int_len + frac_len);
+        let mut point = int_len as i64 + exp;
+        while start < end && digit(start) == b'0' {
+            start += 1;
+            point -= 1;
+        }
+        while end > start && digit(end - 1) == b'0' {
+            end -= 1;
+        }
+        let signed_max = i128::MAX as u128;
+        let signed_min = 1u128 << 127;
+        let mut raw = 0u128;
+        let mut saturated = false;
+        if start == end {
+            // zero, in any spelling, -0 included
+        } else if point > 40 {
+            saturated = true;
+            raw = match (negative, signed) {
+                (false, true) => signed_max,
+                (false, false) => u128::MAX,
+                (true, true) => signed_min,
+                (true, false) => 0,
+            };
+        } else if point < -40 {
             self.kind_mismatch += 1;
             return None;
+        } else {
+            // the decimal fraction, at most 128 places: Q I.F holds I + F <= 128
+            // bits, so a nonzero digit past the 128th place is inexact
+            let mut fd = [0u8; 128];
+            let mut n = point.min(0).unsigned_abs() as usize;
+            let mut k = (point.max(0) as usize) + start;
+            while k < end {
+                if n >= 128 {
+                    if digit(k) != b'0' {
+                        self.kind_mismatch += 1;
+                        return None;
+                    }
+                } else {
+                    fd[n] = digit(k) - b'0';
+                    n += 1;
+                }
+                k += 1;
+            }
+            let mut fraction = 0u128;
+            for _ in 0..frac {
+                let mut carry = 0u8;
+                for d in fd[..n].iter_mut().rev() {
+                    let x = *d * 2 + carry;
+                    *d = x % 10;
+                    carry = x / 10;
+                }
+                fraction = (fraction << 1) | u128::from(carry);
+            }
+            if fd[..n].iter().any(|&d| d != 0) {
+                self.kind_mismatch += 1;
+                return None;
+            }
+            let mut whole = 0u128;
+            let mut k = start as i64;
+            while k < start as i64 + point && !saturated {
+                let d = if (k as usize) < end { u128::from(digit(k as usize) - b'0') } else { 0 };
+                match whole.checked_mul(10).and_then(|w| w.checked_add(d)) {
+                    Some(w) => whole = w,
+                    None => saturated = true,
+                }
+                k += 1;
+            }
+            if !saturated && frac > 0 && whole.checked_shr(128 - frac).unwrap_or(0) != 0 {
+                saturated = true;
+            }
+            if !saturated {
+                raw = whole.checked_shl(frac).unwrap_or(0) | fraction;
+            }
+            if signed {
+                if !saturated && !negative && raw >> 127 != 0 {
+                    saturated = true;
+                }
+                if !saturated && negative && raw > signed_min {
+                    saturated = true;
+                }
+                if saturated {
+                    raw = if negative { signed_min } else { signed_max };
+                } else if negative {
+                    raw = raw.wrapping_neg();
+                }
+            } else {
+                if saturated {
+                    raw = u128::MAX;
+                }
+                if negative && raw != 0 {
+                    raw = 0;
+                    saturated = true;
+                }
+            }
         }
-        if f < 0.0 {
+        if saturated {
             self.clamped += 1;
-            return Some(0);
         }
-        Some(f as u128)
+        Some(raw)
     }
     /// A float field's value (docs/SPEC-TABLES.md §16.2).
     pub fn read_float(&mut self) -> Option<f64> {
@@ -2146,5 +2307,211 @@ impl<'a> Jr<'a> {
                 let _ = self.number_token();
             }
         }
+    }
+}
+
+// ---- the COOK WRITE side's region writer (docs/SPEC-TABLES.md §6.3, §7) ----
+
+/// One region being written: the DATA part, the byte order (1 little, 2 big),
+/// the numbering it lays out and each node's region offset, by index - 1 (the
+/// root is offset 0). A refusal clears ok and the cook writes nothing.
+#[cfg(feature = "cook")]
+pub struct TableRegionWriter<'a> {
+    pub data: Vec<u8>,
+    pub order: u64,
+    pub align: i64,
+    pub graph: &'a TableNodeGraph,
+    pub offsets: Vec<i64>,
+    pub ok: bool,
+}
+
+#[cfg(feature = "cook")]
+fn table_region_up(v: i64, a: i64) -> i64 {
+    (v + a - 1) / a * a
+}
+
+/// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base,
+/// then every node of the numbering in index order at its own alignment — a
+/// blob at eight, its u32 length, four zero bytes, its bytes and a *string
+/// blob's terminator — and the data part rounded to the region's alignment,
+/// the greatest record alignment, never below eight.
+#[cfg(feature = "cook")]
+pub fn table_region_layout(
+    g: &TableNodeGraph,
+    root_size: i64,
+    root_align: i64,
+    layout: fn(u64) -> Option<(i64, i64)>,
+    order: u64,
+) -> Result<TableRegionWriter<'_>, String> {
+    let mut align = root_align.max(8);
+    let mut offset = root_size;
+    let mut offsets = Vec::with_capacity(g.records.len() + 1);
+    offsets.push(0);
+    for rec in g.records.iter() {
+        match rec {
+            TableNodeRecord::Blob(type_id, blob) => {
+                if blob.len() as u64 > u32::MAX as u64 {
+                    return Err(String::from("invalid_value"));
+                }
+                offset = table_region_up(offset, 8);
+                offsets.push(offset);
+                offset += 8 + blob.len() as i64 + if *type_id == STRING_TYPE_ID { 1 } else { 0 };
+            }
+            TableNodeRecord::Table(type_id, _) => {
+                let Some((size, a)) = layout(*type_id) else {
+                    return Err(String::from("invalid_value"));
+                };
+                align = align.max(a);
+                offset = table_region_up(offset, a);
+                offsets.push(offset);
+                offset += size;
+            }
+        }
+    }
+    let bytes = table_region_up(offset, align);
+    Ok(TableRegionWriter { data: vec![0u8; bytes as usize], order, align, graph: g, offsets, ok: true })
+}
+
+#[cfg(feature = "cook")]
+impl TableRegionWriter<'_> {
+    pub fn fail(&mut self) {
+        self.ok = false;
+    }
+
+    /// One scalar of width bytes at a region offset, in the cook's byte order.
+    pub fn put(&mut self, at: i64, value: u64, width: u32) {
+        let at = at as usize;
+        for i in 0..width as usize {
+            let shift = if self.order == 2 { width as usize - 1 - i } else { i };
+            self.data[at + i] = (value >> (shift * 8)) as u8;
+        }
+    }
+
+    /// A float32 as its bit pattern; a NaN or an infinity refuses (§3.3).
+    pub fn put_f32(&mut self, at: i64, value: f32) {
+        if !value.is_finite() {
+            self.ok = false;
+            return;
+        }
+        self.put(at, value.to_bits() as u64, 4);
+    }
+
+    /// A float64 as its bit pattern; a NaN or an infinity refuses (§3.3).
+    pub fn put_f64(&mut self, at: i64, value: f64) {
+        if !value.is_finite() {
+            self.ok = false;
+            return;
+        }
+        self.put(at, value.to_bits(), 8);
+    }
+
+    /// A 128-bit integer: a big-endian region holds its high half first, as
+    /// it holds a u64 with its high byte first (§7.2).
+    pub fn put_wide(&mut self, at: i64, value: u128) {
+        let bytes = if self.order == 2 { value.to_be_bytes() } else { value.to_le_bytes() };
+        self.data[at as usize..at as usize + 16].copy_from_slice(&bytes);
+    }
+
+    /// string(N) or bytes(N): the used bytes, a zero tail, and the int32 used
+    /// length at its own piece; a value over its declared bound refuses.
+    pub fn put_text(&mut self, at: i64, bytes: &[u8], bound: usize, length_at: i64) {
+        if bytes.len() > bound {
+            self.ok = false;
+            return;
+        }
+        self.data[at as usize..at as usize + bytes.len()].copy_from_slice(bytes);
+        self.put(length_at, bytes.len() as u64, 4);
+    }
+
+    /// wstring(N): the used CODE UNITS, each a two-byte scalar in the cook's
+    /// byte order, and the int32 used length in units (§7.2).
+    pub fn put_units(&mut self, at: i64, units: &[u16], bound: usize, length_at: i64) {
+        if units.len() > bound {
+            self.ok = false;
+            return;
+        }
+        for (i, u) in units.iter().enumerate() {
+            self.put(at + 2 * i as i64, *u as u64, 2);
+        }
+        self.put(length_at, units.len() as u64, 4);
+    }
+
+    /// A reference slot to a table node: the SELF-RELATIVE delta from the
+    /// slot's own address to the node's start, and zero for null (§6.3).
+    pub fn ref_node<T>(&mut self, at: i64, node: &Option<Rc<T>>) {
+        match node {
+            None => self.put(at, 0, 8),
+            Some(n) => {
+                let index = self.graph.node_index(n) as usize;
+                self.ref_index(at, index);
+            }
+        }
+    }
+
+    /// A reference slot to a blob node, by the blob's identity (§2.5).
+    pub fn ref_blob(&mut self, at: i64, key: Option<usize>) {
+        match key {
+            None => self.put(at, 0, 8),
+            Some(k) => {
+                let index = self.graph.blob_index(k) as usize;
+                self.ref_index(at, index);
+            }
+        }
+    }
+
+    fn ref_index(&mut self, at: i64, index: usize) {
+        if index < 2 || index > self.offsets.len() {
+            self.ok = false; // a node the numbering does not carry
+            return;
+        }
+        let delta = self.offsets[index - 1] - at;
+        if delta == 0 {
+            self.ok = false;
+            return;
+        }
+        self.put(at, delta as u64, 8);
+    }
+
+    /// A blob node: its u32 length in the cook's order, then its bytes; the
+    /// pad word and a *string blob's terminator are the buffer's zeros.
+    pub fn put_blob(&mut self, at: i64, blob: &[u8]) {
+        self.put(at, blob.len() as u64, 4);
+        let from = at as usize + 8;
+        self.data[from..from + blob.len()].copy_from_slice(blob);
+    }
+
+    /// Frame the region (§7.1): the 64-byte header, the data part at
+    /// align_up(64, alignment), and the node directory — each node's offset
+    /// and type id — as the attribution part.
+    pub fn finish(self, g: &TableNodeGraph, root_type: u64, build: u64) -> Result<Vec<u8>, String> {
+        if !self.ok {
+            return Err(String::from("invalid_value"));
+        }
+        let data_offset = table_region_up(64, self.align) as usize;
+        let nodes = g.records.len() + 1;
+        let total = data_offset + self.data.len() + nodes * 16;
+        let mut out = TableRegionWriter { data: vec![0u8; total], order: self.order, align: self.align, graph: g, offsets: Vec::new(), ok: true };
+        out.put(0, 0x4b4f4f434d484353, 8);
+        out.put(8, build, 8);
+        out.put(16, self.order, 8);
+        out.put(24, self.data.len() as u64, 8);
+        out.put(32, (nodes * 16) as u64, 8);
+        out.put(40, self.align as u64, 8);
+        out.data[data_offset..data_offset + self.data.len()].copy_from_slice(&self.data);
+        let mut at = (data_offset + self.data.len()) as i64;
+        for k in 0..nodes {
+            let id = if k == 0 {
+                root_type
+            } else {
+                match &g.records[k - 1] {
+                    TableNodeRecord::Blob(type_id, _) => *type_id,
+                    TableNodeRecord::Table(type_id, _) => *type_id,
+                }
+            };
+            out.put(at, self.offsets[k] as u64, 8);
+            out.put(at + 8, id, 8);
+            at += 16;
+        }
+        Ok(out.data)
     }
 }

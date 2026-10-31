@@ -1,0 +1,87 @@
+name: schema moo generated analyze strict gate
+
+# The moo lens (the moo port's layer 7, docs/PORT-MOO.md; modelled on the Dart
+# strict-analyze gate and the Luau analyze-strict lens): moo-analyze
+# --mode=strict SILENT, no error and no lint warning, over every unit of the
+# schema corpus generated through the moo leg and the vendored serialize.moo
+# runtime, with the analyzer held to the moo pin, and the controls that prove
+# the gate and the pin check fire (make/schema-moo-generated-analyze-strict-gate.mk).
+#
+# There is no heavy half: generation and one analyzer process cost about 3 s,
+# so push, pull request and the schedule all run the same gate.
+#
+# A GITHUB-HOSTED RUNNER, so a fork's pull request may run it: the job runs
+# the repository's own code against a pinned tool and holds no secret. The moo
+# pin is restored by .github/actions/moo from the cache keyed on MOO_PIN, OS
+# and architecture (built from source on a miss, which `make dist-moo` refuses
+# for any commit but the pin).
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+    paths:
+      - 'make/schema-moo-generated-analyze-strict-gate.mk'
+      - 'make/moo.mk'
+      - '.github/workflows/schema-moo-generated-analyze-strict-gate.yml'
+      - '.github/actions/moo/**'
+      - 'internal/ci/schema_moo_generated_analyze_strict_gate_test.go'
+      - 'internal/codegen/moo/**'
+      - 'internal/codegen/mootable/**'
+      - 'compiler/target_moo.go'
+      - 'ir/**'
+      - 'internal/check/**'
+      - 'examples/**'
+      - 'examples128/**'
+      - 'examples-wide/**'
+      - 'bench/corpus/**'
+      - 'tables/**'
+      - 'test/packet-*/**'
+      - 'test/tables/**'
+  pull_request:
+    paths:
+      - 'make/schema-moo-generated-analyze-strict-gate.mk'
+      - 'make/moo.mk'
+      - '.github/workflows/schema-moo-generated-analyze-strict-gate.yml'
+      - '.github/actions/moo/**'
+      - 'internal/ci/schema_moo_generated_analyze_strict_gate_test.go'
+      - 'internal/codegen/moo/**'
+      - 'internal/codegen/mootable/**'
+      - 'compiler/target_moo.go'
+      - 'ir/**'
+      - 'internal/check/**'
+      - 'examples/**'
+      - 'examples128/**'
+      - 'examples-wide/**'
+      - 'bench/corpus/**'
+      - 'tables/**'
+      - 'test/packet-*/**'
+      - 'test/tables/**'
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    name: moo-analyze --mode=strict (generated corpus and runtime)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: ./.github/actions/moo
+      - name: the planted-pattern control (the gate fires)
+        run: make schema-moo-generated-analyze-strict-gate-negative-control
+      - name: the pin check's control (another analyzer is refused)
+        run: make schema-moo-generated-analyze-strict-gate-pin-negative-control
+      - name: moo-analyze --mode=strict over the generated corpus and the runtime
+        run: make schema-moo-generated-analyze-strict-gate

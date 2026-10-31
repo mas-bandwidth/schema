@@ -74,7 +74,8 @@ namespace Blockdemo
         {
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
             if (v.Tag != 0 && !ids.Add(0x56d7ab194448a4f3ul)) return false;
-            if (v.Value != 0.0 && !ids.Add(0x7ce4fd9430e80ceaul)) return false;
+            if (!double.IsFinite(v.Value)) return false;
+            if (BitConverter.DoubleToUInt64Bits(v.Value) != 0x0000000000000000ul && !ids.Add(0x7ce4fd9430e80ceaul)) return false;
             if (v.Flag != false && !ids.Add(0xd5f2d079088c0b17ul)) return false;
             if (v.Id != 0 && !ids.Add(0x08b72e07b55c3ac0ul)) return false;
             if (!TableWire.CollectField(v, fields[4], ref ids)) return false;
@@ -89,7 +90,7 @@ namespace Blockdemo
             long n = 1;
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
             if (v.Tag != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x56d7ab194448a4f3ul)) + 2; }
-            if (v.Value != 0.0) { n += TableWire.VarSize(ids.RefAt(36, 0x7ce4fd9430e80ceaul)) + 9; }
+            if (BitConverter.DoubleToUInt64Bits(v.Value) != 0x0000000000000000ul) { n += TableWire.VarSize(ids.RefAt(36, 0x7ce4fd9430e80ceaul)) + 9; }
             if (v.Flag != false) { n += TableWire.VarSize(ids.RefAt(73, 0xd5f2d079088c0b17ul)) + 2; }
             if (v.Id != 0) { n += TableWire.VarSize(ids.RefAt(0, 0x08b72e07b55c3ac0ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[4], ref ids, default, out long payload_4);
@@ -110,7 +111,7 @@ namespace Blockdemo
                 w.HeaderAt(25, 0x56d7ab194448a4f3ul, 6, ref ids);
                 w.Fixed((ulong)v.Tag, 1);
             }
-            if (v.Value != 0.0)
+            if (BitConverter.DoubleToUInt64Bits(v.Value) != 0x0000000000000000ul)
             {
                 w.HeaderAt(36, 0x7ce4fd9430e80ceaul, 11, ref ids);
                 w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Value)), 8);
@@ -347,7 +348,7 @@ namespace Blockdemo
                 info.Fields = new TableFieldInfo[]
                 {
                     new TableFieldInfo { Name = "tag", Json = "tag", TypeName = "uint8", Id = 0x56d7ab194448a4f3, Kind = 6, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Tag; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Tag = unchecked((byte)r); }, MessageSlot = 5, Ordinal = 0, NativeOffset = 0, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Tag = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { byte v = unchecked((byte)raw); return (ulong)v; } },
-                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x7ce4fd9430e80cea, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.PaddedRow)o).Value)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Value = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Value = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
+                    new TableFieldInfo { Name = "value", Json = "value", TypeName = "float64", Id = 0x7ce4fd9430e80cea, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Blockdemo.PaddedRow)o).Value)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Value = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 6, Ordinal = 1, NativeOffset = 8, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Value = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), NonFiniteField = "PaddedRow.value", NonFiniteReason = "non_finite_float: PaddedRow.value", ClampRaw = delegate (ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
                     new TableFieldInfo { Name = "flag", Json = "flag", TypeName = "bool", Id = 0xd5f2d079088c0b17, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return ((global::Blockdemo.PaddedRow)o).Flag ? 1ul : 0ul; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Flag = r != 0; }, MessageSlot = 7, Ordinal = 2, NativeOffset = 16, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Flag = false; }, DefaultRaw = false ? 1ul : 0ul },
                     new TableFieldInfo { Name = "id", Json = "id", TypeName = "uint32", Id = 0x08b72e07b55c3ac0, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Blockdemo.PaddedRow)o).Id; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Blockdemo.PaddedRow)o).Id = unchecked((uint)r); }, MessageSlot = 8, Ordinal = 3, NativeOffset = 20, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; value.Id = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); return (ulong)v; } },
                     new TableFieldInfo { Name = "label", Json = "label", TypeName = "string", Id = 0x39f7fcec8fcb623d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 15, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).Label; }, GetCount = delegate (object o) { return ((global::Blockdemo.PaddedRow)o).LabelLength; }, SetCount = delegate (object o, int n) { ((global::Blockdemo.PaddedRow)o).LabelLength = n; }, MessageSlot = 9, Ordinal = 4, NativeOffset = 24, NativeElementSize = 16, NativeCountOffset = 40, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Blockdemo.PaddedRow)o; Array.Clear(value.Label, 0, value.Label.Length); value.LabelLength = 0; } },
@@ -513,6 +514,33 @@ namespace Blockdemo
                     PaddedRowFixedClampBody(value.Rows[i], ref clamped);
                 }
             }
+        }
+
+        // PaddedRow's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
+        // <Owner>.<field>, or null.
+        public static string PaddedRowFixedFiniteBody(PaddedRow value)
+        {
+            if (value == null) return null;
+            if (!double.IsFinite(value.Value)) return "PaddedRow.value";
+            return null;
+        }
+
+        // PaddedFrame's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
+        // <Owner>.<field>, or null.
+        public static string PaddedFrameFixedFiniteBody(PaddedFrame value)
+        {
+            if (value == null) return null;
+            if (value.Rows != null)
+            {
+                for (int i = 0; i < value.RowsCount && i < value.Rows.Length; ++i)
+                {
+                    {
+                        string why = PaddedRowFixedFiniteBody(value.Rows[i]);
+                        if (why != null) return why;
+                    }
+                }
+            }
+            return null;
         }
 
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
@@ -733,7 +761,7 @@ namespace Blockdemo
                                 int at = (int)p.Src + e * sw;
                                 if (p.Sign == 2)
                                 {
-                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                     BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                     continue;
                                 }
@@ -841,7 +869,7 @@ namespace Blockdemo
                     case TableFixedWire.WidenF:
                         {
                             float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                            PaddedRowFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            PaddedRowFixedSetDouble(dst, p.Dst, (double)f);
                             if (report != null) { report.Widened++; }
                             break;
                         }
@@ -937,6 +965,7 @@ namespace Blockdemo
         {
             long need = PaddedRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (PaddedRowFixedFiniteBody(values[k]) != null) { return -1; } }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedRowFixedHash);
@@ -1095,6 +1124,13 @@ namespace Blockdemo
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string finite_why = PaddedRowFixedFiniteBody(values[k]);
+                if (finite_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 PaddedRowFixedClamp(values[k], report);
@@ -3900,7 +3936,7 @@ namespace Blockdemo
                                 int at = (int)p.Src + e * sw;
                                 if (p.Sign == 2)
                                 {
-                                    double d2 = TableFixedWire.WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                    double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                     BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                     continue;
                                 }
@@ -4008,7 +4044,7 @@ namespace Blockdemo
                     case TableFixedWire.WidenF:
                         {
                             float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                            PaddedFrameFixedSetDouble(dst, p.Dst, TableFixedWire.WidenF32(f));
+                            PaddedFrameFixedSetDouble(dst, p.Dst, (double)f);
                             if (report != null) { report.Widened++; }
                             break;
                         }
@@ -4870,6 +4906,7 @@ namespace Blockdemo
         {
             long need = PaddedFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+            for (int k = 0; k < values.Length; ++k) { if (PaddedFrameFixedFiniteBody(values[k]) != null) { return -1; } }
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PaddedFrameFixedHash);
@@ -5028,6 +5065,13 @@ namespace Blockdemo
                 if (run_why != null)
                 {
                     if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                string finite_why = PaddedFrameFixedFiniteBody(values[k]);
+                if (finite_why != null)
+                {
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 PaddedFrameFixedClamp(values[k], report);

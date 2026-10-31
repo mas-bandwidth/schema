@@ -250,11 +250,48 @@ struct TableReport
     // the plain names and ReadStrict on every refusal and ok otherwise.
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
+    // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+    // an infinity is refused on its raw bits by every read, the tolerant one
+    // included, so a read that moves this refuses as non_finite_float and
+    // lands nothing. It is a count only so a read can tell its own refusal
+    // from a caller's report that already held one.
+    int32_t non_finite_floats = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
+// packet wire's own): a NaN or an infinity, whatever its
+// sign or payload, has an all-ones exponent, and that is the whole test. Every
+// read runs it on the RAW BITS, before they become a float and before the
+// field is written; every writer runs it on the bits of the value it was
+// handed. -0 and the subnormals are finite and ride bit-exact.
+inline bool TableBitsFinite32( uint32_t bits ) { return ( bits & 0x7F800000u ) != 0x7F800000u; }
+inline bool TableBitsFinite64( uint64_t bits ) { return ( bits & 0x7FF0000000000000ull ) != 0x7FF0000000000000ull; }
+
+// TableNonFiniteFloat is a read meeting one: the read is REFUSED by name,
+// non_finite_float, and the caller that started it lands nothing.
+inline void TableNonFiniteFloat( TableReport * report )
+{
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    report->non_finite_floats++;
+}
+
+// TableNonFiniteRefused is the load's own end: true when the walk met a
+// non-finite float since before, with the refusal stamped again over
+// whatever the walk met after it, because it outranks any damage (§3.3).
+inline bool TableNonFiniteRefused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return false; }
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    return true;
+}
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -555,7 +592,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static BLOCKHOME_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -845,20 +882,6 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
         case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
         default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
     }
-}
-
-// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
-// the hardware conversion would set the quiet bit (§4)
-inline double TableWidenF32( uint32_t bits )
-{
-    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-    {
-        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-        double d; memcpy( &d, &nan_bits, 8 ); return d;
-    }
-    float f; memcpy( &f, &bits, 4 ); return (double) f;
 }
 
 // ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
@@ -1635,7 +1658,7 @@ static const int64_t kTableAnnounceBytes = 288;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x07, 0xbf, 0x11, 0x60, 0xa3, 0x84, 0x27, 0x50, 0x02,
+    0x01, 0x01, 0x09, 0x8f, 0x10, 0x33, 0x88, 0xb6, 0x37, 0x34, 0x05, 0x02,
     0x0e, 0xf8, 0x01, 0x06, 0xf5, 0x01, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c,
     0x8b, 0x53, 0x0d, 0x03, 0xe7, 0xdd, 0xbf, 0x1f, 0x5d, 0xe6, 0x4c, 0x0d,
     0xd0, 0xf4, 0x5f, 0xfe, 0xbe, 0xec, 0x79, 0x4e, 0x0a, 0x00, 0x89, 0x59,
@@ -2202,6 +2225,10 @@ inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+// the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
+// never written, and measure answers -1 for it as save answers false
+inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
+inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -3823,7 +3850,7 @@ namespace blockhome {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x502784a36011bf07ull;
+static const uint64_t BuildVersion = 0x053437b68833108full;
 
 } // namespace blockhome
 
@@ -4381,7 +4408,10 @@ inline TableOpenVerdict PartRowLoadVerdict( PartRow & value, const uint8_t * buf
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !PartRowLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = PartRowLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { PartRowReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -4681,13 +4711,14 @@ inline bool PartRowLoadMessages( PartRow * values, int64_t * count, const TableV
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PartRowLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !PartRowLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -4932,7 +4963,10 @@ inline TableOpenVerdict PartFrameLoadVerdict( PartFrame & value, const uint8_t *
     }
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
-    if ( !PartFrameLoadBody( r, value ) ) { return TableOpenBodyStopped; }
+    const int32_t non_finite_before = to->non_finite_floats;
+    const bool whole = PartFrameLoadBody( r, value );
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { PartFrameReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( !whole ) { return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
@@ -5190,13 +5224,14 @@ inline bool PartFrameLoadMessages( PartFrame * values, int64_t * count, const Ta
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
+    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PartFrameLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width
+        if ( !PartFrameLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
         br.remaining--;
     }
     *count = bodies;
@@ -5248,6 +5283,26 @@ inline void PartFrameFixedWriteBody( uint8_t * b, const PartFrame & value )
     {
         PartRowFixedWriteBody( b + 12 + i * 340 + 0, value.parts[i] );
     }
+}
+
+// PartRow's finite rule (docs/SPEC-TABLES.md §3.3): false when a float it
+// holds is a NaN or an infinity, which no read lands and no writer writes.
+TABLE_FIXED_INLINE bool PartRowFixedFiniteBody( const PartRow & value )
+{
+    if ( !ArmorConfigFixedFiniteBody( value.armor ) ) { return false; }
+    if ( !GunnerSettingsFixedFiniteBody( value.gunner ) ) { return false; }
+    return true;
+}
+
+// PartFrame's finite rule (docs/SPEC-TABLES.md §3.3): false when a float it
+// holds is a NaN or an infinity, which no read lands and no writer writes.
+TABLE_FIXED_INLINE bool PartFrameFixedFiniteBody( const PartFrame & value )
+{
+    for ( int64_t i = 0; i < (int64_t) value.parts_count && i < 32; ++i )
+    {
+        if ( !PartRowFixedFiniteBody( value.parts[i] ) ) { return false; }
+    }
+    return true;
 }
 
 // ---- PartRow, the fixed form ----
@@ -5433,6 +5488,7 @@ inline int64_t PartRowFixedSave( const PartRow * values, int64_t count, uint8_t 
     TableFixedPut64( buffer + kTableFixedHashAt, PartRowFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) PartRowFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, PartRowFixedLayout, (size_t) PartRowFixedLayoutBytes );
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PartRowFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + PartRowFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -5609,6 +5665,13 @@ inline int64_t PartRowFixedLoadTolerant( PartRow * values, int64_t capacity, con
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PartRowFixedGuards );
+        if ( !PartRowFixedFiniteBody( values[k] ) )
+        {
+            for ( int64_t j = 0; j <= k; ++j ) { PartRowReset( values[j] ); }
+            *report = TableReport();
+            TableNonFiniteFloat( report );
+            return -1;
+        }
         TableFixedClampKnownRanges( PartRowFixedKnownRanges[lineage_at], PartRowFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         at += record_bytes;
@@ -6204,6 +6267,7 @@ inline int64_t PartFrameFixedSave( const PartFrame * values, int64_t count, uint
     TableFixedPut64( buffer + kTableFixedHashAt, PartFrameFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) PartFrameFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, PartFrameFixedLayout, (size_t) PartFrameFixedLayoutBytes );
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PartFrameFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + PartFrameFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -6380,6 +6444,13 @@ inline int64_t PartFrameFixedLoadTolerant( PartFrame * values, int64_t capacity,
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PartFrameFixedGuards );
+        if ( !PartFrameFixedFiniteBody( values[k] ) )
+        {
+            for ( int64_t j = 0; j <= k; ++j ) { PartFrameReset( values[j] ); }
+            *report = TableReport();
+            TableNonFiniteFloat( report );
+            return -1;
+        }
         TableFixedClampKnownRanges( PartFrameFixedKnownRanges[lineage_at], PartFrameFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         at += record_bytes;
@@ -6565,26 +6636,28 @@ inline const PartFrame * PartFrameOpen( const void * bytes, uint64_t length, Tab
 // content-addressed by (asset hash, build version), so two writers of one
 // instance produce ONE artifact or the pair means nothing.
 
-inline void PartRowCookBody( uint8_t * at, const PartRow & value, TableByteOrder order );
-inline void PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteOrder order );
+inline bool PartRowCookBody( uint8_t * at, const PartRow & value, TableByteOrder order );
+inline bool PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteOrder order );
 
-inline void PartRowCookBody( uint8_t * at, const PartRow & value, TableByteOrder order )
+inline bool PartRowCookBody( uint8_t * at, const PartRow & value, TableByteOrder order )
 {
-    ArmorConfigCookBody( at + 0, value.armor, order );
-    GunnerSettingsCookBody( at + 40, value.gunner, order );
+    if ( !ArmorConfigCookBody( at + 0, value.armor, order ) ) { return false; }
+    if ( !GunnerSettingsCookBody( at + 40, value.gunner, order ) ) { return false; }
     table_cook_put( at + 344, (uint64_t) value.part_id, 4, order );
     table_cook_put( at + 348, (uint64_t) value.slot, 1, order );
+    return true;
 }
 
-inline void PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteOrder order )
+inline bool PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.version, 8, order );
     // all 32 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 32; i++ )
     {
-        PartRowCookBody( at + 8 + i * 352, value.parts[ i ], order );
+        if ( !PartRowCookBody( at + 8 + i * 352, value.parts[ i ], order ) ) { return false; }
     }
     table_cook_put( at + 11272, (uint64_t) (uint32_t) value.parts_count, 4, order );
+    return true;
 }
 
 // PartRowCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -6630,7 +6703,7 @@ inline bool PartRowCook( const PartRow & value, void * out, uint64_t capacity, T
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    PartRowCookBody( raw + 64, value, order );
+    if ( !PartRowCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -6682,7 +6755,7 @@ inline bool PartFrameCook( const PartFrame & value, void * out, uint64_t capacit
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    PartFrameCookBody( raw + 64, value, order );
+    if ( !PartFrameCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)

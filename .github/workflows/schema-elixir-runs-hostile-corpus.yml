@@ -10,12 +10,16 @@ name: schema-elixir-runs-hostile-corpus
 
 on:
   push:
-    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+    branches: [ main, dev, fixed-table-form ]
   pull_request:
     branches: [ main, dev, fixed-table-form, 'sprint/**' ]
   schedule:
     - cron: "29 3 * * *"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GOFLAGS: -mod=readonly

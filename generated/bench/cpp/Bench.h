@@ -18,7 +18,8 @@ namespace bench {
 inline constexpr uint64_t ProtocolId = 0xc93127c82f083edfull;
 
 // type BenchPacket
-struct BenchPacket {
+struct BenchPacket
+{
     int32_t a = 0; // wire [-100, 100]
     int32_t b = 0; // wire [0, 65535]
     int32_t c = 0; // wire [-1000000, 1000000]
@@ -37,7 +38,8 @@ inline constexpr int64_t BenchPacketMaxBits = 392; // longest wire path; align p
 inline constexpr int64_t BenchPacketMaxBytes = 56; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type BenchInts
-struct BenchInts {
+struct BenchInts
+{
     int32_t f0 = 0; // wire [-100, 100]
     int32_t f1 = 0; // wire [0, 65535]
     int32_t f2 = 0; // wire [-1000000, 1000000]
@@ -54,7 +56,8 @@ inline constexpr int64_t BenchIntsMaxBits = 110; // longest wire path; align pad
 inline constexpr int64_t BenchIntsMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type BenchBits
-struct BenchBits {
+struct BenchBits
+{
     uint32_t b7 = 0;
     uint32_t b13 = 0;
     uint32_t b23 = 0;
@@ -69,7 +72,8 @@ inline constexpr int64_t BenchBitsMaxBits = 156; // longest wire path; align pad
 inline constexpr int64_t BenchBitsMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // enum MixedWeapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
-enum class MixedWeapon : uint8_t {
+enum class MixedWeapon : uint8_t
+{
     None = 0,
     Fists = 1,
     Pistol = 2,
@@ -233,7 +237,8 @@ inline const char * FlagNamesMixedDamage( uint64_t value, char * buffer, int buf
 }
 
 // type MixedEntity
-struct MixedEntity {
+struct MixedEntity
+{
     uint32_t entity_id = 0;
     int32_t pos_x = 0; // wire [-16383, 16383]
     int32_t pos_y = 0; // wire [-16383, 16383]
@@ -254,7 +259,8 @@ inline constexpr int64_t MixedEntityMaxBits = 135; // longest wire path; align p
 inline constexpr int64_t MixedEntityMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type MixedStat
-struct MixedStat {
+struct MixedStat
+{
     uint32_t stat_id = 0;
     int32_t delta = 0; // wire [-512, 511]
 };
@@ -263,7 +269,8 @@ inline constexpr int64_t MixedStatMaxBits = 18; // longest wire path; align pads
 inline constexpr int64_t MixedStatMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type MixedHitEvent
-struct MixedHitEvent {
+struct MixedHitEvent
+{
     uint32_t target_id = 0;
     int32_t damage = 0; // wire [0, 4095]
     int32_t hit_kind = 0; // wire [0, 7]
@@ -274,7 +281,8 @@ inline constexpr int64_t MixedHitEventMaxBits = 28; // longest wire path; align 
 inline constexpr int64_t MixedHitEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type MixedChatEvent
-struct MixedChatEvent {
+struct MixedChatEvent
+{
     int32_t channel = 0; // wire [0, 3]
     uint32_t speaker = 0;
 };
@@ -283,7 +291,8 @@ inline constexpr int64_t MixedChatEventMaxBits = 14; // longest wire path; align
 inline constexpr int64_t MixedChatEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type MixedPickupEvent
-struct MixedPickupEvent {
+struct MixedPickupEvent
+{
     uint32_t item_id = 0;
     int32_t amount = 0; // wire [0, 255]
 };
@@ -292,7 +301,8 @@ inline constexpr int64_t MixedPickupEventMaxBits = 18; // longest wire path; ali
 inline constexpr int64_t MixedPickupEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // MixedEventType: union MixedEvent's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class MixedEventType : uint8_t {
+enum class MixedEventType : uint8_t
+{
     None = 0,
     Hit = 1,
     Chat = 2,
@@ -334,21 +344,21 @@ struct MixedEvent
 
     MixedHitEvent & SelectHit() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &hit ) MixedHitEvent{};
+        ::new ( static_cast<void *>( &hit ) ) MixedHitEvent{};
         type = MixedEventType::Hit;
         return hit;
     }
 
     MixedChatEvent & SelectChat() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &chat ) MixedChatEvent{};
+        ::new ( static_cast<void *>( &chat ) ) MixedChatEvent{};
         type = MixedEventType::Chat;
         return chat;
     }
 
     MixedPickupEvent & SelectPickup() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &pickup ) MixedPickupEvent{};
+        ::new ( static_cast<void *>( &pickup ) ) MixedPickupEvent{};
         type = MixedEventType::Pickup;
         return pickup;
     }
@@ -358,7 +368,8 @@ inline constexpr int64_t MixedEventMaxBits = 30; // tag + the largest arm; None 
 inline constexpr int64_t MixedEventMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type BenchMixed
-struct BenchMixed {
+struct BenchMixed
+{
     uint32_t sequence = 0;
     int32_t ack_sequence = 0; // wire [0, 65535]
     uint32_t ack_bits = 0;

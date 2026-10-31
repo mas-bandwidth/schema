@@ -58,6 +58,27 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
+	// Lua is the pinned PUC-Rio interpreter's version: a row that names it
+	// builds it with `make dist-lua` (make/lua.mk holds the pin and its
+	// sha256) before its controls run.
+	Lua  string `json:"lua,omitempty"`
+	Luau string `json:"luau,omitempty"`
+	// Golangci is the golangci-lint release this row installs (no leading
+	// v), for the generated-Go lint controls. It is not a conformance
+	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
+	// GOLANGCI_LINT_VERSION rather than against test/conformance/*/ci.json.
+	Golangci string `json:"golangci,omitempty"`
+	// Moo says the row needs the moo pin (make/moo.mk's MOO_PIN, a commit of
+	// mas-bandwidth/moo), which .github/actions/moo restores or builds into
+	// dist/moo. Like dotnet it is a marker, "pin", and never a version: the
+	// commit lives in make/moo.mk alone.
+	Moo string `json:"moo,omitempty"`
+	// Lobster is the pinned Lobster release (make/lobster.mk's
+	// LOBSTER_VERSION), installed by `make dist-lobster`.
+	Lobster string `json:"lobster,omitempty"`
+	// Squirrel is the pinned interpreter's version (make/squirrel.mk builds
+	// it with `make dist-squirrel`); the row's install step keys on it.
+	Squirrel string `json:"squirrel,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -74,7 +95,7 @@ type Exclusion struct {
 // install the same toolchain. `dotnet` is not among them on purpose: the .NET
 // pin lives in .github/dotnet-version and both files carry a marker instead of
 // the version, so there is no version here to hold against anything.
-var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir"}
+var versionedToolchains = []string{"rust", "node", "dart", "java", "otp", "elixir", "luau", "moo", "lobster", "squirrel"}
 
 // toolchain returns the version this group installs for one of the fields in
 // versionedToolchains, or the empty string when the group names none.
@@ -92,6 +113,14 @@ func (g Group) toolchain(field string) string {
 		return g.OTP
 	case "elixir":
 		return g.Elixir
+	case "luau":
+		return g.Luau
+	case "moo":
+		return g.Moo
+	case "lobster":
+		return g.Lobster
+	case "squirrel":
+		return g.Squirrel
 	}
 	return ""
 }
@@ -176,14 +205,20 @@ func (m Manifest) tiers() []string {
 // hundred-target line out of the matrix value.
 func (m Manifest) matrix(when string) ([]byte, error) {
 	type row struct {
-		Name   string `json:"name"`
-		Rust   string `json:"rust"`
-		Dotnet string `json:"dotnet"`
-		Node   string `json:"node"`
-		Dart   string `json:"dart"`
-		Java   string `json:"java"`
-		OTP    string `json:"otp"`
-		Elixir string `json:"elixir"`
+		Name     string `json:"name"`
+		Rust     string `json:"rust"`
+		Dotnet   string `json:"dotnet"`
+		Node     string `json:"node"`
+		Dart     string `json:"dart"`
+		Java     string `json:"java"`
+		OTP      string `json:"otp"`
+		Elixir   string `json:"elixir"`
+		Lua      string `json:"lua"`
+		Luau     string `json:"luau"`
+		Golangci string `json:"golangci"`
+		Moo      string `json:"moo"`
+		Lobster  string `json:"lobster"`
+		Squirrel string `json:"squirrel"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -194,14 +229,20 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			continue
 		}
 		rows = append(rows, row{
-			Name:   g.Name,
-			Rust:   g.Rust,
-			Dotnet: g.Dotnet,
-			Node:   g.Node,
-			Dart:   g.Dart,
-			Java:   g.Java,
-			OTP:    g.OTP,
-			Elixir: g.Elixir,
+			Name:     g.Name,
+			Rust:     g.Rust,
+			Dotnet:   g.Dotnet,
+			Node:     g.Node,
+			Dart:     g.Dart,
+			Java:     g.Java,
+			OTP:      g.OTP,
+			Elixir:   g.Elixir,
+			Lua:      g.Lua,
+			Luau:     g.Luau,
+			Golangci: g.Golangci,
+			Moo:      g.Moo,
+			Lobster:  g.Lobster,
+			Squirrel: g.Squirrel,
 		})
 	}
 	return json.Marshal(struct {

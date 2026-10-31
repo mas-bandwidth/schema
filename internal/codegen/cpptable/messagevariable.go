@@ -339,6 +339,7 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	g.pf("    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }\n")
 	g.pf("    const int64_t capacity = *count;\n")
 	g.pf("    *count = 0;\n")
+	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
 	g.pf("    TableMessageBatchReader br;\n")
 	g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );\n")
 	g.pf("    if ( bodies < 0 ) { return false; }\n")
@@ -349,10 +350,10 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	g.pf("    for ( int64_t b = 0; b < bodies; b++ )\n    {\n")
 	g.pf("        roots[b] = NULL;\n")
 	if g.retain {
-		g.pf("        if ( !%s( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { *count = b; return false; }\n",
+		g.pf("        if ( !%s( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }\n",
 			g.verb(n, "LoadMessageBodyInto"))
 	} else {
-		g.pf("        if ( !%sLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = b; return false; }\n", n)
+		g.pf("        if ( !%sLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }\n", n)
 	}
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    *count = bodies;\n")

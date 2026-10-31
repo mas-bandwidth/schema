@@ -11,7 +11,7 @@ const tableBuilderLoadSource = `
     public static bool LoadBuilder(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
-        report.Refused = false; report.Reason = null; Finish(report, Verdict.BodyStopped);
+        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null; Finish(report, Verdict.BodyStopped);
         if (pointer == IntPtr.Zero || worker.Arena.Closed) { return false; }
         if (bytes.Length == 0) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         if (bytes[0] != 1)
@@ -64,6 +64,8 @@ const tableBuilderLoadSource = `
             }
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);
             if (state.Refused) { return false; }
+            // a non-finite float refuses the load (docs/SPEC-TABLES.md §3.3)
+            if (NonFiniteRefused(report)) { Finish(report, Verdict.Refused); return false; }
             Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return complete;
         }
         finally { worker.Arena.Allocator.Release(directory); }

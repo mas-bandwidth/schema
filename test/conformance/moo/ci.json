@@ -1,0 +1,2 @@
+{"targets": "build/conformance-harness build/conformance-moo",
+ "moo": "pin"}

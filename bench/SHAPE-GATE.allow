@@ -98,6 +98,7 @@ paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
 # ---------------------------------------------------------------------------
 
 timing internal/baseline/file.go 1 the history entry's calendar date — a day written into a text log, no interval measured (prose)
+timing internal/codegen/luatable/testgen_test.go 1 the generated-test lint's list of BANNED names (os.clock among them): a string the test refuses, no clock read — the check is lexical
 
 # ---------------------------------------------------------------------------
 # GATE 2 — the spec's own MEASURED gate (docs/SPEC-TABLES.md §12.1).
@@ -118,6 +119,7 @@ timing internal/baseline/file.go 1 the history entry's calendar date — a day w
 
 timing test/tables/block_gate2_main.cpp 6 gate 2's C++ half (§12.1): the per-frame write, generated against the hand-written scatter
 timing test/cs-block/src/Gate2.cs 2 gate 2's C# half (§12.1): the per-frame read, generated against the hand mirror
+timing tools/luaufuzzhost/main.cpp 4 the Luau nightly fuzz host's wall-clock budget (make/schema-luau-nightly-fuzz.mk): std::chrono::steady_clock bounds how long the mutator runs, no schema shape is measured (prose)
 timing test/conformance/harness/wirefuzz.go 1 the wire fuzzer's throughput line (SPEC-TABLES §4.2): mutants per second so N can be sized to the budget — no schema shape measured
 
 # THE COOK's OPEN-COST GATE (docs/SPEC-TABLES.md §7, §7.5) measures the ABSENCE of

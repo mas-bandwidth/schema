@@ -28,7 +28,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_WRITE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_WRITE_INLINE inline
 #endif
@@ -47,7 +47,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_READ_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_READ_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_READ_INLINE inline
 #endif
@@ -61,23 +61,23 @@ namespace example {
 // operation in a generated body has the one spelling. serialize's own
 // read_object/write_object call a Serialize member; generated types carry
 // free Write/Read functions, so the function rides as an argument.
-#define schema_write_object( stream, function, value )                          \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_write_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 
-#define schema_read_object( stream, function, value )                           \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_read_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 #endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteRenderSprite( serialize::WriteStream & stream, const RenderSprite & value )

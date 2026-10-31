@@ -139,6 +139,12 @@ const tableRetainMessageCaptureSource = `
     }
     static void RetainMessageCapture(TableRetain* retain, RetainPath path, BitReader r, MessageRead d, TableMessageEntry entry, long start)
     {
+        // a retained unknown float is tested like a known one (docs/SPEC-TABLES.md §3.3, §6.6)
+        if (entry.Kind == 11 || entry.Kind == 10 && entry.Shape.Packing != 2)
+        {
+            BitReader bits = r; bits.At = start;
+            if (bits.Get(entry.Kind == 10 ? 32 : 64, out UInt128 raw) && NonFiniteBits(entry.Kind, (ulong)raw)) { NonFiniteRetained(entry.Id, d.Report); return; }
+        }
         if (retain == null) { return; }
         long end = r.At; r.At = start; BitReader walk = r; RetainIn probe = new RetainIn { Limit = retain->Capacity - retain->Used - RetainHeader - 8L * path.Depth };
         if (!RetainMessagePayload(ref walk, d, ref probe, entry.Kind, entry.Shape, 0) || walk.At != end)

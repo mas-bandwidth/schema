@@ -571,9 +571,9 @@ func (g *tableGen) emitPointerTargetSurface(st *ir.Struct) {
 	n := st.Name
 	g.pf("// %s is a pointer target.\n", n)
 	g.pf("inline const %s * %sAt( const TableRef & ref ) // the const form's hot path: one add, no base\n{\n", n, n)
-	g.pf("    return ref.value != 0 ? (const %s *) ( (const uint8_t *) &ref + ref.value ) : NULL;\n}\n", n)
+	g.pf("    return ref.value != 0 ? (const %s *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;\n}\n", n)
 	g.pf("inline %s * %sAt( TableRef & ref )\n{\n", n, n)
-	g.pf("    return ref.value != 0 ? (%s *) ( (uint8_t *) &ref + ref.value ) : NULL;\n}\n", n)
+	g.pf("    return ref.value != 0 ? (%s *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;\n}\n", n)
 	g.pf("inline const %s * %sAt( const TableRegionCtx &, const TableRef & ref ) { return %sAt( ref ); }\n", n, n, n)
 	g.pf("inline const %s * %sAt( const TableArenaCtx & ctx, const TableRef & ref )\n{\n", n, n)
 	g.pf("    return ref.value != 0 ? (const %s *) TableArenaAt( *ctx.arena, (uint32_t) ref.value ) : NULL;\n}\n", n)
@@ -1111,6 +1111,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("inline bool %sLoadBuilderTolerant( %sBuilder & builder, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
 	g.pf("    TableIdTable ids_table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
 	if st.Integrity != "" {
@@ -1209,6 +1210,8 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    nodes.carve = &root_carve;\n")
 	}
 	g.pf("    bool ok = %sLoadBody( r, nodes, *root );\n", n)
+	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)\n")
+	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }\n")
 	if g.anyExtent {
 		g.pf("    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md\n")
 		g.pf("    // §2.9): the partial builder is the caller's to discard, and the report\n")
@@ -1762,6 +1765,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		n, n, loadName, g.retainLoadParam())
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:\n")
 	g.pf("    // a file that is both a newer form and damaged is a REFUSAL and never\n")
 	g.pf("    // damage (docs/SPEC-TABLES.md §3).\n")
@@ -1910,6 +1914,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	} else {
 		g.pf("    %sLoadBody( r, nodes, *root );\n", n)
 	}
+	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing\n")
+	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
+	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
 	g.pf("    return root;\n}\n\n")
 	if !g.retain {
 		g.pf("// The PLAIN %sLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it\n", n)

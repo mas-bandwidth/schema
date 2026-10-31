@@ -39,15 +39,30 @@ final class TableWireReport {
   int retained = 0;
   int retainLost = 0;
 
+  // nonFiniteFloat is the STORED refusal of a float whose raw bits are a NaN
+  // or an infinity (docs/SPEC-TABLES.md §3.3): the <Table>.<field> the read
+  // met first, '' when it met none. Every read refuses one, the tolerant one
+  // too: refused rises with it and the load lands nothing, answering the
+  // type's defaults.
+  String nonFiniteFloat = '';
+
+  void refuseNonFiniteFloat(String field) {
+    if (nonFiniteFloat.isEmpty) nonFiniteFloat = field;
+    refused = true;
+  }
+
   // reason is the read's refusal BY NAME, in the reference leg's vocabulary
   // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
-  // docs/SPEC-TABLES.md §3, §4): a form byte this reader does not carry is
-  // unknown_form, framing the reader cannot follow is wire_damaged, and a read
-  // that kept its verdict is ok — the mapping the Go leg's measure gives its
-  // two verdicts. It is DERIVED from the two flags rather than stored beside
-  // them, so the verdict and its reason can never disagree. A widened, clamped
-  // or unknown field is not a refusal: the read still answers ok.
+  // docs/SPEC-TABLES.md §3, §4): a non-finite float is non_finite_float naming
+  // the field, and it outranks every later verdict; a form byte this reader
+  // does not carry is unknown_form, framing the reader cannot follow is
+  // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
+  // leg's measure gives its two verdicts. It is DERIVED from the flags and the
+  // stored field rather than kept beside them, so the verdict and its reason
+  // can never disagree. A widened, clamped or unknown field is not a refusal:
+  // the read still answers ok.
   String get reason {
+    if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
@@ -64,6 +79,9 @@ final class WireState {
   final List<Object?> nodeObjs = <Object?>[];
   final Map<Object, int> _objIndex = <Object, int>{};
   final Map<Object, int> _blobIndex = Map<Object, int>.identity();
+  // A save is STRICT about a blob two slots name (§2.5): the wire writer
+  // refuses it by name, blob_shared. The cook numbers the same graph and does not.
+  bool refuseSharedBlob = false;
   TableRetain? retain;
   TableWireReport? report;
   bool lost = false;
@@ -121,7 +139,12 @@ final class WireState {
   // String is a value, so two equal strings there are one blob.
   int noteBlob(int typeId, Object blob) {
     final found = _blobIndex[blob];
-    if (found != null) return found;
+    if (found != null) {
+      if (refuseSharedBlob) {
+        throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
+      }
+      return found;
+    }
     nodeTypes.add(typeId);
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
@@ -537,6 +560,40 @@ final class TableWireReader {
     return v;
   }
 
+  // readF32/readF64 read one float payload at an offset the caller has bounded,
+  // TESTING THE RAW BITS FIRST (docs/SPEC-TABLES.md §3.3, a plain float's
+  // special values, the same rule as packets): a NaN or an
+  // infinity never becomes a double. The read is refused as non_finite_float,
+  // naming the field, and 0 stands in for the value the load then discards.
+  // Every finite float32 widens to a double exactly, so the float rung (kind 10
+  // into a float64 field) is the ordinary conversion.
+  double readF32(int at, String field) {
+    final b = readU32(data, at);
+    if ((b & 0x7f800000) == 0x7f800000) {
+      report.refuseNonFiniteFloat(field);
+      return 0.0;
+    }
+    return _f32FromBits(b);
+  }
+
+  double readF64(int at, String field) {
+    final b = readU64(data, at);
+    if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) {
+      report.refuseNonFiniteFloat(field);
+      return 0.0;
+    }
+    return _f64FromBits(b);
+  }
+
+  // readBool reads a bool payload: any nonzero byte reads true, and a byte
+  // above 1 is malformed (docs/SPEC-TABLES.md §3, internal/tablewire scalarAt).
+  bool readBool() {
+    final v = data[pos];
+    pos++;
+    if (v > 1) report.malformed = true;
+    return v != 0;
+  }
+
   // readLeb decodes one canonical LEB128; null on a truncated, over-long or
   // non-minimal encoding (§3). On any of those the cursor does not move, so a
   // nested body that ends short of its own length is seen to do so (§4), the
@@ -911,8 +968,13 @@ final class TableWireReader {
       nodeTableGood = false;
       return;
     }
+    // THE SCAN IS FRAMING ONLY (scanNodeRecords): a record's type is judged
+    // after the whole payload has framed, so a table that cannot be read whole
+    // counts nothing unknown and resolves nothing.
     var read = 0;
     var framed = true;
+    final scanTypes = <int>[];
+    final scanBytes = <Uint8List>[];
     while (pos < tableEnd) {
       final typeRef = readLeb();
       if (typeRef == null || typeRef < 1 || typeRef > entryCount) {
@@ -924,32 +986,37 @@ final class TableWireReader {
         framed = false;
         break;
       }
-      final bytes = Uint8List.fromList(data.sublist(pos, pos + blen));
+      scanBytes.add(Uint8List.fromList(data.sublist(pos, pos + blen)));
       pos += blen;
-      final typeId = refToId[typeRef] ?? 0;
-      if (typeId == _kStringBlobId && stringBlob) {
-        if (_lebValid(bytes, 0, bytes.length)) {
-          nodeTypes.add(typeId);
-        } else {
-          report.malformed = true;
-          nodeTypes.add(0);
-        }
-      } else if (typeId == _kBytesBlobId && bytesBlob) {
-        nodeTypes.add(typeId);
-      } else if (knownTypes.contains(typeId)) {
-        nodeTypes.add(typeId);
-      } else {
-        report.unknown++;
-        if (retain != null) report.retainLost++;
-        nodeTypes.add(typeId);
-      }
-      nodes.add(bytes);
-      decoded.add(null);
+      scanTypes.add(refToId[typeRef] ?? 0);
       read++;
     }
     if (!framed || pos != tableEnd || read != count) {
       report.malformed = true;
       nodeTableGood = false;
+    } else {
+      for (var i = 0; i < scanTypes.length; i++) {
+        final typeId = scanTypes[i];
+        final bytes = scanBytes[i];
+        if (typeId == _kStringBlobId && stringBlob) {
+          if (_lebValid(bytes, 0, bytes.length)) {
+            nodeTypes.add(typeId);
+          } else {
+            report.malformed = true;
+            nodeTypes.add(0);
+          }
+        } else if (typeId == _kBytesBlobId && bytesBlob) {
+          nodeTypes.add(typeId);
+        } else if (knownTypes.contains(typeId)) {
+          nodeTypes.add(typeId);
+        } else {
+          report.unknown++;
+          if (retain != null) report.retainLost++;
+          nodeTypes.add(typeId);
+        }
+        nodes.add(bytes);
+        decoded.add(null);
+      }
     }
     pos = tableEnd;
     limit = bodyLimit;
@@ -988,6 +1055,8 @@ final class TableWireReader {
 bool _kindWidens(int from, int to) {
   return (from >= 2 && from <= 5 && to > from && to <= 5) ||
       (from >= 6 && from <= 9 && to > from && to <= 9) ||
+      (from >= 2 && from <= 5 && to == 18) ||
+      (from >= 6 && from <= 9 && to == 19) ||
       (from == 10 && to == 11);
 }
 
@@ -1051,6 +1120,38 @@ double _f64FromBits(int b) {
   return bd.getFloat64(0, Endian.little);
 }
 
+// _f32Write/_f64Write are every save's float payload: a NaN or an infinity is
+// REFUSED, never written (docs/SPEC-TABLES.md §3.3, a plain float's special
+// values: no binary form carries one), and the save throws naming the field,
+// as it refuses a data cycle. A finite value rides as its bits.
+int _f32Write(double d, String field) {
+  if (!d.isFinite) _refuseNonFiniteFloat(field);
+  return _f32Bits(d);
+}
+
+int _f64Write(double d, String field) {
+  if (!d.isFinite) _refuseNonFiniteFloat(field);
+  return _f64Bits(d);
+}
+
+Never _refuseNonFiniteFloat(String field) => throw StateError(
+  'non_finite_float: $field — a NaN or an infinity (docs/SPEC-TABLES.md §3.3)',
+);
+
+// _retainedFloatName names a retained unknown float for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3, §6.6): the body's table and the id it
+// cannot name, as sixteen hex digits.
+String _retainedFloatName(String owner, int id) {
+  const digits = '0123456789abcdef';
+  final hex = List<String>.filled(16, '0');
+  var v = id;
+  for (var i = 15; i >= 0; i--) {
+    hex[i] = digits[v & 0xf];
+    v >>>= 4;
+  }
+  return '$owner.0x${hex.join()}';
+}
+
 // ---- retain-unknown (docs/SPEC-TABLES.md §6.6) ----
 //
 // TableRetain is the caller's two bounded stores, threaded through the three
@@ -1073,19 +1174,26 @@ final class TableRetain {
   }
 }
 
+// A record names the BODY it came from by that body's storage object, the
+// value its load filled: a nested table by value, an array element, a union
+// arm, a map value and a pointer's node are each their own object, so the
+// save re-emits a record at the end of exactly the body it was read from,
+// wherever that body sits in the tree. path is the field walk that reached it,
+// kept for the record's cost.
 final class _RetainRecord {
+  final Object owner;
   final List<int> path;
   final int id;
   final int kind;
   final List<int> resolved;
-  _RetainRecord(this.path, this.id, this.kind, this.resolved);
+  _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
 
 // the ids this build can name (docs/SPEC-TABLES.md §6.6): a retained id is by
 // definition not here, and takes its entry from the caller's list rather than
 // the generated table.
-final Set<int> _retainKnown = <int>{80074449652715421, 142922654710085925, 350179810443481718, 912176952613754358, 990229364654832702, 1271228688681418151, 1324453635955533101, 1415871171432867950, 1768712988339112597, 2358437193313989428, 2494154474894420565, 2593226102015223570, 3185847833948484337, 3226873318306908209, 3329809749115557776, 3399866181213769700, 3707351006901076138, 3883575963473318423, 4343163795393112518, 4432242110510439820, 4534679873638431877, 5910805692604981441, 6028620492700434865, 6200723483573899615, 6294288958393922979, 6535842126802938884, 7849182299372448948, 7849183398884077159, 7849185597907333581, 7889067272199050878, 8091808378024623192, 8334276637232054488, 8535675692938965450, 8651444298976115966, 8916005070914257170, 8999596768310594794, 9179190079975030720, 9181103189905877455, -9175110139929313435, -9145686598410475159, -8800255099513911629, -8505234340531936929, -8250835097599916951, -7828083326636031446, -7825083188096938557, -7467029643251279282, -7228825333587644925, -7138431908913683369, -7025667724851298986, -6977028372880211830, -6943525758045472923, -6935561395390217098, -6866282850657997311, -6686572760759554282, -6556890747741999708, -6372330821933150452, -6181000666011064152, -6007833022727458345, -5382489739573192984, -5207116919359778736, -5199487799206016251, -4669986463835551831, -4574933642144545166, -4311785701174641750, -3797883357020869208, -3797881157997612786, -3797880058485984575, -3478843999652550171, -3018575613315307966, -2752528626751932394, -2616738830228483229, -2616737730716855018, -2616736631205226807, -1476952163658023588, -1268998401975805620, -962770241226853237, -292263051557875678, -204370544148493463, -1};
+const Set<int> _retainKnown = <int>{80074449652715421, 142922654710085925, 350179810443481718, 912176952613754358, 990229364654832702, 1271228688681418151, 1324453635955533101, 1415871171432867950, 1768712988339112597, 2358437193313989428, 2494154474894420565, 2593226102015223570, 3185847833948484337, 3226873318306908209, 3329809749115557776, 3399866181213769700, 3707351006901076138, 3883575963473318423, 4343163795393112518, 4432242110510439820, 4534679873638431877, 5910805692604981441, 6028620492700434865, 6200723483573899615, 6294288958393922979, 6535842126802938884, 7849182299372448948, 7849183398884077159, 7849185597907333581, 7889067272199050878, 8091808378024623192, 8334276637232054488, 8535675692938965450, 8651444298976115966, 8916005070914257170, 8999596768310594794, 9179190079975030720, 9181103189905877455, -9175110139929313435, -9145686598410475159, -8800255099513911629, -8505234340531936929, -8250835097599916951, -7828083326636031446, -7825083188096938557, -7467029643251279282, -7228825333587644925, -7138431908913683369, -7025667724851298986, -6977028372880211830, -6943525758045472923, -6935561395390217098, -6866282850657997311, -6686572760759554282, -6556890747741999708, -6372330821933150452, -6181000666011064152, -6007833022727458345, -5382489739573192984, -5207116919359778736, -5199487799206016251, -4669986463835551831, -4574933642144545166, -4311785701174641750, -3797883357020869208, -3797881157997612786, -3797880058485984575, -3478843999652550171, -3018575613315307966, -2752528626751932394, -2616738830228483229, -2616737730716855018, -2616736631205226807, -1476952163658023588, -1268998401975805620, -962770241226853237, -292263051557875678, -204370544148493463, -1};
 
 int _retainWidth(int kind) {
   switch (kind) {
@@ -1450,23 +1558,16 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
   return o;
 }
 
-// _retainTail re-emits the retained records whose path names the body being
-// written, in the order retained, at the end of that body (§6.6). A record
-// whose id cannot be interned (the caller's list is full) or whose walk is
-// damaged is dropped and counted one retainLost.
-void _retainTail(TableWireWriter w) {
+// _retainTail re-emits the retained records read from the body being written
+// — the ones whose owner is that body's storage object — in the order
+// retained, at the end of that body (§6.6). A record whose id cannot be
+// interned (the caller's list is full) or whose walk is damaged is dropped and
+// counted one retainLost.
+void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
   for (final rec in t.records) {
-    if (rec.path.length != w.path.length) continue;
-    var same = true;
-    for (var i = 0; i < w.path.length; i++) {
-      if (rec.path[i] != w.path[i]) {
-        same = false;
-        break;
-      }
-    }
-    if (!same) continue;
+    if (!identical(rec.owner, owner)) continue;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -1780,13 +1881,13 @@ bool _mixedEventArm3(TableWireReader p, MixedEvent v, int kind) {
 bool _mixedEventLoadArm(TableWireReader r, MixedEvent v) {
   final ref = r.readLeb();
   if (ref == null) { r.report.malformed = true; return false; }
-  v.armTag = 0;
-  if (ref == 0) return true;
+  if (ref == 0) { v.armTag = 0; return true; }
   final armId = r.refToId[ref];
   if (armId == null || !r.has(1)) { r.report.malformed = true; return false; }
   final kind = r.readByte();
   final n = r.readLeb();
   if (n == null || !r.has(n)) { r.report.malformed = true; return false; }
+  v.armTag = 0;
   final p = TableWireReader.sub(r, r.pos, r.pos + n);
   switch (armId) {
     case 3707351006901076138:
@@ -1886,26 +1987,24 @@ void mixedEntityWireSaveBodyFields(TableWireWriter w, MixedEntity v) {
   if (v.weapon != MixedWeapon.none) {
     w.putLeb(w.refFor(-6866282850657997311));
     w.putByte(30);
-    int vid;
     switch (v.weapon) {
-      case 1: vid = -6372330821933150452;
-      case 2: vid = -6935561395390217098;
-      case 3: vid = 1768712988339112597;
-      case 4: vid = 3185847833948484337;
-      case 5: vid = 912176952613754358;
-      case 6: vid = -7467029643251279282;
-      case 7: vid = 2494154474894420565;
-      case 8: vid = 80074449652715421;
-      case 9: vid = -8505234340531936929;
-      case 10: vid = -8250835097599916951;
-      case 11: vid = -2752528626751932394;
-      case 12: vid = 350179810443481718;
-      case 13: vid = 3883575963473318423;
-      case 14: vid = 3226873318306908209;
-      case 15: vid = 2358437193313989428;
-      default: return;
+      case 1: w.putLeb(w.refFor(-6372330821933150452));
+      case 2: w.putLeb(w.refFor(-6935561395390217098));
+      case 3: w.putLeb(w.refFor(1768712988339112597));
+      case 4: w.putLeb(w.refFor(3185847833948484337));
+      case 5: w.putLeb(w.refFor(912176952613754358));
+      case 6: w.putLeb(w.refFor(-7467029643251279282));
+      case 7: w.putLeb(w.refFor(2494154474894420565));
+      case 8: w.putLeb(w.refFor(80074449652715421));
+      case 9: w.putLeb(w.refFor(-8505234340531936929));
+      case 10: w.putLeb(w.refFor(-8250835097599916951));
+      case 11: w.putLeb(w.refFor(-2752528626751932394));
+      case 12: w.putLeb(w.refFor(350179810443481718));
+      case 13: w.putLeb(w.refFor(3883575963473318423));
+      case 14: w.putLeb(w.refFor(3226873318306908209));
+      case 15: w.putLeb(w.refFor(2358437193313989428));
+      default: w.putLeb(0);
     }
-    w.putLeb(w.refFor(vid));
   }
   if (v.damage != 0) {
     w.putLeb(w.refFor(9179190079975030720));
@@ -1922,7 +2021,7 @@ void mixedEntityWireSaveBodyFields(TableWireWriter w, MixedEntity v) {
     w.putByte(1);
     w.putByte(v.firing ? 1 : 0);
   }
-  _retainTail(w);
+  _retainTail(w, v);
 }
 
 void mixedEntityWireSaveBody(TableWireWriter w, MixedEntity v) {
@@ -1941,7 +2040,7 @@ void mixedStatWireSaveBodyFields(TableWireWriter w, MixedStat v) {
     w.putByte(4);
     w.putU32(v.delta);
   }
-  _retainTail(w);
+  _retainTail(w, v);
 }
 
 void mixedStatWireSaveBody(TableWireWriter w, MixedStat v) {
@@ -1970,7 +2069,7 @@ void mixedHitEventWireSaveBodyFields(TableWireWriter w, MixedHitEvent v) {
     w.putByte(1);
     w.putByte(v.crit ? 1 : 0);
   }
-  _retainTail(w);
+  _retainTail(w, v);
 }
 
 void mixedHitEventWireSaveBody(TableWireWriter w, MixedHitEvent v) {
@@ -1989,7 +2088,7 @@ void mixedChatEventWireSaveBodyFields(TableWireWriter w, MixedChatEvent v) {
     w.putByte(7);
     w.putU16(v.speaker);
   }
-  _retainTail(w);
+  _retainTail(w, v);
 }
 
 void mixedChatEventWireSaveBody(TableWireWriter w, MixedChatEvent v) {
@@ -2008,7 +2107,7 @@ void mixedPickupEventWireSaveBodyFields(TableWireWriter w, MixedPickupEvent v) {
     w.putByte(4);
     w.putU32(v.amount);
   }
-  _retainTail(w);
+  _retainTail(w, v);
 }
 
 void mixedPickupEventWireSaveBody(TableWireWriter w, MixedPickupEvent v) {
@@ -2135,30 +2234,30 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
-  if (v.aimX != 0.0) {
+  if (v.aimX != 0 || v.aimX.isNegative) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
-    w.putU32(_f32Bits(v.aimX));
+    w.putU32(_f32Write(v.aimX, 'BenchMixed.aim_x'));
   }
-  if (v.aimY != 0.0) {
+  if (v.aimY != 0 || v.aimY.isNegative) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
-    w.putU32(_f32Bits(v.aimY));
+    w.putU32(_f32Write(v.aimY, 'BenchMixed.aim_y'));
   }
-  if (v.aimZ != 0.0) {
+  if (v.aimZ != 0 || v.aimZ.isNegative) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
-    w.putU32(_f32Bits(v.aimZ));
+    w.putU32(_f32Write(v.aimZ, 'BenchMixed.aim_z'));
   }
-  if (v.recoil != 0.0) {
+  if (v.recoil != 0 || v.recoil.isNegative) {
     w.putLeb(w.refFor(-7138431908913683369));
     w.putByte(10);
-    w.putU32(_f32Bits(v.recoil));
+    w.putU32(_f32Write(v.recoil, 'BenchMixed.recoil'));
   }
-  if (v.drift != 0.0) {
+  if (v.drift != 0 || v.drift.isNegative) {
     w.putLeb(w.refFor(6535842126802938884));
     w.putByte(11);
-    w.putU64(_f64Bits(v.drift));
+    w.putU64(_f64Write(v.drift, 'BenchMixed.drift'));
   }
   if (v.wideKey != BigInt.zero) {
     w.putLeb(w.refFor(-6686572760759554282));
@@ -2195,7 +2294,7 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putByte(4);
     w.putU32(v.idleTicks);
   }
-  _retainTail(w);
+  _retainTail(w, v);
 }
 
 void benchMixedWireSaveBody(TableWireWriter w, BenchMixed v) {
@@ -2218,7 +2317,7 @@ void fixedTableWireSaveBodyFields(TableWireWriter w, FixedTable v) {
       w.putBytes(b.buf);
     }
   }
-  _retainTail(w);
+  _retainTail(w, v);
 }
 
 void fixedTableWireSaveBody(TableWireWriter w, FixedTable v) {
@@ -2236,15 +2335,11 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case 2593226102015223570:
         {
-          var value = 0;
+          var value = v.entityId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2271,7 +2366,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -3797881157997612786:
         {
-          var value = 0;
+          var value = v.posX;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2304,7 +2399,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -3797880058485984575:
         {
-          var value = 0;
+          var value = v.posY;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2337,7 +2432,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -3797883357020869208:
         {
-          var value = 0;
+          var value = v.posZ;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2370,7 +2465,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case -5382489739573192984:
         {
-          var value = 0;
+          var value = v.yaw;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2397,7 +2492,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 6028620492700434865:
         {
-          var value = 0;
+          var value = v.pitch;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2424,7 +2519,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 7849183398884077159:
         {
-          var value = 0;
+          var value = v.velX;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2457,7 +2552,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 7849182299372448948:
         {
-          var value = 0;
+          var value = v.velY;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2490,7 +2585,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 7849185597907333581:
         {
-          var value = 0;
+          var value = v.velZ;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2523,7 +2618,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 9181103189905877455:
         {
-          var value = 0;
+          var value = v.health;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2584,7 +2679,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
         break;
       case 9179190079975030720:
         {
-          var value = 0;
+          var value = v.damage;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2626,19 +2721,22 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
       case 1271228688681418151:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.moving = r.readByte() != 0;
+        v.moving = r.readBool();
         break;
       case 8535675692938965450:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.firing = r.readByte() != 0;
+        v.firing = r.readBool();
         break;
       default:
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('MixedEntity', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -2646,7 +2744,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
             if (resolved == null || sub.pos != sub.limit) {
               r.report.retainLost++;
             } else {
-              final rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);
+              final rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
@@ -2673,15 +2771,11 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -9175110139929313435:
         {
-          var value = 0;
+          var value = v.statId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2698,7 +2792,7 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
         break;
       case 5910805692604981441:
         {
-          var value = 0;
+          var value = v.delta;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2734,7 +2828,10 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('MixedStat', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -2742,7 +2839,7 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
             if (resolved == null || sub.pos != sub.limit) {
               r.report.retainLost++;
             } else {
-              final rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);
+              final rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
@@ -2769,15 +2866,11 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -5207116919359778736:
         {
-          var value = 0;
+          var value = v.targetId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2804,7 +2897,7 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
         break;
       case 9179190079975030720:
         {
-          var value = 0;
+          var value = v.damage;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2837,7 +2930,7 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
         break;
       case 142922654710085925:
         {
-          var value = 0;
+          var value = v.hitKind;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2871,14 +2964,17 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
       case 1324453635955533101:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.crit = r.readByte() != 0;
+        v.crit = r.readBool();
         break;
       default:
         r.report.unknown++;
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('MixedHitEvent', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -2886,7 +2982,7 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
             if (resolved == null || sub.pos != sub.limit) {
               r.report.retainLost++;
             } else {
-              final rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);
+              final rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
@@ -2913,15 +3009,11 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -6556890747741999708:
         {
-          var value = 0;
+          var value = v.channel;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2954,7 +3046,7 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
         break;
       case -292263051557875678:
         {
-          var value = 0;
+          var value = v.speaker;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -2984,7 +3076,10 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('MixedChatEvent', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -2992,7 +3087,7 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
             if (resolved == null || sub.pos != sub.limit) {
               r.report.retainLost++;
             } else {
-              final rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);
+              final rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
@@ -3019,15 +3114,11 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -7025667724851298986:
         {
-          var value = 0;
+          var value = v.itemId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3054,7 +3145,7 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
         break;
       case -9145686598410475159:
         {
-          var value = 0;
+          var value = v.amount;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3090,7 +3181,10 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('MixedPickupEvent', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -3098,7 +3192,7 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
             if (resolved == null || sub.pos != sub.limit) {
               r.report.retainLost++;
             } else {
-              final rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);
+              final rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
@@ -3119,19 +3213,17 @@ bool _benchMixedLoadoutFixed(TableWireReader p, BenchMixed v, int elemKind, int 
   if (elemKind != 6) { p.report.kindMismatch++; return true; }
   final out = <int>[];
   var keep = count;
-  if (keep > 4) { keep = 4; p.report.clamped++; }
+  if (keep > 4 || keep < 0) { keep = 4; p.report.clamped++; }
   for (var i = 0; i < keep; i++) {
-    if (!p.has(1)) { p.report.malformed = true; return false; }
+    if (!p.has(1)) { p.report.malformed = true; break; }
     var raw = 0;
     for (var b = 0; b < 1; b++) { raw |= p.readByte() << (8 * b); }
     out.add(raw);
   }
-  if (keep == count && p.pos != p.limit) { p.report.malformed = true; return false; }
-  final fresh = List<int>.generate(4, (_) => 0);
+  final slots = v.loadout;
   for (var i = 0; i < out.length && i < 4; i++) {
-    fresh[i] = out[i];
+    slots[i] = out[i];
   }
-  v.loadout = fresh;
   return true;
 }
 
@@ -3145,15 +3237,11 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case -6181000666011064152:
         {
-          var value = 0;
+          var value = v.sequence;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3180,7 +3268,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 990229364654832702:
         {
-          var value = 0;
+          var value = v.ackSequence;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3213,7 +3301,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -7228825333587644925:
         {
-          var value = 0;
+          var value = v.ackBits;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3245,7 +3333,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -5199487799206016251:
         {
-          var value = 0;
+          var value = v.sessionId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3286,7 +3374,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 7889067272199050878:
         {
-          var value = 0;
+          var value = v.clientId;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3317,7 +3405,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 8334276637232054488:
         {
-          var value = 0;
+          var value = v.nonce;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3360,7 +3448,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 4534679873638431877:
         {
-          var value = 0;
+          var value = v.worldTime;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3403,7 +3491,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 8916005070914257170:
         {
-          var value = 0;
+          var value = v.frameTick;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3564,7 +3652,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 6) { r.report.kindMismatch++; r.pos = end; break; }
           var keep = count;
-          if (keep > 16) { keep = 16; r.report.clamped++; }
+          if (keep > 16 || keep < 0) { keep = 16; r.report.clamped++; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           var take = keep;
           if (take > arr.limit - arr.pos) take = arr.limit - arr.pos;
@@ -3575,85 +3663,92 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case -2616736631205226807:
         {
-          var d = 0.0;
+          var d = v.aimX;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'BenchMixed.aim_x'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < -1) { d = -1; r.report.clamped++; }
           if (d > 1) { d = 1; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.aimX = d;
         }
         break;
       case -2616737730716855018:
         {
-          var d = 0.0;
+          var d = v.aimY;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'BenchMixed.aim_y'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < -1) { d = -1; r.report.clamped++; }
           if (d > 1) { d = 1; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.aimY = d;
         }
         break;
       case -2616738830228483229:
         {
-          var d = 0.0;
+          var d = v.aimZ;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'BenchMixed.aim_z'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           if (d < -1) { d = -1; r.report.clamped++; }
           if (d > 1) { d = 1; r.report.clamped++; }
+          if (d == 0) d = 0.0;
           v.aimZ = d;
         }
         break;
       case -7138431908913683369:
         {
-          var d = 0.0;
+          var d = v.recoil;
           switch (kind) {
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'BenchMixed.recoil'); r.pos += 4;
               break;
             default:
               r.report.kindMismatch++;
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           v.recoil = d;
         }
         break;
       case 6535842126802938884:
         {
-          var d = 0.0;
+          var d = v.drift;
           switch (kind) {
             case 11:
               if (!r.has(8)) { r.report.malformed = true; return; }
-              d = _f64FromBits(readU64(r.data, r.pos)); r.pos += 8;
+              d = r.readF64(r.pos, 'BenchMixed.drift'); r.pos += 8;
               break;
             case 10:
               if (!r.has(4)) { r.report.malformed = true; return; }
-              d = _f32FromBits(readU32(r.data, r.pos)); r.pos += 4;
+              d = r.readF32(r.pos, 'BenchMixed.drift'); r.pos += 4;
               r.report.widened++;
               break;
             default:
@@ -3661,6 +3756,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               if (!r.skipKind(kind)) { r.report.malformed = true; return; }
               break;
           }
+          if (r.report.nonFiniteFloat.isNotEmpty) return;
           v.drift = d;
         }
         break;
@@ -3767,7 +3863,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 6200723483573899615:
         {
-          var value = 0;
+          var value = v.crcHint;
           switch (kind) {
             case 6:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3800,11 +3896,11 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
       case -4574933642144545166:
         if (kind != 1) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
         if (!r.has(1)) { r.report.malformed = true; return; }
-        v.hasExtra = r.readByte() != 0;
+        v.hasExtra = r.readBool();
         break;
       case -204370544148493463:
         {
-          var value = 0;
+          var value = v.extra;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3837,7 +3933,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         break;
       case 8651444298976115966:
         {
-          var value = 0;
+          var value = v.idleTicks;
           switch (kind) {
             case 2:
               if (!r.has(1)) { r.report.malformed = true; return; }
@@ -3873,7 +3969,10 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('BenchMixed', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -3881,7 +3980,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
             if (resolved == null || sub.pos != sub.limit) {
               r.report.retainLost++;
             } else {
-              final rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);
+              final rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
@@ -3899,6 +3998,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
 }
 
 void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
+  var seenValue = false;
   while (true) {
     final ref = r.readLeb();
     if (ref == null) { r.report.malformed = true; return; }
@@ -3908,11 +4008,7 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
     if (!r.has(1)) { r.report.malformed = true; return; }
     final kind = r.readByte();
     if (id == _kBuildVersionId || id == _kVocabularyId) { r.report.malformed = true; return; }
-    if (id == _kNodeTableId) {
-      if (nested) { r.report.malformed = true; return; }
-      if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-      continue;
-    }
+    if (id == _kNodeTableId && nested) { r.report.malformed = true; return; }
     switch (id) {
       case 8999596768310594794:
         if (kind != 13) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }
@@ -3920,6 +4016,8 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.malformed = true; return; }
           final sub = TableWireReader.sub(r, r.pos, r.pos + len);
+          if (seenValue) v.value = BenchMixed();
+          seenValue = true;
           benchMixedWireLoadBody(sub, v.value, true);
           if (sub.pos != sub.limit) { r.report.malformed = true; v.value = BenchMixed(); }
           r.pos += len;
@@ -3930,7 +4028,10 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
         if (r.retain != null) {
           final start = r.pos;
           if (!r.skipKind(kind)) { r.report.malformed = true; return; }
-          if (kind == 17) {
+          if ((kind == 10 && (readU32(r.data, start) & 0x7f800000) == 0x7f800000) ||
+              (kind == 11 && (readU64(r.data, start) & 0x7ff0000000000000) == 0x7ff0000000000000)) {
+            r.report.refuseNonFiniteFloat(_retainedFloatName('FixedTable', id));
+          } else if (kind == 17) {
             r.report.retainLost++;
           } else {
             final sub = TableWireReader.sub(r, start, r.pos);
@@ -3938,7 +4039,7 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
             if (resolved == null || sub.pos != sub.limit) {
               r.report.retainLost++;
             } else {
-              final rec = _RetainRecord(List<int>.from(r.path), id, kind, resolved);
+              final rec = _RetainRecord(v, List<int>.from(r.path), id, kind, resolved);
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
@@ -3985,7 +4086,7 @@ void fixedTableNumber(WireState s, FixedTable v, Set<Object> open) {
 }
 
 Uint8List fixedTableWireSave(FixedTable v) {
-  final state = WireState();
+  final state = WireState()..refuseSharedBlob = true;
   state.indexRoot(v);
   final open = <Object>{v};
   fixedTableNumber(state, v, open);
@@ -4008,97 +4109,98 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   r.rootObj = v;
   r.rootType = _kTypeFixedTable;
   if (report != null) r.report = report;
+  r.report.nonFiniteFloat = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
-  r.scanNodeTable();
   r.pos = 1;
   fixedTableWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) return FixedTable();
   return v;
 }
 
-final _measureStructsFixedTable = <Map<int, _MF>>[
+const _measureStructsFixedTable = <Map<int, _MF>>[
   // FixedTable
   {
-    8999596768310594794: const _MF(13, 2, 0, false, 0, 1, false, 1, -1, false),
+    8999596768310594794: _MF(13, 2, 0, false, 0, 1, false, 1, -1, false),
   },
   // BenchMixed
   {
-    -6181000666011064152: const _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
-    990229364654832702: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    -7228825333587644925: const _MF(8, 0, 0, false, 0, 1, false, -1, -1, false),
-    -5199487799206016251: const _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
-    7889067272199050878: const _MF(8, 0, 0, false, 0, 1, false, -1, -1, false),
-    8334276637232054488: const _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
-    4534679873638431877: const _MF(5, 0, 0, false, 0, 1, false, -1, -1, false),
-    8916005070914257170: const _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
-    4343163795393112518: const _MF(22, 0, 0, false, 0, 1, false, -1, -1, false),
-    -7828083326636031446: const _MF(14, 1, 13, false, 0, 1, false, 2, -1, false),
-    -1268998401975805620: const _MF(14, 1, 13, false, 0, 1, false, 3, -1, false),
-    3329809749115557776: const _MF(15, 0, 0, false, 0, 1, false, -1, 0, true),
-    6294288958393922979: const _MF(14, 1, 6, false, 0, 1, false, -1, -1, false),
-    1415871171432867950: const _MF(12, 0, 0, false, 0, 1, false, -1, -1, false),
-    -3478843999652550171: const _MF(14, 0, 0, false, 0, 1, false, -1, -1, false),
-    -2616736631205226807: const _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
-    -2616737730716855018: const _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
-    -2616738830228483229: const _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
-    -7138431908913683369: const _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
-    6535842126802938884: const _MF(11, 0, 0, false, 0, 1, false, -1, -1, false),
-    -6686572760759554282: const _MF(19, 0, 0, false, 0, 1, false, -1, -1, false),
-    -3018575613315307966: const _MF(18, 0, 0, false, 0, 1, false, -1, -1, false),
-    -4669986463835551831: const _MF(26, 0, 0, false, 0, 1, false, -1, -1, false),
-    6200723483573899615: const _MF(8, 0, 0, false, 0, 1, false, -1, -1, false),
-    -4574933642144545166: const _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
-    -204370544148493463: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    8651444298976115966: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -6181000666011064152: _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
+    990229364654832702: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -7228825333587644925: _MF(8, 0, 0, false, 0, 1, false, -1, -1, false),
+    -5199487799206016251: _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
+    7889067272199050878: _MF(8, 0, 0, false, 0, 1, false, -1, -1, false),
+    8334276637232054488: _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
+    4534679873638431877: _MF(5, 0, 0, false, 0, 1, false, -1, -1, false),
+    8916005070914257170: _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
+    4343163795393112518: _MF(22, 0, 0, false, 0, 1, false, -1, -1, false),
+    -7828083326636031446: _MF(14, 1, 13, false, 0, 1, false, 2, -1, false),
+    -1268998401975805620: _MF(14, 1, 13, false, 0, 1, false, 3, -1, false),
+    3329809749115557776: _MF(15, 0, 0, false, 0, 1, false, -1, 0, true),
+    6294288958393922979: _MF(14, 1, 6, false, 0, 1, false, -1, -1, false),
+    1415871171432867950: _MF(12, 0, 0, false, 0, 1, false, -1, -1, false),
+    -3478843999652550171: _MF(14, 0, 0, false, 0, 1, false, -1, -1, false),
+    -2616736631205226807: _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
+    -2616737730716855018: _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
+    -2616738830228483229: _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
+    -7138431908913683369: _MF(10, 0, 0, false, 0, 1, false, -1, -1, false),
+    6535842126802938884: _MF(11, 0, 0, false, 0, 1, false, -1, -1, false),
+    -6686572760759554282: _MF(19, 0, 0, false, 0, 1, false, -1, -1, false),
+    -3018575613315307966: _MF(18, 0, 0, false, 0, 1, false, -1, -1, false),
+    -4669986463835551831: _MF(26, 0, 0, false, 0, 1, false, -1, -1, false),
+    6200723483573899615: _MF(8, 0, 0, false, 0, 1, false, -1, -1, false),
+    -4574933642144545166: _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
+    -204370544148493463: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    8651444298976115966: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
   },
   // MixedEntity
   {
-    2593226102015223570: const _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
-    -3797881157997612786: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    -3797880058485984575: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    -3797883357020869208: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    -5382489739573192984: const _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
-    6028620492700434865: const _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
-    7849183398884077159: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    7849182299372448948: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    7849185597907333581: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    9181103189905877455: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    -6866282850657997311: const _MF(30, 0, 0, false, 0, 1, false, -1, -1, false),
-    9179190079975030720: const _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
-    1271228688681418151: const _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
-    8535675692938965450: const _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
+    2593226102015223570: _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
+    -3797881157997612786: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -3797880058485984575: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -3797883357020869208: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -5382489739573192984: _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
+    6028620492700434865: _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
+    7849183398884077159: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    7849182299372448948: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    7849185597907333581: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    9181103189905877455: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -6866282850657997311: _MF(30, 0, 0, false, 0, 1, false, -1, -1, false),
+    9179190079975030720: _MF(9, 0, 0, false, 0, 1, false, -1, -1, false),
+    1271228688681418151: _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
+    8535675692938965450: _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
   },
   // MixedStat
   {
-    -9175110139929313435: const _MF(6, 0, 0, false, 0, 1, false, -1, -1, false),
-    5910805692604981441: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -9175110139929313435: _MF(6, 0, 0, false, 0, 1, false, -1, -1, false),
+    5910805692604981441: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
   },
   // MixedHitEvent
   {
-    -5207116919359778736: const _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
-    9179190079975030720: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    142922654710085925: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    1324453635955533101: const _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
+    -5207116919359778736: _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
+    9179190079975030720: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    142922654710085925: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    1324453635955533101: _MF(1, 0, 0, false, 0, 1, false, -1, -1, false),
   },
   // MixedChatEvent
   {
-    -6556890747741999708: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
-    -292263051557875678: const _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
+    -6556890747741999708: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -292263051557875678: _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
   },
   // MixedPickupEvent
   {
-    -7025667724851298986: const _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
-    -9145686598410475159: const _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
+    -7025667724851298986: _MF(7, 0, 0, false, 0, 1, false, -1, -1, false),
+    -9145686598410475159: _MF(4, 0, 0, false, 0, 1, false, -1, -1, false),
   },
 ];
 
-final _measureUnionsFixedTable = <Map<int, _MF>>[
+const _measureUnionsFixedTable = <Map<int, _MF>>[
   // MixedEvent
   {
-    3707351006901076138: const _MF(13, 2, 0, false, 0, 1, false, 4, -1, false),
-    -962770241226853237: const _MF(13, 2, 0, false, 0, 1, false, 5, -1, false),
-    -6943525758045472923: const _MF(13, 2, 0, false, 0, 1, false, 6, -1, false),
+    3707351006901076138: _MF(13, 2, 0, false, 0, 1, false, 4, -1, false),
+    -962770241226853237: _MF(13, 2, 0, false, 0, 1, false, 5, -1, false),
+    -6943525758045472923: _MF(13, 2, 0, false, 0, 1, false, 6, -1, false),
   },
 ];
 
@@ -4187,6 +4289,7 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   final v = FixedTable();
   final r = TableWireReader(data, data.length);
   r.report = report;
+  r.report.nonFiniteFloat = '';
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4198,12 +4301,16 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   r.scanNodeTable();
   r.pos = 1;
   fixedTableWireLoadBody(r, v, false);
+  if (r.report.nonFiniteFloat.isNotEmpty) {
+    retain.reset();
+    return FixedTable();
+  }
   return v;
 }
 
 Uint8List fixedTableWireSaveRetain(FixedTable v, TableRetain retain, TableWireReport report) {
   retain.idUsed = 0;
-  final state = WireState();
+  final state = WireState()..refuseSharedBlob = true;
   state.retain = retain;
   state.report = report;
   state.indexRoot(v);
@@ -4300,6 +4407,16 @@ String _jsonEnum(int v, String Function(int) name, String where) {
   return _jsonString(n);
 }
 
+// _jsonText is the ZERO RULE (§16.3, text_holds_zero), one helper for every
+// place the read stores text: a string(N) or wstring(N) value, a *string
+// value, a text-list element, a map key. A stored string that decodes to
+// U+0000 refuses the read, because no wire carries a zero in text. A string
+// the read only SKIPS (an unknown key's value) never reaches here.
+String _jsonText(String s) {
+  if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
+  return s;
+}
+
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
 // mismatch; a string past N is clamped at a CODE POINT boundary and counted,
 // never cut through a multi-byte character (§16.3).
@@ -4308,7 +4425,7 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r) {
     r.kindMismatch++;
     return '';
   }
-  if (utf8.encode(val).length <= bound) return val;
+  if (utf8.encode(_jsonText(val)).length <= bound) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -5003,7 +5120,7 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
 
 String? _jsonStringBlob(dynamic val, TableTextReport r) {
   if (val == null) return null;
-  if (val is String) return val;
+  if (val is String) return _jsonText(val);
   r.kindMismatch++;
   return null;
 }
@@ -5028,7 +5145,7 @@ String _jsonWStringField(dynamic val, int bound, TableTextReport r) {
     r.kindMismatch++;
     return '';
   }
-  if (val.length <= bound) return val;
+  if (_jsonText(val).length <= bound) return val;
   var keep = bound;
   if (keep > 0) {
     final u = val.codeUnitAt(keep - 1);
@@ -6142,7 +6259,111 @@ final class TableFieldInfo {
   final List<String> tags;
   final dynamic Function(dynamic) read;
   final void Function(dynamic, dynamic) write;
-  TableFieldInfo(this.name, this.kind, this.shape, this.bound, this.min, this.max, this.json, this.typeName, this.id, this.optional, this.elemSize, this.read, this.write, this.doc, this.tags);
+  const TableFieldInfo(this.name, this.kind, this.shape, this.bound, this.min, this.max, this.json, this.typeName, this.id, this.optional, this.elemSize, this.read, this.write, this.doc, this.tags);
+  static dynamic _r0(dynamic v) => v.entityId; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w0(dynamic v, dynamic x) { v.entityId = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r1(dynamic v) => v.posX; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w1(dynamic v, dynamic x) { v.posX = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r2(dynamic v) => v.posY; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w2(dynamic v, dynamic x) { v.posY = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r3(dynamic v) => v.posZ; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w3(dynamic v, dynamic x) { v.posZ = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r4(dynamic v) => v.yaw; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w4(dynamic v, dynamic x) { v.yaw = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r5(dynamic v) => v.pitch; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w5(dynamic v, dynamic x) { v.pitch = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r6(dynamic v) => v.velX; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w6(dynamic v, dynamic x) { v.velX = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r7(dynamic v) => v.velY; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w7(dynamic v, dynamic x) { v.velY = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r8(dynamic v) => v.velZ; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w8(dynamic v, dynamic x) { v.velZ = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r9(dynamic v) => v.health; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w9(dynamic v, dynamic x) { v.health = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r10(dynamic v) => v.weapon; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w10(dynamic v, dynamic x) { v.weapon = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r11(dynamic v) => v.damage; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w11(dynamic v, dynamic x) { v.damage = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r12(dynamic v) => v.moving; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w12(dynamic v, dynamic x) { v.moving = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r13(dynamic v) => v.firing; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w13(dynamic v, dynamic x) { v.firing = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r14(dynamic v) => v.statId; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w14(dynamic v, dynamic x) { v.statId = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r15(dynamic v) => v.delta; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w15(dynamic v, dynamic x) { v.delta = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r16(dynamic v) => v.targetId; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w16(dynamic v, dynamic x) { v.targetId = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r17(dynamic v) => v.damage; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w17(dynamic v, dynamic x) { v.damage = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r18(dynamic v) => v.hitKind; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w18(dynamic v, dynamic x) { v.hitKind = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r19(dynamic v) => v.crit; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w19(dynamic v, dynamic x) { v.crit = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r20(dynamic v) => v.channel; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w20(dynamic v, dynamic x) { v.channel = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r21(dynamic v) => v.speaker; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w21(dynamic v, dynamic x) { v.speaker = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r22(dynamic v) => v.itemId; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w22(dynamic v, dynamic x) { v.itemId = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r23(dynamic v) => v.amount; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w23(dynamic v, dynamic x) { v.amount = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r24(dynamic v) => v.sequence; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w24(dynamic v, dynamic x) { v.sequence = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r25(dynamic v) => v.ackSequence; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w25(dynamic v, dynamic x) { v.ackSequence = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r26(dynamic v) => v.ackBits; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w26(dynamic v, dynamic x) { v.ackBits = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r27(dynamic v) => v.sessionId; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w27(dynamic v, dynamic x) { v.sessionId = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r28(dynamic v) => v.clientId; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w28(dynamic v, dynamic x) { v.clientId = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r29(dynamic v) => v.nonce; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w29(dynamic v, dynamic x) { v.nonce = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r30(dynamic v) => v.worldTime; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w30(dynamic v, dynamic x) { v.worldTime = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r31(dynamic v) => v.frameTick; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w31(dynamic v, dynamic x) { v.frameTick = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r32(dynamic v) => v.serverTime; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w32(dynamic v, dynamic x) { v.serverTime = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r33(dynamic v) => v.entities; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w33(dynamic v, dynamic x) { v.entities = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r34(dynamic v) => v.stats; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w34(dynamic v, dynamic x) { v.stats = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r35(dynamic v) => v.gameEvent; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w35(dynamic v, dynamic x) { v.gameEvent = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r36(dynamic v) => v.loadout; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w36(dynamic v, dynamic x) { v.loadout = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r37(dynamic v) => v.playerName; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w37(dynamic v, dynamic x) { v.playerName = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r38(dynamic v) => v.payload; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w38(dynamic v, dynamic x) { v.payload = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r39(dynamic v) => v.aimX; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w39(dynamic v, dynamic x) { v.aimX = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r40(dynamic v) => v.aimY; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w40(dynamic v, dynamic x) { v.aimY = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r41(dynamic v) => v.aimZ; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w41(dynamic v, dynamic x) { v.aimZ = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r42(dynamic v) => v.recoil; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w42(dynamic v, dynamic x) { v.recoil = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r43(dynamic v) => v.drift; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w43(dynamic v, dynamic x) { v.drift = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r44(dynamic v) => v.wideKey; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w44(dynamic v, dynamic x) { v.wideKey = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r45(dynamic v) => v.flux; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w45(dynamic v, dynamic x) { v.flux = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r46(dynamic v) => v.ping; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w46(dynamic v, dynamic x) { v.ping = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r47(dynamic v) => v.crcHint; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w47(dynamic v, dynamic x) { v.crcHint = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r48(dynamic v) => v.hasExtra; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w48(dynamic v, dynamic x) { v.hasExtra = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r49(dynamic v) => v.extra; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w49(dynamic v, dynamic x) { v.extra = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r50(dynamic v) => v.idleTicks; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w50(dynamic v, dynamic x) { v.idleTicks = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static dynamic _r51(dynamic v) => v.value; // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
+  static void _w51(dynamic v, dynamic x) { v.value = x; } // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
 }
 
 final class TableTypeInfo {
@@ -6150,75 +6371,76 @@ final class TableTypeInfo {
   final String doc;
   final List<String> tags;
   final List<TableFieldInfo> fields;
-  TableTypeInfo(this.name, this.fields, this.doc, this.tags);
+  const TableTypeInfo(this.name, this.fields, this.doc, this.tags);
+  static const Map<String, TableTypeInfo> _all = <String, TableTypeInfo>{
+    'MixedEntity': TableTypeInfo('MixedEntity', <TableFieldInfo>[
+      TableFieldInfo("entity_id", 7, "value", null, null, null, "entity_id", "bits(12)", 2593226102015223570, false, 4, TableFieldInfo._r0, TableFieldInfo._w0, "", <String>[]),
+      TableFieldInfo("pos_x", 4, "value", null, -16383, 16383, "pos_x", "int32", -3797881157997612786, false, 4, TableFieldInfo._r1, TableFieldInfo._w1, "", <String>[]),
+      TableFieldInfo("pos_y", 4, "value", null, -16383, 16383, "pos_y", "int32", -3797880058485984575, false, 4, TableFieldInfo._r2, TableFieldInfo._w2, "", <String>[]),
+      TableFieldInfo("pos_z", 4, "value", null, -16383, 16383, "pos_z", "int32", -3797883357020869208, false, 4, TableFieldInfo._r3, TableFieldInfo._w3, "", <String>[]),
+      TableFieldInfo("yaw", 7, "value", null, null, null, "yaw", "bits(9)", -5382489739573192984, false, 4, TableFieldInfo._r4, TableFieldInfo._w4, "", <String>[]),
+      TableFieldInfo("pitch", 7, "value", null, null, null, "pitch", "bits(9)", 6028620492700434865, false, 4, TableFieldInfo._r5, TableFieldInfo._w5, "", <String>[]),
+      TableFieldInfo("vel_x", 4, "value", null, -2048, 2047, "vel_x", "int32", 7849183398884077159, false, 4, TableFieldInfo._r6, TableFieldInfo._w6, "", <String>[]),
+      TableFieldInfo("vel_y", 4, "value", null, -2048, 2047, "vel_y", "int32", 7849182299372448948, false, 4, TableFieldInfo._r7, TableFieldInfo._w7, "", <String>[]),
+      TableFieldInfo("vel_z", 4, "value", null, -2048, 2047, "vel_z", "int32", 7849185597907333581, false, 4, TableFieldInfo._r8, TableFieldInfo._w8, "", <String>[]),
+      TableFieldInfo("health", 4, "value", null, 0, 1000, "health", "int32", 9181103189905877455, false, 4, TableFieldInfo._r9, TableFieldInfo._w9, "", <String>[]),
+      TableFieldInfo("weapon", 30, "value", null, null, null, "weapon", "MixedWeapon", -6866282850657997311, false, 1, TableFieldInfo._r10, TableFieldInfo._w10, "", <String>[]),
+      TableFieldInfo("damage", 9, "value", null, null, null, "damage", "MixedDamage", 9179190079975030720, false, 8, TableFieldInfo._r11, TableFieldInfo._w11, "", <String>[]),
+      TableFieldInfo("moving", 1, "value", null, null, null, "moving", "bool", 1271228688681418151, false, 1, TableFieldInfo._r12, TableFieldInfo._w12, "", <String>[]),
+      TableFieldInfo("firing", 1, "value", null, null, null, "firing", "bool", 8535675692938965450, false, 1, TableFieldInfo._r13, TableFieldInfo._w13, "", <String>[]),
+    ], "", <String>[]),
+    'MixedStat': TableTypeInfo('MixedStat', <TableFieldInfo>[
+      TableFieldInfo("stat_id", 6, "value", null, null, null, "stat_id", "bits(8)", -9175110139929313435, false, 4, TableFieldInfo._r14, TableFieldInfo._w14, "", <String>[]),
+      TableFieldInfo("delta", 4, "value", null, -512, 511, "delta", "int32", 5910805692604981441, false, 4, TableFieldInfo._r15, TableFieldInfo._w15, "", <String>[]),
+    ], "", <String>[]),
+    'MixedHitEvent': TableTypeInfo('MixedHitEvent', <TableFieldInfo>[
+      TableFieldInfo("target_id", 7, "value", null, null, null, "target_id", "bits(12)", -5207116919359778736, false, 4, TableFieldInfo._r16, TableFieldInfo._w16, "", <String>[]),
+      TableFieldInfo("damage", 4, "value", null, 0, 4095, "damage", "int32", 9179190079975030720, false, 4, TableFieldInfo._r17, TableFieldInfo._w17, "", <String>[]),
+      TableFieldInfo("hit_kind", 4, "value", null, 0, 7, "hit_kind", "int32", 142922654710085925, false, 4, TableFieldInfo._r18, TableFieldInfo._w18, "", <String>[]),
+      TableFieldInfo("crit", 1, "value", null, null, null, "crit", "bool", 1324453635955533101, false, 1, TableFieldInfo._r19, TableFieldInfo._w19, "", <String>[]),
+    ], "", <String>[]),
+    'MixedChatEvent': TableTypeInfo('MixedChatEvent', <TableFieldInfo>[
+      TableFieldInfo("channel", 4, "value", null, 0, 3, "channel", "int32", -6556890747741999708, false, 4, TableFieldInfo._r20, TableFieldInfo._w20, "", <String>[]),
+      TableFieldInfo("speaker", 7, "value", null, null, null, "speaker", "bits(12)", -292263051557875678, false, 4, TableFieldInfo._r21, TableFieldInfo._w21, "", <String>[]),
+    ], "", <String>[]),
+    'MixedPickupEvent': TableTypeInfo('MixedPickupEvent', <TableFieldInfo>[
+      TableFieldInfo("item_id", 7, "value", null, null, null, "item_id", "bits(10)", -7025667724851298986, false, 4, TableFieldInfo._r22, TableFieldInfo._w22, "", <String>[]),
+      TableFieldInfo("amount", 4, "value", null, 0, 255, "amount", "int32", -9145686598410475159, false, 4, TableFieldInfo._r23, TableFieldInfo._w23, "", <String>[]),
+    ], "", <String>[]),
+    'BenchMixed': TableTypeInfo('BenchMixed', <TableFieldInfo>[
+      TableFieldInfo("sequence", 7, "value", null, null, null, "sequence", "bits(16)", -6181000666011064152, false, 4, TableFieldInfo._r24, TableFieldInfo._w24, "", <String>[]),
+      TableFieldInfo("ack_sequence", 4, "value", null, 0, 65535, "ack_sequence", "int32", 990229364654832702, false, 4, TableFieldInfo._r25, TableFieldInfo._w25, "", <String>[]),
+      TableFieldInfo("ack_bits", 8, "value", null, null, null, "ack_bits", "bits(32)", -7228825333587644925, false, 4, TableFieldInfo._r26, TableFieldInfo._w26, "", <String>[]),
+      TableFieldInfo("session_id", 9, "value", null, null, null, "session_id", "uint64", -5199487799206016251, false, 8, TableFieldInfo._r27, TableFieldInfo._w27, "", <String>[]),
+      TableFieldInfo("client_id", 8, "value", null, null, null, "client_id", "uint32", 7889067272199050878, false, 4, TableFieldInfo._r28, TableFieldInfo._w28, "", <String>[]),
+      TableFieldInfo("nonce", 9, "value", null, 0, -1, "nonce", "uint64", 8334276637232054488, false, 8, TableFieldInfo._r29, TableFieldInfo._w29, "", <String>[]),
+      TableFieldInfo("world_time", 5, "value", null, -1000000000000, 1000000000000, "world_time", "int64", 4534679873638431877, false, 8, TableFieldInfo._r30, TableFieldInfo._w30, "", <String>[]),
+      TableFieldInfo("frame_tick", 9, "value", null, null, null, "frame_tick", "bits(48)", 8916005070914257170, false, 8, TableFieldInfo._r31, TableFieldInfo._w31, "", <String>[]),
+      TableFieldInfo("server_time", 22, "value", null, null, null, "server_time", "fixed(24, 8)", 4343163795393112518, false, 4, TableFieldInfo._r32, TableFieldInfo._w32, "", <String>[]),
+      TableFieldInfo("entities", 14, "value", null, null, null, "entities", "MixedEntity", -7828083326636031446, false, null, TableFieldInfo._r33, TableFieldInfo._w33, "", <String>[]),
+      TableFieldInfo("stats", 14, "value", null, null, null, "stats", "MixedStat", -1268998401975805620, false, null, TableFieldInfo._r34, TableFieldInfo._w34, "", <String>[]),
+      TableFieldInfo("game_event", 15, "value", null, null, null, "game_event", "MixedEvent", 3329809749115557776, false, null, TableFieldInfo._r35, TableFieldInfo._w35, "", <String>[]),
+      TableFieldInfo("loadout", 14, "value", null, null, null, "loadout", "uint8", 6294288958393922979, false, 1, TableFieldInfo._r36, TableFieldInfo._w36, "", <String>[]),
+      TableFieldInfo("player_name", 12, "value", 15, null, null, "player_name", "string", 1415871171432867950, false, 1, TableFieldInfo._r37, TableFieldInfo._w37, "", <String>[]),
+      TableFieldInfo("payload", 14, "value", null, null, null, "payload", "bytes", -3478843999652550171, false, 1, TableFieldInfo._r38, TableFieldInfo._w38, "", <String>[]),
+      TableFieldInfo("aim_x", 10, "value", null, null, null, "aim_x", "float32", -2616736631205226807, false, 4, TableFieldInfo._r39, TableFieldInfo._w39, "", <String>[]),
+      TableFieldInfo("aim_y", 10, "value", null, null, null, "aim_y", "float32", -2616737730716855018, false, 4, TableFieldInfo._r40, TableFieldInfo._w40, "", <String>[]),
+      TableFieldInfo("aim_z", 10, "value", null, null, null, "aim_z", "float32", -2616738830228483229, false, 4, TableFieldInfo._r41, TableFieldInfo._w41, "", <String>[]),
+      TableFieldInfo("recoil", 10, "value", null, null, null, "recoil", "float32", -7138431908913683369, false, 4, TableFieldInfo._r42, TableFieldInfo._w42, "", <String>[]),
+      TableFieldInfo("drift", 11, "value", null, null, null, "drift", "float64", 6535842126802938884, false, 8, TableFieldInfo._r43, TableFieldInfo._w43, "", <String>[]),
+      TableFieldInfo("wide_key", 19, "value", null, null, null, "wide_key", "uint128", -6686572760759554282, false, 16, TableFieldInfo._r44, TableFieldInfo._w44, "", <String>[]),
+      TableFieldInfo("flux", 18, "value", null, null, null, "flux", "int128", -3018575613315307966, false, 16, TableFieldInfo._r45, TableFieldInfo._w45, "", <String>[]),
+      TableFieldInfo("ping", 26, "value", null, null, null, "ping", "ufixed(8, 8)", -4669986463835551831, false, 2, TableFieldInfo._r46, TableFieldInfo._w46, "", <String>[]),
+      TableFieldInfo("crc_hint", 8, "value", null, null, null, "crc_hint", "bits(24)", 6200723483573899615, false, 4, TableFieldInfo._r47, TableFieldInfo._w47, "", <String>[]),
+      TableFieldInfo("has_extra", 1, "value", null, null, null, "has_extra", "bool", -4574933642144545166, false, 1, TableFieldInfo._r48, TableFieldInfo._w48, "", <String>[]),
+      TableFieldInfo("extra", 4, "value", null, 0, 255, "extra", "int32", -204370544148493463, false, 4, TableFieldInfo._r49, TableFieldInfo._w49, "", <String>[]),
+      TableFieldInfo("idle_ticks", 4, "value", null, 0, 15, "idle_ticks", "int32", 8651444298976115966, false, 4, TableFieldInfo._r50, TableFieldInfo._w50, "", <String>[]),
+    ], "", <String>[]),
+    'FixedTable': TableTypeInfo('FixedTable', <TableFieldInfo>[
+      TableFieldInfo("value", 13, "value", null, null, null, "value", "BenchMixed", 8999596768310594794, false, null, TableFieldInfo._r51, TableFieldInfo._w51, "", <String>[]),
+    ], "", <String>[]),
+  };
 }
 
-Map<String, TableTypeInfo> cardDescriptors() => <String, TableTypeInfo>{
-  'MixedEntity': TableTypeInfo('MixedEntity', <TableFieldInfo>[
-    TableFieldInfo("entity_id", 7, "value", null, null, null, "entity_id", "bits(12)", 2593226102015223570, false, 4, (dynamic v) => v.entityId, (dynamic v, dynamic x) { v.entityId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("pos_x", 4, "value", null, -16383, 16383, "pos_x", "int32", -3797881157997612786, false, 4, (dynamic v) => v.posX, (dynamic v, dynamic x) { v.posX = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("pos_y", 4, "value", null, -16383, 16383, "pos_y", "int32", -3797880058485984575, false, 4, (dynamic v) => v.posY, (dynamic v, dynamic x) { v.posY = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("pos_z", 4, "value", null, -16383, 16383, "pos_z", "int32", -3797883357020869208, false, 4, (dynamic v) => v.posZ, (dynamic v, dynamic x) { v.posZ = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("yaw", 7, "value", null, null, null, "yaw", "bits(9)", -5382489739573192984, false, 4, (dynamic v) => v.yaw, (dynamic v, dynamic x) { v.yaw = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("pitch", 7, "value", null, null, null, "pitch", "bits(9)", 6028620492700434865, false, 4, (dynamic v) => v.pitch, (dynamic v, dynamic x) { v.pitch = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("vel_x", 4, "value", null, -2048, 2047, "vel_x", "int32", 7849183398884077159, false, 4, (dynamic v) => v.velX, (dynamic v, dynamic x) { v.velX = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("vel_y", 4, "value", null, -2048, 2047, "vel_y", "int32", 7849182299372448948, false, 4, (dynamic v) => v.velY, (dynamic v, dynamic x) { v.velY = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("vel_z", 4, "value", null, -2048, 2047, "vel_z", "int32", 7849185597907333581, false, 4, (dynamic v) => v.velZ, (dynamic v, dynamic x) { v.velZ = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("health", 4, "value", null, 0, 1000, "health", "int32", 9181103189905877455, false, 4, (dynamic v) => v.health, (dynamic v, dynamic x) { v.health = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("weapon", 30, "value", null, null, null, "weapon", "MixedWeapon", -6866282850657997311, false, 1, (dynamic v) => v.weapon, (dynamic v, dynamic x) { v.weapon = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("damage", 9, "value", null, null, null, "damage", "MixedDamage", 9179190079975030720, false, 8, (dynamic v) => v.damage, (dynamic v, dynamic x) { v.damage = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("moving", 1, "value", null, null, null, "moving", "bool", 1271228688681418151, false, 1, (dynamic v) => v.moving, (dynamic v, dynamic x) { v.moving = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("firing", 1, "value", null, null, null, "firing", "bool", 8535675692938965450, false, 1, (dynamic v) => v.firing, (dynamic v, dynamic x) { v.firing = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-  ], "", <String>[]),
-  'MixedStat': TableTypeInfo('MixedStat', <TableFieldInfo>[
-    TableFieldInfo("stat_id", 6, "value", null, null, null, "stat_id", "bits(8)", -9175110139929313435, false, 4, (dynamic v) => v.statId, (dynamic v, dynamic x) { v.statId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("delta", 4, "value", null, -512, 511, "delta", "int32", 5910805692604981441, false, 4, (dynamic v) => v.delta, (dynamic v, dynamic x) { v.delta = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-  ], "", <String>[]),
-  'MixedHitEvent': TableTypeInfo('MixedHitEvent', <TableFieldInfo>[
-    TableFieldInfo("target_id", 7, "value", null, null, null, "target_id", "bits(12)", -5207116919359778736, false, 4, (dynamic v) => v.targetId, (dynamic v, dynamic x) { v.targetId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("damage", 4, "value", null, 0, 4095, "damage", "int32", 9179190079975030720, false, 4, (dynamic v) => v.damage, (dynamic v, dynamic x) { v.damage = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("hit_kind", 4, "value", null, 0, 7, "hit_kind", "int32", 142922654710085925, false, 4, (dynamic v) => v.hitKind, (dynamic v, dynamic x) { v.hitKind = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("crit", 1, "value", null, null, null, "crit", "bool", 1324453635955533101, false, 1, (dynamic v) => v.crit, (dynamic v, dynamic x) { v.crit = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-  ], "", <String>[]),
-  'MixedChatEvent': TableTypeInfo('MixedChatEvent', <TableFieldInfo>[
-    TableFieldInfo("channel", 4, "value", null, 0, 3, "channel", "int32", -6556890747741999708, false, 4, (dynamic v) => v.channel, (dynamic v, dynamic x) { v.channel = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("speaker", 7, "value", null, null, null, "speaker", "bits(12)", -292263051557875678, false, 4, (dynamic v) => v.speaker, (dynamic v, dynamic x) { v.speaker = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-  ], "", <String>[]),
-  'MixedPickupEvent': TableTypeInfo('MixedPickupEvent', <TableFieldInfo>[
-    TableFieldInfo("item_id", 7, "value", null, null, null, "item_id", "bits(10)", -7025667724851298986, false, 4, (dynamic v) => v.itemId, (dynamic v, dynamic x) { v.itemId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("amount", 4, "value", null, 0, 255, "amount", "int32", -9145686598410475159, false, 4, (dynamic v) => v.amount, (dynamic v, dynamic x) { v.amount = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-  ], "", <String>[]),
-  'BenchMixed': TableTypeInfo('BenchMixed', <TableFieldInfo>[
-    TableFieldInfo("sequence", 7, "value", null, null, null, "sequence", "bits(16)", -6181000666011064152, false, 4, (dynamic v) => v.sequence, (dynamic v, dynamic x) { v.sequence = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("ack_sequence", 4, "value", null, 0, 65535, "ack_sequence", "int32", 990229364654832702, false, 4, (dynamic v) => v.ackSequence, (dynamic v, dynamic x) { v.ackSequence = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("ack_bits", 8, "value", null, null, null, "ack_bits", "bits(32)", -7228825333587644925, false, 4, (dynamic v) => v.ackBits, (dynamic v, dynamic x) { v.ackBits = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("session_id", 9, "value", null, null, null, "session_id", "uint64", -5199487799206016251, false, 8, (dynamic v) => v.sessionId, (dynamic v, dynamic x) { v.sessionId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("client_id", 8, "value", null, null, null, "client_id", "uint32", 7889067272199050878, false, 4, (dynamic v) => v.clientId, (dynamic v, dynamic x) { v.clientId = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("nonce", 9, "value", null, 0, -1, "nonce", "uint64", 8334276637232054488, false, 8, (dynamic v) => v.nonce, (dynamic v, dynamic x) { v.nonce = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("world_time", 5, "value", null, -1000000000000, 1000000000000, "world_time", "int64", 4534679873638431877, false, 8, (dynamic v) => v.worldTime, (dynamic v, dynamic x) { v.worldTime = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("frame_tick", 9, "value", null, null, null, "frame_tick", "bits(48)", 8916005070914257170, false, 8, (dynamic v) => v.frameTick, (dynamic v, dynamic x) { v.frameTick = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("server_time", 22, "value", null, null, null, "server_time", "fixed(24, 8)", 4343163795393112518, false, 4, (dynamic v) => v.serverTime, (dynamic v, dynamic x) { v.serverTime = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("entities", 14, "value", null, null, null, "entities", "MixedEntity", -7828083326636031446, false, null, (dynamic v) => v.entities, (dynamic v, dynamic x) { v.entities = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("stats", 14, "value", null, null, null, "stats", "MixedStat", -1268998401975805620, false, null, (dynamic v) => v.stats, (dynamic v, dynamic x) { v.stats = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("game_event", 15, "value", null, null, null, "game_event", "MixedEvent", 3329809749115557776, false, null, (dynamic v) => v.gameEvent, (dynamic v, dynamic x) { v.gameEvent = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("loadout", 14, "value", null, null, null, "loadout", "uint8", 6294288958393922979, false, 1, (dynamic v) => v.loadout, (dynamic v, dynamic x) { v.loadout = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("player_name", 12, "value", 15, null, null, "player_name", "string", 1415871171432867950, false, 1, (dynamic v) => v.playerName, (dynamic v, dynamic x) { v.playerName = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("payload", 14, "value", null, null, null, "payload", "bytes", -3478843999652550171, false, 1, (dynamic v) => v.payload, (dynamic v, dynamic x) { v.payload = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("aim_x", 10, "value", null, null, null, "aim_x", "float32", -2616736631205226807, false, 4, (dynamic v) => v.aimX, (dynamic v, dynamic x) { v.aimX = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("aim_y", 10, "value", null, null, null, "aim_y", "float32", -2616737730716855018, false, 4, (dynamic v) => v.aimY, (dynamic v, dynamic x) { v.aimY = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("aim_z", 10, "value", null, null, null, "aim_z", "float32", -2616738830228483229, false, 4, (dynamic v) => v.aimZ, (dynamic v, dynamic x) { v.aimZ = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("recoil", 10, "value", null, null, null, "recoil", "float32", -7138431908913683369, false, 4, (dynamic v) => v.recoil, (dynamic v, dynamic x) { v.recoil = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("drift", 11, "value", null, null, null, "drift", "float64", 6535842126802938884, false, 8, (dynamic v) => v.drift, (dynamic v, dynamic x) { v.drift = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("wide_key", 19, "value", null, null, null, "wide_key", "uint128", -6686572760759554282, false, 16, (dynamic v) => v.wideKey, (dynamic v, dynamic x) { v.wideKey = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("flux", 18, "value", null, null, null, "flux", "int128", -3018575613315307966, false, 16, (dynamic v) => v.flux, (dynamic v, dynamic x) { v.flux = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("ping", 26, "value", null, null, null, "ping", "ufixed(8, 8)", -4669986463835551831, false, 2, (dynamic v) => v.ping, (dynamic v, dynamic x) { v.ping = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("crc_hint", 8, "value", null, null, null, "crc_hint", "bits(24)", 6200723483573899615, false, 4, (dynamic v) => v.crcHint, (dynamic v, dynamic x) { v.crcHint = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("has_extra", 1, "value", null, null, null, "has_extra", "bool", -4574933642144545166, false, 1, (dynamic v) => v.hasExtra, (dynamic v, dynamic x) { v.hasExtra = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("extra", 4, "value", null, 0, 255, "extra", "int32", -204370544148493463, false, 4, (dynamic v) => v.extra, (dynamic v, dynamic x) { v.extra = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-    TableFieldInfo("idle_ticks", 4, "value", null, 0, 15, "idle_ticks", "int32", 8651444298976115966, false, 4, (dynamic v) => v.idleTicks, (dynamic v, dynamic x) { v.idleTicks = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-  ], "", <String>[]),
-  'FixedTable': TableTypeInfo('FixedTable', <TableFieldInfo>[
-    TableFieldInfo("value", 13, "value", null, null, null, "value", "BenchMixed", 8999596768310594794, false, null, (dynamic v) => v.value, (dynamic v, dynamic x) { v.value = x; }, "", <String>[]), // ignore: avoid_dynamic_calls -- the descriptor registry is type-agnostic by design
-  ], "", <String>[]),
-};
+Map<String, TableTypeInfo> cardDescriptors() => TableTypeInfo._all;
 

@@ -138,7 +138,6 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
 		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "sprint/schema-elixir", Repo: "mas-bandwidth/schema"},
 		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
 		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
 	} {

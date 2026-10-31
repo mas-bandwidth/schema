@@ -1,0 +1,55 @@
+#!/bin/sh
+# THE LOBSTER LEG of the type bench (bench/README.md, "Runner contract";
+# docs/PORT-LOBSTER.md, THE HARNESS). Run from the repository root:
+#
+#   bench/lobster/run [--csv] [--gate] [--round K] [--quick] [--iterations N]
+#                     [--wire-dir <dir>] [--variant-dir <dir>]
+#
+# Exit 2 (run.sh prints SKIP) when the pinned toolchain or the generated unit is
+# absent. LOBSTER overrides the toolchain, as everywhere in the repo.
+#
+# THE BUILD IT MEASURES. bench/lobster/main.lobster under the pin's DEFAULT JIT
+# (TinyCC) with --runtime-no-asserts — the release leg, `checks=contract`, and
+# `linkage=jit` on every row. The --cpp ahead-of-time row docs/PORT-LOBSTER.md
+# asks for is OWED, not faked: `lobster --cpp` writes
+# <toolchain>/dev/compiled_lobster/src/compiled_lobster.cpp, and the pinned
+# release archive carries no dev/ tree — the program has to be compiled against
+# a full aardappel/lobster checkout at 0921f7dd5745 with the engine's own
+# build (SDL, FreeType, OpenGL; `cmake -DLOBSTER_TOCPP=ON`), which is a heavy
+# build and a fleet job. The card is `schema-lobster-bench-cpp`
+# (docs/roadmap.sexp); until it lands this leg prints no --cpp row and names
+# the card on stderr.
+#
+# THE OUTPUT GRAMMAR (bench/lobster/harness.lobster): bench/lobster/route.sh
+# runs the program and sends its `csv` lines to stdout and its `log` lines to
+# stderr, and REFUSES any other line — the pinned toolchain prints compiler
+# warnings on stdout and exits 0, so a warning in a generated module or in the
+# runner fails the leg (zero warnings, docs/PORT-LOBSTER.md THE STRICT GATE).
+set -e
+
+ROOT="$(pwd -P)"
+LOBSTER="${LOBSTER:-$ROOT/dist/lobster-v2026.8/bin/lobster}"
+export LOBSTER
+GEN=generated/bench/lobster
+
+if [ ! -f bench/lobster/main.lobster ]; then
+    echo "run this from the repository root" >&2
+    exit 1
+fi
+if [ ! -f "$GEN/Bench.lobster" ]; then
+    echo "missing $GEN — run \`make generated/bench/lobster/.stamp\`" >&2
+    exit 2
+fi
+if [ ! -x "$LOBSTER" ]; then
+    echo "no lobster at $LOBSTER (\`make dist-lobster\`, or set LOBSTER)" >&2
+    exit 2
+fi
+
+status=0
+bench/lobster/route.sh bench/lobster/main.lobster . "../../$GEN" -- "$@" || status=$?
+
+case " $* " in
+    *" --gate "*) ;;
+    *) echo "lobster --cpp row: owed (schema-lobster-bench-cpp — the pinned release has no dev/ tree to compile lobster --cpp output against)" >&2 ;;
+esac
+exit "$status"

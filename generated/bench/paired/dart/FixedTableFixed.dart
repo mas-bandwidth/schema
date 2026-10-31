@@ -41,9 +41,11 @@ import 'BenchFixed.dart'
         TableReport,
         TableVocabulary,
         fixedTableFixedDecode,
+        fixedTableFixedFiniteBody,
         fixedTableFixedWriteBody,
         fixedTableLoadMessageBody,
         fixedTableSaveMessageBody,
+        initFixedTable,
         tableFixedFillRun,
         tableFixedForm,
         tableFixedLineagePlans,
@@ -605,6 +607,12 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
+  // record is asked before the first byte is written, so a refusal
+  // leaves the caller's bytes as they were.
+  for (var k = 0; k < count; k++) {
+    if (fixedTableFixedFiniteBody(values[k]).isNotEmpty) return -1;
+  }
   final view = fixedTableFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -811,6 +819,20 @@ int fixedTableFixedLoad(
       return -1;
     }
     fixedTableFixedDecode(values[k], plan.image, plan.imageView, 0, report);
+    // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each
+    // float's raw bits before it landed, and a NaN or an infinity refuses
+    // the whole batch by name, the tolerant read included. Nothing of it is
+    // kept: every record this call wrote goes back to its defaults.
+    if (report.nonFiniteFloat.isNotEmpty) {
+      final field = report.nonFiniteFloat;
+      for (var j = 0; j <= k; j++) {
+        initFixedTable(values[j]);
+      }
+      report.reset();
+      report.nonFiniteFloat = field;
+      report.refused = TableFixedRefusal.nonFiniteFloat;
+      return -1;
+    }
     at += recordBytes;
   }
   // THE CENSUS LANDS ONCE, HERE, on a read that returns (§5.4, §5.9 #6).
@@ -875,7 +897,13 @@ int fixedTableLoadMessages(
     return count;
   }
   for (var i = 0; i < count; i++) {
-    if (!fixedTableLoadMessageBody(r, values[i])) return i;
+    if (!fixedTableLoadMessageBody(r, values[i])) {
+      if (report.nonFiniteFloat.isEmpty) return i;
+      for (var j = 0; j <= i; j++) {
+        initFixedTable(values[j]);
+      }
+      return 0;
+    }
   }
   if (!tableMessageBatchClose(r)) return count;
   return count;

@@ -1,0 +1,14 @@
+# THE RUST ACCESSOR/DESCRIPTOR AGREEMENT LEG (docs/PORTING.md J1; issue #421):
+# reads the generated block and cook units both ways and requires agreement.
+[package]
+name = "rust-agree"
+version = "0.0.0"
+edition = "2024"
+
+[[bin]]
+name = "rust-agree"
+path = "src/main.rs"
+
+[dependencies]
+blockdemo = { path = "../../build/tables-generated-rust/blockdemo" }
+graphdemo = { path = "../../build/tables-generated-rust/graphdemo" }

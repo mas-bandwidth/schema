@@ -1,0 +1,16 @@
+// Packet floats are finite (SPEC §4.3, serialize format 2.0), the moo leg:
+// one of each float shape a packet carries — bare float32 and float64
+// scalars, a fixed float32 array, a counted float64 array, and a compressed
+// float32 (the Dart leg's fixture, test/packet-finite/dart/Finite.schema).
+// moo has one codec tier, so every shape reaches the same emitted guards and
+// the runtime's float calls; there is no flat form to tell apart.
+package packetfinite
+
+type Floats
+{
+    narrow float32
+    wide float64
+    narrows [3]float32
+    wides [..4]float64
+    quantized float32 | min = -10, max = 10, resolution = 0.01
+}

@@ -11,11 +11,12 @@
 // unit the length counts and by nothing else, so a record that carries both at
 // once is what catches a leg that used bytes where it owed code units.
 //
-// THIS FILE IS GENERATED FOR THE C++ REFERENCE AND FOR DART AND FOR NOBODY
-// ELSE. Kind 33 in a table closure is C, C++, C#, Dart and Go today, and
-// examples/ pins gate 1 for all nine targets — so the unit stays out of every
-// shared schema list and is wired into the fixed-form corpus and the Dart
-// fixed-form gate alone, exactly as examples-wide/ is.
+// THIS FILE IS GENERATED FOR THE C++ REFERENCE, FOR DART AND FOR SQUIRREL AND
+// FOR NOBODY ELSE. Kind 33 in a table closure is C, C++, C#, Dart, Go and
+// Squirrel today, and examples/ pins gate 1 for every target — so the unit
+// stays out of every shared schema list and is wired into the fixed-form
+// corpus and the Dart and Squirrel fixed-form gates alone, exactly as
+// examples-wide/ is.
 package tblfxw
 
 // A nested type the root reaches, so the wide flavour is proved at a NESTED

@@ -42,3 +42,30 @@ func init() {
 		},
 	}
 }
+
+// THE FINITE RULE'S THREE BLADES (docs/SPEC-TABLES.md §3.3), one per control
+// mode of test/cs-tables/finite-negative-control: the form-1 read's raw-bits
+// test, the fixed read's finite pass, and the form-1 writer's refusal. Each
+// keeps its line compiling warning-free and turns only its own vector red.
+func init() {
+	sabotages["table-cs-finite-read"] = []edit{{
+		old: `if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
+            if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
+            if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
+        }
+        if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)raw; }`,
+		new: `if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw) && report == null) { NonFinite(f, report); return true; } // SABOTAGED: the read lands a NaN
+            if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
+            if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
+        }
+        if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)raw; }`,
+	}}
+	sabotages["table-cs-finite-fixed"] = []edit{{
+		old: `g.pf("        if (finite_why != null)\n        {\n")`,
+		new: `g.pf("        if (finite_why != null && report == null) // SABOTAGED: the fixed read keeps a NaN\n        {\n")`,
+	}}
+	sabotages["table-cs-finite-write"] = []edit{{
+		old: `if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, f.GetRaw(value, i)); }`,
+		new: `if (f.Kind == 10 || f.Kind == 11) { return f.GetRaw != null; } // SABOTAGED: the writer emits a NaN`,
+	}}
+}

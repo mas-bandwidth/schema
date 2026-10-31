@@ -200,7 +200,13 @@ func (g *blockGen) emitBlock(bl *ir.BlockLayout) {
 	g.pf("  // the block's first byte within bytes, and the used extent from it\n")
 	g.pf("  final int base;\n")
 	g.pf("  final int length;\n\n")
-	g.pf("  const %sBlock(this.bytes, this.view, this.base, this.length);\n\n", name)
+	// a projection with a float carries the accessors' latch (ruling 2), a
+	// mutable member, so its constructor is not const
+	if accessorsDecodeFloat(&bl.Projection, bl) {
+		g.pf("  %sBlock(this.bytes, this.view, this.base, this.length);\n\n", name)
+	} else {
+		g.pf("  const %sBlock(this.bytes, this.view, this.base, this.length);\n\n", name)
+	}
 	g.pf("  // The storage a PRODUCER of this block allocates, sized from the declared\n")
 	g.pf("  // maxima (docs/SPEC-TABLES.md §19.1). A Dart consumer does not allocate a block\n")
 	g.pf("  // — the bytes are handed to it — but it caps by this.\n")
@@ -414,6 +420,9 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			break
 		}
 	}
+	if accessorsDecodeFloat(ml, bl) {
+		g.pf("%s", dartBlockFloatLatch)
+	}
 	for _, fl := range ml.Fields {
 		f := fl.Field
 		if bl != nil && ir.BlockOutOfLine(f) {
@@ -478,9 +487,10 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 // declare for themselves; a field accessor may not take one (a field named
 // `at` would redeclare the cursor's offset).
 var (
-	rowMembers   = map[string]bool{"view": true, "at": true, "rowSize": true, "rowAlign": true}
+	rowMembers = map[string]bool{"view": true, "at": true, "rowSize": true, "rowAlign": true,
+		"nonFiniteFloat": true}
 	blockMembers = map[string]bool{"bytes": true, "view": true, "base": true, "length": true,
-		"blockMaxBytes": true, "projectionSize": true}
+		"blockMaxBytes": true, "projectionSize": true, "nonFiniteFloat": true}
 	// accessorSuffixes are every spelling a field's accessors derive from its
 	// name (emitInlineAccessors, emitCookMapAccessors).
 	accessorSuffixes = []string{"", "Length", "Bytes", "Bound", "At", "Present", "Count"}
@@ -860,10 +870,11 @@ func (g *blockGen) sublist(ind, head, args string) {
 // scalarGetter writes one scalar field's getter. A float32 widens AT THE
 // READ, in the getter's own body (issue 404, PORTING M3): under the JIT a
 // double crossing an out-of-line conversion call is boxed, and whether the
-// call is inlined is the inliner's budget, not the codec's. A NaN pattern
-// widens in software — the hardware conversion quiets a signalling NaN —
-// so the payload survives (SPEC-TABLES §3; float32_cells_test.go is the
-// law); the bits are a NaN exactly when their magnitude exceeds infinity's.
+// call is inlined is the inliner's budget, not the codec's. A float of either
+// width is TESTED ON ITS RAW BITS first (docs/SPEC-TABLES.md §3.3, ruling 2 of
+// 2026-10-27): a NaN or an infinity — the all-ones exponent — is never
+// returned; the getter answers 0 and latches non_finite_float on the view,
+// naming the field. Every finite float32 widens exactly.
 func (g *blockGen) scalarGetter(ind string, f *ir.Field, head, at string) {
 	if e, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
 		// an enum reads as the packet emitter's extension type over int:
@@ -873,25 +884,39 @@ func (g *blockGen) scalarGetter(ind string, f *ir.Field, head, at string) {
 		g.arrow(ind, head, e.Name+"("+g.readAt(f, at)+")")
 		return
 	}
-	if f.Type.Kind != ir.TFloat32 {
+	if f.Type.Kind != ir.TFloat32 && f.Type.Kind != ir.TFloat64 {
 		g.arrow(ind, head, g.readAt(f, at))
 		return
 	}
 	g.pf("%s%s {\n", ind, head)
-	one := fmt.Sprintf("%s  final bits = view.getUint32(%s, Endian.little);", ind, at)
+	if f.Type.Kind == ir.TFloat32 {
+		g.dartCall(ind+"  ", "final bits = ", "view.getUint32", at)
+		g.pf("%s  if ((bits & 0x7f800000) != 0x7f800000) {\n", ind)
+		g.pf("%s    _float32Words[0] = bits;\n", ind)
+		g.pf("%s    return _float32Cell[0];\n", ind)
+	} else {
+		g.dartCall(ind+"  ", "final bits = ", "view.getUint64", at)
+		g.pf("%s  if ((bits & 0x7ff0000000000000) != 0x7ff0000000000000) {\n", ind)
+		g.dartCall(ind+"    ", "return ", "view.getFloat64", at)
+	}
+	g.pf("%s  }\n", ind)
+	// a NaN or an infinity: refused, latched naming the field, never returned
+	g.pf("%s  if (nonFiniteFloat.isEmpty) {\n", ind)
+	g.pf("%s    nonFiniteFloat = '%s';\n", ind, dartFloatOwner(g.unit, f, nil))
+	g.pf("%s  }\n", ind)
+	g.pf("%s  return 0.0;\n", ind)
+	g.pf("%s}\n\n", ind)
+}
+
+// dartCall writes `<lead><fn>(<at>, Endian.little);` the way dart format
+// does: one line while it fits eighty columns, the tall form past it.
+func (g *blockGen) dartCall(ind, lead, fn, at string) {
+	one := fmt.Sprintf("%s%s%s(%s, Endian.little);", ind, lead, fn, at)
 	if len(one) <= 80 {
 		g.pf("%s\n", one)
-	} else {
-		g.pf("%s  final bits = view.getUint32(\n%s    %s,\n%s    Endian.little,\n%s  );\n", ind, ind, at, ind, ind)
+		return
 	}
-	g.pf("%s  if ((bits & 0x7fffffff) <= 0x7f800000) {\n", ind)
-	g.pf("%s    _float32Words[0] = bits;\n", ind)
-	g.pf("%s    return _float32Cell[0];\n", ind)
-	g.pf("%s  }\n", ind)
-	g.pf("%s  _float64Words[0] = ((bits >>> 31) << 63) | ((bits & 0x7fffff) << 29);\n", ind)
-	g.pf("%s  _float64Words[0] |= 0x7ff0000000000000;\n", ind)
-	g.pf("%s  return _float64Cell[0];\n", ind)
-	g.pf("%s}\n\n", ind)
+	g.pf("%s%s%s(\n%s  %s,\n%s  Endian.little,\n%s);\n", ind, lead, fn, ind, at, ind, ind)
 }
 
 func (g *blockGen) arrow(ind, head, expr string) {
@@ -922,13 +947,39 @@ func (g *blockGen) trimBlank() {
 	g.body.WriteString("\n")
 }
 
-// IEEE-754 payloads are data (SPEC-TABLES §3): hardware widening quiets a
-// signalling NaN, so preserve sign and mantissa in the double representation.
-// The class owns only the views; each float32 getter converts in its own
-// body (scalarGetter, issue 404).
-const dartBlockFloat32Runtime = `  static final Float32List _float32Cell = Float32List(2);
+// The class owns only the views; each float32 getter converts in its own body
+// (scalarGetter, issue 404), and a finite float32 widens exactly.
+const dartBlockFloat32Runtime = `  static final Float32List _float32Cell = Float32List(1);
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
-  static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
-  static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
 
 `
+
+// dartBlockFloatLatch is RULING 2 of 2026-10-27 (docs/SPEC-TABLES.md §3.3, a
+// no-walk block or cook open): Open stays O(1), so the float accessors are
+// what meet a stored NaN or infinity, and each refuses one — it never returns
+// the value, and the refusal is latched here, on the view, naming the field.
+const dartBlockFloatLatch = `  /// THE FIRST NaN OR INFINITY a float accessor met (docs/SPEC-TABLES.md
+  /// §3.3), as <Table>.<field>: the refusal non_finite_float, latched on this
+  /// view, '' while every float read was finite. The accessor that met one
+  /// answered 0 in its place and never the value.
+  String nonFiniteFloat = '';
+
+`
+
+// accessorsDecodeFloat is whether a record's accessors include one that
+// decodes a float, and so carry the latch.
+func accessorsDecodeFloat(ml *ir.MemberLayout, bl *ir.BlockLayout) bool {
+	for _, fl := range ml.Fields {
+		f := fl.Field
+		if bl != nil && ir.BlockOutOfLine(f) {
+			continue
+		}
+		if f.IsMap() || f.Type.Pointer {
+			continue
+		}
+		if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+			return true
+		}
+	}
+	return false
+}

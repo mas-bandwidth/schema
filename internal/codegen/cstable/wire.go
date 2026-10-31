@@ -4,6 +4,7 @@ package cstable
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -72,10 +73,38 @@ func isPayloadPrefixed(f *ir.Field) bool {
 	return f.Array != ir.ArrayNone || kind == tkString || kind == 33 || kind == tkTable
 }
 
+// leafRideCondition is a clean scalar leaf's elision test. A float compares
+// its BITS with the default's (docs/SPEC-TABLES.md §3.3), so a -0 under a +0
+// default rides.
 func leafRideCondition(f *ir.Field) string {
-	def := fieldDefaultExpr(f)
 	prop := member(f)
-	return fmt.Sprintf("v.%s != %s", prop, def)
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return fmt.Sprintf("BitConverter.SingleToUInt32Bits(v.%s) != 0x%08xu", prop, math.Float32bits(float32(fieldDefaultFloat(f))))
+	case ir.TFloat64:
+		return fmt.Sprintf("BitConverter.DoubleToUInt64Bits(v.%s) != 0x%016xul", prop, math.Float64bits(fieldDefaultFloat(f)))
+	}
+	return fmt.Sprintf("v.%s != %s", prop, fieldDefaultExpr(f))
+}
+
+// fieldDefaultFloat is a float field's declared default, 0 without one.
+func fieldDefaultFloat(f *ir.Field) float64 {
+	if f.HasDefault {
+		return f.DefFloat
+	}
+	return 0
+}
+
+// leafFiniteCondition is a clean float leaf's writer refusal (docs/SPEC-TABLES.md
+// §3.3): a NaN or an infinity refuses the save before any byte is written.
+func leafFiniteCondition(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return fmt.Sprintf("!float.IsFinite(v.%s)", member(f))
+	case ir.TFloat64:
+		return fmt.Sprintf("!double.IsFinite(v.%s)", member(f))
+	}
+	return ""
 }
 
 func (g *tableGen) emitCollectTyped(st *ir.Struct) {
@@ -87,6 +116,9 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 	for i, f := range st.Fields {
 		id := ir.TableFieldWireId(f)
 		if isCleanScalarLeaf(f) {
+			if finite := leafFiniteCondition(f); finite != "" {
+				g.pf("    if (%s) return false;\n", finite)
+			}
 			cond := leafRideCondition(f)
 			g.pf("    if (%s && !ids.Add(0x%016xul)) return false;\n", cond, id)
 		} else if childSt, ok := isChildScalarArray(f); ok {
@@ -378,6 +410,11 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	}
 	fmt.Fprintf(&b, ", DefaultRaw = %s", csRawGet(defaultExpr, f.Type))
 	kind := tableScalarKind(f)
+	if kind == tkF32 || kind == tkF64 {
+		// the name a non-finite refusal carries (docs/SPEC-TABLES.md §3.3)
+		owner := g.owner.DeclaredName() + "." + f.Name
+		fmt.Fprintf(&b, ", NonFiniteField = %q, NonFiniteReason = %q", owner, "non_finite_float: "+owner)
+	}
 	if kind == tkBool || enumRef(f) != nil {
 		return b.String()
 	}
@@ -721,10 +758,11 @@ public static partial class TableWire
     public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
     static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
     static bool Named(string name) { return name != null && name != "???"; }
+    // Elision compares BITS, floats included (docs/SPEC-TABLES.md §3.3): a -0
+    // under a +0 default rides and reads back as -0.
     static bool DefaultRaw(ulong raw, TableFieldInfo f)
     {
-        if (f.Kind == 10) { return TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw); }
-        if (f.Kind == 11) { return TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw); }
+        if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
         return raw == f.DefaultRaw;
     }
     static bool DefaultElement(object value, TableFieldInfo f, int i)
@@ -759,6 +797,10 @@ public static partial class TableWire
     public static int Count(object value, TableFieldInfo f) { return f.Counted ? f.GetCount(value) : f.ArrayBound; }
     static bool CollectElement(object value, TableFieldInfo f, int i, ref Ids ids)
     {
+        // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
+        // §3.3): collect precedes measure and the first output byte, so Measure
+        // and Save both answer -1.
+        if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, f.GetRaw(value, i)); }
         if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
         if (f.Kind == 15)
         {
@@ -1063,13 +1105,37 @@ public static partial class TableWire
     {
         return (from >= 2 && to <= 5 && from < to) || (from >= 6 && to <= 9 && from < to) || (from == 10 && to == 11) || (to == 18 && from >= 2 && from <= 5) || (to == 19 && from >= 6 && from <= 9);
     }
-    // Numeric float conversion quiets signalling NaNs. Carry their sign and
-    // payload by bits; ordinary finite values use the exact hardware widening.
-    static ulong WidenFloat(uint raw)
+    // A FLOAT IS FINITE OR REFUSED (docs/SPEC-TABLES.md §3.3, the same rule as
+    // the packet wire's): every read tests the raw bits, before they become a
+    // value and before the field is written, and an all-ones exponent (a NaN,
+    // any sign and payload, or an infinity) is never landed. Every finite float32 widens exactly, so the
+    // float rung (kind 10 into a float64) is the ordinary conversion.
+    internal static bool NonFiniteBits(byte kind, ulong raw)
+    { return kind == 10 ? (raw & 0x7f800000ul) == 0x7f800000ul : (raw & 0x7ff0000000000000ul) == 0x7ff0000000000000ul; }
+    static ulong WidenFloat(uint raw) { return TableDoubleToBits((double)TableBitsToFloat(raw)); }
+    // NonFinite names the field on the report, the first name winning; the
+    // load refuses as non_finite_float when its walk is done (NonFiniteRefused).
+    internal static void NonFinite(TableFieldInfo f, TableReport report)
     {
-        if ((raw & 0x7f800000u) == 0x7f800000u)
-        { return ((ulong)(raw & 0x80000000u) << 32) | 0x7ff0000000000000ul | ((ulong)(raw & 0x7fffffu) << 29); }
-        return TableDoubleToBits((double)TableBitsToFloat(raw));
+        if (report.NonFiniteFloat != null) { return; }
+        report.NonFiniteFloat = f.NonFiniteField ?? f.Name;
+        report.NonFiniteReason = f.NonFiniteReason ?? "non_finite_float";
+    }
+    // NonFiniteRetained names a retained unknown float the same way, by the id
+    // the reader cannot name (docs/SPEC-TABLES.md §3.3, §6.6).
+    internal static void NonFiniteRetained(ulong id, TableReport report)
+    {
+        if (report.NonFiniteFloat != null) { return; }
+        report.NonFiniteFloat = "0x" + id.ToString("x16");
+        report.NonFiniteReason = "non_finite_float: " + report.NonFiniteFloat;
+    }
+    // NonFiniteRefused ends a load whose walk met a non-finite float: the
+    // refusal outranks any damage met after it, and nothing lands.
+    internal static bool NonFiniteRefused(TableReport report)
+    {
+        if (report.NonFiniteFloat == null) { return false; }
+        report.Refused = true; report.Reason = report.NonFiniteReason;
+        return true;
     }
     static bool Compatible(byte from, byte to, TableReport report)
     {
@@ -1128,6 +1194,7 @@ public static partial class TableWire
             // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
             // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
             if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
+            if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
             if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
             if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
         }
@@ -1516,7 +1583,7 @@ public static partial class TableWire
     {
         if (report == null) { report = Ignored; }
         type.Reset(value);
-        report.Refused = false; report.Reason = null;
+        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
         if (bytes[0] != 1)
         {
@@ -1537,7 +1604,9 @@ public static partial class TableWire
         Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
         if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
-        return Finish(report, ReadBody(ref r, value, type, report, false) ? Verdict.Ok : Verdict.BodyStopped);
+        bool complete = ReadBody(ref r, value, type, report, false);
+        if (NonFiniteRefused(report)) { type.Reset(value); return Finish(report, Verdict.Refused); }
+        return Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped);
     }
 }
 // ---- form-1 table wire: end ----

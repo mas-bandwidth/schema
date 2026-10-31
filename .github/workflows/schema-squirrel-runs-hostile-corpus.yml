@@ -1,0 +1,95 @@
+name: Squirrel runs the hostile corpus
+
+# FORKS: this repository is PUBLIC, so a pull request from a fork must never run
+# on fleet hardware. Every fleet job carries the fork guard; a fork's pull
+# request gets no CI run, and a maintainer reruns it by workflow_dispatch after
+# reading the diff.
+#
+# ONE CORPUS, EVERY PORT (docs/HOSTILE-CORPUS.md). The Squirrel port runs every
+# raw input of the committed shared hostile-input corpus (built by
+# schema-shared-hostile-corpus) through its generated reader and compares the
+# verdict, the named refusal reason and the decoded-value digest with the
+# manifest. The runner is files-only: it reads the corpus and generated
+# modules, starts the pinned interpreter, and never touches the network.
+#
+# THE SPLIT IS BY WHEN: push and pull request run the corpus gate and its
+# planted control; the nightly schedule and workflow_dispatch run the control
+# alone so a plant that stops going red is named every night.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+    paths:
+      - 'make/schema-squirrel-runs-hostile-corpus.mk'
+      - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'
+      - 'internal/ci/schema_squirrel_runs_hostile_corpus_test.go'
+      - 'internal/ci/hostilecorpus/**'
+      - 'internal/codegen/squirrel/**'
+      - 'internal/codegen/squirreltable/**'
+      - 'docs/HOSTILE-CORPUS.md'
+  pull_request:
+    paths:
+      - 'make/schema-squirrel-runs-hostile-corpus.mk'
+      - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'
+      - 'internal/ci/schema_squirrel_runs_hostile_corpus_test.go'
+      - 'internal/ci/hostilecorpus/**'
+      - 'internal/codegen/squirrel/**'
+      - 'internal/codegen/squirreltable/**'
+      - 'docs/HOSTILE-CORPUS.md'
+  schedule:
+    - cron: '41 8 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    name: fast (corpus and planted control)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Tool presence check: go'
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
+      - name: The pinned Squirrel interpreter
+        run: make dist-squirrel
+      - name: Every hostile input through the Squirrel reader
+        env:
+          GOFLAGS: -mod=readonly
+          NOVA_TEST_NO_HOST: "1"
+        run: make schema-squirrel-runs-hostile-corpus
+
+  nightly:
+    name: nightly (planted-bad-pattern control)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Tool presence check: go'
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
+      - name: The pinned Squirrel interpreter
+        run: make dist-squirrel
+      - name: The planted control must go red
+        env:
+          GOFLAGS: -mod=readonly
+          NOVA_TEST_NO_HOST: "1"
+        run: make schema-squirrel-runs-hostile-corpus-negative-control

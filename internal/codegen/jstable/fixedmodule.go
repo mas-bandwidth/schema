@@ -9,6 +9,7 @@ package jstable
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -149,6 +150,7 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 		}
 		for _, st := range closure {
 			g.gen.emitWriteBody(st)
+			g.gen.emitCheckBody(st)
 			g.gen.emitDecodeBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
@@ -199,6 +201,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"TableFixedKnownLayout", "TableFixedDecodeLayout", "TableFixedSelect",
 		"TableFixedRefuseHash", "TableFixedLineagePlans")
 	g.needHome(st.Name+"FixedWriteBody", st.Name+"FixedDecode", st.Name, "Init"+st.Name)
+	finite := slices.ContainsFunc(st.Fields, fixedFieldHasFloat)
+	if finite {
+		g.needHome(st.Name + "FixedCheckBody")
+	}
 
 	g.pf("// ---- %s, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----\n//\n", st.Name)
 	g.pf("// A record is an eight-byte hash of the writer's LAYOUT and then\n")
@@ -327,6 +333,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("export function %sFixedSave(values, count, bytes) {\n", st.Name)
 	g.pf("  const need = %sFixedMeasure(count);\n", st.Name)
 	g.pf("  if (count < 0 || bytes === null || bytes.length < need) { return -1; }\n")
+	if finite {
+		g.pf("  // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md\n")
+		g.pf("  // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.\n")
+		g.pf("  for (let k = 0; k < count; k++) { if (!%sFixedCheckBody(values[k])) { return -1; } }\n", st.Name)
+	}
 	g.pf("  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);\n")
 	g.pf("  bytes.fill(0, 0, TableFixedHeaderBytes); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("  bytes[0] = TableFixedForm;\n")

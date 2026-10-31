@@ -274,7 +274,11 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_flag) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.flag = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.flag = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -286,7 +290,12 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_x) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.x = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.x");
+                        } else {
+                            v.x = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -298,7 +307,12 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_y) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.y = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.y");
+                        } else {
+                            v.y = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -310,7 +324,12 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_z) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.z = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.z");
+                        } else {
+                            v.z = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -363,28 +382,26 @@ public final class BenchPacketRetain {
                     if (ar != null) {
                         if (ar.has(2)) {
                             int ek = ar.get8();
-                            if (ek == 6) {
-                                long n = ar.leb();
-                                if (ar.fail) {
-                                } else {
-                                    if (n < 0 || n > 17) {
-                                        n = 17;
-                                        report.clamped++;
-                                    }
-                                    if (ek != 6) {
-                                        report.widened++;
-                                    }
-                                    {
-                                        for (long i = 0; i < n; i++) {
-                                            java.math.BigInteger raw =
-                                                    TableVariable.readInteger(ar, ek);
-                                            if (raw == null) break;
-                                            TableVariable.put(v.blob, (int) i, raw.intValue());
-                                        }
+                            long n = ar.count(r.limit);
+                            if (ar.fail) {
+                            } else if (!(ek == 6)) {
+                                report.kindMismatch++;
+                            } else {
+                                if (n < 0 || n > 17) {
+                                    n = 17;
+                                    report.clamped++;
+                                }
+                                if (ek != 6) {
+                                    report.widened++;
+                                }
+                                {
+                                    for (long i = 0; i < n; i++) {
+                                        java.math.BigInteger raw =
+                                                TableVariable.readInteger(ar, ek);
+                                        if (raw == null) break;
+                                        TableVariable.put(v.blob, (int) i, raw.intValue());
                                     }
                                 }
-                            } else {
-                                report.kindMismatch++;
                             }
                         }
                     }
@@ -426,6 +443,14 @@ public final class BenchPacketRetain {
             return;
         }
         int pEnd = r.off;
+        if (kind == 10 && pEnd - pStart == 4 && (get32(r.buf, pStart) & 0x7f800000) == 0x7f800000
+                || kind == 11
+                        && pEnd - pStart == 8
+                        && (get64(r.buf, pStart) & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            TableVariable.nonFiniteFloat(
+                    report, TableVariable.retainedFloatName("BenchPacket", id));
+            return;
+        }
         byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);
         if (resolved == null) {
             report.retainLost++;
@@ -517,7 +542,7 @@ public final class BenchPacketRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow ? -1 : w.off;
+        return w.overflow || ids.nonFinite ? -1 : w.off;
     }
 
     static void writeFieldsRetain(
@@ -564,20 +589,20 @@ public final class BenchPacketRetain {
             w.put8(1);
             w.put8(1);
         }
-        if (v.x != 0.0f) {
+        if (Float.floatToRawIntBits(v.x) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_x));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.x));
+            w.putF32(v.x);
         }
-        if (v.y != 0.0f) {
+        if (Float.floatToRawIntBits(v.y) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_y));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.y));
+            w.putF32(v.y);
         }
-        if (v.z != 0.0f) {
+        if (Float.floatToRawIntBits(v.z) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_z));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.z));
+            w.putF32(v.z);
         }
         if (v.big != 0L) {
             w.putLeb(w.ref(BenchPacketVariable.F_big));
@@ -640,12 +665,14 @@ public final class BenchPacketRetain {
                 int listMark = retain.idUsed;
                 TableVariable.Writer rec = w.sub(new byte[1 << 20]);
                 int[] pat = new int[] {at + hdr};
-                long ref = TableRetain.ref(rec, retain, id, report);
+                // the record is ONE loss however deep it fails, counted once
+                // below, so the walk itself is handed no report (§6.6)
+                long ref = TableRetain.ref(rec, retain, id, null);
                 boolean ok = ref != 0;
                 if (ok) {
                     rec.putLeb(ref);
                     rec.put8(kind);
-                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);
+                    ok = TableRetain.emit(rec, retain, null, retain.bytes, pat, kind);
                 }
                 if (ok) {
                     w.putBytes(rec.buf, 0, rec.off);

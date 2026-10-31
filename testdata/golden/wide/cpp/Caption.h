@@ -15,7 +15,8 @@ namespace wide {
 inline constexpr uint64_t ProtocolId = 0x4b9b89c718af5d5eull;
 
 // type Line
-struct Line {
+struct Line
+{
     char16_t text[4 + 1] = {}; // wstring(4): max length in UTF-16 code units, used length beside it (SPEC §4.12)
     int32_t text_length = 0;
 };
