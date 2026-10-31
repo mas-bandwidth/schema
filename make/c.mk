@@ -914,39 +914,35 @@ tables-c-blob-span-negative-control: test/c-tables/blob_span_main.c
 # THE C WIRE PROBES' CONTROLS (compiler/tablescwire_test.go). Each sabotages
 # one line of the C emitter through `go test -overlay` and requires its probe,
 # which holds the generated C to the compiler engine's bytes, to go RED on its
-# own CHECK. $(1) the target's scratch dir, $(2) the emitter file, $(3) the sed
-# program, $(4) the patch's marker, $(5) the probe test, $(6) what the red must
-# name, $(7) what the control shows.
-define c_wire_probe_control
-	@rm -rf $(1) && mkdir -p $(1)
-	@sed -e '$(3)' internal/codegen/ctable/$(2) > $(1)/emitter.go.txt
-	@test "$$(grep -c '$(4)' $(1)/emitter.go.txt)" -ge 1 || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
-	@printf '{"Replace":{"%s/internal/codegen/ctable/$(2)":"%s/$(1)/emitter.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(1)/overlay.json
-	@if SCHEMA_SLOW=1 go test -v -overlay $(1)/overlay.json -count=1 ./compiler \
-			-run '^$(5)$$' > $(1)/log 2>&1; then \
-		if grep -q -- '--- SKIP' $(1)/log || ! grep -q -- '--- PASS' $(1)/log; then \
-			echo "NEGATIVE CONTROL FAILED: $(5) did not run (skipped), so this control is watching nothing"; \
-			cat $(1)/log; exit 1; \
-		fi; \
-		echo "NEGATIVE CONTROL FAILED: $(5) stayed green under the sabotage"; cat $(1)/log; exit 1; \
-	fi
-	@grep -q -- '--- FAIL: $(5)' $(1)/log && grep -qF '$(6)' $(1)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on $(6)"; cat $(1)/log; exit 1; }
-	@grep -m1 -F '$(6)' $(1)/log
-	@echo "negative control: $(7)"
-endef
-
+# own CHECK.
+#
 # M14 (docs/PORTING.md), the `&node` label in the C text form: a node two
 # references name is written in full at every appearance, with no label.
-# TestCTableWireGraphIdentity's JSON half reads the text back into a builder
-# and must save the engine's bytes; two copies of the shared node cannot.
+# TestCTableWireGraphIdentity's JSON half reads the text back into a builder,
+# and the save of that builder must be the engine's bytes; two copies of the
+# shared node cannot be.
 C_JSON_LABEL_SED := s|    if ( entry->count <= 1 ) { return table_json_write_value(out,node,f->table,depth); }|    if ( 1 ) { return table_json_write_value(out,node,f->table,depth); } /* SABOTAGED: no label */|
-C_JSON_LABEL_RED := !memcmp(saved,expected,sizeof(saved))
+C_JSON_LABEL_RED := root_save(NULL,(const Root *)(const void *)copy.region,saved,sizeof(saved))==(int64_t)sizeof(expected)
 .PHONY: tables-c-json-label-negative-control
 tables-c-json-label-negative-control:
-	$(call c_wire_probe_control,build/c-json-label-nc,graph_json.go,$(C_JSON_LABEL_SED),SABOTAGED: no label,TestCTableWireGraphIdentity,$(C_JSON_LABEL_RED),a shared node written twice in the C text form turns TestCTableWireGraphIdentity red on the engine's bytes)
+	@rm -rf build/c-json-label-nc && mkdir -p build/c-json-label-nc
+	@sed -e '$(C_JSON_LABEL_SED)' internal/codegen/ctable/graph_json.go > build/c-json-label-nc/emitter.go.txt
+	@grep -q 'SABOTAGED: no label' build/c-json-label-nc/emitter.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/ctable/graph_json.go":"%s/build/c-json-label-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-json-label-nc/overlay.json
+	@if SCHEMA_SLOW=1 go test -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
+			-run '^TestCTableWireGraphIdentity$$' > build/c-json-label-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-json-label-nc/log || ! grep -q -- '--- PASS' build/c-json-label-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity did not run (skipped), so this control is watching nothing"; \
+			cat build/c-json-label-nc/log; exit 1; \
+		fi; \
+		echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity stayed green under the sabotage"; cat build/c-json-label-nc/log; exit 1; \
+	fi
+	@grep -q -- '--- FAIL: TestCTableWireGraphIdentity' build/c-json-label-nc/log && grep -qF '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on its own CHECK"; cat build/c-json-label-nc/log; exit 1; }
+	@grep -m1 -F '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log
+	@echo "negative control: a shared node written twice in the C text form turns TestCTableWireGraphIdentity red on the engine's bytes"
 
 # M19, the C map's sorted entry array: the save's ascending order (the heap sort
 # of table_sequence_order) is removed, so entries ride in insertion order.
@@ -956,7 +952,24 @@ C_MAP_SORT_SED := s|    for(i=(int64_t)value->count/2;i>0;i--) {|    for(i=0;i>0
 C_MAP_SORT_RED := !memcmp(wire,expected,sizeof(expected))
 .PHONY: tables-c-map-sort-negative-control
 tables-c-map-sort-negative-control:
-	$(call c_wire_probe_control,build/c-map-sort-nc,sequence.go,$(C_MAP_SORT_SED),SABOTAGED: insertion order,TestCTableWireMaps,$(C_MAP_SORT_RED),a C map saved in insertion order turns TestCTableWireMaps red on the engine's bytes)
+	@rm -rf build/c-map-sort-nc && mkdir -p build/c-map-sort-nc
+	@sed -e '$(C_MAP_SORT_SED)' internal/codegen/ctable/sequence.go > build/c-map-sort-nc/emitter.go.txt
+	@grep -q 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/ctable/sequence.go":"%s/build/c-map-sort-nc/emitter.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-map-sort-nc/overlay.json
+	@if SCHEMA_SLOW=1 go test -v -overlay build/c-map-sort-nc/overlay.json -count=1 ./compiler \
+			-run '^TestCTableWireMaps$$' > build/c-map-sort-nc/log 2>&1; then \
+		if grep -q -- '--- SKIP' build/c-map-sort-nc/log || ! grep -q -- '--- PASS' build/c-map-sort-nc/log; then \
+			echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps did not run (skipped), so this control is watching nothing"; \
+			cat build/c-map-sort-nc/log; exit 1; \
+		fi; \
+		echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps stayed green under the sabotage"; cat build/c-map-sort-nc/log; exit 1; \
+	fi
+	@grep -q -- '--- FAIL: TestCTableWireMaps' build/c-map-sort-nc/log && grep -qF '$(C_MAP_SORT_RED)' build/c-map-sort-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on its own CHECK"; cat build/c-map-sort-nc/log; exit 1; }
+	@grep -m1 -F '$(C_MAP_SORT_RED)' build/c-map-sort-nc/log
+	@echo "negative control: a C map saved in insertion order turns TestCTableWireMaps red on the engine's bytes"
 
 test-c: tables-c-json-label-negative-control tables-c-map-sort-negative-control
 
