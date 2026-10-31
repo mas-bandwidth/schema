@@ -665,6 +665,9 @@ func (g *rowGen) emitRowFind(f *ir.Field, name string, stride int64) {
 	typ := javaRecordType(key.Type)
 	width := key.Type.Width
 	widen := "(long) %s"
+	if typ == "long" {
+		widen = "%s"
+	}
 	cmp := "Long.compare"
 	if !key.Type.Signed {
 		cmp = "Long.compareUnsigned"
