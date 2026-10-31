@@ -62,27 +62,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// The by-name refusal (§11) is the card's own path, in cardVariableModules.
 	maps.Copy(out, scopedVariableModules(u))
 
-	// §15's WIDE-KIND REFUSAL IS OWED BY THE ACCELERATORS AND NOT BY THE WIRE,
-	// and ir.WideTableKinds is the one place that rule lives. The block form and
-	// the cooked form are the two things this backend has that must name a
-	// kind's storage column and its reflection descriptor, and they are what
-	// does not carry the fixed-point and 128-bit kinds yet. The FIXED FORM
-	// (§3.4) names no kind at all on the emitted path: a field is a store of its
-	// width at its offset, so a 128-bit field is a `u128` store and a
-	// fixed-point one is its raw integer, and the layout's own entry carries the
-	// kind byte the reader compares.
-	//
-	// THE `fixedForm` ARGUMENT IS THIS BACKEND'S OWN ANSWER, and it is `true`
-	// here now: the day the ir rule landed it read `false` because this port had
-	// no form-3 codec. It has one. So a unit that declares the wide kinds still
-	// gets it, the two accelerators stand down alone, and only a unit with NO
-	// fixed root is refused whole, BY NAME.
+	// THE WIDE KINDS (docs/SPEC-TABLES.md §15): this backend carries the
+	// fixed-point and 128-bit table-wire kinds on every form, the variable
+	// wire's u128/i128 storage and its raw fixed-point integer included, so it
+	// owes ir.WideTableKinds' refusal to no unit and every accelerator rides.
 	fixed := anyFixedRoot(u, closure)
-	scope := ir.WideTableKinds(u, "Rust", fixed)
-	if scope.Unit {
-		return nil, scope.Refusal
-	}
-	accelerators := scope.Refusal
+	var accelerators error
 
 	if accelerators == nil && anyCookable(u, closure) {
 		out[CookRuntimeModule+".rs"] = cookRuntimeModule(u)
