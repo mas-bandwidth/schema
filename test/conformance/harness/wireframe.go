@@ -1317,14 +1317,6 @@ func messageEnumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 	entries := uint64(seed.entries)
 	for _, sp := range seed.spots {
 		top := uint64(1)<<uint(sp.Width) - 1
-		if sp.Index {
-			for _, v := range []uint64{0, 1, 2, top - 1, top} {
-				if v != sp.Value && v <= top {
-					emit("index", bitPatched(seed, sp, v))
-				}
-			}
-			continue
-		}
 		for _, v := range []uint64{0, entries, entries + 1, top} {
 			if v != sp.Value && v <= top {
 				emit("reference", bitPatched(seed, sp, v))

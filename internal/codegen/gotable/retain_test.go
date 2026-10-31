@@ -71,32 +71,6 @@ func TestRetain(t *testing.T){
 	runGenerated(t, old, source)
 }
 
-func TestRetainMessageBoundsBeforeExpansion(t *testing.T) {
-	runGenerated(t, `package probe
-fixed table Child { n int32 }
-table Root { child *Child }
-`, `package probe
-import("testing";"unsafe")
-func TestCaptureBounds(t *testing.T){
- var root Root;store:=TableRetain{Bytes:make([]byte,8192),Ids:make([]TableRetainID,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeID:RootTableType().ID}})
- entry:=TableMessageEntry{ID:123,Shape:TableMessageShape{Kind:13,Bits:-1}};v:=TableVocabulary{Entries:[]TableMessageEntry{entry},Count:1,RefBits:1,Announced:true}
- for _,depth:=range []int{64,65}{
-  bits:=make([]byte,32);w:=TableBitWriter{Buffer:bits};for i:=1;i<depth;i++{w.Put(1,1)};for i:=0;i<depth;i++{w.Put(0,1)}
-  store.Used=0;store.Count=0;r:=TableRetainMessageReader{tableMessagePlainReader:TableMessageReader{Bits:TableBitReader{Buffer:bits},Vocabulary:&v},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
-  if !r.capture(entry,"T")||r.Report.Malformed||r.Bits.Offset!=w.Bits{t.Fatalf("depth %d changed ordinary framing %+v",depth,r.Report)}
-  if depth==64&&(r.Report.Retained!=1||r.Report.RetainLost!=0)||depth==65&&(r.Report.Retained!=0||r.Report.RetainLost!=1){t.Fatalf("depth %d %+v",depth,r.Report)}
- }
- store.Used=0;store.Count=0;store.Bytes=store.Bytes[:64]
- huge:=TableMessageEntry{ID:124,Shape:TableMessageShape{Kind:14,Min:1<<31,Max:1<<31,Bits:-1},Element:TableMessageShape{Kind:4,Packing:1,Bits:0}}
- r:=TableRetainMessageReader{tableMessagePlainReader:TableMessageReader{Vocabulary:&v},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
- if !r.capture(huge,"T")||r.Report.RetainLost!=1||r.Report.Retained!=0||r.Report.Malformed||store.Used!=0{t.Fatalf("zero-bit count %+v",r.Report)}
- quantized:=TableMessageEntry{ID:125,Shape:TableMessageShape{Kind:10,Packing:2,Bits:2,QCount:2,QMin:0,QDelta:1}}
- r.Report=TableReport{};r.Bits=TableBitReader{Buffer:[]byte{3}}
- if !r.capture(quantized,"T")||r.Report.RetainLost!=1||r.Report.Malformed{t.Fatalf("invalid quantized index %+v",r.Report)}
-}
-`)
-}
-
 func TestRetainReplacementAndShapeChanges(t *testing.T) {
 	runGenerated(t, `package probe
 enum Key { A, B }

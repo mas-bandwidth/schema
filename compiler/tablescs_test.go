@@ -407,7 +407,7 @@ type Leaf {
 }
 
 // THE TYPED FAST PATH IS THE FIXED CLASS'S (docs/SPEC-TABLES.md §2.2): the
-// guard below makes Subject a plain table, so its whole body walks the
+// guard below makes Subject a variable table, so its whole body walks the
 // dynamic descriptors, and the typed calls are asserted on the fixed twin.
 fixed table Fast {
     normal [2]Leaf
@@ -460,7 +460,7 @@ table Subject {
 
 	// 3. Guarded and optional arrays must NOT use typed child calls directly;
 	// they must fall back to dynamic descriptor dispatch (BodySizeField / WriteBodyField).
-	// Subject is a plain `table` (its guard disqualifies the fixed class), so
+	// Subject is a variable table (its guard disqualifies the fixed class), so
 	// NOTHING in its body takes the typed path — the guarded and optional
 	// arrays included, which is what this block has always asserted.
 	if strings.Contains(text, "LeafBodySizeTyped(v.Guarded") {
