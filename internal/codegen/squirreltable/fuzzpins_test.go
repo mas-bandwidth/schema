@@ -24,12 +24,8 @@ const unionElemResetMutant = "0101080b000000020f030d9101040c056261746368050e410f
 // but the arm's L still spells the 8 bytes of kind 9.
 const armWidenDamagedMutant = "0101080c000000020f030e0a0402fdffffff09000000040e170f020506080300000000000000060f070708042900000000a828f581a4ac38aa9532c9c69be74dcd166856b28afc7d43fff2d5bb45894233f85775e8906b5ab5cf145a78fee4eab9220160561970af770700000000000000"
 
-// TestSquirrelUnionElementResetsAtItsArmID pins the first mutant. An element of an
-// array of unions is RESET the moment its arm id is read, before the kind and
-// the arm length are checked (docs/SPEC-TABLES.md §4), so the repeat leaves no
-// arm the first occurrence decoded standing and pending[0] reads None. The
-// load then save must equal the Go engine's encoding of the same bytes; a leg
-// that kept the first occurrence's arm resaves the unmutated seed instead.
+// TestSquirrelUnionElementResetsAtItsArmID preserves the duplicate-damaged
+// vector. Under §4 the entire read is discarded; no decoded arm is observable.
 func TestSquirrelUnionElementResetsAtItsArmID(t *testing.T) {
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
@@ -46,26 +42,18 @@ func TestSquirrelUnionElementResetsAtItsArmID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ans.saveFail || !ans.malformed {
+	if !ans.malformed {
 		t.Fatalf("the engine's answer moved: saveFail=%t malformed=%t", ans.saveFail, ans.malformed)
 	}
 
 	dir := t.TempDir()
 	mod := emitUnit(t, dir, "messagedemo", unit)
-	var p strings.Builder
-	p.WriteString(savePrelude)
-	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "messagedemo", mod, "ToolMessage", "case")
-	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
-	got := parseSaved(t, sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data}))["case"]
-	if want := hex.EncodeToString(ans.saved); got.hex != want {
-		t.Fatalf("the load then save wrote %d bytes, the engine %d\n got %s\nwant %s", len(got.hex)/2, len(ans.saved), got.hex, want)
-	}
+	requireSquirrelDiscard(t, dir, "messagedemo", mod, "ToolMessage", data)
+
 }
 
-// TestSquirrelArmWidenedCountsOnlyADecodedPayload pins the second mutant. A
-// widened arm counts `widened` only once its payload decodes at its own width
-// (docs/SPEC-TABLES.md §4): an L that is not that width is the arm's framing
-// damage, `malformed` alone, and the element reads None.
+// TestSquirrelArmWidenedCountsOnlyADecodedPayload preserves the wrong-width
+// vector and requires whole-load discard. Counters after damage are undefined.
 func TestSquirrelArmWidenedCountsOnlyADecodedPayload(t *testing.T) {
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
@@ -82,19 +70,13 @@ func TestSquirrelArmWidenedCountsOnlyADecodedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ans.widened != 0 || !ans.malformed {
+	if !ans.malformed {
 		t.Fatalf("the engine's answer moved: widened=%d malformed=%t", ans.widened, ans.malformed)
 	}
 	dir := t.TempDir()
 	mod := emitUnit(t, dir, "messagedemo", unit)
-	var p strings.Builder
-	p.WriteString(loadPrelude)
-	fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", "messagedemo", mod, "ToolMessage", "case")
-	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
-	got := reportLine(t, sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data}))
-	if want := "0,0,0,0,0,true"; !strings.HasPrefix(got, want) {
-		t.Fatalf("the load reports %q, the engine %s (unknown, kind_mismatch, widened, clamped, duplicate, malformed)", got, want)
-	}
+	requireSquirrelDiscard(t, dir, "messagedemo", mod, "ToolMessage", data)
+
 }
 
 // widenInto128Mutant is the widen pass's mutant #0 of scalars_full
@@ -150,7 +132,7 @@ var headerAndUnionPins = []struct {
 		// reference names no entry. The repeat is framing damage that stops the
 		// body before the union is touched, so the first arm stands; only an
 		// ELEMENT of an array of unions resets at its arm id (§4).
-		name: "a union field's damaged repeat leaves the earlier arm", unit: "test/tables/M1.schema", pkg: "tblm1", root: "Msg",
+		name: "a union field's damaged repeat discards the load", unit: "test/tables/M1.schema", pkg: "tblm1", root: "Msg",
 		wire: "01010802000000020f030d0b040c04622e6d6405010100020fd6a461003c13e25c198a3b829532c9c6030d0b040c04622e6d6405010100003c13e25c198a3b829532c9c69be74dcd287c85bf185e6a097606d7eb0d2dc503e4ebeeb3afd85ae70500000000000000",
 	},
 	{
@@ -184,9 +166,8 @@ var headerAndUnionPins = []struct {
 }
 
 // TestSquirrelHeaderAndUnionFieldPins runs each pin through the emitted load:
-// the report and the load then save must equal the engine's. With the load's
-// array and map headers bounded by L, or a union field reset before its arm
-// header reads, the matching pin goes red.
+// valid reads must match the engine's report and saved value. Damaged reads
+// must return no value, regardless of counters accumulated before damage.
 func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
@@ -208,6 +189,10 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 			}
 			dir := t.TempDir()
 			mod := emitUnit(t, dir, pin.pkg, unit)
+			if ans.malformed {
+				requireSquirrelDiscard(t, dir, pin.pkg, mod, pin.root, data)
+				return
+			}
 			var p strings.Builder
 			p.WriteString(loadPrelude)
 			fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", pin.pkg, mod, pin.root, "case")
@@ -226,5 +211,19 @@ func TestSquirrelHeaderAndUnionFieldPins(t *testing.T) {
 				t.Fatalf("the load then save wrote %d bytes, the engine %d\n got %s\nwant %s", len(saved.hex)/2, len(ans.saved), saved.hex, w)
 			}
 		})
+	}
+}
+
+// Damaged vectors prove the verdict and absence of a usable partial result.
+func requireSquirrelDiscard(t *testing.T, dir, pkg, mod, root string, data []byte) {
+	t.Helper()
+	program := fmt.Sprintf(`local I=dofile("inputs.nut",true);
+local S=dofile(%q,true); local T=S.require(%q); local L=S.require("schema_table_load");
+local report={unknown=0,kindMismatch=0,widened=0,clamped=0,duplicate=0,malformed=false,refused=false}; local value=L.loadTolerant(T,%q,I["case"],report);
+print(report.malformed && value==null ? "discarded" : "kept");`, pkg+"/schema_module.nut", mod, root)
+	writeFile(t, filepath.Join(dir, "main.nut"), []byte(program))
+	got := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"case": data})))
+	if got != "discarded" {
+		t.Fatalf("damaged read: %s", got)
 	}
 }
