@@ -1051,8 +1051,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// 9. Concurrency groups in ci-fast.yml and ci-full.yml must include
 	// ${{ github.ref }} so independent stream PRs never serialize all CI.
 	for _, wfName := range []string{"ci-fast.yml", "ci-full.yml"} {
-		if !strings.Contains(wfs[wfName], "${{ github.event_name }}-${{ github.ref }}") {
-			errs = append(errs, fmt.Sprintf("%s concurrency group does not key on ${{ github.event_name }}-${{ github.ref }} (would serialize CI across refs)", wfName))
+		if !strings.Contains(wfs[wfName], "${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}") {
+			errs = append(errs, fmt.Sprintf("%s concurrency group does not key on the pull request number or ${{ github.event_name }}-${{ github.ref }} (would serialize CI across refs)", wfName))
 		}
 	}
 
@@ -1174,9 +1174,9 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "serialize ci-fast concurrency across refs",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "group: ci-fast-${{ github.event_name }}-${{ github.ref }}",
+			oldSubstr: "group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}",
 			newSubstr: "group: ci-fast-global",
-			wantErr:   "ci-fast.yml concurrency group does not key on ${{ github.event_name }}-${{ github.ref }}",
+			wantErr:   "ci-fast.yml concurrency group does not key on the pull request number or ${{ github.event_name }}-${{ github.ref }}",
 		},
 	}
 
