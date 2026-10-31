@@ -495,7 +495,7 @@ fixed table T { inner Inner }
 	for _, tc := range []struct {
 		name, src, want string
 	}{
-		{"plain table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the plain table Node by value"},
+		{"variable table", "package probe\ntable Node { x int32 }\nfixed table T { node Node }\n", "holds the variable table Node by value"},
 		{"pointer", "package probe\ntable Node { x int32 }\nfixed table Scene { head *Node }\n", "is a pointer"},
 		{"map", "package probe\nfixed table Fleet { ships map[uint32]int32 }\n", "is a map"},
 		{"unbounded array", "package probe\nfixed table Log { entries []int32 }\n", "is an unbounded array"},

@@ -63,13 +63,20 @@ func emitMessageForm(g *Gen) error {
 		}
 		g.Pf("%s.slots(%q, { %s })\n", ms, un.Name, strings.Join(parts, ", "))
 	}
-	g.Pf("-- each descriptor's fields (a union's arms) as vocabulary slots, declared order\n")
-	reach := closure(g.Unit)
+	// THE MESSAGE FORM IS FIXED TABLES ONLY (§3.3): the slots are the fixed
+	// tables' and what they reach, and a variable table registers none, so
+	// table_message.moo refuses it by name before a walk begins.
+	g.Pf("-- each fixed table's fields (a union's arms) as vocabulary slots, declared order\n")
+	reach := reachFrom(g.Unit, func(t *ir.Struct) bool { return t.FixedDeclared }, false)
 	for _, un := range g.File.TableUnions {
-		emitUnion(un)
+		if reach[un.Name] {
+			emitUnion(un)
+		}
 	}
 	for _, t := range g.File.Tables {
-		emitStruct(t)
+		if reach[t.Name] {
+			emitStruct(t)
+		}
 	}
 	for _, d := range g.File.Decls {
 		switch d := d.(type) {

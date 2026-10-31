@@ -2167,25 +2167,6 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
     }
 }
 
-// TableMessageNodeTableOpen reads the node table's opening when a body has
-// one: the reserved id's reference and the count at thirty-two raw bits. A
-// body whose first reference is anything else has no node table, and the
-// reader is left where it was. False is damage: a reference past E, or bits
-// that run out.
-inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & count )
-{
-    count = 0;
-    const int64_t at = r.offset;
-    uint64_t ref = 0;
-    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-    if ( ref == 0 ) { r.offset = at; return true; }
-    if ( ref > (uint64_t) vocabulary.count ) { return false; }
-    if ( TableVocabularyEntryAt( vocabulary, ref ).id != kTableNodeTableFieldId ) { r.offset = at; return true; }
-    uint64_t n = 0;
-    if ( !r.get( n, 32 ) ) { return false; }
-    count = (int64_t) n;
-    return true;
-}
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
 inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }

@@ -41,8 +41,8 @@ var messageSabotages = map[string][]edit{
 
 	// THE BODIES ARE ONE CONTINUOUS BIT STREAM with no alignment between them.
 	"message-align-between-bodies": {{
-		old: "\t\tif err := encodeBitBody(e, w, inst, true); err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
-		new: "\t\tif err := encodeBitBody(e, w, inst, true); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tw.align() // SABOTAGED: an align between bodies\n",
+		old: "\t\tif err := encodeBitBody(e, w, inst); err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
+		new: "\t\tif err := encodeBitBody(e, w, inst); err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\tw.align() // SABOTAGED: an align between bodies\n",
 	}},
 
 	// M ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.
@@ -57,12 +57,6 @@ var messageSabotages = map[string][]edit{
 		new: "\t\t// SABOTAGED: the string's align dropped\n",
 	}},
 
-	// A POINTER INDEX IS bits_required(0, node count) WIDE on the write side.
-	"message-index-fixed-width": {{
-		old: "\te.indexBits = ir.TableMessageBitsRequired(0, int64(len(records))+1)\n",
-		new: "\te.indexBits = 32 // SABOTAGED: a fixed index width\n",
-	}},
-
 	// A REFERENCE ABOVE E IS DAMAGE: resolve it to nothing instead and the
 	// read carries on past it.
 	"message-reference-past-entries": {{
@@ -72,8 +66,8 @@ var messageSabotages = map[string][]edit{
 
 	// DAMAGE IS TERMINAL FOR THE BATCH: read on after it instead.
 	"message-read-on-after-damage": {{
-		old: "\t\tif !d.root(insts[i]) {\n\t\t\treturn i, false, nil\n\t\t}\n",
-		new: "\t\tif !d.root(insts[i]) {\n\t\t\tcontinue // SABOTAGED: the next body is read after damage\n\t\t}\n",
+		old: "\t\tif !d.body(insts[i]) {\n\t\t\treturn i, false, nil\n\t\t}\n",
+		new: "\t\tif !d.body(insts[i]) {\n\t\t\tcontinue // SABOTAGED: the next body is read after damage\n\t\t}\n",
 	}},
 
 	// THE PAD IS VERIFIED ZERO AND NOTHING FOLLOWS IT.
@@ -111,8 +105,8 @@ var messageSabotages = map[string][]edit{
 	// AN OVER-LONG ARRAY CLAMPS BY WALKING THE SURPLUS: stop at the bound
 	// instead and the next field lands on the wrong bit.
 	"message-clamp-drops-surplus": {{
-		old: "\tfor i := uint64(0); i < walk; i++ {\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n",
-		new: "\tfor i := uint64(0); i < kept; i++ { // SABOTAGED: the surplus is not walked\n\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n",
+		old: "\tfor i := uint64(0); i < walk; i++ {\n\t\t// an element past this build's bound is read into a sink and dropped\n",
+		new: "\tfor i := uint64(0); i < kept; i++ { // SABOTAGED: the surplus is not walked\n\t\t// an element past this build's bound is read into a sink and dropped\n",
 	}},
 
 	// A SKIPPED STRING ALIGNS BEFORE ITS BYTES exactly as a read one does.
@@ -133,17 +127,11 @@ var messageSabotages = map[string][]edit{
 		new: "\twidth := int(ir.TableMessageValueBits(kind, ir.TableFieldShape(f))) // SABOTAGED: the reader's own width\n",
 	}},
 
-	// A POINTER INDEX IS bits_required(0, node count) WIDE on the read side.
-	"message-index-fixed-width-read": {{
-		old: "\td.indexBits = ir.TableMessageBitsRequired(0, int64(count)+1)\n",
-		new: "\td.indexBits = 32 // SABOTAGED: a fixed index width\n",
-	}},
-
 	// THE VOCABULARY IS PER CONNECTION AND PER DIRECTION: a reader that
 	// resolves against its own unit's is wrong whenever the peers differ.
 	"message-reads-own-vocabulary": {{
-		old: "\t\td := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), indexBits: ir.TableMessageBitsRequired(0, 1)}\n",
-		new: "\t\town := &Vocabulary{entries: ir.TableVocabulary(m.Unit), announced: true} // SABOTAGED: the reader's own vocabulary\n\t\td := &bitDecoder{m: m, v: own, report: report, r: r, refBits: own.RefBits(), indexBits: ir.TableMessageBitsRequired(0, 1)}\n",
+		old: "\t\td := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits()}\n",
+		new: "\t\town := &Vocabulary{entries: ir.TableVocabulary(m.Unit), announced: true} // SABOTAGED: the reader's own vocabulary\n\t\td := &bitDecoder{m: m, v: own, report: report, r: r, refBits: own.RefBits()}\n",
 	}},
 
 	// A SECOND ANNOUNCEMENT IS REFUSED BY NAME and sets nothing.
@@ -273,8 +261,8 @@ var messageRoundTwoSabotages = map[string][]edit{
 	// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1): land
 	// it on element zero instead.
 	"message-surplus-lands-on-zero": {{
-		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tmine := true\n\t\tswitch {\n\t\tcase f.Array == ir.ArrayList:\n",
-		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tmine := true\n\t\tswitch {\n\t\tcase f.Array == ir.ArrayList:\n",
+		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif i < kept {\n\t\t\tcell = &fv.Elems[i]\n\t\t}\n",
+		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tif i < kept {\n\t\t\tcell = &fv.Elems[i]\n\t\t}\n",
 	}},
 
 	// A RANGED 128-BIT VALUE READS AT ITS ANNOUNCED WIDTH (M2): read the raw
@@ -406,39 +394,4 @@ var messageTextSabotages = map[string][]edit{
 		old: "\t\tg.pf(\"%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\\n\", ind, sfx, sfx, sfx, f.Type.Size)\n",
 		new: "\t\tg.pf(\"%s    const int32_t kept%s = n%s > (uint64_t) %d ? (int32_t) %d : (int32_t) n%s; // SABOTAGED: the clamp is off the boundary\\n\", ind, sfx, sfx, f.Type.Size, f.Type.Size, sfx)\n",
 	}},
-
-	// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS AS A KIND 12 PAYLOAD
-	// (docs/SPEC-TABLES.md §3.1), and a form-2 body's content rules are §3's
-	// (§3.3). One blade an engine: take the call out of the message site and
-	// the record a file reader refuses is placed by a message reader.
-	//
-	// THE ORACLE's, held by TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule
-	// and by the pinned vectors message_blob_ill_formed_text and
-	// message_blob_zero_byte.
-	"message-blob-accepts-ill-formed": {{
-		old: "\t\t\tif kind == ir.TString && !textValid(rec.blob) {\n",
-		new: "\t\t\tif false && !textValid(rec.blob) { // SABOTAGED: the blob content rule is gone\n",
-	}},
-
-	// AND THE C++ EMITTER's, held by test/tables/message_blob_main.cpp and by
-	// the same two vectors.
-	"message-emitter-blob-accepts-ill-formed": {{
-		old: "\t\tg.pf(\"            if ( type_id == kTableStringTypeId && !TableUtf8Valid( r.buffer + r.offset / 8, length ) ) { out->malformed = true; return false; }\\n\")\n",
-		new: "\t\tg.pf(\"            // SABOTAGED: the blob content rule is gone\\n\")\n",
-	}},
 }
-
-// THE MESSAGE FORM'S RETENTION (docs/SPEC-TABLES.md §3.3, §6.6). The unknown
-// arm of a retaining message body SKIPS the entry and then re-reads the bits
-// it delimited, which is the whole of the form-2 capture. Take the second half
-// away and the skip is all that is left: the read is unchanged to the byte,
-// every counter but the two retention ones stands, and nothing about the batch
-// says a field was lost. What goes red is the pinned batch's own row.
-var messageRetainSabotages = map[string][]edit{
-	"message-retain-no-capture": {{
-		old: "\t\tg.pf(\"                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)\\n\")\n",
-		new: "\t\tg.pf(\"                (void) unknown_at; // SABOTAGED: the message path never enters the resolving walk\\n\")\n",
-	}},
-}
-
-func init() { maps.Copy(sabotages, messageRetainSabotages) }

@@ -89,7 +89,7 @@ func armWireKind(arm ir.UnionVariant) int {
 
 // fieldReaches is every table a field reaches through a map or a union (§2.6,
 // §2.8): the map's generated entry, and every table an arm names by value or
-// by pointer, one level of union at a time. The plain table edges are the
+// by pointer, one level of union at a time. The variable table edges are the
 // caller's.
 func fieldReaches(f *ir.Field) []*ir.Struct {
 	var out []*ir.Struct

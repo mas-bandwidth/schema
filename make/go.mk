@@ -860,7 +860,7 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 .PHONY: tables-go-retain
 tables-go-retain:
 	sh test/slowgate/proof tables-go-retain \
-		'TestRetainMatchesIndependentRewrite TestRetainMessageBoundsBeforeExpansion TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
+		'TestRetainMatchesIndependentRewrite TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
 		./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
 
@@ -890,7 +890,7 @@ tables-go-allocator-negative-controls:
 tables-go-allocator-runtime-negative-control:
 	sh test/conformance/go/ownership-negative-control runtime
 tables-go-retain-negative-controls:
-	@set -e; for mode in file-count-floor message-depth unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
+	@set -e; for mode in file-count-floor unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
 
 test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 

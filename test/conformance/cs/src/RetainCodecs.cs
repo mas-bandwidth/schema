@@ -884,33 +884,22 @@ static partial class Program
     {
         foreach(string[] f in lines)
         {
-            if(f[0]!="retain" && f[0]!="retain-message") { continue; }
-            bool message=f[0]=="retain-message"; int offset=message?1:0;
-            if(f[2+offset]!="tblrt1" || f[3+offset]!="Node") { SpillAbsent(outDir,f[1]); continue; }
-            byte[] wire=File.ReadAllBytes(f[4+offset]);
-            var report=new RT.TableReport(); var vocabulary=new RT.TableVocabulary();
-            if(message)
-            {
-                string[] connection=lines.Find(row=>row[0]=="connection" && row[1]==f[2]);
-                RT.Schema.AnnounceRead(vocabulary,File.ReadAllBytes(connection[4]),report);
-            }
-            long need=message?RT.Schema.NodeLoadMeasure(vocabulary,wire):RT.Schema.NodeLoadMeasure(wire);
-            if(need<0 || report.Malformed || report.Refused) { return 1; }
-            int bodies=message?wire[1]+1:1;
+            if(f[0]!="retain") { continue; }
+            if(f[2]!="tblrt1" || f[3]!="Node") { SpillAbsent(outDir,f[1]); continue; }
+            byte[] wire=File.ReadAllBytes(f[4]);
+            var report=new RT.TableReport();
+            long need=RT.Schema.NodeLoadMeasure(wire);
+            if(need<0) { return 1; }
+            int bodies=1;
             byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)need,64);
             RT.TableRetain[] stores=new RT.TableRetain[bodies]; IntPtr[] roots=new IntPtr[bodies];
             for(int i=0;i<bodies;i++)
-            { stores[i]=new RT.TableRetain { Bytes=(byte*)NativeMemory.Alloc(1<<20),Capacity=1<<20,Ids=(RT.TableRetain.Id*)NativeMemory.Alloc(1<<21),IdCapacity=f[6+offset]=="full"?1<<17:int.Parse(f[6+offset]) }; }
+            { stores[i]=new RT.TableRetain { Bytes=(byte*)NativeMemory.Alloc(1<<20),Capacity=1<<20,Ids=(RT.TableRetain.Id*)NativeMemory.Alloc(1<<21),IdCapacity=f[6]=="full"?1<<17:int.Parse(f[6]) }; }
             try
             {
-                if(message)
-                { RT.Schema.NodeLoadRetainMessages((IntPtr)region,need,roots,wire,vocabulary,stores,report,out _); }
-                else
-                {
-                    if(f[5]=="short")
-                    { RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],new RT.TableReport()); stores[0].Capacity=stores[0].Used-1; }
-                    roots[0]=(IntPtr)RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],report);
-                }
+                if(f[5]=="short")
+                { RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],new RT.TableReport()); stores[0].Capacity=stores[0].Used-1; }
+                roots[0]=(IntPtr)RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],report);
                 if(report.Malformed || report.Refused) { return 1; }
                 using var bytes=new MemoryStream(); var save=new RT.TableReport();
                 for(int i=0;i<bodies;i++)

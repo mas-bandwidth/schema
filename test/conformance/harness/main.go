@@ -84,6 +84,8 @@ flags:
                       separated, each printed by name; the Makefile fills it
                       from SCHEMA_SKIP_LEGS and the reference leg is refused
                       (run only)
+  --results <path>    write every case's verdict as JSON, the input of
+                      "go run ./tools/matrix proof" (run only)
   --driver <cmd>      the leg to fuzz (wire-fuzz), or the reference driver
                       (cook-differential)
   --seed <S> --n <N>  the random pass (wire-fuzz only)
@@ -107,6 +109,7 @@ func main() {
 	work := fs.String("work", defaultWork, "scratch directory")
 	only := fs.String("only", "", "run one registered language")
 	skip := fs.String("skip", "", "registered languages this run does not exercise, comma separated")
+	resultsOut := fs.String("results", "", "write every case's verdict to this JSON file, the input of tools/matrix proof (run only)")
 	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz only)")
 	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
 	n := fs.Int("n", 100000, "the random pass's mutant count (wire-fuzz only)")
@@ -200,7 +203,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "run":
-		ok, err := run(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip)
+		ok, err := runResults(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, *resultsOut)
 		if err != nil {
 			fatalf("%v", err)
 		}
