@@ -474,12 +474,8 @@ local function answer(e: Entry, wire: buffer): buffer
 		if not u.M.AnnounceRead(vocabulary, u.announcement, {}) then
 			error("wirefuzz: the unit's own announcement was refused", 0)
 		end
-		local n, values = u.M.LoadMessages(vocabulary, root, wire, BATCH, report)
-		if n >= 1 then
-			v = values[1]
-		else
-			v = values[1] or desc.new()
-		end
+		local _, values, partial = u.M.LoadMessages(vocabulary, root, wire, BATCH, report)
+		v = values[1] or partial or desc.new()
 		saved = u.M.SaveMessages(root, { v }, {})
 	else
 		-- LoadMeasure (§6.5) COMES FIRST for a VARIABLE root: a wire it cannot
