@@ -246,7 +246,7 @@ jobs:
             case "$f" in
               internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
               internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
-              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
+              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/goose-hostile/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
             esac
           done <<EOF
           $files

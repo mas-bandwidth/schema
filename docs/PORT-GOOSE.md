@@ -390,9 +390,12 @@ lowercase hex lines.**
   `list` and answers it there; `compiler/carries_goose.go` claims no
   construct, so the two agree.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
-  per mutant) is a `goose build -O2` executable reading stdin with
-  `read_stdin` and writing with `write_stdout` and `flush_stdout`: Goose
-  speaks it directly, with no host shim (schema-goose-fuzz-differential).
+  per mutant) is a `goose build -O2` executable per unit
+  (`test/conformance/goose/wirefuzz.goose`, make/goose-fuzz.mk) writing with
+  `write_stdout` and `flush_stdout`. It reads stdin through a ten-line C
+  sidecar (`wirefuzz_io.c`, named by `wirefuzz.build`), because the standard
+  library's `read_stdin` reads to end of input and `read_line` to a newline,
+  and the pipe is a conversation: neither returns at a frame boundary.
 
 ## THE PACKET WIRE
 
