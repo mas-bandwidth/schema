@@ -1095,13 +1095,13 @@ tables-rust-cook-layout-negative-control:
 # TestBlockBuildAndCookWriteRust (the cook written in both orders, each header
 # naming its order in its own byte order, and the C++ reader opening the Rust
 # block), beside the cook-foreign and block-foreign conformance surfaces; its
-# control makes the cook writer's word composition ignore the target order.
+# control makes the cook's scalar put (table_cook_put) ignore the target order.
 .PHONY: tables-rust-byte-order tables-rust-byte-order-negative-control
 tables-rust-byte-order:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestBlockBuildAndCookWriteRust$$'
 tables-rust-byte-order-negative-control:
-	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-byte-order-control internal/codegen/rusttable/cookwrite.go \
-		's|let shift = if self.order == 2 { width as usize - 1 - i } else { i };|let shift = i; // SABOTAGED: the target order ignored|' \
+	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-byte-order-control internal/codegen/rusttable/cook.go \
+		's|let shift = if order == 2 { width as usize - 1 - i } else { i };|let shift = i; // SABOTAGED: the target order ignored|' \
 		'^TestBlockBuildAndCookWriteRust$$' "the big-endian cook's header names byte order"
 
 # I7 (docs/PORTING.md): THE OTHER ORDER'S WORD UNDER AN INTACT MAGIC, the half
