@@ -80,6 +80,11 @@ toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
 # the layout model or the build version silently NOT rebuild the compiler every
 # gate below then measures.
 GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
+# and every file the compiler embeds (go:embed): the runtimes the scripting
+# targets copy beside their output. Without them an edit to a runtime left
+# bin/schema stale and every generate re-emitted the old runtime.
+# bin-schema-embeds checks it against `go list`'s own EmbedFiles.
+EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go')
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 # the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side
@@ -132,8 +137,38 @@ all: bin/schema
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
-bin/schema: $(GO_SOURCES)
+bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+
+# bin-schema-embeds: for one embedded file of every package that embeds
+# (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
+# newer mtime on that file makes bin/schema out of date. `make -q` asks
+# without building; the last step rebuilds once.
+.PHONY: bin-schema-embeds
+bin-schema-embeds: bin/schema
+	@n=0; for f in $$(go list -deps -f '{{$$d := .Dir}}{{range .EmbedFiles}}{{$$d}}/{{.}}{{"\n"}}{{break}}{{end}}' ./cmd/schema); do \
+		n=$$((n+1)); touch "$$f"; \
+		if $(MAKE) --no-print-directory -q bin/schema; then \
+			echo "bin-schema-embeds FAILED: touching $$f left bin/schema up to date"; exit 1; fi; \
+		touch -r "$$f" bin/schema; \
+	done; \
+	test $$n -gt 0 || { echo "bin-schema-embeds FAILED: go list named no embedded file"; exit 1; }; \
+	echo "bin-schema-embeds: $$n embedding package(s), a newer file in each rebuilds bin/schema"
+	@$(MAKE) --no-print-directory bin/schema
+
+test: bin-schema-embeds
+
+# Its control: with EMBED_SOURCES emptied on the command line, a touched
+# runtime leaves bin/schema up to date and bin-schema-embeds must go red.
+.PHONY: bin-schema-embeds-negative-control
+bin-schema-embeds-negative-control: bin/schema
+	@mkdir -p build
+	@if $(MAKE) --no-print-directory bin-schema-embeds EMBED_SOURCES= > build/bin-schema-embeds-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: with no embedded file a prerequisite, bin-schema-embeds stayed green"; cat build/bin-schema-embeds-control.log; exit 1; fi
+	@grep -q 'bin-schema-embeds FAILED: touching .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: bin-schema-embeds went red for another reason"; cat build/bin-schema-embeds-control.log; exit 1; }
+	@$(MAKE) --no-print-directory bin/schema
+	@echo "negative control: without the embedded files as prerequisites, a touched runtime leaves bin/schema stale and bin-schema-embeds goes RED"
 
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)

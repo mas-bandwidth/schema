@@ -580,7 +580,10 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int
 		return ""
 	}
 	if root.builder {
-		if reply.loaded == ans.builderStopped {
+		// a damaged load is refused whole (docs/SPEC-TABLES.md §4), so on a
+		// damaged mutant the builder's completion is not compared: the
+		// malformed verdict below is the whole of what the leg owes
+		if !ans.report.Malformed && reply.loaded == ans.builderStopped {
 			return "builder completion differs from the oracle"
 		}
 	} else if !reply.loaded {
