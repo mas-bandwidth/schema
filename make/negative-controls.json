@@ -1120,6 +1120,7 @@
         "conformance-negative-control-squirrel-walk",
         "conformance-negative-control-squirrel-absent",
         "tables-squirrel-usage-negative-control",
+        "tables-squirrel-runtime-home-negative-control",
         "tables-squirrel-release-negative-control",
         "packet-finite-squirrel-negative-control",
         "packet-wide-squirrel-negative-control",

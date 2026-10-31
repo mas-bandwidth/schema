@@ -179,3 +179,50 @@ tables-squirrel-usage-negative-control:
 	done
 
 test-squirrel: tables-squirrel-usage
+
+# J2 (docs/PORTING.md) — THE RUNTIME HOME. A unit's table module lives in one
+# file named by the PACKAGE (<Package>Tables.nut, squirreltable.ModuleName),
+# never by the schema file that sorts first, so a file that sorts earlier
+# relocates nothing: the module keeps its name and the embedded runtime files
+# (schema_table_load.nut, ...) are byte-identical across the two trees.
+.PHONY: tables-squirrel-runtime-home tables-squirrel-runtime-home-negative-control
+tables-squirrel-runtime-home: bin/schema
+	@rm -rf build/runtime-home-squirrel && mkdir -p build/runtime-home-squirrel/src
+	@cp tables/examples/*.schema build/runtime-home-squirrel/src/
+	@printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > build/runtime-home-squirrel/src/Aaa.schema
+	@./bin/schema generate --lang squirrel --out build/runtime-home-squirrel/base tables/examples 2>/dev/null
+	@./bin/schema generate --lang squirrel --out build/runtime-home-squirrel/added build/runtime-home-squirrel/src 2>/dev/null
+	@for tree in base added; do \
+		test -f build/runtime-home-squirrel/$$tree/TabledemoTables.nut || \
+			{ echo "RUNTIME HOME GATE FAILED: the $$tree tree has no TabledemoTables.nut (the table module is named by the package)"; ls build/runtime-home-squirrel/$$tree/*Tables.nut; exit 1; }; \
+	done
+	@for f in internal/codegen/squirreltable/runtime/*.nut; do \
+		n=schema_table_$$(basename $$f); \
+		test -f build/runtime-home-squirrel/base/$$n || { echo "RUNTIME HOME GATE FAILED: the base tree carries no $$n"; exit 1; }; \
+		cmp -s build/runtime-home-squirrel/base/$$n build/runtime-home-squirrel/added/$$n || \
+			{ echo "RUNTIME HOME GATE FAILED: the table runtime file $$n moved when the unit gained an earlier-sorting file"; exit 1; }; \
+	done
+	@echo "runtime home gate (Squirrel): the table module stays TabledemoTables.nut and the table runtime files stay byte-identical when an earlier-sorting file joins the unit"
+
+# Its NEGATIVE CONTROL: put the file-order rule back (the module named by the
+# file that sorts first, ir.ProtocolIdHome) and the home must MOVE when the
+# earlier-sorting file joins.
+tables-squirrel-runtime-home-negative-control: bin/schema tables-squirrel-runtime-home
+	@sed 's|return p + "Tables"|return ir.ProtocolIdHome(u) + "Tables" // SABOTAGED: back to the file order|' \
+		internal/codegen/squirreltable/squirreltable.go > build/squirrel-runtime-home-fileorder.gotext
+	@grep -q SABOTAGED build/squirrel-runtime-home-fileorder.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/squirreltable/squirreltable.go":"%s/build/squirrel-runtime-home-fileorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/squirrel-runtime-home-overlay.json
+	@go build -overlay=build/squirrel-runtime-home-overlay.json -o build/schema-squirrel-runtime-home-sabotaged ./cmd/schema
+	@rm -rf build/runtime-home-squirrel/base-sabotage build/runtime-home-squirrel/added-sabotage
+	@./build/schema-squirrel-runtime-home-sabotaged generate --lang squirrel --out build/runtime-home-squirrel/base-sabotage tables/examples 2>/dev/null
+	@./build/schema-squirrel-runtime-home-sabotaged generate --lang squirrel --out build/runtime-home-squirrel/added-sabotage build/runtime-home-squirrel/src 2>/dev/null
+	@base=$$(cd build/runtime-home-squirrel/base-sabotage && ls *Tables.nut); \
+	 added=$$(cd build/runtime-home-squirrel/added-sabotage && ls *Tables.nut); \
+	 if [ "$$base" = "$$added" ]; then \
+		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the table module in $$base — the gate is watching nothing"; exit 1; \
+	 fi; \
+	 echo "runtime home negative control (Squirrel): the file-order rule moves the table module from $$base to $$added"
+
+test-squirrel: tables-squirrel-runtime-home
