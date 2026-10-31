@@ -6968,7 +6968,7 @@ release-differential: $(SERIALIZE_RUNTIME)/serialize.h
 # must reach the tag decision, and the clean compiler against one whose Go
 # engine writes a true bool as 2 under an unchanged protocol id must stop at
 # the differential, naming the difference, with no tag decision printed.
-RELEASE_GATE_TEST := build/release-gate-test
+RELEASE_GATE_TEST ?= build/release-gate-test
 # the same Makefile this test was read from, so its control can hand it a copy
 RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
 .PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
@@ -7000,7 +7000,7 @@ release-refuses-on-differential-negative-control: release-refuses-on-differentia
 	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
 	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
-	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \
+	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a release that never runs the differential left release-refuses-on-differential green"; cat $(RELEASE_GATE_CONTROL)/red.out; exit 1; \
 	fi
 	@grep -q 'FAILED: make release went through a wire difference under an unchanged protocol id' $(RELEASE_GATE_CONTROL)/red.out || \
