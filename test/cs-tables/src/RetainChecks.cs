@@ -54,39 +54,6 @@ static partial class Program
         }
         finally { NativeMemory.AlignedFree(region); NativeMemory.Free(storage); NativeMemory.Free(ids); }
     }
-    static unsafe void RetainMessages()
-    {
-        var vocabulary=new RT.TableVocabulary();
-        var report=new RT.TableReport();
-        Check(RT.Schema.AnnounceRead(vocabulary,ReadGolden("retain_conn"),report)==RT.Schema.TableWire.Verdict.Ok,"retention announcement");
-        byte[] wire=ReadGolden("retain_message");
-        long need=RT.Schema.NodeLoadMeasure(vocabulary,wire);
-        byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
-        Span<RT.TableRetain> stores=stackalloc RT.TableRetain[2];
-        Span<IntPtr> roots=stackalloc IntPtr[2];
-        for(int i=0;i<2;i++)
-        { stores[i]=new RT.TableRetain { Bytes=(byte*)NativeMemory.Alloc(16384),Capacity=16384,Ids=(RT.TableRetain.Id*)NativeMemory.Alloc((nuint)(1024*sizeof(RT.TableRetain.Id))),IdCapacity=1024 }; }
-        try
-        {
-            new Span<byte>(region,(int)need+64).Fill(0xa5);
-            var result=RT.Schema.NodeLoadRetainMessages((IntPtr)region,need,roots,wire,vocabulary,stores,report,out int count);
-            Check(result==RT.Schema.TableWire.Verdict.Ok && !report.Malformed && !report.Refused && count==2,"retention message load");
-            Check(report.Retained==10 && report.RetainLost==6 && report.Unknown==17,"message retention reports "+report.Retained+","+report.RetainLost+","+report.Unknown);
-            for(long i=need;i<need+64;i++) { Check(region[i]==0xa5,"message retention overrun guard"); }
-            for(int i=0;i<2;i++)
-            {
-                long size=RT.Schema.NodeMeasureRetain(roots[i],ref stores[i]);
-                byte[] saved=new byte[size]; var save=new RT.TableReport();
-                Check(RT.Schema.NodeSaveRetain(roots[i],ref stores[i],saved,save)==size && save.RetainLost==0,"retained message saves as file");
-                Check(saved.AsSpan().SequenceEqual(ReadGolden("retain_message_save_"+i)),"retained message C++ file golden "+i);
-            }
-        }
-        finally
-        {
-            NativeMemory.AlignedFree(region);
-            for(int i=0;i<2;i++) { NativeMemory.Free(stores[i].Bytes); NativeMemory.Free(stores[i].Ids); }
-        }
-    }
     static unsafe void RetainDamagedListElement()
     {
         byte[] wire=Fixture(new byte[]{1,14,8,13,1,5,2,1,1,0,0,0},"rows","future");
@@ -112,7 +79,6 @@ static partial class Program
         RetainCase("retain_rt2",9,2,11,1,"retain_rt1_save_id_short",2);
         for(int i=2;i<=5;i++) { RetainCase("retain_excluded_"+i,0,1,1,0); }
         RetainCase("retain_rt3",0,1,1,0);
-        RetainMessages();
         RetainDamagedListElement();
     }
 }

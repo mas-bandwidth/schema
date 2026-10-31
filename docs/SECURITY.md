@@ -53,11 +53,10 @@ the buffer. Specifically:
   unpaired surrogate, or a zero group among the transmitted units. The rules
   are stated once in SPEC §4.7 and §4.12 and every target owes the same
   verdict, so a target that skips one is a divergence bug as well as an
-  acceptance bug. **The TABLE wire enforces the same rules and reports rather
-  than stops** (SPEC-TABLES §3, §4): a kind `12` payload that is not
-  well-formed UTF-8 or that carries a zero byte, and a kind `33` payload with
-  an unpaired surrogate or a zero unit, each leave the field at its declared
-  default, count one `malformed`, and let the parent read on past `L`. **A
+  acceptance bug. **The TABLE wire enforces the same rules** (SPEC-TABLES §3,
+  §4): a kind `12` payload that is not well-formed UTF-8 or that carries a
+  zero byte, and a kind `33` payload with an unpaired surrogate or a zero
+  unit, are damage, and damage discards the whole load as `malformed`. **A
   table reader that STORES any of them is an acceptance bug on this list**,
   exactly as a packet reader that accepts one is. In scope beside it is the
   framing: a length past a declared bound, and an odd `L` on a kind `33`
@@ -71,8 +70,10 @@ the buffer. Specifically:
   length — materialize the largest record the schema can place, so a table
   read's amplification is bounded by that record (plus one directory entry)
   per two wire bytes, times only the records the framing actually carries
-  (SPEC-TABLES §6.5). The wire fuzzer pins that maximum region-over-wire
-  ratio and a mutant above it is a divergence.
+  (SPEC-TABLES §6.5). That is the FILE form's bound; a message batch is fixed
+  tables only and loads into the caller's own values, so it commands no region
+  and nothing on its wire amplifies. The wire fuzzer pins the file form's
+  maximum region-over-wire ratio and a mutant above it is a divergence.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
 - **Any divergence between the nine languages on the above** — if C++ refuses

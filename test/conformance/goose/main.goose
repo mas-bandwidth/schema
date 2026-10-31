@@ -130,18 +130,11 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
 // surface_retain: the RETAIN-UNKNOWN round trip (docs/SPEC-TABLES.md §6.6).
 // `full` is a buffer the whole load fits in; `short` is one byte short of the
 // LAST record, found by loading once at full and reading what it used. The
-// id capacity is `full` or a count. The form-2 row (`retain-message`) names a
-// variable table root (RT1's Node), which carries no message verbs (§3.3: only
-// a fixed table rides the message form): a named absence, as the Go leg
-// answers it.
+// id capacity is `full` or a count.
 fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
     for line in lines {
         let f = words(line);
         if f.len < 1 { continue; }
-        if f[0] == "retain-message" {
-            if f.len > 3 && f[3] == unit { absent(f[1], "variable table: §3.3"); }
-            continue;
-        }
         // the derived manifest carries no expectation: the harness keeps the
         // counters and the saves, and asks retain-save only of rows that save
         if f.len < 7 || f[0] != "retain" || f[2] != unit { continue; }
@@ -230,6 +223,11 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
             if c.len >= 5 && c[0] == "connection" && c[1] == f[2] && c[2] == unit { conn = i; }
         }
         if conn < 0 { continue; }
+        if f[5] == "-" {
+            // a named refusal row: the root is a variable table (§3.3)
+            absent(f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+            continue;
+        }
         let c = words(lines[conn]);
         var ann: u8[>..] = [];
         load_file(c[4], ann);
@@ -238,7 +236,7 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
         var out: u8[>..] = [];
         let n = conformance_message(f[3], ann, wire, out);
         if n == -1 {
-            absent(f[1], "variable table: §3.3");
+            absent(f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
             continue;
         }
         if n < 0 {

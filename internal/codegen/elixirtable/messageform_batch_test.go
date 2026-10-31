@@ -16,7 +16,7 @@ package elixirtable
 // module <Package>.TableMessage carries `measure_messages`, `save_messages` and
 // `load_messages` beside `announce`, `announce_measure` and `announce_read`. A
 // refusal is `{:error, reason}`, `{:error, reason, count}` on the read-side
-// capacity refusal, and `{:malformed, count, values}` on damage, the packet
+// capacity refusal, and `{:malformed, 0, []}` on damage, the packet
 // emitter's reader verdict (docs/SPEC-TABLES.md §3.3's own note).
 
 import (
@@ -54,7 +54,7 @@ func messageBatchRows(t *testing.T, path string) []messageBatchRow {
 	var rows []messageBatchRow
 	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 6 || fields[0] != "message" {
+		if len(fields) < 6 || fields[0] != "message" || fields[5] == "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 			continue
 		}
 		rows = append(rows, messageBatchRow{
@@ -84,9 +84,8 @@ func TestMessageFormBatchElixir(t *testing.T) {
 	// values the form-1 instance decodes to, and SaveMessages gives the batch
 	// bytes back exactly; MeasureMessages equals the length."
 	//
-	// THE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3): "`fixed table T`
-	// may ride here, a plain `table T` may not". A message row whose root is a
-	// plain `table` (graph_tree's Scene) is refused rather than decoded, so the
+	// THE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): a message row
+	// whose root is a variable table is refused rather than decoded, so the
 	// round trip below covers the fixed roots only.
 	t.Run("round_trip", func(t *testing.T) {
 		for _, row := range rows {
@@ -155,17 +154,17 @@ func TestMessageFormBatchElixir(t *testing.T) {
         other -> raise "announce_read refused the reference's announcement: #{inspect(other)}"
       end
 
-    # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (docs/SPEC-TABLES.md
-    # §3.3): the reference pins a three-body LoginRequest batch with body 2's
-    # field reference planted at 63, thirty past E.
-    {:malformed, 1, [first]} = M.load_messages(vocab, File.read!(golden("backend_batch_damaged_second_message.bin")), 3)
-    check(length(first) == 1, "the first body did not stand")
+    # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
+    # (docs/SPEC-TABLES.md §3.3, §4): the reference pins a three-body
+    # LoginRequest batch with body 2's field reference planted at 63, thirty
+    # past E, and no body is delivered.
+    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("backend_batch_damaged_second_message.bin")), 3)
 
     # "A LENGTH, COUNT OR INDEX WHOSE PAYLOAD RUNS PAST THE BATCH" and "the
     # trailing pad to the byte boundary is not zero" (§3.3).
-    {:malformed, 1, _} = M.load_messages(vocab, File.read!(golden("store_full_bad_pad_message.bin")))
+    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("store_full_bad_pad_message.bin")))
     # "BYTES AFTER THE PAD ARE MALFORMED" (§3.3).
-    {:malformed, 1, _} = M.load_messages(vocab, File.read!(golden("store_full_trailing_byte_message.bin")))
+    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("store_full_trailing_byte_message.bin")))
 
     # "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does
     # not know is a REFUSAL by name and never damage." (docs/SPEC-TABLES.md §3.3)
@@ -839,7 +838,7 @@ const boundsValueFns = boundsElixirHelpers + `
     case M.save_messages(vocab, [[{1, "hi"}], [{2, []}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
-          {:malformed, 1, [[{1, "hi"}]]} -> :ok
+          {:malformed, 0, []} -> :ok
           other -> check(false, "second body damage #{inspect_small(other)}")
         end
 

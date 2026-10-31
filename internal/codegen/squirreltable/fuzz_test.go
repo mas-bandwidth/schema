@@ -531,10 +531,10 @@ func TestSquirrelWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 func TestSquirrelWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Squirrel interpreter")
-	const anchor = "readFieldArray = function(fd, r, T, table, v, report, st) {\n" +
+	const anchor = "readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {\n" +
 		"  local L = leb(r);\n" +
 		"  if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }\n"
-	const sabotaged = "readFieldArray = function(fd, r, T, table, v, report, st) {\n" +
+	const sabotaged = "readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {\n" +
 		"  local L = leb(r);\n" +
 		"  if (r.bad) { report.malformed = true; return false; }\n" +
 		"  if (r.at + L > r.end) L = r.end - r.at;\n"

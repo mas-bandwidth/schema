@@ -13,13 +13,8 @@
 // for each id is settled by the compiler, and so is the reference width. A
 // save does no lookup at all.
 //
-// THE TWO CLASSES TAKE TWO SHAPES, exactly as the variable form's codecs do: a
-// FIXED table's codec takes the value alone, and a VARIABLE table's takes the
-// resolution context, the numbering its pointers resolve through, and the
-// width of a node index, which is `bits_required(0, node count)` settled once
-// per body by the node table that opens it (§3.1, §3.3). A pointer rides as an
-// index at that width, a byte buffer as an index too, and a map as its
-// thirty-two bit count and its entries in ascending key order.
+// THE MESSAGE FORM IS FIXED TABLES ONLY (§3.3): a codec here takes the value
+// alone, and a variable table has none.
 package cpptable
 
 import (
@@ -47,62 +42,18 @@ func msgValueBits(kind uint8, shape ir.TableMessageShape) int64 {
 // msgSlot is one entry's slot as a literal.
 func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 { return g.slots[entry.Key()] }
 
-// msgMeasureCall renders a nested MEASURE call on a closure member: a variable
-// member takes the context, the numbering and the index width, and a fixed one
-// takes none of them.
+// msgMeasureCall renders a nested MEASURE call on a closure member, which is
+// a fixed table: the message form is fixed tables only (§3.3).
 func (g *tableGen) msgMeasureCall(name, at, expr string) string {
-	if g.isVar(name) {
-		return fmt.Sprintf("%sMeasureMessageBody( ctx, numbering, index_bits, %s, %s )", name, at, expr)
-	}
 	return fmt.Sprintf("%sMeasureMessageBody( %s, %s )", name, at, expr)
 }
 
 func (g *tableGen) msgSaveCall(name, expr string) string {
-	if g.isVar(name) {
-		return fmt.Sprintf("%sSaveMessageBody( ctx, numbering, index_bits, w, %s )", name, expr)
-	}
 	return fmt.Sprintf("%sSaveMessageBody( w, %s )", name, expr)
 }
 
-func (g *tableGen) msgLoadCall(f *ir.Field, name, reader, expr string) string {
-	if g.retain {
-		// THE PATH IS THREADED exactly as the variable form threads it
-		// (docs/SPEC-TABLES.md §6.6): the step is computed LOCALLY, at the
-		// moment the walk descends, and the store is NULL where the element is
-		// one the reader is dropping.
-		if g.isVar(name) {
-			return fmt.Sprintf("%sLoadMessageBodyRetain( %s, vocabulary, report, nodes, index_bits, %s, %s, %s )",
-				name, reader, expr, g.retainStore(), g.step(f))
-		}
-		return fmt.Sprintf("%sLoadMessageBodyRetain( %s, vocabulary, report, index_bits, %s, %s, %s )",
-			name, reader, expr, g.retainStore(), g.step(f))
-	}
-	if g.isVar(name) {
-		return fmt.Sprintf("%sLoadMessageBody( %s, vocabulary, report, nodes, index_bits, %s )", name, reader, expr)
-	}
+func (g *tableGen) msgLoadCall(name, reader, expr string) string {
 	return fmt.Sprintf("%sLoadMessageBody( %s, vocabulary, report, index_bits, %s )", name, reader, expr)
-}
-
-// retainStore is the caller's buffer as a NESTED READ takes it. A bit stream
-// has to be walked past, so an element this build is DROPPING, one past its
-// own array bound, one under a keyed key it cannot name, is decoded into a
-// scratch where a file's reader steps over it by its length. Nothing in that
-// body is a field of this region, so the store it captures into is none
-// (docs/SPEC-TABLES.md §6.6).
-func (g *tableGen) retainStore() string {
-	if g.retainGate == "" {
-		return "retain"
-	}
-	return fmt.Sprintf("( %s ? retain : NULL )", g.retainGate)
-}
-
-// inDrop runs `emit` with the store gated on the element being this build's,
-// and puts back what was there.
-func (g *tableGen) inDrop(gate string, emit func()) {
-	was := g.retainGate
-	g.retainGate = gate
-	emit()
-	g.retainGate = was
 }
 
 // msgEnter opens one nesting level of the message codec's emission and answers
@@ -135,39 +86,36 @@ func msgBase(shape ir.TableMessageShape) string {
 }
 
 // emitMessageBodyDeclarations forward-declares the three halves, because a
-// nested body's codec may be emitted after the body that calls it, and the
-// map entries' key scans beside them.
+// nested body's codec may be emitted after the body that calls it. Only a
+// fixed table has them: the message form is fixed tables only (§3.3).
 func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
+	declared := false
 	for _, st := range members {
-		if g.isVar(st.Name) {
-			g.pf("template <typename Ctx> inline int64_t %sMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const %s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx> inline bool %sSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value );\n", st.Name, st.Name)
-			g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, %s & value );\n", st.Name, st.Name)
-			if g.anyExtent && g.hasExtent(st) {
-				g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );\n", st.Name)
-			}
+		if !g.hasMessageCodec(st) {
 			continue
 		}
+		declared = true
 		g.pf("inline int64_t %sMeasureMessageBody( int64_t at, const %s & value );\n", st.Name, st.Name)
 		g.pf("inline bool %sSaveMessageBody( TableBitWriter & w, const %s & value );\n", st.Name, st.Name)
 		g.pf("inline bool %sLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, %s & value );\n", st.Name, st.Name)
 	}
-	if len(members) > 0 {
+	if declared {
 		g.pf("\n")
-	}
-	for _, st := range members {
-		if st.IsMapEntry() {
-			g.emitMessageMapKeyReader(st)
-		}
 	}
 }
 
+// hasMessageCodec reports whether a closure member carries the message form's
+// body codec: a FIXED table does, and a variable table and a map entry do not.
+func (g *tableGen) hasMessageCodec(st *ir.Struct) bool {
+	return !g.isVar(st.Name) && !st.IsMapEntry()
+}
+
 func (g *tableGen) emitMessageCodec(st *ir.Struct) {
+	if !g.hasMessageCodec(st) {
+		return
+	}
 	g.emitMessageMeasureBody(st)
 	g.emitMessageSaveBody(st)
-	if g.isVar(st.Name) && g.anyExtent && g.hasExtent(st) {
-		g.emitMessageExtent(st)
-	}
 	g.emitMessageLoadBody(st)
 }
 
@@ -192,12 +140,7 @@ func (g *tableGen) emitMessageMeasureBody(st *ir.Struct) {
 	g.pf("// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the\n")
 	g.pf("// body's own bit position in the batch, because a `string(N)` ALIGNS before\n")
 	g.pf("// its bytes and an align costs what the position says it costs.\n")
-	if g.isVar(st.Name) {
-		g.pf("template <typename Ctx>\ninline int64_t %sMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const %s & value )\n{\n", st.Name, st.Name)
-		g.pf("    (void) ctx; (void) numbering; (void) index_bits;\n")
-	} else {
-		g.pf("inline int64_t %sMeasureMessageBody( int64_t at, const %s & value )\n{\n", st.Name, st.Name)
-	}
+	g.pf("inline int64_t %sMeasureMessageBody( int64_t at, const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    int64_t bits = 0;\n")
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; // empty type: presence is the payload\n")
@@ -212,12 +155,7 @@ func (g *tableGen) emitMessageSaveBody(st *ir.Struct) {
 	g.pf("// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No\n")
 	g.pf("// kind byte rides at all, and no length frames a nested body, because a\n")
 	g.pf("// body is self-delimiting: it is written where the VARIABLE form put an L.\n")
-	if g.isVar(st.Name) {
-		g.pf("template <typename Ctx>\ninline bool %sSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value )\n{\n", st.Name, st.Name)
-		g.pf("    (void) ctx; (void) numbering; (void) index_bits;\n")
-	} else {
-		g.pf("inline bool %sSaveMessageBody( TableBitWriter & w, const %s & value )\n{\n", st.Name, st.Name)
-	}
+	g.pf("inline bool %sSaveMessageBody( TableBitWriter & w, const %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value; // empty type: presence is the payload\n")
 	}
@@ -226,17 +164,10 @@ func (g *tableGen) emitMessageSaveBody(st *ir.Struct) {
 	g.pf("    return !w.overflow;\n}\n\n")
 }
 
+// emitMessageFields writes every field in declaration order. A fixed table
+// declares no guarded field (§2.2), so none is conditional.
 func (g *tableGen) emitMessageFields(st *ir.Struct, pass messagePass) {
-	guards := tableGuardExprs(st)
 	for _, f := range st.Fields {
-		if cond, guarded := guards[f.Name]; guarded {
-			g.pf("    if ( %s )\n    {\n", cond)
-			g.indent = "    "
-			g.emitMessageField(f, pass)
-			g.indent = ""
-			g.pf("    }\n")
-			continue
-		}
 		g.emitMessageField(f, pass)
 	}
 }
@@ -251,27 +182,6 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.noteRef(f.Type.Name)
 	}
 	switch {
-	case f.IsMap():
-		g.emitMessageMap(f, entry, pass)
-
-	case f.Type.Pointer && f.Array == ir.ArrayNone:
-		// A POINTER RIDES AS A NODE INDEX at bits_required(0, node count)
-		// (docs/SPEC-TABLES.md §3.1, §3.3), and a BYTE BUFFER rides as one too
-		// (§2.5): the header and the index here, the node's body in the node
-		// table. NULL IS ELIDED and a non-null pointer always rides.
-		g.pf("    {\n")
-		g.emitMessagePointee(f, "value."+name, "        ")
-		g.pf("        if ( pointee_%s != NULL )\n        {\n", name)
-		g.pf("            uint64_t index_%s = 0;\n", name)
-		g.pf("            if ( !TableNumberingIndex( numbering, (const void *) pointee_%s, index_%s ) ) { return %s; }\n", name, name, messageBad(pass))
-		g.emitMessageHeader(entry, pass, "            ")
-		if pass == messagePassMeasure {
-			g.pf("            bits += index_bits;\n")
-		} else {
-			g.pf("            w.put( index_%s, index_bits );\n", name)
-		}
-		g.pf("        }\n    }\n")
-
 	case f.Type.Optional:
 		// PRESENCE is the payload: a present optional always rides, all-default
 		// included (docs/SPEC-TABLES.md §2.3)
@@ -290,21 +200,6 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")
-
-	case f.IsList():
-		// AN UNBOUNDED ARRAY rides as the count the data decides, thirty-two
-		// raw bits, then its live elements in INDEX order (docs/SPEC-TABLES.md
-		// §2.9, §3.3): the cursor is the variable form's own, and an EMPTY list
-		// elides on the by-value rule.
-		cursor := "cursor_" + name
-		g.pf("    {\n")
-		g.pf("        TableListCursor<%s> %s = TableListElements( ctx, value.%s ); // %s\n", g.listElementType(f), cursor, name, name)
-		g.pf("        if ( !%s.ok ) { return %s; } // the slot and the head disagree\n", cursor, messageBad(pass))
-		g.pf("        if ( %s.count > 0 )\n        {\n", cursor)
-		g.emitMessageHeader(entry, pass, "            ")
-		g.emitMessageArray(f, entry, cursor+".count", cursor+"[%s]", "            ", pass)
-		g.pf("        }\n    }\n")
-
 	case f.CountedOnWire():
 		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return %s; } // storage invariant\n",
 			name, name, f.ArrayBound, messageBad(pass))
@@ -356,16 +251,6 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.emitMessageScalar(f, entry.Kind, shape, "value."+name, "        ", pass)
 		g.pf("    }\n")
 	}
-}
-
-// emitMessagePointee resolves one pointer or byte-buffer slot through the
-// context into `pointee_<name>`, which is what the numbering is asked about.
-func (g *tableGen) emitMessagePointee(f *ir.Field, slot, ind string) {
-	if f.Type.Blob() {
-		g.pf("%sconst TableBlob * pointee_%s = TableBlobAt( ctx, %s ); // *%s: a byte buffer\n", ind, f.Name, slot, blobWord(f))
-		return
-	}
-	g.pf("%sconst %s * pointee_%s = %sAt( ctx, %s ); // *%s\n", ind, f.Type.Name, f.Name, f.Type.Name, slot, f.Type.Name)
 }
 
 // msgAt is the bit position an elision measure runs at. It is the running one
@@ -448,18 +333,6 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 	}
 	loop := fmt.Sprintf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, idx, idx, count, idx, ind)
 	switch int(shape.Elem) {
-	case tkNodeIndex:
-		// every element is a node index, null as 0, at the body's index width
-		if pass == messagePassMeasure {
-			g.pf("%sbits += (int64_t) ( %s ) * index_bits;\n", ind, count)
-			return
-		}
-		g.pf("%s", loop)
-		g.emitMessagePointee(f, elem, ind+"    ")
-		g.pf("%s    uint64_t index_%s = 0;\n", ind, f.Name)
-		g.pf("%s    if ( pointee_%s != NULL && !TableNumberingIndex( numbering, (const void *) pointee_%s, index_%s ) ) { return false; }\n", ind, f.Name, f.Name, f.Name)
-		g.pf("%s    w.put( index_%s, index_bits );\n", ind, f.Name)
-		g.pf("%s}\n", ind)
 	case tkTable:
 		g.pf("%s", loop)
 		if pass == messagePassMeasure {
@@ -652,19 +525,6 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 	sfx := g.msgSfx()
 	value, count := armValue(base, v), armCount(base, v)
 	switch {
-	case af.Type.Pointer && af.Array == ir.ArrayNone:
-		// A SET ARM THAT IS A POINTER IS A POINTER EDGE ITSELF (§2.6, §3.1):
-		// its payload is the node index, null as 0
-		g.pf("%s{\n", ind)
-		g.emitMessagePointee(af, value, ind+"    ")
-		g.pf("%s    uint64_t index_%s = 0;\n", ind, af.Name)
-		g.pf("%s    if ( pointee_%s != NULL && !TableNumberingIndex( numbering, (const void *) pointee_%s, index_%s ) ) { return %s; }\n", ind, af.Name, af.Name, af.Name, messageBad(pass))
-		if pass == messagePassMeasure {
-			g.pf("%s    bits += index_bits;\n", ind)
-		} else {
-			g.pf("%s    w.put( index_%s, index_bits );\n", ind, af.Name)
-		}
-		g.pf("%s}\n", ind)
 	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes || af.Type.Kind == ir.TWString:
 		g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, af.Type.Size, messageBad(pass))
 		g.emitMessageTextPayload(af, entry, value, count, ind, pass)
@@ -743,15 +603,6 @@ func (g *tableGen) emitMessageKeyed(f *ir.Field, entry ir.TableVocabularyEntry, 
 	}
 	elem := slots + "[" + idx + "]"
 	switch {
-	case f.Type.Pointer:
-		g.emitMessagePointee(f, elem, "                ")
-		g.pf("                uint64_t index_%s = 0;\n", f.Name)
-		g.pf("                if ( pointee_%s != NULL && !TableNumberingIndex( numbering, (const void *) pointee_%s, index_%s ) ) { return %s; }\n", f.Name, f.Name, f.Name, messageBad(pass))
-		if pass == messagePassMeasure {
-			g.pf("                bits += index_bits;\n")
-		} else {
-			g.pf("                w.put( index_%s, index_bits );\n", f.Name)
-		}
 	case kind == tkTable:
 		if pass == messagePassMeasure {
 			g.pf("                bits += elem_bits%s;\n", sfx)
@@ -773,13 +624,6 @@ func (g *tableGen) emitMessageKeyedRides(f *ir.Field, kind int, idx, ind string,
 	elem := slots + "[" + idx + "]"
 	g.pf("%sif ( !TableEnumNamed( (%s) ( %s + 1 ) ) ) { return %s; }\n", ind, f.KeyEnum, idx, messageBad(pass))
 	switch {
-	case f.Type.Pointer:
-		// a null slot elides, exactly as a null field does (§3.1)
-		if f.Type.Blob() {
-			g.pf("%sif ( TableBlobAt( ctx, %s ) == NULL ) { continue; }\n", ind, elem)
-		} else {
-			g.pf("%sif ( %sAt( ctx, %s ) == NULL ) { continue; }\n", ind, f.Type.Name, elem)
-		}
 	case kind == tkTable:
 		g.pf("%sconst int64_t elem_bits%s = %s;\n", ind, sfx, g.msgMeasureCall(f.Type.Name, g.msgAt(pass), elem))
 		g.pf("%sif ( elem_bits%s < 0 ) { return %s; }\n", ind, sfx, messageBad(pass))
@@ -794,19 +638,9 @@ func (g *tableGen) emitMessageKeyedRides(f *ir.Field, kind int, idx, ind string,
 
 // emitMessageArrayRides is a fixed array's elision test: an all-default array
 // elides whole, one set union makes every element ride in its place, a fixed
-// array of pointers rides when one slot is non-null, and a fixed array of
-// tables always rides because position is identity there.
+// array of tables always rides because position is identity there.
 func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 	switch {
-	case f.Type.Pointer:
-		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		if f.Type.Blob() {
-			g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( TableBlobAt( ctx, value.%s[i] ) != NULL ) { rides_%s = true; break; } }\n",
-				ind, f.ArrayBound, f.Name, f.Name)
-		} else {
-			g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( %sAt( ctx, value.%s[i] ) != NULL ) { rides_%s = true; break; } }\n",
-				ind, f.ArrayBound, f.Type.Name, f.Name, f.Name)
-		}
 	case tableScalarKind(f) == tkTable:
 		g.pf("%sconst bool rides_%s = true; // position is identity in a fixed array of tables\n", ind, f.Name)
 	case tableScalarKind(f) == tkUnion:
@@ -817,285 +651,5 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
 		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { rides_%s = true; break; } }\n",
 			ind, f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
-	}
-}
-
-// ---- maps (docs/SPEC-TABLES.md §2.8, §3.3) ----
-
-// emitMessageMap writes one map field: the reference, the count at the width
-// the announced shape states, which is thirty-two raw bits because a map's
-// count is a number the data decides, then the generated `{ key, value }` bodies in
-// ASCENDING key order with no key twice, dead entries dropped. An EMPTY map
-// elides, on the by-value rule.
-func (g *tableGen) emitMessageMap(f *ir.Field, entry ir.TableVocabularyEntry, pass messagePass) {
-	sfx := g.msgEnter()
-	defer g.msgLeave()
-	idx := "i" + sfx
-	me := mapEntryOf(f)
-	width := ir.TableMessageCountBits(entry.Shape)
-	g.pf("    {\n")
-	g.pf("        TableMapCursor<%s> order_%s = TableMapOrder( ctx, value.%s ); // %s\n", me.Name, f.Name, f.Name, f.Name)
-	g.pf("        if ( !order_%s.ok ) { return %s; } // the sort could not run\n", f.Name, messageBad(pass))
-	g.pf("        if ( order_%s.count > 0 )\n        {\n", f.Name)
-	g.emitMessageHeader(entry, pass, "            ")
-	if pass == messagePassMeasure {
-		g.pf("            bits += %d; // the count the data decides\n", width)
-	} else {
-		g.pf("            w.put( (uint64_t) order_%s.count, %d ); // the count the data decides\n", f.Name, width)
-	}
-	g.pf("            for ( int32_t %s = 0; %s < order_%s.count; %s++ )\n            {\n", idx, idx, f.Name, idx)
-	if pass == messagePassMeasure {
-		g.pf("                const int64_t elem_%s = %s;\n", f.Name, g.msgMeasureCall(me.Name, "at + bits", "*order_"+f.Name+"["+idx+"]"))
-		g.pf("                if ( elem_%s < 0 ) { TableMapRelease( order_%s ); return -1; }\n", f.Name, f.Name)
-		g.pf("                bits += elem_%s; // BUT THE ENTRY ALWAYS RIDES: identity here is the key\n", f.Name)
-	} else {
-		g.pf("                if ( !%s ) { TableMapRelease( order_%s ); return false; }\n", g.msgSaveCall(me.Name, "*order_"+f.Name+"["+idx+"]"), f.Name)
-	}
-	g.pf("            }\n")
-	g.pf("        }\n")
-	g.pf("        TableMapRelease( order_%s );\n", f.Name)
-	g.pf("    }\n")
-}
-
-// emitMessageMapKeyReader emits one map entry's KEY SCAN over the bit stream
-// (docs/SPEC-TABLES.md §2.8, §3.3): the reader does not assume where the key
-// sits, so before an entry's slot is chosen it walks that entry's body by the
-// announced shapes, reads the key where it meets it, and answers where the
-// body ENDS, which is what lets the body be decoded into the slot afterwards
-// on a wire that frames nothing with a length.
-func (g *tableGen) emitMessageMapKeyReader(me *ir.Struct) {
-	key := me.Fields[0]
-	n := me.Name
-	kind := tableScalarKind(key)
-	stringKey := key.Type.Kind == ir.TString
-	g.pf("// %sMessageKeyRead: the key of one entry on the message wire, before the\n", n)
-	g.pf("// slot is chosen (docs/SPEC-TABLES.md §2.8, §3.3), and the bit the entry's\n")
-	g.pf("// body ends at. Field order inside a body is not contractual, so this scans\n")
-	g.pf("// the whole body by its announced shapes rather than assuming a position.\n")
-	g.pf("struct %sMessageKeyRead\n{\n", n)
-	if stringKey {
-		g.pf("    const char * key;   // INTO the batch's bytes, byte-aligned by the string's own align\n")
-		g.pf("    int32_t length;\n")
-	} else {
-		typ, _ := g.cppFieldType(key.Type)
-		g.pf("    %s key;\n", typ)
-	}
-	g.pf("    int64_t end;        // the bit after the entry's own zero reference\n")
-	g.pf("    bool found;         // the body carried the key's id\n")
-	g.pf("    bool kind_bad;      // it carried it under another kind: the MAP's event\n")
-	g.pf("    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one\n")
-	g.pf("    bool over;          // longer than this reader's bound: the ENTRY is dropped\n")
-	g.pf("    bool malformed;     // the entry's framing gave out\n")
-	g.pf("};\n\n")
-	g.pf("inline %sMessageKeyRead %sMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )\n{\n", n, n)
-	if stringKey {
-		g.pf("    %sMessageKeyRead out = { NULL, 0, 0, false, false, false, false, false };\n", n)
-	} else {
-		g.pf("    %sMessageKeyRead out = { 0, 0, false, false, false, false, false };\n", n)
-	}
-	// the WIDENING RULE at a map's KEY (§2.8, §4): where the declared key kind
-	// has kinds below it on its ladder, a key under one of them is not a
-	// disagreement, and it rides at the announced width the read already uses
-	keyWiden := ""
-	if !stringKey && widenable(kind) {
-		keyWiden = fmt.Sprintf(" && !TableKindWidens( entry.kind, %d )", kind)
-	}
-	g.pf("    for ( ;; )\n    {\n")
-	g.pf("        uint64_t ref = 0;\n")
-	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) ) { out.malformed = true; return out; }\n")
-	g.pf("        if ( ref == 0 ) { out.end = r.offset; return out; } // the terminator: no key field is the key's DEFAULT\n")
-	g.pf("        if ( ref > (uint64_t) vocabulary.count ) { out.malformed = true; return out; }\n")
-	g.pf("        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );\n")
-	g.pf("        if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }\n")
-	g.pf("        if ( entry.id == 0x%016xull ) // `key`, the ordinary hash of an ordinary name\n        {\n", ir.MapKeyWireId)
-	g.pf("            const bool kind_bad = entry.kind != %d%s; // THE KEY KIND IS THE READER'S DECLARATION\n", kind, keyWiden)
-	g.pf("            out.kind_bad = kind_bad;\n")
-	g.pf("            out.found = !kind_bad;\n")
-	if keyWiden != "" {
-		// A KEY KIND THE DECLARATION WIDENS IS NOT A DISAGREEMENT (§2.8,
-		// §4): the key decodes exactly at the ANNOUNCED width, which is what
-		// the read below already reads at, and the MAP counts ONE `widened`.
-		g.pf("            out.widened = entry.kind != %d;\n", kind)
-	}
-	g.pf("            if ( kind_bad )\n            {\n")
-	g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }\n")
-	g.pf("                continue;\n            }\n")
-	if stringKey {
-		g.pf("            uint64_t key_len = 0;\n")
-		g.pf("            if ( !r.get( key_len, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { out.malformed = true; return out; }\n")
-		g.pf("            if ( !r.has( (int64_t) key_len * 8 ) ) { out.malformed = true; return out; }\n")
-		g.pf("            out.key = (const char *) ( r.buffer + r.offset / 8 );\n")
-		g.pf("            out.length = (int32_t) key_len;\n")
-		g.pf("            out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)
-		g.pf("            r.offset += (int64_t) key_len * 8;\n")
-		g.pf("            continue; // the LAST occurrence is the one §3 keeps\n")
-	} else {
-		typ, _ := g.cppFieldType(key.Type)
-		signed := ir.TableKindSigned(kind)
-		g.pf("            {\n")
-		g.pf("                uint64_t raw = 0;\n")
-		g.pf("                const int64_t width = entry.value_bits;\n")
-		g.pf("                if ( width < 0 || !r.get( raw, width ) ) { out.malformed = true; return out; }\n")
-		g.pf("                int64_t decoded_wide = (int64_t) raw;\n")
-		g.pf("                if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }\n")
-		if signed {
-			g.pf("                else if ( width > 0 && width < 64 )\n                {\n")
-			g.pf("                    const uint64_t sign = uint64_t(1) << ( width - 1 );\n")
-			g.pf("                    if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }\n")
-			g.pf("                }\n")
-		}
-		g.pf("                out.key = (%s) decoded_wide;\n", typ)
-		g.pf("            }\n")
-		g.pf("            continue; // the LAST occurrence is the one §3 keeps\n")
-	}
-	g.pf("        }\n")
-	g.pf("        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }\n")
-	g.pf("    }\n}\n\n")
-}
-
-// ---- the EXTENT a node's maps take, from the FRAMING alone (§2.8, §6.5) ----
-
-// emitMessageExtent emits `<T>MessageExtent`: the region bytes one record's
-// maps command, read off the bit stream by the announced shapes at every
-// depth, PRE-ORDER as the load carves them: a map's whole entry array first,
-// then, entry by entry, the arrays any map an entry's value holds by value.
-// It reads no field value, so a caller can refuse a number it did not expect
-// before one byte is allocated. It walks the body to its own zero reference,
-// so the reader it is handed ends up where the next body begins.
-func (g *tableGen) emitMessageExtent(st *ir.Struct) {
-	g.pf("// %sMessageExtent: the extent %s's maps command on the message wire, from\n", st.Name, st.Name)
-	g.pf("// the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).\n")
-	g.pf("inline bool %sMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )\n{\n", st.Name)
-	g.pf("    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)\n")
-	g.pf("    for ( ;; )\n    {\n")
-	g.pf("        uint64_t ref = 0;\n")
-	g.pf("        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }\n")
-	g.pf("        if ( ref == 0 ) { return true; }\n")
-	g.pf("        if ( ref > (uint64_t) vocabulary.count ) { return false; }\n")
-	g.pf("        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );\n")
-	g.pf("        if ( TableMessageReserved( entry.id ) ) { return false; }\n")
-	g.emitMessageExtentCases(st)
-	g.pf("        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }\n")
-	g.pf("    }\n}\n\n")
-}
-
-// emitMessageExtentCases emits one arm per map field and one per by-value
-// nesting that holds a map, so the framing walk advances the running offset
-// in the order the load carves it.
-func (g *tableGen) emitMessageExtentCases(st *ir.Struct) {
-	for _, f := range st.Fields {
-		if f.IsMap() {
-			me := mapEntryOf(f)
-			g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d && entry.elem_kind == %d ) // %s\n        {\n", ir.TableFieldWireId(f), tkArray, tkTable, f.Name)
-			g.pf("            uint64_t n = 0;\n")
-			g.pf("            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }\n")
-			g.pf("            n += (uint64_t) entry.min;\n")
-			g.pf("            at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", alignOfEntry(g.unit, me)-1, alignOfEntry(g.unit, me)-1, me.Name)
-			g.pf("            at += (int64_t) n * (int64_t) sizeof( %s ); // the whole array FIRST\n", me.Name)
-			g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, entry by entry in key order\n            {\n")
-			if g.hasExtent(me) {
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", me.Name)
-			} else {
-				g.pf("                if ( !TableMessageSkipBody( r, vocabulary, index_bits, depth + 2 ) ) { return false; }\n")
-			}
-			g.pf("            }\n")
-			g.pf("            continue;\n        }\n")
-			continue
-		}
-		if f.IsList() {
-			// AN UNBOUNDED ARRAY's elements are this node's extent: the whole
-			// array first, then, element by element, whatever each holds
-			elem := g.listElementType(f)
-			g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d && entry.elem_kind == %d ) // %s: an unbounded array\n        {\n", ir.TableFieldWireId(f), tkArray, listElementWireKind(f), f.Name)
-			g.pf("            uint64_t n = 0;\n")
-			g.pf("            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }\n")
-			g.pf("            n += (uint64_t) entry.min;\n")
-			g.pf("            if ( n > (uint64_t) INT32_MAX ) { return false; } // above the int32 storage cap (§2.9)\n")
-			if listElementWireKind(f) == tkU8 {
-				g.pf("            if ( !r.align() ) { return false; } // an array of kind 6 aligns before its elements\n")
-			}
-			g.pf("            at = ( at + %d ) & ~(int64_t) %d; // at alignof( %s )\n", alignOfList(g.unit, f)-1, alignOfList(g.unit, f)-1, elem)
-			g.pf("            at += (int64_t) n * (int64_t) sizeof( %s ); // the whole array FIRST\n", elem)
-			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
-				g.pf("            for ( uint64_t i = 0; i < n; i++ ) // then, element by element in index order\n            {\n")
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", ref.Name)
-				g.pf("            }\n")
-			} else {
-				// A RUN OF FIXED-WIDTH ELEMENTS IS ONE MULTIPLICATION (§3.3):
-				// the walk exists to find the bit the array ends at, and a
-				// zero-width element under a wide count would otherwise buy
-				// the framing pass two billion iterations
-				g.pf("            const int64_t run = TableMessageElementRunBits( vocabulary, entry );\n")
-				g.pf("            if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }\n")
-				g.pf("            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }\n")
-			}
-			g.pf("            continue;\n        }\n")
-			continue
-		}
-		switch g.edgeOf(f) {
-		case edgeNested:
-			ref, _ := f.Type.Ref.(*ir.Struct)
-			if ref == nil || !g.hasExtent(ref) {
-				continue
-			}
-			switch {
-			case f.KeyEnum != "":
-				g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d && entry.elem_kind == %d ) // %s: a keyed nesting that holds a map\n        {\n", ir.TableFieldWireId(f), tkKeyed, tkTable, f.Name)
-				g.pf("            uint64_t n = 0;\n")
-				g.pf("            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }\n")
-				g.pf("            for ( uint64_t i = 0; i < n; i++ )\n            {\n")
-				g.pf("                if ( !r.skip( vocabulary.ref_bits ) ) { return false; } // the slot's key reference\n")
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", f.Type.Name)
-				g.pf("            }\n")
-				g.pf("            continue;\n        }\n")
-			case f.Array != ir.ArrayNone:
-				g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d && entry.elem_kind == %d ) // %s: a nesting that holds a map\n        {\n", ir.TableFieldWireId(f), tkArray, tkTable, f.Name)
-				g.pf("            uint64_t n = (uint64_t) entry.min;\n")
-				g.pf("            const int64_t count_bits = TableBitsRequired( entry.min, entry.max );\n")
-				g.pf("            if ( count_bits > 0 ) { uint64_t raw = 0; if ( !r.get( raw, count_bits ) ) { return false; } n = raw + (uint64_t) entry.min; }\n")
-				g.pf("            for ( uint64_t i = 0; i < n; i++ )\n            {\n")
-				g.pf("                if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; }\n", f.Type.Name)
-				g.pf("            }\n")
-				g.pf("            continue;\n        }\n")
-			default:
-				g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d ) // %s: a nesting that holds a map\n        {\n", ir.TableFieldWireId(f), tkTable, f.Name)
-				g.pf("            if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 1 ) ) { return false; }\n", f.Type.Name)
-				g.pf("            continue;\n        }\n")
-			}
-		case edgeArm:
-			un := f.Type.Ref.(*ir.Union)
-			any := false
-			for _, v := range un.Variants {
-				if ref := memberOf(g.unit, v.Type); ref != nil && g.hasExtent(ref) {
-					any = true
-				}
-			}
-			if !any {
-				continue
-			}
-			g.pf("        if ( entry.id == 0x%016xull && entry.kind == %d ) // %s: a union arm that holds a map\n        {\n", ir.TableFieldWireId(f), tkUnion, f.Name)
-			g.pf("            uint64_t arm_ref = 0;\n")
-			g.pf("            if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { return false; }\n")
-			g.pf("            if ( arm_ref == 0 ) { continue; } // None: the reference is the whole payload\n")
-			g.pf("            TableMessageEntry arm;\n")
-			g.pf("            if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { return false; }\n")
-			g.pf("            switch ( arm.id )\n            {\n")
-			for _, v := range un.Variants {
-				ref := memberOf(g.unit, v.Type)
-				if ref == nil || !g.hasExtent(ref) {
-					continue
-				}
-				// the announcement's own entry, which reads the `was` alias
-				// (docs/SPEC-TABLES.md §5), so the dispatch names what the
-				// writer wrote
-				g.pf("                case 0x%016xull: // %s\n", ir.TableArmEntry(v).Id, v.Name)
-				g.pf("                    if ( arm.kind == %d ) { if ( !%sMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; } }\n", tkTable, v.Type)
-				g.pf("                    else if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } // another kind: a mismatch the load counts\n")
-				g.pf("                    break;\n")
-			}
-			g.pf("                default: if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } break; // an arm this reader cannot name\n")
-			g.pf("            }\n")
-			g.pf("            continue;\n        }\n")
-		}
 	}
 }

@@ -450,7 +450,7 @@ func (e *msgEmit) putKeyed(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 	e.p(ind+1, "%s += 1;", i)
 	e.p(ind, "}")
 	e.put(ind, pres, int64(ir.TableMessageBitsRequired(0, entry.Shape.Max)))
-	for k := int64(0); k < slots; k++ {
+	for k := range slots {
 		at := pl.at(fmt.Sprint(k)).val
 		rides := e.slotRides(ind, el, at, strings.Replace(at, "v.", "d.", 1))
 		e.p(ind, "if %s {", rides)
@@ -1138,8 +1138,9 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.loop = 0
 	e.p(0, "// %sLoadMessages reads ONE batch into values against the peer's vocabulary (AnnounceRead) and", n)
 	e.p(0, "// returns the bodies delivered: a capacity short of the wire's count is batch_too_large")
-	e.p(0, "// with report.count set and nothing decoded; damage inside body k delivers bodies 1 to")
-	e.p(0, "// k - 1 and sets malformed; a non-finite float refuses the batch (§3.3).")
+	e.p(0, "// with report.count set and nothing decoded; damage anywhere in the batch discards the")
+	e.p(0, "// whole batch, returning 0 with every body at its declared defaults and malformed set;")
+	e.p(0, "// a non-finite float refuses the batch (§3.3, §4).")
 	e.p(0, "fn %sLoadMessages(values: %s[:], voc: const schema_rt::MsgVocabulary&, data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::MsgReport { .. };")
 	e.p(1, "if data.len < 1 {")
@@ -1181,8 +1182,15 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "report.kind_mismatch = r.kind_mismatch;")
 	e.p(1, "report.widened = r.widened;")
 	e.p(1, "report.clamped = r.clamped;")
-	e.p(1, "if report.malformed { return i; }")
-	e.p(1, "if !schema_rt::msg_align_read(r) || r.pos != r.end { report.malformed = true; }")
+	e.p(1, "if !report.malformed && (!schema_rt::msg_align_read(r) || r.pos != r.end) { report.malformed = true; }")
+	e.p(1, "if report.malformed {")
+	e.p(2, "var j: i64 = 0;")
+	e.p(2, "while j < count {")
+	e.p(3, "values[j] = %s { .. };", typ)
+	e.p(3, "j += 1;")
+	e.p(2, "}")
+	e.p(2, "return 0;")
+	e.p(1, "}")
 	e.p(1, "return count;")
 	e.p(0, "}\n")
 }

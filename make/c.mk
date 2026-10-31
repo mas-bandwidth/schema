@@ -232,7 +232,7 @@ build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance
 #
 # `examples` IS NOT ON THIS LIST ANY MORE, for the reason its C++ twin is not
 # (see TABLES_ZERO_COST_HEADERS in the root Makefile): under the KEYWORD (#823)
-# `Guarded.schema`'s `Patrol` is a plain `table` — a guarded branch is exactly
+# `Guarded.schema`'s `Patrol` is a variable table — a guarded branch is exactly
 # the construct that keeps it one — so `tables/examples` is a VARIABLE unit and
 # carries the machinery by right. The follow-on that brings it back is the same
 # one: move `Guarded.schema` into a unit of its own.
@@ -1583,6 +1583,39 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 
 test-c: tables-c-wire-fuzz-negative-control
 
+# THE TIMESTAMP KIND SKIPS ITS EIGHT BYTES (docs/SPEC-TABLES.md §3: "Kinds
+# 1-11, 18-29 and 36 skip their fixed width"). A field whose wire kind is 36
+# where the schema declares another kind is a kind mismatch, counted, and the
+# reader steps over the eight-byte payload and reads on. The pinned mutant is
+# the wire fuzzer's root_full kind pass #664 (seed 1): field 15 relabelled kind
+# 36, which the Go engine reads clean (1,1,0,0,0,false,read) and a C reader
+# without the width called damage. The gate replays it against the engine.
+.PHONY: tables-c-skip-timestamp-kind
+tables-c-skip-timestamp-kind: build/conformance-harness build/wire-fuzz-c
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_skip_timestamp_kind.bin --unit tabledemo --root RootConfig
+
+test-c: tables-c-skip-timestamp-kind
+
+# ITS NEGATIVE CONTROL: kind 36 taken out of the skip table in a scratch copy of
+# the generated units, and the replay must go red on the read report.
+.PHONY: tables-c-skip-timestamp-kind-negative-control
+tables-c-skip-timestamp-kind-negative-control: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf build/c-skip36-sabotage && mkdir -p build/c-skip36-sabotage
+	@cp -R build/tables-generated-c build/c-skip36-sabotage/generated
+	@for f in $$(grep -rl 'case 23: case 28: case 36: width = 8; break;' build/c-skip36-sabotage/generated); do \
+		sed 's|case 23: case 28: case 36: width = 8; break;|case 23: case 28: width = 8; break; /* SABOTAGED: kind 36 */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -rq 'SABOTAGED: kind 36' build/c-skip36-sabotage/generated || { echo 'NEGATIVE CONTROL FAILED: the sabotage patched nothing'; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-skip36-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
+		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-skip36-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-skip36-sabotage/driver -lm
+	@if ./build/conformance-harness wire-fuzz --driver ./build/c-skip36-sabotage/driver --replay testdata/wire/tables/c_skip_timestamp_kind.bin --unit tabledemo --root RootConfig > build/c-skip36-sabotage/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a C reader without the kind-36 width left the replay green'; exit 1; \
+	fi
+	@grep -q 'the report differs' build/c-skip36-sabotage/log || { cat build/c-skip36-sabotage/log; exit 1; }
+	@echo 'C skip negative control: kind 36 out of the skip table turns the pinned replay red'
+
+test-c: tables-c-skip-timestamp-kind-negative-control
+
 # Maps and lists use the C++ reference's pinned file bytes and exact region
 # sizes. Both allocator-backed construction and caller-owned loads are checked
 # through lock, save, and JSON under native execution and ASan/UBSan.
@@ -1666,7 +1699,7 @@ test-c tables-c: tables-c-message-negative-control
 .PHONY: tables-c-retain tables-c-retain-negative-control
 tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
 	sh test/slowgate/proof tables-c-retain \
-		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
+		'TestCTableRetainFile TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName' \
 		./compiler -run '^TestCTableRetain' -count=1
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin

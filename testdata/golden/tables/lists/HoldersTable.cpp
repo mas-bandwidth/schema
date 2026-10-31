@@ -4571,7 +4571,14 @@ namespace listdemo {
 
 bool SampleFromJsonTolerant( Sample & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, SampleTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, SampleTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; SampleTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool SampleFromJson( Sample & value, const char * text, int64_t bytes, TableReport * report )
@@ -4606,7 +4613,14 @@ bool RowFromJsonTolerant( RowBuilder & builder, const char * text, int64_t bytes
 {
     Row * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, RowTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, RowTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RowTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RowFromJson( RowBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4643,7 +4657,14 @@ bool SheetFromJsonTolerant( SheetBuilder & builder, const char * text, int64_t b
 {
     Sheet * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, SheetTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, SheetTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; SheetTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool SheetFromJson( SheetBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4678,7 +4699,14 @@ int64_t SheetToJson( const Sheet * root, char * buffer, int64_t capacity, TableA
 
 bool ItemFromJsonTolerant( Item & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ItemTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ItemTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ItemTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ItemFromJson( Item & value, const char * text, int64_t bytes, TableReport * report )
@@ -4713,7 +4741,14 @@ bool SquadFromJsonTolerant( SquadBuilder & builder, const char * text, int64_t b
 {
     Squad * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, SquadTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, SquadTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; SquadTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool SquadFromJson( SquadBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4750,7 +4785,14 @@ bool ArmyFromJsonTolerant( ArmyBuilder & builder, const char * text, int64_t byt
 {
     Army * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, ArmyTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, ArmyTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ArmyTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ArmyFromJson( ArmyBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4787,7 +4829,14 @@ bool DeckFromJsonTolerant( DeckBuilder & builder, const char * text, int64_t byt
 {
     Deck * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, DeckTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, DeckTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; DeckTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool DeckFromJson( DeckBuilder & builder, const char * text, int64_t bytes, TableReport * report )

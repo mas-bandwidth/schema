@@ -15,14 +15,12 @@ import (
 )
 
 // THE MESSAGE FORM'S BATCH, held to the Go engine's reader over DAMAGE
-// (docs/SPEC-TABLES.md §3.3): the pinned batches — a fixed root's, a
-// pointered root's, a batch of three, a root that reaches no node — are
-// mutated (every truncation, the form byte, the count byte, bytes after the
+// (docs/SPEC-TABLES.md §3.3): the pinned batches of fixed roots — one body
+// each, and a batch of three — are mutated (every truncation, the form byte, the count byte, bytes after the
 // pad, every byte flipped three ways), and moo's LoadMessages must answer each
-// mutation as tablewire.DecodeMessages does: the same refusal by name, or the
-// same number of bodies delivered with the same counters and the same
-// malformed verdict. The rows are the manifest's message rows and the two
-// pointered batches the harness pins (TestAPointeredBatch).
+// mutation as tablewire.DecodeMessages does: damaged input is refused whole,
+// with no values; otherwise the refusal by name, body count and evolution
+// counters agree. No partial result after damage is compared (§4).
 
 type batchCase struct {
 	name, conn, root, wire string
@@ -32,9 +30,7 @@ var batchCases = []batchCase{
 	{"login_full", "backend_conn", "LoginRequest", "testdata/wire/tables/login_full_message.bin"},
 	{"match_full", "backend_conn", "MatchResult", "testdata/wire/tables/match_full_message.bin"},
 	{"store_full", "backend_conn", "StorePurchase", "testdata/wire/tables/store_full_message.bin"},
-	{"graph_tree", "graph_conn", "Scene", "testdata/wire/tables/graph_tree_message.bin"},
-	{"graph_batch", "graph_conn", "Scene", "testdata/wire/tables/graph_batch_message.bin"},
-	{"graph_empty", "graph_conn", "Scene", "testdata/wire/tables/graph_empty_message.bin"},
+	{"backend_batch", "backend_conn", "LoginRequest", "testdata/wire/tables/backend_batch_damaged_second_message.bin"},
 }
 
 // mutations is the damage swept over one wire, each distinct, in a fixed order.
@@ -99,7 +95,8 @@ while at < buffer.len(cases) do
 	local v = MS.NewVocabulary()
 	local rep: any = {}
 	if not MS.AnnounceRead(v, inputs.conn, rep) then print("ANNOUNCE " .. tostring(rep.reason)) return end
-	local n = MS.LoadMessages(v, %q, data, %d, rep)
+	local n, values = MS.LoadMessages(v, %q, data, %d, rep)
+	if rep.malformed and #values ~= 0 then print("DAMAGE RETURNED VALUES") continue end
 	print(string.format("%%d %%d %%d,%%d,%%d,%%d,%%d,%%s,%%d %%s", i, n, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, tostring(rep.malformed), rep.blobShared or 0, tostring(rep.reason)))
 end
 `, g.requireAll(), root, capacity)
@@ -113,6 +110,9 @@ func goAnswer(m *tabletext.Model, vocab *tablewire.Vocabulary, root string, capa
 	}
 	var rep tabletext.Report
 	n, _, err := tablewire.DecodeMessages(m, insts, data, vocab, &rep)
+	if rep.Malformed {
+		return "malformed" // §4: no other result of a damaged read is defined.
+	}
 	if err != nil {
 		var reason string
 		if r, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
@@ -135,6 +135,12 @@ func mooAnswer(line string) string {
 	if len(f) < 3 {
 		return line
 	}
+	if strings.Contains(f[1], ",true,") {
+		if f[0] != "0" && f[0] != "-1" {
+			return "malformed batch returned bodies: " + f[0]
+		}
+		return "malformed"
+	}
 	if f[2] != "nil" {
 		reason, _, _ := strings.Cut(f[2], ":")
 		return fmt.Sprintf("%s %s", f[0], reason)
@@ -145,22 +151,12 @@ func mooAnswer(line string) string {
 func runDamage(t *testing.T, capacity int, mutate func([]byte) [][]byte) {
 	t.Helper()
 	units, _ := readManifest(t)
-	graph := "graphdemo"
-	cache := map[string]*generatedUnit{}
+	g := generateUnit(t, units, "backenddemo")
+	if g.err != nil {
+		t.Fatalf("unit backenddemo is refused: %v", g.err)
+	}
 	total := 0
 	for _, c := range batchCases {
-		unit := graph
-		if c.conn != "graph_conn" {
-			unit = "backenddemo"
-		}
-		g, ok := cache[unit]
-		if !ok {
-			g = generateUnit(t, units, unit)
-			cache[unit] = g
-		}
-		if g.err != nil {
-			t.Fatalf("%s: unit %s is refused: %v", c.name, unit, g.err)
-		}
 		conn := readRoot(t, "testdata/wire/tables/"+c.conn+".bin")
 		wire := readRoot(t, c.wire)
 		cases := mutate(wire)
@@ -278,70 +274,47 @@ func TestMooMessageBatchDamageNegativeControl(t *testing.T) {
 	}
 }
 
-// TestMooMessageOverAPointeredRootMatchesTheGoEngine: the message form over a
-// plain, pointered `table` (docs/SPEC-TABLES.md §3.3, "The message form over
-// a variable root"), the way TestMooMessageFormMatchesTheGoEngine holds a
-// fixed one. For each graph instance of the manifest (a tree, a shared node, a
-// root that reaches nothing, a deep chain) the Go engine writes the file wire
-// and its message form; moo reads the file wire and saves the same message
-// bytes, and loads the Go engine's message into the file wire the Go engine
-// itself reads back.
-func TestMooMessageOverAPointeredRootMatchesTheGoEngine(t *testing.T) {
+// TestMooMessageFormIsFixedTablesOnly holds §3.3's class rule on the moo leg:
+// a variable table registers no message slots, and LoadMessages,
+// MeasureMessages and SaveMessages refuse a variable root by name before a
+// byte is read or written, while the fixed root's batch still measures.
+func TestMooMessageFormIsFixedTablesOnly(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
-	units, _ := readManifest(t)
-	g := generateUnit(t, units, "graphdemo")
-	if g.err != nil {
-		t.Fatal(g.err)
+	g := generateFiles(t, map[string]string{"Probe.schema": `package probe
+
+fixed table Fixedroot { x int32 }
+table Varplain { x int32 }
+table Varleaf { x int32 }
+table Varroot { leaf *Varleaf }
+`})
+	var module string
+	for _, m := range g.tableModules() {
+		module += string(g.files[m+".moo"])
 	}
-	m := tabletext.NewModel(g.unit)
-	var vocab tablewire.Vocabulary
-	var arep tabletext.Report
-	if err := vocab.AnnounceRead(readRoot(t, "testdata/wire/tables/graph_conn.bin"), &arep); err != nil {
-		t.Fatal(err)
+	if !strings.Contains(module, `.slots("Fixedroot"`) {
+		t.Error("the fixed root Fixedroot registers no message slots")
 	}
-	compared := 0
-	for _, row := range manifestRows(t) {
-		if row.kind != "instance" || row.unit != "graphdemo" {
-			continue
+	for _, name := range []string{"Varplain", "Varleaf", "Varroot"} {
+		if strings.Contains(module, `.slots("`+name+`"`) {
+			t.Errorf("the variable table %s registers message slots", name)
 		}
-		file := readRoot(t, row.wire)
-		inst := m.New(m.Lookup(row.root))
-		var rep tabletext.Report
-		if ok, err := tablewire.Decode(m, inst, file, &rep); !ok || err != nil {
-			t.Fatalf("%s: the Go engine does not read its own wire: %v", row.caseName, err)
-		}
-		msg, err := tablewire.EncodeMessages(m, []*tabletext.Instance{inst})
-		if err != nil {
-			t.Fatalf("%s: the Go engine writes no message for a pointered root: %v", row.caseName, err)
-		}
-		back := m.New(m.Lookup(row.root))
-		var r3 tabletext.Report
-		if n, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{back}, msg, &vocab, &r3); err != nil || n != 1 {
-			t.Fatalf("%s: the Go engine does not read its own batch: %v", row.caseName, err)
-		}
-		backFile, err := tablewire.Encode(m, back)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := parseProbe(g.run(t, messageDiffProbe(g, tableModuleOf(g, row.root), row.root), map[string][]byte{"file": file, "message": msg}))
-		if rep.BlobShared > 0 {
-			// a blob named from two slots: the strict read refuses it and no writer carries it
-			t.Logf("%s: shares a blob (the strict read refuses); moo: %v", row.caseName, out)
-			continue
-		}
-		if out["one"] != fmt.Sprintf("%x", msg) {
-			t.Errorf("%s: moo's message is not the Go engine's:\nmoo: %v\ngo:  %x", row.caseName, out, msg)
-			continue
-		}
-		if out["load"] != "1 0,0,0,0,0,false" || out["file"] != fmt.Sprintf("%x", backFile) {
-			t.Errorf("%s: moo does not load the Go engine's message into the Go engine's file form:\nmoo:  %v\nfile: %x", row.caseName, out, backFile)
-			continue
-		}
-		compared++
 	}
-	if compared < 3 {
-		t.Fatalf("only %d graph instances compared", compared)
+	main := "--!strict\nlocal MS = require(\"./table_message\")\n" + g.requireAll() + `
+local function refused(name: string, f: () -> ())
+	local ok, err = pcall(f)
+	assert(not ok, name .. " was not refused")
+	assert(string.find(tostring(err), "Varplain", 1, true) ~= nil, name .. " was refused without naming the table: " .. tostring(err))
+end
+local S = require("./schema_tables")
+local v = S.lookup("Varplain").new()
+refused("LoadMessages", function() MS.LoadMessages(MS.NewVocabulary(), "Varplain", buffer.fromstring("\2\0"), 1, {}) end)
+refused("MeasureMessages", function() MS.MeasureMessages("Varplain", { v }, {}) end)
+refused("SaveMessages", function() MS.SaveMessages("Varplain", { v }, {}) end)
+assert(MS.MeasureMessages("Fixedroot", { S.lookup("Fixedroot").new() }, {}) > 0, "the fixed root's batch did not measure")
+print("fixed-only-ok")
+`
+	if out := g.run(t, main, nil); !strings.Contains(out, "fixed-only-ok") {
+		t.Fatalf("the probe did not finish: %q", out)
 	}
-	t.Logf("%d graph instances compared both ways", compared)
 }

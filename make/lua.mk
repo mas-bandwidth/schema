@@ -94,19 +94,14 @@ lua-generated-loads: toolchain-lua generated/lua/.stamp generated/lua-ludicrous/
 # variant probes) run here instead of skipping green. The wire-fuzz pair is
 # -skip'd only because tables-lua-wire-fuzz-differential, a prerequisite above,
 # has just run it through test/slowgate/proof.
-test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
+test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-finite-float-negative-control tables-lua-release-negative-control conformance-negative-control-lua-absent tables-lua-usage tables-lua-usage-negative-control tables-lua-bench-gate tables-lua-bench-gate-negative-control conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing tables-lua-wire-fuzz-differential build/fixedform-corpus/.stamp packet-finite-lua packet-finite-lua-negative-control tables-lua-alloc tables-lua-alloc-negative-control tables-lua-alloc-runtime-negative-control tables-lua-soak tables-lua-soak-negative-control
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
-# bin/schema embeds both Lua runtime directories by glob (//go:embed
-# runtime/*.lua in internal/codegen/lua and internal/codegen/luatable), which
-# GO_SOURCES (*.go only) does not see, so they are added to bin/schema's
-# prerequisites here: a changed runtime rebuilds the binary every gate then
-# measures, and the committed generated/lua tree with it.
-#
-# build/conformance-lua is the tables manifest's units generated for lua, one
-# directory per unit key. A unit the target refuses leaves its refusal, by
-# name, in <unit>.refused instead of a directory — listed, never dropped.
+# bin/schema embeds both Lua runtime directories (//go:embed runtime/*.lua in
+# internal/codegen/lua and internal/codegen/luatable). The root Makefile's
+# EMBED_SOURCES already names them; this line is what
+# TestLuaBinaryRebuildsWhenRuntimeChanges reads on its own.
 bin/schema: $(wildcard internal/codegen/luatable/runtime/*.lua) $(wildcard internal/codegen/lua/runtime/*.lua)
 
 # the Lua target: the type surface of the examples units, with the serialize
@@ -120,6 +115,9 @@ generated/lua-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 	./bin/schema generate --lang lua --out generated/lua-ludicrous examples128
 	@touch $@
 
+# build/conformance-lua is the tables manifest's units generated for lua, one
+# directory per unit key. A unit the target refuses leaves its refusal, by
+# name, in <unit>.refused instead of a directory — listed, never dropped.
 build/conformance-lua: bin/schema testdata/conformance/tables/MANIFEST.txt make/lua.mk
 	@rm -rf $@ && mkdir -p $@
 	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
@@ -364,7 +362,7 @@ tables-lua-release-negative-control: toolchain-lua build/conformance-harness bui
 .PHONY: conformance-negative-control-lua-absent
 conformance-negative-control-lua-absent: toolchain-lua build/conformance-harness build/conformance-lua
 	@rm -rf build/lua-absent-control && mkdir -p build/lua-absent-control
-	@sed 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason .. "\\n")$$|  do end|' test/conformance/lua/main.lua > build/lua-absent-control/main.lua
+	@sed 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason)$$|  do end|' test/conformance/lua/main.lua > build/lua-absent-control/main.lua
 	@if cmp -s test/conformance/lua/main.lua build/lua-absent-control/main.lua; then \
 		echo "NEGATIVE CONTROL: the absent sabotage patched nothing in test/conformance/lua/main.lua"; exit 1; fi
 	@printf '#!/bin/sh\nexec env LUA=%s %s %s/build/lua-absent-control/main.lua "$$@"\n' '$(LUA)' '$(LUA)' '$(CURDIR)' > build/lua-absent-control/driver
@@ -382,3 +380,11 @@ BENCH_TABLES_LEGS += generated/bench/tables/lua/.stamp
 GOLDENS_LEGS      += update-goldens-lua
 TOOLCHAIN_LEGS    += lua
 TOOLCHAIN_PINS_lua := LUA
+
+# §4: malformed input exposes no partial file root or message body. The
+# controls remove the runtime discard guards and expose those same values.
+.PHONY: tables-lua-damage-discard-negative-control
+tables-lua-damage-discard-negative-control: toolchain-lua
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/luatable -run '^TestLua(Message)?DamageDiscardNegativeControl$$'
+
+test-lua: tables-lua-damage-discard-negative-control

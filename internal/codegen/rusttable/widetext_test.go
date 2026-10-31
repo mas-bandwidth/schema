@@ -215,7 +215,7 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		}
 		rinst := mm.New(mm.Lookup(readRoot))
 		var rrep tabletext.Report
-		if ok, err := tablewire.Decode(mm, rinst, wire, &rrep); !ok || err != nil {
+		if _, err := tablewire.Decode(mm, rinst, wire, &rrep); err != nil {
 			t.Fatalf("%s: the oracle refused the damaged wire: %v", dc.name, err)
 		}
 		if rrep == (tabletext.Report{}) {
@@ -229,8 +229,13 @@ func TestWideTextOnTheTableWireRust(t *testing.T) {
 		if err := os.WriteFile(savedPath, saved, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		damage = append(damage, dCase{name: dc.name, root: readRoot, wire: wire,
-			want: fmt.Sprintf("REPORT %s %d,%d,%d,%d,%d,%v SAVED OK", dc.name, rrep.Unknown, rrep.KindMismatch, rrep.Widened, rrep.Clamped, rrep.Duplicate, rrep.Malformed)})
+		want := fmt.Sprintf("REPORT %s %d,%d,%d,%d,%d,%v SAVED OK", dc.name, rrep.Unknown, rrep.KindMismatch, rrep.Widened, rrep.Clamped, rrep.Duplicate, rrep.Malformed)
+		if rrep.Malformed {
+			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
+			// owes the refusal, and no counter or saved byte is compared
+			want = "DISCARD " + dc.name + " true"
+		}
+		damage = append(damage, dCase{name: dc.name, root: readRoot, wire: wire, want: want})
 	}
 
 	var mods, main strings.Builder
@@ -460,7 +465,9 @@ macro_rules! wide_report {
         let wire = std::fs::read($wire).unwrap();
         let saved = std::fs::read($saved).unwrap();
         let mut r = Default::default();
-        match table::$load(&wire, &mut r) {
+        let loaded = table::$load(&wire, &mut r);
+        println!("DISCARD {} {}", $case, r.malformed);
+        match loaded {
             None => println!("REPORT {} REFUSED", $case),
             Some(v) => {
                 let again = table::$save(&v);

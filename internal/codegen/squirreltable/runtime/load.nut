@@ -5,7 +5,8 @@
 // internal/tablewire's decode.go, decodenodes.go and nodetable.go.
 //
 // _M.load(T, root, bytes, report) is the strict read: the root or null (§6.5).
-// _M.loadTolerant(T, root, bytes, report) keeps the recovered root and counters.
+// _M.loadTolerant(T, root, bytes, report) keeps the recovered root and counters;
+// a damaged load (report.malformed) returns null (§4).
 // T is a unit's table module (the exports table schema_module.nut requires);
 // root is the root table's schema name. report is the caller's §4 report: the
 // six counters, the malformed flag and the refusal verdict. It is filled in
@@ -25,6 +26,8 @@ local MAP_KEY_ID = 0x3dc94a19365b10ec;
 local MAP_VALUE_ID = 0x7ce4fd9430e80cea;
 
 local FORM_VARIABLE = 1;
+// the id table's maximum entry count (docs/SPEC-TABLES.md §3; ir.TableWireIdTableBound)
+local ID_TABLE_BOUND = 4096;
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
 // 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14), the trailer an integrity root appends
@@ -449,7 +452,7 @@ local blobOfRange = function(b, at, len) {
 local ARRAY_SELECTED = 0, ARRAY_DAMAGED = 1, ARRAY_FOREIGN = 2;
 
 // mutual recursion: every load walk names one of these
-local bodyRead, readField, readFieldArray, readArrayBody, readArrayElems, readElement, readKeyedElem, readUnionInto, readArmPayload, readMapField;
+local bodyRead, readField, readFieldArray, readArrayElems, readElement, readKeyedElem, readUnionInto, readArmPayload, readMapField;
 
 // THE NODE TABLE (docs/SPEC-TABLES.md §3.1): the root body's reserved field,
 // scanned before any value decode. The numbering is positional and whole or
@@ -600,13 +603,14 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
   }
 };
 
-readField = function(fd, r, T, table, v, report, st, nested) {
+readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, selection = null) {
   local shape = fd.shape;
   if (shape == "bool" || shape == "int" || shape == "float" || shape == "flags") {
-    local x = readPrim(r, fd.kind, report);
+    local kind = wireKind == null ? fd.kind : wireKind;
+    local x = readPrim(r, kind, report);
     if (x == null || r.bad) { report.malformed = true; return false; }
     if (refuseNonFinite(fd, x, st)) return true;
-    x = clampScalar(fd, fd.kind, x, report);
+    x = clampScalar(fd, kind, x, report);
     v[fd.member] = x;
     if (fd.optional) v[fd.member + "Present"] = true;
     return true;
@@ -714,20 +718,15 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     return true;
   }
   if (shape == "union") {
-    // A UNION FIELD IS REPLACED ONCE ITS ARM HEADER READS (the engine's
-    // unionCell): a repeat whose arm reference names no entry, or whose kind
-    // or L cannot be read, is framing damage that stops this body and leaves
-    // the earlier occurrence standing (docs/SPEC-TABLES.md §4). Only an
-    // ELEMENT of an array of unions resets at its arm id.
     local u = unionDesc(T, fd.table);
     local inst = u.make();
-    if (!readUnionInto(r, T, table, u, inst, report, st)) return false;
     v[fd.member] = inst;
+    local ok = readUnionInto(r, T, table, u, inst, report, st);
     if (fd.optional) v[fd.member + "Present"] = true;
-    return true;
+    return ok;
   }
   if (shape == "bytes" || shape == "arr") {
-    return readFieldArray(fd, r, T, table, v, report, st);
+    return readFieldArray(fd, r, T, table, v, report, st, selection);
   }
   if (shape == "map") {
     return readMapField(fd, r, T, table, v, report, st);
@@ -926,7 +925,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
 // bound, a keyed body's element kind is judged, and the elements walk an
 // empty body. The same holds for every array shape, positional, unbounded
 // and keyed.
-readFieldArray = function(fd, r, T, table, v, report, st) {
+readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   local end = r.at + L;
@@ -946,21 +945,9 @@ readFieldArray = function(fd, r, T, table, v, report, st) {
     }
   }
   r.at = end;
+  if (selection != null) selection.selected = sel == ARRAY_SELECTED;
   if (fd.optional && sel != ARRAY_FOREIGN) v[fd.member + "Present"] = true;
   return true;
-};
-
-// AN ARRAY BODY (docs/SPEC-TABLES.md §2.9, §3): a body shorter than its own
-// header is inert; a damaged count is malformed and keeps the field; an
-// element kind that is not this array's (and does not widen) is a kind
-// mismatch and keeps the field; a bounded array's excess is clamped. An ARM's
-// array is framed by the arm's L, so its header is read inside it.
-readArrayBody = function(fd, r, T, table, v, report, st) {
-  if (r.end - r.at < 2) return ARRAY_SELECTED;
-  local ek = u8(r);
-  local count = leb(r);
-  if (r.bad) { report.malformed = true; return ARRAY_DAMAGED; }
-  return readArrayElems(fd, r, ek, count, T, table, v, report, st);
 };
 
 // THE ELEMENTS of an array whose header (element kind, count) is read, out of
@@ -1196,6 +1183,7 @@ readUnionInto = function(r, T, table, u, inst, report, st) {
   if (armRef > table.len()) { report.malformed = true; return false; }
   local armID = table[armRef - 1];
   local armKind = u8(r);
+  local lpos = r.at;
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   local bodyEnd = r.at + L;
@@ -1223,7 +1211,7 @@ readUnionInto = function(r, T, table, u, inst, report, st) {
     widened = true;
   }
   inst.Type = arm.tag;
-  local ok = readArmPayload(arm, sub, armKind, T, table, inst, report, st);
+  local ok = readArmPayload(arm, sub, lpos, armKind, T, table, inst, report, st);
   // WIDENED AT AN ARM (docs/SPEC-TABLES.md §4) counts only once the payload
   // has decoded at its own width: an L that is not that width is the arm's
   // own framing damage, malformed alone, and the union reads None
@@ -1232,115 +1220,33 @@ readUnionInto = function(r, T, table, u, inst, report, st) {
   return ok;
 };
 
-readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
+// An arm adds framing around an ordinary field payload (M18). Length-shaped
+// fields start at the arm's L; reference and scalar fields start at its payload.
+// No arm-specific scalar, text, table, or collection decoder lives here.
+readArmPayload = function(arm, sub, lpos, wireKind, T, table, inst, report, st) {
   local p = arm.payload;
   if (p == null) {
     if (sub.at != sub.end) { report.malformed = true; inst.Type = 0; }
     return true;
   }
-  local shape = p.shape;
-  if (shape == "int" || shape == "bool" || shape == "float" || shape == "flags") {
-    local width = kindWidth(wireKind);
-    if (width == 0 || sub.end - sub.at != width) {
-      report.malformed = true;
-      inst.Type = 0;
-      return true;
-    }
-    local x = readPrim(sub, wireKind, report);
-    if (x == null || sub.bad) { report.malformed = true; inst.Type = 0; return true; }
-    if (refuseNonFinite(p, x, st)) return true;
-    x = clampScalar(p, wireKind, x, report);
-    inst[p.member] = x;
-    if (p.optional) inst[p.member + "Present"] = true;
+  local width = kindWidth(wireKind);
+  if (width > 0 && sub.end - sub.at != width) {
+    report.malformed = true;
+    inst.Type = 0;
     return true;
   }
-  if (shape == "str") {
-    local L = sub.end - sub.at;
-    local dec = utf8Decode(sub.b, sub.at, L);
-    if (!dec.ok) { report.malformed = true; inst.Type = 0; return true; }
-    if (L > p.bound) {
-      report.clamped = report.clamped + 1;
-      local cut = p.bound;
-      while (cut > 0 && ((sub.b[sub.at + cut] & 0xc0) == 0x80)) cut--;
-      inst[p.member] = utf8Decode(sub.b, sub.at, cut).s;
-    } else {
-      inst[p.member] = dec.s;
-    }
-    sub.at = sub.end;
-    return true;
+  local framed = wireKind == 12 || wireKind == 13 || wireKind == 14 || wireKind == 16 || wireKind == 33;
+  local reader = framed ? newReader(sub.b, lpos, sub.end) : sub;
+  local selected = { selected = true };
+  local ok = readField(p, reader, T, table, inst, report, st, true, wireKind, selected);
+  // The existing nested-union framing rule is handled separately from this
+  // payload-sharing change. Every other scalar/reference must fill its L.
+  if (!framed && p.shape != "union" && reader.at != reader.end) {
+    report.malformed = true;
+    inst.Type = 0;
   }
-  if (shape == "wstr") {
-    // WIDE TEXT at an arm (docs/SPEC-TABLES.md §3): the arm's L is the BYTE
-    // length; an odd L or ill-formed content is that arm's own damage, the
-    // union reads None and the parent reads on past L.
-    local L = sub.end - sub.at;
-    local units = (L & 1) != 0 ? null : wideDecode(sub.b, sub.at, L);
-    if (units == null) { report.malformed = true; inst.Type = 0; return true; }
-    if (units.len() > p.bound) {
-      report.clamped = report.clamped + 1;
-      units = wideClamp(units, p.bound);
-    }
-    inst[p.member] = units;
-    if (p.optional) inst[p.member + "Present"] = true;
-    sub.at = sub.end;
-    return true;
-  }
-  if (shape == "ptr" || shape == "sblob" || shape == "bblob") {
-    local index = leb(sub);
-    if (sub.bad || sub.at != sub.end) { report.malformed = true; inst.Type = 0; return true; }
-    local target = shape == "ptr" ? tableDesc(T, p.table) : null;
-    st.pending.append({ holder = inst, key = p.member, index = index, fd = p,
-      target = target, field = arm.name });
-    return true;
-  }
-  if (shape == "enum") {
-    local ref = leb(sub);
-    if (sub.bad || sub.at != sub.end) { report.malformed = true; inst.Type = 0; return true; }
-    if (ref == 0) { inst[p.member] = null; return true; }
-    if (ref > table.len()) { report.malformed = true; inst.Type = 0; return true; }
-    local id = table[ref - 1];
-    local name = null, dep = false;
-    foreach (pair in p.variants) {
-      if (pair[1] == id) { name = pair[0]; dep = pair.len() > 2 && pair[2]; break; }
-    }
-    if (name == null) {
-      report.unknown = report.unknown + 1;
-      // AN UNKNOWN ENUM VARIANT REFERENCE IS AN EXCLUDED CLASS (§6.6): the field is the
-      // reader's, so a retained copy would write its id a second time
-      if (st.retain != null) report.retainLost = report.retainLost + 1;
-    }
-    // a DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT
-    // (docs/SPEC-TABLES.md §2.15)
-    inst[p.member] = dep ? p.def : name;
-    return true;
-  }
-  if (shape == "tab") {
-    local d = tableDesc(T, p.table);
-    local child = d.make();
-    inst[p.member] = child;
-    bodyRead(d, sub, T, table, child, report, st, true);
-    if (report.countRefusal) return false;
-    if (sub.at != sub.end) {
-      report.malformed = true;
-      inst.Type = 0;
-      inst[p.member] = d.make();
-    }
-    return true;
-  }
-  if (shape == "union") {
-    local u = unionDesc(T, p.table);
-    local child = u.make();
-    inst[p.member] = child;
-    // damage inside this arm's own L is the arm's framing damage: the outer
-    // union reads None and the parent reads on past L (docs/SPEC-TABLES.md §3)
-    if (!readUnionInto(sub, T, table, u, child, report, st)) inst.Type = 0;
-    return true;
-  }
-  if (shape == "bytes" || shape == "arr") {
-    if (readArrayBody(p, sub, T, table, inst, report, st) != ARRAY_SELECTED) inst.Type = 0;
-    return true;
-  }
-  return false;
+  if (!ok || !selected.selected) inst.Type = 0;
+  return ok;
 };
 
 // RESOLUTION (docs/SPEC-TABLES.md §3.1): 0 is null, 1 is the root, k + 1 is
@@ -1431,8 +1337,11 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   if (bytes.len() < 9) { report.malformed = true; return null; }
   local count = u64At(bytes, bytes.len() - 8);
   // the count is bounded by division, never by count * 8, which wraps for a
-  // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file)
-  if (count < 0 || count > (bytes.len() - 9) / 8) { report.malformed = true; return null; }
+  // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file),
+  // and THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK;
+  // ir.TableWireIdTableBound): a table above it is malformed on the
+  // whole-wire rule, whatever the buffer would hold
+  if (count < 0 || count > (bytes.len() - 9) / 8 || count > ID_TABLE_BOUND) { report.malformed = true; return null; }
   local end = bytes.len() - 8 - count * 8;
   local table = [];
   local seen = {};
@@ -1517,6 +1426,15 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     }
     local strict = ::getstackinfos(2);
     if (strict != null && ("_strictFrame" in strict.locals)) strict.locals.report.nonFiniteFloat <- st.nonFinite;
+    return null;
+  }
+  // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that met
+  // damage returns nothing; the report says malformed and the caller discards
+  if (report.malformed) {
+    // The strict witness distinguishes body damage from an unopened file,
+    // without requiring this tolerant API to hand it a partial record.
+    local frame = ::getstackinfos(2);
+    if (frame != null && ("_strictFrame" in frame.locals)) frame.locals.store.walkDamaged = true;
     return null;
   }
   if (report.getdelegate() == null) {

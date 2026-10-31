@@ -119,6 +119,20 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 			Malformed:    report.Malformed,
 			Refused:      tablewire.Refused(err),
 		}
+		if fc.Damaged {
+			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+			// engine owes the refusal and hands back nothing it read, so the
+			// value it leaves is the root at its declared defaults
+			if !got.Malformed || got.Refused {
+				t.Errorf("%s: the rule discards the load as damaged and the engine reads %s", fc.Name, got)
+			}
+			if fresh, _ := tablewire.Encode(model, model.New(def)); fresh != nil {
+				if left, _ := tablewire.Encode(model, inst); !bytes.Equal(left, fresh) {
+					t.Errorf("%s: the engine handed back a value from a damaged load", fc.Name)
+				}
+			}
+			continue
+		}
 		want := fc.Counts
 		if fc.Refused {
 			want = Counts{Refused: true}

@@ -550,7 +550,7 @@ function surfaceReason(kindName, lines, outDir) {
 // carries the unit's `TableVocabulary` and `AnnounceRead`; the table module
 // carries the root's `LoadMessages`, `MeasureMessages` and `SaveMessages`
 // verbs (docs/SPEC-TABLES.md §3.3). A row whose unit this backend cannot
-// generate, or whose root is a plain `table` the form refuses by name, is
+// generate, or whose root is a variable table, which has no message form, is
 // answered `<case>.absent` beside where the answer would go.
 const messageRows = [
   ["backenddemo", "LoginRequest", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
@@ -560,7 +560,6 @@ const messageRows = [
   ["vocabdemo", "Wide00", "vocab/VocabdemoTable.js", "vocab/VocabTable.js"],
   ["vocab9demo", "Wide19", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
-  ["graphdemo", "Scene", "pointers/GraphdemoTable.js", "pointers/GraphTable.js"],
 ];
 
 function messageRow(unit, root) {
@@ -572,13 +571,12 @@ function messageRow(unit, root) {
 
 // A LEG THAT CANNOT ANSWER ONE CASE SAYS SO BESIDE WHERE THE ANSWER WOULD GO,
 // `<case>.absent`, and the matrix counts it (test/conformance/README.md, "Exit
-// codes"). The JavaScript table backend emits the form-2 verbs for its FIXED
-// roots only, so a message row whose unit cannot be generated for this backend
-// (docs/SPEC-TABLES.md §11) or whose root is a plain `table` the form refuses
-// by name (§3.3) is such a case; the surface itself is answered, so the matrix
-// counts the rows rather than the feature.
+// codes"). The message form is fixed tables only (docs/SPEC-TABLES.md §3.3),
+// so a message row whose unit cannot be generated for this backend (§11) or
+// whose root is a variable table is such a case; the surface itself is
+// answered, so the matrix counts the rows rather than the feature.
 function messageAbsent(outDir, name, reason) {
-  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+  writeFileSync(join(outDir, name + ".absent"), reason);
 }
 
 async function surfaceMessage(lines, outDir) {
@@ -588,7 +586,7 @@ async function surfaceMessage(lines, outDir) {
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
     const row = messageRow(conn[2], f[3]);
-    if (row === null) { messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3"); continue; }
+    if (row === null) { messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); continue; }
     let runtime, unit;
     try {
       runtime = await load(row[2]);
@@ -601,7 +599,7 @@ async function surfaceMessage(lines, outDir) {
     const measureMessages = unit[f[3] + "MeasureMessages"];
     const saveMessages = unit[f[3] + "SaveMessages"];
     if (loadMessages === undefined || measureMessages === undefined || saveMessages === undefined) {
-      messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
+      messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
       continue;
     }
     // AnnounceRead the connection's announcement into one direction's
@@ -899,6 +897,30 @@ async function surfaceReport(lines, outDir) {
   }
 }
 
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+// `report` surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read was refused or damaged (damaged
+// input is discarded whole and owes the refusal alone, docs/SPEC-TABLES.md §4).
+// A derived line is `framing <case> <unit> <root> <wire> [no-value]`.
+async function surfaceFraming(lines, outDir) {
+  for (const f of kind(lines, "framing")) {
+    const codec = await textCodec(f[2], f[3]);
+    if (codec === null) { wireAbsent(outDir, f[1]); continue; }
+    const noValue = f.length > 5 && f[5] === "no-value";
+    const r = codec.report();
+    const v = codec.load(new Uint8Array(readFileSync(f[4])), r);
+    const malformed = r.malformed || (v === null && !r.refused);
+    const verdict = r.refused ? "refused" : "read";
+    let answer = [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n";
+    if (v !== null && !r.refused && !malformed && !noValue) {
+      const text = codec.toJson(v);
+      if (text === null) { fail(f[1] + ": ToJson refused the value"); }
+      answer += text;
+    }
+    writeFileSync(join(outDir, f[1]), answer);
+  }
+}
+
 async function surfaceJsonRead(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
@@ -1027,14 +1049,7 @@ async function surfaceRetain(lines, outDir, saves) {
   const capacityBytes = 1 << 20;
   const fullIds = 1 << 17;
   for (const f of lines) {
-    if (f[0] !== "retain" && f[0] !== "retain-message") { continue; }
-    if (f[0] === "retain-message") {
-      // A retain-message row's root is a plain `table` (RT1's Node), which
-      // carries no message verbs: a form-2 SaveRetain refuses by name (§3.3),
-      // so the row is absent here and the reason names the clause.
-      retainAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
-      continue;
-    }
+    if (f[0] !== "retain") { continue; }
     // retain <case> <unit> <root> <wire> <capacity> <ids>
     const codec = await retainCodec(f[2], f[3]);
     if (codec === null) {
@@ -1220,7 +1235,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1235,6 +1250,7 @@ const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
+  case "framing": await surfaceFraming(lines, outDir); break;
   case "retain": await surfaceRetain(lines, outDir, false); break;
   case "retain-save": await surfaceRetain(lines, outDir, true); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;

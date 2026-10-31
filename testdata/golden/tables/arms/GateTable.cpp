@@ -4342,7 +4342,14 @@ namespace armdemo {
 
 bool OnlyFromJsonTolerant( Only & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, OnlyTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, OnlyTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; OnlyTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool OnlyFromJson( Only & value, const char * text, int64_t bytes, TableReport * report )
@@ -4377,7 +4384,14 @@ bool GateFromJsonTolerant( GateBuilder & builder, const char * text, int64_t byt
 {
     Gate * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, GateTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, GateTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; GateTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool GateFromJson( GateBuilder & builder, const char * text, int64_t bytes, TableReport * report )

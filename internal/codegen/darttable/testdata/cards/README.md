@@ -8,7 +8,7 @@ declaration and `new.schema` the NEWER one. The pair differs only by a
 (docs/SPEC-TABLES.md §5) and default every field the newer wire does not carry.
 
 `new.schema` carries exactly the card constructs the Dart backend is asked to
-emit on form byte 1: a plain `table` root, tables as unbounded list elements
+emit on form byte 1: a variable table root, tables as unbounded list elements
 (`[]PathText`, §2.9), bool/int32 (with min/max)/enum fields, `string(N)`, and
 `*string` — the string kind of §2.5. The two files differ by the `body` to
 `done_when` rename and its `was = "body"` alias; neither names a field after a

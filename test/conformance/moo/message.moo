@@ -40,11 +40,22 @@ return function(ctx: any): { [string]: Surface }
 					error("driver: message " .. f[2] .. " names no connection " .. f[3], 0)
 				end
 				local unit = conn[3]
+				if f[6] == "-" then
+					-- a named refusal row: the root is a variable table (§3.3)
+					ctx.refuse(f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+					continue
+				end
 				if not carried(nil, unit) then
 					ctx.say(f[2], nil)
 					continue
 				end
 				ctx.tables(unit)
+				local St: any = ctx.module(unit, "schema_tables")
+				local root = St.lookup(f[4])
+				if not (root.table and root.fixed) then
+					ctx.refuse(f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+					continue
+				end
 				local MS: any = ctx.module(unit, "table_message")
 				local report: any = {}
 				local vocabulary = MS.NewVocabulary()

@@ -1501,7 +1501,7 @@ tables-elixir-message-batch:
 # THE MESSAGE SURFACE ON THE HARNESS (test/conformance/README.md, "The
 # surfaces"; docs/SPEC-TABLES.md §3.3): the driver answers every manifest
 # `message` row whose root is a fixed table, byte-equal to the C++ reference's
-# golden, and writes graph_tree.absent (its root Scene is a plain `table`, which
+# golden, and writes graph_tree.absent (its root Scene is a variable table, which
 # the form refuses by name). TestMessageFormConformanceElixir's harness clause
 # runs `./build/conformance-harness run --only elixir` over the built leg; the
 # target arms SCHEMA_REQUIRE_CORPUS=1 and reds on any `--- SKIP`.
@@ -1903,3 +1903,18 @@ tables-elixir-view: bin/schema test/elixir-view/view_main.exs
 	@echo "Elixir UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
 test-elixir: tables-elixir-view
+
+# THE FRAMING SURFACE, its Elixir leg (docs/LAYERS/1-framing.md): the Elixir
+# driver answers every framing row and passes it, none absent
+# (test/conformance/framing/gate). Its negative control takes the id table's
+# 4096-entry cap out of the emitter's open (§3, THE DISTINCTNESS CHECK; rule
+# F6), rebuilds the corpus, and requires framing RED while report stays green.
+ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|'
+.PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
+conformance-elixir-framing: build/conformance-harness build-conformance-elixir
+	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
+conformance-negative-control-elixir-framing: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries read as legal)
+	@grep -q "elixir / framing: frame_entries_4097:" build/elixir-conformance-negative-framing/log || \
+		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on frame_entries_4097"; exit 1; }
+test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing

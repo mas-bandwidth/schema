@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -569,18 +569,12 @@ defmodule Driver do
   # answers `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
   # saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
   # what this port's own records cost, and the second load gets one byte less
-  # (test/conformance/README.md). The id list's capacity is a count. A
-  # retain-message row's root is a plain `table`, which carries no message verbs
-  # (§3.3), so the driver answers ABSENT for it.
+  # (test/conformance/README.md). The id list's capacity is a count.
   defp run(surface, rows, outdir) when surface in ["retain", "retain-save"] do
     saves = surface == "retain-save"
 
     for row <- rows(rows, "retain"), not (saves and List.last(row) == "-") do
       retain_row(row, saves, outdir)
-    end
-
-    for [name | _] = row <- rows(rows, "retain-message"), not (saves and List.last(row) == "-") do
-      write_absent(outdir, name)
     end
   end
 
@@ -736,6 +730,47 @@ defmodule Driver do
     end
   end
 
+  # THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+  # `report` surface prints it, then the §16 text of the value the read left,
+  # unless the row says `no-value` or the read was refused. A derived line is
+  # `framing <case> <unit> <root> <wire> [no-value]`. A damaged read owes the
+  # refusal alone (§4, DAMAGE DISCARDS THE WHOLE LOAD), so its value is not
+  # written.
+  defp run("framing", rows, outdir) do
+    for [name, unit, root, wire | rest] <- rows(rows, "framing") do
+      case table_module(unit) do
+        nil ->
+          write_absent(outdir, name)
+
+        mod ->
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, report} ->
+              line = report_counters(report) <> ",read\n"
+
+              cond do
+                Map.get(report, :malformed, false) or rest == ["no-value"] ->
+                  write(outdir, name, line)
+
+                true ->
+                  case mod.to_json(root, value) do
+                    {:ok, text} -> write(outdir, name, line <> IO.iodata_to_binary(text))
+                    _ -> raise "#{name}: to_json refused the value"
+                  end
+              end
+
+            {:error, _refusal, %{reason: "unknown_form"}} ->
+              write(outdir, name, "0,0,0,0,0,false,refused\n")
+
+            {:error, _refusal, %{reason: "wire_damaged"}} ->
+              write(outdir, name, "0,0,0,0,0,true,read\n")
+
+            _ ->
+              write_absent(outdir, name)
+          end
+      end
+    end
+  end
+
   defp run("json-hostile", rows, outdir) do
     for [name, unit, root, tree | _] <- rows(rows, "json-hostile") do
       json = Path.join(tree, root <> ".json")
@@ -864,6 +899,9 @@ defmodule Driver do
 
     for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
       case message_answer(Map.get(connections, connection), root, batch) do
+        {:refused, why} ->
+          File.write!(Path.join(outdir, name <> ".absent"), why)
+
         {:ok, bytes} ->
           write(outdir, name, bytes)
 
@@ -890,6 +928,11 @@ defmodule Driver do
        do: mod,
        else: nil
   end
+
+  # a named refusal row: the root is a variable table, and the message form is
+  # fixed tables only (docs/SPEC-TABLES.md §3.3)
+  defp message_answer(_connection, _root, "-"),
+    do: {:refused, "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"}
 
   defp message_answer(nil, _root, _batch),
     do: {:absent, "the row names no connection the manifest defines"}

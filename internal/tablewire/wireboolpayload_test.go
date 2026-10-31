@@ -1,6 +1,7 @@
 package tablewire_test
 
 import (
+	"bytes"
 	"encoding/hex"
 	"os"
 	"testing"
@@ -31,20 +32,25 @@ func TestEngineWireBoolPayloadNot0Or1(t *testing.T) {
 	inst := m.New(m.Lookup("Patrol"))
 	wire, _ := hex.DecodeString("010101fe020a0000c03f0301010404e8030000006f0c6f030b798065400e20a08a498122bdcfaa557f0e7f245050a215c09abcb70400000000000000")
 	var report tabletext.Report
+	// a bool byte other than 0 or 1 is damage, and DAMAGE DISCARDS THE WHOLE
+	// LOAD (docs/SPEC-TABLES.md §4): the read refuses and hands back the root
+	// at its declared defaults
 	ok, derr := tablewire.Decode(m, inst, wire, &report)
-	if !ok || derr != nil {
+	if ok || derr != nil {
 		t.Fatalf("decode: ok=%v err=%v", ok, derr)
 	}
 	if !report.Malformed {
 		t.Fatal("decode did not report malformed")
 	}
-	for i := range inst.Fields {
-		if inst.Fields[i].Def.Name == "active" {
-			if !inst.Fields[i].Cell.B {
-				t.Fatal("active did not read true")
-			}
-			return
-		}
+	got, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("no active field")
+	want, err := tablewire.Encode(m, m.New(m.Lookup("Patrol")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("a damaged load handed back a value: %x", got)
+	}
 }
