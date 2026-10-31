@@ -114,3 +114,48 @@ test-lobster: tables-lobster-block-lead tables-lobster-block-lead-negative-contr
 test-lobster: tables-lobster-names tables-lobster-names-negative-control
 test-lobster: tables-lobster-json-differential tables-lobster-json-differential-negative-control
 test-lobster: tables-lobster-runtime-home tables-lobster-runtime-home-negative-control
+
+# I12: docs/USAGE.md's Lobster fragment, run verbatim over the tables/pointers
+# unit and a Scene cook cookgen writes (the cook the Lua and JavaScript usage
+# gates read): the fragment's own import first, then the two names it uses
+# (`bytes`, the cook; `use`, which counts), then the rest of the fragment, and
+# a count of zero walked nodes is a refusal.
+USAGE_LOBSTER_DOC ?= docs/USAGE.md
+USAGE_LOBSTER_DIR ?= build/lobster-usage
+.PHONY: tables-lobster-usage tables-lobster-usage-negative-control
+tables-lobster-usage: lobster-dist-present bin/schema $(USAGE_LOBSTER_DOC)
+	@rm -rf $(USAGE_LOBSTER_DIR) && mkdir -p $(USAGE_LOBSTER_DIR)
+	./bin/schema generate --lang lobster --out $(USAGE_LOBSTER_DIR) tables/pointers
+	go run ./test/cookgen --bytes 4096 --root Scene --ref head --chain ListNode --next next --out $(USAGE_LOBSTER_DIR)/Scene.cook
+	./bin/schema cook-check --root Scene $(USAGE_LOBSTER_DIR)/Scene.cook tables/pointers
+	sed -n '/<!-- lobster-table-usage -->/,/<!-- \/lobster-table-usage -->/p' $(USAGE_LOBSTER_DOC) \
+		| sed '1,2d' | sed '$$d' | sed '$$d' > $(USAGE_LOBSTER_DIR)/fragment.lobster
+	@grep -q 'SceneReadCook' $(USAGE_LOBSTER_DIR)/fragment.lobster || \
+		{ echo "MISSING: $(USAGE_LOBSTER_DOC) carries no lobster-table-usage example"; exit 1; }
+	grep '^import ' $(USAGE_LOBSTER_DIR)/fragment.lobster > $(USAGE_LOBSTER_DIR)/usage.lobster
+	printf 'let bytes = read_file("Scene.cook")\nassert bytes\nvar used = 0\ndef use(_x:int):\n    used++\n' >> $(USAGE_LOBSTER_DIR)/usage.lobster
+	grep -v '^import ' $(USAGE_LOBSTER_DIR)/fragment.lobster >> $(USAGE_LOBSTER_DIR)/usage.lobster
+	printf 'assert used > 0\nprint("usage: docs/USAGE.md Lobster cook example opened the Scene cook and walked {used} node(s)")\n' >> $(USAGE_LOBSTER_DIR)/usage.lobster
+	cd $(USAGE_LOBSTER_DIR) && $(LOBSTER) usage.lobster > run.log 2>&1; status=$$?; cat run.log; \
+		[ $$status -eq 0 ] && grep -q '^usage: docs/USAGE.md Lobster cook example' run.log && \
+		! grep -q ': warning: ' run.log
+
+# THE REVERSED WITNESSES: two edited copies of the page, each checked to have
+# changed, must each turn the gate red. The first renames the cook read the
+# page calls (the surface moved: the program does not compile); the second
+# walks a field the Scene does not declare (slot_named refuses it by name).
+tables-lobster-usage-negative-control:
+	@rm -rf build/lobster-usage-negative && mkdir -p build/lobster-usage-negative
+	sed 's/SceneReadCook(/SceneReedCook(/' docs/USAGE.md > build/lobster-usage-negative/renamed.md
+	sed 's/slot_named(scene, "head")/slot_named(scene, "tail")/' docs/USAGE.md > build/lobster-usage-negative/walks-nothing.md
+	@for c in renamed walks-nothing; do \
+		if cmp -s docs/USAGE.md build/lobster-usage-negative/$$c.md; then \
+			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \
+		if $(MAKE) tables-lobster-usage USAGE_LOBSTER_DOC=build/lobster-usage-negative/$$c.md USAGE_LOBSTER_DIR=build/lobster-usage-negative/$$c > build/lobster-usage-negative/$$c.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Lobster usage gate"; exit 1; fi; \
+		echo "tables-lobster-usage negative control: the $$c copy fails the gate"; \
+	done
+	@grep -q 'no field: Scene.tail' build/lobster-usage-negative/walks-nothing.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the walks-nothing copy failed, but not on slot_named's refusal"; cat build/lobster-usage-negative/walks-nothing.log; exit 1; }
+
+test-lobster: tables-lobster-usage tables-lobster-usage-negative-control
