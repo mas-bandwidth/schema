@@ -239,7 +239,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -942,8 +942,8 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -6839,7 +6839,7 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -6957,8 +6957,8 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -7333,6 +7333,8 @@ inline const Patrol * PatrolLoadTolerant( uint8_t * region, int64_t region_bytes
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -7448,7 +7450,9 @@ inline const Patrol * PatrolLoadTolerant( uint8_t * region, int64_t region_bytes
     PatrolLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -7490,6 +7494,8 @@ inline bool PatrolLoadBuilderTolerant( PatrolBuilder & builder, const uint8_t * 
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -7574,6 +7580,10 @@ inline bool PatrolLoadBuilderTolerant( PatrolBuilder & builder, const uint8_t * 
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     table_release( allocator, directory );
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
+    // holds nothing to use, and false says so
+    if ( out->malformed ) { return false; }
+    out->malformed = malformed_before;
     return ok;
 }
 
@@ -7767,7 +7777,7 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7885,8 +7895,8 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -7945,6 +7955,8 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -8069,7 +8081,9 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
     PatrolLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 

@@ -2081,6 +2081,9 @@ defmodule Benchtable.Table do
     # it: nothing lands, and the reason names the first such field.
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
+
+    :wire_damaged ->
+      {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
 
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
@@ -2117,7 +2120,9 @@ defmodule Benchtable.Table do
     size = byte_size(data)
     count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
 
-    if count > div(size - 9, 8) do
+    # §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+    # whatever the buffer would hold
+    if count > 4096 or count > div(size - 9, 8) do
       {:error, :malformed}
     else
       start = size - 8 - count * 8
@@ -2224,7 +2229,9 @@ defmodule Benchtable.Table do
                         if kind == 12 do
                           case node_table(payload, ids, string_blob) do
                             {:ok, ns} ->
-                              entries(rest3, ids, string_blob, transport, acc, nodes ++ ns)
+                              # a node table riding twice: the LAST is the
+                              # numbering (§3 last-wins; framing N7)
+                              entries(rest3, ids, string_blob, transport, acc, ns)
 
                             :error ->
                               {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
@@ -2410,13 +2417,16 @@ defmodule Benchtable.Table do
   defp decode_node_table(nodes, name, body, ids, idx) do
     desc = Map.fetch!(@tables, name)
 
+    # DAMAGE DISCARDS THE WHOLE LOAD (§4): a pointee record whose body cannot
+    # be framed, or that is damaged inside, refuses the load
     case entries(body, ids, desc.string_blob, :nested) do
       {:ok, fields, []} ->
-        {value, _report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
+        {value, report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
+        if report.malformed, do: throw(:wire_damaged)
         {:value, value}
 
       _ ->
-        :null
+        throw(:wire_damaged)
     end
   end
 
@@ -2437,6 +2447,7 @@ defmodule Benchtable.Table do
           cond do
             kind == f.kind ->
               case read_payload(f, payload, nodes, ids, report) do
+                {:cont, :inert, report} -> {:cont, {inert_field(f, value), report}}
                 {:cont, v, report} -> {:cont, {Map.put(value, f.name, v), report}}
                 {:halt, v, report} -> {:halt, {Map.put(value, f.name, v), report}}
               end
@@ -2453,6 +2464,20 @@ defmodule Benchtable.Table do
       end
     end)
   end
+
+  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
+  # array, map or keyed body too short to carry its own header, fewer than two
+  # bytes, decodes nothing, counts nothing, and the field keeps the value it
+  # has. The field rode, so an optional one is present: empty, when no earlier
+  # occurrence set it.
+  defp inert_field(f, value) do
+    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
+      do: Map.put(value, f.name, inert_empty(f)),
+      else: value
+  end
+
+  defp inert_empty(%{t: :list}), do: []
+  defp inert_empty(_f), do: %{}
 
   defp find_field(desc, id) do
     Enum.find(desc.fields, fn f -> f.id == id end)
@@ -2622,18 +2647,20 @@ defmodule Benchtable.Table do
     # SPEC-TABLES §2.8, §3: kind 14 contains framed entry tables. A map's
     # public keys use their JSON spelling; its wire keys remain typed.
     case read_payload(%{f | t: :list}, payload, nodes, ids, report) do
+      {:cont, :inert, report} ->
+        {:cont, :inert, report}
+
       {:cont, entries, report} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
+        keys = Enum.map(entries, &Map.get(&1, "key", kf.default))
 
-        values =
-          Map.new(entries, fn entry ->
-            key = Map.get(entry, "key", kf.default)
-
-            {if(is_binary(key), do: key, else: Integer.to_string(key)),
-             Map.get(entry, "value", vf.default)}
-          end)
-
-        {:cont, values, report}
+        if descending?(keys) do
+          # DESCENDING keys are not a map any conforming writer produced: damage,
+          # and the whole load is discarded (§2.8, §4)
+          {:cont, %{}, %{report | malformed: true}}
+        else
+          map_values(entries, kf, vf, report)
+        end
 
       other ->
         other
@@ -2647,13 +2674,26 @@ defmodule Benchtable.Table do
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2): the element kind, the
   # pair count, then (key reference, L, element) pairs. A key this reader cannot
   # name counts unknown and its element is skipped by its L.
+  # A body of fewer than two bytes is inert (§4); a foreign element kind is
+  # a kind mismatch, judged before the count; a count that does not complete
+  # inside the body is damage (§3, THE HEADER AGAINST THE PARENT: completed in
+  # the parent, it is a count the body cannot cover).
   defp read_payload(%{t: :keyed} = f, payload, nodes, ids, report) do
-    with {_len, <<ek, rest::binary>>} <- leb(payload),
-         true <- ek == f.elem_kind,
-         {n, pairs} <- leb(rest) do
-      read_keyed_pairs(f, pairs, n, nodes, ids, %{}, report)
-    else
-      _ -> {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    case leb(payload) do
+      {_len, body} when byte_size(body) < 2 ->
+        {:cont, :inert, report}
+
+      {_len, <<ek, _::binary>>} when ek != f.elem_kind ->
+        {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+      {_len, <<_ek, rest::binary>>} ->
+        case leb(rest) do
+          {n, pairs} -> read_keyed_pairs(f, pairs, n, nodes, ids, %{}, report)
+          :error -> {:cont, %{}, %{report | malformed: true}}
+        end
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}}
     end
   end
 
@@ -2681,6 +2721,10 @@ defmodule Benchtable.Table do
 
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
+      {_len, arr} when byte_size(arr) < 2 ->
+        # a body too short to carry its header is inert (§4, H2)
+        {:cont, :inert, report}
+
       {_len, arr} ->
         case arr do
           <<elem_kind, count_rest::binary>> ->
@@ -2718,6 +2762,23 @@ defmodule Benchtable.Table do
       :error ->
         {:cont, [], %{report | malformed: true}}
     end
+  end
+
+  # a map's wire keys ascend; a key below the one before it is DESCENDING
+  # (§2.8), and an equal key is a duplicate, last wins
+  defp descending?([a, b | rest]), do: b < a or descending?([b | rest])
+  defp descending?(_keys), do: false
+
+  defp map_values(entries, kf, vf, report) do
+    values =
+      Map.new(entries, fn entry ->
+        key = Map.get(entry, "key", kf.default)
+
+        {if(is_binary(key), do: key, else: Integer.to_string(key)),
+         Map.get(entry, "value", vf.default)}
+      end)
+
+    {:cont, values, report}
   end
 
   # read_arm reads one arm header (docs/SPEC-TABLES.md §2.6, §3): the zero
@@ -2780,6 +2841,7 @@ defmodule Benchtable.Table do
     payload = if a.arm_kind in [12, 13, 14, 16, 33], do: framed, else: inner
 
     case read_payload(a, payload, nodes, ids, report) do
+      {:cont, :inert, report} -> {:cont, {name, inert_empty(a)}, report}
       {:cont, v, report} -> {:cont, {name, v}, report}
       {:halt, v, report} -> {:halt, {name, v}, report}
     end
@@ -5809,6 +5871,8 @@ defmodule Benchtable.Table do
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
        %{retain | records: [], used: 0, ids: []}}
+    :wire_damaged ->
+      {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
   end
 
   def measure_retain(table, value, retain) when is_map(value) do

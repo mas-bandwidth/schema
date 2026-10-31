@@ -354,6 +354,12 @@ func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
 		for _, p := range probes {
 			want := goRetain(t, g.unit, "Node", wire, p[0], p[1])
 			got := mooRetain(t, g, "Node", wire, p[0], p[1])
+			if got.malformed || want.malformed {
+				if !got.malformed || !want.malformed || got.value || len(got.save) != 0 {
+					t.Errorf("%s: damage must refuse the whole retaining load: moo %+v, Go %+v", name, got, want)
+				}
+				continue // §4: counters and retained state after damage are undefined.
+			}
 			if got.used != want.used || got.counters() != want.counters() || got.value != want.value ||
 				got.saveLost != want.saveLost || string(got.save) != string(want.save) || (got.saveErr == "") != (want.saveErr == "") {
 				t.Errorf("%s at capacity %d: moo and the Go engine disagree:\nmoo: used %d %s value %v lost %d %s %x\ngo:  used %d %s value %v lost %d %s %x",
@@ -375,14 +381,9 @@ func sortStrings(s []string) {
 	}
 }
 
-// TestMooRetainDamagedParentKeepsItsChildren pins the vector the divergence
-// was found on: a nested body whose framing is damaged falls back on its
-// declared defaults and STAYS THE BODY IT WAS, with the child tables it holds,
-// so the records retained under those children are still placed at the save
-// (internal/tabletext Refill; docs/SPEC-TABLES.md §6.6, damage is not a later
-// occurrence). The wire and its expectations are fixed here, and the Go engine
-// must give the same answer.
-func TestMooRetainDamagedParentKeepsItsChildren(t *testing.T) {
+// TestMooRetainDamagedParentDiscardsTheWholeLoad preserves the original
+// damaged-parent vector, but holds the §4 refusal rather than its old partial save.
+func TestMooRetainDamagedParentDiscardsTheWholeLoad(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Occ.schema": occurrenceUnit})
@@ -390,20 +391,13 @@ func TestMooRetainDamagedParentKeepsItsChildren(t *testing.T) {
 	b.outer(true, false)
 	b.end()
 	wire := b.finish()
-	const (
-		wantWire     = "01010d34020d0d03040100000004040700000000050e1e0d020d030400000000040428000000000d0304010000000404290000000000aabb00d41b5e8f67ede6308792885f8f064c2dea0ce83094fde47c5630b3ead46180d8319a88eb0d2569030500000000000000"
-		wantCounters = "3,0,3"
-		wantSave     = "01010d20020d0703040700000000040e120d020703042800000000070304290000000000050e080d0301000100010000d41b5e8f67ede6308792885f8f064c2d5630b3ead46180d8319a88eb0d25690331b8db43729f53fb0500000000000000"
-	)
+	const wantWire = "01010d34020d0d03040100000004040700000000050e1e0d020d030400000000040428000000000d0304010000000404290000000000aabb00d41b5e8f67ede6308792885f8f064c2dea0ce83094fde47c5630b3ead46180d8319a88eb0d2569030500000000000000"
 	if got := hex.EncodeToString(wire); got != wantWire {
 		t.Fatalf("the vector moved: %s", got)
 	}
 	got := mooRetain(t, g, "Node", wire, retainFull, -1)
 	want := goRetain(t, g.unit, "Node", wire, retainFull, -1)
-	if got.counters() != wantCounters || got.saveLost != 0 || hex.EncodeToString(got.save) != wantSave {
-		t.Errorf("moo: load %s, save lost %d, saved %x", got.counters(), got.saveLost, got.save)
-	}
-	if want.counters() != wantCounters || want.saveLost != 0 || hex.EncodeToString(want.save) != wantSave {
-		t.Errorf("the Go engine: load %s, save lost %d, saved %x", want.counters(), want.saveLost, want.save)
+	if !got.malformed || !want.malformed || got.value || want.value || len(got.save) != 0 || len(want.save) != 0 {
+		t.Fatalf("damage returned a usable retaining load: moo %+v, Go %+v", got, want)
 	}
 }
