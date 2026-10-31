@@ -604,7 +604,7 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine. The wire fuzzer's I15 control (tables-js-wire-fuzz-negative-control: the generated reader's enum reference range check removed in a copy of the generated tree, the enumerated pass alone) adds 2 s on the author's machine; it reds at mutant 2378.",
       "targets": [
         "cards-js-conformance-hash-negative-control",
         "cards-js-conformance-negative-control",
@@ -629,8 +629,10 @@
         "tables-js-fixed-slack-negative-control",
         "tables-js-union-arm-text-negative-control",
         "tables-js-versioning-negative-control",
+        "tables-js-wire-fuzz-negative-control",
         "tables-js-clean-negative-control",
-        "tables-js-text-differential-negative-control"
+        "tables-js-text-differential-negative-control",
+        "tables-js-finite-float-negative-control"
       ],
       "node": "26"
     },
