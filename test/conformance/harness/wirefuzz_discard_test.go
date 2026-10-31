@@ -38,6 +38,15 @@ func TestWireVerdictComparesOnlyTheRefusalOnDamage(t *testing.T) {
 		t.Fatalf("a leg that hands back no root on damage is red: %s", v)
 	}
 
+	// a builder leg that completes a damaged load still owes only the refusal
+	builder := &wireRoot{builder: true}
+	if v := wireVerdict(builder, legReply{loaded: true, report: Counts{Malformed: true}}, oracleAnswer{report: Counts{Malformed: true}, builderStopped: true, encFail: true}, 300); v != "" {
+		t.Fatalf("a builder leg that refuses the damaged load is red: %s", v)
+	}
+	if v := wireVerdict(builder, legReply{loaded: true}, oracleAnswer{builderStopped: true, encFail: true}, 300); v == "" {
+		t.Fatal("a builder's completion is no longer compared on a clean mutant")
+	}
+
 	refused := oracleAnswer{report: Counts{Refused: true}, encoded: []byte{1, 0}}
 	if v := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saved: []byte{1, 2, 3}}, refused, 10); v != "" {
 		t.Fatalf("a leg that refuses the form is held to saved defaults: %s", v)
