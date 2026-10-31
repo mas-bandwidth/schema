@@ -116,11 +116,21 @@ func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 // the file, a count whose `8 × count + 8` runs past the front, a count that
 // leaves no room for the form byte, or ONE ID IN TWO ENTRIES.
 func trailer(data []byte) (body []byte, ids []uint64, ok bool) {
+	return trailerBounded(data, ir.TableWireIdTableBound)
+}
+
+// trailerBounded is trailer under an explicit entry-count bound, so a test can
+// show that the bound is what refuses a table of bound + 1 entries and nothing
+// else is (docs/LAYERS/1-framing.md F6).
+func trailerBounded(data []byte, bound uint64) (body []byte, ids []uint64, ok bool) {
 	if len(data) < 9 {
 		return nil, nil, false
 	}
 	count := binary.LittleEndian.Uint64(data[len(data)-8:])
-	if count > uint64(len(data))/8 {
+	if count > uint64(len(data))/8 || count > bound {
+		// THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK): a
+		// table above it is malformed on the whole-wire rule, whatever the
+		// buffer would hold
 		return nil, nil, false
 	}
 	span := int(count)*8 + 8
