@@ -383,7 +383,7 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
 # ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
-# cards-conformance-go and every cards-<lang>-conformance target across all eleven
+# cards-conformance-go and every cards-<lang>-conformance target across all twelve
 # carded languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
 # parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
 # the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /

@@ -1618,12 +1618,12 @@ in `test/conformance/harness/cards.go`, with `SCHEMA_CARDS_SURFACES` and
 `edit` 8/8, `taskhash` 3/3, `view` 1/1), comparing every byte and refusal
 verdict against the Go reference answers (`tla/CardVersioning.tla`,
 `tla/CardHops.tla`). `make cards-conformance-all` runs the Go leg and all
-ten non-Go legs with all nine surfaces required.
+eleven non-Go legs with all nine surfaces required.
 
 **Reference.** `test/conformance/harness/cards.go`, `tables/cards/cmd/cards-driver/main.go`,
 and `make cards-conformance-all` in `make/go.mk`.
 
-**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Lua, Lobster.
+**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Lua, Luau, Lobster.
 
 **Measured effect.** Structural: every leg's card codec, facade bounds, brief
 parser/renderer, `v1` to `v2` upgrader, field editors, task hash, and
@@ -1634,7 +1634,9 @@ descriptor view agree byte for byte on the 43-case corpus.
 `cards-cs-conformance-negative-control`, `cards-rust-conformance-negative-control`,
 `cards-java-conformance-negative-control`, `cards-js-conformance-negative-control`,
 `cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`,
-`cards-lua-conformance-negative-control`, `cards-lobster-conformance-negative-control`.
+`cards-lua-conformance-negative-control`, `cards-luau-conformance-negative-control`,
+`cards-luau-conformance-upgrade-negative-control`, `cards-luau-conformance-hash-negative-control`,
+`cards-lobster-conformance-negative-control`.
 
 **Targets:** none
 
