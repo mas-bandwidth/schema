@@ -149,6 +149,7 @@ var wantExamplesDescriptorLines = []string{
 	`          ordinal: 0,`,
 	`          t: :float,`,
 	`          width: 4,`,
+	`          non_finite: "WeaponConfig.damage",`,
 	`          cook_off: 0,`,
 	`          count_off: -1,`,
 	`          present_off: -1,`,

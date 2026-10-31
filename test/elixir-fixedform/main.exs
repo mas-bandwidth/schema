@@ -628,12 +628,18 @@ raises.("a counted array past its declared bound raises", fn ->
   Tblfx1.FX1Fixed.fx_root_fixed_save([%Tblfx1.FxRoot{marks: [1, 2, 3, 4, 5]}])
 end)
 
-# A `{:nonfinite, bits}` CARRYING A FINITE PATTERN is a caller who tagged an
-# ordinary number, and the packet codec has always refused it. The fixed form's
-# runtime had dropped that half of the contract.
-raises.("a {:nonfinite, _} carrying a FINITE float32 pattern raises", fn ->
+# A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; 2026-10-27, "tables go
+# finite-only too, same rule as packets"): a float64 past float32's range would
+# narrow to an infinity, and the writer refuses it as non_finite_float, the
+# packet codec's own reason. The `{:nonfinite, bits}` spelling is gone, so it
+# is a caller's bug like any other term that is not a float.
+raises.("a float32 past its range raises non_finite_float rather than writing an infinity", fn ->
+  Tblfu1.FU1Fixed.fu_root_fixed_save([%Tblfu1.FuRoot{tail: 3, mark: 0, heat: 1.0e300}])
+end)
+
+raises.("a {:nonfinite, _} tuple is not a float and raises", fn ->
   Tblfu1.FU1Fixed.fu_root_fixed_save([
-    %Tblfu1.FuRoot{tail: 3, mark: 0, heat: {:nonfinite, 0x3F800000}}
+    %Tblfu1.FuRoot{tail: 3, mark: 0, heat: {:nonfinite, 0x7FC00000}}
   ])
 end)
 
@@ -670,10 +676,13 @@ compiled_is_identity = fn name, layout, dst, plan, prefill, decode, values ->
   # one. A `<=` here would admit a compiled plan counting slack, which is what
   # that wrapping exists to make impossible.
   #
-  # A HOSTILE BODY RIDES BESIDE THE REAL ONES: every byte 0xFF, so every
-  # declared bound is crossed at once. A corpus whose values are all in range
-  # would let both sides count nothing and call it agreement.
-  hostile = :binary.copy(<<0xFF>>, byte_size(prefill))
+  # A HOSTILE BODY RIDES BESIDE THE REAL ONES: every byte 0x7F, so the
+  # declared bounds are crossed at once. A corpus whose values are all in range
+  # would let both sides count nothing and call it agreement. It is 0x7F and
+  # not 0xFF because a float is finite (docs/SPEC-TABLES.md §3.3): an all-ones
+  # exponent is a NaN, which refuses the read as non_finite_float before any
+  # counter moves, and 0x7F7F... is the largest finite exponent short of it.
+  hostile = :binary.copy(<<0x7F>>, byte_size(prefill))
   counted = both ++ [run_both.(hostile)]
 
   Leg.check(
@@ -948,9 +957,9 @@ fu =
       pick: {:labelled, %Tblfu1.Labelled{lead: 5, label: "hello", trail: 9}},
       tail: 3,
       mark: -12_345,
-      # A SIGNALLING NaN: exponent all ones, payload 1, and the QUIET BIT CLEAR.
-      # No BEAM float term holds it, which is why it travels as {:nonfinite, _}.
-      heat: {:nonfinite, 0x7F800001}
+      # A NEGATIVE ZERO: a float is finite (§3.3), and -0 is the one finite
+      # value whose sign a value comparison cannot see, so it rides by its bits.
+      heat: -0.0
     },
     %Tblfu1.FuRoot{
       pick: {:plain, %Tblfu1.Plain{n: 7}},
@@ -964,7 +973,7 @@ fu =
 # MIXED an identity half with a compiled half, and a skip over the whole of it
 # would take down assertions §5 does not touch — FU1 reading its OWN file through
 # its OWN identity plan, where the `string(8)` under the second arm, the int16 it
-# sits beside and a SIGNALLING NaN nothing else on this leg asserts all land.
+# sits beside and a NEGATIVE ZERO all land.
 # THE IDENTITY HALF RUNS, HERE. The compiled half is retired below it, by name.
 {:ok, [i_arm2, i_arm1], fu_ident} = Tblfu1.FU1Fixed.fu_root_fixed_load(fu)
 
@@ -984,15 +993,14 @@ Leg.eq("arm 1, identity", {i_arm1.pick, i_arm1.tail}, {{:plain, %Tblfu1.Plain{n:
 Leg.eq("text under an arm moves no counter, identity", fu_ident.clamped, 0)
 Leg.eq("nothing was damaged on the identity read", fu_ident.malformed, false)
 
-# THE TWO RUNGS' IDENTITY SIDE: an int16 that stays an int16, and a SIGNALLING
-# NaN whose pattern is untouched — no BEAM float term holds it, which is why it
-# travels as {:nonfinite, _}, and this is the only place that is asserted.
+# THE TWO RUNGS' IDENTITY SIDE: an int16 that stays an int16, and a negative
+# zero whose sign bit is untouched.
 Leg.eq("the signed rung, identity: int16 stays int16", i_arm2.mark, -12_345)
 
 Leg.eq(
-  "the float rung, identity: the sNaN pattern is untouched",
-  i_arm2.heat,
-  {:nonfinite, 0x7F800001}
+  "the float rung, identity: -0 keeps its sign bit",
+  <<i_arm2.heat::float>>,
+  <<-0.0::float>>
 )
 
 Leg.eq("the identity read widens nothing", fu_ident.widened, 0)
@@ -1034,25 +1042,9 @@ union_arm_text_compiled = fn fu ->
   # TWO RUNGS, TWO RECORDS: the signed one and the float one below, each counted.
   Leg.eq("a rung is COUNTED, once per rung per record", fu_comp.widened, 4)
 
-  # AND THE FLOAT RUNG, f32 into f64 — where the reference is a `(double) f` and
-  # every hardware convert QUIETS A SIGNALLING NaN: the payload is carried into
-  # the wide mantissa and the quiet bit is SET. Preserving the signalling state
-  # would put a pattern on this side of the rung the reference cannot produce.
-  Leg.eq(
-    "the float rung, compiled: f32 -> f64 QUIETS an sNaN, as `(double) f` does",
-    c_arm2.heat,
-    {:nonfinite, 0x7FF8000020000000}
-  )
-
-  # THE CONTROL: carrying the signalling state instead would land this, which is
-  # the pattern the reference cannot produce and the one this rung used to make.
-  Leg.check(
-    "the float rung: and it is NOT the signalling pattern",
-    c_arm2.heat != {:nonfinite, 0x7FF0000020000000}
-  )
-
-  # A FINITE FLOAT IS NOT A NaN and keeps its zero payload: an infinity quieted
-  # would be a NaN nobody wrote, and an ordinary number just widens.
+  # AND THE FLOAT RUNG, f32 into f64: every finite f32 widens exactly through
+  # the ordinary conversion (§3.3), a negative zero keeping its sign.
+  Leg.eq("the float rung, compiled: -0 widens to -0", <<c_arm2.heat::float>>, <<-0.0::float>>)
   Leg.eq("the float rung: a finite value widens exactly", c_arm1.heat, 1.5)
 end
 
