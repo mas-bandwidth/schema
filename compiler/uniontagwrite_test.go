@@ -69,11 +69,14 @@ var tagGoneFromRelease = map[string][]string{
 
 // tagRefusesEveryBuild is the write's UNCONDITIONAL tag refusal, for the
 // targets that still hold it that way. Go and Elixir are here by the ruling —
-// a language with no dormant-assert idiom keeps the form native to it. They
-// are the only two left.
+// a language with no dormant-assert idiom keeps the form native to it, and
+// Goose, whose `assert` aborts in every build, returns the refusal kind.
 var tagRefusesEveryBuild = map[string][]string{
 	"elixir": {`raise ArgumentError, "value.shot is not a Shot value: #{inspect(value_shot_other)}"`},
 	"go":     {"if value.Type > ShotTypeMax {"},
+	// Goose has no build-removable assert: the writer returns the refusal
+	// kind before the tag rides (internal/codegen/goose/wire.go)
+	"goose": {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the
@@ -85,6 +88,10 @@ func TestUnionTagOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom(t *testing.T) {
 		text := generatedText(t, unionTagUnit, target)
 
 		switch {
+		case writerStillOwed(t, target, text):
+			// no writer yet: the claim is owed (countedbirth_test.go,
+			// packetWriterOwed)
+
 		case target == "js":
 			// the fork, not a statement: the contract lives in the checked
 			// flat writer and the production writer is free of it

@@ -349,6 +349,14 @@ jobs:
         if: matrix.group == 'unit-rest'
         run: go vet ./...
 
+      # THE Goose PIN for the test steps below: internal/codegen/goose and
+      # internal/codegen/goosetable run generated Goose under the pinned compiler
+      # and fail, never skip, without it. make/goose.mk's dist-goose installs it
+      # at the sha256 it names, into the dist/ path the leg's default names.
+      - name: install the Goose pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
+        run: make dist-goose
+
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
       # SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT ON THIS LANE. internal/slowtest
@@ -549,6 +557,17 @@ jobs:
           make tables-elixir-versioning \
             ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
 
+      # THE GOOSE LEG's fixed form against the same corpus (docs/PORT-GOOSE.md).
+      # `make test-goose` runs both Goose packages under the pinned compiler and
+      # sets SCHEMA_REQUIRE_CORPUS=1, so the byte-oracle suite
+      # (TestGooseFixedFormAgreesWithTheByteOracle) and its negative control fail
+      # rather than skip without the corpus the steps above built. The unit
+      # groups' `go test` runs the same packages without the corpus, where
+      # those two skip. Goose's versioning rows are owed (schema#2236).
+      - name: the Goose leg reads the reference's fixed-form bytes
+        if: matrix.group == 'versioning'
+        run: make dist-goose test-goose
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line
@@ -744,6 +763,11 @@ jobs:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # update-goldens ends in `go test ./...`, which runs the Goose packages
+      # under the pinned compiler (make/goose.mk's dist-goose)
+      - name: install the Goose pin
+        run: make dist-goose
 
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens

@@ -833,6 +833,35 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "goose",
+      "when": "pull-request",
+      "why": "the Goose leg's fixed-form control (docs/PORT-GOOSE.md): the target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
+      "targets": [
+        "tables-goose-fixedform-negative-control"
+      ]
+    },
+    {
+      "name": "goose-gates",
+      "when": "pull-request",
+      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the strict gate's plant and its emitter sabotage, and the runtime home's file-order control. Each installs the pinned Goose compiler itself (make dist-goose) where it needs it; two rebuild the compiler under a go build -overlay. Go and nothing else. Measured at 3.2 s of control time together on the author's machine off a warm build (2026-10-28); its own group so the fixed-form control's corpus build in group goose stays apart from it.",
+      "targets": [
+        "tables-goose-runtime-home-negative-control",
+        "tables-goose-strict-emitter-negative-control",
+        "tables-goose-strict-negative-control"
+      ]
+    },
+    {
+      "name": "goose-packet",
+      "when": "pull-request",
+      "why": "the Goose packet wire's controls (make/goose-packet.mk): UTF-8 and wide pairing against the C++ readers' bit-flip verdicts, the constructor-bytes defaults control and the finite-float control per direction. Each builds the compiler through one overlay and runs the pinned Goose compiler (make dist-goose); about 6 s of control time on the studio. Its own group so the fixed-form group stays as it was.",
+      "targets": [
+        "packet-defaults-goose-negative-control",
+        "packet-finite-goose-negative-control",
+        "packet-utf8-goose-negative-control",
+        "packet-wide-goose-negative-control"
+      ]
+    },
+    {
       "name": "nightly",
       "when": "nightly",
       "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
