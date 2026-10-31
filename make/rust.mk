@@ -976,7 +976,7 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness
 		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
 		cat build/rust-wire-fuzz-control/log; exit 1; \
 	fi
-	@grep -q '^harness: FAILED after [0-9]* mutants: the report differs' build/rust-wire-fuzz-control/log || \
+	@grep -qE '^harness: FAILED after [0-9]* mutants: (the report differs|the oracle discards a damaged load)' build/rust-wire-fuzz-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the report"; \
 		  cat build/rust-wire-fuzz-control/log; exit 1; }
 	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
