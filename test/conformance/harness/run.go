@@ -291,7 +291,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// no expected bytes, and scoreAnswer holds the leg to the reason.
 		for _, msg := range m.Messages {
 			if msg.Refused() {
-				out = append(out, expectation{msg.Name, nil})
+				out = append(out, expectation{name: msg.Name})
 				continue
 			}
 			want, err := os.ReadFile(msg.MessageWire)
