@@ -445,7 +445,11 @@ func (g *cookGen) emit() {
 	g.f("     *  %sRow's accessors. */\n", name)
 	g.f("    public int root() { return region; }\n\n")
 	g.emitOpen(ml, align)
-	g.emitWrite()
+	if m := cookMapFieldOf(g.unit, g.table); m != "" {
+		g.emitWriteRefused(m)
+	} else {
+		g.emitWrite()
+	}
 	g.emitAt()
 	g.f("    /** this root's cook descriptors: constant data, so a reflective walk costs a\n")
 	g.f("     *  lookup and not a parse. Every record the region can hold hangs off the\n")
@@ -694,4 +698,80 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
 }
 `)
 	return javaFile(u, "the cook closure's layout contract, run once (docs/SPEC-TABLES.md §20.3).", b.String())
+}
+
+// cookMapField names the first map a root's cook closure holds, by value or
+// behind a pointer, as Owner.field, or "" when it holds none. The Java cook
+// writer lays out no map entry array (docs/PORTING.md M19), so a root that
+// holds one REFUSES its cook by name rather than writing a region whose map
+// holders name no entries: the same refusal the tool's cook gives a
+// map-bearing unit (compiler/tablesmaps.go refuseToolMaps, docs/SPEC-TABLES.md
+// §2.8).
+// cookMapFieldOf is the function the emitter asks; the refusal's negative
+// control (TestJavaCookMapRefusalNegativeControl) swaps it for one that
+// finds no map, which is the refusal planted out of the emitter.
+var cookMapFieldOf = cookMapField
+
+func cookMapField(u *ir.Unit, st *ir.Struct) string {
+	seen := map[string]bool{}
+	var walk func(*ir.Struct) string
+	var field func(string, *ir.Field) string
+	field = func(owner string, f *ir.Field) string {
+		if f == nil {
+			return ""
+		}
+		if f.IsMap() {
+			return owner + "." + f.Name
+		}
+		if f.Type.Kind != ir.TNamed {
+			return ""
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Union:
+			if seen["union:"+ref.Name] {
+				return ""
+			}
+			seen["union:"+ref.Name] = true
+			for _, v := range ref.Variants {
+				if m := field(ref.Name, v.F); m != "" {
+					return m
+				}
+			}
+		case *ir.Struct:
+			return walk(ref)
+		}
+		return ""
+	}
+	walk = func(s *ir.Struct) string {
+		if s == nil || seen[s.Name] {
+			return ""
+		}
+		seen[s.Name] = true
+		m := cookMember(u, s.Name)
+		if m == nil {
+			m = s
+		}
+		for _, f := range m.Fields {
+			if name := field(m.Name, f); name != "" {
+				return name
+			}
+		}
+		return ""
+	}
+	return walk(st)
+}
+
+// emitWriteRefused is emitWrite for a root whose closure holds a map (field
+// names it): every write entry point refuses, by the reason map_bearing, and
+// writes nothing, because the Java cook lays out no map entry array
+// (docs/PORTING.md M19; docs/SPEC-TABLES.md §2.8).
+func (g *cookGen) emitWriteRefused(field string) {
+	g.f("    /** THE COOK OF A MAP-BEARING ROOT IS REFUSED: %s is a map, and this writer\n", field)
+	g.f("     *  lays out no map entry array, so a cook would drop the map. */\n")
+	g.f("    public static final String cookRefusal = \"map_bearing: %s\";\n\n", field)
+	g.f("    public static long cookMeasure(Object value) {\n        return -1;\n    }\n\n")
+	g.f("    public record MeasureReason(long bytes, String reason) {}\n\n")
+	g.f("    public static MeasureReason cookMeasureReason(Object value) {\n")
+	g.f("        return new MeasureReason(-1, cookRefusal);\n    }\n\n")
+	g.f("    public static boolean cookFrom(Object value, byte[] buffer, int order) {\n        return false;\n    }\n\n")
 }
