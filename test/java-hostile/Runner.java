@@ -53,6 +53,7 @@ public final class Runner {
                     "tables/scalars", "scalardemo",
                     "tables/stream", "streamdemo",
                     "tables/maps", "mapdemo",
+                    "tables/lists", "listdemo",
                     "schemas/probe.schema", "probe");
 
     // A verdict: "accept <digest>" or "refuse <reason>"; anything else (a

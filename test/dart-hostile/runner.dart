@@ -45,6 +45,7 @@ import '../../build/dart-hostile/generated/graphdemo/GraphdemoWire.dart' as grap
 import '../../build/dart-hostile/generated/scalardemo/ScalardemoWire.dart' as scalardemo;
 import '../../build/dart-hostile/generated/streamdemo/StreamdemoWire.dart' as streamdemo;
 import '../../build/dart-hostile/generated/mapdemo/MapdemoWire.dart' as mapdemo;
+import '../../build/dart-hostile/generated/listdemo/ListdemoWire.dart' as listdemo;
 import '../../build/dart-hostile/generated/probe/probeWire.dart' as probe;
 
 // ---- the answer a case gets ----
@@ -97,6 +98,8 @@ String? _textRead(String schema, String table, String text) {
       return streamdemo.feedToJson(streamdemo.feedFromJson(text, streamdemo.TableTextReport()));
     case 'tables/maps Text':
       return mapdemo.textToJson(mapdemo.textFromJson(text, mapdemo.TableTextReport()));
+    case 'tables/lists Army':
+      return listdemo.armyToJson(listdemo.armyFromJson(text, listdemo.TableTextReport()));
   }
   throw _Unbound('no text reader bound for $key');
 }
