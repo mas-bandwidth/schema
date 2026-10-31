@@ -686,9 +686,9 @@ test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tabl
 # every run: the soak must report exactly the passes and samples its count
 # names, so a soak that ignored its count is red, not silently green. The
 # default count is the release act, about an hour on vision (a pass over the
-# pinned corpus is about a quarter of a second there); `test-elixir` runs the
+# pinned corpus is about 0.4 s there); `test-elixir` runs the
 # short form, two samples.
-TABLES_ELIXIR_SOAK_ITERATIONS ?= 13800
+TABLES_ELIXIR_SOAK_ITERATIONS ?= 9000
 ELIXIR_SOAK_SHORT := 400
 ELIXIR_SOAK_LOG := build/elixir-soak/log
 
