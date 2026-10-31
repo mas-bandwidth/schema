@@ -118,7 +118,7 @@ func parseManifest(t *testing.T, path string) (map[string][]string, map[string]m
 				rows = append(rows, messageManifestRow{name: "connection_" + fields[1], connection: fields[1]})
 			}
 		case "message":
-			if len(fields) >= 6 {
+			if len(fields) >= 6 && fields[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, messageManifestRow{name: fields[1], connection: fields[2], root: fields[3], file: fields[4], batch: fields[5]})
 			}
 		}

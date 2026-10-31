@@ -48,7 +48,9 @@ func messageRows(t *testing.T) []messageRow {
 		case "connection":
 			conns[fields[1]] = conn{fields[2], fields[3], fields[4]}
 		case "message":
-			raw = append(raw, fields)
+			if fields[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
+				raw = append(raw, fields)
+			}
 		}
 	}
 	var out []messageRow

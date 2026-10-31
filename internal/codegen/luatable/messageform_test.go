@@ -62,7 +62,7 @@ func manifestMessageData(t *testing.T, path string) (map[string][]string, map[st
 				conns[f[1]] = manifestConn{key: f[1], unit: f[2], ann: f[4]}
 			}
 		case "message":
-			if len(f) >= 6 {
+			if len(f) >= 6 && f[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				msgs = append(msgs, manifestMsg{name: f[1], conn: f[2], root: f[3], wire: f[5]})
 			}
 		}

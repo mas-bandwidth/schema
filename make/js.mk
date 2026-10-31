@@ -1096,7 +1096,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 # Each is the same command and the same greps as its half of
 # tables-js-wire-fuzz-all, which stays the one target test-js runs; the plain
 # arm reads the absent pin through the variable, so the pin lives in one place.
-.PHONY: tables-js-wire-fuzz-variable tables-js-wire-fuzz-retain
+.PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
 tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \

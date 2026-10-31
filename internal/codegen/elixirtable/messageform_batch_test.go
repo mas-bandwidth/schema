@@ -54,7 +54,7 @@ func messageBatchRows(t *testing.T, path string) []messageBatchRow {
 	var rows []messageBatchRow
 	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 6 || fields[0] != "message" {
+		if len(fields) < 6 || fields[0] != "message" || fields[5] == "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 			continue
 		}
 		rows = append(rows, messageBatchRow{

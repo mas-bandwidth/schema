@@ -41,7 +41,7 @@ func messageRows(t *testing.T) []messageRow {
 		if len(x) >= 5 && x[0] == "connection" {
 			conns[x[1]] = conn{x[2], x[4]}
 		}
-		if len(x) >= 6 && x[0] == "message" {
+		if len(x) >= 6 && x[0] == "message" && x[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 			lines = append(lines, x)
 		}
 	}

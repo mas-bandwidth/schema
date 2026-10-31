@@ -73,7 +73,7 @@ func batchManifest(t *testing.T) []batchRow {
 		case len(fields) == 5 && fields[0] == "connection":
 			connUnit[fields[1]] = fields[2]
 			connWire[fields[1]] = fields[4]
-		case len(fields) == 6 && fields[0] == "message":
+		case len(fields) == 6 && fields[0] == "message" && fields[5] != "-": // a named refusal row (a variable table, §3.3) carries no message bytes
 			msgs = append(msgs, msgLine{fields[1], fields[2], fields[3], fields[4], fields[5]})
 		}
 	}

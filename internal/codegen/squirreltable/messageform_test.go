@@ -37,7 +37,7 @@ func readMessageRows(t *testing.T, root string) (map[string]squirrelMessageConne
 				connections[f[1]] = squirrelMessageConnection{unit: f[2], file: f[4]}
 			}
 		case "message":
-			if len(f) >= 6 {
+			if len(f) >= 6 && f[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, squirrelMessageRow{name: f[1], connection: f[2], root: f[3], file: f[4], batch: f[5]})
 			}
 		}

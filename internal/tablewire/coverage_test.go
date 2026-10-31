@@ -283,7 +283,7 @@ func TestFileFormScansAndRegion(t *testing.T) {
 	if ok, err := DecodeRegionRetain(m, m.New(root), wire, keep, &kept); !ok || err != nil || kept.Silent() != true {
 		t.Fatalf("DecodeRegionRetain: %v %v %+v", ok, err, kept)
 	}
-	var variable tabletext.Report
+	var plain tabletext.Report
 	if ok, err := DecodeRegionRetain(m, m.New(root), wire, nil, &plain); !ok || err != nil {
 		t.Fatalf("DecodeRegionRetain(nil): %v %v", ok, err)
 	}

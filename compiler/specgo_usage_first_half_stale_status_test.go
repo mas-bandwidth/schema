@@ -135,7 +135,7 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	hasSection("`messagebatch.go` gates the three batch verbs to the fixed roots")
 	hasSection("**Lua, Luau, Moo, Lobster and Squirrel**")
 	notSection("over one region")
-	notSection("variable table")
+	notSection("plain `table`")
 	hasSection("**Dart** (`internal/codegen/darttable/messageform_announce.go`")
 	hasSection("`emitMessageBatch` returns unless the root is a declared fixed table")
 	hasSection("**Elixir** (`internal/codegen/elixirtable/elixirtable.go`")

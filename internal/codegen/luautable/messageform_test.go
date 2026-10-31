@@ -57,7 +57,7 @@ func messageManifest(t *testing.T) (map[string][]string, map[string]messageConnR
 				conns[fields[1]] = messageConnRow{unit: fields[2], announcement: fields[4]}
 			}
 		case "message":
-			if len(fields) >= 6 {
+			if len(fields) >= 6 && fields[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, messageRow{name: fields[1], connection: fields[2], root: fields[3], batch: fields[5]})
 			}
 		}

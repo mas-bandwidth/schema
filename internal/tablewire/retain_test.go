@@ -300,7 +300,7 @@ func TestRetainIsAdditive(t *testing.T) {
 	wire := retainVector(t, "retain_rt2")
 
 	plainInst := m.New(m.Lookup("Node"))
-	var variable tabletext.Report
+	var plain tabletext.Report
 	if _, err := tablewire.Decode(m, plainInst, wire, &plain); err != nil {
 		t.Fatal(err)
 	}

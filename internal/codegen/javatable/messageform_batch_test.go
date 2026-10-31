@@ -321,7 +321,7 @@ func messageBatchManifest(t *testing.T, root string) []messageBatchRow {
 	var out []messageBatchRow
 	for _, line := range lines {
 		f := strings.Fields(line)
-		if len(f) != 6 || f[0] != "message" {
+		if len(f) != 6 || f[0] != "message" || f[5] == "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 			continue
 		}
 		unit, ok := connUnit[f[2]]
