@@ -1,21 +1,21 @@
-// R21 — widenf is the bit-exact widening: signalling NaNs kept, the quiet
-// bit carried as the writer wrote it (docs/FIXED-FORM-ALGORITHM.md:334-335).
+// R21 — widenf widens a FINITE float exactly, and a NaN never reaches it: the
+// fixed read refuses one on its bits as non_finite_float (docs/SPEC-TABLES.md
+// §3.3; docs/FIXED-FORM-ALGORITHM.md, the widenf row).
 //
-// Law:
+// Law (Glenn, 2026-10-27, "tables go finite-only too, same rule as packets"):
 //
-//   "widenf is the f32 at src as an f64 at dst. Both COUNT widened, and both
-//    are exact by construction, NaN payloads included"
-//                              (docs/FIXED-FORM-ALGORITHM.md:335)
+//   A NaN (any sign, any payload, quiet or signalling) and both infinities are
+//   not values of the type: every writer refuses one, and every read refuses
+//   one as non_finite_float, the tolerant read included. Every finite float32
+//   widens to float64 exactly, so widenf is the ordinary conversion.
 //
-// The quiet bit (IEEE-754 bit 22 of the f32 mantissa, bit 51 of f64) is the
-// one a hardware f32->f64 conversion flips: it sets the quiet bit on a
-// signalling NaN, destroying the distinction the writer encoded. The widenf
-// op is bit surgery, not a hardware conversion, so the quiet bit lands as
-// the writer wrote it.
-//
-// This test constructs a signalling NaN (quiet bit 0) and a quiet NaN
-// (quiet bit 1), widens each through the generated fixed-form reader, and
-// asserts that the quiet bit and the22-bit payload are preserved exactly.
+// This row used to pin the NaN's quiet bit across the rung. Under the finite
+// rule there is no quiet bit to carry: the OLD writer refuses the NaN, and a
+// file FORGED to carry one — a finite record with its float32's four bytes
+// replaced — is refused by the NEW reader's compiled plan and by the OLD
+// reader's identity plan alike, with nothing landed. A finite value, a
+// negative subnormal with a rich mantissa among them, widens to exactly its
+// own value.
 //
 // Run: c++ -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -pthread
 //        -Ibuild/tables-generated/vnum
@@ -49,31 +49,19 @@ static std::vector<uint8_t> one( const T & v, Measure measure, Save save )
     return out;
 }
 
-// ---- the quiet bit (IEEE-754 bit 22 of the f32 mantissa) -------------------
-
 // A SIGNALLING NaN: exponent all-1s, quiet bit (mantissa bit 22) = 0.
-// The payload occupies mantissa bits 21-0.
 static constexpr uint32_t kSignalling = 0x7F8ABCDEu;
-
 // A QUIET NaN: same exponent, quiet bit (mantissa bit 22) = 1.
 static constexpr uint32_t kQuiet = kSignalling | 0x00400000u;
+// The finite value the forge starts from, found by its bits in the record.
+static constexpr uint32_t kSentinel = 0x3FA00000u; // 1.25f
 
-// The 22 payload bits below the quiet bit (mantissa bits 21-0).
-static constexpr uint32_t kPayload22 = kSignalling & 0x003FFFFFu;
-
-// Extract bits from a uint64_t.
-static uint64_t bits( uint64_t v, int hi, int lo )
-{
-    return ( v >> lo ) & ( ( 1ull << ( hi - lo + 1 ) ) - 1 );
-}
-
-// ---- widenf: signalling NaN keeps quiet bit = 0 ---------------------------
-
-static void signalling_nan_kept( void )
+// THE OLD FILE, FORGED: a finite record whose float32 is then replaced by
+// `bits`, which the writer itself refuses to write
+static std::vector<uint8_t> forged( uint32_t bits )
 {
     float sf;
-    std::memcpy( &sf, &kSignalling, 4 );
-
+    std::memcpy( &sf, &kSentinel, 4 );
     vold_float_widen::FloatWiden old;
     vold_float_widen::FloatWidenReset( old );
     old.lead = 0xAAAAAAAAu;
@@ -81,93 +69,70 @@ static void signalling_nan_kept( void )
     old.trail = 0xBBBBBBBBu;
     std::vector<uint8_t> ob = one( old, vold_float_widen::FloatWidenFixedMeasure,
                                    vold_float_widen::FloatWidenFixedSave );
-
-    vnew_float_widen::FloatWiden back;
-    vnew_float_widen::FloatWidenReset( back );
-    vnew_float_widen::TableReport r;
-    std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
-    check( vnew_float_widen::FloatWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
-                                                   plan.data(), 4096, NULL, &r ) == 1,
-           "R21/signalling: the OLD file reads one record" );
-
-    uint64_t got = 0;
-    std::memcpy( &got, &back.v, 8 );
-
-    // the sign bit must be preserved
-    check( bits( got, 63, 63 ) == (uint64_t)( kSignalling >> 31 ),
-           "R21/signalling: the sign bit is preserved" );
-
-    // the exponent must be all-1s (NaN)
-    check( bits( got, 62, 52 ) == 0x7FFull,
-           "R21/signalling: the exponent is all-1s (NaN)" );
-
-    // THE QUIET BIT: bit 51 of the f64 mantissa (bit 22 of f32 mantissa).
-    // A signalling NaN has quiet bit = 0. Hardware conversion would SET it.
-    // widenf must NOT set it.
-    check( bits( got, 51, 51 ) == 0,
-           "R21/signalling: the quiet bit stays 0 — signalling NaN is kept signalling" );
-
-    // the 22 payload bits below the quiet bit ride exactly
-    check( (uint32_t) bits( got, 50, 29 ) == kPayload22,
-           "R21/signalling: the22 payload bits below the quiet bit ride exactly" );
-
-    // the low 29 bits of f64 mantissa are zero-filled
-    check( bits( got, 28, 0 ) == 0,
-           "R21/signalling: the low 29 bits of f64 mantissa are zero" );
-
-    check( r.widened == 1, "R21/signalling: widened counts once" );
-    check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
-           "R21/signalling: nothing else fired" );
+    bool found = false;
+    for ( size_t i = 0; i + 4 <= ob.size() && !found; ++i )
+    {
+        const uint32_t w = (uint32_t) ob[i] | (uint32_t) ob[i + 1] << 8 | (uint32_t) ob[i + 2] << 16 | (uint32_t) ob[i + 3] << 24;
+        if ( w == kSentinel )
+        {
+            for ( int b = 0; b < 4; ++b ) { ob[i + (size_t) b] = (uint8_t) ( bits >> ( 8 * b ) ); }
+            found = true;
+        }
+    }
+    check( found, "forge: the float32 is where the record holds it" );
+    return ob;
 }
 
-// ---- widenf: quiet NaN keeps quiet bit = 1 --------------------------------
+// ---- the writer refuses the NaN -------------------------------------------
 
-static void quiet_nan_kept( void )
+static void writer_refuses( void )
 {
-    float qf;
-    std::memcpy( &qf, &kQuiet, 4 );
-
-    vold_float_widen::FloatWiden old;
-    vold_float_widen::FloatWidenReset( old );
-    old.lead = 0xAAAAAAAAu;
-    old.v = qf;
-    old.trail = 0xBBBBBBBBu;
-    std::vector<uint8_t> ob = one( old, vold_float_widen::FloatWidenFixedMeasure,
-                                   vold_float_widen::FloatWidenFixedSave );
-
-    vnew_float_widen::FloatWiden back;
-    vnew_float_widen::FloatWidenReset( back );
-    vnew_float_widen::TableReport r;
-    std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
-    check( vnew_float_widen::FloatWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
-                                                   plan.data(), 4096, NULL, &r ) == 1,
-           "R21/quiet: the OLD file reads one record" );
-
-    uint64_t got = 0;
-    std::memcpy( &got, &back.v, 8 );
-
-    // THE QUIET BIT: bit 51. A quiet NaN has quiet bit = 1. widenf must
-    // keep it at 1, not clear it.
-    check( bits( got, 51, 51 ) == 1,
-           "R21/quiet: the quiet bit stays 1 — quiet NaN is kept quiet" );
-
-    // the same22 payload bits ride exactly
-    check( (uint32_t) bits( got, 50, 29 ) == kPayload22,
-           "R21/quiet: the22 payload bits below the quiet bit ride exactly" );
-
-    check( r.widened == 1, "R21/quiet: widened counts once" );
-    check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
-           "R21/quiet: nothing else fired" );
+    const uint32_t patterns[3] = { kSignalling, kQuiet, 0xFF800000u /* -inf */ };
+    for ( int k = 0; k < 3; ++k )
+    {
+        float f;
+        std::memcpy( &f, &patterns[k], 4 );
+        vold_float_widen::FloatWiden old;
+        vold_float_widen::FloatWidenReset( old );
+        old.v = f;
+        std::vector<uint8_t> out( (size_t) vold_float_widen::FloatWidenFixedMeasure( 1 ) );
+        check( vold_float_widen::FloatWidenFixedSave( &old, 1, out.data(), (int64_t) out.size() ) == -1,
+               "R21/writer: a NaN or an infinity is refused, never written" );
+    }
 }
 
-// ---- widenf: ordinary values ride without distortion -----------------------
+// ---- the read refuses the NaN on both plans --------------------------------
 
-static void ordinary_value( void )
+static void nan_refused( uint32_t bits, const char * compiled, const char * identity )
 {
-    float of = 1.5f;
-    uint32_t obits = 0;
-    std::memcpy( &obits, &of, 4 );
+    const std::vector<uint8_t> ob = forged( bits );
 
+    // THE COMPILED PLAN: the NEW reader's widenf meets the float32
+    vnew_float_widen::FloatWiden back;
+    vnew_float_widen::FloatWidenReset( back );
+    back.lead = 7u;
+    vnew_float_widen::TableReport r;
+    std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
+    const int64_t n = vnew_float_widen::FloatWidenFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                                       plan.data(), 4096, NULL, &r );
+    check( n == -1 && r.refused && r.reason == vnew_float_widen::non_finite_float &&
+           r.refuse_reason == vnew_float_widen::non_finite_float, compiled );
+    check( back.lead == 1u && back.trail == 2u,
+           "R21: nothing lands — the record goes back to its declared defaults" );
+
+    // THE IDENTITY PLAN: the OLD reader over its own generation's bytes
+    vold_float_widen::FloatWiden same;
+    vold_float_widen::TableReport r2;
+    std::vector<vold_float_widen::TableFixedEntry> plan2( 4096 );
+    check( vold_float_widen::FloatWidenFixedLoad( &same, 1, ob.data(), (int64_t) ob.size(),
+                                                   plan2.data(), 4096, NULL, &r2 ) == -1 &&
+           r2.refuse_reason == vold_float_widen::non_finite_float, identity );
+}
+
+// ---- widenf: a finite value widens exactly ---------------------------------
+
+static void finite_value( float of, const char * what )
+{
     vold_float_widen::FloatWiden old;
     vold_float_widen::FloatWidenReset( old );
     old.lead = 0xAAAAAAAAu;
@@ -182,32 +147,41 @@ static void ordinary_value( void )
     std::vector<vnew_float_widen::TableFixedEntry> plan( 4096 );
     check( vnew_float_widen::FloatWidenFixedLoad( &back, 1, wb.data(), (int64_t) wb.size(),
                                                    plan.data(), 4096, NULL, &r ) == 1,
-           "R21/ordinary: the OLD file reads one record" );
-
-    // the double value must be exactly 1.5
-    check( back.v == 1.5,
-           "R21/ordinary: 1.5f widens to exactly 1.5 (no distortion)" );
-
-    // the bit pattern: sign 0, exponent biased for 1.5, mantissa 0.5
-    uint64_t got = 0;
+           "R21/finite: the OLD file reads one record" );
+    const double want = (double) of;
+    uint64_t got = 0, want_bits = 0;
     std::memcpy( &got, &back.v, 8 );
-    check( bits( got, 63, 63 ) == 0 && bits( got, 62, 52 ) == 0x3FFull && bits( got, 51, 0 ) == 0x8000000000000ull,
-           "R21/ordinary: the f64 bit pattern is exactly IEEE-754 1.5" );
-
-    check( r.widened == 1, "R21/ordinary: widened counts once" );
+    std::memcpy( &want_bits, &want, 8 );
+    check( got == want_bits, what );
+    check( r.widened == 1, "R21/finite: widened counts once" );
+    check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+           "R21/finite: nothing else fired" );
 }
 
 int main( void )
 {
-    signalling_nan_kept();
-    quiet_nan_kept();
-    ordinary_value();
+    writer_refuses();
+    nan_refused( kSignalling, "R21/signalling: the compiled plan refuses a signalling NaN as non_finite_float",
+                 "R21/signalling: the identity plan refuses it too" );
+    nan_refused( kQuiet, "R21/quiet: the compiled plan refuses a quiet NaN as non_finite_float",
+                 "R21/quiet: the identity plan refuses it too" );
+    nan_refused( 0x7F800000u, "R21/infinity: the compiled plan refuses +inf as non_finite_float",
+                 "R21/infinity: the identity plan refuses it too" );
+    finite_value( 1.5f, "R21/ordinary: 1.5f widens to exactly 1.5" );
+    float sub;
+    const uint32_t kSubnormal = 0x807ABCDEu;
+    std::memcpy( &sub, &kSubnormal, 4 );
+    finite_value( sub, "R21/subnormal: a negative subnormal widens to exactly its own value" );
+    float nz;
+    const uint32_t kMinusZero = 0x80000000u;
+    std::memcpy( &nz, &kMinusZero, 4 );
+    finite_value( nz, "R21/minus-zero: -0 widens to -0, sign and all" );
 
     if ( g_failures != 0 )
     {
         std::printf( "R21: %d assertion(s) failed\n", g_failures );
         return 1;
     }
-    std::printf( "R21: widenf bit-exact widening — all assertions passed\n" );
+    std::printf( "R21: widenf is exact over finite values and a NaN is refused — all assertions passed\n" );
     return 0;
 }

@@ -157,10 +157,10 @@ concurrency:
 # sibling merging to main mid-day must not change what a schema commit proves.
 # The three files move together.
 env:
-  SERIALIZE_TAG: v2.1.0
+  SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.0.2
   SERIALIZE_GO_TAG: v2.0.1
-  SERIALIZE_RS_TAG: v3.1.0
+  SERIALIZE_RS_TAG: v5.0.0
   SERIALIZE_CS_TAG: v2.0.1
   SERIALIZE_JS_TAG: v2.0.1
 
@@ -223,7 +223,7 @@ jobs:
               internal/codegen/ctable/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk) add_leg c ;;
             esac
             case "$f" in
-              internal/codegen/cpptable/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h) add_leg cpp ;;
+              internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
             esac
             case "$f" in
               internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk) add_leg rust ;;
@@ -243,11 +243,14 @@ jobs:
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
             esac
+            case "$f" in
+              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
+            esac
           done <<EOF
           $files
           EOF
           if [ "$broad" = yes ]; then
-            legs="cpp go c rust js cs java dart elixir"
+            legs="cpp go c rust js cs java dart elixir goose"
           fi
 
           # THE PACKAGES. Every directory holding a changed .go file, as the
@@ -494,6 +497,16 @@ jobs:
             exit 1
           fi
 
+      # THE Goose PIN, when a Goose package is touched: internal/codegen/goose
+      # and internal/codegen/goosetable (the only importers of gooserun) run
+      # generated Goose under the pinned compiler and fail, never skip,
+      # without it. make/goose.mk's dist-goose installs it at the sha256 it
+      # names, into the dist/ path gooserun's default names; ci-full.yml's
+      # go-test does the same.
+      - name: install the Goose pin
+        if: contains(needs.plan.outputs.packages, '/codegen/goose') || contains(needs.plan.outputs.packages, './...')
+        run: make dist-goose
+
       - name: go test the touched packages
         env:
           PACKAGES: ${{ needs.plan.outputs.packages }}
@@ -623,11 +636,11 @@ jobs:
           otp-version: '27'
           elixir-version: '1.18'
 
-      # THE C FORMAT GATE's formatter, pinned: clang-format from PyPI at the
-      # version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
+      # THE C AND C++ FORMAT GATES' formatter, pinned: clang-format from PyPI at
+      # the version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
       # runner's temp so a self-hosted runner keeps nothing between runs.
-      - name: the pinned clang-format (C leg)
-        if: matrix.leg == 'c'
+      - name: the pinned clang-format (C and C++ legs)
+        if: matrix.leg == 'c' || matrix.leg == 'cpp'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
@@ -644,7 +657,8 @@ jobs:
         run: |
           set -euo pipefail
           case "${{ matrix.leg }}" in
-            cpp)    make tables-fixedform ;;
+            cpp)    make tables-fixedform
+                    make tables-cpp-clean tables-cpp-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 SCHEMA_REQUIRE_CLANGXX=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning
                     make tables-c-clean SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
@@ -655,5 +669,8 @@ jobs:
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            # the Goose leg's fixed form against the reference's bytes (make/goose.mk;
+            # its versioning rows are owed, schema#2236), under the pinned compiler
+            goose)  make dist-goose test-goose ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac

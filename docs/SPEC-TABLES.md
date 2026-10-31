@@ -6969,12 +6969,17 @@ comparing with `==` elides it, so until each leg adopts the bit compare the
 legs agree byte for byte on every value except that one. Each other leg owes
 three things: elision by bit pattern, and the finite rule of
 2026-10-27: the writer's refusal and every read's `non_finite_float`
-refusal, in all three binary forms. The Go leg and the tool's engines
-(`internal/tablewire`, `internal/tablecook`) keep the rule, held by
+refusal, in all three binary forms. The Go leg, the C++ leg and the tool's
+engines (`internal/tablewire`, `internal/tablecook`) keep the rule, held by
 `internal/codegen/gotable/floatspecial_test.go`
-(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) and
-`internal/tablewire/floatnan_test.go`, which reads the reference's NaN pin
-(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. Until a leg
+(`TestGoPlainFloatSpecialValuesAgreeAcrossForms`),
+`test/tables/floatnan_main.cpp` (`make tables-float-nan`, whose negative
+control blinds the C++ read's mask test) and
+`internal/tablewire/floatnan_test.go`, which read the reference's NaN pin
+(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. The C++
+leg's report names the refusal (`non_finite_float`, `non_finite_floats`
+counting what the read met) and not the field: its report carries no field
+names for any refusal. Until a leg
 lands the rule it keeps the 2026-10-18/19 behaviour (a NaN or an infinity
 rides, and only a strict read, where the leg has one, refuses it as
 `non_finite`); each leg's work is its card in docs/roadmap.sexp
@@ -16165,8 +16170,9 @@ the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`. The C walk carries it too (`table_json_scan_unit`; C's report
-has no `Reason` text, so it answers `Malformed`); every other backend keeps its
-behaviour until its port.
+has no `Reason` text, so it answers `Malformed`), and so does the Rust reader
+(`Jr::read_string` under `<root>_from_json_bytes`, answering `Malformed`); every
+other backend keeps its behaviour until its port.
 **The refusal comes BEFORE any clamp**: an ill-formed byte at or past a
 field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
@@ -16253,8 +16259,8 @@ pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`, so a pack never encodes a wire its own decode calls
 `malformed`. The C walk carries it too (`table_json_scan_text`, and the wide
-scan), answering `Malformed`; every other backend keeps its behaviour until its
-port.
+scan), answering `Malformed`, and so does the Rust reader (`Jr::read_text`);
+every other backend keeps its behaviour until its port.
 
 ### 16.4 The key: `json`
 
