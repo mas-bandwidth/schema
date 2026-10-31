@@ -1576,6 +1576,17 @@
       "luau": "0.741"
     },
     {
+      "name": "luau-cards",
+      "when": "pull-request",
+      "why": "Native Luau card facade: unit checks and all 43 shared cases across nine surfaces precede three actual source sabotages (render separator, retained-field save, and task-hash length framing). Each sabotage must red its own surface while the other eight remain green. The pinned Luau CLI uses a Go file-IO host; all card behavior runs in Luau. The complete warm-cache group took 4.21 seconds on hetzner1 at GOMAXPROCS=4.",
+      "targets": [
+        "cards-luau-conformance-negative-control",
+        "cards-luau-conformance-upgrade-negative-control",
+        "cards-luau-conformance-hash-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
       "name": "lobster",
       "when": "pull-request",
       "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio. The bench legs' control (bench/lobster/negative-control.sh) flips each leg's golden, plants a compiler warning under the packet runner and a seconds_elapsed() clock and a corpus name in .lobster files under a copy of bench/, and requires each refused by name beside clean baselines; about 3 s. Both fit the per-commit rule with room.",
