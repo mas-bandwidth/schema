@@ -704,6 +704,10 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s};\n", i5)
 	switch classOf(f) {
 	case vTable:
+		// A SLOT WRITTEN AGAIN replaces its body, and the records retained
+		// under the body it loses go with it (docs/SPEC-TABLES.md §6.6; the
+		// oracle's keyed forgets the slot's instance before refilling it).
+		fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard_body(ret, path.step(%d, slot as u32)); }\n", i5, ordinal)
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, slot as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
