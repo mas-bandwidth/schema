@@ -361,21 +361,21 @@ func messageDamageProbe(u *ir.Unit, st *ir.Struct, announcement string) string {
 	b.WriteString(messageProbeHeader(u, st, announcement))
 	fmt.Fprintf(&b, `
 const storage = Array.from({ length: 256 }, () => new %[1]s());
-// "DAMAGE INSIDE BODY `+"`k`"+` DELIVERS BODIES 1 TO `+"`k - 1`"+`" (§3.3): one
-// malformed counts and nothing at or after body k is read. Body 1 is an empty
-// body, body 2 opens with a reference above the entry count E.
+// DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (§4, "Damage discards the
+// batch"): malformed counts and the load answers -1. Body 1 is an empty body,
+// body 2 opens with a reference above the entry count E.
 const damaged = new Uint8Array([2, 1, 0xc0, 0x0f]);
 const dReport = {};
 const dCount = %[1]sLoadMessages(storage, v, damaged, dReport);
-if (dCount !== 1 || !dReport.Malformed || dReport.Verdict !== 0) {
-  fail("damage inside body 2: count=" + dCount + " " + JSON.stringify(dReport));
+if (dCount !== -1 || !dReport.Malformed || dReport.Verdict !== 0) {
+  fail("damage inside body 2 delivered a body: count=" + dCount + " " + JSON.stringify(dReport));
 }
-// "BYTES AFTER THE PAD ARE MALFORMED" (§3.3).
+// BYTES AFTER THE PAD ARE DAMAGE after the last body, and discard the batch too.
 const padded = new Uint8Array([2, 0, 0, 0]);
 const pReport = {};
 const pCount = %[1]sLoadMessages(storage, v, padded, pReport);
 if (!pReport.Malformed) { fail("bytes after the pad did not read as malformed: " + JSON.stringify(pReport)); }
-if (pCount !== 1) { fail("bytes-after-pad count=" + pCount); }
+if (pCount !== -1) { fail("bytes after the pad delivered a body: count=" + pCount); }
 // "FORM BYTE `+"`2`"+` IS THE MESSAGE FORM" (§3.3): a byte this reader does not
 // carry is a REFUSAL by name, never damage.
 const newer = new Uint8Array([3, 0, 0]);

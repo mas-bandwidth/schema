@@ -868,6 +868,16 @@
       ]
     },
     {
+      "name": "js-discard",
+      "when": "pull-request",
+      "node": "26",
+      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md \u00a74): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
+      "targets": [
+        "tables-js-discard-negative-control",
+        "tables-js-batch-discard-negative-control"
+      ]
+    },
+    {
       "name": "dart-conformance",
       "when": "pull-request",
       "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point, and the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host.",

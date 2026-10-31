@@ -6,6 +6,21 @@ package main
 // the named gate runs is wrong, never the gate itself; make/js.mk builds the
 // compiler or the jstable tests against the copy through a Go overlay.
 func init() {
+	// §4 DAMAGE DISCARDS THE WHOLE LOAD: the variable form's load hands back
+	// the root it decoded around the damage, and a retaining load keeps its
+	// store, while the report still says malformed.
+	sabotages["js-discard-dropped"] = []edit{{
+		old: "  if (report.malformed) {\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
+		new: "  if (false) { // SABOTAGED: the discard is gone\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
+	}}
+
+	// §4 on the message form: damage inside a body delivers the bodies before
+	// it instead of none.
+	sabotages["js-batch-discard-dropped"] = []edit{{
+		old: `g.pf("      return -1;\n")`,
+		new: `g.pf("      return i; // SABOTAGED: the bodies before the damage are delivered\n")`,
+	}}
+
 	// M5: the read accessor of a variable- or fixed-class keyed array loses
 	// its shift, so key k reads slot k. The guards are untouched, so the
 	// refusal at both ends still holds and only the placement is wrong.
