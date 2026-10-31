@@ -174,3 +174,10 @@ tables-lobster-usage-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the walks-nothing copy failed, but not on slot_named's refusal"; cat build/lobster-usage-negative/walks-nothing.log; exit 1; }
 
 test-lobster: tables-lobster-usage tables-lobster-usage-negative-control
+
+# The returned API values must not expose any part of a damaged read.
+.PHONY: tables-lobster-damage-discard tables-lobster-damage-discard-negative-control
+tables-lobster-damage-discard: lobster-dist-present
+	sh test/slowgate/proof $@ 'TestLobsterDamageDiscardsValues' ./internal/codegen/lobstertable -run '^TestLobsterDamageDiscardsValues$$' -count=1
+tables-lobster-damage-discard-negative-control: lobster-dist-present
+	sh test/slowgate/proof $@ 'TestLobsterDamageDiscardNegativeControl' ./internal/codegen/lobstertable -run '^TestLobsterDamageDiscardNegativeControl$$' -count=1

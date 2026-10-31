@@ -49,6 +49,7 @@ func retainRows(t *testing.T) []retainRow {
 type retainOut struct {
 	used, retained, lost, unknown int
 	value                         bool // the load answered a value
+	malformed                     bool // damage makes all other results undefined
 	save                          []byte
 	saveLost                      int
 	saveErr                       string
@@ -68,7 +69,7 @@ func retainProbe(g *generatedUnit, rootName string, capacity int, ids int) strin
 		fmt.Sprintf(`local report = L.newReport()
 local store = R.newStore(%d, %s)
 local v = R.LoadRetain(%q, inputs.wire, report, store)
-print(string.format("%%d,%%d,%%d,%%d", R.used(store), report.retained, report.retainLost, report.unknown))
+print(string.format("%%d,%%d,%%d,%%d,%%s", R.used(store), report.retained, report.retainLost, report.unknown, tostring(report.malformed)))
 if v == nil then print("NIL") return end
 local before = report.retainLost
 local out, why = R.SaveRetain(%q, v, store, report)
@@ -87,7 +88,7 @@ func mooRetain(t *testing.T, g *generatedUnit, rootName string, wire []byte, cap
 	out := g.run(t, retainProbe(g, rootName, capacity, ids), map[string][]byte{"wire": wire})
 	lines := strings.Split(out, "\n")
 	var o retainOut
-	if _, err := fmt.Sscanf(lines[0], "%d,%d,%d,%d", &o.used, &o.retained, &o.lost, &o.unknown); err != nil {
+	if _, err := fmt.Sscanf(lines[0], "%d,%d,%d,%d,%t", &o.used, &o.retained, &o.lost, &o.unknown, &o.malformed); err != nil {
 		t.Fatalf("moo printed %q", out)
 	}
 	if len(lines) < 2 || lines[1] == "NIL" {
@@ -119,8 +120,8 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 	keep := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 	var rep tabletext.Report
 	ok, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep)
-	o := retainOut{used: keep.Used(), retained: rep.Retained, lost: rep.RetainLost, unknown: rep.Unknown}
-	if err != nil || rep.Refused {
+	o := retainOut{used: keep.Used(), retained: rep.Retained, lost: rep.RetainLost, unknown: rep.Unknown, malformed: rep.Malformed}
+	if err != nil || rep.Refused || rep.Malformed {
 		return o
 	}
 	_ = ok
