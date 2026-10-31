@@ -42,6 +42,7 @@
 #include "P3Table.h"
 // the WIDE-SCALAR unit and its evolved twin (docs/SPEC-TABLES.md §3, §4)
 #include "ScalarsTable.h"
+#include "WidesTable.h"
 #include "Scalars2Table.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
@@ -408,6 +409,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "listdemo", listdemo, Sheet ),
     VARCODEC( "listdemo", listdemo, Army ),
     VARCODEC( "listdemo", listdemo, Unbounded ),
+    VARCODEC( "widelist", widelistdemo, Wide ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "tblp2", tblp2, Chain ),

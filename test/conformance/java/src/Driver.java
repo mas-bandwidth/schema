@@ -941,10 +941,20 @@ public final class Driver {
         boolean cookFrom(Object value, byte[] buffer, int order) throws ReflectiveOperationException {
             return (boolean) cookFrom.invoke(null, value, buffer, order);
         }
+        // refusal is the writer's NAMED refusal of this root's cook, the
+        // generated `cookRefusal` constant (internal/codegen/javatable/cook.go
+        // emitWriteRefused: a map-bearing root, docs/PORTING.md M19), or null
+        // for a writer that cooks the root.
+        String refusal() throws ReflectiveOperationException {
+            try { return (String) cook.getField("cookRefusal").get(null); }
+            catch (NoSuchFieldException none) { return null; }
+        }
     }
 
     // A cook-write row is ABSENT only for a reason the generator wrote down
     // (docs/SPEC-TABLES.md §7.6), never because a lookup failed:
+    //   - the root's <Root>Cook refuses the root by name (its `cookRefusal`:
+    //     a map-bearing root, docs/PORTING.md M19), answered with that name,
     //   - the root's <Root>Cook is the generated STUB (cook.go emits a class
     //     with a private constructor and no method when the root's closure
     //     holds a construct the Java cook form does not carry, an unbounded
@@ -993,6 +1003,14 @@ public final class Driver {
                 continue;
             }
             try {
+                // A ROOT THE WRITER REFUSES BY NAME is answered absent with
+                // that name, both orders, and never as a failed cook
+                String refusal = codec.refusal();
+                if (refusal != null) {
+                    spillAbsentReason(out, f[1], refusal);
+                    spillAbsentReason(out, f[1] + "-be", refusal);
+                    continue;
+                }
                 Object report = codec.variable.report();
                 Object value = codec.variable.load(Files.readAllBytes(Paths.get(inst[4])), report);
                 if (value == null || codec.variable.flag(report, "refused") || codec.variable.flag(report, "malformed")) {

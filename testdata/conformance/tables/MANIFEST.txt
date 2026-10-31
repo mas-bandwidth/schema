@@ -1192,3 +1192,13 @@ framing node_index_null                       graphdemo ListNode testdata/wire/t
 framing node_reserved_id_in_record            graphdemo ListNode testdata/wire/tables/framing/node_reserved_id_in_record.bin   0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_to_default.json
 framing node_unknown_to_fixed_reader          tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
 framing node_table_L_past_body                graphdemo ListNode testdata/wire/tables/framing/node_table_L_past_body.bin       0,0,0,0,0,true,read  testdata/conformance/tables/framing/listnode_1_null.json
+
+# THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
+# RULES): a 128-bit list element in holders aligned eight, its own unit so no
+# other unit's build version or vocabulary moves. The root's storage is eight
+# modulo sixteen, so its extent begins at sizeof rounded to sixteen; an odd
+# count of eight-byte tags ends its extent at eight modulo sixteen, so the
+# pointed-at holder that follows lands there unless its node aligns to sixteen.
+unit widelist tables/widelist
+instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
+cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook
