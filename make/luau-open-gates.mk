@@ -175,3 +175,4 @@ tables-luau-arms-negative-control: toolchain-luau
 
 test-luau: tables-luau-arms tables-luau-arms-negative-control
 test-luau: tables-luau-fuzz tables-luau-fuzz-negative-control
+test-luau: conformance-negative-control-luau conformance-negative-control-luau-emitter conformance-negative-control-luau-walk
