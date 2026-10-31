@@ -168,6 +168,11 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			return nil, err
 		}
 	}
+	for _, fc := range m.Framings {
+		if err := add("framing", fc.Name, fc.Unit, fc.Root); err != nil {
+			return nil, err
+		}
+	}
 	for _, msg := range m.Messages {
 		conn, err := m.LookupConnection(msg.Connection)
 		if err != nil {

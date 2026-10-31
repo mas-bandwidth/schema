@@ -148,7 +148,7 @@ func TestCaseIndexCoversTheCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	set, err := buildClaims(m, []string{"go", "cpp", "java"})
+	set, err := buildClaims(m, []string{"go", "cpp", "squirrel"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,9 +179,9 @@ func TestCaseIndexCoversTheCorpus(t *testing.T) {
 			if claimed, _ := set.claims("go", s, e.name); !claimed {
 				t.Errorf("%s / %s uses %v and Go does not claim it", s, e.name, info.uses)
 			}
-			// Java carries none, so it claims none
-			if claimed, _ := set.claims("java", s, e.name); claimed {
-				t.Errorf("%s / %s: Java registers no construct and claims it", s, e.name)
+			// Squirrel registers none, so it claims none
+			if claimed, _ := set.claims("squirrel", s, e.name); claimed {
+				t.Errorf("%s / %s: Squirrel registers no construct and claims it", s, e.name)
 			}
 		}
 	}
