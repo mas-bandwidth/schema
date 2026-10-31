@@ -826,6 +826,11 @@ static partial class Program
             bool malformed = report.Malformed || (value == null && !report.Refused);
             string head = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
                           report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
+            // THE NATIVE LOADS answer the same row: the region load and the
+            // builder load must refuse exactly what the managed load refuses,
+            // so a disagreement is written into the answer and the row fails
+            string native = NativeFramingDisagrees(f[2], f[3], wire, malformed);
+            if (native != null) { head = native + "\n" + head; }
             byte[] answer = System.Text.Encoding.ASCII.GetBytes(head);
             if (value != null && !report.Refused && !noValue)
             {
@@ -849,6 +854,41 @@ static partial class Program
             File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
         }
         return 0;
+    }
+
+    // The region and builder loads of the pointered framing roots: null when
+    // both agree with the managed load on whether the bytes are damage.
+    static unsafe string NativeFramingDisagrees(string unit, string root, byte[] wire, bool malformed)
+    {
+        bool regionRefused, builderRefused;
+        if (unit == "graphdemo" && root == "ListNode")
+        {
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.ListNodeLoadMeasure, (data, need, bytes, r) => Graphdemo.Schema.ListNodeLoad(data, need, bytes, r));
+            using var builder = new Graphdemo.ListNodeBuilder();
+            builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
+        }
+        else if (unit == "graphdemo" && root == "Scene")
+        {
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.SceneLoadMeasure, (data, need, bytes, r) => Graphdemo.Schema.SceneLoad(data, need, bytes, r));
+            using var builder = new Graphdemo.SceneBuilder();
+            builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
+        }
+        else { return null; }
+        if (malformed && !regionRefused) { return "native: the region load read damaged bytes"; }
+        if (malformed && !builderRefused) { return "native: the builder load read damaged bytes"; }
+        if (!malformed && regionRefused) { return "native: the region load refused clean bytes"; }
+        if (!malformed && builderRefused) { return "native: the builder load refused clean bytes"; }
+        return null;
+    }
+    delegate IntPtr NativeRegionLoad(IntPtr data, long need, byte[] bytes, Graphdemo.TableReport report);
+    delegate long NativeRegionMeasure(ReadOnlySpan<byte> bytes);
+    static unsafe bool NativeRegionRefuses(byte[] wire, NativeRegionMeasure measure, NativeRegionLoad load)
+    {
+        long need = measure(wire);
+        if (need < 0) { return true; }
+        byte* data = (byte*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc(checked((nuint)(need + 64)), 64);
+        try { return load((IntPtr)data, need, wire, new Graphdemo.TableReport()) == IntPtr.Zero; }
+        finally { System.Runtime.InteropServices.NativeMemory.AlignedFree(data); }
     }
 
     // A block's base is 64-byte aligned by construction (§19.1) and `extent` is

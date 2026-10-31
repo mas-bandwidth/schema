@@ -14,12 +14,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// RELEASE (docs/PORT-LOBSTER.md, THE LOAD): a pointer graph may close a cycle
-// (docs/SPEC-TABLES.md §3.1) and the tolerant read places it, but Lobster
-// frees by reference counting, so a cycle of Records outlives the caller. The
-// VM reports such records at exit ("LEAKS FOUND"). These tests load a cyclic
-// ListNode wire of tables/pointers and hold the exit report empty, with a
-// reversed witness for each of the two rules.
+// RELEASE (docs/PORT-LOBSTER.md, THE LOAD): Lobster frees by reference
+// counting, so a cycle of Records outlives the caller, and the VM reports such
+// records at exit ("LEAKS FOUND"). A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md
+// §3.1, §4; Glenn, 2026-10-31), so the Lobster load owes the refusal; until it
+// carries it, these tests load a cyclic ListNode wire of tables/pointers and
+// hold the exit report empty, with a reversed witness for each of the two
+// rules. When the Lobster load refuses, they become refusal tests.
 
 // cyclicListWire writes a four-node ListNode chain root -> B -> C -> D through
 // the engine and rewrites C's pointer (node index 4, D) to name `to`, which

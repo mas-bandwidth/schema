@@ -196,6 +196,13 @@ func TestCookCheckRefusesEveryForgeryItNames(t *testing.T) {
 			ord.PutUint64(f[h.DataOffset()+slot:], uint64(dir[1].Offset-slot))
 			return f
 		}},
+		{"a reference that closes a cycle", func(f []byte) []byte {
+			// the ListNode's next turned back at the ListNode itself: a cook
+			// is never cyclic (§3.1)
+			slot := refSlot(t, u, m, "ListNode", "next")
+			ord.PutUint64(f[h.DataOffset()+dir[1].Offset+slot:], uint64(-slot))
+			return f
+		}},
 		{"a used length past its declared bound", func(f []byte) []byte {
 			at := h.DataOffset() + lengthSlot(t, u, m, "Scene", "name")
 			ord.PutUint32(f[at:], 1<<20)

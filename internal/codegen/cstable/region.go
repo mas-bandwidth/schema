@@ -694,6 +694,8 @@ const tableRegionSource = `
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
         // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
         if (NonFiniteRefused(report)) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
+        if (good && !report.Malformed && RegionCyclic(data, directory, count, type, default, false)) { Damage(report); System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }
         Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return region;
     }
 `
