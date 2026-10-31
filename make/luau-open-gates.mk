@@ -133,3 +133,15 @@ tables-luau-accessor-negative-control: toolchain-luau
 	go test ./internal/codegen/luautable/ -run '^TestLuauLayoutAgreementNegativeControl$$' -count=1 -timeout 600s -v
 
 test-luau: tables-luau-accessor-descriptor-agreement tables-luau-accessor-negative-control
+
+# I6: every module-table key the Luau table emitter spells is registered and
+# every registered Luau key is spelled (compiler/tablesluaunames_test.go); the
+# control plants an unregistered key in each convention the scan reads and a
+# registered name nothing emits.
+.PHONY: tables-luau-names tables-luau-names-negative-control
+tables-luau-names:
+	go test ./compiler/ -run '^TestLuauTableRuntimeNamesAreClaimed$$' -count=1 -timeout 600s
+tables-luau-names-negative-control:
+	go test ./compiler/ -run '^TestLuauRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
+
+test-luau: tables-luau-names tables-luau-names-negative-control
