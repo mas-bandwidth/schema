@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -44,12 +45,14 @@ func runCookMapProbe(t *testing.T) string {
 const cookMapRefused = "measure=-1 reason=map_bearing: Cells.rows wrote=false"
 
 func TestJavaCookRefusesAMapBearingRoot(t *testing.T) {
+	slowtest.Gate(t, "javac and java (it builds and runs the cook map probe)")
 	if out := runCookMapProbe(t); !strings.Contains(out, cookMapRefused) {
 		t.Fatalf("Cells holds a map and its cook must refuse by name (%q), got:\n%s", cookMapRefused, out)
 	}
 }
 
 func TestJavaCookMapRefusalNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "javac and java (it builds and runs the cook map probe)")
 	saved := cookMapFieldOf
 	cookMapFieldOf = func(*ir.Unit, *ir.Struct) string { return "" }
 	defer func() { cookMapFieldOf = saved }()
