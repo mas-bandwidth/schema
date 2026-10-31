@@ -1112,7 +1112,7 @@
     {
       "name": "go-proof",
       "when": "pull-request",
-      "why": "the Go leg's proof-cell controls (docs/PORTING.md M5, M11, M14, I4, I12, J3, J4, J6): each sabotages the generated unit or the emitter its gate guards through a go build or go test overlay and requires that gate red on its own words. Go and the serialize.go sibling, nothing else. Measured about 45 s of control time together on amd-1 with a warm build cache (2026-10-31): keyed 6 s, layout 3 s, graph label 2 s, usage 2 s, absent 6 s, cards 4 s, clean 6 s, release 13 s.",
+      "why": "the Go leg's proof-cell controls (docs/PORTING.md M5, M11, M14, I4, I12, J3, J4, J6): each sabotages the generated unit or the emitter its gate guards through a go build or go test overlay and requires that gate red on its own words. Go and the serialize.go sibling, nothing else. Measured 45 s of control time together on amd-1 and 78 s on hulk (2026-10-31; hulk: keyed 13 s, layout 5 s, graph label 5 s, usage 3 s, absent 11 s, cards 8 s, clean 11 s, release 22 s), inside the 120 s rule.",
       "targets": [
         "tables-go-keyed-negative-control",
         "tables-go-layout-contract-negative-control",
