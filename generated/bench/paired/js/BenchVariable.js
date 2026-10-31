@@ -4111,7 +4111,7 @@ TableVariableFreeze(TableVariableUnions);
 
 // Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.
 export const TableCookWrite = (() => {
-  const build = 0x23753a84972a054en;
+  const build = 0x41d3559378bfa852n;
   const layouts = {
     "MixedEntity": {
       size: 64, align: 8, data: 64, measure: 144, alignCook: 8, typeId: 0x9367b84cab99cdc3n, make: () => new MixedEntity(),

@@ -562,6 +562,14 @@ commit, and refuses a patch release whose form differs, by name
 (`TestReleaseFormGate`, with `release-form-gate-negative-control` beside it).
 The minor's condition, with the wire and announced, is the release's review.
 
+**3.0.0 moves the form to 5, as a major may.** For the release notes: "the
+build version's form is 5: it now covers an array's element kind; cooked files
+from earlier builds are refused, as any build-version change is". Form 5 puts
+an unbounded array's element kind on its line in the cook projection
+(SPEC-TABLES.md §20.2), because without it `[]int32` and `[]float32` shared
+a build version, and a cooked list of one read as the other with no refusal.
+Every unit's build version moves with the form.
+
 ## The same-build forms: cook and block
 
 A **cook** is a table's data laid out as the target build's in-memory
@@ -893,6 +901,12 @@ the compatibility rules do.
   the projection carried no codec law line at the time. It is the worked
   example of why that line exists — under the rule now in force it bumps
   `WireLaw` and moves every id, in a minor, announced first.
+- **3.0.0, the build version's form is 5.** The cook projection carries an
+  unbounded array's element kind (`elemkind=`, SPEC-TABLES.md §20.2), so a
+  same-size element retype moves the build version as §4.1 says it does.
+  Every unit's build version moves, and every cooked file from an earlier
+  build is refused at `Open`. Released in a major, as the release policy
+  above allows.
 
 Both sides of every connection redeploy together, so an amendment that moves
 bytes is priced by that rule and not by the fiction that deployed halves must
@@ -1193,11 +1207,6 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #434: the reserved escape kind. The C++ reference and `internal/tablewire`
   carry it; what is owed is the eight ports (#511 to #518).
 - #432: the cook triple, and the byte-order sentences in five places.
-- #446: the evolution table's fixtures. `TestEvolutionTableFrames` pins 33
-  of §4.1's 34 rows. The one owed is an unbounded array's element retyped:
-  the row says the build version moves, and §20.1 and §20.2 give the
-  unbounded array's cook line the element's size and not its kind, so a
-  same-size retype moves nothing.
 - #525: retain-unknown in the eight ports. The C++ reference, the two report
   counters, `internal/tablewire`'s own retention, the wire fuzzer's retention
   leg, which needed it, the MESSAGE form's `LoadRetain` and the conformance
