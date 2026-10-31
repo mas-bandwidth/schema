@@ -724,6 +724,39 @@ tables-rust-variable-arms:
 
 test-rust: tables-rust-variable-arms
 
+# ONE WALK IN DECLARATION ORDER (docs/PORTING.md M15; docs/SPEC-TABLES.md
+# §3.1): the numbering walk (<t>_number) is the one walk the save and the cook
+# writer lay nodes in, and it descends by-value edges and set arms in place.
+# This control puts the GROUPED walk back — every pointer field first, then
+# every by-value nesting, map and union — through a `go test -overlay` of
+# internal/codegen/rusttable/variablecodec.go (no tracked file is edited), and
+# TestMapsAndUnionArmsOnTheTableWireRust must go red on arms_ptr and
+# maps_pointers, the probes whose by-value edge reaches a node before a later
+# pointer field does.
+.PHONY: tables-rust-number-walk-negative-control
+tables-rust-number-walk-negative-control:
+	@rm -rf build/rust-number-walk-control && mkdir -p build/rust-number-walk-control
+	@sed 's|^		guardedField(b, conds\[f.Name\], func(b \*strings.Builder) { g.emitFieldNumber(b, f) })$$|		if classOf(f) == vPointer { guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldNumber(b, f) }) } }; for _, f := range st.Fields { if classOf(f) != vPointer { guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldNumber(b, f) }) } /* SABOTAGED: the grouped walk */|' \
+		internal/codegen/rusttable/variablecodec.go > build/rust-number-walk-control/variablecodec.go.txt
+	@test "$$(grep -c 'SABOTAGED: the grouped walk' build/rust-number-walk-control/variablecodec.go.txt)" = 1 || \
+		{ echo "NEGATIVE CONTROL: the grouped-walk sabotage did not apply exactly once"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-number-walk-control/variablecodec.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-number-walk-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 900s \
+			-overlay=build/rust-number-walk-control/overlay.json \
+			-run 'TestMapsAndUnionArmsOnTheTableWireRust$$' ./internal/codegen/rusttable/ > build/rust-number-walk-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the variable wire stayed green under the grouped numbering walk"; \
+		exit 1; \
+	fi
+	@for c in arms_ptr maps_pointers; do \
+		grep -q "the probe did not print \"WIRE $$c OK\"" build/rust-number-walk-control/log || \
+			{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on $$c's wire"; \
+			  cat build/rust-number-walk-control/log; exit 1; }; \
+	done
+	@echo "rust number-walk negative control: the grouped walk turns arms_ptr and maps_pointers RED on the wire"
+
+test-rust: tables-rust-number-walk-negative-control
+
 # THE FIXED CLASS ON THE TABLE WIRE (docs/SPEC-TABLES.md §2.2, §3, §4.2, §5):
 # a `fixed table` rides the VARIABLE FORM as well as the fixed one, so a
 # closure holding a fixed table gets the form-1 codec — load, save and the text
@@ -792,6 +825,44 @@ tables-rust-message-batch:
 	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
 
 test-rust: tables-rust-message-batch
+
+# A FLOAT CROSSES TWO WIDTHS BY BIT SURGERY (docs/PORTING.md M21; SPEC.md
+# §4.3, docs/SPEC-TABLES.md §4): the variable runtime's table_widen_f32 and
+# the message runtime's table_message_widen_f32, cut out of the generated
+# modules as emitted and run over every float32 class, must keep a NaN's
+# payload and its quiet bit exactly as written, and the codec's kind-10 rung
+# into a float64 cell must go through the first. SCHEMA_REQUIRE_CORPUS=1 turns
+# the rustc skip into a failure, so the target never passes on a SKIP.
+.PHONY: tables-rust-float-nan tables-rust-float-nan-negative-control
+tables-rust-float-nan:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run 'TestRustFloatWideningKeepsNaNPayloads$$' -v
+	@echo 'tables Rust float NaN: a float32 widens into a float64 cell by bit surgery, NaN payloads kept'
+
+# Its negative control puts the hardware conversion back in table_widen_f32
+# through a `go test -overlay` of internal/codegen/rusttable/variable.go (no
+# tracked file is edited): the signalling NaNs come back with the quiet bit
+# set, and the test must go red on table_widen_f32's NAN probe.
+tables-rust-float-nan-negative-control:
+	@rm -rf build/rust-float-nan-control && mkdir -p build/rust-float-nan-control
+	@sed 's|if bits \& 0x7F80_0000 == 0x7F80_0000 \&\& bits \& 0x007F_FFFF != 0 {|if false \&\& bits \& 0x7F80_0000 == 0x7F80_0000 {|' \
+		internal/codegen/rusttable/variable.go > build/rust-float-nan-control/variable.go.txt
+	@cmp -s internal/codegen/rusttable/variable.go build/rust-float-nan-control/variable.go.txt && \
+		{ echo "NEGATIVE CONTROL: the bit-surgery sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variable.go":"%s/build/rust-float-nan-control/variable.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-float-nan-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-float-nan-control/overlay.json \
+			-run 'TestRustFloatWideningKeepsNaNPayloads$$' ./internal/codegen/rusttable/ > build/rust-float-nan-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the widening stayed green with the hardware conversion put back"; \
+		exit 1; \
+	fi
+	@grep -q 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the signalling NaN's payload"; \
+		  cat build/rust-float-nan-control/log; exit 1; }
+	@grep -m1 'NAN: table_widen_f32(0x7fa00001)' build/rust-float-nan-control/log
+	@echo "rust float NaN negative control: the hardware conversion in table_widen_f32 turns the probe RED on a signalling NaN"
+
+test-rust: tables-rust-float-nan tables-rust-float-nan-negative-control
 
 # THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
 # listing oracle as the reference, through the Rust surface, mirroring
