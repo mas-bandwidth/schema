@@ -375,21 +375,23 @@ tables-js-soak-negative-control: build/tables-generated-js/.stamp build/js-fuzz-
 # the caller, and runs it under node against the generated `tables/pointers`
 # modules it imports — so the day the emitted surface moves, the page goes red
 # with it rather than a release later.
+JS_USAGE_SCHEMA ?= ./bin/schema
+JS_USAGE_DIR ?= build/js-usage
 .PHONY: tables-js-usage
 tables-js-usage: bin/schema build/cook-open/.stamp docs/USAGE.md
-	@rm -rf build/js-usage && mkdir -p build/js-usage
-	./bin/schema generate --lang js --out build/js-usage tables/pointers
-	printf 'import { readFileSync } from "node:fs";\n' > build/js-usage/usage.mjs
-	printf 'const bytes = new Uint8Array(readFileSync(process.argv[2]));\n' >> build/js-usage/usage.mjs
-	printf 'let used = 0;\n' >> build/js-usage/usage.mjs
-	printf 'function use(v) { used++; }\n' >> build/js-usage/usage.mjs
+	@rm -rf $(JS_USAGE_DIR) && mkdir -p $(JS_USAGE_DIR)
+	$(JS_USAGE_SCHEMA) generate --lang js --out $(JS_USAGE_DIR) tables/pointers
+	printf 'import { readFileSync } from "node:fs";\n' > $(JS_USAGE_DIR)/usage.mjs
+	printf 'const bytes = new Uint8Array(readFileSync(process.argv[2]));\n' >> $(JS_USAGE_DIR)/usage.mjs
+	printf 'let used = 0;\n' >> $(JS_USAGE_DIR)/usage.mjs
+	printf 'function use(v) { used++; }\n' >> $(JS_USAGE_DIR)/usage.mjs
 	sed -n '/<!-- js-table-usage -->/,/<!-- \/js-table-usage -->/p' docs/USAGE.md \
-		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/js-usage/usage.mjs
-	printf 'if (used === 0) { throw new Error("the cook walk read no node"); }\n' >> build/js-usage/usage.mjs
-	printf 'console.log("usage: docs/USAGE.md JavaScript cook example opened the Scene cook and walked " + used + " node(s)");\n' >> build/js-usage/usage.mjs
-	grep -q 'SceneCook.Open' build/js-usage/usage.mjs || \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(JS_USAGE_DIR)/usage.mjs
+	printf 'if (used === 0) { throw new Error("the cook walk read no node"); }\n' >> $(JS_USAGE_DIR)/usage.mjs
+	printf 'console.log("usage: docs/USAGE.md JavaScript cook example opened the Scene cook and walked " + used + " node(s)");\n' >> $(JS_USAGE_DIR)/usage.mjs
+	grep -q 'SceneCook.Open' $(JS_USAGE_DIR)/usage.mjs || \
 		{ echo "MISSING: docs/USAGE.md carries no js-table-usage example"; exit 1; }
-	cd build/js-usage && $(NODE) usage.mjs $(CURDIR)/build/cook-open/Scene.cook
+	cd $(JS_USAGE_DIR) && $(NODE) usage.mjs $(CURDIR)/build/cook-open/Scene.cook
 
 .PHONY: tables-js-release
 tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
@@ -1476,3 +1478,170 @@ tables-js-keyed:
 	@echo 'tables JS keyed: a keyed array indexes by key and refuses None and a key past Max on every form (M5)'
 
 test-js: tables-js-keyed
+
+# ---- THE 3.0.0 PROOF CONTROLS (docs/PORTING.md; tools/matrix proof) ----
+#
+# Each control below breaks the EMITTER the named gate runs over — a
+# tools/sabotage copy of one internal/codegen/jstable source reached through a
+# Go overlay, so no tracked file is written to — and requires that gate RED on
+# the line that names the broken property. A control that went red for some
+# other reason fails too.
+
+# js_jstable_control: $(1) the tools/sabotage name, $(2) the jstable source it
+# copies, $(3) the regexp that selects the gate's own test, $(4) the package,
+# $(5) the line the red run must print.
+define js_jstable_control
+	@rm -rf build/$@ && mkdir -p build/$@
+	@go run ./tools/sabotage -name $(1) -out build/$@/source.gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -overlay=$(CURDIR)/build/$@/overlay.json $(4) -run '$(3)' \
+			> build/$@/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left $(3) green"; cat build/$@/log; exit 1; \
+	fi
+	@grep -qF -- '$(5)' build/$@/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(3) went red, but not on: $(5)"; cat build/$@/log; exit 1; }
+	@echo "negative control: the $(1) sabotage turns $(3) RED on: $(5)"
+endef
+
+# js_leg_control: $(1) the tools/sabotage name, $(2) the jstable source, $(3)
+# the line test/js-tables/main.mjs must print. The sabotaged compiler
+# generates the three units the leg imports into a scratch tree, and the leg
+# runs over it through SCHEMA_JS_GENERATED.
+define js_leg_control
+	@rm -rf build/$@ && mkdir -p build/$@
+	@go run ./tools/sabotage -name $(1) -out build/$@/source.gotext $(2)
+	@printf '{"Replace":{"%s/$(2)":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
+	@go build -overlay=build/$@/overlay.json -o build/$@/schema ./cmd/schema
+	@./build/$@/schema generate --lang js --out build/$@/generated/examples tables/examples
+	@./build/$@/schema generate --lang js --out build/$@/generated/pointers tables/pointers
+	@./build/$@/schema generate --lang js --out build/$@/generated/block tables/block
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/$@/generated $(NODE) test/js-tables/main.mjs > build/$@/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left the JavaScript leg green"; cat build/$@/log; exit 1; \
+	fi
+	@grep -qF -- '$(3)' build/$@/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on: $(3)"; cat build/$@/log; exit 1; }
+	@echo "negative control: the $(1) sabotage turns the JavaScript leg RED on: $(3)"
+endef
+
+.PHONY: tables-js-keyed-shift-negative-control \
+	tables-js-variable-class-identity-negative-control \
+	tables-js-variable-class-label-negative-control \
+	tables-js-variable-arms-length-negative-control \
+	tables-js-float-bits-negative-control \
+	tables-js-names-negative-control \
+	tables-js-block-pitch-negative-control \
+	tables-js-byte-order-negative-control \
+	tables-js-order-word-negative-control \
+	tables-js-usage-negative-control \
+	tables-js-release-negative-control \
+	conformance-negative-control-js-absent
+
+# M5: key k read at slot k (the guards intact) turns tables-js-keyed red.
+tables-js-keyed-shift-negative-control:
+	$(call js_jstable_control,js-keyed-no-shift,internal/codegen/jstable/keyed.go,^TestKeyedArrayAccessorsJavaScript$$,./internal/codegen/jstable/,the keyed accessors do not hold M5)
+
+# M6: a closed node numbered again (a shared node written twice) turns
+# tables-js-variable-class red on graph_shared's wire.
+tables-js-variable-class-identity-negative-control:
+	$(call js_jstable_control,js-identity-dropped,internal/codegen/jstable/variableruntime.go,^TestVariableClassBeyondCardConstructsJavaScript$$,./internal/codegen/jstable/,the probe did not print "WIRE graph_shared OK")
+
+# M14: a shared node defined with `&node` at every occurrence turns
+# tables-js-variable-class red on graph_shared's text.
+tables-js-variable-class-label-negative-control:
+	$(call js_jstable_control,js-label-dropped,internal/codegen/jstable/variableruntime.go,^TestVariableClassBeyondCardConstructsJavaScript$$,./internal/codegen/jstable/,the probe did not print "JSONW graph_shared OK")
+
+# M18: an arm's L written one long turns tables-js-variable-arms red.
+tables-js-variable-arms-length-negative-control:
+	$(call js_jstable_control,js-arm-length,internal/codegen/jstable/variablearms.go,^TestMapsAndUnionArmsOnTheTableWireJavaScript$$,./internal/codegen/jstable/,the probe did not print "WIRE arms_leaf OK")
+
+# M21: elision by value rather than by bits turns
+# TestJsFloat32CellsAreBitTransparent red (a -0 under a +0 default).
+tables-js-float-bits-negative-control:
+	$(call js_jstable_control,js-float-value-compare,internal/codegen/jstable/variableruntime.go,^TestJsFloat32CellsAreBitTransparent$$,./internal/codegen/jstable/,FAIL: the variable form lost -0)
+
+# I6: one unclaimed module-scope binding in the emitted fixed runtime turns
+# TestJsTableModuleScopeNamesAreClaimed red, naming it.
+tables-js-names-negative-control:
+	$(call js_jstable_control,js-names-planted,internal/codegen/jstable/fixedruntime.go,^TestJsTableModuleScopeNamesAreClaimed$$,./compiler/,binds BogusUnregistered at module scope)
+
+# M11: the layout check's pitch constant moved off the row's size turns the
+# JavaScript leg red on the generated layout contract.
+tables-js-block-pitch-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	$(call js_leg_control,js-block-pitch,internal/codegen/jstable/block.go,generated layout constants disagree with each other)
+
+# M12: two accessor reads without the explicit little-endian flag turn the
+# JavaScript leg red on the accessor/descriptor agreement.
+tables-js-byte-order-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	$(call js_leg_control,js-byte-order,internal/codegen/jstable/record.go,the accessor and the descriptor disagree)
+
+# I7: a block Open that never reads the order word turns the JavaScript leg
+# red on the intact-magic, other-order block.
+tables-js-order-word-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	$(call js_leg_control,js-order-word,internal/codegen/jstable/block.go,a block whose prologue records the other byte order opened)
+
+# I12: the cook's documented Open moved turns tables-js-usage red: the page's
+# example no longer runs against what the emitter writes.
+tables-js-usage-negative-control: bin/schema build/cook-open/.stamp docs/USAGE.md
+	@rm -rf build/$@ && mkdir -p build/$@
+	@go run ./tools/sabotage -name js-cook-open-moved -out build/$@/source.gotext internal/codegen/jstable/cook.go
+	@printf '{"Replace":{"%s/internal/codegen/jstable/cook.go":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
+	@go build -overlay=build/$@/overlay.json -o build/$@/schema ./cmd/schema
+	@if $(MAKE) --no-print-directory tables-js-usage JS_USAGE_SCHEMA=$(CURDIR)/build/$@/schema JS_USAGE_DIR=build/$@/usage \
+			> build/$@/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the cook's Open moved and the documented example still ran"; cat build/$@/log; exit 1; \
+	fi
+	@grep -qF 'SceneCook.Open is not a function' build/$@/log || \
+		{ echo "NEGATIVE CONTROL FAILED: tables-js-usage went red, but not on the moved Open"; cat build/$@/log; exit 1; }
+	@echo "negative control: the cook's documented Open moved turns tables-js-usage RED"
+
+# J3: the release tier over a block reader with both extent bounds removed
+# must go red at its first instrument, the fuzzer at depth, on a read that
+# escaped the buffer. The tier stops there, so the control costs the fuzz
+# run to its first escape, not the hour's soak.
+tables-js-release-negative-control: bin/schema build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	@rm -rf build/$@ && mkdir -p build/$@
+	@go run ./tools/sabotage -name js-block-extent-bounds -out build/$@/source.gotext internal/codegen/jstable/block.go
+	@printf '{"Replace":{"%s/internal/codegen/jstable/block.go":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
+	@go build -overlay=build/$@/overlay.json -o build/$@/schema ./cmd/schema
+	@./build/$@/schema generate --lang js --out build/$@/generated/examples tables/examples
+	@./build/$@/schema generate --lang js --out build/$@/generated/pointers tables/pointers
+	@./build/$@/schema generate --lang js --out build/$@/generated/block tables/block
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/$@/generated $(MAKE) --no-print-directory tables-js-release > build/$@/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release tier stayed green over a block reader with no extent bound"; cat build/$@/log; exit 1; \
+	fi
+	@grep -qF 'a walk of an OPENED forgery threw' build/$@/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the release tier went red, but not on a read that escaped the buffer"; cat build/$@/log; exit 1; }
+	@echo "negative control: a block reader with no extent bound turns tables-js-release RED at its fuzzer"
+
+# I4: the JavaScript leg answers a case it cannot carry as `<case>.absent`,
+# one case at a time. A driver whose absent writers write nothing leaves those
+# cases with no answer at all, and the leg's conformance run must go red naming
+# one. The driver copy runs from build/ over the same generated tree, through a
+# substituted one-leg registry.
+conformance-negative-control-js-absent: build/conformance-harness build/tables-generated-js/.stamp
+	@rm -rf build/$@ && mkdir -p build/$@
+	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
+	@[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" = "$$(grep -c 'writeFileSync(join(outDir.*\.absent"' test/conformance/js/main.mjs)" ] && \
+		[ "$$(grep -c 'void (join(outDir' build/$@/main.mjs)" -gt 0 ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
+	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver
+	@printf 'js build/$@/driver\n' > build/$@/drivers.txt
+	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --work build/$@/work > build/$@/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the JavaScript leg's absences wrote nothing and the run stayed green"; cat build/$@/log; exit 1; \
+	fi
+	@grep -qF 'the driver wrote nothing' build/$@/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a case left with no answer"; cat build/$@/log; exit 1; }
+	@echo "negative control: a JavaScript leg whose per-case absences write nothing turns its conformance run RED"
+
+test-js: tables-js-keyed-shift-negative-control
+test-js: tables-js-variable-class-identity-negative-control
+test-js: tables-js-variable-class-label-negative-control
+test-js: tables-js-variable-arms-length-negative-control
+test-js: tables-js-float-bits-negative-control
+test-js: tables-js-names-negative-control
+test-js: tables-js-block-pitch-negative-control
+test-js: tables-js-byte-order-negative-control
+test-js: tables-js-order-word-negative-control
+test-js: tables-js-usage-negative-control
+test-js: tables-js-release-negative-control
+test-js: conformance-negative-control-js-absent

@@ -1,0 +1,121 @@
+#!/bin/sh
+# THE LUAU LEG's UNITS CONTROL (make/luau-conformance.mk,
+# conformance-negative-control-luau; make/negative-controls.json, the luau
+# group). Two sabotages of the GENERATED units, each required to turn exactly
+# its own surfaces red:
+#
+#   1. the LOAD: one report counter is forced to differ from the corpus
+#      expectation, so `report` and `retain` go red and nothing else;
+#   2. the ACCELERATOR READERS: the cook's reserved-words clause and the
+#      block's pitch clause are cut out of Check and BlockOpen, so the two
+#      forgery batteries and the two reason surfaces go red and nothing else.
+#
+# The sabotage is planted in a COPY of build/conformance-luau under a mirror
+# of the repository, never in the leg's own build: the wire-fuzz gates and the
+# other controls read build/conformance-luau at the same time under `make -j`,
+# and a planted unit there turns them red for a reason that is not theirs.
+# main.luau finds the units and its staged inputs by paths relative to itself,
+# so the mirror holds a copy of the driver and main.luau and links every other
+# top-level entry and every build/ entry but the two it owns
+# (test/conformance/luau/negative-control builds its mirror the same way).
+#
+# usage: sh test/conformance/luau/units-control
+set -eu
+
+root=$(pwd)
+out=build/luau-table-control
+rm -rf "$out"
+mkdir -p "$out"
+for need in build/conformance-harness build/conformance-luau build/luau-driver/units.luau; do
+	if [ ! -e "$need" ]; then
+		echo "negative control failed: $need is missing (make conformance-negative-control-luau builds it)" >&2
+		exit 1
+	fi
+done
+
+mirror=$root/$out/mirror
+mkdir -p "$mirror/build/luau-driver" "$mirror/test/conformance/luau"
+for entry in "$root"/* "$root"/.[!.]*; do
+	name=$(basename "$entry")
+	case "$name" in build | test | .git) continue ;; esac
+	[ -e "$entry" ] && ln -s "$entry" "$mirror/$name"
+done
+for entry in "$root"/build/*; do
+	name=$(basename "$entry")
+	case "$name" in conformance-luau | luau-driver) continue ;; esac
+	ln -s "$entry" "$mirror/build/$name"
+done
+cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
+cp build/luau-driver/units.luau "$mirror/build/luau-driver/units.luau"
+gen=$mirror/build/conformance-luau
+mkdir -p "$gen"
+for d in build/conformance-luau/*; do
+	case "$(basename "$d")" in driver) continue ;; esac
+	cp -R "$d" "$gen/"
+done
+fresh() { rm -rf "$gen.clean" && cp -R "$gen" "$gen.clean"; }
+reset() { rm -rf "$gen" && cp -R "$gen.clean" "$gen"; }
+fresh
+
+luau="${LUAU:-$root/dist/luau-0.741/luau}"
+case "$luau" in /*) ;; *) luau=$root/$luau ;; esac
+cat > "$out/driver" <<EOF
+#!/bin/sh
+abs() { case "\$1" in /*) echo "\$1" ;; *) echo "$root/\$1" ;; esac; }
+m=\$(abs "\$1")
+if [ "\$2" = list ]; then cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" list; fi
+o=\$(abs "\$3")
+cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" "\$2" "\$o"
+EOF
+chmod +x "$out/driver"
+printf 'luau %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+reds() { grep -E '^[a-z-]+ +FAIL' "$1" | awk '{print $1}' | tr '\n' ' '; }
+
+n=0
+for f in "$gen"/*/schema_load.luau; do
+	sed -i.orig '/^[[:space:]]*resolve(report)$/a\
+	report.unknown = report.unknown + 1
+' "$f"
+	rm -f "$f.orig"
+	grep -q '^	report.unknown = report.unknown + 1$' "$f" || {
+		echo "negative control failed: no resolve(report) line in $f to plant after; the sabotage would be vacuous" >&2; exit 1; }
+	n=$((n + 1))
+done
+if [ "$n" -eq 0 ]; then echo "negative control failed: no generated schema_load.luau to sabotage" >&2; exit 1; fi
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/load.log" 2>&1; then
+	echo "negative control failed: the luau load sabotage left conformance green" >&2
+	exit 1
+fi
+got=$(reds "$out/load.log")
+if [ "$got" != "report retain " ]; then
+	echo "negative control failed: the luau load sabotage turned [$got] red, want [report retain ]" >&2
+	cat "$out/load.log" >&2
+	exit 1
+fi
+
+reset
+n=0
+for f in "$gen"/*/schema_cookread.luau; do
+	sed -i.orig 's/then return "reserved_not_zero" end/then end/' "$f"
+	rm -f "$f.orig"
+	if grep -q 'then return "reserved_not_zero" end' "$f"; then exit 1; fi
+	n=$((n + 1))
+done
+for f in "$gen"/*/schema_blockread.luau; do
+	sed -i.orig 's/if offsetOf < 0 or stride ~= f.stride then/if offsetOf < 0 then/' "$f"
+	rm -f "$f.orig"
+	if grep -q 'stride ~= f.stride' "$f"; then exit 1; fi
+	n=$((n + 1))
+done
+if [ "$n" -eq 0 ]; then echo "negative control failed: no accelerator reader to sabotage" >&2; exit 1; fi
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/accel.log" 2>&1; then
+	echo "negative control failed: the luau reader sabotage left conformance green" >&2
+	exit 1
+fi
+got=$(reds "$out/accel.log")
+if [ "$got" != "forgery cook-forgery cook-reason block-reason " ]; then
+	echo "negative control failed: the luau reader sabotage turned [$got] red, want [forgery cook-forgery cook-reason block-reason ]" >&2
+	cat "$out/accel.log" >&2
+	exit 1
+fi
+echo "Luau table negative control: the load sabotage turns exactly report and retain red; the reader sabotage exactly forgery, cook-forgery, cook-reason and block-reason"

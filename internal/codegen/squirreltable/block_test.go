@@ -75,6 +75,14 @@ func readBlockRows(t *testing.T, path string) ([]blockRow, []cookForgery, map[st
 // when the caller passes an unaligned lead, a null blob, or an unknown root.
 func TestSquirrelBlockReadMatchesTheCorpus(t *testing.T) {
 	t.Parallel()
+	blockReadProbe(t, nil, t.Errorf)
+}
+
+// blockReadProbe is the gate's body: patch, when not nil, replaces emitted
+// runtime files by name (a control's scratch copy), and every disagreement
+// is reported through errorf.
+func blockReadProbe(t *testing.T, patch map[string]string, errorf func(string, ...any)) {
+	t.Helper()
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -294,6 +302,9 @@ local hostileNull = function(T, name, root) {
 		for name, data := range tables {
 			writeFile(t, filepath.Join(out, name), data)
 		}
+		for name, data := range patch {
+			writeFile(t, filepath.Join(out, name), []byte(data))
+		}
 	}
 
 	for key := range byUnit {
@@ -334,7 +345,7 @@ local hostileNull = function(T, name, root) {
 			sections[current] = append(sections[current], line)
 		default:
 			if line != "" {
-				t.Errorf("unexpected output %q", line)
+				errorf("unexpected output %q", line)
 			}
 		}
 	}
@@ -350,7 +361,7 @@ local hostileNull = function(T, name, root) {
 			got += "\n"
 		}
 		if got != string(want) {
-			t.Errorf("block %s: the Squirrel read does not match %s\n--- got ---\n%s--- want ---\n%s", r.key, r.dump, got, want)
+			errorf("block %s: the Squirrel read does not match %s\n--- got ---\n%s--- want ---\n%s", r.key, r.dump, got, want)
 			continue
 		}
 		count++
@@ -360,27 +371,27 @@ local hostileNull = function(T, name, root) {
 	for _, line := range hostileLines {
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
-			t.Errorf("hostile output %q: want name and reason", line)
+			errorf("hostile output %q: want name and reason", line)
 			continue
 		}
 		name, got := fields[1], fields[2]
 		want, ok := refusals[name]
 		if !ok {
-			t.Errorf("hostile %s: no refusal line names it", name)
+			errorf("hostile %s: no refusal line names it", name)
 			continue
 		}
 		if got == "ok" {
-			t.Errorf("hostile %s: opened, want refusal %s", name, want)
+			errorf("hostile %s: opened, want refusal %s", name, want)
 			continue
 		}
 		if got != want {
-			t.Errorf("hostile %s: refusal %s, want %s", name, got, want)
+			errorf("hostile %s: refusal %s, want %s", name, got, want)
 			continue
 		}
 		hostileCount++
 	}
 	if hostileCount != len(hostiles) {
-		t.Errorf("hostile battery: read %d of %d named refusals", hostileCount, len(hostiles))
+		errorf("hostile battery: read %d of %d named refusals", hostileCount, len(hostiles))
 	}
 	t.Logf("read %d block rows and %d named refusals", count, hostileCount)
 }
@@ -392,4 +403,55 @@ func blockUnitOfCase(rows []blockRow, name string) string {
 		}
 	}
 	return ""
+}
+
+// TestSquirrelBlockByteOrderNegativeControl is M12's control (docs/PORTING.md,
+// byte order is the reader's; docs/SPEC-TABLES.md §19.1). A scratch copy of
+// the block runtime composes a 32-bit word big-endian instead of from its
+// bytes little-endian (one anchor, matched exactly once): the reading that
+// leans on an order the file does not have. The block gate must go red.
+func TestSquirrelBlockByteOrderNegativeControl(t *testing.T) {
+	t.Parallel()
+	const anchor = "  return (b[at] & 0xff) | ((b[at + 1] & 0xff) << 8) |\n         ((b[at + 2] & 0xff) << 16) | ((b[at + 3] & 0xff) << 24);\n"
+	runtime := string(squirreltable.Runtime()["schema_table_block.nut"])
+	if n := strings.Count(runtime, anchor); n != 1 {
+		t.Fatalf("the control's anchor appears %d times in the block runtime, want exactly once", n)
+	}
+	patched := strings.Replace(runtime, anchor,
+		"  return (b[at + 3] & 0xff) | ((b[at + 2] & 0xff) << 8) |\n         ((b[at + 1] & 0xff) << 16) | ((b[at] & 0xff) << 24);\n", 1)
+	var red []string
+	blockReadProbe(t, map[string]string{"schema_table_block.nut": patched}, func(format string, args ...any) {
+		red = append(red, fmt.Sprintf(format, args...))
+	})
+	if len(red) == 0 {
+		t.Fatal("with a 32-bit word read big-endian, the block gate stayed green: it cannot see the reader's byte order")
+	}
+	t.Logf("with a 32-bit word read big-endian, the block gate reports %d disagreements; the first: %.200s", len(red), red[0])
+}
+
+// TestSquirrelBlockOrderWordNegativeControl is I7's control (docs/PORTING.md,
+// the cross-endian refusal as a named gate; docs/SPEC-TABLES.md §19.1, §19.2).
+// The half no foreign surface forges is a block whose magic is intact and
+// whose byte-order word says the other order: the corpus's block_byte_order,
+// which the block gate requires refused by name. A scratch copy of the block
+// runtime drops the order-word check (one anchor, matched exactly once), and
+// the gate must go red on that forgery.
+func TestSquirrelBlockOrderWordNegativeControl(t *testing.T) {
+	t.Parallel()
+	const anchor = "  if (!eqB(bytes, 16, T.TableBlockByteOrderBytes)) return refuse(report, \"not_a_cook\");\n"
+	runtime := string(squirreltable.Runtime()["schema_table_block.nut"])
+	if n := strings.Count(runtime, anchor); n != 1 {
+		t.Fatalf("the control's anchor appears %d times in the block runtime, want exactly once", n)
+	}
+	var red []string
+	blockReadProbe(t, map[string]string{"schema_table_block.nut": strings.Replace(runtime, anchor, "", 1)}, func(format string, args ...any) {
+		red = append(red, fmt.Sprintf(format, args...))
+	})
+	for _, r := range red {
+		if strings.Contains(r, "block_byte_order") {
+			t.Logf("with the order word unchecked, the block gate reports %d disagreements, block_byte_order among them", len(red))
+			return
+		}
+	}
+	t.Fatalf("with the order word unchecked, the block gate did not name block_byte_order (%d disagreements: %q)", len(red), red)
 }

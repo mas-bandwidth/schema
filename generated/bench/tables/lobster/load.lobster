@@ -688,6 +688,17 @@ def new_record(d:TableDescriptor) -> Record:
         push(fields, new_slot(f))
     return Record { d: d, fields: fields, retained: [] }
 
+// slot_named is the Slot of rec's field whose schema name is name, the way a
+// caller reaches a field of a loaded or cooked Record (docs/PORT-LOBSTER.md,
+// THE LOAD). A name the table does not declare is REFUSED BY NAME in every
+// build: a VM bounds error that names the table and the field, which
+// --runtime-no-asserts keeps.
+def slot_named(rec:Record, name:string) -> Slot:
+    for(rec.fields) sl:
+        if sl.fd.name == name:
+            return sl
+    return rec.fields[length(rec.fields) + length(["no field: " + rec.d.name + "." + name][1])]
+
 def new_slot(f:FieldDescriptor) -> Slot:
     let sl = Slot { fd: f, present: false, count: 0, cell: Value {}, elems: [], entries: [] }
     reset_slot(sl)

@@ -938,6 +938,13 @@ static unsafe class Program
             {
                 Fail.Now("a cook of the OTHER byte order opened — the magic is what refuses it");
             }
+            // and the refusal NAMES the order (docs/SPEC-TABLES.md §7.1): the magic
+            // read byte-reversed is foreign_order, never a later guard's reason
+            TableRefuseReason reason = OpenReason(root.Name, (IntPtr)file.Base, file.Length);
+            if (reason != TableRefuseReason.foreign_order)
+            {
+                Fail.Now("a cook of the OTHER byte order was refused as " + reason + ", not foreign_order");
+            }
             // AND A C# BIG-ENDIAN CONSUMER IS UNPROVEN, stated rather than
             // implied (docs/SPEC-TABLES.md §7.5): there is no big-endian .NET, so
             // this leg proves the REFUSAL and nothing about a native open of a
