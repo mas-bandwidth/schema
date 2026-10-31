@@ -1367,11 +1367,13 @@ public final class TableVariable {
         return nt;
     }
 
-    // checkIndex is the numbering's bound on one node index AS IT IS READ
-    // (§3.1; internal/tablewire/decodenodes.go resolveCell): an index past
-    // node_count + 1 is damage in every occurrence that carries it, an
-    // occurrence a later one replaces included, so it is judged here and not
-    // only when the surviving value resolves.
+    // checkIndex is the numbering's bound on one node reference AS IT IS READ
+    // (§3.1, §4; internal/tablewire/decodenodes.go resolveCell): a reference
+    // ABOVE the entry count (past node_count + 1) is an unreadable reference,
+    // damage in every occurrence that carries it, an occurrence a later one
+    // replaces included, so it is judged here and not only when the surviving
+    // value resolves. Only the slots a field keeps are read: a clamped array's
+    // tail past its bound is stepped over by the field's length, unread.
     static void checkIndex(long index, Report report) {
         if (index >= 2 && report.nodeLimit >= 0 && index - 2 >= report.nodeLimit) {
             report.malformed = true;

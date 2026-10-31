@@ -1651,13 +1651,13 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # ruling, and it stops the pass before it reaches the mutants behind it.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
@@ -1815,11 +1815,15 @@ tables-java-keyed-count-negative-control: tables-java-wire-fuzz
 
 test-java: tables-java-keyed-count-negative-control
 
-# THE NODE-INDEX BOUND'S CONTROL (docs/SPEC-TABLES.md §3.1): a scratch copy of the
-# generated units whose index check is planted out, so an index past the
-# numbering in an occurrence a later one replaces is never judged. The replay
-# of pointer_index_past_numbering (streamdemo.Feed: the first of two `parts`
-# occurrences names node 2 of an empty numbering) must go red in both arms.
+# THE NODE-REFERENCE BOUND'S CONTROL (docs/SPEC-TABLES.md §3.1, §4): a node
+# reference ABOVE the entry count is an unreadable reference, which is damage,
+# in every occurrence that carries it. A scratch copy of the generated units
+# whose check is planted out must read pointer_index_past_numbering clean
+# (streamdemo.Feed: the first of two `parts` occurrences names node 2 of an
+# empty numbering), and the replay must go red in both arms. Its companion
+# vector, pointer_tail_unreadable_clean, holds an unreadable LEB in the CLAMPED
+# TAIL past `parts`' bound: the tail is stepped over by the field's length and
+# stays opaque, so it is no damage and the gate replays it clean.
 JAVA_NODE_INDEX_SABOTAGE := build/java-node-index-sabotage
 .PHONY: tables-java-node-index-negative-control
 tables-java-node-index-negative-control: tables-java-wire-fuzz
