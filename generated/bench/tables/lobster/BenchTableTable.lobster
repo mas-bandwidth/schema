@@ -154,6 +154,8 @@ let TableEntityDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     place_tables: []::string,
     place_str: false,
     place_bytes: false,
+    rsize: 64,
+    ralign: 8,
     fields: [
         schema_rt.FieldDescriptor { id: 0x23fcfd6678e36712, name: "entity_id", slot: "EntityId", json: "entity_id", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0xcb4b37357667310e, name: "pos_x", slot: "PosX", json: "pos_x", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xffffffffffffc001, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x0000000000003fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
@@ -183,6 +185,8 @@ let TableStatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     place_tables: []::string,
     place_str: false,
     place_bytes: false,
+    rsize: 8,
+    ralign: 8,
     fields: [
         schema_rt.FieldDescriptor { id: 0x80ab75f0866dbf65, name: "stat_id", slot: "StatId", json: "stat_id", o: 0, k: 6, s: "int", kw: 1, signed: false, dom: "int", bits: 8, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0x52076675ec13a0c1, name: "delta", slot: "Delta", json: "delta", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0xfffffffffffffe00, hi: 0xffffffffffffffff }, hi: schema_rt.Int128 { lo: 0x00000000000001ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
@@ -200,6 +204,8 @@ let TableMixedDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     place_tables: []::string,
     place_str: false,
     place_bytes: false,
+    rsize: 1352,
+    ralign: 8,
     fields: [
         schema_rt.FieldDescriptor { id: 0x6a5a70d91aa115fd, name: "protocol_magic", slot: "ProtocolMagic", json: "protocol_magic", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0xaa38aca481f528a8, name: "sequence", slot: "Sequence", json: "sequence", o: 1, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 16, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
@@ -243,6 +249,8 @@ let TableHitEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     place_tables: []::string,
     place_str: false,
     place_bytes: false,
+    rsize: 16,
+    ralign: 8,
     fields: [
         schema_rt.FieldDescriptor { id: 0xb7bc9ac015a25050, name: "target_id", slot: "TargetId", json: "target_id", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0x7f6308be8ab37fc0, name: "damage", slot: "Damage", json: "damage", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000fff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
@@ -262,6 +270,8 @@ let TableChatEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     place_tables: []::string,
     place_str: false,
     place_bytes: false,
+    rsize: 8,
+    ralign: 8,
     fields: [
         schema_rt.FieldDescriptor { id: 0xa5013e9ad5caeda4, name: "channel", slot: "Channel", json: "channel", o: 0, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x0000000000000003, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0xfbf1ac4d96ebd022, name: "speaker", slot: "Speaker", json: "speaker", o: 1, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 12, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
@@ -279,6 +289,8 @@ let TablePickupEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     place_tables: []::string,
     place_str: false,
     place_bytes: false,
+    rsize: 8,
+    ralign: 8,
     fields: [
         schema_rt.FieldDescriptor { id: 0x9e7fd06d864fbd56, name: "item_id", slot: "ItemId", json: "item_id", o: 0, k: 7, s: "int", kw: 2, signed: false, dom: "int", bits: 10, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } },
         schema_rt.FieldDescriptor { id: 0x8113fe7ea2b16969, name: "amount", slot: "Amount", json: "amount", o: 1, k: 4, s: "int", kw: 4, signed: true, dom: "int", ranged: true, lo: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 }, hi: schema_rt.Int128 { lo: 0x00000000000000ff, hi: 0x0000000000000000 }, has_def: true, def_int: schema_rt.Int128 { lo: 0x0000000000000000, hi: 0x0000000000000000 } }
