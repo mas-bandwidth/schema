@@ -381,9 +381,6 @@ build/tables-generated/vnum/VNEW_uint_widenTable.h
 build/tables-generated/vnum/VNEW_unknown_censusBlock.h
 build/tables-generated/vnum/VNEW_unknown_censusTable.cpp
 build/tables-generated/vnum/VNEW_unknown_censusTable.h
-build/tables-generated/vnum/VNEW_wstring_growBlock.h
-build/tables-generated/vnum/VNEW_wstring_growTable.cpp
-build/tables-generated/vnum/VNEW_wstring_growTable.h
 build/tables-generated/vnum/VOLD_array_bounded_growBlock.h
 build/tables-generated/vnum/VOLD_array_bounded_growTable.cpp
 build/tables-generated/vnum/VOLD_array_bounded_growTable.h
@@ -444,9 +441,6 @@ build/tables-generated/vnum/VOLD_uint_widenTable.h
 build/tables-generated/vnum/VOLD_unknown_censusBlock.h
 build/tables-generated/vnum/VOLD_unknown_censusTable.cpp
 build/tables-generated/vnum/VOLD_unknown_censusTable.h
-build/tables-generated/vnum/VOLD_wstring_growBlock.h
-build/tables-generated/vnum/VOLD_wstring_growTable.cpp
-build/tables-generated/vnum/VOLD_wstring_growTable.h
 build/tables-generated/vnum/Vbra_lineage_mergeView.h
 build/tables-generated/vnum/Vbrb_lineage_mergeView.h
 build/tables-generated/vnum/Vmid_floorView.h
@@ -470,7 +464,6 @@ build/tables-generated/vnum/Vnew_range_widenView.h
 build/tables-generated/vnum/Vnew_string_growView.h
 build/tables-generated/vnum/Vnew_uint_widenView.h
 build/tables-generated/vnum/Vnew_unknown_censusView.h
-build/tables-generated/vnum/Vnew_wstring_growView.h
 build/tables-generated/vnum/Vold_array_bounded_growView.h
 build/tables-generated/vnum/Vold_array_elem_widenView.h
 build/tables-generated/vnum/Vold_array_fixed_growView.h
@@ -491,7 +484,6 @@ build/tables-generated/vnum/Vold_range_widenView.h
 build/tables-generated/vnum/Vold_string_growView.h
 build/tables-generated/vnum/Vold_uint_widenView.h
 build/tables-generated/vnum/Vold_unknown_censusView.h
-build/tables-generated/vnum/Vold_wstring_growView.h
 build/tables-generated/vocab/VocabBlock.h
 build/tables-generated/vocab/VocabTable.cpp
 build/tables-generated/vocab/VocabTable.h
@@ -550,18 +542,6 @@ build/tables-generated/w2/Tblw2View.h
 build/tables-generated/w2/W2Block.h
 build/tables-generated/w2/W2Table.cpp
 build/tables-generated/w2/W2Table.h
-build/tables-generated/wide/CaptionBlock.h
-build/tables-generated/wide/CaptionTable.cpp
-build/tables-generated/wide/CaptionTable.h
-build/tables-generated/wide/WideTextTable.h
-build/tables-generated/wide/WideView.cpp
-build/tables-generated/wide/WideView.h
-build/wide-generated/CaptionBlock.h
-build/wide-generated/CaptionTable.cpp
-build/wide-generated/CaptionTable.h
-build/wide-generated/WideTextTable.h
-build/wide-generated/WideView.cpp
-build/wide-generated/WideView.h
 generated/bench/paired/cpp/BenchTable.cpp
 generated/bench/paired/cpp/BenchTable.h
 generated/bench/paired/cpp/BenchView.h
