@@ -124,7 +124,7 @@ test-goose: tables-goose-wire-fuzz schema-goose-runs-hostile-corpus \
 .PHONY: tables-goose-retain-fuzz-driver tables-goose-retain-fuzz-negative-control
 tables-goose-retain-fuzz-driver:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -run '^TestGooseRetaining(FuzzDriver|MapReplacement)$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseRetaining(FuzzDriver|MapReplacement)$$' ./internal/codegen/goosetable/
 tables-goose-retain-fuzz-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -run '^TestGooseRetaining(FuzzNegativeControl|MapReplacementNegativeControl)$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseRetaining(FuzzNegativeControl|MapReplacementNegativeControl)$$' ./internal/codegen/goosetable/
