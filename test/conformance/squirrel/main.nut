@@ -206,7 +206,7 @@ local loadReport = function(unit, root, bytes) {
 };
 
 if (mode == "list") {
-  foreach (name in ["wire", "report", "json-read", "json-write", "json-hostile",
+  foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
                      "cook-write", "message", "retain", "retain-save"]) print(name + "\n");
@@ -225,6 +225,37 @@ if (mode == "report") {
     local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
     if (!generated(unit)) { writeAbsent(cname); continue; }
     writeText(outdir + "/" + cname, loadReport(unit, root, readBytes(wirepath)));
+  }
+  return;
+}
+
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the tolerant load's report
+// line, then the §16 text of the value it left, unless the row says
+// `no-value` or the read refused. Damaged input is discarded whole
+// (docs/SPEC-TABLES.md §4): the harness scores the report line alone there.
+// A derived line is `framing <case> <unit> <root> <wire> [no-value]`.
+if (mode == "framing") {
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 5 || f[0] != "framing") continue;
+    local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
+    local noValue = f.len() > 5 && f[5] == "no-value";
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local L = opened[0].require("schema_table_load");
+    local report = newReport();
+    local v = L.loadTolerant(T, root, readBytes(wirepath), report);
+    local m = (report.malformed || (v == null && !report.refused)) ? "true" : "false";
+    local text = report.unknown.tostring() + "," + report.kindMismatch.tostring() + "," +
+                 report.widened.tostring() + "," + report.clamped.tostring() + "," +
+                 report.duplicate.tostring() + "," + m + "," + (report.refused ? "refused" : "read") + "\n";
+    if (v != null && !report.refused && !report.malformed && !noValue) {
+      local json = T[root + "ToJson"](v);
+      if (json == null) throw cname + ": ToJson refused the value";
+      text += json;
+    }
+    writeText(outdir + "/" + cname, text);
   }
   return;
 }
