@@ -157,7 +157,7 @@ func cookgen(t *testing.T) string {
 		cmd := exec.Command("go", "build", "-o", cookgenOnce.path, "./test/cookgen")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
-			cookgenOnce.err = fmt.Errorf("building cookgen: %v\n%s", err, out)
+			cookgenOnce.err = fmt.Errorf("building cookgen: %w\n%s", err, out)
 		}
 	})
 	if cookgenOnce.err != nil {

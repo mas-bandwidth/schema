@@ -117,8 +117,8 @@ end
 }
 
 func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
+	if before, _, ok := strings.Cut(s, "\n"); ok {
+		return before
 	}
 	if len(s) > 60 {
 		return s[:60]

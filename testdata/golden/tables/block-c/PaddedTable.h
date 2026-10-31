@@ -3504,7 +3504,11 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                     break;
                 }
                 if ( !blockdemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->flag = blockdemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = blockdemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->flag = bool_byte != 0;
+                }
                 break;
             }
             case 0x08b72e07b55c3ac0ull: /* id */

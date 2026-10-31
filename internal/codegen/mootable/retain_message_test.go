@@ -68,7 +68,7 @@ end
 `, capacity, idArg, rootName, retainStores)
 	out := g.run(t, main, map[string][]byte{"conn": conn, "message": batch})
 	var o messageOut
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		k, v, _ := strings.Cut(line, " ")
 		switch k {
 		case "ANNOUNCE":
@@ -87,7 +87,7 @@ end
 			rest = strings.Join(f[3:], " ")
 			o.refusedReason = rest
 		case "used":
-			for _, s := range strings.Split(v, ",") {
+			for s := range strings.SplitSeq(v, ",") {
 				if s != "" {
 					n, _ := strconv.Atoi(s)
 					o.used = append(o.used, n)
@@ -374,11 +374,11 @@ func TestMooRetainMessageNegativeControl(t *testing.T) {
 	}
 	path := filepath.Join(g.dir, "table_message.moo")
 	src := string(g.files["table_message.moo"])
-	const anchor = "\t\t\t\tt.retain.captureMessage(t, v, d, entry, at, t.r.off)\n"
+	const anchor = "\t\t\t\t_retain.captureMessage(t, v, d, entry, at, t.r.off)\n"
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the capture call is not in table_message.moo exactly once")
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "\t\t\t\tt.retain.lost(t.report)\n", 1)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(src, anchor, "\t\t\t\t_retain.lost(t.report)\n", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := mooRetainMessages(t, g, row.root, conn, batch, retainFull, -1); got.counters() == row.counters {

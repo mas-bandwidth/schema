@@ -755,11 +755,11 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 					-- A SLOT WHOSE BODY DID NOT SPEND ITS L RESETS TO ITS DECLARED
 					-- DEFAULTS (§3.2, §5)
 					report.malformed = true
-					local fresh = d.new()
 					if _retain ~= nil then
-						_retain.rekey(inst, fresh) -- damage is not a later occurrence (§6.6)
+						_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
+					else
+						inst = d.new()
 					end
-					inst = fresh
 				end
 				x = inst
 			elseif e.s == "enum" then
@@ -972,11 +972,11 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		read_body(d, sub, inst, true)
 		if sub.at ~= sub.e then
 			report.malformed = true
-			local fresh = d.new()
 			if _retain ~= nil then
-				_retain.rekey(inst, fresh) -- damage is not a later occurrence (§6.6)
+				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
+			else
+				inst = d.new()
 			end
-			inst = fresh
 		end
 		r.at += n
 		dst[i] = inst
@@ -1315,11 +1315,11 @@ read_field = function(fd: any, r: any, v: any): ...any
 			-- A NESTED BODY THAT DID NOT SPEND ITS L FALLS BACK ON ITS DECLARED
 			-- DEFAULTS (§3, §5)
 			_report.malformed = true
-			local fresh = d.new()
 			if _retain ~= nil then
-				_retain.rekey(inst, fresh) -- damage is not a later occurrence (§6.6)
+				_retain.refill(d, inst) -- damage is not a later occurrence (§6.6)
+			else
+				inst = d.new()
 			end
-			inst = fresh
 			if fd.slot ~= nil and v ~= nil then
 				v[fd.slot] = inst
 			end
