@@ -1519,6 +1519,14 @@
       ]
     },
     {
+      "name": "go-discard",
+      "when": "pull-request",
+      "why": "DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md §4): two overlay rebuilds of the gotable emitter, each removing one discard guard, and TestDamageDiscardsTheWholeLoadGo red on that guard's own line. Go only.",
+      "targets": [
+        "tables-go-discard-negative-control"
+      ]
+    },
+    {
       "name": "go-view",
       "when": "pull-request",
       "why": "the compiled Go unit registry and packet descriptor boundary controls",

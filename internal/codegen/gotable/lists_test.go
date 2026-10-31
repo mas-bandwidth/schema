@@ -58,7 +58,7 @@ table Root { values []int32
 `, `package probe
 import("testing";"math")
 func file(count uint64) []byte {var ids TableIds;b:=make([]byte,256);w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);w.ID(RootTableFields[0].ID);w.Put8(14);w.PutLeb(uint64(1+tableLebBytes(count)+4));w.Put8(4);w.PutLeb(count);w.Put32(19);w.ID(RootTableFields[1].ID);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();return b[:w.Offset]}
-func TestCount(t *testing.T){var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;wire:=file(1<<30);if RootLoadMeasure(wire)!=-1 {t.Fatal("region framing cap")};if !RootLoadBuilderTolerant(&b,wire,&report)||!report.Malformed||b.GetRoot().Values.Count!=1||*b.GetRoot().Values.At(0,&b.Arena)!=19||b.GetRoot().Next!=42 {t.Fatalf("prefix %+v, %+v",report,b.GetRoot())};report=TableReport{Unknown:3};if RootLoadBuilderTolerant(&b,file(uint64(math.MaxInt32)+1),&report)||report.Malformed||report.Unknown!=3||report.KindMismatch!=0 {t.Fatalf("count refusal %+v",report)} }
+func TestCount(t *testing.T){var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;wire:=file(1<<30);if RootLoadMeasure(wire)!=-1 {t.Fatal("region framing cap")};if RootLoadBuilderTolerant(&b,wire,&report)||!report.Malformed||b.GetRoot().Values.Count!=0||b.GetRoot().Next!=0 {t.Fatalf("damage must discard the whole load %+v, %+v",report,b.GetRoot())};report=TableReport{Unknown:3};if RootLoadBuilderTolerant(&b,file(uint64(math.MaxInt32)+1),&report)||report.Malformed||report.Unknown!=3||report.KindMismatch!=0 {t.Fatalf("count refusal %+v",report)} }
 `)
 }
 func TestNestedTerminationAndStringDefault(t *testing.T) {
@@ -74,7 +74,7 @@ table Root { name string(16) = "default"
 import("testing")
 func TestRecovery(t *testing.T){var ids TableIds;wire:=make([]byte,512);w:=TableWriter{Buffer:wire,Ids:&ids};w.Put8(1);w.ID(RootTableFields[0].ID);w.Put8(12);w.PutLeb(1);w.Put8(255)
  for _,field:=range []int{1,2,3}{w.ID(RootTableFields[field].ID);if field==2 {w.Put8(16);w.PutLeb(12)}else{w.Put8(14);w.PutLeb(11)};w.Put8(13);w.PutLeb(1);if field==2{id,_:=Key(1).TableEnumID();w.ID(id)};w.PutLeb(8);w.ID(ChildTableFields[0].ID);w.Put8(4);w.Put32(99);w.Put8(0);w.Put8(0)}
- w.ID(RootTableFields[4].ID);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if !RootLoadBuilderTolerant(&b,wire[:w.Offset],&report)||!report.Malformed {t.Fatalf("load %+v",report)};r:=b.GetRoot();if string(r.Name[:r.NameLength])!="default"||r.Values[0].N!=7||r.Slots[0].N!=7||r.List.At(0,&b.Arena).N!=7||r.Next!=42 {t.Fatalf("recovery %+v",r)} }
+ w.ID(RootTableFields[4].ID);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();var b RootBuilder;b.Init();defer b.Shutdown();var report TableReport;if RootLoadBuilderTolerant(&b,wire[:w.Offset],&report)||!report.Malformed {t.Fatalf("load %+v",report)};r:=b.GetRoot();if string(r.Name[:r.NameLength])!="default"||r.Values[0].N!=7||r.Slots[0].N!=7||r.List.Count!=0||r.Next!=0 {t.Fatalf("damage must discard the whole load %+v",r)} }
 `)
 }
 
@@ -91,7 +91,7 @@ func TestRegionCountCrossesLength(t *testing.T) {
  size:=AlbumLoadMeasure(wire);if size!=40 {t.Fatalf("measure %d",size)}
  var report TableReport
  root:=AlbumLoadTolerant(make([]byte,size),wire,&report)
- if root==nil||root.Photos.Count!=0||report!=(TableReport{Malformed:true}) {t.Fatalf("region %v %+v",root,report)}
+ if root!=nil||report!=(TableReport{Malformed:true}) {t.Fatalf("region %v %+v",root,report)}
  var builder AlbumBuilder;builder.Init();defer builder.Shutdown();report=TableReport{Unknown:3}
  if AlbumLoadBuilderTolerant(&builder,wire,&report)||report.Malformed||report.Unknown!=3 {t.Fatalf("builder %+v",report)}
  }

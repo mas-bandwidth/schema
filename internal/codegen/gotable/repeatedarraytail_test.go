@@ -16,9 +16,10 @@ func TestRepeatedArrayTailDefaults(t *testing.T) {
  import("testing";"encoding/hex";"unsafe")
  func TestCountedTail(t *testing.T){wire,_:=hex.DecodeString("01010e1e0f0202040401000000030d12040e0e040305000000060000000700000000010e1e0f0202047f01000000030d12040e0e0403050000000600000007000000000504020000000053a245082ca7b2c507b252164e194dfdd50802a2ad84ad246f2c414fbf84783ee9ea716f0f0182bf0500000000000000")
  size:=HandLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(size)];var report TableReport
+ discarded:=func(v *Hand){if v!=nil||!report.Malformed{t.Fatalf("damage must discard the whole load: %+v report %+v",v,report)}}
  check:=func(v *Hand){if v==nil||!report.Malformed||v.EntriesCount!=0||v.Entries[1].Type!=CarryTypeNone{t.Fatalf("counted tail not reset: %+v report %+v",v,report)}}
- check(HandLoadTolerant(region,wire,&report));report=TableReport{};store:=TableRetain{Bytes:make([]byte,1024),Ids:make([]TableRetainID,64)};check(HandLoadRetain(region,wire,&store,&report))
- var b HandBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();report=TableReport{};if !HandLoadBuilderTolerant(&b,wire,&report){t.Fatal("builder")};check(b.GetRoot());if HandCookMeasure(b.GetRoot(),&b.Arena)<0||!b.Lock(){t.Fatal("stale tail prevents cook or lock")}
+ discarded(HandLoadTolerant(region,wire,&report));report=TableReport{};store:=TableRetain{Bytes:make([]byte,1024),Ids:make([]TableRetainID,64)};discarded(HandLoadRetain(region,wire,&store,&report))
+ var b HandBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();report=TableReport{};if HandLoadBuilderTolerant(&b,wire,&report){t.Fatal("builder: damage must discard the whole load")};check(b.GetRoot());if HandCookMeasure(b.GetRoot(),&b.Arena)<0||!b.Lock(){t.Fatal("stale tail prevents cook or lock")}
  }
  `)
 }

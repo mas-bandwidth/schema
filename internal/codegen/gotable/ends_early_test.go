@@ -195,7 +195,7 @@ func TestRootReadAnswersOwnEarlyEnd(t *testing.T) {
 		var report TableReport
 		ok := RootLoadTolerant(&value, got, &report)
 		if trailing == 0 {
-			if ok || report.Verdict != TableOpenBodyStopped || !report.Malformed || value.A != 77 {
+			if ok || report.Verdict != TableOpenBodyStopped || !report.Malformed || value.A != 5 { // damage discards the whole load (docs/SPEC-TABLES.md §4): the value is at its defaults
 				t.Fatalf("reserved trailing 0: ok=%v a=%d report=%+v", ok, value.A, report)
 			}
 		} else if ok || report.Verdict != TableOpenDamaged || !report.Malformed || value.A != 5 || report.Unknown != 0 || report.KindMismatch != 0 {

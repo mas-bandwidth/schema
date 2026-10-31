@@ -2145,6 +2145,8 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 		report = &ignored
 	}
 	in := tableJSONIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
+	pre := report.Malformed
+	report.Malformed = false
 	info.Reset(value)
 	in.byteOrderMark()
 	ok := tableJSONReadTable(&in, value, info, 0)
@@ -2157,10 +2159,14 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 			in.bad = true
 		}
 	}
-	if in.bad || !ok {
+	// DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4): malformed text
+	// hands back no value, the value goes back to its defaults
+	if in.bad || !ok || report.Malformed {
+		info.Reset(value)
 		report.Malformed = true
 		return false
 	}
+	report.Malformed = pre
 	return true
 }
 
@@ -3512,8 +3518,8 @@ func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 // ---- json walk: end ----
 
 // MixedEntityFromJSONTolerant fills one MixedEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
-// counters counted onto the report passed. A nil report is allowed; every
+// is the TOLERANT text read (§6.5): counters are counted onto the report
+// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
 // tolerance event still decides the same way.
 func MixedEntityFromJSONTolerant(value *MixedEntity, text []byte, report *TableReport) bool {
 	return MixedEntityFromJSONTolerantWith(value, text, report, TableJSONOptions{})
@@ -3556,7 +3562,7 @@ func MixedEntityFromJSONWith(value *MixedEntity, text []byte, report *TableRepor
 }
 
 // MixedEntityFromJSONTolerantWith is MixedEntityFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
 func MixedEntityFromJSONTolerantWith(value *MixedEntity, text []byte, report *TableReport, options TableJSONOptions) bool {
 	return tableJSONRead(unsafe.Pointer(value), MixedEntityTableType(), text, report, options)
 }
@@ -3630,8 +3636,8 @@ func MixedEntityLoadText(text string, report *TableReport) (*MixedEntity, error)
 }
 
 // MixedStatFromJSONTolerant fills one MixedStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
-// counters counted onto the report passed. A nil report is allowed; every
+// is the TOLERANT text read (§6.5): counters are counted onto the report
+// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
 // tolerance event still decides the same way.
 func MixedStatFromJSONTolerant(value *MixedStat, text []byte, report *TableReport) bool {
 	return MixedStatFromJSONTolerantWith(value, text, report, TableJSONOptions{})
@@ -3674,7 +3680,7 @@ func MixedStatFromJSONWith(value *MixedStat, text []byte, report *TableReport, o
 }
 
 // MixedStatFromJSONTolerantWith is MixedStatFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
 func MixedStatFromJSONTolerantWith(value *MixedStat, text []byte, report *TableReport, options TableJSONOptions) bool {
 	return tableJSONRead(unsafe.Pointer(value), MixedStatTableType(), text, report, options)
 }
@@ -3748,8 +3754,8 @@ func MixedStatLoadText(text string, report *TableReport) (*MixedStat, error) {
 }
 
 // MixedHitEventFromJSONTolerant fills one MixedHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
-// counters counted onto the report passed. A nil report is allowed; every
+// is the TOLERANT text read (§6.5): counters are counted onto the report
+// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
 // tolerance event still decides the same way.
 func MixedHitEventFromJSONTolerant(value *MixedHitEvent, text []byte, report *TableReport) bool {
 	return MixedHitEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
@@ -3792,7 +3798,7 @@ func MixedHitEventFromJSONWith(value *MixedHitEvent, text []byte, report *TableR
 }
 
 // MixedHitEventFromJSONTolerantWith is MixedHitEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
 func MixedHitEventFromJSONTolerantWith(value *MixedHitEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	return tableJSONRead(unsafe.Pointer(value), MixedHitEventTableType(), text, report, options)
 }
@@ -3866,8 +3872,8 @@ func MixedHitEventLoadText(text string, report *TableReport) (*MixedHitEvent, er
 }
 
 // MixedChatEventFromJSONTolerant fills one MixedChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
-// counters counted onto the report passed. A nil report is allowed; every
+// is the TOLERANT text read (§6.5): counters are counted onto the report
+// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
 // tolerance event still decides the same way.
 func MixedChatEventFromJSONTolerant(value *MixedChatEvent, text []byte, report *TableReport) bool {
 	return MixedChatEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
@@ -3910,7 +3916,7 @@ func MixedChatEventFromJSONWith(value *MixedChatEvent, text []byte, report *Tabl
 }
 
 // MixedChatEventFromJSONTolerantWith is MixedChatEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
 func MixedChatEventFromJSONTolerantWith(value *MixedChatEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	return tableJSONRead(unsafe.Pointer(value), MixedChatEventTableType(), text, report, options)
 }
@@ -3984,8 +3990,8 @@ func MixedChatEventLoadText(text string, report *TableReport) (*MixedChatEvent, 
 }
 
 // MixedPickupEventFromJSONTolerant fills one MixedPickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
-// counters counted onto the report passed. A nil report is allowed; every
+// is the TOLERANT text read (§6.5): counters are counted onto the report
+// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
 // tolerance event still decides the same way.
 func MixedPickupEventFromJSONTolerant(value *MixedPickupEvent, text []byte, report *TableReport) bool {
 	return MixedPickupEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
@@ -4028,7 +4034,7 @@ func MixedPickupEventFromJSONWith(value *MixedPickupEvent, text []byte, report *
 }
 
 // MixedPickupEventFromJSONTolerantWith is MixedPickupEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
 func MixedPickupEventFromJSONTolerantWith(value *MixedPickupEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	return tableJSONRead(unsafe.Pointer(value), MixedPickupEventTableType(), text, report, options)
 }
@@ -4102,8 +4108,8 @@ func MixedPickupEventLoadText(text string, report *TableReport) (*MixedPickupEve
 }
 
 // BenchMixedFromJSONTolerant fills one BenchMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
-// counters counted onto the report passed. A nil report is allowed; every
+// is the TOLERANT text read (§6.5): counters are counted onto the report
+// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
 // tolerance event still decides the same way.
 func BenchMixedFromJSONTolerant(value *BenchMixed, text []byte, report *TableReport) bool {
 	return BenchMixedFromJSONTolerantWith(value, text, report, TableJSONOptions{})
@@ -4146,7 +4152,7 @@ func BenchMixedFromJSONWith(value *BenchMixed, text []byte, report *TableReport,
 }
 
 // BenchMixedFromJSONTolerantWith is BenchMixedFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
 func BenchMixedFromJSONTolerantWith(value *BenchMixed, text []byte, report *TableReport, options TableJSONOptions) bool {
 	return tableJSONRead(unsafe.Pointer(value), BenchMixedTableType(), text, report, options)
 }
@@ -4220,8 +4226,8 @@ func BenchMixedLoadText(text string, report *TableReport) (*BenchMixed, error) {
 }
 
 // FixedTableFromJSONTolerant fills one FixedTable from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): it keeps the recovered value, with the
-// counters counted onto the report passed. A nil report is allowed; every
+// is the TOLERANT text read (§6.5): counters are counted onto the report
+// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
 // tolerance event still decides the same way.
 func FixedTableFromJSONTolerant(value *FixedTable, text []byte, report *TableReport) bool {
 	return FixedTableFromJSONTolerantWith(value, text, report, TableJSONOptions{})
@@ -4264,7 +4270,7 @@ func FixedTableFromJSONWith(value *FixedTable, text []byte, report *TableReport,
 }
 
 // FixedTableFromJSONTolerantWith is FixedTableFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read, keeping the recovered value.
+// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
 func FixedTableFromJSONTolerantWith(value *FixedTable, text []byte, report *TableReport, options TableJSONOptions) bool {
 	return tableJSONRead(unsafe.Pointer(value), FixedTableTableType(), text, report, options)
 }

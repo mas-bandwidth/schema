@@ -213,9 +213,10 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 }
 
 // ArchiveConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. ArchiveConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. ArchiveConfigLoad is the strict read; call this one by name.
 func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -250,9 +251,11 @@ func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !ArchiveConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			ArchiveConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -269,6 +272,10 @@ func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableR
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			ArchiveConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -279,6 +286,12 @@ func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableR
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		ArchiveConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -286,7 +299,7 @@ func ArchiveConfigLoadTolerant(value *ArchiveConfig, data []byte, report *TableR
 // whatever ArchiveConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. ArchiveConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. ArchiveConfigLoadTolerant also reads past an evolution event.
 func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {

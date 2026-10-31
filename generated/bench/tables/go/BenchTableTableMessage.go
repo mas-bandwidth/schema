@@ -1498,8 +1498,9 @@ func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool 
 	}
 }
 
-// TableEntityLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// TableEntityLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // TableEntityLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // TableEntityReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -1528,7 +1529,9 @@ func TableEntityLoadMessagesTolerant(values []TableEntity, vocabulary *TableVoca
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -1536,17 +1539,20 @@ func TableEntityLoadMessagesTolerant(values []TableEntity, vocabulary *TableVoca
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !TableEntityLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					TableEntityReset(&values[j])
-				}
-				return 0, false
+		if !TableEntityLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				TableEntityReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			TableEntityReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func TableStatSaveMessageBody(w *TableMessageWriter, value *TableStat) bool {
 	{
@@ -1721,8 +1727,9 @@ func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 	}
 }
 
-// TableStatLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// TableStatLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // TableStatLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // TableStatReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -1751,7 +1758,9 @@ func TableStatLoadMessagesTolerant(values []TableStat, vocabulary *TableVocabula
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -1759,17 +1768,20 @@ func TableStatLoadMessagesTolerant(values []TableStat, vocabulary *TableVocabula
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !TableStatLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					TableStatReset(&values[j])
-				}
-				return 0, false
+		if !TableStatLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				TableStatReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			TableStatReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 	{
@@ -3455,8 +3467,9 @@ func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 	}
 }
 
-// TableMixedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// TableMixedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // TableMixedLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // TableMixedReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -3485,7 +3498,9 @@ func TableMixedLoadMessagesTolerant(values []TableMixed, vocabulary *TableVocabu
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -3493,17 +3508,20 @@ func TableMixedLoadMessagesTolerant(values []TableMixed, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !TableMixedLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					TableMixedReset(&values[j])
-				}
-				return 0, false
+		if !TableMixedLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				TableMixedReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			TableMixedReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func TableHitEventSaveMessageBody(w *TableMessageWriter, value *TableHitEvent) bool {
 	{
