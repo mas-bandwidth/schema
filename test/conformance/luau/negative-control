@@ -44,7 +44,7 @@ report)
 	;;
 walk)
 	source=internal/codegen/luautable/runtime/schema_json.luau
-	sed 's/    if fd.key == key then return fd end/    if fd.key == key and fd.o ~= 0 then return fd end/' "$source" > "$out/runtime.luau"
+	sed 's/    if fd.key == key then return fd end/    if fd.key == key and fd.raw.o ~= 0 then return fd end/' "$source" > "$out/runtime.luau"
 	;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac

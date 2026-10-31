@@ -8,7 +8,9 @@ import "sort"
 // so every name they define is a KEY OF THE MODULE TABLE its file returns, and
 // no schema declaration can collide with one: a schema name reaches a module
 // table only as the spellings the emitter writes per declaration (the name,
-// New<Name>, <Name>Descriptor). Every name here is Scoped and claims nothing.
+// New<Name>, <Name>Descriptor, ...), and a table module's unit-level keys
+// (TableMessage*) begin with a prefix no declaration-derived key carries.
+// Every name here is Scoped and claims nothing.
 // They are registered anyway, as Lua registers its module keys
 // (internal/tablenames/lua.go), so the scan that holds this list honest has an
 // answer for every key the emitter spells (compiler's
@@ -20,6 +22,10 @@ const Luau Backend = 1 << 10
 // luauModuleKeys is every key of every module table the Luau table backend
 // emits, by the file that returns the table.
 var luauModuleKeys = map[string][]string{
+	"a schema file's table module (<Base>Table.luau)": {
+		"TableMessageAnnouncement", "TableMessageAnnouncementLength", "TableMessageBuildVersion",
+		"TableMessageEntriesHere", "TableMessageRefBits",
+	},
 	"schema_block.luau":     {"BLOCK_ALIGN", "Begin", "alignUp", "elemAlign"},
 	"schema_blockread.luau": {"BlockOpen", "NonFiniteFloat", "Read"},
 	"schema_cook.luau":      {"BuildVersion", "Cook", "CookMeasure"},

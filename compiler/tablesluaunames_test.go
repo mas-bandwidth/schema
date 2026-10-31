@@ -132,13 +132,14 @@ func luauEmittedKeys(t *testing.T, units []*ir.Unit) map[string]bool {
 
 // perDeclaration reports whether a key of a generated <Base>*.luau module is
 // one the emitter spells from a declaration's own name: the name itself,
-// New<Name>, or the name followed by a suffix (<Name>Descriptor,
-// <Name>FixedLayout, <Name>MaxBits, <Name>Block, a flags set's <Name><Variant>).
+// New<Name>, EnumName<Name>Type (a union's tag names), or the name followed by
+// a suffix (<Name>Descriptor, <Name>FixedLayout, <Name>MaxBits, <Name>Block, a
+// flags set's <Name><Variant>).
 // A schema reaches a module table through these and nothing else, so they
 // claim nothing a schema does not already own.
 func perDeclaration(key string, decls []string) bool {
 	for _, d := range decls {
-		if key == d || key == "New"+d || strings.HasPrefix(key, d) {
+		if key == d || strings.HasPrefix(key, d) || strings.HasPrefix(key, "New"+d) || strings.HasPrefix(key, "EnumName"+d) {
 			return true
 		}
 	}
