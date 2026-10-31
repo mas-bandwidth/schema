@@ -18693,7 +18693,7 @@ inline bool SheetCookLayout( const Ctx & ctx, const Sheet & root, const TableNum
                 {
                     const int64_t extent = RowExtent( ctx, *(const Row *) numbering.entries[k].node );
                     if ( extent < 0 ) { return false; }
-                    size = 24 + extent; node_align = 8;
+                    size = 24 + extent; node_align = 8; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)
                 }
                 break;
             default: return false;
