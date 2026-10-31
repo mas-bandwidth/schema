@@ -902,7 +902,7 @@ tables-rust-keyed:
 tables-rust-keyed-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRustNegativeControl$$' -v
 
-test-rust: tables-rust-keyed
+test-rust: tables-rust-keyed tables-rust-keyed-negative-control
 
 # THE MAP WRITER HOLDS THE SORT (docs/PORTING.md M19, docs/SPEC-TABLES.md
 # §2.8): tables/maps' Fleet loaded from the pinned map_full wire, every map
@@ -915,7 +915,7 @@ tables-rust-map-sort:
 tables-rust-map-sort-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRustNegativeControl$$' -v
 
-test-rust: tables-rust-map-sort
+test-rust: tables-rust-map-sort tables-rust-map-sort-negative-control
 
 # THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
 # listing oracle as the reference, through the Rust surface, mirroring
