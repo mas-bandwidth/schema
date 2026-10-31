@@ -92,7 +92,7 @@ The page ships red. A ❌ cell and a language marked **coming** are honest state
 
 Generated from the conformance harness's per-case results, the porting register's 3.0.0 correctness rows, `make/negative-controls.json` and `docs/rulings.json` (`go run ./tools/matrix proof -write`); `docs/proof.json` carries every cell's gate, CI job and negative control, or why it is red. ✅ proven: a passing gate, the CI job that runs it, and its negative control. **n/a**: not applicable by design, under a ruling that quotes Glenn verbatim, or, for a register cell marked `—`, by the clause of `docs/PORTING.md` or `docs/SPEC-TABLES.md` it quotes, found in that file. ❌ red. `make release` refuses a commit whose proof is not green at that commit.
 
-99 of 1110 cells red.
+98 of 1110 cells red.
 
 | row | cpp | c | cs | dart | elixir | go | goose | java | js | lobster | lua | luau | moo | rust | squirrel |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
