@@ -28,13 +28,19 @@
 # wire-fuzz) is run over a driver built from the regenerated units. It must go
 # red on the report, naming the mutant; it does not run the matrix.
 #
+# share: the shared-node label (docs/SPEC-TABLES.md §16.7, docs/PORTING.md M14)
+# is taken out of _writePtr (tools/sabotage table-dart-text-share), so a node two
+# slots name is written in full twice. The matrix must go red on
+# `dart / json-write` alone, on the shared-node rows (graph_shared,
+# list_shared).
+#
 # block: the block Open's pitch check (internal/codegen/darttable/block.go,
 # tools/sabotage table-dart-block-pitch) is taken out, so the forged image
 # block_pitch opens where it must refuse. The matrix must go red on
 # `dart / forgery` and `dart / block-reason` on that row alone; `block` and `block-dump` read the two
 # valid images, which carry this build's pitch, and stay green.
 #
-# usage: negative-control <walk|zero|wire|block> [dart]     (run from the repository root)
+# usage: negative-control <walk|zero|share|wire|block> [dart]     (run from the repository root)
 set -eu
 
 mode=${1:-walk}
@@ -42,6 +48,7 @@ dart=${2:-dart}
 case "$mode" in
     walk) sabotage=table-dart-text-walk-bool; marker='SABOTAGED: the read stores the negation' ;;
     zero) sabotage=table-dart-text-zero; marker='SABOTAGED: text_holds_zero removed' ;;
+    share) sabotage=table-dart-text-share; marker='SABOTAGED: every node written in place' ;;
     wire) sabotage=table-dart-wire-widen; marker='SABOTAGED: the widened count is gone' ;;
     mapheader) sabotage=table-dart-map-header-bounded; marker='SABOTAGED: the map header is bounded by L' ;;
     block) sabotage=table-dart-block-pitch; marker='SABOTAGED: the pitch check is gone' ;;
@@ -123,6 +130,7 @@ fi
 case "$mode" in
     walk) red=json-read ;;
     zero) red=json-hostile ;;
+    share) red=json-write ;;
     block) red=forgery ;;
 esac
 grep -Eq "^$red +FAIL " "$out/log" || { cat "$out/log"; exit 1; }
@@ -138,6 +146,9 @@ allowed="^  dart / $red[:/ ]"
 [ "$mode" = block ] && allowed='^  dart / (forgery|block-reason): block_pitch: '
 if grep '^  dart / ' "$out/log" | grep -Ev "$allowed" >/dev/null; then
     cat "$out/log"; exit 1
+fi
+if [ "$mode" = share ]; then
+    grep -q '^  dart / json-write.*graph_shared' "$out/log" || { cat "$out/log"; echo "share control did not turn graph_shared red" >&2; exit 1; }
 fi
 if [ "$mode" = zero ]; then
     rows=$(grep '^  dart / json-hostile' "$out/log" | grep -Eo 'str-zero-escape-[a-z-]+' | sort -u | tr '\n' ' ')

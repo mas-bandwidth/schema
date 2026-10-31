@@ -1233,21 +1233,44 @@ test-dart: tables-dart-descriptors
 # two, and a cycle is refused at its OPEN entry by name. The reversed witness
 # takes the OPEN-entry test out of the generated runtime and requires the probe
 # red on the cycle alone.
-.PHONY: tables-dart-identity
+.PHONY: tables-dart-identity tables-dart-identity-negative-control
 tables-dart-identity:
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestWireIdentityMapDart$$'
 	@echo 'tables Dart identity map: a shared node is one record, a cycle is refused, and the blinded witness goes red'
 
+tables-dart-identity-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestWireIdentityMapDartNegativeControl$$'
+	@echo 'negative control: with the OPEN-entry test out of the generated runtime, the identity probe goes red on the cycle alone'
+
 test-dart: tables-dart-identity
+
+# BYTE ORDER IS THE READER'S (docs/PORTING.md M12): every multi-byte ByteData
+# call in every corpus unit's generated Dart names its Endian, so the host's
+# order is never consulted. The control strips one call's Endian.little and
+# requires the scan to name exactly that call.
+.PHONY: tables-dart-byte-order tables-dart-byte-order-negative-control
+tables-dart-byte-order:
+	go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicit$$'
+	@echo 'tables Dart byte order: every multi-byte ByteData call names its byte order'
+
+tables-dart-byte-order-negative-control:
+	go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicitNegativeControl$$'
+	@echo 'negative control: one generated call stripped of Endian.little, and the scan names it'
+
+test-dart: tables-dart-byte-order tables-dart-byte-order-negative-control
 
 # THE WRITER HOLDS THE MAP'S SORT (docs/PORTING.md M19, docs/SPEC-TABLES.md
 # §2.8): a map built out of key order saves and writes text exactly as the
 # ascending one does, and reads back ascending, for a string and a signed key.
 # The reversed witness leaves the entries in stored order and requires red.
-.PHONY: tables-dart-map-sort
+.PHONY: tables-dart-map-sort tables-dart-map-sort-negative-control
 tables-dart-map-sort:
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestMapWriterSortDart$$'
 	@echo 'tables Dart map sort: the writer sorts a map built out of order, and the unsorted witness goes red'
+
+tables-dart-map-sort-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestMapWriterSortDartNegativeControl$$'
+	@echo 'negative control: with the writer sort a no-op in the generated runtime, the map-sort probe goes red on the saved bytes'
 
 test-dart: tables-dart-map-sort
 
@@ -1606,6 +1629,12 @@ conformance-negative-control-dart-walk: build/conformance-harness
 conformance-negative-control-dart-zero: build/conformance-harness
 	sh test/conformance/dart/negative-control zero "$(DART)"
 
+# THE SHARED-NODE LABEL'S (M14): _writePtr writes every node in place, so the
+# &node label is gone and `json-write` goes red on graph_shared alone.
+.PHONY: conformance-negative-control-dart-share
+conformance-negative-control-dart-share: build/conformance-harness
+	sh test/conformance/dart/negative-control share "$(DART)"
+
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.
 .PHONY: conformance-negative-control-dart-block
@@ -1614,7 +1643,7 @@ conformance-negative-control-dart-block: build/conformance-harness
 
 test-dart: conformance-negative-control-dart-block
 
-test-dart: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
+test-dart: conformance-negative-control-dart-walk conformance-negative-control-dart-zero conformance-negative-control-dart-share
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Dart side:
 # docs/USAGE.md's dart-table-usage fragment, generated against tables/pointers
