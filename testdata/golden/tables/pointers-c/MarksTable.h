@@ -4674,7 +4674,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_message_scalar(graphdemo_table_r
  uint8_t bytes[16];
  int width=graphdemo_table_retain_width(e->kind);
  if(!width)return 0;
- if(e->kind==10&&e->packing==2){float value;
+ if(e->kind==10&&e->packing==2){float value=0;
  if(!graphdemo_table_message_float(&s->input,e,&value))return 0;
  lo=graphdemo_table_float_to_bits(value);
  }
