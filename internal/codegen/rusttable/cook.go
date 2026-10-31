@@ -1306,6 +1306,15 @@ pub unsafe fn table_cook_write_record(p: *const u8, t: &TableCookInfo, out: *mut
                 };
                 for k in 0..count as i64 {
                     let v = unsafe { table_cook_raw(p, f.offset as i64 + k * f.elem_size as i64, f.elem_size as u32) };
+                    // A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an
+                    // infinity refuses on its raw bits, and the measure pass runs
+                    // first, so a refusal writes no byte.
+                    if f.storage == TableCookStorage::Float
+                        && ((f.elem_size == 4 && v & 0x7f80_0000 == 0x7f80_0000)
+                            || (f.elem_size == 8 && v & 0x7ff0_0000_0000_0000 == 0x7ff0_0000_0000_0000))
+                    {
+                        return false;
+                    }
                     if f.storage == TableCookStorage::Bool {
                         unsafe { table_cook_put(out, dest + k * f.elem_size as i64, if v != 0 { 1 } else { 0 }, 1, order); }
                     } else {

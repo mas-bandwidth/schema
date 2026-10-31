@@ -214,14 +214,17 @@ func csEmittedRoots(t *testing.T, name, text string) map[string]csEmittedRoot {
 }
 
 // csTablesProgramDirs is every build/tables-generated-cs/<dir> the cs-tables
-// program compiles, read from its own project file.
+// program compiles, read from its own project file. The project names the
+// directory through $(TablesGeneratedDir), which defaults to
+// build/tables-generated-cs and which the leg's negative controls point at a
+// sabotaged copy; either spelling of an include counts.
 func csTablesProgramDirs(t *testing.T) []string {
 	t.Helper()
 	data, err := os.ReadFile("../../../test/cs-tables/schematables.csproj")
 	if err != nil {
 		t.Fatal(err)
 	}
-	re := regexp.MustCompile(`build/tables-generated-cs/(\w+)/\*\.cs`)
+	re := regexp.MustCompile(`(?:build/tables-generated-cs|\$\(TablesGeneratedDir\))/(\w+)/\*\.cs`)
 	seen := map[string]bool{}
 	var dirs []string
 	for _, m := range re.FindAllStringSubmatch(string(data), -1) {

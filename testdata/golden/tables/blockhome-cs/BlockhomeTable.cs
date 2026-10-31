@@ -5111,6 +5111,33 @@ namespace Blockhome
 
         public static class TableFixedWire
         {
+            // FLAT ELEMENT ARRAYS IN THE WIRE'S BYTE ORDER (docs/FIXED-FORM-ALGORITHM.md:
+            // every integer is little-endian; docs/PORTING.md M12). On a little-endian
+            // host the bulk copy IS the wire image, so it stays one copy; on a
+            // big-endian host every element's bytes are reversed after it. The two
+            // copies below are the only host-order reinterpretations of wire bytes in
+            // the fixed form, and each is followed by that swap.
+            public static void ReadLittle<T>(ReadOnlySpan<byte> src, Span<T> dst) where T : unmanaged
+            {
+                int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+                int n = Math.Min(src.Length / width, dst.Length);
+                MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+                if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
+            }
+            public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
+            {
+                int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+                MemoryMarshal.AsBytes(src).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+                if (!BitConverter.IsLittleEndian) { ReverseEach(dst.Slice(0, src.Length * width), width); }
+            }
+            // Reverses each width-byte group of bytes in place: one element's host image
+            // to its little-endian image, and back.
+            public static void ReverseEach(Span<byte> bytes, int width)
+            {
+                if (width == 1) { return; }
+                for (int i = 0; i + width <= bytes.Length; i += width) { bytes.Slice(i, width).Reverse(); }
+            }
+
             public const byte Form = 3;
             public const int HeaderBytes = 16;
             public const int HashAt = 8;

@@ -121,7 +121,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	entry := f.MapEntry.Name + "Variable.Value"
 	key := ir.MapKeyField(f)
 	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear();\n", m)
-	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} String mapKey=in.scanString(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
+	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
 		fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
 	} else {
@@ -148,8 +148,11 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 // A skipped repeat preserves its earlier map; an accepted header replaces it.
 // Key order is checked before decoding the value, retaining the ascending
 // prefix on damage and resuming the parent at the map body's end (§2.8, §4).
-// A count whose entries cannot fit the body (each entry is at least two
-// bytes) is refused, never read as a short map: the oracle's LoadMeasure
+// A header whose ELEMENT KIND is not a table's is the ordinary array kind
+// mismatch (§4), and its count is read against the ENCLOSING body as the
+// engine's mapField reads it, so a count spelled past the map's own L still
+// leaves the mismatch counted. A count whose entries cannot fit the body (each
+// entry is at least two bytes) is refused, never read as a short map: the oracle's LoadMeasure
 // answers count_over_length for it (§2.9, §6.5).
 // An entry whose VALUE body is damaged still stands with what decoded before
 // the damage: a malformed value is the entry's own field event, never a map
@@ -158,7 +161,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL||n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
+	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ek!=13?ar.count(r.limit):ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL){report.refused=true;report.reason=\"count_refusal\";}else if(n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
 	if retain {
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}

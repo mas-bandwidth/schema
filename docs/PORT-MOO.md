@@ -184,8 +184,22 @@ may stand where moo, field by field, refuses the first bad value.
 | the long run: 100 rounds of 2000 instances a unit, seeded by the run id | `make schema-moo-nightly-fuzz`, `.github/workflows/schema-moo-nightly-fuzz.yml` |
 | the nightly's wiring | `TestSchemaMooNightlyFuzzWiring` and its control |
 
-The shared hostile corpus (`internal/ci/hostilecorpus`) and the table-wire
-fuzz are table surfaces; they join this layer when the table layer lands.
+THE TABLE-WIRE FUZZ is the harness's (`build/conformance-harness wire-fuzz`,
+docs/SPEC-TABLES.md §4.2): its mutants and its oracle (`internal/tablewire`)
+are the harness's own, and the leg is ONE process on a pipe,
+`test/conformance/moo/wirefuzz.moo` under the native host `tools/moofuzzhost`
+(the pinned CLI has no io library, so `make/moo-fuzz.mk` builds the host from
+the pin's own source, the VM and compiler linked as the CLI links them).
+
+| gate | test / target |
+|---|---|
+| the file form on the pipe; the roots the leg answers 0 for, pinned by name | `tables-moo-wire-fuzz-plain`, `test/conformance/moo/wire-fuzz-absent.txt` |
+| the retaining pair (`--retain`) | `tables-moo-wire-fuzz-retain` |
+| each mutant the leg diverged on, replayed alone | `tables-moo-wire-fuzz-pinned`, `test/conformance/moo/wire-fuzz-pinned.txt` |
+| a string frame past its body not counted malformed goes red | `tables-moo-wire-fuzz-negative-control` |
+| both arms on seeds 1-3 at the release count | `tables-wire-fuzz-release-moo` (make/wire-fuzz-release.mk), in `tables-moo-release` |
+
+The shared hostile corpus (`internal/ci/hostilecorpus`) has no moo row yet.
 
 ## THE LAYERS
 
@@ -209,8 +223,14 @@ stacked on layer 1, landed one at a time against current main.
    `make/negative-controls.json`, every control registered and failing exactly
    its rows.
 
-Each layer flips its cells in the register (docs/PORTING.md, the `moo` column)
-and the roadmap (`port/moo/*`). A runtime gap found on the way is fixed in
+Every layer is built: the packet surface and its gates, the table surface
+(the variable wire, the fixed, message, cook and block forms, retention), the
+text forms, the conformance driver (every surface the manifest asks but
+`framing`), the table-wire fuzz on both arms, and the strict analyzer over the
+packet and table output with every control registered in
+`make/negative-controls.json`. Each layer flips its cells in the register
+(docs/PORTING.md, the `moo` column) and the roadmap (`port/moo/*`); the cells
+still open there are named with what they owe. A runtime gap found on the way is fixed in
 serialize.moo, never worked around here.
 
 ## RETAIN-UNKNOWN (layer 3, docs/SPEC-TABLES.md §6.6)

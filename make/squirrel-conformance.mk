@@ -98,11 +98,30 @@ conformance-squirrel-wire-pin: build/conformance-harness toolchain-squirrel
 # whole conformance matrix pinned (a clean corpus, the wire count held), the
 # tolerant wire's differential fuzzer over both arms, and every conformance
 # negative control, each of which must go red on exactly its own surface.
+# The release SCALES the PR tier's fuzzer: the builder arm (the variable roots,
+# which the plain arm does not answer) also runs seeds 2 and 3 at ten times the
+# PR count. The plain arm's three seeds at the release count are
+# tables-wire-fuzz-release-squirrel (make/wire-fuzz-release.mk). Its control is
+# tables-squirrel-release-negative-control (make/squirrel-fuzz.mk).
+SQUIRREL_RELEASE_FUZZ_N ?= 20000
 .PHONY: tables-squirrel-release
 tables-squirrel-release:
 	$(MAKE) conformance-squirrel-wire-pin
 	$(MAKE) tables-squirrel-wire-fuzz
+	for s in 2 3; do ./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" --builder --seed $$s --n $(SQUIRREL_RELEASE_FUZZ_N) --failed build/wire-fuzz/failed-squirrel-builder-$$s.bin || exit 1; done
 	$(MAKE) conformance-negative-control-squirrel
 	$(MAKE) conformance-negative-control-squirrel-walk
 	$(MAKE) conformance-negative-control-squirrel-block
 	$(MAKE) conformance-negative-control-squirrel-retain
+	$(MAKE) conformance-negative-control-squirrel-absent
+	$(MAKE) tables-squirrel-usage-negative-control
+	$(MAKE) tables-squirrel-runtime-home-negative-control
+	$(MAKE) tables-squirrel-release-negative-control
+
+# I4, PER-CASE ABSENT (docs/PORTING.md): the leg answers a case it cannot
+# carry with `<case>.absent`, and the harness counts it. The control runs the
+# driver with those answers written under another name and requires the wire
+# surface to go red (test/conformance/squirrel/absent-negative-control).
+.PHONY: conformance-negative-control-squirrel-absent
+conformance-negative-control-squirrel-absent: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@SQ="$(SQ)" sh test/conformance/squirrel/absent-negative-control
