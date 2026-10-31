@@ -17,7 +17,8 @@ func init() {
 	// §4 on the message form: damage inside a body delivers the bodies before
 	// it instead of none.
 	sabotages["js-batch-discard-dropped"] = []edit{{
-		old: `g.pf("      return -1;\n")`,
+		old: `g.pf("      for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
+	g.pf("      return 0;\n")`,
 		new: `g.pf("      return i; // SABOTAGED: the bodies before the damage are delivered\n")`,
 	}}
 
