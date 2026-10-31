@@ -91,6 +91,11 @@ local function skip(r: any, kind: number): boolean
 	return false
 end
 
+-- a file's id table holds at most 4096 entries: a count past it is malformed
+-- whatever the buffer would hold (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+-- CHECK; docs/LAYERS/1-framing.md F6)
+local ID_TABLE_BOUND = 4096
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed. The count is
 -- the unsigned u64 at the file's end; a high half past zero is huge and never
@@ -111,7 +116,7 @@ local function open(bytes: buffer, report: any): any
 	end
 	local lo = buffer.readu32(bytes, len - 8)
 	local hi = buffer.readu32(bytes, len - 4)
-	if hi ~= 0 or lo > (len - 9) // 8 then
+	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
 		report.malformed = true
 		return nil
 	end
@@ -1742,7 +1747,7 @@ local function frame(b: buffer): any
 	end
 	local lo = buffer.readu32(b, len - 8)
 	local hi = buffer.readu32(b, len - 4)
-	if hi ~= 0 or lo > (len - 9) // 8 then
+	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
 		return nil
 	end
 	local endpos = len - 8 - lo * 8

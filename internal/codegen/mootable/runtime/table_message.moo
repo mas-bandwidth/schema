@@ -554,6 +554,11 @@ local function refuse(report: any, why: string): boolean
 	return false
 end
 
+-- a file's id table holds at most 4096 entries: a count past it is malformed
+-- whatever the buffer would hold (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+-- CHECK; docs/LAYERS/1-framing.md F6)
+local ID_TABLE_BOUND = 4096
+
 local function announceRead(v: any, data: buffer, report: any): boolean
 	local len = buffer.len(data)
 	if len < 1 then
@@ -570,7 +575,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	end
 	local lo = buffer.readu32(data, len - 8)
 	local hi = buffer.readu32(data, len - 4)
-	if hi ~= 0 or lo > (len - 9) // 8 then
+	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
 		report.malformed = true
 		return false
 	end
