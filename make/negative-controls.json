@@ -477,6 +477,14 @@
       ]
     },
     {
+      "name": "base-c-framing",
+      "when": "pull-request",
+      "why": "the C driver's framing control (docs/LAYERS/1-framing.md): a complete C conformance driver rebuilt against a scratch copy of the generated units with the 4096-entry id-table cap removed, and one harness run of the C leg. Alone for the reason base-c-absent is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "conformance-negative-control-c-framing"
+      ]
+    },
+    {
       "name": "base-c-format",
       "when": "pull-request",
       "clang_format": "pin",
