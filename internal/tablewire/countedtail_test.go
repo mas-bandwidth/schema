@@ -71,7 +71,11 @@ func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 	}
 }
 
-func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
+// ONE ID, ONCE PER BODY (docs/SPEC-TABLES.md §3, §4): a body carrying a field
+// id twice is input no writer produces, so it is damage and the whole load is
+// refused, whatever the second occurrence holds — empty, shorter, or damaged
+// itself.
+func TestRepeatedFieldIdIsDamage(t *testing.T) {
 	m := listModel(t, `package probe
  type Child { n int32 = 7 }
  fixed table Root { values [..3]Child }
@@ -97,8 +101,8 @@ func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
 		count     int
 		malformed bool
 	}{
-		{"empty", []byte{13, 0}, 0, false},
-		{"short", []byte{13, 1, 1, 0}, 1, false},
+		{"empty", []byte{13, 0}, 0, true},
+		{"short", []byte{13, 1, 1, 0}, 0, true},
 		{"damaged", []byte{13, 2, 1, 0}, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -206,8 +206,10 @@ var framingVectors = []framingVector{
 	// R4: a named field under another kind skips by the WIRE kind's rule, and
 	// the field after it lands.
 	{name: "frame_kind_mismatch_skips_by_wire_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(1, 4), i32(0), buffHalf, b(0))},
-	// R5: a repeated id, the last occurrence winning.
-	{name: "frame_repeat_last_wins", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(1, 30, 9), b(0))},
+	// R5: an id carried twice in one body is damage: no writer produces it.
+	{name: "frame_repeat_id", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(1, 30, 9), b(0))},
+	// R5 at an id this reader cannot name: still one body carrying one id twice.
+	{name: "frame_repeat_unknown_id", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 4), i32(1), b(16, 4), i32(2), gradeSilver, b(0))},
 	// R6: the build-version id in a file body is malformed on that body.
 	{name: "frame_reserved_build_version_id", unit: "tblr1", root: "Cfg", ids: []string{"grade", "Silver", "build-version"}, body: cat(gradeSilver, b(3, 4), i32(0), b(0))},
 
@@ -222,6 +224,8 @@ var framingVectors = []framingVector{
 	{name: "nested_L_plus_one", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 8), buffBody, b(0))},
 	// L4: L past the root body; the root stops with grade standing.
 	{name: "nested_L_past_body", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(6, 13, 9), buffBody, b(0))},
+	// R5 inside a nested body: buff carries multiplier twice.
+	{name: "nested_repeat_id", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 13, 7, 10), f32(1.5), b(7, 10), f32(2.5), b(0), gradeSilver, b(0))},
 	// R2 inside a nested body: the unknown counts, the body reads on.
 	{name: "nested_unknown_id_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 13, 16, 4), i32(42), buffBody, gradeSilver, b(0))},
 	// F9 inside a nested body: the body stops before decoding anything, and
@@ -314,6 +318,10 @@ var framingVectors = []framingVector{
 	{name: "keyed_count_over_length", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 4, 2, 2, 4), i32(7), b(0))},
 	// H4 at kind 16, inside L.
 	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 30, 1, 2, 4), i32(7), b(0))},
+	// §3.2: one slot key twice in one keyed body, which no writer produces.
+	{name: "keyed_repeat_slot", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 2, 4), i32(7), b(2, 4), i32(3), b(0))},
+	// §3.2: a slot key this reader cannot name, twice.
+	{name: "keyed_repeat_unknown_slot", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 16, 4), i32(7), b(16, 4), i32(3), b(0))},
 	// H2 at kind 16.
 	{name: "keyed_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 1, 4), gradeSilver, b(0))},
 
@@ -355,9 +363,8 @@ var framingVectors = []framingVector{
 	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), nodeTable(1, listNodeRecord(2)), b(0))},
 	// R6, T5: the reserved id inside a record body stops that body.
 	{name: "node_reserved_id_in_record", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, b(5, 4, 4, 12, 0, 0)), b(0))},
-	// T1 (finding N7, settled): the node table riding twice; the LAST
-	// occurrence is the numbering, on R5's last-wins rule, and the earlier one
-	// is stepped over like any repeated field.
+	// T1, R5: the node table riding twice is the root body carrying one id
+	// twice, which is damage.
 	{name: "node_table_twice", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), nodeTable(1, listNodeRecord(3)), b(0))},
 	// T6: a reader that cannot name the reserved id counts one unknown.
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},

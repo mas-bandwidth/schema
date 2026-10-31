@@ -273,9 +273,6 @@ func (r *wireReader) sub(n int) *wireReader {
 // covers no elements, which is the answer the reference gives it, so the span
 // is empty rather than negative.
 func (r *wireReader) subTo(end int) *wireReader {
-	if end < r.off {
-		end = r.off
-	}
 	return r.sub(end - r.off)
 }
 
@@ -374,6 +371,12 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
 	}
+	// ONE ID, ONCE PER BODY (docs/SPEC-TABLES.md §3, §4; tla/Framing.tla,
+	// OneIdOncePerBody): no writer puts an id down twice in one body, so a
+	// body carrying one twice is damage, whether or not this reader can name
+	// the id. The id table holds each id once, so the reference stands for
+	// the id.
+	seen := map[uint64]bool{}
 	for {
 		if r.countRefused() {
 			return false
@@ -387,10 +390,11 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			return true // the body ENDS AT ITS OWN ZERO REFERENCE
 		}
 		id, named := r.id(ref)
-		if !named {
+		if !named || seen[ref] {
 			r.report.Malformed = true
 			return false
 		}
+		seen[ref] = true
 		if !r.has(1) {
 			r.report.Malformed = true
 			return false
@@ -476,11 +480,6 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 				return false
 			}
 			continue
-		}
-		if r.rt != nil && discardsWhole(fv.Def) {
-			// THE FIELD IS BEING READ AGAIN (docs/SPEC-TABLES.md §6.6): every
-			// record under it goes before the winning occurrence is read.
-			r.rt.forgetField(fv)
 		}
 		if !r.field(fv) {
 			return false
@@ -608,9 +607,6 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		// enclosing body continues past it by L.
 		if sub.off != int(n) {
 			r.report.Malformed = true
-			// THE BODY FALLS BACK ON ITS DECLARED DEFAULTS AND STAYS THE BODY
-			// IT WAS: damage is not a later occurrence, so the records already
-			// retained under it are neither discarded nor counted here (§6.6)
 			r.m.Refill(fv.Cell.Tab)
 		}
 		r.off += int(n)
@@ -688,8 +684,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 		count, good := r.leb()
 		if !good {
 			r.report.Malformed = true
-			r.off = end
-			return true
+			return false
 		}
 		// A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array kind
 		// mismatch of §4, and nothing about a map is special-cased
@@ -767,7 +762,6 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			whole.off = 0
 			decoded := r.m.NewMapEntry(f)
 			whole.bodyAt(decoded, true)
-			r.rt.builtMapEntry(fv, decoded)
 			if r.countRefused() {
 				return false
 			}
@@ -838,8 +832,6 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 				key = tabletext.MapKeyOf(f, entry)
 				continue
 			}
-			// Scan the whole body: a later occurrence of key replaces this
-			// occurrence, including whether its kind matches the declaration.
 			*kindBad = int(kind) != want
 			if *kindBad {
 				if !scan.skip(kind) {
@@ -852,7 +844,7 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 				return key, false
 			}
 			key = tabletext.MapKeyOf(f, entry)
-			continue // the LAST occurrence is the one §3 keeps
+			continue
 		}
 		if !scan.skip(kind) {
 			return key, false
@@ -928,11 +920,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			// union reads None and the parent reads on past `L` (§3) — which
 			// is what `selected` false says to the caller.
 			r.report.Malformed = true
-			r.off = end
-			if f.Type.Optional {
-				fv.Present = true
-			}
-			return true, false
+			return false, false
 		}
 		if int(ek) != ir.TableWireElemKind(f) {
 			if !ir.TableKindWidens(int(ek), ir.TableWireElemKind(f)) {
@@ -1010,8 +998,8 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			decoded = r.textTotal(fv, decoded)
 		}
 		if counted {
-			// Entry reset initializes the unused tail. A replacement need only
-			// restore slots that the previous occurrence made live (§7.2).
+			// the slots past the decoded count hold the value-initialized
+			// element (§7.2)
 			if f.Array == ir.ArrayCounted {
 				for i := decoded; i < fv.Count; i++ {
 					fv.Elems[i] = r.m.ElementZero(f)
@@ -1039,21 +1027,14 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 	}
 	if tabletext.UnionOf(f) != nil {
 		// an element of an ARRAY OF UNIONS is an ARM HEADER and carries its own
-		// kind, so the arm rules apply once per element (§3). The element is
-		// RESET the moment its arm id is READ, before the kind byte and the arm
-		// length that follow are checked, so a repeat under the field id leaves
-		// no arm an earlier occurrence decoded standing — the last occurrence
-		// wins whole, even when its own framing is damaged (§3, §4). An element
-		// the body cannot even reach is untouched unless it falls beyond an
-		// accepted counted array's recovered live count (arrayBody, §7.2).
+		// kind, so the arm rules apply once per element (§3)
 		if !r.has(1) {
 			r.report.Malformed = true
 			return false
 		}
-		r.rt.forgetArm(fv, i)
 		fv.Elems[i].U = 0
 		fv.Elems[i].Tab = nil
-		return r.unionCell(&fv.Elems[i], fv, i)
+		return r.unionCell(&fv.Elems[i], fv)
 	}
 	if f.Type.Pointer {
 		// an element of an array of pointers: a node index, bounds-checked and
@@ -1076,7 +1057,6 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 			return false
 		}
 		sub := r.sub(int(n))
-		r.rt.forget(fv.Elems[i].Tab)
 		if fv.Elems[i].Tab == nil {
 			fv.Elems[i].Tab = r.m.New(tabletext.StructOf(f))
 		} else {
@@ -1194,15 +1174,14 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	}
 	end := r.off + bodyLen
 	if bodyLen < 2 {
-		r.off = end
-		return true
+		r.report.Malformed = true
+		return false
 	}
 	elemKind := r.u8()
 	count, good := r.leb()
 	if !good {
 		r.report.Malformed = true
-		r.off = end
-		return true
+		return false
 	}
 	if int(elemKind) != ir.TableWireElemKind(f) {
 		if !ir.TableKindWidens(int(elemKind), ir.TableWireElemKind(f)) {
@@ -1215,6 +1194,8 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		r.report.Widened++
 	}
 	sub := r.subTo(end)
+	// ONE SLOT KEY, ONCE PER BODY (§3.2, §4): a writer puts each slot down once
+	seen := map[uint64]bool{}
 	for range count {
 		key, good := sub.leb()
 		if !good {
@@ -1229,10 +1210,11 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 			break
 		}
 		keyID, named := sub.id(key)
-		if !named {
+		if !named || seen[key] {
 			r.report.Malformed = true
 			break
 		}
+		seen[key] = true
 		elemLen, good := sub.leb()
 		if !good || elemLen > uint64(len(sub.buf)) || !sub.has(int(elemLen)) {
 			r.report.Malformed = true
@@ -1256,7 +1238,6 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		case tabletext.EnumOf(f) != nil:
 			elem.enumCell(&fv.Elems[slot], f, true)
 		case tabletext.StructOf(f) != nil:
-			r.rt.forget(fv.Elems[slot].Tab)
 			if fv.Elems[slot].Tab == nil {
 				fv.Elems[slot].Tab = r.m.New(tabletext.StructOf(f))
 			} else {
@@ -1279,20 +1260,14 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	return true
 }
 
-func (r *wireReader) union(fv *tabletext.Field) bool { return r.unionCell(&fv.Cell, fv, -1) }
+func (r *wireReader) union(fv *tabletext.Field) bool { return r.unionCell(&fv.Cell, fv) }
 
 // unionCell decodes the union framing into one cell — a field's, or an element
 // of an array of unions (§3). AN ARM HEADER IS A FIELD HEADER: the arm id
-// reference, the arm's KIND byte, `L`, then `L` bytes of arm payload. The arm
-// handle is keyed by the occurrence (the field and the element index), never by
-// the cell's address, which a slice append can move (§6.6).
-func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index int) bool {
+// reference, the arm's KIND byte, `L`, then `L` bytes of arm payload.
+func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field) bool {
 	f := fv.Def
 	un := tabletext.UnionOf(f)
-	// A UNION WHOSE ARM IS WRITTEN AGAIN, THE SAME ARM OR ANOTHER, is one of
-	// §6.6's four occurrences: the earlier arm body's records go with it, and
-	// the discard moves neither counter.
-	r.rt.forgetArm(fv, index)
 	ref, ok := r.leb()
 	if !ok {
 		r.report.Malformed = true
@@ -1331,9 +1306,7 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 	switch {
 	case tag == 0:
 		// an arm this reader cannot name: the value reads EMPTY and the body
-		// is skipped by its length, never misdecoded. The reset is explicit: a
-		// repeated field id must not leave an arm an earlier occurrence
-		// decoded standing (§4).
+		// is skipped by its length, never misdecoded.
 		cell.U = 0
 		cell.Tab = nil
 		cell.Arm = nil
@@ -1374,7 +1347,6 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		arm := un.Variants[tag-1]
 		if arm.Body() {
 			payload := r.m.New(arm.Ref)
-			r.rt.builtArm(fv, index, payload)
 			sub.bodyAt(payload, true)
 			if r.countRefused() {
 				return false

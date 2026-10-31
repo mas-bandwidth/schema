@@ -2339,10 +2339,9 @@ any other, and there is no path that forgives one.
   not contractual (§3), so the reader does not assume where the key sits.
   Before an entry's body decodes, the reader SCANS that body's field headers
   for the key's id and reads the key, which is a bounded string or an integer
-  and always a primitive. The scan decides the slot. Where the body carries
-  the key's id more than once the scan reads the occurrence §3's
-  repeated-field rule keeps, the last one. An entry whose body carries no key
-  field at all has the key's default. This implementation writes the key
+  and always a primitive. The scan decides the slot. A body carrying the key's
+  id twice is damage, as every body carrying one id twice is (§3, §4). An
+  entry whose body carries no key field at all has the key's default. This implementation writes the key
   first in every entry, so on any wire this schema wrote the scan ends at the
   first header, and the rule is the scan and not the position.
 - **ASCENDING** against the key of the last entry that LANDED: the body
@@ -3011,8 +3010,7 @@ first, each the one an array already raises:
 
 - **AN ELEMENT KIND THAT DISAGREES** with the reader's declaration is §3's
   element-kind rule: the field is skipped whole by its `L`, and one
-  `kind_mismatch` counts. A first occurrence leaves the default empty array;
-  an incompatible repeat preserves the value an earlier occurrence placed.
+  `kind_mismatch` counts, and the field keeps the default empty array.
   `[]int32` read into a `[]float32` field, `[]T` read into a `[]*T` field and the
   reverse are all this event.
 - **A DAMAGED ELEMENT** inside a good count is damage, and the whole load is
@@ -5296,8 +5294,11 @@ twenty unnameable entries counts nothing at all if no body references them.
 - **Field ORDER within a body is not part of the contract.** This
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
-  value, and a body carrying an id more than once is legal input, the last
-  occurrence winning. An encoder written from this section is therefore free
+  value. **ONE ID RIDES ONCE PER BODY**: a writer puts each field down once,
+  so a body carrying one id twice, whether or not the reader can name it, is
+  input no writer produces, and it is damage (§4, INPUT NO WRITER PRODUCES IS
+  DAMAGE; Glenn, #391: "Table reads are exactly equivalent to type reads in
+  security posture."). There is no occurrence rule. An encoder written from this section is therefore free
   to order fields as it likes, and byte-identical output against this
   implementation requires matching its declaration order as well as its
   framing. **First-use order in the id table follows from the write order**,
@@ -5588,10 +5589,9 @@ the payload opens with the count and then carries the records:
   every other id (§3).
 - **Kind `12` is §3's opaque byte payload**, so a reader that cannot name
   the id skips the field by its `L` and counts it **unknown**, once (§4). No
-  new skip rule. **The field rides ONCE**, and a reader that meets it twice
-  takes the LAST occurrence as the numbering, on §3's last-wins rule, stepping
-  over the earlier one as it steps over any repeated field
-  (`node_table_twice`). A `L` with sixty-four bits of
+  new skip rule. **The field rides ONCE**, and a root body that carries it
+  twice carries one id twice, which is damage (§3, §4; `node_table_twice`).
+  A `L` with sixty-four bits of
   capability frames a numbering of any size, so the whole numbering is one
   contiguous payload and a save's node bodies have no aggregate ceiling.
 - **The node table is whole or it is nothing.** Numbering is positional, so
@@ -8796,6 +8796,24 @@ tolerance is the versioning model:
   read correctly. Adding or removing a guard is therefore not a decoding
   hazard but a ROUND-TRIP one, and it is the one edit whose cost lands on
   the tool that rewrites the file rather than on the one that reads it.
+- **INPUT NO WRITER PRODUCES IS DAMAGE** (Glenn, #391, 2026-09-03: "Table
+  reads are not trusted, they will come over the network. Table reads are
+  exactly equivalent to type reads in security posture."). A reader accepts
+  the shapes some conforming writer, of any version, produces, and nothing
+  else: the tolerance above is tolerance of VERSIONS, never of shapes no
+  version writes. Each of these is damage under the rule below, and none is
+  repaired, merged, resolved by an occurrence rule or counted as an event:
+  - **one id twice in one body**: the root, a nested table, a node record, a
+    map entry, an arm's body or an element carrying one field id twice,
+    whether or not this reader can name it, the reserved node-table id
+    included (§3, §3.1);
+  - **one key twice**: a keyed array carrying one slot key twice (§3.2), and a
+    map entry whose key equals the key of the entry before it (§2.8);
+  - **a header outside its body**: an array, keyed-array or map body too
+    short to carry its element kind byte and its count (`L` below `2`), and a
+    count whose spelling runs past the body's `L` (§3);
+  - **bytes after a nested union** inside the arm's `L` that frames it (§3);
+  - in the text form, **an object naming one member twice** (§16.2).
 - **DAMAGE DISCARDS THE WHOLE LOAD** (Glenn, 2026-10-31: "failing to read
   something means the whole read is undefined"). A read that meets damage
   anywhere in its input refuses the whole load: it returns nothing to use,
@@ -8814,7 +8832,8 @@ tolerance is the versioning model:
   inside the body), a descending map key, an arm whose `L` does not frame
   its kind, a bool byte other than `0` or `1`, ill-formed text, a node table
   that cannot be read whole, a reserved id out of place, and every case that
-  makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
+  makes the whole wire malformed (§3), and every shape the bullet above
+  names. **BYTES A READER STEPS OVER BY `L` ARE
   OPAQUE**, and damage inside them is not damage: an unknown field, a
   kind-mismatched field, a retained record and the CLAMPED TAIL of an array
   (the elements past the reader's bound, stepped over by the field's `L`) are
@@ -9150,9 +9169,8 @@ has:
   four;
 - **a duplicate field**, its enclosing lengths grown to fit so that the repeat
   is the whole event; again with the framing left one field short; and again
-  with the framing grown but a length INSIDE the copy made impossible, so the
-  repeat is entered and then fails partway and the last occurrence's claim is
-  tested against the value the first one left;
+  with the framing grown but a length INSIDE the copy made impossible. Each is
+  damage on the one-id rule (§3), so both sides owe `malformed`;
 - **a BODY's TERMINATOR moved inside its own length**, the zero reference
   written ahead of the payload's last byte, so the body ends early and the
   bytes after it are claimed by no field (§3);
@@ -10643,10 +10661,7 @@ Two consequences follow, and each is a rule:
   record the remaining capacity had no room for, of either store, an unknown
   of one of the six excluded classes above, a record the resolving walk found
   damaged, and, at
-  save, a retained record whose path no longer names a body. A record discarded
-  because a known ancestor was reset or replaced by a later legal occurrence
-  (record lifetime, above) is none of these and moves neither counter: the
-  writer superseded it, and the load could not have kept it.
+  save, a retained record whose path no longer names a body.
 
 Both are monotonic, both are zero in every read that did not opt in, and they
 ride the same report struct for the reason `duplicate` does, which is that a
@@ -10663,10 +10678,7 @@ load returned nothing to rewrite (§4). **A rewrite is safe when the last load's
 report was silent, OR when retention was on and `retain_lost`,
 `kind_mismatch`, `clamped` and `malformed` are all zero after the save.** The
 second is the first with `unknown` struck out, and that is precisely what
-retention buys. A record discarded under a reset ancestor is not in the check
-and does not need to be: the reset is the writer's act and not a loss, the
-winning occurrence holds what the writer meant the body to hold, and the save
-that carries it is as safe as the four counters say.
+retention buys.
 
 **REFUSAL IS PER RECORD AND NEVER PARTIAL.** A record the remaining capacity
 cannot hold whole is not written at all: `retain_lost` counts one, the read
@@ -10801,11 +10813,9 @@ refusal by name is a compile error rather than an answer a driver writes.
 - a FIXED-class root, whose `LoadRetain` is refused by name. Red if the call
   compiles, and red if the refusal is a missing symbol rather than a named
   one.
-- a body carrying `child { future = 7 }` and then `child { known = 2 }`, the
-  second occurrence resetting the first: the save carries `known = 2` and no
-  `future`, `retain_lost` is `0`, and `retained` is unchanged by the discard.
-  Red if a leg resurrects `7` into the winning occurrence, writes it beside
-  it, or counts the discard as lost.
+- a body carrying `child { future = 7 }` and then `child { known = 2 }`: one
+  id twice, so the load is damage and refused. Red if a leg hands back a
+  value or retains anything.
 - a pointered save whose retained tail sits before the node-table field in the
   root body. Red on any other order.
 - a record under a MAP entry and one under an UNBOUNDED array element, each
@@ -10823,8 +10833,7 @@ does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
 two stores, the resolving walk one pass each way, the six excluded classes at
-one `retain_lost` each, the drop rule, the record that dies with the occurrence
-that carried it, the retained tail at the end of its own body and the two
+one `retain_lost` each, the drop rule, the retained tail at the end of its own body and the two
 stores numbered into one trailer in merged first-use order. The leg's own two
 negative controls, one per engine, stand beside the fuzzer's (§4.2).
 
@@ -11385,7 +11394,7 @@ the wire, and keeps the flexibility that comes with it.
   the command refuses it and says which part is missing. The ATTRIBUTION is
   written beside the data for exactly this reader.
 - **The check is a SCAN of the attribution, not a traversal of the
-  graph.** Two passes, in order:
+  graph.** Three passes, in order:
   1. **The directory itself**, linearly and with no state: it lies inside
      the file, every type id names a table the unit has, the
      materialized offsets ascend, each is aligned for its own type, and
@@ -17137,7 +17146,7 @@ means for a field, and they never turn a refusal into an acceptance.
 is nearly free; never lose a bound; security trumps.**
 
 - **`y_`: every file is accepted.** A file that repeats a key is accepted at
-  this layer; §16.2's last-wins-and-counted is the walk's rule, not the
+  this layer; §16.2's repeated-key refusal is the table walk's rule, not the
   layer's.
 - **`n_`: every file is refused** (false, `Malformed`), and a mismatch names
   the file, except the rows below marked `accept (dialect)`.
@@ -18595,8 +18604,8 @@ schema name, as everywhere else in that backend.
   below the projection's size, or one not aligned to `max(64, alignof)`, is
   `bad_layout`, because a row that starts inside the projection is a row this
   build's prologue never described. On a match the
-  bytes are what a build with this layout wrote, so there is nothing to
-  validate and nothing to fix up. On any failure it returns false and points
+  layout is this build's, and nothing in the layout needs fixing up. On any
+  failure it returns false and points
   at nothing — §7's shape, for §7's reason. **And it NAMES the failure in the
   same `TableRefuseReason` a cook's `Open` fills** (§7), first failing clause
   first, in the order the arithmetic forces: `not_a_cook` where the magic is

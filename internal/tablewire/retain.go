@@ -106,33 +106,12 @@ type retainedField struct {
 // shape the walk cannot take. It bounds the recursion and nothing else.
 const retainDepthCap = 64
 
-// armKey names one union cell by the FIELD OCCURRENCE it belongs to rather than
-// by its address (docs/SPEC-TABLES.md §6.6, THE PATH): the field plus, for an
-// array of unions, the element index. A positional array grows its slot slice
-// while it decodes, so a cell's ADDRESS moves under a reallocation and cannot
-// name an occurrence; the field's address and the element index are stable.
-type armKey struct {
-	fv    *tabletext.Field
-	index int // -1 for a field's own union cell, else the element index
-}
-
 // retainState is what a retaining read carries beside the plain one: the
 // caller's stores, and the set of ids this build can spell, which is what
 // decides WHICH STORE an id inside a retained record takes at save.
 type retainState struct {
 	store *Retain
 	known map[uint64]bool
-	// arms is the ARM BODY one union cell's current occurrence built. A union
-	// whose arm is written AGAIN is one of §6.6's four occurrences, and the
-	// earlier arm's records go with it whatever became of that occurrence: an
-	// arm whose own framing was damaged leaves no body on the cell at all, so
-	// the handle is held here instead of being read back off the value. It is
-	// keyed by the occurrence (armKey), never by the cell's address, because a
-	// slice append can move an array element's cell.
-	arms map[armKey]*tabletext.Instance
-	// A damaged map may clear Entries after earlier entries retained fields.
-	// Keep those bodies until a later occurrence supersedes the whole map.
-	maps map[*tabletext.Field][]*tabletext.Instance
 }
 
 func newRetainState(m *tabletext.Model, store *Retain) *retainState {
@@ -141,151 +120,7 @@ func newRetainState(m *tabletext.Model, store *Retain) *retainState {
 	for _, id := range ir.TableWireIds(m.Unit) {
 		known[id] = true
 	}
-	return &retainState{store: store, known: known, arms: map[armKey]*tabletext.Instance{}, maps: map[*tabletext.Field][]*tabletext.Instance{}}
-}
-
-// forget DISCARDS every record held under a body the wire is about to write
-// AGAIN (docs/SPEC-TABLES.md §6.6). A RETAINED RECORD BELONGS TO THE BODY
-// OCCURRENCE THAT CARRIED IT AND DIES WITH IT: legal input can carry a known
-// child body twice, and the later occurrence resets the child and wins whole,
-// so the records retained under the earlier occurrence go with the values it
-// held. THE DISCARD MOVES NEITHER COUNTER — the writer superseded the data, so
-// nothing was lost that the load could have kept.
-//
-// It is called where the reader throws away a body in order to read a NEW
-// occurrence of it, and NEVER where damage resets a body the reader has just
-// decoded: that record is one the save cannot place, and it is counted there.
-//
-// A POINTER IS NOT FOLLOWED: a node cannot be removed from a region, so no
-// occurrence of a body ever supersedes one (§6.6).
-func (rt *retainState) forget(inst *tabletext.Instance) {
-	if rt == nil || inst == nil {
-		return
-	}
-	delete(rt.store.records, inst)
-	for i := range inst.Fields {
-		fv := &inst.Fields[i]
-		rt.forgetMap(fv)
-		rt.forgetCell(&fv.Cell)
-		for j := range fv.Elems {
-			rt.forgetCell(&fv.Elems[j])
-		}
-		for j := range fv.Entries {
-			rt.forgetCell(&fv.Entries[j])
-		}
-	}
-}
-
-func (rt *retainState) builtMapEntry(fv *tabletext.Field, entry *tabletext.Instance) {
-	if rt != nil {
-		rt.maps[fv] = append(rt.maps[fv], entry)
-	}
-}
-
-func (rt *retainState) forgetMap(fv *tabletext.Field) {
-	if rt == nil {
-		return
-	}
-	entries := rt.maps[fv]
-	delete(rt.maps, fv)
-	for _, entry := range entries {
-		rt.forget(entry)
-	}
-}
-
-func (rt *retainState) forgetCell(cell *tabletext.Cell) {
-	if cell.Tab != nil {
-		rt.forget(cell.Tab)
-	}
-	if cell.Arm != nil {
-		rt.forgetCell(&cell.Arm.Cell)
-		for j := range cell.Arm.Elems {
-			rt.forgetCell(&cell.Arm.Elems[j])
-		}
-	}
-}
-
-// discardsWhole reports whether a SECOND occurrence of this field replaces
-// everything the first one held, which is the only shape a discard taken AT
-// THE FIELD can be right for (docs/SPEC-TABLES.md §6.6). A nested table's body
-// is reset before it is read, and a union's tag is written whatever the arm,
-// so both replace whole.
-//
-// THE COLLECTIONS DO NOT. A map, a list and a bounded array replace only where
-// their own read COMMITS to replace, which is past a header that can turn the
-// occurrence inert or foreign, and each takes its discard there. An enum-keyed
-// array never replaces whole at all: a second occurrence overwrites the slots
-// it carries and leaves the rest standing, so a discard at the field would
-// kill records under slots the writer never touched.
-func discardsWhole(f *ir.Field) bool {
-	if f.Type.Pointer || f.IsMap() || f.IsList() || f.KeyEnum != "" || f.Array != ir.ArrayNone {
-		return false
-	}
-	return tabletext.StructOf(f) != nil || tabletext.UnionOf(f) != nil
-}
-
-// forgetField discards every record under a field the wire is reading AGAIN,
-// BEFORE any of the new occurrence's framing is read: an occurrence whose own
-// framing turns out to be damaged still replaces what the earlier one held,
-// because the reader committed to it at the field id (§6.6).
-func (rt *retainState) forgetField(fv *tabletext.Field) {
-	if rt == nil {
-		return
-	}
-	rt.forgetArm(fv, -1)
-}
-
-// builtArm remembers the body this occurrence of a union cell built, under the
-// occurrence's own key (the field and the element index) rather than the cell's
-// address, which a slice append can move (§6.6).
-func (rt *retainState) builtArm(fv *tabletext.Field, index int, payload *tabletext.Instance) {
-	if rt == nil {
-		return
-	}
-	rt.arms[armKey{fv, index}] = payload
-}
-
-// forgetArm discards the records the PREVIOUS occurrence of a union cell held,
-// whether or not that occurrence left a body standing on the cell (§6.6).
-func (rt *retainState) forgetArm(fv *tabletext.Field, index int) {
-	if rt == nil || fv == nil {
-		return
-	}
-	var cell *tabletext.Cell
-	if index < 0 {
-		cell = &fv.Cell
-	} else {
-		if index >= len(fv.Elems) {
-			return
-		}
-		cell = &fv.Elems[index]
-	}
-	rt.forget(cell.Tab)
-	k := armKey{fv, index}
-	if held := rt.arms[k]; held != nil {
-		rt.forget(held)
-		delete(rt.arms, k)
-	}
-}
-
-// forgetFieldArms discards every arm record held under ANY occurrence of this
-// field, at every element index (docs/SPEC-TABLES.md §6.6). A repeated
-// collection occurrence replaces the earlier one whole, so an arm the earlier
-// occurrence built at an index past the new occurrence's count dies with it —
-// the count is not reached by the element-by-element forgetArm, and the record
-// would otherwise outlive the body that carried it. It is called at the point
-// the read COMMITS to replace, and never where damage resets a body the reader
-// has just decoded.
-func (rt *retainState) forgetFieldArms(fv *tabletext.Field) {
-	if rt == nil || fv == nil {
-		return
-	}
-	for k, held := range rt.arms {
-		if k.fv == fv {
-			rt.forget(held)
-			delete(rt.arms, k)
-		}
-	}
+	return &retainState{store: store, known: known}
 }
 
 // lost counts one unknown this load or save could not keep. Every exclusion

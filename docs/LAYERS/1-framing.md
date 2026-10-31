@@ -54,10 +54,18 @@ other than the flag. A reader may stop at the first damage.
 
 **D2. Evolution is not damage.** §4: "EVOLUTION IS NOT DAMAGE and every other
 row of this section stands: an unknown field, variant, arm or slot skipped and
-counted, a kind mismatch, a widening, a clamp, a duplicate key, an inert short
-array body; the load succeeds and the report counts them." The rules below
-that skip, count and read on (R2, R4, H2, H4, H6, L1, L5, T6, T7's unknown
-record) are evolution and keep their full answer, value included.
+counted, a kind mismatch, a widening and a clamp; the load succeeds and the
+report counts them." The rules below that skip, count and read on (R2, R4, H4,
+H6, L1, T6, T7's unknown record) are evolution and keep their full answer,
+value included.
+
+**D3. Input no writer produces is damage (D1).** §4, INPUT NO WRITER PRODUCES
+IS DAMAGE. Glenn, #391, 2026-09-03: "Table reads are not trusted, they will
+come over the network. Table reads are exactly equivalent to type reads in
+security posture." The tolerance of D2 is tolerance of versions, never of
+shapes no version writes: one id twice in one body (R5), one key twice (H8,
+H11), a header outside its body (H2, H3) and bytes after a nested union inside
+its arm (L5) are each damage.
 
 ## A. The file frame
 
@@ -259,9 +267,7 @@ different thing."
 `clamped`; an unbounded array has no count to clamp.** §4: "A count past the
 READER's bound keeps the bounded prefix and counts clamped; a count short of
 it fills what the writer sent and leaves the reader's tail at its declared
-defaults." §2.9: "`clamped` CANNOT FIRE ON THE COUNT of a `[]T`." A crossed
-count on a bounded array (H3) whose element kind agrees is a count the body
-cannot cover, which is H5's damage, and D1 then leaves the clamp unobservable.
+defaults." §2.9: "`clamped` CANNOT FIRE ON THE COUNT of a `[]T`."
 
 **H7. A keyed array's slot key of `0` is damage (D1).** §3.2: "A stored key
 reference of `0` is MALFORMED rather than an unknown variant ... It is damage:
@@ -296,6 +302,11 @@ arm payload table, below), and the buffer an arm payload is read from is the
 arm's, so an array arm's header is read inside the arm's `L` and a count that
 crosses it is damage, which discards the whole load
 (`arm_array_count_past_arm_length`)."
+
+**H11. A keyed body carrying one slot key twice is damage (D3).** §3.2: "A key
+rides ONCE per body: a keyed body carrying one key reference twice, whether
+or not this reader can name the variant, is input no writer produces, and it
+is damage" (`keyed_repeat_slot`, `keyed_repeat_unknown_slot`).
 
 ## E. The node table
 
@@ -398,9 +409,9 @@ the refusal alone (D1).
 - **N6. An empty buffer.** Settled: §3 says a buffer of no bytes has no form
   byte to read and is malformed, never refused (F5); `frame_empty_buffer` is a
   refusal row.
-- **N7. The node table riding twice.** Settled: legal input, the LAST
-  occurrence is the numbering on R5's last-wins rule and the earlier one is
-  stepped over (§3.1); `node_table_twice` owes its full report and value.
+- **N7. The node table riding twice.** Settled (Glenn, 2026-10-31, the strike
+  list): one id twice in the root body, which is damage (R5, D3);
+  `node_table_twice` is a refusal row.
 - **N8. The 4096 entry bound.** An engine fix, not a finding: F6 is
   unambiguous and the engine applies it (`ir.TableWireIdTableBound`,
   `internal/tablewire` `trailerBounded`, held by

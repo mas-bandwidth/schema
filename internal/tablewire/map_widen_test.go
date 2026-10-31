@@ -23,7 +23,10 @@ func TestMapKeyWidenCountsOnceAndValueStillCounts(t *testing.T) {
 	}
 }
 
-func TestSkippedMapRepeatPreservesEarlierValue(t *testing.T) {
+// A MAP FIELD CARRIED TWICE is a field id repeated in one body, which no
+// writer produces: damage, whatever the repeat holds (docs/SPEC-TABLES.md §3,
+// §4), and the root comes back at its declared defaults.
+func TestMapFieldRepeatIsDamage(t *testing.T) {
 	m := listModel(t, "package probe\ntable Root { entries map[int32]int32 }\n")
 	original := place(t, m, "Root", `{"entries":{"3":9}}`)
 	wire, err := tablewire.Encode(m, original)
@@ -35,9 +38,9 @@ func TestSkippedMapRepeatPreservesEarlierValue(t *testing.T) {
 		repeat  []byte
 		damaged bool
 	}{
-		{[]byte{1, 14, 2, 5, 0}, false},   // a foreign element kind: kind_mismatch, skipped
-		{[]byte{1, 14, 0}, false},         // a body too short for a header: inert
-		{[]byte{1, 14, 2, 13, 128}, true}, // a count that cannot complete: damage
+		{[]byte{1, 14, 2, 5, 0}, true},    // a foreign element kind
+		{[]byte{1, 14, 0}, true},          // a body too short for a header
+		{[]byte{1, 14, 2, 13, 128}, true}, // a count that cannot complete
 	} {
 		repeat := tc.repeat
 		damaged := append([]byte(nil), wire[:trailer-1]...)
