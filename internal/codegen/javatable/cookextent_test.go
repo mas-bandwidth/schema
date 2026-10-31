@@ -24,10 +24,10 @@ import (
 func TestJavaCookExtentNegativeControl(t *testing.T) {
 	t.Parallel()
 	witnesses := []struct{ name, from, to string }{
-		{"extent_over_record", "at + aligned(n.info.size, FLOOR), new long[1]", "at, new long[1] /* SABOTAGED */"},
+		{"extent_over_record", "at + aligned(n.info.size, FLOOR),", "at, /* SABOTAGED: the extent over the record */"},
 		{"skip_align", "cursor[0] = aligned(cursor[0], f.extentAlign);", "/* SABOTAGED: no alignment */"},
 		{"children_first", "cursor[0] += (long) n * f.extentSize;", "/* SABOTAGED: reserved after the children */"},
-		{"unsorted_map", "if (f.storage != TableCookStorage.MAP || out.size() < 2) { return out; }", "if (true) { return out; } // SABOTAGED"},
+		{"unsorted_map", "if (f.storage != TableCookStorage.MAP || out.size() < 2) {", "if (true) { // SABOTAGED: entries in the value's order"},
 	}
 	units := []struct {
 		schema, pkg string
@@ -54,9 +54,14 @@ func TestJavaCookExtentNegativeControl(t *testing.T) {
 				if w.name == "children_first" {
 					// reserve the parent's array only AFTER its elements' arrays
 					src = strings.Replace(src, w.from, w.to, 1)
-					src = strings.Replace(src,
-						"carveValue(p, out, order, array + (long) i * f.extentSize, base, cursor, elems.get(i), f.element);\n            }\n            return;",
-						"carveValue(p, out, order, array + (long) i * f.extentSize, base, cursor, elems.get(i), f.element);\n            }\n            cursor[0] += (long) n * f.extentSize;\n            return;", 1)
+					// the text is the formatter's (google-java-format), so the
+					// anchor is the carve loop's last argument line and its close
+					after := "                        f.element);\n            }\n            return;"
+					if strings.Count(src, after) != 1 {
+						t.Fatalf("children_first: the carve loop's close is not where the witness expects it")
+					}
+					src = strings.Replace(src, after,
+						"                        f.element);\n            }\n            cursor[0] += (long) n * f.extentSize;\n            return;", 1)
 				} else {
 					src = strings.Replace(src, w.from, w.to, 1)
 				}
