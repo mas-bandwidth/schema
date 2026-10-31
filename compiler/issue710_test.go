@@ -180,10 +180,10 @@ func TestIssue710TableRecovery(t *testing.T) {
 		}
 	}
 	checks := []string{
-		`Text v; TableReport r={0}; if(text_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 1;`,
-		`Rows v; TableReport r={0}; if(rows_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 2;`,
-		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 3; ok=mapping_load_builder_tolerant(&b,wire,sizeof(wire),&r); mapping_builder_shutdown(&b); if(ok || !r.malformed) return 4;`,
-		`Keyed v; TableReport r={0}; if(keyed_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 5;`,
+		`Text v; TableReport r={0}; if(text_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 11;`,
+		`Rows v; TableReport r={0}; if(rows_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 12;`,
+		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 13; ok=mapping_load_builder_tolerant(&b,wire,sizeof(wire),&r); mapping_builder_shutdown(&b); if(ok || !r.malformed) return 14;`,
+		`Keyed v; TableReport r={0}; if(keyed_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 15;`,
 	}
 	var csrc strings.Builder
 	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
