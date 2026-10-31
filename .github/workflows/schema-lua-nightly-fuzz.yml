@@ -33,6 +33,7 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
   push:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-lua-nightly-fuzz.mk'
       - 'internal/ci/schema_lua_nightly_fuzz_test.go'
@@ -44,8 +45,8 @@ on:
       - '.github/workflows/schema-lua-nightly-fuzz.yml'
 
 concurrency:
-  group: schema-lua-nightly-fuzz-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # THE FAST PARTS, on every push and pull request that touches this lane:

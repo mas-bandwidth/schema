@@ -24,6 +24,7 @@ name: Squirrel all-port differential
 
 on:
   push:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-squirrel-all-port-differential.mk'
       - '.github/workflows/schema-squirrel-all-port-differential.yml'
@@ -42,8 +43,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: squirrel-all-port-differential-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   fast:

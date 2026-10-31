@@ -18,6 +18,7 @@ name: Squirrel runs the hostile corpus
 
 on:
   push:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-squirrel-runs-hostile-corpus.mk'
       - '.github/workflows/schema-squirrel-runs-hostile-corpus.yml'
@@ -40,8 +41,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: squirrel-runs-hostile-corpus-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
