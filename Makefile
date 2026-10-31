@@ -1300,7 +1300,7 @@ tables-cpp-usage-build:
 			| sed '/^#include/d' > $(CPP_USAGE_OUT)/$$out.inc; \
 		test -s $(CPP_USAGE_OUT)/$$out.inc || { echo "MISSING: docs/USAGE.md carries no $$marker example"; exit 1; }; \
 	done
-	$(CXX) $(COOK_CXXFLAGS) -I$(CPP_USAGE_GEN) -I$(CPP_USAGE_OUT) test/tables/usage_cpp_main.cpp -o $(CPP_USAGE_OUT)/usage
+	$(CXX) $(COOK_CXXFLAGS) -I$(CPP_USAGE_GEN) -Itest/tables -I$(CPP_USAGE_OUT) test/tables/usage_cpp_main.cpp -o $(CPP_USAGE_OUT)/usage
 .PHONY: tables-cpp-usage
 tables-cpp-usage: build/tables-generated/.stamp build/cook-open/.stamp test/tables/usage_cpp_main.cpp docs/USAGE.md
 	$(MAKE) --no-print-directory tables-cpp-usage-build CPP_USAGE_GEN=build/tables-generated/pointers CPP_USAGE_OUT=$(CPP_USAGE)
