@@ -85,9 +85,9 @@ static bool has_repeat( const std::vector<uint64_t> & ids )
 // THE SWEEP'S SHAPE. Every count gets a clean table. A repeat goes at every
 // position for the small counts and for the counts within kSweepEdge of the
 // bound; between them, at the positions sweep_position names.
-static const int kSweepEveryBelow = 64;
-static const int kSweepEdge = 8;
-static const int kSweepStride = 61;
+static const int kSweepEveryBelow = 32;
+static const int kSweepEdge = 2;
+static const int kSweepStride = 257;
 
 static bool sweep_position( int at, int n )
 {
