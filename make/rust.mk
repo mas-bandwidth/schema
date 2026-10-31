@@ -807,7 +807,7 @@ test-rust: tables-rust-variable-fixed-class
 # turns the rustc skip into a failure, so the target never passes on a SKIP.
 .PHONY: tables-rust-cook-write
 tables-rust-cook-write:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteStandsDownOnTheExtent' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteCarriesTheExtent' -v
 	@echo 'tables Rust cook write: the storage value cooks to the bytes schema cook writes, in both byte orders'
 
 test-rust: tables-rust-cook-write
