@@ -107,4 +107,3 @@ func TestSquirrelKeyedNegativeControls(t *testing.T) {
 		})
 	}
 }
-
