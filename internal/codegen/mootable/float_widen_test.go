@@ -37,8 +37,8 @@ print(table.concat(out, "\n"))
 
 func widenPatterns() []uint32 {
 	var out []uint32
-	for sign := uint32(0); sign < 2; sign++ {
-		for exp := uint32(0); exp < 255; exp++ {
+	for sign := range uint32(2) {
+		for exp := range uint32(255) {
 			for _, frac := range []uint32{0, 1, 2, 0x400000, 0x7ffffe, 0x7fffff, 0x2aaaaa, 0x555555} {
 				out = append(out, sign<<31|exp<<23|frac)
 			}
