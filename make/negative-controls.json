@@ -1207,7 +1207,7 @@
     {
       "name": "moo-conformance",
       "when": "pull-request",
-      "why": "the moo leg's two conformance negative controls (make/moo-conformance.mk, test/conformance/moo/negative-control; docs/PORTING.md I2 and I11), on the moo pin .github/actions/moo restores into dist/moo: each seds one runtime file the table emitter embeds, builds a private compiler with go build -overlay, regenerates the manifest's units and runs the harness over them, which must go red on exactly the named surfaces with the neighbours green (report: the load counting each unknown field twice, report and retain red; walk: the text reader's field-key index missing the first field, json-read and json-hostile red). Measured 6.9 s and 6.8 s on amd-3 (2026-10-31), the overlay compile and the 33 units' generation included, so the row is the harness build plus the pin's cache restore.",
+      "why": "the moo leg's two conformance negative controls (make/moo-conformance.mk, test/conformance/moo/negative-control; docs/PORTING.md I2 and I11), on the moo pin .github/actions/moo restores into dist/moo: each seds one runtime file the table emitter embeds, builds a private compiler with go build -overlay, regenerates the manifest's units and runs the harness over them, which must go red on exactly the named surfaces with the neighbours green (report: the load counting each unknown field twice, report and retain red; walk: the text reader's field-key index missing the first field, json-read and json-hostile red). Measured 6.9 s and 6.8 s on amd-3 (2026-10-31; 10.2 s and 9.7 s under a load of 14 on its 16 cores), the overlay compile and the 33 units' generation included, so the row is the harness build plus the pin's cache restore.",
       "targets": [
         "conformance-negative-control-moo",
         "conformance-negative-control-moo-walk"
@@ -1217,7 +1217,7 @@
     {
       "name": "moo-wire-fuzz",
       "when": "pull-request",
-      "why": "the moo leg's harness wire-fuzz control (make/moo-fuzz.mk, test/conformance/moo/wire-fuzz-negative-control; docs/PORTING.md I15): a string frame past its body planted to read without counting malformed in a scratch copy of every generated table_load.moo, and the harness must stop on exactly that verdict, through the same pipe tables-moo-wire-fuzz drives. Its own row because it builds the native pipe host tools/moofuzzhost from the moo pin's source (the VM and compiler libraries, cmake at MOO_BUILD_JOBS) on top of the pin .github/actions/moo restores; the control's own run stops on the first enumerated divergence, MEASURED_NC on amd-3.",
+      "why": "the moo leg's harness wire-fuzz control (make/moo-fuzz.mk, test/conformance/moo/wire-fuzz-negative-control; docs/PORTING.md I15): a string frame past its body planted to read without counting malformed in a scratch copy of every generated table_load.moo, and the harness must stop on exactly that verdict, through the same pipe tables-moo-wire-fuzz drives. Its own row because it builds the native pipe host tools/moofuzzhost from the moo pin's source (the VM and compiler libraries, cmake at MOO_BUILD_JOBS) on top of the pin .github/actions/moo restores; the control's own run stops on the first enumerated divergence: 2.3 s on amd-3 (2026-10-31) with the host and the units built.",
       "targets": [
         "tables-moo-wire-fuzz-negative-control"
       ],
@@ -1226,7 +1226,7 @@
     {
       "name": "moo-open-gates",
       "when": "pull-request",
-      "why": "the moo leg's controls of make/moo-open-gates.mk, on the moo pin .github/actions/moo restores: the runtime home's (docs/PORTING.md J2; the file-order rule put back through go build -overlay, the tables/examples unit generated with and without an earlier-sorting file, and the home must move) and the documented surface's (I12; two edited copies of docs/USAGE.md, a renamed save and a walk that reads nothing, each must fail the moo usage gate). Go, the moo pin and nothing else. MEASURED_OPEN on amd-3.",
+      "why": "the moo leg's controls of make/moo-open-gates.mk, on the moo pin .github/actions/moo restores: the runtime home's (docs/PORTING.md J2; the file-order rule put back through go build -overlay, the tables/examples unit generated with and without an earlier-sorting file, and the home must move) and the documented surface's (I12; two edited copies of docs/USAGE.md, a renamed save and a walk that reads nothing, each must fail the moo usage gate). Go, the moo pin and nothing else: 1.3 s and 2.0 s on amd-3 (2026-10-31) with the compiler built.",
       "targets": [
         "tables-moo-runtime-home-negative-control",
         "tables-moo-usage-negative-control"

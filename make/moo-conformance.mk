@@ -59,3 +59,7 @@ conformance-negative-control-moo: toolchain-moo build/conformance-harness
 
 conformance-negative-control-moo-walk: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control walk
+
+# both ride test-moo (make/moo.mk), as every leg's conformance controls ride its
+# own test target
+test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk
