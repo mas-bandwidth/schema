@@ -204,7 +204,7 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 var declaredFixed = regexp.MustCompile(`(?m)^fixed table `)
 
 // variableUnit generates a manifest unit with every `fixed table` declared as a
-// plain `table`: RETENTION IS THE VARIABLE CLASS'S (docs/SPEC-TABLES.md §6.6)
+// variable `table`: RETENTION IS THE VARIABLE CLASS'S (docs/SPEC-TABLES.md §6.6)
 // and a fixed-class root is refused by name, so the evolved pairs the manifest
 // declares fixed are the same wires read through the variable class. nil when
 // the converted unit does not compile.

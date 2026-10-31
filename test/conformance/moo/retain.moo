@@ -5,8 +5,7 @@
 --
 --   retain       LoadRetain the wire at the row's two capacities, MeasureRetain,
 --                SaveRetain, the counters `<retained>,<retain_lost>,<unknown> <save lost>\n`
---   retain-save  the same round trip, the SAVED BYTES (a form-2 row: one body
---                after another, in body order)
+--   retain-save  the same round trip, the SAVED BYTES
 --
 -- through the emitted table_retain.moo and the descriptors the unit's
 -- <Base>Table modules register. A row's capacities are rules: `full` is a
@@ -20,10 +19,6 @@ type Surface = { carried: (any, string) -> boolean, run: () -> () }
 -- the roomy capacities the Go driver uses (test/conformance/go/retain.go)
 local CAPACITY = 1048576
 local IDS = 131072
-
--- a batch takes one region and one retention buffer a body; no manifest batch
--- carries more bodies than this
-local STORES = 8
 
 return function(ctx: any): { [string]: Surface }
 	local function carried(_: any, key: string): boolean
@@ -79,79 +74,23 @@ return function(ctx: any): { [string]: Surface }
 		return { counters = string.format("%d,%d,%d %d\n", retained, lost, unknown, saveLost), saves = { out } }, nil
 	end
 
-	-- retain-message <case> <connection> <unit> <root> <wire> <capacity> <ids> ...
-	-- the batch against the connection's announced vocabulary, a store a body,
-	-- each body saved as a FILE
-	local function message(f: { string }): (Answer?, string?)
-		local unit, rootName = f[4], f[5]
-		ctx.tables(unit)
-		local R: any = ctx.module(unit, "table_retain")
-		local MS: any = ctx.module(unit, "table_message")
-		local announcement: buffer? = nil
-		for _, c in ctx.kind("connection") do
-			if c[2] == f[3] then
-				announcement = ctx.inputs(c[5])
-			end
-		end
-		if announcement == nil then
-			return nil, f[2] .. ": no connection " .. f[3]
-		end
-		local ids = if f[8] == "full" then IDS else tonumber(f[8]) :: number
-		local report: any = {}
-		local vocabulary = MS.NewVocabulary()
-		if not MS.AnnounceRead(vocabulary, announcement, report) then
-			return nil, f[2] .. ": announcement refused " .. tostring(report.reason)
-		end
-		local stores = {}
-		for i = 1, STORES do
-			stores[i] = R.newStore(CAPACITY, ids)
-		end
-		local n, values = R.LoadRetainMessages(vocabulary, rootName, ctx.inputs(f[6]), 256, stores, report)
-		if n < 0 or report.malformed then
-			return nil, f[2] .. ": retained batch load refused " .. tostring(report.reason)
-		end
-		local retained, lost, unknown = report.retained or 0, report.retainLost or 0, report.unknown or 0
-		local saves: { buffer } = {}
-		for i = 1, n do
-			local out = R.SaveRetain(rootName, values[i], stores[i], report)
-			if out == nil then
-				return nil, f[2] .. ": retaining save refused"
-			end
-			saves[#saves + 1] = out
-		end
-		local saveLost = (report.retainLost or 0) - lost
-		return { counters = string.format("%d,%d,%d %d\n", retained, lost, unknown, saveLost), saves = saves }, nil
-	end
-
 	local function rows(saves: boolean)
-		for _, kindName in { "retain", "retain-message" } do
-			for _, f in ctx.kind(kindName) do
-				if saves and f[#f] == "-" then
-					continue
-				end
-				local unit = if kindName == "retain" then f[3] else f[4]
-				if not carried(nil, unit) then
-					ctx.say(f[2], nil)
-					continue
-				end
-				local a: Answer?, why: string?
-				if kindName == "retain" then
-					a, why = file(f)
-				else
-					a, why = message(f)
-				end
-				if a == nil then
-					error("retain: " .. (why or f[2]), 0)
-				end
-				if not saves then
-					ctx.say(f[2], a.counters)
-				else
-					local parts: { string } = {}
-					for _, b in a.saves do
-						parts[#parts + 1] = buffer.tostring(b)
-					end
-					ctx.say(f[2], table.concat(parts))
-				end
+		for _, f in ctx.kind("retain") do
+			if saves and f[#f] == "-" then
+				continue
+			end
+			if not carried(nil, f[3]) then
+				ctx.say(f[2], nil)
+				continue
+			end
+			local a, why = file(f)
+			if a == nil then
+				error("retain: " .. (why or f[2]), 0)
+			end
+			if not saves then
+				ctx.say(f[2], a.counters)
+			else
+				ctx.say(f[2], buffer.tostring(a.saves[1]))
 			end
 		end
 	end
