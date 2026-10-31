@@ -112,6 +112,7 @@ defmodule Bench.Table do
       align: 16,
       type_id: 0xEB80CFD516EB3D5C,
       record: 1376,
+      node_align: 16,
       has_extent: false,
       string_blob: false,
       variable: false,
@@ -701,6 +702,7 @@ defmodule Bench.Table do
       align: 16,
       type_id: 0x85DF369CDCA746B3,
       record: 1376,
+      node_align: 16,
       has_extent: false,
       string_blob: false,
       variable: false,
@@ -733,6 +735,7 @@ defmodule Bench.Table do
       align: 4,
       type_id: 0x9F2C9DA926A7408A,
       record: 8,
+      node_align: 4,
       has_extent: false,
       string_blob: false,
       variable: false,
@@ -790,6 +793,7 @@ defmodule Bench.Table do
       align: 8,
       type_id: 0x9367B84CAB99CDC3,
       record: 64,
+      node_align: 8,
       has_extent: false,
       string_blob: false,
       variable: false,
@@ -1154,6 +1158,7 @@ defmodule Bench.Table do
       align: 4,
       type_id: 0xAC9FE3B25A77F1D7,
       record: 16,
+      node_align: 4,
       has_extent: false,
       string_blob: false,
       variable: false,
@@ -1250,6 +1255,7 @@ defmodule Bench.Table do
       align: 4,
       type_id: 0x3D827CB76B809D8C,
       record: 8,
+      node_align: 4,
       has_extent: false,
       string_blob: false,
       variable: false,
@@ -1307,6 +1313,7 @@ defmodule Bench.Table do
       align: 4,
       type_id: 0xC42975BFE5E07BAA,
       record: 8,
+      node_align: 4,
       has_extent: false,
       string_blob: false,
       variable: false,
@@ -1457,13 +1464,6 @@ defmodule Bench.Table do
   @uncarried []
 
   def carried?(table), do: table not in @uncarried
-
-  # roots that reach a map (docs/SPEC-TABLES.md §2.8, §7.2). `schema cook`
-  # refuses a map-bearing unit by name, so the cook writer does not lay out
-  # entry arrays no tool cook holds it to; cook_carried?/1 answers false.
-  @cook_uncarried []
-
-  def cook_carried?(table), do: table not in @cook_uncarried
 
   @cook_build_version 0x41D3559378BFA852
   @cook_magic 0x4B4F4F434D484353
@@ -5325,6 +5325,14 @@ defmodule Bench.Table do
 
   defp cook_collect_field(%{t: :list}, v, _acc) when not is_nil(v), do: throw(:invalid)
 
+  # a MAP's value is its entries ASCENDING BY KEY (docs/SPEC-TABLES.md §2.8):
+  # the writer holds the sort (map_entries, the wire's own), so the numbering,
+  # the record writer and the extent walk all read the one order
+  defp cook_collect_field(%{t: :map} = f, v, acc) when is_map(v),
+    do: Enum.map_reduce(map_entries(f, v), acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
+
+  defp cook_collect_field(%{t: :map}, v, _acc) when not is_nil(v), do: throw(:invalid)
+
   # an enum-keyed array's slots are walked in the key enum's order (§2.4)
   defp cook_collect_field(%{t: :keyed, item: item, key_names: names}, slots, acc)
        when is_map(slots) do
@@ -5398,9 +5406,11 @@ defmodule Bench.Table do
             {start + size, align, [Map.merge(n, %{offset: start, size: size, extent: 0}) | acc]}
 
           :table ->
+            # a node aligns to its record's alignment and every array its
+            # extent can hold (ir.CookNodeAlign, docs/SPEC-TABLES.md §2.8)
             d = Map.get(n, :desc) || Map.fetch!(@tables, n.elem)
-            align = max(align, d.align)
-            start = cook_align(offset, d.align)
+            align = max(align, d.node_align)
+            start = cook_align(offset, d.node_align)
             ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)
             size = d.record + ext
 
@@ -5412,29 +5422,17 @@ defmodule Bench.Table do
     {cook_align(offset, align), align, Enum.reverse(acc)}
   end
 
-  defp cook_extent(desc, value), do: cook_extent_fields(desc.fields, value, 0)
+  # THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6; the layout
+  # tla/NodeExtent.tla models and internal/tablecook/extent.go writes). A
+  # record's lists and maps lay their arrays after its own storage, from
+  # desc.record on: field by field in declaration order, each holder's WHOLE
+  # array at the running offset rounded to its element's alignment, then,
+  # element by element (entry by entry in key order), the arrays those
+  # elements hold — PRE-ORDER. One walk measures (buf nil) and writes, so the
+  # two cannot drift.
+  defp cook_extent(_desc, _value), do: 0
 
-  defp cook_extent_fields(fields, value, at) do
-    Enum.reduce(fields, at, fn f, at -> cook_extent_field(f, value, at) end)
-  end
-
-  defp cook_extent_field(%{t: :list, array: :list} = f, value, at) do
-    elems = cook_list(value, f)
-    at = cook_align(at, f.elem_align) + length(elems) * f.elem_size
-    cook_extent_after(f, elems, at)
-  end
-
-  defp cook_extent_field(_, _, at), do: at
-
-  defp cook_extent_after(_, _, at), do: at
-
-  defp cook_list(value, f) do
-    case Map.get(value, f.name, []) do
-      v when is_list(v) -> v
-      nil -> []
-      _ -> throw(:invalid)
-    end
-  end
+  defp cook_carve(_desc, _value, _node_off, _index, _order, buf), do: buf
 
   defp cook_render(plan, order) do
     try do
@@ -5494,7 +5492,10 @@ defmodule Bench.Table do
     end)
   end
 
+  # a LIST's and a MAP's holder is written by the extent walk, which places
+  # the array it points at (§7.6)
   defp cook_field(%{array: :list}, _value, _base, _index, _order, buf), do: buf
+  defp cook_field(%{t: :map}, _value, _base, _index, _order, buf), do: buf
 
   defp cook_field(f, value, base, index, order, buf) do
     # an absent optional reads nil (§2.3)
@@ -5559,6 +5560,17 @@ defmodule Bench.Table do
          buf
        ) do
     cook_text(buf, base + off, base + len_at, v, bound, order)
+  end
+
+  defp cook_value(
+         %{t: :wstring, cook_off: off, count_off: len_at, size: bound},
+         v,
+         base,
+         _index,
+         order,
+         buf
+       ) do
+    cook_units(buf, base + off, base + len_at, v, bound, order)
   end
 
   defp cook_value(%{t: :enum, cook_off: off} = f, v, base, _index, order, buf) do
@@ -5727,65 +5739,21 @@ defmodule Bench.Table do
     put_i32(buf, len_at, byte_size(v), order)
   end
 
-  defp cook_carve(desc, value, node_off, index, order, buf) do
-    {_, buf} =
-      cook_carve_fields(
-        desc.fields,
-        value,
-        node_off,
-        node_off + desc.record,
-        0,
-        index,
-        order,
-        buf
-      )
-
-    buf
-  end
-
-  defp cook_carve_fields(fields, value, rec, extent_at, cursor, index, order, buf) do
-    Enum.reduce(fields, {cursor, buf}, fn f, {cursor, buf} ->
-      cook_carve_field(f, value, rec, extent_at, cursor, index, order, buf)
-    end)
-  end
-
-  defp cook_carve_field(
-         %{t: :list, array: :list} = f,
-         value,
-         rec,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    elems = cook_list(value, f)
-    count = length(elems)
-    cursor = cook_align(cursor, f.elem_align)
-    start = extent_at + cursor
-    slot = rec + f.cook_off
+  # wstring(N)'s pieces (§7.2): char16_t[N + 1], each UTF-16 code unit a
+  # two-byte scalar in the cook's byte order, then the int32 used length in
+  # code units
+  defp cook_units(buf, at, len_at, v, bound, order) do
+    if not is_binary(v), do: throw(:invalid)
+    units = for <<u::little-unsigned-16 <- utf16(v)>>, do: u
+    if length(units) > bound, do: throw(:invalid)
 
     buf =
-      if count > 0 do
-        put_i64(buf, slot, start - slot, order)
-      else
-        buf
-      end
-
-    buf = put_i32(buf, slot + 8, count, order)
-
-    buf =
-      Enum.reduce(Enum.with_index(elems), buf, fn {e, i}, buf ->
-        cook_elem(f, e, start + i * f.elem_size, index, order, buf)
+      Enum.reduce(Enum.with_index(units), buf, fn {u, i}, buf ->
+        put_uint(buf, at + 2 * i, u, 2, order)
       end)
 
-    cursor = cursor + count * f.elem_size
-    cook_carve_after(f, elems, start, extent_at, cursor, index, order, buf)
+    put_i32(buf, len_at, length(units), order)
   end
-
-  defp cook_carve_field(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}
-
-  defp cook_carve_after(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}
 
   defp cook_align(v, a) when a <= 1, do: v
   defp cook_align(v, a), do: div(v + a - 1, a) * a
@@ -5889,8 +5857,10 @@ defmodule Bench.Table do
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
        %{retain | records: [], used: 0, ids: []}}
+
     :wire_damaged ->
-      {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+      {:error, :malformed, reasoned(report, :malformed),
+       %{retain | records: [], used: 0, ids: []}}
   end
 
   def measure_retain(table, value, retain) when is_map(value) do
