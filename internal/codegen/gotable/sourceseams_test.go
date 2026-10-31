@@ -47,11 +47,9 @@ type contentAllow struct {
 //
 // The only non-seam string replacements inside the package are:
 //   - source.go — the fail-closed helper, the definitional home of the seam
-//     machinery,
+//     machinery, and
 //   - gotable.go — indentation of a generated line, not a runtime-source seam
-//     (it rewrites the emitted text's line prefixes, never an anchor), and
-//   - retain.go — the retain family's per-half rewrite, validated on the whole
-//     by tableSourceReplace before it runs.
+//     (it rewrites the emitted text's line prefixes, never an anchor).
 //
 // The Contains/Count scan closes the sibling hole: a seam gated by probing the
 // anchor text fails open when the anchor moves, and wrapper helpers hide it.
@@ -66,9 +64,6 @@ var replaceAllow = map[string][]contentAllow{
 	},
 	"gotable.go": {
 		{"s = g.indent + strings.ReplaceAll(s, \"\\n\", \"\\n\"+g.indent)", 1, "indentation of an emitted line, not a runtime-source seam"},
-	},
-	"retain.go": {
-		{"source = strings.ReplaceAll(source, rewrites[i], rewrites[i+1])", 1, "retain family per-half rewrite, validated on the whole by tableSourceReplace above"},
 	},
 }
 
@@ -315,7 +310,6 @@ table Root {
 		want: []string{
 			"TableRetainReader",
 			"tableRegionLoadRetain",
-			"TableRetainMessageReader",
 		},
 	},
 	{

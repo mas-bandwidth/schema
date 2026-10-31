@@ -45,10 +45,9 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 				}
 				u := loadUnitPaths(t, units[conn.unit])
 				if ir.VariableTables(u)[row.root] {
-					// §3.3: "a plain `table T` may not" ride the message form,
-					// so the JavaScript leg answers this message row ABSENT and
-					// asserts nothing (the manifest row and the C++ reference
-					// stay as they are).
+					// a variable table has no message form (§3.3), so the
+					// JavaScript leg answers this message row ABSENT and
+					// asserts nothing
 					return
 				}
 				st := findTable(t, u, row.root)

@@ -11,12 +11,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// TestGoMessageFormFixedOnly asserts, over one generated unit, that the four
-// message verbs — MeasureMessages, SaveMessages, LoadMessages and
-// LoadRetainMessages — exist for a `fixed table` root and are absent for a
-// plain `table` root. docs/SPEC-TABLES.md §3.3: "THE FORM IS A FIXED TABLE'S,
-// and that is a declaration, not a derivation ... `fixed table T` may ride
-// here, a plain `table T` may not.".
+// TestGoMessageFormFixedOnly asserts, over one generated unit, that the
+// message verbs — MeasureMessages, SaveMessages, LoadMessages and the two
+// retaining verbs refused by name — exist for a `fixed table` root, and that a
+// variable table has no message form at all: no batch verb, no retaining verb,
+// no body codec (docs/SPEC-TABLES.md §3.3: the message form is fixed tables
+// only).
 func TestGoMessageFormFixedOnly(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
@@ -45,17 +45,17 @@ fixed table Tight { n int32 }
 }
 
 // fixedOnlyViolations names every way the unit's table source breaks §3.3's
-// fixed-only rule over the Loose (plain) and Tight (fixed) roots: a message
-// verb on the plain root, or one missing from the fixed root.
+// fixed-only rule over the Loose (variable) and Tight (fixed) roots: a message
+// verb on the variable root, or one missing from the fixed root.
 func fixedOnlyViolations(table string) []string {
 	var violations []string
-	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
-		// "a plain `table T` may not" (docs/SPEC-TABLES.md §3.3).
+	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadMessagesTolerant", "LoadRetainMessages", "SaveRetainMessages", "SaveMessageBody", "LoadMessageBody"} {
+		// a variable table has no message form (docs/SPEC-TABLES.md §3.3)
 		if strings.Contains(table, "Loose"+verb) {
-			violations = append(violations, fmt.Sprintf("a plain table root carries Loose%s (docs/SPEC-TABLES.md §3.3: \"a plain `table T` may not\")", verb))
+			violations = append(violations, fmt.Sprintf("a variable table root carries Loose%s (docs/SPEC-TABLES.md §3.3: the message form is fixed tables only)", verb))
 		}
 	}
-	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
+	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages", "SaveRetainMessages"} {
 		// "`fixed table T` may ride here" (docs/SPEC-TABLES.md §3.3).
 		if !strings.Contains(table, "Tight"+verb) {
 			violations = append(violations, fmt.Sprintf("a fixed table root lacks Tight%s (docs/SPEC-TABLES.md §3.3: \"`fixed table T` may ride here\")", verb))
@@ -64,7 +64,7 @@ func fixedOnlyViolations(table string) []string {
 	return violations
 }
 
-// compileTightCaller compiles a caller that names the fixed root's four message
+// compileTightCaller compiles a caller that names the fixed root's message
 // verbs, proving they are real symbols and not mere source text.
 func compileTightCaller(t *testing.T, files map[string][]byte) {
 	t.Helper()
@@ -87,9 +87,9 @@ func compileTightCaller(t *testing.T, files map[string][]byte) {
 	}
 }
 
-// tightCaller references all four verbs on the fixed root. LoadRetainMessages
-// is a named refusal for a fixed root (§6.6), so it is a constant and exists as
-// a symbol the caller may name.
+// tightCaller references the fixed root's message verbs. LoadRetainMessages
+// and SaveRetainMessages are named refusals for a fixed root (§6.6), so they
+// are constants and exist as symbols the caller may name.
 const tightCaller = `package probe
 
 import "testing"
@@ -123,5 +123,6 @@ func TestTightMessageVerbs(t *testing.T) {
 		t.Fatalf("load %d %v %+v", count, ok, ar)
 	}
 	_ = TightLoadRetainMessages
+	_ = TightSaveRetainMessages
 }
 `

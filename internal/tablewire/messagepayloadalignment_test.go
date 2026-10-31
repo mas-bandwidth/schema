@@ -67,7 +67,7 @@ func TestMessageNestedEncodingWork(t *testing.T) {
 			fmt.Fprintf(&schema, "type %s { child %s }\n", name, child)
 			child = name
 		}
-		fmt.Fprintf(&schema, "table Root { child %s }\n", child)
+		fmt.Fprintf(&schema, "fixed table Root { child %s }\n", child)
 		m := listModel(t, schema.String())
 		value := place(t, m, "Root", strings.Repeat(`{"child":`, depth+1)+`{"text":"abc"}`+strings.Repeat("}", depth+1))
 		return testing.AllocsPerRun(2, func() {

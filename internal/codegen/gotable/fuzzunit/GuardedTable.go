@@ -363,7 +363,6 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 }
 
 const PatrolLoadRetainBuilder = "Patrol: retention requires a region round trip through the VARIABLE form"
-const PatrolSaveRetainMessages = "Patrol: retention requires a region round trip through the VARIABLE form"
 
 func PatrolLoadRetain(region, wire []byte, retain *TableRetain, report *TableReport) *Patrol {
 	return (*Patrol)(tableRegionLoadRetain(region, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report, retain))

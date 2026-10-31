@@ -52,15 +52,8 @@ func messageEntryLiteral(e ir.TableVocabularyEntry) string {
 // type is a declaration with no behaviour to gate (docs/SPEC-TABLES.md, "GO's optional forms").
 // Everything they DO — the methods, the announcement, the batch codec — is the
 // optional form's, in tableMessageRuntime.
-func tableMessageCoreTypes(u *ir.Unit) string {
-	types := goMessageCoreTypes
-	if len(variableTableNames(u)) > 0 {
-		types = tableSourceReplace(types, "type TableMessageReader struct {", "type TableMessageReader struct { Nodes TableNodeMap;", 1)
-		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32; Numbering *TableNumbering; numbering TableNumbering }\n"
-	} else {
-		types += "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32 }\n"
-	}
-	return types
+func tableMessageCoreTypes() string {
+	return goMessageCoreTypes + "\ntype TableMessageWriter struct { TableBitWriter; IndexBits int64; Clamped int32 }\n"
 }
 
 const goMessageCoreTypes = `
@@ -88,9 +81,6 @@ func tableMessageRuntime(u *ir.Unit) string {
 	}
 	b.WriteString("}\n")
 	runtime := goMessageRuntime
-	if len(variableTableNames(u)) > 0 {
-		runtime += tableMessageRegionRuntime(u)
-	}
 	// THE MESSAGE FORM'S TRAILER (docs/SPEC-TABLES.md §2.14, §3.3): when a
 	// table of the unit declares `integrity`, the batch open also checks the
 	// batch's CRC-32C trailer before any body is decoded. A unit with no
@@ -101,6 +91,64 @@ func tableMessageRuntime(u *ir.Unit) string {
 	b.WriteString(runtime)
 	return b.String()
 }
+
+// messageCarries reports whether the message form emits st (docs/SPEC-TABLES.md
+// §3.3). The message form is FIXED TABLES ONLY: it emits a body codec for a
+// fixed table and for every declaration a fixed table reaches by value, and
+// nothing for a variable table. A fixed closure holds no variable table, no
+// pointer, no list, no map and no unbounded text (§2.2), so neither does
+// anything this emits.
+func (g *tableGen) messageCarries(st *ir.Struct) bool {
+	if g.messageClosure == nil {
+		g.messageClosure = fixedMessageClosure(g.unit)
+	}
+	return g.messageClosure[st.Name]
+}
+
+// fixedMessageClosure is every fixed table that is not a map entry, and every
+// declaration one reaches by value: a nested table or type, an array's
+// element, a union's arms.
+func fixedMessageClosure(u *ir.Unit) map[string]bool {
+	out := map[string]bool{}
+	seen := map[*ir.Union]bool{}
+	var walk func(st *ir.Struct)
+	var line func(f *ir.Field)
+	line = func(f *ir.Field) {
+		if f.Type.Kind != ir.TNamed {
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			walk(ref)
+		case *ir.Union:
+			if seen[ref] {
+				return
+			}
+			seen[ref] = true
+			for _, v := range ref.Variants {
+				if v.F != nil {
+					line(v.F)
+				}
+			}
+		}
+	}
+	walk = func(st *ir.Struct) {
+		if st == nil || out[st.Name] {
+			return
+		}
+		out[st.Name] = true
+		for _, f := range st.Fields {
+			line(f)
+		}
+	}
+	for _, st := range u.Tables {
+		if st.FixedDeclared && !st.IsMapEntry() {
+			walk(st)
+		}
+	}
+	return out
+}
+
 func byteLiterals(b []byte) string {
 	var s strings.Builder
 	for _, v := range b {

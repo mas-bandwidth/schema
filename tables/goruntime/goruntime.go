@@ -599,6 +599,13 @@ type TableVocabulary struct {
 	Strict             bool
 }
 
+type TableMessageReader struct {
+	Bits       TableBitReader
+	Vocabulary *TableVocabulary
+	Report     TableReport
+	IndexBits  int64
+}
+
 const TableFixedForm uint8 = 3
 
 const TableFixedHeaderBytes = 16
@@ -2165,5 +2172,37 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 	}
 }
 
+func TableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
+	r := TableMessageReader{Vocabulary: v, Report: *report}
+	r.Report.NonFiniteFloat = ""
+	defer func() { *report = r.Report }()
+	if len(data) == 0 {
+		r.Report.Malformed = true
+		return r, -1
+	}
+	if data[0] != 2 {
+		TableMessageRefuse(&r.Report, "newer_form")
+		return r, -1
+	}
+	if v == nil || !v.Announced {
+		TableMessageRefuse(&r.Report, "no_vocabulary")
+		return r, -1
+	}
+	if len(data) < 2 {
+		r.Report.Malformed = true
+		return r, -1
+	}
+	r.Bits.Buffer = data[2:]
+	return r, int64(data[1]) + 1
+}
+
+func TableMessageBatchClose(r *TableMessageReader) bool {
+	if !r.Bits.Align() || r.Bits.Offset != int64(len(r.Bits.Buffer))*8 {
+		r.Report.Malformed = true
+		return false
+	}
+	return true
+}
+
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x91fcccabacf566d0
+const Version uint64 = 0xbe8efa752a9b8817
