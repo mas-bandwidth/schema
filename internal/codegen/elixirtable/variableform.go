@@ -1353,7 +1353,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
             report = Map.put(report, :blob_shared, shared)
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+
+            # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
+            # that met damage anywhere returns no value, only its report
+            if Map.get(report, :malformed) do
+              {:error, :malformed, reasoned(report, :malformed)}
+            else
+              {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+            end
         end
     end
   catch
@@ -4537,10 +4544,17 @@ const variableRetainSource = `
             # the records were kept newest first; they are saved in the order
             # retained
             retain = %{Map.delete(retain, :memo) | records: Enum.reverse(retain.records)}
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
+
+            # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no value
+            # and nothing retained, only the report
+            if report.malformed do
+              {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+            else
+              {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
+            end
 
           _ ->
-            {:error, :malformed, reasoned(report, :malformed), retain}
+            {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
         end
     end
   catch
@@ -5052,6 +5066,12 @@ const variableRetainSource = `
     case read_payload_retain(%{f | t: :list}, payload, nodes, ids, report, retain, path) do
       {:cont, entries, report, retain} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
+        # DESCENDING keys are not a map any conforming writer produced: damage,
+        # and the whole load is discarded (§2.8, §4), as the plain read holds it
+        report =
+          if is_list(entries) and descending?(Enum.map(entries, &Map.get(&1, "key", kf.default))),
+            do: %{report | malformed: true},
+            else: report
 
         keyed =
           Enum.map(entries, fn entry ->
@@ -5087,12 +5107,24 @@ const variableRetainSource = `
   defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
     retain = retain_reset(retain, path, f.ordinal, nil)
 
-    with {_len, <<ek, rest::binary>>} <- leb(payload),
-         true <- ek == f.elem_kind,
-         {n, pairs} <- leb(rest) do
-      read_keyed_retain(f, pairs, n, nodes, ids, %{}, report, retain, path)
-    else
-      _ -> {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+    # the header rules are the plain read's (read_payload, :keyed): a body
+    # too short for a header is inert, another element kind is a kind
+    # mismatch, and a count that cannot be read is damage (§3, §4)
+    case leb(payload) do
+      {_len, body} when byte_size(body) < 2 ->
+        {:cont, %{}, report, retain}
+
+      {_len, <<ek, _::binary>>} when ek != f.elem_kind ->
+        {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+
+      {_len, <<_ek, rest::binary>>} ->
+        case leb(rest) do
+          {n, pairs} -> read_keyed_retain(f, pairs, n, nodes, ids, %{}, report, retain, path)
+          :error -> {:cont, %{}, %{report | malformed: true}, retain}
+        end
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}, retain}
     end
   end
 
@@ -5141,8 +5173,15 @@ const variableRetainSource = `
   # table's declared defaults and one malformed.
   defp read_body_retain(desc, body, nodes, ids, report, retain, path) do
     case entries(body, ids, desc.string_blob, :nested) do
-      {:ok, fields, []} -> decode_retain(desc, fields, nodes, ids, retain, report, path)
-      _ -> {%{}, %{report | malformed: true}, retain}
+      {:ok, fields, []} ->
+        # a body whose terminator is not the last byte of its L is damage (§3),
+        # as the plain read's read_element holds it
+        if ends_early?(body, ids),
+          do: {%{}, %{report | malformed: true}, retain},
+          else: decode_retain(desc, fields, nodes, ids, retain, report, path)
+
+      _ ->
+        {%{}, %{report | malformed: true}, retain}
     end
   end
 
@@ -5384,7 +5423,9 @@ const variableRetainSource = `
             {{:value, value}, report, %{retain | memo: Map.put(retain.memo, idx, value)}}
 
           _ ->
-            {:null, report, retain}
+            # a pointee record the walk cannot finish is damage, and the whole
+            # load is discarded (§4), as decode_node_table holds it
+            {:null, %{report | malformed: true}, retain}
         end
     end
   end
