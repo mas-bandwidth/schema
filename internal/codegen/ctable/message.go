@@ -7,7 +7,53 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func tableMessageForm(u *ir.Unit, variable, hasProbes bool) string {
+// messageClosure names what the message form's codecs are emitted for: every
+// fixed table, and every struct and union a fixed table holds by value. Only
+// a fixed table rides the message form (docs/SPEC-TABLES.md §3.3), so a
+// variable table, and a struct or a union only variable tables hold, has no
+// message codec.
+func messageClosure(u *ir.Unit) (structs, unions map[string]bool) {
+	structs, unions = map[string]bool{}, map[string]bool{}
+	var walk func(st *ir.Struct)
+	var field func(f *ir.Field)
+	field = func(f *ir.Field) {
+		if f == nil || f.Type.Pointer || f.Type.Kind != ir.TNamed {
+			return
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			walk(ref)
+		case *ir.Union:
+			if unions[ref.Name] {
+				return
+			}
+			unions[ref.Name] = true
+			for _, v := range ref.Variants {
+				field(v.F)
+			}
+		}
+	}
+	walk = func(st *ir.Struct) {
+		if structs[st.Name] {
+			return
+		}
+		structs[st.Name] = true
+		for _, f := range st.Fields {
+			field(f)
+		}
+	}
+	for name := range ir.TableClosure(u) {
+		if st := u.Tables[name]; st != nil && st.FixedDeclared {
+			walk(st)
+		}
+	}
+	return structs, unions
+}
+
+// tableMessageForm is the message form's runtime (docs/SPEC-TABLES.md §3.3).
+// Only a fixed table rides the message form, so the runtime holds no node
+// numbering and no node map.
+func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := ir.TableVocabulary(u), ir.TableAnnouncement(u)
@@ -17,25 +63,16 @@ func tableMessageForm(u *ir.Unit, variable, hasProbes bool) string {
 		fmt.Fprintf(&b, "0x%02x,", v)
 	}
 	b.WriteString("};\n")
-	nodes := ""
-	if variable {
-		nodes = "TableNumbering * nodes; int64_t index_bits;"
-	}
 	checkDefault := ""
 	if hasProbes {
 		checkDefault = ",check_default"
 	}
 	bits := strings.ReplaceAll(cMessageBits, "@CHECK_DEFAULT@", checkDefault)
-	b.WriteString(strings.ReplaceAll(bits, "@NODES@", nodes))
+	b.WriteString(bits)
 	b.WriteString(cMessageNumbers)
 	b.WriteString(cMessageShape)
 	b.WriteString(cMessageAnnounce)
-	readNodes := ""
-	if variable {
-		readNodes = "TableNodeMap * nodes;"
-	}
-	b.WriteString(strings.ReplaceAll(cMessageRead, "@NODES@", readNodes))
-	b.WriteString(cMessageNodes)
+	b.WriteString(cMessageRead)
 	b.WriteString("\n#endif\n")
 	return b.String()
 }
@@ -43,7 +80,7 @@ func tableMessageForm(u *ir.Unit, variable, hasProbes bool) string {
 // A null output performs exactly the same walk as a save, counting bits.
 // Reads and writes touch only the bytes occupied by the requested value.
 const cMessageBits = `
-typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow@CHECK_DEFAULT@; @NODES@ } TableBitWriter;
+typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow@CHECK_DEFAULT@; } TableBitWriter;
 typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
 static SCHEMA_UNUSED TableBitWriter table_bit_writer(uint8_t * buffer,int64_t capacity)
 { TableBitWriter w;memset(&w,0,sizeof(w));w.buffer=buffer;w.capacity=capacity;return w; }

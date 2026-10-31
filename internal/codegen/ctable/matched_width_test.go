@@ -21,7 +21,7 @@ import (
 
 // `fixed table` is the DECLARATION these tests need (docs/SPEC-TABLES.md
 // §2.2): the matched-width probe drives the fixed reader and writer —
-// root_measure/root_save/root_load over a value — and a plain `table` is the
+// root_measure/root_save/root_load over a value — and a variable table is the
 // variable wire whatever its fields are.
 const matchedWidthSchema = `package probe
 fixed table Root {

@@ -130,12 +130,12 @@ func (g *tableGen) emitRetainBodies(members []*ir.Struct, unions []*ir.Union) {
 	names := map[string]string{"table_writer_id": "table_retain_writer_id", "table_writer_probe": "table_retain_probe", "table_writer_rewind": "table_retain_rewind"}
 	var required []string
 	for _, st := range members {
-		for _, verb := range []string{"save_body", "load_body", "load_message_body"} {
+		for _, verb := range []string{"save_body", "load_body"} {
 			required = append(required, g.api(st.Name, verb))
 		}
 	}
 	for name := range ir.TableClosure(g.unit) {
-		for _, verb := range []string{"save_body", "load_body", "load_message_body"} {
+		for _, verb := range []string{"save_body", "load_body"} {
 			fn := g.api(name, verb)
 			names[fn] = fn + "_retain"
 		}
@@ -165,16 +165,13 @@ func (g *tableGen) emitRetainBodies(members []*ir.Struct, unions []*ir.Union) {
 		g.pf("static SCHEMA_UNUSED int %s(TableReader *,%s *);\n", g.api(st.Name, "load_body"), st.Name)
 	}
 	g.emitUnionWireDeclarations(unions)
-	g.emitMessageReadDeclarations(members, unions)
 	for _, un := range unions {
 		g.emitUnionWire(un)
-		g.emitMessageUnionRead(un)
 	}
 	for _, st := range members {
 		g.owner = st
 		g.emitWireWrite(st)
 		g.emitWireRead(st)
-		g.emitMessageRead(st)
 	}
 	g.retain = false
 	g.owner = nil
@@ -184,7 +181,7 @@ func (g *tableGen) emitRetainBodies(members []*ir.Struct, unions []*ir.Union) {
 	g.body.WriteString(retainedCode(code, names, required...))
 }
 func (g *tableGen) retainUnionNames(names map[string]string, un *ir.Union) {
-	for _, verb := range []string{"save", "load", "message_load"} {
+	for _, verb := range []string{"save", "load"} {
 		fn := g.unionWireName(un, verb)
 		names[fn] = fn + "_retain"
 	}
@@ -227,13 +224,6 @@ func (g *tableGen) retainIndex(f *ir.Field, index, ind string) {
 	if g.retain && retainHoldsBodies(f) {
 		g.pf("%sretention=table_retain_index(retention,(uint32_t)(%s));\n", ind, index)
 	}
-}
-
-func (g *tableGen) retainUnionDiscard() string {
-	if g.retain {
-		return "table_retain_discard(retention,0,0);"
-	}
-	return ""
 }
 
 // Unknown enum values, arms and keyed slots are excluded retention classes.
