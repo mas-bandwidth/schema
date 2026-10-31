@@ -82,7 +82,7 @@ func TestSquirrelMapWriterSort(t *testing.T) {
 // the reversed rows to move.
 func TestSquirrelMapWriterSortNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "  order.sort(function(x, y) { return mapKeyCmp(val[x][keyMember], val[y][keyMember]); });\n"
+	const anchor = "  order.sort(function(x, y) {\n    local c = mapKeyCmp(val[x][keyMember], val[y][keyMember]);\n    return c != 0 ? c : (x < y ? -1 : (x > y ? 1 : 0));\n  });\n"
 	runtime := string(squirreltable.Runtime()["schema_table_save.nut"])
 	if n := strings.Count(runtime, anchor); n != 1 {
 		t.Fatalf("the control's anchor appears %d times in the save runtime, want exactly once", n)
