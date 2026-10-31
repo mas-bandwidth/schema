@@ -27,7 +27,7 @@
 #        driver <manifest> <surface> <outdir>
 main=test/conformance/lobster/main.lobster
 lobster=${LOBSTER:-dist/lobster-v2026.8/bin/lobster}
-units=build/conformance-lobster
+units=${LOBSTER_CONFORMANCE_UNITS:-build/conformance-lobster}
 dir=$units/driver
 root=$(pwd)
 case "$1" in

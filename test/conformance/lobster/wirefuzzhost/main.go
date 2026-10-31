@@ -94,8 +94,28 @@ func stage(dir string) (string, error) {
 		fmt.Fprintf(&b, "import .%s\n", strings.TrimSuffix(filepath.Base(t), ".lobster"))
 	}
 	b.Write(src)
+	// written beside and renamed into place, so two hosts over one units
+	// directory never compile a half-written program: every host stages the
+	// same bytes, and a rename is atomic
 	path := filepath.Join(dir, "wirefuzz_main.lobster")
-	return path, os.WriteFile(path, []byte(b.String()), 0o644)
+	tmp, err := os.CreateTemp(dir, ".wirefuzz_main-*")
+	if err != nil {
+		return "", err
+	}
+	if _, err := tmp.WriteString(b.String()); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	return path, os.Rename(tmp.Name(), path)
 }
 
 func startUnit(unitsDir, unit, scratch, arm string) (*unitLeg, error) {
