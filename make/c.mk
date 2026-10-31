@@ -1992,3 +1992,27 @@ tables-c-two-units-negative-controls: build/c-two-units/main
 	@echo 'negative control: without the package, the same translation unit fails on redefinitions'
 
 test-c: tables-c-two-units tables-c-two-units-negative-controls
+
+# DAMAGE DISCARDS THE WHOLE LOAD, C LEG (docs/SPEC-TABLES.md §4): damage
+# inside a nested body, with a whole field before and after it, makes every
+# public C read hand back nothing it decoded -- the value read and the strict
+# read, the region read, the retaining read (its store emptied), the builder
+# read, both text reads and the message batch. The control removes each
+# read's discard from the emitted C in turn and requires exactly that read's
+# rows of TestDamageDiscardsTheWholeLoadC red and every other row green.
+.PHONY: tables-c-discard tables-c-discard-negative-control
+tables-c-discard:
+	@mkdir -p build/c-discard
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadC$$' > build/c-discard/pin.log 2>&1 || \
+		{ cat build/c-discard/pin.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-discard/pin.log || \
+		{ echo "tables-c-discard: the pin was skipped, so it held nothing"; cat build/c-discard/pin.log; exit 1; }
+	@echo 'C discard: damage hands back no value from any C read'
+tables-c-discard-negative-control:
+	@mkdir -p build/c-discard
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadCNegativeControl$$' > build/c-discard/control.log 2>&1 || \
+		{ cat build/c-discard/control.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-discard/control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the discard control was skipped, so it is watching nothing"; cat build/c-discard/control.log; exit 1; }
+	@echo 'negative control: each C read with its discard removed hands back a value, on exactly its own rows'
+test-c: tables-c-discard

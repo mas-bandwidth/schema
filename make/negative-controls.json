@@ -502,6 +502,14 @@
       ]
     },
     {
+      "name": "base-c-discard",
+      "when": "pull-request",
+      "why": "the C leg's WHOLE-LOAD DISCARD control (docs/SPEC-TABLES.md \u00a74, damage discards the whole load): it removes each read's discard from the emitted C in turn (the value read, the region read, the retaining read, the builder read and both text reads) and requires exactly that read's rows of TestDamageDiscardsTheWholeLoadC red and every other row green. Six small cc builds of one probe unit, about 10 s together on hetzner1, so well inside the rule on its own row.",
+      "targets": [
+        "tables-c-discard-negative-control"
+      ]
+    },
+    {
       "name": "wire-fuzz",
       "when": "pull-request",
       "why": "the tolerant-wire oracle and nested-arm trailing controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
