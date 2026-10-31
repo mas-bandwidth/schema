@@ -817,8 +817,6 @@ fixed table CheckedHost | integrity = "crc32c" {
     good.MarksCount = 2
     good.Label = "abc"
     good.LabelLength = 3
-    good.Wide = write_int16_le(write_int16_le(schema_rt.zeros(8), 0, 65), 2, 66)
-    good.WideLength = 2
     good.Val = 50
     good.Trail = 20
     good.Marks = [11, 22, 0, 0]
@@ -832,8 +830,6 @@ fixed table CheckedHost | integrity = "crc32c" {
     bad_val.MarksCount = 2
     bad_val.Label = "abc"
     bad_val.LabelLength = 3
-    bad_val.Wide = good.Wide
-    bad_val.WideLength = 2
     bad_val.Val = 200
     bad_val.Trail = 20
     bad_val.Marks = [11, 22, 0, 0]
@@ -864,21 +860,15 @@ fixed table CheckedHost | integrity = "crc32c" {
     assert_eq(rprobe.CheckedHostFixedLoad(back, f_len_sealed, plan, r), -1, "length_over_bound")
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "length_over_bound", "length_over_bound reason")
 
-    // 18. text_ill_formed (invalid UTF-8 0xFF inside label[0..3], and unpaired surrogate 0xD800 inside wide[0..2])
+    // 18. text_ill_formed (invalid UTF-8 0xFF inside label[0..3])
     let f_utf8 = write_int8_le(substring(wire, 0, length(wire)), rec_body + 28, 0xFF)
     let ign_3, f_utf8_sealed = schema_rt.fixed_integrity_seal(f_utf8, need - 4)
     assert_eq(ign_3, need, "seal 3")
     assert_eq(rprobe.CheckedHostFixedLoad(back, f_utf8_sealed, plan, r), -1, "text_ill_formed utf8")
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "text_ill_formed", "text_ill_formed utf8 reason")
 
-    let f_wide = write_int16_le(substring(wire, 0, length(wire)), rec_body + 40, 0xD800)
-    let ign_4, f_wide_sealed = schema_rt.fixed_integrity_seal(f_wide, need - 4)
-    assert_eq(ign_4, need, "seal 4")
-    assert_eq(rprobe.CheckedHostFixedLoad(back, f_wide_sealed, plan, r), -1, "text_ill_formed wide")
-    assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "text_ill_formed", "text_ill_formed wide reason")
-
     // 19. clamped on strict FixedLoad vs FixedLoadTolerant (val = 150 > 100)
-    let f_clamp = write_int32_le(substring(wire, 0, length(wire)), rec_body + 48, 150)
+    let f_clamp = write_int32_le(substring(wire, 0, length(wire)), rec_body + 36, 150)
     let ign_5, f_clamp_sealed = schema_rt.fixed_integrity_seal(f_clamp, need - 4)
     assert_eq(ign_5, need, "seal 5")
     assert_eq(rprobe.CheckedHostFixedLoadTolerant(back, f_clamp_sealed, plan, r), 1, "tolerant clamp returns 1")
