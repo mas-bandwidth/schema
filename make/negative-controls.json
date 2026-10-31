@@ -1259,12 +1259,13 @@
     {
       "name": "goose-wire",
       "when": "pull-request",
-      "why": "the Goose leg under hostile input (make/goose-fuzz.mk): the wire-fuzz differential's two load sabotages (a non-minimal LEB128 accepted, every text taken as well-formed), each a sed over the generated wire_load.goose of one unit and a goose build -O2 of that leg, and the hostile corpus's non-finite plant, with the umbrella that names the two fuzz leaves (make builds each once in one invocation, so it costs the group nothing). Each installs the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else. Measured at 7.7 s of control time together on the author's machine (2026-10-28).",
+      "why": "the Goose leg under hostile input (make/goose-fuzz.mk): the wire-fuzz differential's two load sabotages (a non-minimal LEB128 accepted, every text taken as well-formed), each a sed over the generated wire_load.goose of one unit and a goose build -O2 of that leg, and the hostile corpus's non-finite plant, with the umbrella that names the two fuzz leaves (make builds each once in one invocation, so it costs the group nothing). Each installs the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else. Measured at 7.7 s of control time together on the author's machine (2026-10-28). The retaining binary protocol controls compile the native Goose driver, check clean/evolution/refusal fixtures, then suppress the runtime retained counter or map-replacement cleanup: each changes only its retention counter while saved bytes stay identical (24 s together on hetzner1). The combined wire-fuzz gate also runs every retaining builder arm.",
       "targets": [
         "schema-goose-runs-hostile-corpus-negative-control",
         "tables-goose-wire-fuzz-leb-negative-control",
         "tables-goose-wire-fuzz-negative-control",
-        "tables-goose-wire-fuzz-utf8-negative-control"
+        "tables-goose-wire-fuzz-utf8-negative-control",
+        "tables-goose-retain-fuzz-negative-control"
       ]
     },
     {
