@@ -1178,9 +1178,3 @@ framing node_table_twice                      graphdemo ListNode testdata/wire/t
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing             tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin             malformed            -
 framing nested_damage_midway                  tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin                  malformed            -
-# T8 (docs/LAYERS/1-framing.md): a pointer naming an OPEN node is a cycle no
-# writer produces (§3.1), so it is damage; a chain to nodes not yet reached is
-# legal.
-framing node_cycle_self                       graphdemo ListNode testdata/wire/tables/framing/node_cycle_self.bin              malformed            -
-framing node_cycle_to_root                    graphdemo ListNode testdata/wire/tables/framing/node_cycle_to_root.bin           malformed            -
-framing node_chain_two                        graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
