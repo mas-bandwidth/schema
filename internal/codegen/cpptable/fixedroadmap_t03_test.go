@@ -616,9 +616,11 @@ fixed table T
 
 // ---- cpp/R21 ---------------------------------------------------------------
 //
-// cpp/R21: ALGORITHM §4 — `TableWidenF32` is the bit-exact widening:
-// signalling NaNs kept, the quiet bit carried as the writer wrote it, never set
-// by the hardware conversion.
+// cpp/R21: ALGORITHM §4's widenf, under the finite rule (docs/SPEC-TABLES.md
+// §3.3, 2026-10-27): every finite float32 widens exactly through the ordinary
+// conversion, so the rung is plain, and a NaN never reaches it — the fixed
+// read's finite pass refuses one as non_finite_float before the bounds pass,
+// the writer refuses one before its first byte, and no NaN surgery is left.
 func t03R21(t *testing.T) {
 	u := t03Unit(t, `package probe
 
@@ -629,9 +631,16 @@ fixed table T
 }
 `)
 	hdr := t03Header(t, u)
-	t03Has(t, hdr, "inline double TableWidenF32( uint32_t bits )", "R21 the float rung is the emitted helper")
-	t03Has(t, hdr, "const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;", "R21 the NaN payload rides on the bits")
-	t03Has(t, hdr, "const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;", "R21 the quiet bit is carried as the writer wrote it")
+	t03Has(t, hdr, "TABLE_FIXED_INLINE bool TFixedFiniteBody( const T & value )", "R21 the record's finite pass is emitted")
+	t03Has(t, hdr, "if ( !TableFloatFinite( value.v ) ) { return false; }", "R21 a float32 is tested")
+	t03Has(t, hdr, "if ( !TableFloatFinite( value.w ) ) { return false; }", "R21 a float64 is tested")
+	t03Has(t, hdr, "if ( !TFixedFiniteBody( values[k] ) )", "R21 the read runs the finite pass")
+	t03Has(t, hdr, "TableNonFiniteFloat( report );", "R21 a NaN or an infinity refuses as non_finite_float")
+	t03Has(t, hdr, "for ( int64_t k = 0; k < count; ++k ) { if ( !TFixedFiniteBody( values[k] ) ) { return -1; } }", "R21 the writer refuses one")
+	t03Has(t, hdr, "const double d = (double) f;", "R21 widenf is the ordinary conversion")
+	if strings.Contains(hdr, "TableWidenF32") {
+		t.Error("R21: TableWidenF32 is gone with the NaN it carried")
+	}
 }
 
 // ---- cpp/R29 ---------------------------------------------------------------

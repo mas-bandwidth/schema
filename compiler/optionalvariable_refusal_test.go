@@ -65,14 +65,14 @@ func TestOptionalVariableRefusedOffGo(t *testing.T) {
 
 // TestOptionalOverVariableClosureIsLegal pins docs/SPEC-TABLES.md §2.3's rule
 // that `?T` and by-value `?[N]T` over a variable closure are legal on Go, C,
-// C#, C++ and Dart, and that the other targets keep refusing by name until their own
+// C#, C++, Dart and Rust, and that the other targets keep refusing by name until their own
 // port lifts it (test/tables/G1.schema carries the scalar half).
 func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 	t.Parallel()
 	src := "package probe\ntable Inner\n{\n    text *string\n}\ntable Outer\n{\n    inner ?Inner\n    pair ?[2]Inner\n}\n"
 	u := unitFromSource(t, src)
 	c := New()
-	for _, lang := range []string{"go", "c", "cs", "cpp", "dart"} {
+	for _, lang := range []string{"go", "c", "cs", "cpp", "dart", "rust"} {
 		t.Run(lang, func(t *testing.T) {
 			t.Parallel()
 			if _, err := c.Generate(u, lang, nil); err != nil {
@@ -80,16 +80,22 @@ func TestOptionalOverVariableClosureIsLegal(t *testing.T) {
 			}
 		})
 	}
-	t.Run("rust", func(t *testing.T) {
-		t.Parallel()
-		_, err := c.Generate(u, "rust", nil)
-		if err == nil {
-			t.Errorf("rust accepted ?T over a variable closure")
-			return
+	// every target that does not carry it yet still refuses it by name
+	for _, lang := range c.Targets() {
+		if carries(lang, carryOptionalVariableClosure) {
+			continue
 		}
-		msg := err.Error()
-		if !strings.Contains(msg, "optional over a variable closure") || !strings.Contains(msg, "target \"rust\"") {
-			t.Errorf("rust refusal does not name the construct and the target: %s", msg)
-		}
-	})
+		t.Run(lang, func(t *testing.T) {
+			t.Parallel()
+			_, err := c.Generate(u, lang, nil)
+			if err == nil {
+				t.Errorf("%s accepted ?T over a variable closure", lang)
+				return
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "optional over a variable closure") || !strings.Contains(msg, "target \""+lang+"\"") {
+				t.Errorf("%s refusal does not name the construct and the target: %s", lang, msg)
+			}
+		})
+	}
 }

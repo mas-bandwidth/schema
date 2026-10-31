@@ -5418,7 +5418,11 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_load_body( tabledemo_table_read
                     break;
                 }
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->homing = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->homing = bool_byte != 0;
+                }
                 break;
             }
             case 0x36c1c83b51f24394ull: /* effect */
@@ -7396,7 +7400,11 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_body( tabledemo_table_rea
                     break;
                 }
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_loadout = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->has_loadout = bool_byte != 0;
+                }
                 break;
             }
             case 0x5759ce7586bbb5a3ull: /* loadout */
@@ -12201,7 +12209,12 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_load_body_retain( tabledemo_tab
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
                 return 0;
                 }
-                value->homing = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true;
+                    }
+                    value->homing = bool_byte != 0;
+                }
                 break;
             }
             case 0x36c1c83b51f24394ull: /* effect */
@@ -14145,7 +14158,12 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_body_retain( tabledemo_ta
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
                 return 0;
                 }
-                value->has_loadout = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true;
+                    }
+                    value->has_loadout = bool_byte != 0;
+                }
                 break;
             }
             case 0x5759ce7586bbb5a3ull: /* loadout */

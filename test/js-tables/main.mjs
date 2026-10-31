@@ -90,7 +90,9 @@ function sameValue(a, b) {
     for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) { return false; } }
     return true;
   }
-  return a === b || (Number.isNaN(a) && Number.isNaN(b));
+  // Object.is: a -0 is not a +0 (docs/SPEC-TABLES.md §3.3), and no table read
+  // hands back a NaN for two to agree on
+  return Object.is(a, b);
 }
 
 // one record, both ways. `rowOf` names the accessor object the descriptor
@@ -932,27 +934,23 @@ function checkAllocation(iterations) {
 
 // ---- float32 values against the oracle's bit patterns ----
 //
-// The oracle writes a float32 as its IEEE-754 bit pattern verbatim (Go's
-// math.Float32bits, docs/PORTING.md M21: no canonicalisation), so the
-// pattern IS the value the bytes carry. Every generated float32 accessor —
-// a record object's and a block handle's inline one — must hand back a double
-// whose float32 bits are that pattern: Math.fround reproduces them for every
-// non-NaN, and a NaN's payload comes back through the same bit surgery the
-// writer narrows with. This is the proof an optimisation of the accessor
-// changed no value; the allocation gate is the proof of what it costs.
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// "tables go finite-only too, same rule as packets"). The oracle writes a
+// finite float32 as its IEEE-754 bit pattern, -0 and the subnormals included,
+// so the pattern IS the value the bytes carry: every generated float32
+// accessor — a record object's and a block handle's inline one — must hand
+// back a double whose float32 bits are that pattern. A NaN or an infinity is
+// refused on its raw bits instead (ruling 2): the accessor answers +0, never
+// the value, and latches its <Owner>.<field> name on the view. This is the
+// proof an optimisation of the accessor changed no value; the allocation gate
+// is the proof of what it costs.
 
 const f32Scratch = new DataView(new ArrayBuffer(8));
 function f32BitsOf(v) {
-  if (v !== v) {
-    f32Scratch.setFloat64(0, v, true);
-    const lo = f32Scratch.getUint32(0, true), hi = f32Scratch.getUint32(4, true);
-    let payload = (((hi & 0xfffff) << 3) | (lo >>> 29)) & 0x7fffff;
-    if (payload === 0) { payload = 0x400000; }
-    return ((hi & 0x80000000) | 0x7f800000 | payload) >>> 0;
-  }
-  f32Scratch.setFloat32(0, Math.fround(v), true);
+  f32Scratch.setFloat32(0, v, true);
   return f32Scratch.getUint32(0, true);
 }
+const nonFinite32 = (bits) => (bits & 0x7f800000) === 0x7f800000;
 
 function float32OraclePatterns() {
   const out = [
@@ -962,10 +960,10 @@ function float32OraclePatterns() {
     0x007fffff, // the largest subnormal
     0x00800000, // the smallest normal
     0x7f7fffff, // the largest finite
-    0x7f800000, // +Inf
-    0xff800000, // -Inf
-    0x7fc00000, // a quiet NaN
-    0x7f800001, // a signalling NaN with a payload
+    0x7f800000, // +Inf, refused
+    0xff800000, // -Inf, refused
+    0x7fc00000, // a quiet NaN, refused
+    0x7f800001, // a signalling NaN with a payload, refused
   ];
   let x = 0x9e3779b9; // xorshift32, a fixed seed: the same 1000 every run
   for (let i = 0; i < 1000; i++) {
@@ -1001,32 +999,41 @@ function checkFloat32Oracle() {
     "the float32 oracle check reaches no float32 accessor: inline " + inline.length + ", record " + record.length);
   const bytes = new Uint8Array(new ArrayBuffer(Math.max(maxBytes, shipRow.Size)));
   const view = new DataView(bytes.buffer);
-  const handle = { View: view, Bytes: bytes };
   const patterns = float32OraclePatterns();
-  let reads = 0, wrong = 0;
-  const read = (what, want, got) => {
+  let reads = 0, wrong = 0, refused = 0;
+  // a NON-FINITE pattern reads through a FRESH view, so the latch it sets is
+  // that read's own and the first-name rule never hides the next one
+  const read = (what, owner, want, view, got) => {
     reads++;
-    const bits = f32BitsOf(got);
-    if (bits !== (want >>> 0)) {
+    const latched = renderBlock.TableBlockNonFiniteFloat(view);
+    let why = "";
+    if (nonFinite32(want)) {
+      refused++;
+      if (!Object.is(got, 0) || latched !== owner) { why = "is not refused: " + got + ", latched '" + latched + "'"; }
+    } else if (f32BitsOf(got) !== (want >>> 0) || latched !== "") {
+      why = "reads back as 0x" + f32BitsOf(got).toString(16) + (latched === "" ? "" : ", latched '" + latched + "'");
+    }
+    if (why !== "") {
       wrong++;
-      if (wrong <= 5) {
-        check(false, what + " reads 0x" + (want >>> 0).toString(16) + " back as 0x" + bits.toString(16));
-      }
+      if (wrong <= 5) { check(false, what + " 0x" + (want >>> 0).toString(16) + " " + why); }
     }
   };
+  const viewFor = (want) => (nonFinite32(want) ? new DataView(bytes.buffer) : view);
   for (const want of patterns) {
     for (const { block, name, f } of inline) {
-      view.setUint32(f.Offset, want, true);
-      read(name + "." + f.Name, want, block[capitalize(f.Name)](handle));
+      const v = viewFor(want);
+      v.setUint32(f.Offset, want, true);
+      read(name + "." + f.Name, name.slice(0, -"Block".length) + "." + f.Name, want, v, block[capitalize(f.Name)]({ View: v, Bytes: bytes }));
     }
     for (const f of record) {
-      view.setUint32(f.Offset, want, true);
-      read(shipInfo.Name + "Row." + f.Name, want, shipRow.Fields[f.Name](bytes, view, 0, 0));
+      const v = viewFor(want);
+      v.setUint32(f.Offset, want, true);
+      read(shipInfo.Name + "Row." + f.Name, shipInfo.Name + "." + f.Name, want, v, shipRow.Fields[f.Name](bytes, v, 0, 0));
     }
   }
-  check(wrong === 0, "float32 oracle: " + wrong + " of " + reads + " reads moved a bit");
+  check(wrong === 0, "float32 oracle: " + wrong + " of " + reads + " reads moved a bit or kept a non-finite one");
   console.log("float32 oracle: " + patterns.length + " patterns x " + (inline.length + record.length) +
-    " accessors, " + reads + " reads, " + (reads - wrong) + " bit-exact");
+    " accessors, " + reads + " reads, " + (reads - wrong - refused) + " finite bit-exact, " + refused + " non-finite refused");
 }
 
 // ---- main

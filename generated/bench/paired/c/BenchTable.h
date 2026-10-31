@@ -4373,7 +4373,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->moving = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->moving = bool_byte != 0;
+                }
                 break;
             }
             case 0x7674cfd19b9031caull: /* firing */
@@ -4385,7 +4389,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->firing = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->firing = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -5544,7 +5552,11 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->crit = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->crit = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -8007,7 +8019,11 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_extra = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->has_extra = bool_byte != 0;
+                }
                 break;
             }
             case 0xfd29ee12a979cb69ull: /* extra */

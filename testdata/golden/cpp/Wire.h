@@ -18,7 +18,8 @@ inline constexpr double HalfTurn = 180.0;
 inline constexpr float TickRate = 60.0f;
 inline constexpr double SpinRate = 1.5;
 // enum Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
-enum class Weapon : uint8_t {
+enum class Weapon : uint8_t
+{
     None = 0,
     Laser = 1,
     Missile = 2,
@@ -35,6 +36,7 @@ inline const char * EnumName( Weapon value )
         case Weapon::Laser: return "Laser";
         case Weapon::Missile: return "Missile";
         case Weapon::Railgun: return "Railgun";
+        case Weapon::Max:
         default: return "???";
     }
 }
@@ -128,7 +130,8 @@ inline const char * FlagNamesProbeFlags( uint64_t value, char * buffer, int buff
 }
 
 // type ProbeHeader
-struct ProbeHeader {
+struct ProbeHeader
+{
     uint32_t version = 0;
     uint64_t probe_id = 0;
 };
@@ -137,7 +140,8 @@ inline constexpr int64_t ProbeHeaderMaxBits = 87; // longest wire path; align pa
 inline constexpr int64_t ProbeHeaderMaxBytes = 16; // rounded up to the 8-byte write-buffer granularity; a read buffer's allocation must extend at least 8 bytes past the data — the reader loads 64-bit windows
 
 // type ProbeBits
-struct ProbeBits {
+struct ProbeBits
+{
     uint32_t small = 0;
     uint64_t boundary = 0;
     uint64_t wide = 0;
@@ -149,7 +153,8 @@ inline constexpr int64_t ProbeBitsMaxBits = 202; // longest wire path; align pad
 inline constexpr int64_t ProbeBitsMaxBytes = 32; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeSample
-struct ProbeSample {
+struct ProbeSample
+{
     bool active = true;
     float orientation = 0.0f; // compressed float [-180, 180] @ 0.01
     int32_t raw_delta = 0;
@@ -176,7 +181,8 @@ inline constexpr int64_t ProbeSampleMaxBits = 276; // longest wire path; align p
 inline constexpr int64_t ProbeSampleMaxBytes = 40; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeRing
-struct ProbeRing {
+struct ProbeRing
+{
     uint16_t radius = 0;
 };
 
@@ -184,7 +190,8 @@ inline constexpr int64_t ProbeRingMaxBits = 16; // longest wire path; align pads
 inline constexpr int64_t ProbeRingMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeSlab
-struct ProbeSlab {
+struct ProbeSlab
+{
     uint8_t width = 0; // wire [0, 100]
     uint8_t height = 0;
 };
@@ -193,7 +200,8 @@ inline constexpr int64_t ProbeSlabMaxBits = 15; // longest wire path; align pads
 inline constexpr int64_t ProbeSlabMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // ProbeShapeType: union ProbeShape's tag — None = 0, then each variant in declared order (SPEC §4.8)
-enum class ProbeShapeType : uint8_t {
+enum class ProbeShapeType : uint8_t
+{
     None = 0,
     Ring = 1,
     Slab = 2,
@@ -232,14 +240,14 @@ struct ProbeShape
 
     ProbeRing & SelectRing() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &ring ) ProbeRing{};
+        ::new ( static_cast<void *>( &ring ) ) ProbeRing{};
         type = ProbeShapeType::Ring;
         return ring;
     }
 
     ProbeSlab & SelectSlab() // sets the tag and constructs the arm with its defaults (SPEC §4.8)
     {
-        ::new ( (void*) &slab ) ProbeSlab{};
+        ::new ( static_cast<void *>( &slab ) ) ProbeSlab{};
         type = ProbeShapeType::Slab;
         return slab;
     }
@@ -249,7 +257,8 @@ inline constexpr int64_t ProbeShapeMaxBits = 18; // tag + the largest arm; None 
 inline constexpr int64_t ProbeShapeMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeCollider
-struct ProbeCollider {
+struct ProbeCollider
+{
     uint8_t armor = 0;
     ProbeShape shape;
     ProbeShape backup;
@@ -261,7 +270,8 @@ inline constexpr int64_t ProbeColliderMaxBits = 82; // longest wire path; align 
 inline constexpr int64_t ProbeColliderMaxBytes = 16; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeConfig
-struct ProbeConfig {
+struct ProbeConfig
+{
     int32_t retries = -1;
     Weapon preferred = Weapon::Railgun;
 };
@@ -270,7 +280,8 @@ inline constexpr int64_t ProbeConfigMaxBits = 36; // longest wire path; align pa
 inline constexpr int64_t ProbeConfigMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeArray
-struct ProbeArray {
+struct ProbeArray
+{
     ProbeSample samples[2] = {};
     ProbeConfig config;
 };
@@ -279,14 +290,16 @@ inline constexpr int64_t ProbeArrayMaxBits = 588; // longest wire path; align pa
 inline constexpr int64_t ProbeArrayMaxBytes = 80; // 8-byte write granularity; read slack per the contract above
 
 // type Heartbeat
-struct Heartbeat {
+struct Heartbeat
+{
 };
 
 inline constexpr int64_t HeartbeatMaxBits = 0; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t HeartbeatMaxBytes = 0; // 8-byte write granularity; read slack per the contract above
 
 // type Test
-struct Test {
+struct Test
+{
     uint16_t test_a = 0;
     int16_t test_b = 0; // wire [0, 1000]
     int16_t test_c = 0; // wire [0, 1000]
@@ -297,7 +310,8 @@ inline constexpr int64_t TestMaxBits = 46; // longest wire path; align pads at w
 inline constexpr int64_t TestMaxBytes = 8; // 8-byte write granularity; read slack per the contract above
 
 // type Block
-struct Block {
+struct Block
+{
     uint8_t data[MaxBlockSize] = {}; // bytes(MaxBlockSize): fixed buffer, used length beside it (SPEC §4.7)
     int32_t data_length = 0;
 };
@@ -306,7 +320,8 @@ inline constexpr int64_t BlockMaxBits = 16018; // longest wire path; align pads 
 inline constexpr int64_t BlockMaxBytes = 2008; // 8-byte write granularity; read slack per the contract above
 
 // type Chat
-struct Chat {
+struct Chat
+{
     char text[MaxChatLength + 1] = {}; // string(MaxChatLength): max length, used length beside it (SPEC §4.7)
     int32_t text_length = 0;
 };
@@ -315,7 +330,8 @@ inline constexpr int64_t ChatMaxBits = 2064; // longest wire path; align pads at
 inline constexpr int64_t ChatMaxBytes = 264; // 8-byte write granularity; read slack per the contract above
 
 // type ProbeReport
-struct ProbeReport {
+struct ProbeReport
+{
     ProbeHeader header;
     ProbeFlags flags = 0;
     Test echo;
@@ -325,7 +341,8 @@ inline constexpr int64_t ProbeReportMaxBits = 141; // longest wire path; align p
 inline constexpr int64_t ProbeReportMaxBytes = 24; // 8-byte write granularity; read slack per the contract above
 
 // type TestData
-struct TestData {
+struct TestData
+{
     int32_t a = 0; // wire [-100, 100]
     int32_t b = 0; // wire [-100, 100]
     int32_t c = 0; // wire [-100, 150]
@@ -355,7 +372,8 @@ inline constexpr int64_t TestDataMaxBits = 2735; // longest wire path; align pad
 inline constexpr int64_t TestDataMaxBytes = 344; // 8-byte write granularity; read slack per the contract above
 
 // type CompressedProbe
-struct CompressedProbe {
+struct CompressedProbe
+{
     float boundary = 0.0f; // compressed float [0, 10] @ 0.01
     float offset = 0.0f; // compressed float [-5, 5] @ 0.001
 };

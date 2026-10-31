@@ -449,7 +449,11 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 	g.pf("%sif ( !table_reader_has( &%s, %d ) ) { %s }\n", ind, rdr, width, onTrunc)
 	switch kind {
 	case tkBool:
-		g.pf("%s%s = table_reader_get8( &%s ) != 0;\n", ind, lvalue, rdr)
+		// A BOOL BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §3): any other byte
+		// reads true and counts one malformed, and the body reads on
+		g.pf("%s{\n%s    uint8_t bool_byte = table_reader_get8( &%s );\n", ind, ind, rdr)
+		g.pf("%s    if ( bool_byte > 1 ) { r->report->malformed = true; }\n", ind)
+		g.pf("%s    %s = bool_byte != 0;\n%s}\n", ind, lvalue, ind)
 	case tkF32:
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
 		// become a value and before the field is written (docs/SPEC-TABLES.md

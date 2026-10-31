@@ -5007,7 +5007,11 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_body( tabledemo_table_reader_t * 
                     break;
                 }
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->active = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->active = bool_byte != 0;
+                }
                 break;
             }
             case 0x2281498aa0200e40ull: /* speed */
@@ -5035,7 +5039,11 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_body( tabledemo_table_reader_t * 
                     break;
                 }
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_target = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->has_target = bool_byte != 0;
+                }
                 break;
             }
             case 0xb7bc9ac015a25050ull: /* target_id */
@@ -5495,7 +5503,12 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_body_retain( tabledemo_table_read
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
                 return 0;
                 }
-                value->active = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true;
+                    }
+                    value->active = bool_byte != 0;
+                }
                 break;
             }
             case 0x2281498aa0200e40ull: /* speed */
@@ -5535,7 +5548,12 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_body_retain( tabledemo_table_read
                 if ( !tabledemo_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1;
                 return 0;
                 }
-                value->has_target = tabledemo_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = tabledemo_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true;
+                    }
+                    value->has_target = bool_byte != 0;
+                }
                 break;
             }
             case 0xb7bc9ac015a25050ull: /* target_id */
