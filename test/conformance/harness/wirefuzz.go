@@ -1084,4 +1084,3 @@ func readWireVectors(path string) ([]wireVector, error) {
 	}
 	return out, nil
 }
-

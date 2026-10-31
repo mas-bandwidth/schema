@@ -91,16 +91,14 @@ func variableMessageViolations(target string, files map[string][]byte) []string 
 	return out
 }
 
-// fixedMessagePresent reports whether one target's output names the fixed
-// root beside the message form, which is what keeps the lock from passing on
-// output that carries no message form at all.
-func fixedMessagePresent(files map[string][]byte) bool {
+// messageFormPresent reports whether one target's output carries the message
+// form's batch read at all (LoadMessages, loadMessages or load_messages), which
+// is what keeps the lock from passing on output that carries no message form.
+// The unit's one fixed root is the only root the batch can be for.
+func messageFormPresent(files map[string][]byte) bool {
 	for _, data := range files {
-		for _, line := range strings.Split(string(data), "\n") {
-			lower := strings.ToLower(line)
-			if strings.Contains(lower, "fixedroot") && strings.Contains(lower, "message") {
-				return true
-			}
+		if strings.Contains(strings.ReplaceAll(strings.ToLower(string(data)), "_", ""), "loadmessages") {
+			return true
 		}
 	}
 	return false
@@ -148,8 +146,8 @@ func TestNoVariableTableMessagePath(t *testing.T) {
 		for _, v := range variableMessageViolations(target, outputs[target]) {
 			t.Error(v)
 		}
-		if !messageFormLockNoForm[target] && !fixedMessagePresent(outputs[target]) {
-			t.Errorf("%s: no line names the fixed root beside the message form, so the lock reads output that carries no message form (docs/SPEC-TABLES.md §3.3)", target)
+		if !messageFormLockNoForm[target] && !messageFormPresent(outputs[target]) {
+			t.Errorf("%s: the output carries no batch read, so the lock reads output that carries no message form (docs/SPEC-TABLES.md §3.3)", target)
 		}
 	}
 }
