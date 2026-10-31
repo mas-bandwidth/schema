@@ -29,7 +29,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_WRITE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_WRITE_INLINE inline
 #endif
@@ -48,7 +48,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_READ_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_READ_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_READ_INLINE inline
 #endif
@@ -62,23 +62,23 @@ namespace example {
 // operation in a generated body has the one spelling. serialize's own
 // read_object/write_object call a Serialize member; generated types carry
 // free Write/Read functions, so the function rides as an argument.
-#define schema_write_object( stream, function, value )                          \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_write_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 
-#define schema_read_object( stream, function, value )                           \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_read_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 #endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteDefaultArm( serialize::WriteStream & stream, const DefaultArm & value )
@@ -139,10 +139,10 @@ SCHEMA_READ_INLINE bool ReadDefaultChoice( serialize::ReadStream & stream, Defau
         case DefaultChoiceType::None:
             return true;
         case DefaultChoiceType::First:
-            ::new ( (void*) &value.first ) DefaultArm{};
+            ::new ( static_cast<void *>( &value.first ) ) DefaultArm{};
             return ReadDefaultArm( stream, value.first );
         case DefaultChoiceType::Second:
-            ::new ( (void*) &value.second ) DefaultArm{};
+            ::new ( static_cast<void *>( &value.second ) ) DefaultArm{};
             return ReadDefaultArm( stream, value.second );
     }
     return false;
@@ -207,10 +207,10 @@ SCHEMA_READ_INLINE bool ReadDefaultBulkChoice( serialize::ReadStream & stream, D
         case DefaultBulkChoiceType::None:
             return true;
         case DefaultBulkChoiceType::First:
-            ::new ( (void*) &value.first ) DefaultBulkArm{};
+            ::new ( static_cast<void *>( &value.first ) ) DefaultBulkArm{};
             return ReadDefaultBulkArm( stream, value.first );
         case DefaultBulkChoiceType::Second:
-            ::new ( (void*) &value.second ) DefaultBulkArm{};
+            ::new ( static_cast<void *>( &value.second ) ) DefaultBulkArm{};
             return ReadDefaultBulkArm( stream, value.second );
     }
     return false;

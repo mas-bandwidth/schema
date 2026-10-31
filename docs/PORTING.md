@@ -951,15 +951,14 @@ slot. The text form is not one of them: JSON spells no NaN, the text writer
 refuses a non-finite float and the reader counts a NaN token as a kind
 mismatch (§16.2), so a NaN payload never rides through a text cell.
 
-**Reference.** `internal/codegen/cpptable/widen.go` (`TableWidenF32`, emitted
-into every unit's header) and its use at
-`internal/codegen/cpptable/messageload.go`, until the C++ leg lands the finite
-rule. The compiler's own engines no longer carry the pair: `internal/tablewire`
-and `internal/tablecook` refuse a non-finite float on its raw bits and widen a
-finite one by the ordinary conversion (2026-10-27), and so does the Go leg.
+**Reference.** None left in the tree. The compiler's own engines
+(`internal/tablewire`, `internal/tablecook`), the Go leg and the C++ leg refuse
+a non-finite float on its raw bits and widen a finite one by the ordinary
+conversion (2026-10-27); the C++ leg's `TableWidenF32` is deleted with the
+NaN it existed for.
 
 **Proven in.** C++ (#480). The eight ports were a row on #366; under the finite
-rule a port retires the method instead of carrying it, as the Go leg and the
+rule a port retires the method instead of carrying it, as the Go leg, the C++ leg and the
 tool have.
 
 **Measured effect.** Nothing on the ordinary path: the branch is one mask and
@@ -967,17 +966,18 @@ one compare against an exponent word already loaded, and every finite value
 takes the conversion it took before. What it buys is the byte-identity promise
 holding over a class of values the corpus can now pin.
 
-**Negative control.** `tables-float-nan-negative-control` puts the hardware
-conversion back in `TableWidenF32` through an overlay sabotage (I2),
-regenerates only the F1/F2 pair from the sabotaged emitter, and requires the
-pin to go RED on the payload: the observed failure is `0x7ff0000020000000`
-read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
+**Negative control.** `tables-float-nan-negative-control` now holds the
+finite rule that retires this method: it blinds the C++ read's mask test
+(`TableBitsFinite32`/`TableBitsFinite64`) through an overlay sabotage (I2),
+regenerates only the F1/F2 pair, and requires the pin to go RED on the
+refusal: `floats_nan.bin`, read at both widths, and a forged fixed record and
+message are no longer refused as `non_finite_float`.
 
 **Targets:** tables-float-nan, tables-float-nan-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control` (the C++ leg's finite-tables card retires it) | ✅ `tables-c-wire-fuzz` | ❌ #366 | — retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingNaNWideningAndLEBOverflow`, `TestGoPlainFloatSpecialValuesAgreeAcrossForms`) | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 | ❌ #2236 — card schema-goose-serialize-vendor (docs/PORT-GOOSE.md, THE CARD MAP); a float's bits move by the one route serialize-goose fixes (the C sidecar's memcpy), never by arithmetic (docs/PORT-GOOSE.md, FLOAT32) |
+| — retired: the C++ leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`tables-float-nan`, `tables-float-nan-negative-control`) | ✅ `tables-c-wire-fuzz` | ❌ #366 | — retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingNaNWideningAndLEBOverflow`, `TestGoPlainFloatSpecialValuesAgreeAcrossForms`) | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 | ❌ #2236 — card schema-goose-serialize-vendor (docs/PORT-GOOSE.md, THE CARD MAP); a float's bits move by the one route serialize-goose fixes (the C sidecar's memcpy), never by arithmetic (docs/PORT-GOOSE.md, FLOAT32) |
 
 ### M22 — Typed table serialization fast path
 
@@ -1191,7 +1191,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ❌ #2236 — card schema-goose-vt-strict-and-refusals (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `TestCppTableRuntimeNamesAreClaimed` (both ways over the Table and Block sources, 624 names registered for the Cpp backend) `TestCppRuntimeNameScanGoesRed` `tables-cpp-names-negative-control`; the packet emitter's fixed vocabulary is `TestCppPacketRuntimeNamesAreAccountedFor` (its unclaimed macros and helpers are a recorded ceiling in `compiler/tablescppnames_test.go`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ❌ #2236 — card schema-goose-vt-strict-and-refusals (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### I7 — Cross-endian refusal as a named gate
 
@@ -1378,7 +1378,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ✅ `tables-java-json-differential` (`TestTextDifferentialJava`, `TestTextDifferentialJavaNegativeControl`) | ✅ `tables-js-text-differential` | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable and fixed roots; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ✅ `tables-elixir-json-differential`, `tables-elixir-json-differential-negative-control` (`TestTextDifferentialElixir`) | ❌ #2236 — card schema-goose-json-form (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `tables-cpp-text-differential` `tables-cpp-text-differential-negative-control` (`TestCppTextDifferentialAgainstTheGoEngine`, `internal/codegen/cpptable/textdifferential_test.go`; the engine is the third implementation) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ✅ `tables-java-json-differential` (`TestTextDifferentialJava`, `TestTextDifferentialJavaNegativeControl`) | ✅ `tables-js-text-differential` | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable and fixed roots; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ✅ `tables-elixir-json-differential`, `tables-elixir-json-differential-negative-control` (`TestTextDifferentialElixir`) | ❌ #2236 — card schema-goose-json-form (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
@@ -1510,7 +1510,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ✅ `tables-goose-runtime-home` `tables-goose-runtime-home-negative-control` (the runtime modules are emitted once under their own names beside the modules and imported relative to the importing file; the gate holds them and every original Table module byte-identical when an earlier-sorting file joins) |
+| ✅ `tables-cpp-runtime-home` `tables-cpp-runtime-home-negative-control` `tables-cpp-runtime-home-bytes-negative-control` (the C++ runtime has no one file: every `<Base>Table.h` carries it behind package-named include guards, so the home is the guard set, and within a unit every header carries it byte-identical, `test/cpp-tables/runtime_home_digest.sh`) | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ✅ `tables-goose-runtime-home` `tables-goose-runtime-home-negative-control` (the runtime modules are emitted once under their own names beside the modules and imported relative to the importing file; the gate holds them and every original Table module byte-identical when an earlier-sorting file joins) |
 
 ### J3 — The release tier
 
@@ -1536,7 +1536,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ✅ `tables-goose-release` (`test-goose` and every Goose control on the certification schedule) |
+| ✅ `tables-cpp-release` (the long wire fuzz, two seeds, and the INT32_MAX base64 reproduction; and `tables-cpp-release-battery`: the tables, maps, lists, arms and retain suites, the soak and the block fuzz built `-O2 -DNDEBUG`, with `tables-cpp-release-flags-negative-control`) | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ✅ `tables-goose-release` (`test-goose` and every Goose control on the certification schedule) |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
@@ -1559,13 +1559,13 @@ below.
 
 **Measured effect.** Structural.
 
-**Negative control.** None; the formatter is its own oracle.
+**Negative control.** None for the C-family formatter, which is its own oracle. The C++ gate's two halves each go red on a planted fault in the packet emitter, built under a Go overlay: one K&R struct brace for the format half, one C-style placement-new cast for the warnings half (`tools/sabotage/cpp_clean.go`; both registered in `make/negative-controls.json`), each behind a guard that the unsabotaged output is green.
 
 **Targets:** clean
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #424 | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) | ✅ `tables-goose-strict` (every generated module and the runtime modules beside it, each checked on its own by the pinned compiler, zero warnings, warnings as errors; v2026.2 ships no formatter, so the compiler's warnings are its analyzer) `tables-goose-strict-negative-control` |
+| ✅ `tables-cpp-clean` (`clang-format` in the repo's `.clang-format`, and `clang++ -Weverything` less the c++98-compat family only, over every generated C++ file: the table corpus, the wide corpus and the committed `generated/` tables and packets; required by `make test` and by the cpp leg of `ci-fast`; the packet emitter's files are format-clean and carry only the three kinds that cannot be cleared without altering the packet wire (`padded`, and the contradictory `switch-default` / `covered-switch-default` pair), the table emitter's ride the shrink-only ratchets `make/cpp-format-allow.txt` and `make/cpp-warn-allow.txt`) | ✅ `tables-c-clean` (`clang-format`) | ✅ `tables-rust-clippy` | ✅ `tables-go-clean` (`gofmt`, `go vet`) | ✅ `tables-cs-clean` (`dotnet format` and the SDK analyzers over the table units, required by `test-cs`; 152,044 WHITESPACE findings in 295 units fixed in the emitters, #547; `tables-cs-clean-negative-control`; the packet units are held by `packet-clean-cs`) | ✅ `tables-java-clean` (google-java-format 1.37.0 `--aosp`, every table and packet file, at least 585, required by `test-java`); `tables-java-compile-all` (`--release 17 -Xlint:all -Werror`, all 25 units, from `tables-java-release`); its two negative controls are on [JAVA-DIALECT.md](JAVA-DIALECT.md) | ✅ `tables-js-clean` (`eslint`, over the table and packet units) | ✅ `tables-dart-clean` | ✅ `tables-elixir-clean` (`mix format`) | ✅ `tables-goose-strict` (every generated module and the runtime modules beside it, each checked on its own by the pinned compiler, zero warnings, warnings as errors; v2026.2 ships no formatter, so the compiler's warnings are its analyzer) `tables-goose-strict-negative-control` |
 
 ### J5 — The bench leg's golden gate runs before the clock
 
@@ -1587,7 +1587,7 @@ the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ❌ #2236 — card schema-goose-bench (docs/PORT-GOOSE.md, THE CARD MAP) |
+| ✅ `tables-cpp-bench-gate` (its negative control, tables-cpp-bench-gate-negative-control, runs in the negative-controls leg: one changed byte in the golden or in variant 0 turns it red) | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ❌ #2236 — card schema-goose-bench (docs/PORT-GOOSE.md, THE CARD MAP) |
 
 ### J6 — The card conformance check
 
