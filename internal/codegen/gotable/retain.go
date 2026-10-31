@@ -3,7 +3,6 @@ package gotable
 import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"regexp"
-	"strings"
 )
 
 // Retention has its own readers, writers and id interner. The ordinary family
