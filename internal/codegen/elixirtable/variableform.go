@@ -1673,6 +1673,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # table_node is node_value for a *T slot (§3.1): a record of another table
+  # answers {:value, :mismatch}, which the slot reads as a kind mismatch.
+  defp table_node(nodes, idx, ids, table) do
+    case Enum.at(nodes, idx - 2) do
+      {:table, name, _body} when name != table -> {:value, :mismatch}
+      _ -> node_value(nodes, idx, ids)
+    end
+  end
+
   # node_value resolves one node index to its value (docs/SPEC-TABLES.md §3.1):
   # index 0 is null, 1 is the root (never a pointee), and k >= 2 is record
   # k - 2. A blob node's value is its bytes; a table node's is the decoded body,
@@ -1827,7 +1836,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_payload(%{t: :pointer} = _f, payload, nodes, ids, report) do
+  defp read_payload(%{t: :pointer} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {0, _} ->
         {:cont, nil, report}
@@ -1837,12 +1846,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
       {idx, _} ->
-        case node_value(nodes, idx, ids) do
+        case table_node(nodes, idx, ids, f.elem) do
           {:value, v} when is_map(v) ->
             {:cont, v, report}
 
           {:value, _} ->
-            # a blob node named by a *table pointer is a kind mismatch
+            # a blob node, or another table's record, named by a *T pointer is
+            # a kind mismatch
             {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
           :out_of_range ->
@@ -2250,7 +2260,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         # the node count is malformed and THAT slot reads null, the array kept
         # at its count; a blob node under a *T slot is a kind mismatch
         {value, report} =
-          case node_value(nodes, idx, ids) do
+          case table_node(nodes, idx, ids, f.elem) do
             {:value, v} when is_map(v) -> {v, report}
             {:value, _} -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
             :out_of_range -> {nil, %{report | malformed: true}}
