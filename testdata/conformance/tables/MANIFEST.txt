@@ -157,6 +157,12 @@ instance stream_arm_first     streamdemo  Feed        testdata/wire/tables/strea
 # declaration-order position: the arm names x, parts names y then x again, so
 # the walk numbers x, y as 2, 3 and one node is named from an arm and a slot.
 instance stream_arm_pointer   streamdemo  Feed        testdata/wire/tables/stream_arm_pointer.bin
+# A UNION ARM NAMED `tag` (tables/stream Frame): the arm's payload is the arm's
+# own, and the discriminator beside it is the arm's index. A value
+# representation that keys the discriminator and the payload by name in one
+# place lets the arm named like the discriminator overwrite it. The wire is the
+# TOOL's (`schema pack` of the text), 49 bytes.
+instance stream_arm_tag       streamdemo  Feed        testdata/wire/tables/stream_arm_tag.bin
 
 # THE BYTE BUFFER corpus (§2.5): a blob at its used size, pointed at. blob_small
 # carries every field once; blob_empty holds a present blob and string of length
@@ -441,6 +447,7 @@ cook-write stream_header          testdata/conformance/tables/cook-write/stream_
 cook-write stream_parts           testdata/conformance/tables/cook-write/stream_parts.cook testdata/conformance/tables/cook-write/stream_parts-be.cook
 cook-write stream_arm_first       testdata/conformance/tables/cook-write/stream_arm_first.cook testdata/conformance/tables/cook-write/stream_arm_first-be.cook
 cook-write stream_arm_pointer     testdata/conformance/tables/cook-write/stream_arm_pointer.cook testdata/conformance/tables/cook-write/stream_arm_pointer-be.cook
+cook-write stream_arm_tag         testdata/conformance/tables/cook-write/stream_arm_tag.cook testdata/conformance/tables/cook-write/stream_arm_tag-be.cook
 cook-write blob_small             testdata/conformance/tables/cook-write/blob_small.cook testdata/conformance/tables/cook-write/blob_small-be.cook
 cook-write blob_empty             testdata/conformance/tables/cook-write/blob_empty.cook testdata/conformance/tables/cook-write/blob_empty-be.cook
 cook-write blob_large             testdata/conformance/tables/cook-write/blob_large.cook testdata/conformance/tables/cook-write/blob_large-be.cook
@@ -717,6 +724,14 @@ json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conform
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
+# THE NUL ESCAPE INTO BOUNDED TEXT (§16.3): a \u0000 escape that would land
+# U+0000 in a bounded string(N) field is refused as text_holds_zero, naming the
+# field. A zero in a value the read only SKIPS is not the event, and \u0001
+# reads clean. The ports that carry the str-zero-escape rows below carry this
+# refusal; every other port stores the zero as text and keeps the counters its
+# reader gives until its port.
+json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
 # THE ZERO RULE IN THE TEXT (§16.3): "A JSON string the read would PLACE in text
 # storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
 # false, the report is Malformed, and Reason reads text_holds_zero:
@@ -1062,6 +1077,35 @@ instance map_spans mapdemo Spans testdata/wire/tables/map_spans.bin
 instance map_text mapdemo Text testdata/wire/tables/map_text.bin
 instance map_trails mapdemo Trails testdata/wire/tables/map_trails.bin
 instance map_runs mapdemo Runs testdata/wire/tables/map_runs.bin
+
+# THE COOK WRITE SIDE OVER MAPS AND LISTS (docs/SPEC-TABLES.md §2.8, §2.9,
+# §7.6): a map's generated `{ key, value }` entries and a list's elements ride
+# in the HOLDER'S node extent after the record's storage, PRE-ORDER, a map's
+# entries in ascending key order. `schema cook` writes these and every leg's
+# writer is held to them, byte for byte, in both byte orders.
+cook-write map_cells            testdata/conformance/tables/cook-write/map_cells.cook testdata/conformance/tables/cook-write/map_cells-be.cook
+cook-write map_chunks           testdata/conformance/tables/cook-write/map_chunks.cook testdata/conformance/tables/cook-write/map_chunks-be.cook
+cook-write map_crews            testdata/conformance/tables/cook-write/map_crews.cook testdata/conformance/tables/cook-write/map_crews-be.cook
+cook-write map_depth            testdata/conformance/tables/cook-write/map_depth.cook testdata/conformance/tables/cook-write/map_depth-be.cook
+cook-write map_docs             testdata/conformance/tables/cook-write/map_docs.cook testdata/conformance/tables/cook-write/map_docs-be.cook
+cook-write map_empty            testdata/conformance/tables/cook-write/map_empty.cook testdata/conformance/tables/cook-write/map_empty-be.cook
+cook-write map_full             testdata/conformance/tables/cook-write/map_full.cook testdata/conformance/tables/cook-write/map_full-be.cook
+cook-write map_pairs            testdata/conformance/tables/cook-write/map_pairs.cook testdata/conformance/tables/cook-write/map_pairs-be.cook
+cook-write map_slots            testdata/conformance/tables/cook-write/map_slots.cook testdata/conformance/tables/cook-write/map_slots-be.cook
+cook-write map_spans            testdata/conformance/tables/cook-write/map_spans.cook testdata/conformance/tables/cook-write/map_spans-be.cook
+cook-write map_text             testdata/conformance/tables/cook-write/map_text.cook testdata/conformance/tables/cook-write/map_text-be.cook
+cook-write map_trails           testdata/conformance/tables/cook-write/map_trails.cook testdata/conformance/tables/cook-write/map_trails-be.cook
+cook-write map_runs             testdata/conformance/tables/cook-write/map_runs.cook testdata/conformance/tables/cook-write/map_runs-be.cook
+cook-write list_tables          testdata/conformance/tables/cook-write/list_tables.cook testdata/conformance/tables/cook-write/list_tables-be.cook
+cook-write list_scalars         testdata/conformance/tables/cook-write/list_scalars.cook testdata/conformance/tables/cook-write/list_scalars-be.cook
+cook-write list_empty           testdata/conformance/tables/cook-write/list_empty.cook testdata/conformance/tables/cook-write/list_empty-be.cook
+cook-write list_erased          testdata/conformance/tables/cook-write/list_erased.cook testdata/conformance/tables/cook-write/list_erased-be.cook
+cook-write list_mixed           testdata/conformance/tables/cook-write/list_mixed.cook testdata/conformance/tables/cook-write/list_mixed-be.cook
+cook-write list_shared          testdata/conformance/tables/cook-write/list_shared.cook testdata/conformance/tables/cook-write/list_shared-be.cook
+cook-write list_before_pointer  testdata/conformance/tables/cook-write/list_before_pointer.cook testdata/conformance/tables/cook-write/list_before_pointer-be.cook
+cook-write list_nested          testdata/conformance/tables/cook-write/list_nested.cook testdata/conformance/tables/cook-write/list_nested-be.cook
+cook-write list_of_maps         testdata/conformance/tables/cook-write/list_of_maps.cook testdata/conformance/tables/cook-write/list_of_maps-be.cook
+cook-write list_migrates        testdata/conformance/tables/cook-write/list_migrates.cook testdata/conformance/tables/cook-write/list_migrates-be.cook
 report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
 # the C collections differential's mutant 235: map_depth with its root's first
 # field header bumped to another kind. A known id under a changed kind is
@@ -1178,3 +1222,13 @@ framing node_table_twice                      graphdemo ListNode testdata/wire/t
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing             tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin             malformed            -
 framing nested_damage_midway                  tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin                  malformed            -
+
+# THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
+# RULES): a 128-bit list element in holders aligned eight, its own unit so no
+# other unit's build version or vocabulary moves. The root's storage is eight
+# modulo sixteen, so its extent begins at sizeof rounded to sixteen; an odd
+# count of eight-byte tags ends its extent at eight modulo sixteen, so the
+# pointed-at holder that follows lands there unless its node aligns to sixteen.
+unit widelist tables/widelist
+instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
+cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook

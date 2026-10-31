@@ -291,6 +291,20 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 	script.WriteString("local I=dofile(\"inputs.nut\",true);\n")
 	script.WriteString("local same=function(a,b){if(a.len()!=b.len())return false;for(local i=0;i<a.len();i++)if(a[i]!=b[i])return false;return true;};\n")
 	generated := map[string]bool{}
+	// Announcements remain meaningful for units whose variable roots have no
+	// message rows. Emit all declared connection units before probing them.
+	for key, u := range units {
+		sub := filepath.Join(dir, key)
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, b := range squirrelMessageFiles(t, u, patch) {
+			if !strings.Contains(name, "/") {
+				writeFile(t, filepath.Join(sub, name), b)
+			}
+		}
+		generated[key] = true
+	}
 	for _, row := range rows {
 		conn, ok := connections[row.connection]
 		if !ok {
@@ -440,7 +454,7 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==1 && rr.clamped==1 && !rr.malformed) print("wide_string_clamp:ok\n"); else print("wide_string_clamp:fail:"+n+":"+rr.clamped+":"+rr.malformed+"\n"); }
 `)
 		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && rr.kindMismatch==0 && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.kindMismatch+\":\"+rr.malformed+\"\\n\"); } }\n")
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==1 && rr.malformed) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==0 && rr.malformed && storage[0].Payload.Type==0 && storage[1].Payload.Type==0) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
 `)
 	}
 	script.WriteString("print(\"done\\n\");\n")
@@ -546,7 +560,7 @@ func TestSquirrelMessageFormNegativeControl(t *testing.T) {
 	units := loadMessageUnits(t, root, connections)
 	rows := []squirrelMessageRow{{name: "login_full", connection: "backend_conn", root: "LoginRequest", batch: "testdata/wire/tables/login_full_message.bin"}}
 	out := string(runSquirrelMessages(t, root, units, connections, rows, true))
-	if !strings.Contains(out, "login_full:load:-1:") || !strings.Contains(out, "login_full:save:") {
+	if !strings.Contains(out, "login_full:load:0:") || !strings.Contains(out, "login_full:save:") {
 		t.Fatalf("one-short batch-count negative control did not make load fail and byte comparison red: %s", out)
 	}
 }

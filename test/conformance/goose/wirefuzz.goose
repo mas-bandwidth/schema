@@ -9,13 +9,16 @@
 //                             own value table, so it has no caller region and
 //                             no LoadMeasure, which is that arm's shape
 //   wirefuzz <unit> fixed     the value-only roots on the region arm, where a
-//                             fixed root always loads and measures -1
+//                             fixed root has no region and measures -1
 //
 // ONE UNIT PER PROCESS. Every generated unit carries its own copy of the
 // runtime, so two units cannot be one Goose program; make/goose-fuzz.mk builds
 // this file once per unit, beside a glue module, conformance_unit.goose, that
 // names the unit's registry, and runs the harness once per unit. The roster
 // entries of every other unit are a `0` and are never sent a mutant.
+// Variable roots also accept the retaining roster flag and use the existing
+// retaining pair with the harness's roomy capacities. The --builder --retain
+// differential compares this path without inventing a caller-region measure.
 //
 // The stream is little-endian throughout. In: the roster, then per mutant a
 // u32 roster index, a u32 length and the bytes, until end of input. Out: one
@@ -27,6 +30,7 @@ import os;
 import .conformance_unit;
 import .wire_load;
 import .wire_save;
+import .wire_retain;
 
 extern "schema_goose_wirefuzz_read" fn read_exact(out: u8[>..]&, n: i64) -> i64;
 
@@ -74,6 +78,7 @@ fn main() {
     let head = take(4);
     let count = le(head, 0, 4) as! i64;
     var roots: i64[>..] = [];
+    var retaining: bool[>..] = [];
     var reply: u8[>..] = [];
     for _ in count {
         let kn = take(2);
@@ -82,12 +87,13 @@ fn main() {
         let root = take(le(rn, 0, 2) as! i64);
         let fr = take(2);
         var t: i64 = -1;
-        if key == argv[1] && fr[0] == 1 && fr[1] == 0 {
+        if key == argv[1] && fr[0] == 1 && fr[1] <= 1 {
             for d, i in unit.tables {
-                if d.name == root && d.variable == builder { t = i; break; }
+                if d.name == root && d.variable == builder && (fr[1] == 0 || d.variable) { t = i; break; }
             }
         }
         roots.push(t);
+        retaining.push(fr[1] == 1);
         reply.push(if t >= 0 { 1 } else { 0 });
     }
     write_stdout(reply);
@@ -112,38 +118,35 @@ fn main() {
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
-        let root = schema_rt::load_table(unit, name, data, vals, nodes, report);
+        var rbytes: u8[>..<] = [];
+        var rrecs: schema_rt::RetainRec[>..<] = [];
+        var rids: u64[>..<] = [];
+        // Match the harness's roomy stores, never a port-specific short store.
+        var store = schema_rt::RetainStore { capacity: 1048576, id_capacity: 131072, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
+        let root = if retaining[idx] {
+            schema_rt::load_table_retain(unit, name, data, vals, nodes, report, store)
+        } else {
+            schema_rt::load_table(unit, name, data, vals, nodes, report)
+        };
         var saved: u8[>..<] = [];
         var save_failed = true;
         if root >= 0 && builder && report.stopped {
             // a builder read that stopped saves nothing: the partial value is
             // discarded (test/conformance/README.md, the --builder arm)
         } else if root >= 0 {
-            let refusal = schema_rt::save_table(unit, name, data, vals, nodes, root, saved);
+            let refusal = if retaining[idx] {
+                schema_rt::save_table_retain(unit, name, data, vals, nodes, root, store, report, saved)
+            } else {
+                schema_rt::save_table(unit, name, data, vals, nodes, root, saved)
+            };
             save_failed = refusal != 0;
             if save_failed && debug {
                 write_stderr(str("wirefuzz: save refused: ", schema_rt::save_refusal_name(refusal), "\n"));
             }
-        } else if !builder {
-            // A FIXED ROOT ALWAYS LOADS (test/conformance/README.md): its Load
-            // reads into a value born at its defaults and reports, so what it
-            // saves after a read that placed nothing is that value. Goose's
-            // load answers no root then, so the leg takes the value at its
-            // defaults the one way the engine gives it: the empty file (the
-            // form byte, an empty body, an empty id table) loaded and saved.
-            let empty: u8[9] = [1, 0, 0, 0, 0, 0, 0, 0, 0];
-            var dv: schema_rt::LoadVal[>..] = [];
-            var dn: schema_rt::LoadNode[>..] = [];
-            var dr = schema_rt::LoadReport { .. };
-            let d = schema_rt::load_table(unit, name, empty, dv, dn, dr);
-            if d >= 0 {
-                save_failed = schema_rt::save_table(unit, name, empty, dv, dn, d, saved) != 0;
-            }
         }
         var out: u8[>..] = [];
-        // a fixed root always loads: what its Load read into is the value
-        // the builder arm's `loaded` is the walk's completion (tablewire.Decode's ok)
-        out.push(if (root >= 0 && !report.stopped) || !builder { 1 } else { 0 });
+        // Whole-load discard applies to both value-only and variable roots.
+        out.push(if root >= 0 && !report.stopped { 1 } else { 0 });
         put_i32(out, report.unknown);
         put_i32(out, report.kind_mismatch);
         put_i32(out, report.widened);
@@ -152,8 +155,8 @@ fn main() {
         out.push(flag(report.malformed) as! u8);
         out.push(flag(report.refused || report.non_finite) as! u8);
         put_le(out, 0xFFFFFFFFFFFFFFFF, 8); // measure: no region (-1)
-        put_i32(out, 0);                    // retained: this leg drives no retention arm
-        put_i32(out, 0);                    // retain_lost
+        put_i32(out, report.retained);
+        put_i32(out, report.retain_lost);
         if save_failed {
             put_le(out, 0xFFFFFFFFFFFFFFFF, 8);
         } else {

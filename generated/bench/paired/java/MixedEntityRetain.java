@@ -79,6 +79,7 @@ public final class MixedEntityRetain {
         retain.idUsed = 0;
         retain.nodeKeys.clear();
         MixedEntityVariable.Value v = new MixedEntityVariable.Value();
+        report.rootTypeId = MixedEntityVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {

@@ -73,3 +73,27 @@ tables-squirrel-text-differential: $(SQUIRREL_NC_DEPS)
 	$(call squirrel_nc,$@,TestSquirrelTextDifferentialAgainstTheGoEngine,internal/codegen/squirreltable)
 tables-squirrel-text-differential-negative-control: $(SQUIRREL_NC_DEPS)
 	$(call squirrel_nc,$@,TestSquirrelTextDifferentialNegativeControl,internal/codegen/squirreltable)
+
+.PHONY: tables-squirrel-damage-discard tables-squirrel-damage-discard-negative-control
+tables-squirrel-damage-discard: toolchain-squirrel dist-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelDamageDiscardsValues TestSquirrelDelegatedDamageDiscardsValue' ./internal/codegen/squirreltable -run '^TestSquirrel(DamageDiscardsValues|DelegatedDamageDiscardsValue)$$' -count=1
+tables-squirrel-damage-discard-negative-control: toolchain-squirrel dist-squirrel
+	$(call squirrel_nc,$@,TestSquirrelDamageDiscardNegativeControl,internal/codegen/squirreltable)
+
+# M18: union-arm framing hands every payload to the ordinary field reader.
+.PHONY: tables-squirrel-arms tables-squirrel-arms-negative-control
+tables-squirrel-arms: toolchain-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelArmIsAFieldLine TestSquirrelTableLoadMatchesTheReports TestSquirrelWideTextMatchesTheWire' ./internal/codegen/squirreltable -run '^TestSquirrel(ArmIsAFieldLine|TableLoadMatchesTheReports|WideTextMatchesTheWire)$$' -count=1
+tables-squirrel-arms-negative-control:
+	sh test/slowgate/proof $@ 'TestSquirrelArmFieldLineNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelArmFieldLineNegativeControl$$' -count=1
+
+# J1: the reflective block/cook path agrees with the compiler layout model.
+.PHONY: tables-squirrel-descriptor-layout-agreement tables-squirrel-slot-negative-control
+tables-squirrel-descriptor-layout-agreement: toolchain-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelDescriptorLayoutAgreement TestSquirrelBlockReadMatchesTheCorpus TestSquirrelCookReadMatchesTheCorpus' ./internal/codegen/squirreltable -run '^TestSquirrel(DescriptorLayoutAgreement|BlockReadMatchesTheCorpus|CookReadMatchesTheCorpus)$$' -count=1
+tables-squirrel-slot-negative-control: toolchain-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelDescriptorLayoutNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelDescriptorLayoutNegativeControl$$' -count=1
+test-squirrel: tables-squirrel-descriptor-layout-agreement tables-squirrel-slot-negative-control
+
+# The registered M18 proof runs through the normal language test entry.
+test-squirrel: tables-squirrel-arms tables-squirrel-arms-negative-control
