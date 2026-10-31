@@ -70,8 +70,15 @@ lobster-dist-present:
 # lobster_wire_fuzz_vectors replays every pinned vector of the builder arm
 # over the units in $(1); each name is <unit>.<root>.<anything>.bin
 # lobster_wire_fuzz_arm_vectors replays the corpus's pinned vectors the retain
-# and message arms are answerable for, over the units in $(1)
+# and message arms are answerable for, and the leg's own retain vectors
+# (test/conformance/lobster/vectors/retain, each <unit>.<root>.<what>.bin, a
+# mutant the retain arm found the leg diverging on), over the units in $(1)
 define lobster_wire_fuzz_arm_vectors
+	@for v in test/conformance/lobster/vectors/retain/*.bin; do \
+		b=$${v##*/}; unit=$${b%%.*}; rest=$${b#*.}; root=$${rest%%.*}; \
+		./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(1)' \
+			--replay $$v --unit $$unit --root $$root || exit 1; \
+	done
 	./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(1)' \
 		--replay testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin --unit mapdemo --root Text
 	./build/conformance-harness wire-fuzz --message --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(1)' \
@@ -118,6 +125,14 @@ tables-lobster-release:
 #            report in the --retain arm and stay green in the plain arm
 #   message  the batch read stops refusing ill-formed text, so the pinned
 #            message_ill_formed_text vector must go red replayed as a batch
+#   region   the region read refuses a collection count past the storage cap
+#            as the builder read does (load.lobster's collection_cap), so the
+#            pinned listdemo.Save.region-count-cap vector must go red on the
+#            decoded value in the --retain arm
+#   arm      the retaining read forgets no union arm body an earlier
+#            occurrence built (retain_unknown.lobster's forget_arm), so the
+#            pinned streamdemo.Feed.damaged-arm-repeated vector must go red on
+#            the retention report in the --retain arm
 # Unplanted, the same units are green.
 LOBSTER_WIRE_FUZZ_PLANT := build/lobster-wire-fuzz-plant
 tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost
@@ -168,6 +183,28 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 		cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; fi
 	@grep -q 'the report differs' $(LOBSTER_WIRE_FUZZ_PLANT)/message.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on the report'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; }
+	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/region
+	@sed -i.orig 's/^    if not r\.st\.variable or r\.st\.region:$$/    if not r.st.variable:/' $(LOBSTER_WIRE_FUZZ_PLANT)/region/*/load.lobster
+	@if cmp -s build/conformance-lobster/listdemo/load.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/region/listdemo/load.lobster; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted region bug did not apply'; exit 1; fi
+	@if ./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/region' \
+			--replay test/conformance/lobster/vectors/retain/listdemo.Save.region-count-cap.bin --unit listdemo --root Save \
+			> $(LOBSTER_WIRE_FUZZ_PLANT)/region.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a region read that refuses a capped count left the pinned vector green'; \
+		cat $(LOBSTER_WIRE_FUZZ_PLANT)/region.log; exit 1; fi
+	@grep -q 'the decoded value differs' $(LOBSTER_WIRE_FUZZ_PLANT)/region.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on the value'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/region.log; exit 1; }
+	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/arm
+	@sed -i.orig 's/^                forget(arm_recs\[k\])$$/                pass()/' $(LOBSTER_WIRE_FUZZ_PLANT)/arm/*/retain_unknown.lobster
+	@if cmp -s build/conformance-lobster/streamdemo/retain_unknown.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/arm/streamdemo/retain_unknown.lobster; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted arm bug did not apply'; exit 1; fi
+	@if ./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/arm' \
+			--replay test/conformance/lobster/vectors/retain/streamdemo.Feed.damaged-arm-repeated.bin --unit streamdemo --root Feed \
+			> $(LOBSTER_WIRE_FUZZ_PLANT)/arm.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a retaining read that forgets no arm body left the pinned vector green'; \
+		cat $(LOBSTER_WIRE_FUZZ_PLANT)/arm.log; exit 1; fi
+	@grep -q 'the retention report differs' $(LOBSTER_WIRE_FUZZ_PLANT)/arm.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on the retention report'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/arm.log; exit 1; }
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)
 	$(call lobster_wire_fuzz_arm_vectors,build/conformance-lobster)
-	@echo 'lobster wire-fuzz negative control: a dropped unknown count reds the fuzz, an unguarded save, a retaining read that forgets no map entry and a batch read that admits ill-formed text each red their pinned vector; unplanted all are green'
+	@echo 'lobster wire-fuzz negative control: a dropped unknown count reds the fuzz, an unguarded save, a retaining read that forgets no map entry, a batch read that admits ill-formed text, a region read that refuses a capped count and a retaining read that forgets no arm body each red their pinned vector; unplanted all are green'

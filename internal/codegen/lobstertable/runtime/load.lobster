@@ -180,6 +180,18 @@ class RetainCapture:
         return
     def forget_built(sl:Slot) -> void:
         return
+    // built_arm sees the body one occurrence of a union cell built, under the
+    // occurrence's own key (the slot and the element index, -1 for the
+    // field), and forget_arm discards the retained fields under it when that
+    // cell is read again, whether or not damage left the body on the cell
+    // (Go's builtArm and forgetArm); forget_slot_arms does it for every index
+    // of a collection the read commits to replace (Go's forgetFieldArms)
+    def built_arm(sl:Slot, i:int, rec:Record) -> void:
+        return
+    def forget_arm(sl:Slot, i:int) -> void:
+        return
+    def forget_slot_arms(sl:Slot) -> void:
+        return
 
 let retain_captures:[RetainCapture] = []
 
@@ -1230,6 +1242,9 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
         // retained fields under the elements go with the value it loses
         for(sl.elems) old:
             forget_value(old)
+        let commit = active_retain_capture()
+        if commit:
+            commit.forget_slot_arms(sl)
         var keep = count
         if f.array == "list":
             sl.elems = []
@@ -1421,10 +1436,14 @@ def arm_read(r:Reader, cell:Value, a:FieldDescriptor, tag:int, n:int) -> bool:
     cell.arm = fv
     return true
 
-def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
+def union_cell(r:Reader, cell:Value, fd:FieldDescriptor, sl:Slot, i:int) -> bool:
     // A UNION WRITTEN AGAIN takes the earlier arm's retained fields with it
-    // (Go's forgetArm), and the discard moves no counter
+    // (Go's forgetArm), and the discard moves no counter: the body on the
+    // cell, and the body the earlier occurrence built that damage took off it
     forget_value(cell)
+    let held = active_retain_capture()
+    if held:
+        held.forget_arm(sl, i)
     let rep = r.st.report
     let un = lookup_union(fd.t)
     assert un
@@ -1477,6 +1496,8 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
                 rep.kind_mismatch++
         elif a.s == "tab":
             let payload = new_record(table_of(a.t))
+            if held:
+                held.built_arm(sl, i, payload)
             body_at(sr, payload, true, false)
             if r.st.count_refused:
                 return false
@@ -1497,7 +1518,7 @@ def union_cell(r:Reader, cell:Value, fd:FieldDescriptor) -> bool:
 
 class UnionShape : Shape
     def field(r:Reader, sl:Slot) -> bool:
-        return union_cell(r, sl.cell, sl.fd)
+        return union_cell(r, sl.cell, sl.fd, sl, -1)
     def element(r:Reader, sl:Slot, i:int, ek:int) -> bool:
         // an element of an array of unions is an arm header, reset the
         // moment its arm id is read (§3)
@@ -1506,9 +1527,9 @@ class UnionShape : Shape
             return false
         sl.elems[i].i = 0
         sl.elems[i].tab = nil
-        return union_cell(r, sl.elems[i], elem_of(sl.fd))
+        return union_cell(r, sl.elems[i], elem_of(sl.fd), sl, i)
     def arm(r:Reader, fv:Slot, n:int) -> bool:
-        return union_cell(r, fv.cell, fv.fd)
+        return union_cell(r, fv.cell, fv.fd, fv, -1)
 
 let union_shape = register_shape(UnionShape { key: "union" })
 

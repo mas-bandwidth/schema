@@ -275,6 +275,10 @@ class RetainCaptureImpl : RetainCapture
     report:LoadReport
     built_slots:[Slot] = []
     built_recs:[Record] = []
+    // the union arm bodies each occurrence built, keyed by (slot, index)
+    arm_slots:[Slot] = []
+    arm_index:[int] = []
+    arm_recs:[Record] = []
     def capture(rec:Record, id:int, kind:int, payload:string, ids:[int]) -> void:
         if kind == 17:
             lost()
@@ -312,6 +316,41 @@ class RetainCaptureImpl : RetainCapture
             i++
         truncate(built_slots, at)
         truncate(built_recs, at)
+    def built_arm(sl:Slot, i:int, rec:Record) -> void:
+        forget_arm(sl, i)
+        push(arm_slots, sl)
+        push(arm_index, i)
+        push(arm_recs, rec)
+    def forget_arm(sl:Slot, i:int) -> void:
+        var at = 0
+        var k = 0
+        while k < length(arm_slots):
+            if arm_slots[k] == sl and arm_index[k] == i:
+                forget(arm_recs[k])
+            else:
+                arm_slots[at] = arm_slots[k]
+                arm_index[at] = arm_index[k]
+                arm_recs[at] = arm_recs[k]
+                at++
+            k++
+        truncate(arm_slots, at)
+        truncate(arm_index, at)
+        truncate(arm_recs, at)
+    def forget_slot_arms(sl:Slot) -> void:
+        var at = 0
+        var k = 0
+        while k < length(arm_slots):
+            if arm_slots[k] == sl:
+                forget(arm_recs[k])
+            else:
+                arm_slots[at] = arm_slots[k]
+                arm_index[at] = arm_index[k]
+                arm_recs[at] = arm_recs[k]
+                at++
+            k++
+        truncate(arm_slots, at)
+        truncate(arm_index, at)
+        truncate(arm_recs, at)
 
 // load_retain is load with retention on (docs/SPEC-TABLES.md §6.6): it reads
 // exactly what load reads and reports exactly what load reports, and beside
