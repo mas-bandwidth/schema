@@ -20,7 +20,9 @@ MOO_CONFORMANCE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
 MOO_CONFORMANCE_UNIT_PATHS := $(shell [ -f $(MOO_CONFORMANCE_MANIFEST) ] && awk '/^unit[ \t]/ { for (i = 3; i <= NF; i++) print $$i }' $(MOO_CONFORMANCE_MANIFEST))
 MOO_CONFORMANCE_SCHEMAS := $(foreach p,$(MOO_CONFORMANCE_UNIT_PATHS),$(if $(filter %.schema,$(p)),$(p),$(wildcard $(p)/*.schema)))
 
-build/schema-moo: $(GO_SOURCES)
+# the moo runtimes are //go:embed'ded into the binary, which GO_SOURCES (*.go
+# only) does not see: a changed runtime file rebuilds it
+build/schema-moo: $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
 	go build -tags schema_leg_moo -o $@ ./cmd/schema
 
