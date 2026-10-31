@@ -93,9 +93,9 @@ on:
   push:
     # THE MERGE GATE. main, dev (where work streams land serially before
     # promoting to main), and the fixed-form integration branch while the
-    # nine language legs land on it (2026-09-09): the batch to main must never
-    # be the first time anybody sees red, so the whole of this file runs on
-    # every merge into those branches.
+    # nine language legs land on it (2026-09-09): a merge into those branches
+    # runs the whole of this file. Feature branches do not: their pull request
+    # already ran it on the same head (2026-10-29).
     branches: [ main, dev, fixed-table-form ]
   pull_request:
     # A pull request runs this file only when it carries the `full-ci` label —
@@ -117,7 +117,7 @@ on:
 # and a queued dispatch run can never displace each other (a group holds only
 # one pending run).
 concurrency:
-  group: ci-full-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
