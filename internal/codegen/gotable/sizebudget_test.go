@@ -33,7 +33,7 @@ const (
 	// -31: the emitted loops range over their counts and the clamps call min/max (modernize-clean generated Go)
 	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	// +821: table floats are finite only (SPEC-TABLES §3.3, Glenn 2026-10-27): every float read tests its raw bits, every tolerant load and message batch refuses a non-finite one, and every fixed type holding a float gains its finite pass and its writer clause (tables-finite/go)
-	goExamplesLineBudget = 66058
+	goExamplesLineBudget = 58858
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

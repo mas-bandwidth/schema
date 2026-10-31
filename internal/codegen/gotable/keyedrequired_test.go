@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// TestGoRequiredKeyedArrayRoundTrips covers an enum-keyed array with
-// `| required` (docs/SPEC-TABLES.md §2.3, §2.4): in a variable table it
-// round-trips through the table wire form, and in a fixed table the message
-// form must compile (the element must not inherit Required, so the keyed count
-// loop reads its index) and round-trip a batch.
+// TestGoRequiredKeyedArrayRoundTrips covers a variable table holding an
+// enum-keyed array with `| required` (docs/SPEC-TABLES.md §2.3, §2.4): it
+// round-trips through the table wire form, agreeing with the wire writer's
+// per-element elision. A fixed table refuses `| required`, so the message form
+// never meets one.
 func TestGoRequiredKeyedArrayRoundTrips(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
@@ -38,32 +38,4 @@ func TestRequiredKeyedArrayRoundTrips(t *testing.T){
 }
 `, text)
 	runGenerated(t, schema, gen)
-
-	const fixedSchema = `package probe
-enum State { A, B }
-fixed table Root {
-	k [State]int32 | required
-	n int32
-}
-`
-	runGenerated(t, fixedSchema, `package probe
-import("testing")
-func TestRequiredKeyedArrayMessageRoundTrips(t *testing.T){
-	var v Root
-	v.K[0]=5;v.N=3
-	values:=[]*Root{&v}
-	n:=RootMeasureMessages(values,nil)
-	if n<2{t.Fatalf("measure %d",n)}
-	out:=make([]byte,n)
-	var wr TableReport
-	if RootSaveMessages(values,out,&wr)!=n||wr!=(TableReport{}){t.Fatalf("save %+v",wr)}
-	ann:=make([]byte,AnnounceMeasure());Announce(ann)
-	var vocab TableVocabulary;vocab.Init(make([]TableMessageEntry,TableMessageEntriesHere))
-	var ar TableReport
-	if !AnnounceRead(&vocab,ann,&ar)||!vocab.Announced{t.Fatalf("announce %+v",ar)}
-	var got [1]Root
-	var report TableReport
-	if count,ok:=RootLoadMessages(got[:],&vocab,out,&report);!ok||count!=1||got[0]!=v{t.Fatalf("msg roundtrip got %+v want %+v report %+v",got[0],v,report)}
-}
-`)
 }
