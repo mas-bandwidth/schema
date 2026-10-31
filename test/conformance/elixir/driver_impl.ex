@@ -796,10 +796,10 @@ defmodule Driver do
     end
   end
 
-  # A unit with no variable-form codec, and a root the codec names uncarried,
-  # write <case>.absent (docs/SPEC-TABLES.md §11). A line that says "absent"
-  # is a wrong answer against the reference's "read"; the sidecar is the
-  # absence the harness already counts as a missing feature.
+  # A unit with no variable-form codec writes <case>.absent (docs/SPEC-TABLES.md
+  # §11). A line that says "absent" is a wrong answer against the reference's
+  # "read"; the sidecar is the absence the harness already counts as a missing
+  # feature.
   defp report_line(nil, _root, _wire), do: :absent
 
   # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
@@ -1203,10 +1203,8 @@ defmodule WireFuzz do
   # leaves out and names none of them, so a root that stopped opening would
   # only move a count. When ELIXIR_WIRE_FUZZ_ABSENT names a file, the driver
   # writes one line per roster entry it answers 0 for: `<unit>.<root> form=<f>`
-  # and why (no-codec: the unit has no generated module for the entry's form;
-  # uncarried: the variable form refuses the root, docs/SPEC-TABLES.md §2.6,
-  # §2.8, §11). The gate compares that list with its pinned one. Unset, nothing
-  # is written.
+  # and why (no-codec: the unit has no generated module for the entry's form).
+  # The gate compares that list with its pinned one. Unset, nothing is written.
   defp write_unopened(roster) do
     case System.get_env("ELIXIR_WIRE_FUZZ_ABSENT") do
       nil ->
@@ -1218,8 +1216,7 @@ defmodule WireFuzz do
       path ->
         lines =
           for r <- roster, avail(r) == 0 do
-            reason = if codec(r) == nil, do: "no-codec", else: "uncarried"
-            "#{r.unit}.#{r.root} form=#{r.form} #{reason}\n"
+            "#{r.unit}.#{r.root} form=#{r.form} no-codec\n"
           end
 
         File.write!(path, lines)
@@ -1264,29 +1261,12 @@ defmodule WireFuzz do
        else: nil
   end
 
-  # carried?/1 is the variable form's own answer (docs/SPEC-TABLES.md §2.6,
-  # §2.8, §11): a root that reaches a map or a union is uncarried. Roster 0
-  # means the harness never sends it a mutant. An error return while the root
-  # is marked available would be scored against the oracle. A form-2 entry is
-  # the fixed table's announced wire (§3.3) and is carried whenever its
-  # TableMessage module is present.
-  defp avail(%{form: 2} = r) do
-    if message_codec(r.unit, r.root) == nil, do: 0, else: 1
-  end
-
-  defp avail(r) do
-    case file_codec(r.unit, r.root) do
-      nil ->
-        0
-
-      mod ->
-        if function_exported?(mod, :carried?, 1) and not mod.carried?(r.root) do
-          0
-        else
-          1
-        end
-    end
-  end
+  # A roster entry is available when the unit has the codec its form names:
+  # the file form's <Package>.Table answers every root of the unit, and a
+  # form-2 entry is the fixed table's announced wire (§3.3), carried whenever
+  # its TableMessage module is present. Roster 0 means the harness never sends
+  # it a mutant.
+  defp avail(r), do: if(codec(r) == nil, do: 0, else: 1)
 
   defp read_roster do
     count = read_u32()
@@ -1442,6 +1422,15 @@ defmodule WireFuzz do
           # A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
           # §3.3), and the refusal is the answer the oracle compares
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
+
+        {:error, :newer_form, _report} ->
+          # only a FIXED-CLASS root gets here (a variable root's measure
+          # refused the form first): its value starts at its declared defaults
+          # (docs/SPEC-TABLES.md §3, §4), a form this reader does not carry is
+          # refused and leaves it there, and that value is what is saved back
+          {:ok, bytes} = mod.save(r.root, mod.new(r.root))
+          stdout_write(header(1, %{refused: true}, measure) <> <<byte_size(bytes)::little-signed-64>>)
+          stdout_write(bytes)
 
         _ ->
           stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)

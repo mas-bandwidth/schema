@@ -10,8 +10,7 @@ import (
 // Elixir's type checker sees the unit's literal data and reports a clause that
 // data can never reach as a warning, which the strict compile
 // (make/elixir-strict.sh, tables-elixir-fixed-form) refuses. A unit whose
-// @uncarried is empty is emitted without the uncarried refusals (each guard
-// would read `table in []`), a unit whose @cook_uncarried is empty without the
+// @cook_uncarried is empty is emitted without the
 // cook plan's map guard, and a unit with no extent anywhere is emitted
 // without the nested-record extent walks (each would branch on a literal
 // false has_extent). A unit with no union carries no union runtime and no
@@ -38,9 +37,9 @@ table Outer
 		t.Fatal(err)
 	}
 	src := string(plain[VariableTableModule+".ex"])
-	for _, gone := range append([]string{"when table in @uncarried", "table in @uncarried or", "table in @cook_uncarried or"}, extentWalkClauses...) {
+	for _, gone := range append([]string{"table in @cook_uncarried or"}, extentWalkClauses...) {
 		if strings.Contains(src, gone) {
-			t.Errorf("a unit with no uncarried root and no extent still emits %q", gone)
+			t.Errorf("a unit with no cook-uncarried root and no extent still emits %q", gone)
 		}
 	}
 	for _, gone := range append(append([]string{"@unions", "defp arm_header(", "defp json_read_arm(", "elem_kind: 15}", "defp cook_union("}, unionClauses...), cookUnionClauses...) {
@@ -74,9 +73,9 @@ table Outer
 		t.Fatal(err)
 	}
 	src = string(full[VariableTableModule+".ex"])
-	for _, kept := range append([]string{"def load_measure(table, _data) when table in @uncarried", cookUncarriedGuard}, extentWalkClauses...) {
+	for _, kept := range append([]string{cookUncarriedGuard}, extentWalkClauses...) {
 		if !strings.Contains(src, kept) {
-			t.Errorf("a unit with an uncarried root and an extent lost %q", kept)
+			t.Errorf("a unit with a cook-uncarried root and an extent lost %q", kept)
 		}
 	}
 

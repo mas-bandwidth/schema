@@ -79,7 +79,7 @@ table Root
 }
 
 // the RETAINING read and write carry no union and no enum-keyed array yet
-// (docs/SPEC-TABLES.md §11, carried?/1), so they are held on a root without
+// (docs/SPEC-TABLES.md §6.6, §11), so they are held on a root without
 // either
 table Plain
 {

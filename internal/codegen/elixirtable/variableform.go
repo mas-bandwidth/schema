@@ -2,11 +2,8 @@
 // id-table wire, for the variable class beyond the card record — pointers to
 // tables and the flat node table (§2.1, §3.1), blobs (*bytes and *string,
 // §2.5), unbounded arrays of scalar, string and enum elements and arrays of
-// pointers (§2.9), the remaining scalars, and the text form (§16). A map
-// (§2.8) or a union the closure holds (§2.6) does not refuse a unit that also
-// carries those lists: the roots that reach one are named uncarried and
-// answer an error, so the driver writes <case>.absent rather than a wrong
-// byte (§11). A unit that is only that construct is still refused by name.
+// pointers (§2.9), maps (§2.8), union arms (§2.6), enum-keyed arrays (§2.4),
+// the remaining scalars, and the text form (§16).
 //
 // The wire is the same bytes the Go, C, C++ and C# backends write
 // (docs/SPEC-TABLES.md §3, §3.1): the form byte, then a body of `(reference,
@@ -79,6 +76,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "  @build_version_id 0x%016X\n", ir.TableBuildVersionWireId)
 	fmt.Fprintf(&b, "  @message_vocab_id 0x%016X\n", ir.TableMessageVocabularyWireId)
 	fmt.Fprintf(&b, "  @string_id 0x%016X\n", ir.StringWireTypeId)
+	fmt.Fprintf(&b, "  @bytes_id 0x%016X\n", ir.BytesWireTypeId)
 	fmt.Fprintf(&b, "  @region_align %d\n", ir.TableRegionAlign(u))
 	b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
 	b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
@@ -166,16 +164,15 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
 	b.WriteString("  def descriptors, do: @tables\n\n")
-	uncarried := uncarriedRootNames(u)
-	b.WriteString(uncarriedAttribute(uncarried))
+	b.WriteString("  # the value a load starts from (docs/SPEC-TABLES.md §4): every field at its\n")
+	b.WriteString("  # declared default, the value a fixed-class read leaves where the wire\n")
+	b.WriteString("  # carries nothing it can place.\n")
+	b.WriteString("  def new(table), do: defaults(Map.fetch!(@tables, table))\n\n")
 	cookUncarried := cookUncarriedRootNames(u)
 	b.WriteString(cookUncarriedAttribute(cookUncarried))
 	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
 	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
-	if len(uncarried) == 0 {
-		runtime = withoutUncarriedClauses(runtime)
-	}
 	if len(cookUncarried) == 0 {
 		cook = withoutCookUncarriedGuard(cook)
 	}
@@ -200,72 +197,6 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString(retain)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
-}
-
-// uncarriedRootNames names every table in the closure that reaches a map, a
-// union, or an enum-keyed array (docs/SPEC-TABLES.md §2.4, §2.6, §2.8, §11).
-// A map's generated entry is
-// uncarried on its own. The value type a map points at stays carried when no
-// field of that type is itself a map or a union: Item is a map's value and a
-// fixed table, and marking it uncarried would drop a root the wire still
-// carries. A holder is uncarried once a field of it names an uncarried table,
-// by value, by pointer or as an array element, so Army follows Squad. Names
-// are sorted.
-func uncarriedRootNames(u *ir.Unit) []string {
-	closure := ir.TableClosure(u)
-	poison := map[string]bool{}
-	changed := true
-	for changed {
-		changed = false
-		for name := range closure {
-			if poison[name] {
-				continue
-			}
-			st := u.Tables[name]
-			if st == nil {
-				continue
-			}
-			if reachesUncarried(st, poison) {
-				poison[name] = true
-				changed = true
-			}
-		}
-	}
-	names := make([]string, 0, len(poison))
-	for name := range poison {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// reachesUncarried reports a table the variable form must not walk
-// (docs/SPEC-TABLES.md §2.4, §2.6, §2.8). A union arm's payload is not a
-// field of the arm's table, so Point stays carried when Hit's arm names it.
-// An enum-keyed array is kind 16 (§3.2); this walker encodes an array as
-// kind 14, so a root that reaches one answers an error instead of a wrong
-// body (§11).
-func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
-	if st.IsMapEntry() {
-		return true
-	}
-	for _, f := range st.Fields {
-		if f.IsMap() || f.KeyEnum != "" {
-			return true
-		}
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Union:
-			return true
-		case *ir.Struct:
-			if poison[ref.Name] {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 var armKindPattern = regexp.MustCompile(`\bt: :([a-z_]+)`)
@@ -376,7 +307,8 @@ func withArmKinds(runtime string, kinds map[string]bool) string {
 // Elixir's type checker proves always raises; such a unit is emitted without
 // them.
 var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "arm_node_key",
-	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm"}
+	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm",
+	"scan_union", "scan_arm"}
 
 var unionClauses = []string{
 	"  defp collect_list_nodes(%{elem_kind: 15}",
@@ -390,6 +322,8 @@ var unionClauses = []string{
 	"  defp json_list_elem(%{elem_kind: 15}",
 	"  defp json_read_field(%{t: :union}",
 	"  defp json_read_list_elem(%{elem_kind: 15}",
+	"  defp scan_header(%{t: :union}",
+	"  defp scan_element(f, 15,",
 }
 
 const unionNodeBranch = "        :union ->\n          collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
@@ -549,23 +483,6 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 	return b.String()
 }
 
-// uncarriedClauses are the runtime's refusals of an uncarried root, each the
-// whole clause and the blank line after it. A unit whose closure carries every
-// root has an empty @uncarried, so each guard reads `table in []`: never true,
-// which Elixir's type checker reports as a guard that will never succeed (and
-// `table` as unused). Such a unit is emitted without them.
-var uncarriedClauses = []string{
-	"  def load_measure(table, _data) when table in @uncarried, do: -1\n\n",
-}
-
-// withoutUncarriedClauses is the runtime source for a unit whose @uncarried is
-// empty: the uncarried refusal goes. The edit must apply, so a template change
-// that moves it fails the emitter's tests rather than silently shipping the
-// guard.
-func withoutUncarriedClauses(runtime string) string {
-	return replaceOnce(runtime, uncarriedClauses[0], "")
-}
-
 // cookUncarriedGuard is the cook plan's refusal of a root the cook writer does
 // not lay out. A unit whose @cook_uncarried is empty would read `table in []`,
 // a guard that never succeeds, so the plan keeps only its value check.
@@ -656,28 +573,6 @@ func cookUncarriedAttribute(names []string) string {
 	list.WriteString("]")
 	b.WriteString(exAttribute("cook_uncarried", list.String()) + "\n")
 	b.WriteString("  def cook_carried?(table), do: table not in @cook_uncarried\n\n")
-	return b.String()
-}
-
-// uncarriedAttribute is the module attribute the public clauses guard on, and
-// carried?/1 the wire-fuzz roster reads (docs/SPEC-TABLES.md §11). The list is
-// string literals so `table in @uncarried` is a legal guard. An empty list
-// never matches, and every root of that unit stays carried.
-func uncarriedAttribute(names []string) string {
-	var b strings.Builder
-	b.WriteString("  # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md\n")
-	b.WriteString("  # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them\n")
-	b.WriteString("  # (§3, §3.2, §16) and the cook write lays them out (§7.2); the wire-fuzz\n")
-	b.WriteString("  # roster does not yet, so carried?/1 answers false for them there and the\n")
-	b.WriteString("  # roster sends it no mutant.\n")
-	var list strings.Builder
-	list.WriteString("[")
-	for _, name := range names {
-		fmt.Fprintf(&list, "%q, ", name)
-	}
-	list.WriteString("]")
-	b.WriteString(exAttribute("uncarried", list.String()) + "\n")
-	b.WriteString("  def carried?(table), do: table not in @uncarried\n\n")
 	return b.String()
 }
 
@@ -1329,6 +1224,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
+      {:error, :malformed} when not desc.variable ->
+        # a FIXED-CLASS root reads into a value that starts at its declared
+        # defaults (§3, §4): a wire that cannot be opened leaves it there, one
+        # malformed counted
+        report = Map.put(empty_report(), :blob_shared, false)
+        {:ok, defaults(desc), reasoned(report, :malformed)}
+
       {:error, reason} ->
         {:error, reason, reasoned(empty_report(), reason)}
 
@@ -1337,9 +1239,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:error, _} ->
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
+          {:stop, fields, [], remaining} when not desc.variable ->
+            # a fixed-class root body the walk could not finish reads as an
+            # element does (§3, §4): a body that ran off its own end keeps the
+            # prefix it decoded, a body damaged mid-walk keeps its declared
+            # defaults, and the events the prefix earned count beside one
+            # malformed
+            {value, report} = decode(desc, fields, [], ids)
+            value = if remaining == 0, do: value, else: %{}
+            report = Map.put(%{report | malformed: true}, :blob_shared, false)
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+
           {:stop, _fields, _nodes, _remaining} ->
-            # a ROOT body the walk could not finish is malformed; nothing below
-            # the damage is read, so there is no value to save (§3)
+            # a variable-class ROOT body the walk could not finish is
+            # malformed; nothing below the damage is read, so there is no value
+            # to save (§3)
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
@@ -4209,29 +4123,74 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # ---- the region measure (docs/SPEC-TABLES.md §4.2, §6.5) ----
   #
-  # load_measure/2 answers the region bytes a variable-class Load owes: the
-  # root's node bytes (its record plus every list extent the value reaches),
-  # each node record's storage, and the attribution directory of one u64 pair
-  # per record plus the root (§6.3). It is the number the Go, C, C++ and C#
-  # backends answer, so a caller sizes a region and the harness's oracle holds
-  # the measure to the framing's bound. A wire this reader cannot open, or a
-  # list count past the storage cap, answers -1.
-
-  def load_measure(table, _data) when table in @uncarried, do: -1
+  # load_measure/2 answers the region bytes a variable-class Load owes, derived
+  # from the FRAMING before any value is decoded: the root's record and the
+  # node extent its maps and lists command, each node record's own record and
+  # extent, each blob the root can reach, and the attribution directory of one
+  # u64 pair per record plus the root (§6.3). A map's or a list's extent is
+  # count × the element's size at its alignment wherever it sits — in a field,
+  # an element, a union arm or a map entry — so a dropped entry still commands
+  # its slot. It is the number the compiler's own engine derives
+  # (internal/tablewire, FileRegionMeasure), so a caller sizes a region and the
+  # harness's oracle holds the measure to it exactly. A count past the storage
+  # cap, or past what the bytes behind it can frame, answers -1, and so does a
+  # wire this reader cannot open. A fixed-class root commands its record alone.
 
   def load_measure(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
-    case open(data) do
-      {:error, _} ->
+    cond do
+      not desc.variable ->
+        region_round(desc.size)
+
+      true ->
+        case open(data) do
+          {:error, _} -> -1
+          {:ok, body, ids} -> measure_region(desc, body, ids)
+        end
+    end
+  end
+
+  defp measure_region(desc, body, ids) do
+    case record_storage(desc, body, ids) do
+      :refused ->
         -1
 
-      {:ok, body, ids} ->
-        with {:ok, at} <- extent(desc, body, ids),
-             {:ok, count, blobs} <- measure_nodes(body, ids) do
-          region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
-        else
-          _ -> -1
+      root ->
+        case node_records(body, ids) do
+          {:ok, records} -> measure_records(desc, records, ids, root, 0)
+          :partial -> root + 16
+        end
+    end
+  end
+
+  # one record's storage: its own size rounded, plus the extent its framing
+  # commands, rounded again
+  defp record_storage(desc, body, ids) do
+    case scan_record(desc, body, ids, 0) do
+      :refused -> :refused
+      at -> region_round(region_round(desc.size) + at)
+    end
+  end
+
+  defp measure_records(_desc, [], _ids, total, n), do: total + (n + 1) * 16
+
+  defp measure_records(desc, [{type_id, body} | rest], ids, total, n) do
+    case Map.get(desc.nodes, type_id) do
+      nil ->
+        blob =
+          cond do
+            type_id == @string_id and desc.string_blob -> region_round(8 + byte_size(body) + 1)
+            type_id == @bytes_id and desc.bytes_blob -> region_round(8 + byte_size(body))
+            true -> 0
+          end
+
+        measure_records(desc, rest, ids, total + blob, n + 1)
+
+      name ->
+        case record_storage(Map.fetch!(@tables, name), body, ids) do
+          :refused -> -1
+          bytes -> measure_records(desc, rest, ids, total + bytes, n + 1)
         end
     end
   end
@@ -4240,179 +4199,257 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp align_to(n, a), do: div(n + a - 1, a) * a
 
-  # extent walks one body's triples summing the storage its list fields command
-  # (docs/SPEC-TABLES.md §3.1, §6.5): a list's elements are inside its holder's
-  # node extent, count × elem_size at elem_align, and the walk recurses into
-  # each element body so a list inside a list is counted where it lives.
-  defp extent(desc, bin, ids), do: extent(desc, bin, ids, 0)
+  # scan_record walks one body's field headers summing the extent every map
+  # and list below it commands, and descending into every by-value table,
+  # element, entry and arm on the way. Damage ends the walk with what it has
+  # summed; a count the framing cannot hold answers :refused.
+  defp scan_record(desc, bin, ids, at) do
+    with {ref, rest} when ref != 0 <- leb(bin),
+         id when id != :error <- resolve(ids, ref),
+         <<kind, rest2::binary>> <- rest do
+      case scan_header(find_field(desc, id), kind, rest2, ids, at) do
+        :refused -> :refused
+        {:cont, at2, rest3} -> scan_record(desc, rest3, ids, at2)
+        {:halt, at2} -> at2
+      end
+    else
+      _ -> at
+    end
+  end
 
-  defp extent(desc, bin, ids, at) do
-    case leb(bin) do
+  defp scan_header(%{t: :union} = f, 15, bin, ids, at) do
+    case scan_union(f.elem, bin, ids, at) do
+      :refused -> :refused
+      {at2, rest} -> {:cont, at2, rest}
+    end
+  end
+
+  defp scan_header(f, kind, bin, ids, at) when f != nil and kind in [13, 14, 16] do
+    case framed_body(bin) do
       :error ->
-        {:ok, at}
+        {:halt, at}
 
-      {0, _rest} ->
-        {:ok, at}
-
-      {ref, rest} ->
-        case resolve(ids, ref) do
-          :error ->
-            {:ok, at}
-
-          id ->
-            case rest do
-              <<kind, rest2::binary>> ->
-                field = find_field(desc, id)
-
-                if field != nil and field.t == :list and kind == 14 do
-                  case slice(rest2, kind) do
-                    {:ok, payload, rest3} ->
-                      case leb(payload) do
-                        {_l, arr} ->
-                          case list_extent(field, arr, ids, at) do
-                            :error -> :error
-                            {:ok, at2} -> extent(desc, rest3, ids, at2)
-                          end
-
-                        :error ->
-                          {:ok, at}
-                      end
-
-                    :error ->
-                      {:ok, at}
-                  end
-                else
-                  case slice(rest2, kind) do
-                    {:ok, _payload, rest3} -> extent(desc, rest3, ids, at)
-                    :error -> {:ok, at}
-                  end
-                end
-
-              _ ->
-                {:ok, at}
-            end
+      {payload, rest} when kind == f.kind ->
+        case scan_field(f, payload, ids, at) do
+          :refused -> :refused
+          at2 -> {:cont, at2, rest}
         end
+
+      {_payload, rest} ->
+        {:cont, at, rest}
     end
   end
 
-  defp list_extent(field, arr, ids, at) do
-    case arr do
-      <<13, count_rest::binary>> ->
-        case leb(count_rest) do
-          :error ->
-            :error
-
-          {count, elems} ->
-            if count > 0x7FFFFFFF do
-              :error
-            else
-              if count > div(byte_size(elems), 2) do
-                :error
-              else
-                at = align_to(at, field.elem_align) + count * field.elem_size
-                elem_desc = Map.fetch!(@tables, field.elem)
-                elements_extent(elem_desc, elems, count, ids, at)
-              end
-            end
-        end
-
-      _ ->
-        {:ok, at}
+  defp scan_header(_f, kind, bin, _ids, at) do
+    case slice(bin, kind) do
+      {:ok, _payload, rest} -> {:cont, at, rest}
+      :error -> {:halt, at}
     end
   end
 
-  defp elements_extent(_desc, _elems, 0, _ids, at), do: {:ok, at}
-
-  defp elements_extent(desc, elems, n, ids, at) do
-    case leb(elems) do
-      :error ->
-        {:ok, at}
-
-      {len, rest} when byte_size(rest) >= len ->
-        body = binary_part(rest, 0, len)
-        after_body = binary_part(rest, len, byte_size(rest) - len)
-
-        case extent(desc, body, ids, at) do
-          :error -> :error
-          {:ok, at2} -> elements_extent(desc, after_body, n - 1, ids, at2)
-        end
-
-      _ ->
-        {:ok, at}
-    end
-  end
-
-  # measure_nodes reads the node table out of the root body and sums the storage
-  # each record commands (docs/SPEC-TABLES.md §3.1): a *string blob is its u32
-  # length header, its bytes and its terminator, rounded; a type id this build
-  # cannot name commands none. A node table that cannot be read whole commands
-  # nothing, exactly as a reader that cannot name it steps over it.
-  defp measure_nodes(bin, ids) do
+  defp framed_body(bin) do
     case leb(bin) do
-      :error ->
-        {:ok, 0, 0}
-
-      {0, _rest} ->
-        {:ok, 0, 0}
-
-      {ref, rest} ->
-        case resolve(ids, ref) do
-          :error ->
-            {:ok, 0, 0}
-
-          id ->
-            case rest do
-              <<kind, rest2::binary>> ->
-                case slice(rest2, kind) do
-                  {:ok, payload, rest3} ->
-                    if id == @node_id and kind == 12 do
-                      case measure_node_table(payload, ids) do
-                        {:ok, count, blobs} -> {:ok, count, blobs}
-                        :error -> {:ok, 0, 0}
-                      end
-                    else
-                      measure_nodes(rest3, ids)
-                    end
-
-                  :error ->
-                    {:ok, 0, 0}
-                end
-
-              _ ->
-                {:ok, 0, 0}
-            end
-        end
-    end
-  end
-
-  defp measure_node_table(bin, ids) do
-    case leb(bin) do
-      {l, rest} when byte_size(rest) >= l ->
-        content = binary_part(rest, 0, l)
-
-        case leb(content) do
-          {n, cr} -> measure_records(cr, n, ids, 0, 0)
-          :error -> :error
-        end
+      {n, rest} when byte_size(rest) >= n ->
+        {binary_part(rest, 0, n), binary_part(rest, n, byte_size(rest) - n)}
 
       _ ->
         :error
     end
   end
 
-  defp measure_records(_rest, 0, _ids, count, blobs), do: {:ok, count, blobs}
+  defp scan_field(%{t: t}, _body, _ids, at) when t in [:pointer, :blob], do: at
 
-  defp measure_records(rest, n, ids, count, blobs) do
-    with {tref, r1} <- leb(rest),
-         {len, r2} <- leb(r1),
-         true <- byte_size(r2) >= len do
-      blobs =
-        case resolve(ids, tref) do
-          @string_id -> blobs + region_round(8 + len + 1)
-          _ -> blobs
+  defp scan_field(%{t: t} = f, body, ids, at) when t in [:map, :list, :keyed] do
+    expected = if t == :map, do: 13, else: f.elem_kind
+
+    with <<kind, rest::binary>> when byte_size(rest) >= 1 <- body,
+         true <- kind == expected or kind_widens?(kind, expected),
+         {count, elems} <- leb(rest) do
+      case element_extent(f) do
+        nil ->
+          scan_elements(f, kind, elems, count, ids, at)
+
+        {size, align} ->
+          if count > 0x7FFFFFFF or count > div(byte_size(elems), count_floor(kind)) do
+            :refused
+          else
+            scan_elements(f, kind, elems, count, ids, align_to(at, align) + count * size)
+          end
+      end
+    else
+      _ -> at
+    end
+  end
+
+  defp scan_field(%{t: :table} = f, body, ids, at),
+    do: scan_record(Map.fetch!(@tables, f.elem), body, ids, at)
+
+  defp scan_field(_f, _body, _ids, at), do: at
+
+  # the storage one element of a map or an unbounded list takes in its
+  # holder's node extent; a fixed or counted array and an enum-keyed array
+  # sit inside the record and command none
+  defp element_extent(%{t: :map} = f) do
+    entry = Map.fetch!(@tables, f.elem)
+    {entry.size, entry.align}
+  end
+
+  defp element_extent(%{t: :list} = f) when not is_map_key(f, :array_bound),
+    do: {f.elem_size, f.elem_align}
+
+  defp element_extent(_f), do: nil
+
+  # the fewest bytes one element of a kind can take, so a count the bytes behind
+  # it cannot frame is refused before any storage is reserved for it
+  defp count_floor(13), do: 2
+  defp count_floor(17), do: 1
+  defp count_floor(36), do: 8
+  defp count_floor(kind), do: max(kind_width(kind), 1)
+
+  # the elements of one map, list or array that are bodies of their own:
+  # tables, map entries and union arms (an enum-keyed slot leads with its key)
+  defp scan_elements(_f, kind, _elems, _n, _ids, at) when kind not in [13, 15], do: at
+  defp scan_elements(_f, _kind, <<>>, _n, _ids, at), do: at
+  defp scan_elements(_f, _kind, _elems, 0, _ids, at), do: at
+
+  defp scan_elements(f, kind, elems, n, ids, at) do
+    case scan_key(f, elems) do
+      {_key, rest} -> scan_element(f, kind, rest, n, ids, at)
+      :error -> at
+    end
+  end
+
+  defp scan_key(%{t: :keyed}, elems), do: leb(elems)
+  defp scan_key(_f, elems), do: {nil, elems}
+
+  defp scan_element(f, 15, elems, n, ids, at) do
+    case scan_union(element_name(f), elems, ids, at) do
+      :refused -> :refused
+      {at2, rest} -> scan_elements(f, 15, rest, n - 1, ids, at2)
+    end
+  end
+
+  defp scan_element(f, kind, elems, n, ids, at) do
+    case framed_body(elems) do
+      :error ->
+        at
+
+      {payload, rest} ->
+        case scan_record(Map.fetch!(@tables, element_name(f)), payload, ids, at) do
+          :refused -> :refused
+          at2 -> scan_elements(f, kind, rest, n - 1, ids, at2)
         end
+    end
+  end
 
-      measure_records(binary_part(r2, len, byte_size(r2) - len), n - 1, ids, count + 1, blobs)
+  defp element_name(%{t: :keyed, item: item}), do: item.elem
+  defp element_name(f), do: f.elem
+
+  # scan_union reads one arm header and descends into the arm's payload the
+  # way a field of the arm's type is descended into: a by-value table, a list,
+  # a map, a nested union. It answers the extent and the bytes after the arm;
+  # damage answers no bytes after it, which ends the enclosing walk.
+  defp scan_union(union, bin, ids, at) do
+    with {ref, rest} <- leb(bin) do
+      if ref == 0 do
+        {at, rest}
+      else
+        with id when id != :error <- resolve(ids, ref),
+             <<_kind, rest2::binary>> <- rest,
+             {payload, rest3} <- framed_body(rest2) do
+          case scan_arm(union, id, payload, ids, at) do
+            :refused -> :refused
+            at2 -> {at2, rest3}
+          end
+        else
+          _ -> {at, <<>>}
+        end
+      end
+    else
+      _ -> {at, <<>>}
+    end
+  end
+
+  defp scan_arm(union, id, payload, ids, at) do
+    un = Map.fetch!(@unions, union)
+
+    case Map.fetch(un.by_id, id) do
+      :error ->
+        at
+
+      {:ok, name} ->
+        case Map.fetch!(un.by_name, name) do
+          %{t: :union} = a ->
+            case scan_union(a.elem, payload, ids, at) do
+              :refused -> :refused
+              {at2, _rest} -> at2
+            end
+
+          a ->
+            scan_field(a, payload, ids, at)
+        end
+    end
+  end
+
+  # node_records reads the node table out of the root body (docs/SPEC-TABLES.md
+  # §3.1) as {type id, body} pairs. The last node field in the body is the one
+  # read, as the engine reads it; a node field that cannot be read whole, or a
+  # record list that does not match its count, answers :partial, and the
+  # measure is then the root's own.
+  defp node_records(bin, ids), do: node_records(bin, ids, {:ok, []})
+
+  defp node_records(bin, ids, found) do
+    with {ref, rest} when ref != 0 <- leb(bin),
+         id when id != :error <- resolve(ids, ref),
+         <<kind, rest2::binary>> <- rest do
+      cond do
+        id == @node_id and kind != 12 ->
+          :partial
+
+        id == @node_id ->
+          case framed_body(rest2) do
+            {payload, rest3} ->
+              case scan_node_table(payload, ids) do
+                {:ok, records} -> node_records(rest3, ids, {:ok, records})
+                :error -> :partial
+              end
+
+            :error ->
+              :partial
+          end
+
+        true ->
+          case slice(rest2, kind) do
+            {:ok, _payload, rest3} -> node_records(rest3, ids, found)
+            :error -> found
+          end
+      end
+    else
+      _ -> found
+    end
+  end
+
+  defp scan_node_table(payload, ids) do
+    case leb(payload) do
+      {declared, rest} -> scan_node_records(rest, ids, declared, [])
+      :error -> :error
+    end
+  end
+
+  defp scan_node_records(<<>>, _ids, declared, acc) do
+    if declared == length(acc), do: {:ok, Enum.reverse(acc)}, else: :error
+  end
+
+  defp scan_node_records(bin, ids, declared, acc) do
+    with {tref, r1} when tref != 0 <- leb(bin),
+         id when id != :error <- resolve(ids, tref),
+         {len, r2} when byte_size(r2) >= len <- leb(r1) do
+      scan_node_records(
+        binary_part(r2, len, byte_size(r2) - len),
+        ids,
+        declared,
+        [{id, binary_part(r2, 0, len)} | acc]
+      )
     else
       _ -> :error
     end
@@ -5927,12 +5964,21 @@ func closureStruct(u *ir.Unit, name string) *ir.Struct {
 func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
-	_, str := ir.PointerReachableBlobs(st)
+	bytesBlob, str := ir.PointerReachableBlobs(st)
+	// the node records a load of this root can place (docs/SPEC-TABLES.md §3.1,
+	// §6.5): every table a pointer below it names, by wire type id, so the
+	// region measure sizes exactly the records this root reads
+	var nodes strings.Builder
+	nodes.WriteString("%{")
+	for _, ref := range ir.PointerReachable(st) {
+		fmt.Fprintf(&nodes, "0x%016X => %q, ", ir.TableWireId(ref.WireName()), ref.Name)
+	}
+	nodes.WriteString("}")
 	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
 	// root carries the node-table id as transport. A fixed root cannot name
 	// that id, so a body that brings one counts it unknown, once (§4).
-	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, has_extent: %v, string_blob: %v, variable: %v, doc: %s, tags: %s, fields: [\n",
-		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], elixirQuote(st.Doc), elixirTags(st.Tags))
+	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, has_extent: %v, string_blob: %v, bytes_blob: %v, nodes: %s, variable: %v, doc: %s, tags: %s, fields: [\n",
+		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookHasExtent(u, st), str, bytesBlob, nodes.String(), ir.VariableTables(u)[st.Name], elixirQuote(st.Doc), elixirTags(st.Tags))
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, st.DeclaredName(), f, i, ml.FieldByName(f.Name)))
 	}

@@ -10,11 +10,8 @@
 // codec, the reflection descriptors and the text form of docs/SPEC-TABLES.md
 // §3, §4, §8 and §16 in their id-table form — pointers to tables and the flat
 // node table, blobs (*bytes, *string), unbounded arrays of scalar, string and
-// enum elements and arrays of pointers, the remaining scalars, and nested
-// tables by value. A unit that is only a map or a union is refused by name
-// (§11). A unit that also carries unbounded arrays still generates: the roots
-// that reach a map, a union, or an enum-keyed array are uncarried and answer
-// an error, and the driver writes <case>.absent rather than a wrong byte.
+// enum elements and arrays of pointers, maps, union arms, enum-keyed arrays,
+// the remaining scalars, and nested tables by value.
 package elixirtable
 
 import (
