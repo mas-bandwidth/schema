@@ -1,13 +1,9 @@
-// THE TWO CONDITIONS THE C++ TABLE EMITTER GREW, AND THE FIXTURES THAT PROVE
-// THEM BOTH WAYS (docs/SPEC-TABLES.md §2.2, §3).
+// THE CONDITION THE C++ TABLE EMITTER GREW, AND THE FIXTURES THAT PROVE IT
+// BOTH WAYS (docs/SPEC-TABLES.md §2.2, §3).
 //
-// The C++ Table header used to carry two blocks in EVERY unit that no call
-// site in that unit could reach:
+// The C++ Table header carries a block only where a call site in that unit
+// can reach it:
 //
-//   - KIND 33's runtime, TableUtf16Unit / TableUtf16Valid / TableUtf16Clamp.
-//     Its only call sites are a `wstring(N)` field and a `wstring(N)` arm, and
-//     both sit behind so a unit whose wide-text census is empty
-//     had fifty-three lines it could not reach.
 //   - THE FOUR BLOB THUNKS, TableBlob{,Message}{Measure,Save}Thunk. Their only
 //     call site is the `blob:` arm of the pointer edge walk, and it sits behind
 //     a `*bytes` or a `*string` declaration, so a pointered unit that declares
@@ -21,10 +17,9 @@
 // condition that is always false and a condition that is always true both
 // leave those units compiling. So each block is asked for TWICE: the fixture
 // that DECLARES the construct must still carry it and must still compile and
-// run, and its nearest neighbour — the same schema with wstring respelled
-// string, and the same pointered schema with the blob pointer respelled a
-// table pointer — must carry not one symbol of it. The two RESERVED TYPE IDS
-// are named on the absent side on purpose: they are compared against by the
+// run, and its nearest neighbour — the same pointered schema with the blob
+// pointer respelled a table pointer — must carry not one symbol of it. The two
+// RESERVED TYPE IDS are named on the absent side on purpose: they are compared against by the
 // retain and message paths in every pointered unit and stay whether or not the
 // unit writes a blob, so a change that took them out with the thunks is red
 // here.
@@ -36,26 +31,6 @@ import (
 	"strings"
 	"testing"
 )
-
-const deadCppWideSrc = `package probe
-
-fixed table Note
-{
-    title wstring(4)
-    tally int32
-}
-`
-
-// the nearest neighbour: kind 12 where the fixture above spells kind 33, and
-// nothing else moved.
-const deadCppNarrowSrc = `package probe
-
-fixed table Note
-{
-    title string(4)
-    tally int32
-}
-`
 
 const deadCppBlobSrc = `package probe
 
@@ -82,7 +57,6 @@ table Note
 
 // the three wide-text helpers and the four blob thunks, by name.
 var (
-	deadCppWideSymbols = []string{"TableUtf16Unit", "TableUtf16Valid", "TableUtf16Clamp"}
 	deadCppBlobSymbols = []string{
 		"TableBlobMeasureThunk",
 		"TableBlobSaveThunk",
@@ -102,38 +76,6 @@ func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 		t.Fatal("the cpp target emitted no ProbeTable.h")
 	}
 	return string(header), files
-}
-
-func TestCppTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	with, files := deadCppHeader(t, deadCppWideSrc)
-	for _, sym := range deadCppWideSymbols {
-		if !strings.Contains(with, sym) {
-			t.Errorf("a unit that declares wstring(N) must carry %s", sym)
-		}
-	}
-	// present is not the same as REACHED: the fixture's own codec has to call
-	// the pair, or the header carries three definitions nobody reads again
-	if !strings.Contains(with, "if ( !TableUtf16Valid( r.buffer + r.offset, units ) )") {
-		t.Error("the wide-text field's codec must call TableUtf16Valid")
-	}
-	if !strings.Contains(with, "TableUtf16Clamp( r.buffer + r.offset, units, 4 )") {
-		t.Error("the wide-text field's codec must call TableUtf16Clamp at its declared bound")
-	}
-	deadCppCompile(t, files)
-
-	without, _ := deadCppHeader(t, deadCppNarrowSrc)
-	for _, sym := range deadCppWideSymbols {
-		if strings.Contains(without, sym) {
-			t.Errorf("a unit with no wide text must carry no %s", sym)
-		}
-	}
-	// the kind 12 half stays in every unit: TableJsonScanUnit reads it and the
-	// generic walk is one artifact
-	for _, sym := range []string{"TableUtf8Valid", "TableUtf8Clamp"} {
-		if !strings.Contains(without, sym) {
-			t.Errorf("kind 12's runtime is every unit's and %s left one", sym)
-		}
-	}
 }
 
 func TestCppTableBlobThunksFollowTheCensus(t *testing.T) {

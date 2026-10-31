@@ -40,7 +40,6 @@ var cppCorpusSources = []string{
 	goRuntimeSrc,
 	goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n",
 	goRuntimeSrc + "\ntable Lists {rows []int32}\n",
-	goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
 	goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
 }
 

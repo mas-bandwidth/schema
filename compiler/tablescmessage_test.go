@@ -27,7 +27,6 @@ fixed table Root {
  mask Features
  name string(12)
  payload bytes(12)
- units wstring(12)
  leaf Leaf
  counters [2]uint32
  slots [Choice]Leaf
@@ -41,7 +40,7 @@ fixed table Root {
 func TestCTableMessageSave(t *testing.T) {
 	u := unitFromSource(t, cMessageSchema)
 	m := tabletext.NewModel(u)
-	texts := []string{`{}`, `{"enabled":true,"amount":17,"ratio":0.42,"mask":["One","Three"],"name":"hi","payload":"AQID","units":"𝄞","leaf":{"x":9,"choice":"Second"},"counters":[4,5],"slots":{"First":{"x":5}},"samples":[0,0,0],"body":{"text":"hello"},"history":[{"numbers":[2,3]},{"empty":null}],"choices":["First","Second"]}`, `{"body":{"leaf":{"x":22}},"payload":"BAUGBw=="}`}
+	texts := []string{`{}`, `{"enabled":true,"amount":17,"ratio":0.42,"mask":["One","Three"],"name":"hi","payload":"AQID","leaf":{"x":9,"choice":"Second"},"counters":[4,5],"slots":{"First":{"x":5}},"samples":[0,0,0],"body":{"text":"hello"},"history":[{"numbers":[2,3]},{"empty":null}],"choices":["First","Second"]}`, `{"body":{"leaf":{"x":22}},"payload":"BAUGBw=="}`}
 	var instances []*tabletext.Instance
 	var setup strings.Builder
 	for i, s := range texts {

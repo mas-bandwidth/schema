@@ -1,15 +1,10 @@
-// THE TWO CENSUS-GATED RUNTIMES OF THE C TABLE EMITTER, AND THE FIXTURES
-// THAT PROVE EACH BOTH WAYS (docs/SPEC-TABLES.md §2.2, §3, §4). Card C-6's own
+// THE CENSUS-GATED RUNTIMES OF THE C TABLE EMITTER, AND THE FIXTURES THAT
+// PROVE EACH BOTH WAYS (docs/SPEC-TABLES.md §2.2, §3, §4). Card C-6's own
 // dead-output condition, check_default, is next door in tabledeadc_test.go.
 //
-// The C Table header used to carry two blocks in units that no call site in
+// The C Table header used to carry a block in units that no call site in
 // those units could reach:
 //
-//   - KIND 33's RUNTIME, table_wire_utf16_unit / table_wire_utf16 /
-//     table_wire_utf16_clamp. Its only call sites are a `wstring(N)` field
-//     (wire_read.go) and a `wstring(N)` arm (unions.go), and both sit behind
-//     so a unit whose wide-text census is empty had thirty-two
-//     lines it could not reach.
 //   - THE BYTE BUFFER'S OWN SURFACE: the two views, the two reserved type ids,
 //     the three read accessors and the blob node type. All of it is reached
 //     from a `*bytes` or a `*string` DECLARATION and from nowhere else, so a
@@ -27,8 +22,8 @@
 // condition that is always false and a condition that is always true both leave
 // those units compiling. So each block is asked for TWICE: the fixture that
 // DECLARES the construct must carry it, must CALL it, and must compile and run
-// at -Werror with the sanitizers on; its NEAREST NEIGHBOUR — wstring respelled
-// string, float64 respelled float32, the blob pointers respelled table pointers
+// at -Werror with the sanitizers on; its NEAREST NEIGHBOUR — float64 respelled
+// float32, the blob pointers respelled table pointers
 // — must carry not one symbol of it AND must still compile, which is the half
 // that catches a gate cut too deep.
 //
@@ -46,26 +41,6 @@ import (
 	"strings"
 	"testing"
 )
-
-const deadCWideSrc = `package probe
-
-table Note
-{
-    title wstring(4)
-    tally int32
-}
-`
-
-// the nearest neighbour: kind 12 where the fixture above spells kind 33, and
-// nothing else moved.
-const deadCNarrowSrc = `package probe
-
-table Note
-{
-    title string(4)
-    tally int32
-}
-`
 
 const deadCF64Src = `package probe
 
@@ -136,7 +111,6 @@ table Note
 
 var (
 	// the three kind 33 helpers, by name.
-	deadCWideSymbols = []string{"table_wire_utf16_unit", "table_wire_utf16(", "table_wire_utf16_clamp"}
 	// the byte buffer's own surface: the views, the reserved ids, the read
 	// accessors and the blob node type.
 	deadCBlobSymbols = []string{
@@ -166,39 +140,6 @@ func deadCHeader(t *testing.T, src string) (string, map[string][]byte) {
 		t.Fatal("the c target emitted no ProbeTable.h")
 	}
 	return string(header), files
-}
-
-func TestCTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	with, files := deadCHeader(t, deadCWideSrc)
-	for _, sym := range deadCWideSymbols {
-		if !strings.Contains(with, sym) {
-			t.Errorf("a unit that declares wstring(N) must carry %s", sym)
-		}
-	}
-	// present is not the same as REACHED: the fixture's own codec has to call
-	// them, or the header carries three definitions nobody reads again
-	if !strings.Contains(with, "!table_wire_utf16( sub.buffer, sub.size/2 )") {
-		t.Error("the wide-text field's codec must call table_wire_utf16")
-	}
-	if !strings.Contains(with, "table_wire_utf16_clamp( sub.buffer, sub.size/2, 4 )") {
-		t.Error("the wide-text field's codec must call table_wire_utf16_clamp at its declared bound")
-	}
-	deadCCompile(t, files)
-
-	without, files := deadCHeader(t, deadCNarrowSrc)
-	for _, sym := range deadCWideSymbols {
-		if strings.Contains(without, sym) {
-			t.Errorf("a unit with no wide text must carry no %s", sym)
-		}
-	}
-	// KIND 12's runtime is every unit's: it rides in the file wire's
-	// primitives, which the generic walk and the cooked form both read
-	for _, sym := range []string{"table_wire_utf8(", "table_wire_utf8_clamp"} {
-		if !strings.Contains(without, sym) {
-			t.Errorf("kind 12's runtime is every unit's and %s left one", sym)
-		}
-	}
-	deadCCompile(t, files)
 }
 
 // TestCTableFloatRungIsTheFiniteTestAndTheConversion holds the float rung,

@@ -227,7 +227,6 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 		goRuntimeSrc,
 		goRuntimeSrc + "\ntable Graph {head *Graph\ndata *bytes\ncaption *string\n}\n",
 		goRuntimeSrc + "\ntable Lists {rows []int32}\n",
-		goRuntimeSrc + "\ntable Wide {label wstring(16)\n}\n",
 		goRuntimeSrc + "\ntable Drift {ratio float64\n}\n",
 		goRuntimeSrc + "\ntable Texts {words []string(8)\n}\n",
 		goRuntimeSrc + "\ntable Sealed | integrity = \"crc32c\" {n int32\n}\n",

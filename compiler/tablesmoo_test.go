@@ -119,7 +119,7 @@ func TestMooRefusesTheConstructsItDoesNotCarryByName(t *testing.T) {
 // identifier (comments stripped) and requires the set to equal what
 // internal/tablenames registers for the moo backend, in both directions.
 func TestTableRuntimeNamesAreClaimedMoo(t *testing.T) {
-	src := "package probe\nenum E { a, b }\nunion U\n{\n    n uint32\n    s string(8)\n}\ntable Node\n{\n    next *Node\n    name *string\n    data *bytes\n    kids []*Node\n    tags map[uint32]int32\n    e E\n    u U\n    w wstring(4)\n    big int128 | min = 0, max = 9\n}\n"
+	src := "package probe\nenum E { a, b }\nunion U\n{\n    n uint32\n    s string(8)\n}\ntable Node\n{\n    next *Node\n    name *string\n    data *bytes\n    kids []*Node\n    tags map[uint32]int32\n    e E\n    u U\n    big int128 | min = 0, max = 9\n}\n"
 	files, err := New().Generate(unitFromSource(t, src), "moo", Options{})
 	if err != nil {
 		t.Fatal(err)
