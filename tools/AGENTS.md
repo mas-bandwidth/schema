@@ -9,6 +9,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `hostilecorpus/` | shared hostile-input corpus generator | `make schema-shared-hostile-corpus` | `make schema-shared-hostile-corpus-generate` |
 | `luaufuzzhost/` | Luau nightly fuzz host (C++) | `make luau-nightly-fuzz-replay` | `make luau-nightly-fuzz` |
 | `matrix/` | language matrix page | `make matrix-check` | `make matrix` |
+| `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
 | `releasediff/` | previous-release differential (#463) | `make release-differential-negative-control` | `make release-differential` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |

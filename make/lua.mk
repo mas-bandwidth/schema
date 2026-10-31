@@ -364,7 +364,7 @@ tables-lua-release-negative-control: toolchain-lua build/conformance-harness bui
 .PHONY: conformance-negative-control-lua-absent
 conformance-negative-control-lua-absent: toolchain-lua build/conformance-harness build/conformance-lua
 	@rm -rf build/lua-absent-control && mkdir -p build/lua-absent-control
-	@sed 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason .. "\\n")$$|  do end|' test/conformance/lua/main.lua > build/lua-absent-control/main.lua
+	@sed 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason)$$|  do end|' test/conformance/lua/main.lua > build/lua-absent-control/main.lua
 	@if cmp -s test/conformance/lua/main.lua build/lua-absent-control/main.lua; then \
 		echo "NEGATIVE CONTROL: the absent sabotage patched nothing in test/conformance/lua/main.lua"; exit 1; fi
 	@printf '#!/bin/sh\nexec env LUA=%s %s %s/build/lua-absent-control/main.lua "$$@"\n' '$(LUA)' '$(LUA)' '$(CURDIR)' > build/lua-absent-control/driver

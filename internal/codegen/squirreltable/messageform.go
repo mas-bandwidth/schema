@@ -34,18 +34,14 @@ func messageModule(m *Module) {
 	m.Printf("_M.AnnounceRead <- function(v, bytes, report) { return _rt_message.AnnounceRead(_M, v, bytes, report); };\n\n")
 }
 
+// messageTable emits a FIXED table's batch verbs. The message form is fixed
+// tables only (section 3.3): a variable table has no message verb at all.
 func messageTable(m *Module, st *ir.Struct) {
-	if !st.IsTable {
+	if !st.IsTable || !st.FixedDeclared {
 		return
 	}
 	m.Runtime("message")
 	m.Printf("// Message bodies use the announced vocabulary and one batch bitstream (section 3.3).\n")
-	if !st.FixedDeclared {
-		m.Printf("_M.%sMeasureMessages <- function(values, report) { return _rt_message.RefuseTable(%s, report); };\n", st.Name, squirrel.StringLit([]byte(st.Name)))
-		m.Printf("_M.%sSaveMessages <- function(values, out, report) { return _rt_message.RefuseTable(%s, report); };\n", st.Name, squirrel.StringLit([]byte(st.Name)))
-		m.Printf("_M.%sLoadMessages <- function(storage, v, bytes, report) { return _rt_message.RefuseTable(%s, report); };\n\n", st.Name, squirrel.StringLit([]byte(st.Name)))
-		return
-	}
 	m.Printf("_M.%sMeasureMessages <- function(values, report) { return _rt_message.MeasureMessages(_M, %s, values, report); };\n", st.Name, squirrel.StringLit([]byte(st.Name)))
 	m.Printf("_M.%sSaveMessages <- function(values, out, report) { return _rt_message.SaveMessages(_M, %s, values, out, report); };\n", st.Name, squirrel.StringLit([]byte(st.Name)))
 	m.Printf("_M.%sLoadMessages <- function(storage, v, bytes, report) { return _rt_message.LoadMessages(_M, %s, storage, v, bytes, report); };\n\n", st.Name, squirrel.StringLit([]byte(st.Name)))

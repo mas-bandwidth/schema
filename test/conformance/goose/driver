@@ -241,12 +241,12 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 		# a refused unit answers none of its cases
 		awk -v k="$key" -v s="$2" '
 			$1 == "connection" { unit_of[$2] = $3 }
+			s == "message" && $1 == "message" && unit_of[$3] == k && $6 == "-" { print $2 " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"; next }
 			(s == "message" && $1 == "message" && unit_of[$3] == k) ||
 			(s == "wire" && $1 == "instance" && $3 == k) ||
 			(s == "report" && $1 == "report" && $3 == k) ||
 			((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
-			(s == "json-hostile" && $1 == "json-hostile" && $3 == k) ||
-			((s == "retain" || s == "retain-save") && $1 == "retain-message" && $4 == k) { print $2 " absent" }' "$1" >>"$out"
+			(s == "json-hostile" && $1 == "json-hostile" && $3 == k) { print $2 " absent" }' "$1" >>"$out"
 		continue
 	fi
 	glue "$u"

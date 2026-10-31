@@ -354,7 +354,7 @@ func (v *ValueList) Child() string {
 //
 // THIS IS THE ONE PLACE THE SET IS DECIDED. The class is DECLARED: a table
 // is locked when it is spelled `fixed table` (ir.Struct.FixedDeclared, §2.2).
-// A plain `table` is the variable wire whatever its fields are, so it is
+// A variable table is the variable wire whatever its fields are, so it is
 // never in this list. A generated map entry is not a declaration anybody
 // wrote and is skipped even if its body would be a fixed record.
 func FixedTables(u *ir.Unit) []string {

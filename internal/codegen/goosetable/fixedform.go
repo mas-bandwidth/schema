@@ -68,6 +68,7 @@ func fixedGooseBytes(data []byte) string {
 // *goose.Gen satisfies it (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
 type Writer interface {
 	Pf(format string, args ...any)
+	Declare(name string)
 }
 
 // EmitFixedForm is this card's constants for one fixed root: the constant
@@ -82,6 +83,9 @@ func EmitFixedForm(w Writer, st *ir.Struct) error {
 	w.Pf("let %sFixedHash: u64 = 0x%016x;\n", st.Name, hash)
 	w.Pf("let %sFixedLayout: const u8[:] = \"%s\";\n", st.Name, fixedGooseBytes(layout))
 	w.Pf("let %sFixedLayoutLength: i64 = %d;\n", st.Name, len(layout))
+	for _, suffix := range []string{"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutLength"} {
+		w.Declare(st.Name + suffix)
+	}
 	return nil
 }
 

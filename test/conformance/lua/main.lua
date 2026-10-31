@@ -92,7 +92,7 @@ end
 -- A LEG THAT CANNOT ANSWER ONE CASE SAYS SO BESIDE WHERE THE ANSWER WOULD GO
 -- (test/conformance/README.md, "Exit codes"): `<case>.absent`, with the reason.
 local function absent(outdir, name, reason)
-  writeBytes(outdir .. "/" .. name .. ".absent", reason .. "\n")
+  writeBytes(outdir .. "/" .. name .. ".absent", reason)
 end
 
 local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
@@ -104,7 +104,7 @@ local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
 -- the runtime modules a surface may reach, required when the unit loads so no
 -- later require runs against another unit's search path
 local RUNTIME = {
-  "load", "save", "json", "retain", "retainmessage", "message", "cook",
+  "load", "save", "json", "retain", "message", "cook",
   "cookwrite", "block",
 }
 
@@ -332,10 +332,13 @@ local function surfaceMessage(all, outdir)
     -- message <name> <connection> <root> <file-form wire> <message-form wire>
     local conn = connectionNamed(all, f[3])
     local u = unit(conn[3])
-    if not u then
+    if f[6] == "-" then
+      -- a named refusal row: the root is a variable table (§3.3)
+      absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+    elseif not u then
       absent(outdir, f[2], NOT_GENERATED)
-    elseif u.T.LoadMessages == nil then
-      absent(outdir, f[2], "plain table: docs/SPEC-TABLES.md §3.3")
+    elseif u.T.MessageRoots == nil or not u.T.MessageRoots[f[4]] then
+      absent(outdir, f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
     else
       local vocab = vocabulary(u, conn, f[2])
       local r = newReport()
@@ -366,13 +369,10 @@ end
 -- `retain-save` writes the bytes the pair saved. A row's capacity is a RULE:
 -- `short` is ONE BYTE SHORT OF THE LAST RECORD, so the driver loads once at a
 -- roomy capacity, reads what its own store used, and loads again one byte
--- under that. A retain-message row loads a batch, one store a body, and its
--- saves are the bodies' files back to back.
-local function retainRow(all, f)
-  local message = f[1] == "retain-message"
-  local at = message and 1 or 0
-  local key, root, wirePath = f[3 + at], f[4 + at], f[5 + at]
-  local short, idsField = f[6 + at] == "short", f[7 + at]
+-- under that.
+local function retainRow(f)
+  local key, root, wirePath = f[3], f[4], f[5]
+  local short, idsField = f[6] == "short", f[7]
   local u = unit(key)
   if not u then return nil, NOT_GENERATED end
   local ids = ROOMY // 8
@@ -380,33 +380,15 @@ local function retainRow(all, f)
   local wire = mustRead(wirePath)
   local report = newReport()
   local roots, stores = {}, {}
-  if message then
-    local conn = connectionNamed(all, f[3])
-    -- A BATCH ANOTHER BUILD WROTE resolves against that build's announced
-    -- entries (docs/SPEC-TABLES.md §3.3: the build version keys the
-    -- vocabulary and never gates the connection), and the Lua announcement
-    -- read counts the announced entries but resolves the receiver's own
-    -- vocabulary, so a row whose connection is another unit's is the row of
-    -- work that is left, named, never a pass.
-    if conn[3] ~= key then
-      return nil, "a batch from another build: the Lua announcement read resolves the receiver's own vocabulary, not the sender's announced entries: docs/SPEC-TABLES.md §3.3"
+  stores[1] = retainStore(ROOMY, ids)
+  if short then
+    if u.retain.LoadRetain(u.T, root, wire, stores[1], newReport()) == nil then
+      fail(f[2] .. ": capacity probe refused")
     end
-    local vocab = vocabulary(u, conn, f[2])
-    if #wire < 2 then fail(f[2] .. ": the batch is shorter than its header") end
-    for i = 1, wire:byte(2) + 1 do stores[i] = retainStore(ROOMY, ids) end
-    roots = u.retainmessage.LoadRetainMessages(u.T, root, vocab, wire, stores, report)
-    if roots == nil or report.malformed then fail(f[2] .. ": retained batch refused") end
-  else
-    stores[1] = retainStore(ROOMY, ids)
-    if short then
-      if u.retain.LoadRetain(u.T, root, wire, stores[1], newReport()) == nil then
-        fail(f[2] .. ": capacity probe refused")
-      end
-      stores[1] = retainStore(math.max(0, stores[1].used - 1), ids)
-    end
-    roots[1] = u.retain.LoadRetain(u.T, root, wire, stores[1], report)
-    if roots[1] == nil or report.malformed then fail(f[2] .. ": retained load refused") end
+    stores[1] = retainStore(math.max(0, stores[1].used - 1), ids)
   end
+  roots[1] = u.retain.LoadRetain(u.T, root, wire, stores[1], report)
+  if roots[1] == nil or report.malformed then fail(f[2] .. ": retained load refused") end
   local answer = { retained = report.retained, lost = report.retainLost, unknown = report.unknown }
   local save = newReport()
   local parts = {}
@@ -430,8 +412,8 @@ end
 
 local function surfaceRetain(all, outdir, saves)
   for _, f in ipairs(all) do
-    if f[1] == "retain" or f[1] == "retain-message" then
-      local answer, why = retainRow(all, f)
+    if f[1] == "retain" then
+      local answer, why = retainRow(f)
       if answer == nil then
         absent(outdir, f[2], why)
       elseif saves then
