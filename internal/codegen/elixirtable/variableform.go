@@ -1887,22 +1887,32 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # bytes(N) rides as an array of u8 (kind 14, element kind 6): L then the count
-  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. A count past the
-  # declared size clamps.
+  # and the bytes (docs/SPEC-TABLES.md §3, §4). A body too short for its element kind and count is INERT (the field reads
+  # its declared default, no counter raised), a count past the bound clamps,
+  # and a count the body cannot cover keeps the prefix it covers and counts one
+  # malformed.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
+      {_len, arr} when byte_size(arr) < 2 ->
+        {:cont, Map.get(f, :default, <<>>), report}
+
       {_len, arr} ->
         case arr do
           <<6, count_rest::binary>> ->
             case leb(count_rest) do
-              {n, bytes} when byte_size(bytes) >= n ->
-                raw = binary_part(bytes, 0, n)
+              {n, bytes} ->
                 keep = min(n, f.size)
                 clamped = if n > f.size, do: 1, else: 0
-                {:cont, binary_part(raw, 0, keep), %{report | clamped: report.clamped + clamped}}
+                report = %{report | clamped: report.clamped + clamped}
 
-              _ ->
-                {:cont, <<>>, %{report | malformed: true}}
+                if byte_size(bytes) >= keep do
+                  {:cont, binary_part(bytes, 0, keep), report}
+                else
+                  {:cont, bytes, %{report | malformed: true}}
+                end
+
+              :error ->
+                {:cont, Map.get(f, :default, <<>>), %{report | malformed: true}}
             end
 
           _ ->
@@ -1981,6 +1991,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
+      {_len, arr} when byte_size(arr) < 2 ->
+        # a body too short for its element kind and count is INERT (§4): the
+        # field reads its declared default and no counter is raised
+        {:cont, Map.get(f, :default, []), report}
+
       {_len, arr} ->
         case arr do
           <<elem_kind, count_rest::binary>> ->
