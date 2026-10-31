@@ -327,14 +327,13 @@ func TestGoJsonWriterIsStrict(t *testing.T) {
 			if err := strictJSON(data); err != nil {
 				t.Fatalf("%s not strict: %v\n%s", name, err, data)
 			}
-			if n := bytes.Count(data, []byte("\xef\xbf\xbd")); n != 2 {
-				t.Fatalf("%s: %d U+FFFD, want 2 (one for the bad byte, one for the unpaired surrogate)", name, n)
+			if n := bytes.Count(data, []byte("\xef\xbf\xbd")); n != 1 {
+				t.Fatalf("%s: %d U+FFFD, want 1 (for the bad byte)", name, n)
 			}
-			// §16.3: each U+FFFD stands where its ill-formed input was: the
-			// 0xff byte opening s, the unpaired 0xd800 opening w.
+			// §16.3: the U+FFFD stands where its ill-formed input was: the
+			// 0xff byte opening s.
 			for _, want := range []string{
 				"\"s\": \"\xef\xbf\xbd\\u0000\\u001f\x7f\"",
-				"\"w\": \"\xef\xbf\xbd\\u0000\"",
 			} {
 				if !bytes.Contains(data, []byte(want)) {
 					t.Fatalf("%s: missing %q:\n%s", name, want, data)

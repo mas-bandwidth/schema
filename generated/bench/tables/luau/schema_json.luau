@@ -81,17 +81,6 @@ local function utf8_seq(s: string, i: number): number
   return want
 end
 
-local function utf8_decode(s: string): number
-  local c = s:byte(1)
-  if c < 0x80 then return c end
-  local code, at
-  if c < 0xe0 then code, at = band(c, 0x1f), 2
-  elseif c < 0xf0 then code, at = band(c, 0x0f), 3
-  else code, at = band(c, 0x07), 4 end
-  for i = 2, at do code = bor(lshift(code, 6), band(s:byte(i), 0x3f)) end
-  return code
-end
-
 ----------------------------------------------------------------------------
 -- the reader (§16.2)
 ----------------------------------------------------------------------------
