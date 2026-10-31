@@ -86,3 +86,6 @@ tables-squirrel-arms: toolchain-squirrel
 	sh test/slowgate/proof $@ 'TestSquirrelArmIsAFieldLine TestSquirrelTableLoadMatchesTheReports TestSquirrelWideTextMatchesTheWire' ./internal/codegen/squirreltable -run '^TestSquirrel(ArmIsAFieldLine|TableLoadMatchesTheReports|WideTextMatchesTheWire)$$' -count=1
 tables-squirrel-arms-negative-control:
 	sh test/slowgate/proof $@ 'TestSquirrelArmFieldLineNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelArmFieldLineNegativeControl$$' -count=1
+
+# The registered M18 proof runs through the normal language test entry.
+test-squirrel: tables-squirrel-arms tables-squirrel-arms-negative-control
