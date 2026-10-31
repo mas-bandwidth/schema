@@ -108,7 +108,8 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # pointer arm and arrays of pointers (§2.1, §2.6); tblm1/tblm2 and tbla1/tbla2
 # the union-arm evolution pairs (§4), tblk1/tblk2 the enum-kind pair,
 # tblscalars2 the second scalars version and tblrt1/tblrt2/tblrt3 the retain
-# units (§6.6). The variable-class surfaces (wire,
+# units (§6.6); widelist (tables/widelist) a 128-bit list whose node aligns
+# sixteen (§2.8, the cook's node alignment rule). The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -1967,7 +1968,7 @@ define ELIXIR_COOK_MAP_CONTROL
 		grep -q "FAIL $$p" build/elixir-cook-map-nc-$(1)/log || \
 			{ cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) did not red $$p"; exit 1; }; \
 	done
-	@if [ -n "$(5)" ] && grep '^FAIL [a-z_-]*:' build/elixir-cook-map-nc-$(1)/log | grep -v -q 'FAIL $(5)'; then \
+	@if [ -n "$(5)" ] && grep -E '^ *FAIL [a-z_ -]+:' build/elixir-cook-map-nc-$(1)/log | grep -v -q -E 'FAIL $(5)(-be)?:'; then \
 		cat build/elixir-cook-map-nc-$(1)/log; echo "NEGATIVE CONTROL FAILED: $(4) red more than $(5)"; exit 1; \
 	fi
 	@echo "elixir cook map negative control: $(4) reds [$(3)]"

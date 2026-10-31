@@ -1186,6 +1186,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-cook-map",
+      "when": "pull-request",
+      "why": "the Elixir map and list cook's control (docs/PORTING.md M19): two Go overlays of the cook writer's emitter, one laying a map's entries descending (map_full and the writer-holds-the-sort test red) and one beginning the extent at the floor of eight in a node aligned to its record alone (widelist_wide red, and no other row). It rebuilds only the units under test through the overlay, so it is small: 17 s on mini-m5, 2026-10-31.",
+      "targets": [
+        "tables-elixir-cook-map-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-form-2",
       "when": "pull-request",
       "why": "the Elixir raw-output format gate's control alone. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). One half of what was the `elixir-form` group, cut on 2026-10-28 because that group ran 199 s median and 220 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 139 s of control time over 2 controls). Measured about 45 s of control time on run 40684770225 and 54 s on run 40684250024.",
