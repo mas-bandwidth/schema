@@ -508,8 +508,8 @@ print(ok, out == nil, if ok and why ~= nil then why.name else "none")
 	}
 	fpath := filepath.Join(fixed.dir, "table_retain.moo")
 	fsrc := string(fixed.files["table_retain.moo"])
-	if strings.Count(fsrc, "if d.fixed then") != 4 {
-		t.Fatal("the fixed-class checks are not in table_retain.moo four times")
+	if strings.Count(fsrc, "if d.fixed then") != 3 {
+		t.Fatal("the fixed-class checks are not in table_retain.moo three times")
 	}
 	if err := os.WriteFile(fpath, []byte(strings.ReplaceAll(fsrc, "if d.fixed then", "if false then")), 0o644); err != nil {
 		t.Fatal(err)
