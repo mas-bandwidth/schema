@@ -137,3 +137,30 @@ tables-goose-usage-negative-control:
 	done
 
 test-goose: tables-goose-usage
+
+# THE ACCESSOR AND DESCRIPTOR AGREEMENT (docs/PORTING.md J1, M11): every field
+# of every cooked record, block row and block projection read through the
+# generated typed accessor and through the descriptor, over a patterned
+# buffer, under the pinned compiler (accel_agree_test.go). Its control moves
+# every pointer accessor eight bytes along in the emitter (go test -overlay of
+# accel.go) and requires the gate red on a pointer field.
+GOOSE_AGREE_DIR := build/goose-agree-control
+.PHONY: tables-goose-accessor-descriptor-agreement tables-goose-accessor-negative-control
+tables-goose-accessor-descriptor-agreement:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
+tables-goose-accessor-negative-control:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@rm -rf $(GOOSE_AGREE_DIR) && mkdir -p $(GOOSE_AGREE_DIR)
+	@sed 's|-> i64 { return %s::cook_deref(b, %s); }\\n", decl(member), atParam, idxParam, rt, at)|-> i64 { return %s::cook_deref(b, %s + 8); }\\n", decl(member), atParam, idxParam, rt, at) // SABOTAGED: the pointer accessor moved|' \
+		internal/codegen/goosetable/accel.go > $(GOOSE_AGREE_DIR)/accel.go.txt
+	@grep -q SABOTAGED $(GOOSE_AGREE_DIR)/accel.go.txt || { echo "NEGATIVE CONTROL FAILED: the accessor sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/goosetable/accel.go":"%s/$(GOOSE_AGREE_DIR)/accel.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(GOOSE_AGREE_DIR)/overlay.json
+	@if go test -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
+			./internal/codegen/goosetable/ > $(GOOSE_AGREE_DIR)/log 2>&1; then \
+		cat $(GOOSE_AGREE_DIR)/log; echo "NEGATIVE CONTROL FAILED: a moved pointer accessor left the agreement green"; exit 1; fi
+	@grep -q 'DISAGREE ListNode.next' $(GOOSE_AGREE_DIR)/log || { \
+		cat $(GOOSE_AGREE_DIR)/log; echo "NEGATIVE CONTROL FAILED: the agreement went red, but not on the moved pointer ListNode.next"; exit 1; }
+	@echo "goose accessor negative control: $$(grep -c 'DISAGREE' $(GOOSE_AGREE_DIR)/log) disagreement(s), ListNode.next among them"
+
+test-goose: tables-goose-accessor-descriptor-agreement

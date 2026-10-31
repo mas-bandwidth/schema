@@ -1216,11 +1216,12 @@
     {
       "name": "goose-blockcook",
       "when": "pull-request",
-      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and three harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order), and the forgery fuzzer's two both-bounds extent controls (about 4 s together). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because three harness runs (about 55 s on a laptop) would push the goose group past the 120 s rule.",
+      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and three harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order), and the forgery fuzzer's two both-bounds extent controls (about 4 s together), and the accessor/descriptor agreement's control (a pointer accessor moved in accel.go under go test -overlay; two small goose runs). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because three harness runs (about 55 s on a laptop) would push the goose group past the 120 s rule.",
       "targets": [
         "tables-goose-accel-negative-control",
         "tables-goose-block-negative-control",
-        "tables-goose-fuzz-negative-control"
+        "tables-goose-fuzz-negative-control",
+        "tables-goose-accessor-negative-control"
       ]
     },
     {
@@ -1237,12 +1238,13 @@
     {
       "name": "goose-gates",
       "when": "pull-request",
-      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the strict gate's plant and its emitter sabotage, and the runtime home's file-order control. Each installs the pinned Goose compiler itself (make dist-goose) where it needs it; two rebuild the compiler under a go build -overlay. Go and nothing else. Measured at 3.2 s of control time together on the author's machine off a warm build (2026-10-28); its own group so the fixed-form control's corpus build in group goose stays apart from it.",
+      "why": "the Goose leg's gates over what it emits (make/goose-gates.mk): the strict gate's plant and its emitter sabotage, and the runtime home's file-order control, and the claimed-names control (Declare made to let every <T>CookOpen through, under go test -overlay; Go only). Each installs the pinned Goose compiler itself (make dist-goose) where it needs it; two rebuild the compiler under a go build -overlay. Go and nothing else. Measured at 3.2 s of control time together on the author's machine off a warm build (2026-10-28); its own group so the fixed-form control's corpus build in group goose stays apart from it.",
       "targets": [
         "tables-goose-runtime-home-negative-control",
         "tables-goose-strict-emitter-negative-control",
         "tables-goose-strict-negative-control",
-        "tables-goose-unit-home-negative-control"
+        "tables-goose-unit-home-negative-control",
+        "tables-goose-names-negative-control"
       ]
     },
     {

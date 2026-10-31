@@ -450,7 +450,7 @@ func (e *msgEmit) putKeyed(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 	e.p(ind+1, "%s += 1;", i)
 	e.p(ind, "}")
 	e.put(ind, pres, int64(ir.TableMessageBitsRequired(0, entry.Shape.Max)))
-	for k := int64(0); k < slots; k++ {
+	for k := range slots {
 		at := pl.at(fmt.Sprint(k)).val
 		rides := e.slotRides(ind, el, at, strings.Replace(at, "v.", "d.", 1))
 		e.p(ind, "if %s {", rides)

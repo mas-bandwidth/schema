@@ -12,6 +12,7 @@ package goosetable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -37,13 +38,11 @@ func evolutionProgram(t *testing.T, u *evolutionUnit, root string, dir string, c
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
