@@ -162,7 +162,7 @@ type TableReport struct {
 	// record did not carry: a record an older writer produced before the field
 	// became required. The refusal names the field in Reason.
 	MissingRequired int32
-	Malformed       bool // framing damage; decode stopped, partial result kept
+	Malformed       bool // damage: the whole load is refused, nothing of it is used
 	// BlobShared counts the extra slots that named a blob record another slot
 	// already named (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
 	// node, never a copy per slot, and the strict read refuses blob_shared.

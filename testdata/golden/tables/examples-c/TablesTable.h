@@ -5727,9 +5727,14 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_load_messages_tolerant(tabledem
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)tabledemo_weapon_config_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN weapon_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN weapon_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_weapon_config_load_messages( tabledemo_weapon_config_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
@@ -6727,9 +6732,14 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_messages_tolerant(tablede
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)tabledemo_loadout_config_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN loadout_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN loadout_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_loadout_config_load_messages( tabledemo_loadout_config_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
@@ -7893,9 +7903,14 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_messages_tolerant(tablede
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)tabledemo_profile_config_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN profile_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN profile_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_profile_config_load_messages( tabledemo_profile_config_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
@@ -8459,9 +8474,14 @@ static SCHEMA_UNUSED int tabledemo_root_config_load_messages_tolerant(tabledemo_
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)tabledemo_root_config_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN root_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN root_config_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_root_config_load_messages( tabledemo_root_config_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
@@ -8822,9 +8842,14 @@ static SCHEMA_UNUSED int tabledemo_attachment_load_messages_tolerant(tabledemo_a
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)tabledemo_attachment_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN attachment_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN attachment_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_attachment_load_messages( tabledemo_attachment_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
@@ -9092,9 +9117,14 @@ static SCHEMA_UNUSED int tabledemo_buff_load_messages_tolerant(tabledemo_buff_t 
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)tabledemo_buff_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN buff_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN buff_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_buff_load_messages( tabledemo_buff_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
@@ -9394,9 +9424,14 @@ static SCHEMA_UNUSED int tabledemo_debuff_load_messages_tolerant(tabledemo_debuf
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)tabledemo_debuff_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN debuff_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN debuff_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_debuff_load_messages( tabledemo_debuff_t * values, int64_t * count, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
