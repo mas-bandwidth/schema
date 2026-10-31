@@ -207,7 +207,9 @@ func t12R15(t *testing.T) {
 	t12Has(t, load, "census_unknown = lane.Unknown;", "R15 unknown is the compile census")
 	runtime := t12Norm(text)
 	t12Has(t, runtime, "else if ((uint)v > p.Size)", "R15 the count clamp is the writer's bound")
-	t12Has(t, runtime, "else if ((uint)v > cap)", "R15 the text clamp is the writer's span")
+	if n := strings.Count(runtime, "else if ((uint)v > p.Size)"); n < 2 {
+		t.Errorf("R15 the text clamp is the writer's span: the count and the text op clamp to p.Size at %d site(s), want both", n)
+	}
 	// The §4.6 bounds pass (emitFixedClamp) is not a forward-read clamp and stays;
 	// the clamps that REMAIN in the read are the writer's bounds above, never the
 	// reader's own. The behavioural half — each of the four retired forward-read

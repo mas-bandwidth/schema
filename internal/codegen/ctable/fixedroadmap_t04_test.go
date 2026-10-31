@@ -273,7 +273,7 @@ func cT04R15(t *testing.T) {
 	cT04Has(t, load, "census_unknown = lineage_fixed_lineage[pick].unknown;", "R15 unknown is the compile census")
 	runtime := string(tableFixedRuntime)
 	cT04Has(t, runtime, "else if ( v > (int32_t) p->size )", "R15 the count clamp is the writer's bound")
-	cT04Has(t, runtime, "else if ( (uint32_t) v > cap )", "R15 the text clamp is the writer's span")
+	cT04Has(t, runtime, "else if ( (uint32_t) v > p->size )", "R15 the text clamp is the writer's span")
 }
 
 // ---- c/E3 -------------------------------------------------------------------
@@ -447,7 +447,7 @@ func cT04R29(t *testing.T) {
 	cT04Has(t, runtime, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )", "R29 a layout root past the ceiling")
 	cT04Has(t, runtime, "if ( e.size > kTableFixedRecordMaxBytes )", "R29 an entry past the writer's declared record")
 	cT04Has(t, runtime, "else if ( v > (int32_t) p->size )", "R29 the count clamps to the writer's bound")
-	cT04Has(t, runtime, "else if ( (uint32_t) v > cap )", "R29 the text clamps to the writer's span")
+	cT04Has(t, runtime, "else if ( (uint32_t) v > p->size )", "R29 the text clamps to the writer's span")
 	cT04Has(t, runtime, "n = their_n < my_n ? their_n : my_n;", "R29 the count's bound is the writer's")
 }
 

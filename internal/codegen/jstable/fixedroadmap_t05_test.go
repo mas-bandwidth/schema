@@ -275,9 +275,9 @@ fixed table T
 	if !strings.Contains(t02Norm(run), "else if (v > size) { v = size; report.clamped++; }") {
 		t.Error("R16: the count op does not clamp once to the writer's bound the plan carries")
 	}
-	if !strings.Contains(t02Norm(run), "const cap = (size / unit) | 0;") ||
+	if !strings.Contains(t02Norm(run), "const cap = size | 0;") ||
 		!strings.Contains(t02Norm(run), "else if (v > cap) { v = cap; report.clamped++; }") {
-		t.Error("R16: the text op does not clamp its length once in the USED units (§3.4)")
+		t.Error("R16: the text op does not clamp its length once to the byte span (§3.4)")
 	}
 
 	// A forged ordinal remapped to None counts on BOTH plans: the compiled
@@ -393,7 +393,7 @@ fixed table T
 		`case TableFixedRefusal.TextIllFormed: return "text_ill_formed";`,
 		"C4 the refusal is named text_ill_formed")
 	t02Has(t, t02Norm(src),
-		"if (!TableFixedTextOk(unit === 2 ? TableFixedTextWide : TableFixedTextUtf8, srcView, s + 4, v * unit)) { report.refused = TableFixedRefusal.TextIllFormed; return; }",
+		"if (!TableFixedTextOk(TableFixedTextUtf8, srcView, s + 4, v)) { report.refused = TableFixedRefusal.TextIllFormed; return; }",
 		"C4 the compiled text op refuses by name on a content violation")
 	// UTF-8 that is over-range, a surrogate, truncated or overlong is damage and
 	// refuses; the packet reader refuses the same bytes.
@@ -412,10 +412,10 @@ fixed table T
 // t05R24: R24 [owed] "ill-formed text in the USED units refuses by name
 // (text_ill_formed); text is counted in bytes with the clamp in units; slack is
 // unspecified on read and not a refusal" (docs/FIXED-FORM-ALGORITHM.md §4.5 fix
-// 11; docs/SPEC-TABLES.md §3.4). All three clauses are sites of the emitted
-// runtime: the content refusal by name, the clamp in units (`cap = size /
-// unit`), and the check over the used units (`v * unit`) and never the slack
-// (`size`).
+// 11; docs/SPEC-TABLES.md §3.4). Text is UTF-8, so its unit is the byte. All
+// three clauses are sites of the emitted runtime: the content refusal by name,
+// the clamp to the byte span (`cap = size`), and the check over the used
+// bytes (`v`) and never the slack (`size`).
 func t05R24(t *testing.T) {
 	_, src := t02Table(t, `package probe
 
@@ -426,11 +426,11 @@ fixed table T
 `)
 	t02Has(t, t02Norm(src), "report.refused = TableFixedRefusal.TextIllFormed", "R24 ill-formed text refuses by name")
 	t02Has(t, t02Norm(src), "cp > 0x10FFFF", "R24 ill-formed text past U+10FFFF is a refusal, not a default")
-	// THE CLAMP IS IN UNITS: the declared bound `size` in bytes, divided by the
-	// unit width, is the cap the used length is clamped to.
-	t02Has(t, t02Norm(src), "const cap = (size / unit) | 0;", "R24 the clamp is in units")
-	t02Has(t, t02Norm(src), "else if (v > cap) { v = cap; report.clamped++; }", "R24 the length clamps once in units")
-	// THE CONTENT CHECK HOLDS THE USED UNITS (v * unit) AND NOT THE SLACK (size):
-	// slack is unspecified on read and is not a refusal.
-	t02Has(t, t02Norm(src), ", v * unit)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units and not the slack")
+	// THE CLAMP IS THE BYTE SPAN: the declared bound `size` is the cap the used
+	// length is clamped to.
+	t02Has(t, t02Norm(src), "const cap = size | 0;", "R24 the clamp is the byte span")
+	t02Has(t, t02Norm(src), "else if (v > cap) { v = cap; report.clamped++; }", "R24 the length clamps once")
+	// THE CONTENT CHECK HOLDS THE USED BYTES (v) AND NOT THE SLACK (size): slack
+	// is unspecified on read and is not a refusal.
+	t02Has(t, t02Norm(src), "srcView, s + 4, v)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units and not the slack")
 }

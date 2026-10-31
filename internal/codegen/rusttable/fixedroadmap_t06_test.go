@@ -449,15 +449,15 @@ fixed table T
 // t06R11 holds rust/R11 "the plan carries the WRITER's bounds, per plan; the
 // hostile pass runs against the plan's bounds" to §5.2's EMIT at kind 14 (bill
 // §12.5): the compiled count entry's bound is `their_n.min(my_n)`, the writer's
-// own, and the text entry's cap is the writer's span in units; the plan is
+// own, and the text entry's cap is the writer's span; the plan is
 // selected PER LINEAGE ENTRY; and the read-side bounds pass runs over storage,
 // so a hostile value is held to the plan's bound and counted.
 func t06R11(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
 	t06Has(t, runtime, "size: their_n.min(my_n),",
 		"R11 the count op's bound is the WRITER's, carried by the plan")
-	t06Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),",
-		"R11 the text op's cap is the WRITER's span in units")
+	t06Has(t, runtime, "aux: bytes,",
+		"R11 the text op's cap is the WRITER's span")
 	t06Has(t, runtime, "let held = raw.clamp(0, p.size as i32);",
 		"R11 the plan's bound is what a hostile count is held to")
 	text := t06Fixed(t, `package probe

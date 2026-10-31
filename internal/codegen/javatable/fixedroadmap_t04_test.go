@@ -386,18 +386,18 @@ fixed table T
 // ---- java/R24 --------------------------------------------------------------
 
 // t04R24 holds java/R24 to all three clauses: ill-formed text in the USED units
-// refuses by name (`textIllFormed`); the length is counted in BYTES with the
-// clamp in UNITS; and slack is unspecified on read and not a refusal.
+// refuses by name (`textIllFormed`); the length and its clamp are counted in
+// BYTES; and slack is unspecified on read and not a refusal.
 func t04R24(t *testing.T) {
 	runtime := t04Runtime()
 	// (1) the used units alone refuse by name.
 	t04Has(t, runtime, "report.refuse(Reason.textIllFormed)", "R24 ill-formed text refuses by name")
 	t04Has(t, runtime, "cp > 0x10FFFF", "R24 ill-formed text past U+10FFFF is a refusal, not a default")
-	// (2) the length is in bytes, the clamp in units: cap is size / unit.
-	t04Has(t, runtime, "final int cap = p.size / unit;", "R24 the clamp is in units")
-	// (3) slack is unspecified: the content check holds the USED units (v * unit)
-	// and never the declared bound p.size.
-	t04Has(t, runtime, "if (!textOk(p.meta, src, srcAt + p.src + 4, v * unit)) {", "R24 the content check holds the used units and not the slack")
+	// (2) the length is in bytes and the clamp is the writer's span.
+	t04Has(t, runtime, "final int cap = p.size;", "R24 the clamp is the writer's span")
+	// (3) slack is unspecified: the content check holds the USED bytes (v) and
+	// never the declared bound p.size.
+	t04Has(t, runtime, "if (!textOk(p.meta, src, srcAt + p.src + 4, v)) {", "R24 the content check holds the used units and not the slack")
 }
 
 // ---- the card's test -------------------------------------------------------

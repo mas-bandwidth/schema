@@ -390,7 +390,7 @@ func t05CsC3(t *testing.T) {
 		"the length is read as a signed i32 (§4.5 THE TEXT OP)")
 	t05Has(t, op, "if (v < 0) { v = 0; if (report != null) report.Clamped++; }",
 		"a negative length clamps UP to zero and counts (§4.5 THE TEXT OP)")
-	t05Has(t, op, "else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }",
+	t05Has(t, op, "else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }",
 		"a length past the cap clamps DOWN to it and counts (§4.5 THE TEXT OP)")
 	if n := strings.Count(op, "report.Clamped++"); n != 2 {
 		t.Errorf("C3: the text op counts clamped at %d sites, want the two clamp arms — once per field (§5.4)", n)

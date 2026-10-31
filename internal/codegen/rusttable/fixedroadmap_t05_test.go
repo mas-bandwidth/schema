@@ -379,8 +379,8 @@ func t05R18(t *testing.T) {
 // ---- rust/C3 -----------------------------------------------------------------
 
 // t05C3 holds rust/C3 to docs/FIXED-FORM-ALGORITHM.md §4.5's `text` row: "cap
-// := size / unit; v := SLE(4, record+src) clamped into [0, cap], COUNT clamped
-// if it fired". The cap the plan carries is the WRITER's span in UNITS
+// := size; v := SLE(4, record+src) clamped into [0, cap], COUNT clamped
+// if it fired". The cap the plan carries is the WRITER's span
 // (§4.1), the length word is a four-byte little-endian integer, and the
 // identity read's own scatter clamps the length to the declared bound.
 func t05C3(t *testing.T) {
@@ -435,17 +435,14 @@ func t05C4(t *testing.T) {
 
 // t05R24 holds rust/R24 to docs/FIXED-FORM-ALGORITHM.md §4.5: "The CONTENT
 // RULES apply to the USED UNITS and nothing else: UTF-8 validity over `v`
-// bytes, never over `N`; wide code units over `v`, never `2N`"; the text row's
-// `size` is the payload's BYTE span and its `aux` the cap in units; and slack
-// is not a refusal.
+// bytes, never over `N`"; the text row's `size` is the payload's BYTE span
+// and its `aux` the cap; and slack is not a refusal.
 func t05R24(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
 	t04Has(t, runtime, `Self::TextIllFormed => "text_ill_formed",`,
 		"R24 ill-formed text refuses by name `text_ill_formed`")
 	t04Has(t, runtime, "pub fn table_utf8_valid(bytes: &[u8]) -> bool {",
 		"R24 the narrow content rule exists")
-	t04Has(t, runtime, "pub fn table_utf16_valid(units: &[u16]) -> bool {",
-		"R24 the wide content rule exists")
 
 	mod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n")
 	clamp := t04Fn(mod, "lineage_fixed_clamp_body")
@@ -457,15 +454,15 @@ func t05R24(t *testing.T) {
 	if strings.Contains(clamp, "[..9]") {
 		t.Error("R24: the content rule reads the declared buffer, not the used length")
 	}
-	// THE LENGTH IS COUNTED IN BYTES AND CLAMPED IN UNITS (§4.1's text row).
+	// THE LENGTH IS COUNTED AND CLAMPED IN BYTES (§4.1's text row).
 	t04Has(t, runtime, "size: bytes,",
 		"R24 the text entry's span is the payload's BYTE count")
-	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),",
-		"R24 the clamp's cap is in UNITS")
+	t04Has(t, runtime, "aux: bytes,",
+		"R24 the clamp's cap is the BYTE span")
 	// SLACK IS UNSPECIFIED ON READ AND NOT A REFUSAL: `bytes(N)` has no content
 	// rule at all, and no content rule reads the bytes a writer never wrote.
 	bytesMod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    b bytes(8)\n}\n")
-	if strings.Contains(bytesMod, "table_utf8_valid") || strings.Contains(bytesMod, "table_utf16_valid") {
+	if strings.Contains(bytesMod, "table_utf8_valid") {
 		t.Error("R24: a bytes(N) has no content rule and must not be judged as text (SPEC-TABLES §3.4)")
 	}
 }

@@ -56,8 +56,8 @@ fixed table T
 `
 
 // TestFixedCSharpT18ArmLines pins the C# the union arm switch emits for one
-// direct text arm, one direct wide arm, one direct bytes arm, one direct fixed
-// array arm, one direct counted array arm, and two payload-free arms
+// direct text arm, one direct bytes arm, one direct fixed array arm, one
+// direct counted array arm, and two payload-free arms
 // (docs/SPEC-TABLES.md §2.6: "the arm's tag is its whole storage"; an arm is a
 // field line). It emits the two fixtures in memory and asserts the text alone,
 // in the shape of TestFixedArmWritesAreFieldLines
@@ -71,7 +71,6 @@ func TestFixedCSharpT18ArmLines(t *testing.T) {
 	}
 	for _, want := range []string{
 		"int len_Body_s = ",                  // the direct text arm's used length
-		"int len_Body_w = ",                  // the direct WIDE arm's used length (no prior pin)
 		"int len_Body_b = ",                  // the direct bytes arm's used length
 		"int count_Body_c = ",                // the direct counted array arm's live count
 		"MemoryMarshal.AsBytes(value.Body.A", // the direct fixed array arm's elements
@@ -108,14 +107,14 @@ func TestFixedCSharpT18ArmLines(t *testing.T) {
 	}
 }
 
-// t18DirectBody drives the DIRECT fixture's direct arms s, w, b, a and c: a
+// t18DirectBody drives the DIRECT fixture's direct arms s, b, a and c: a
 // boundary record (full-length text and bytes, every array slot at int32 min or
 // max, a full counted array) and an edge (empty text, a zero count) through the
 // emitted writer and reader, and asserts the tag, the value, its used length or
 // live count, lead and trail, a clean report, and zero bytes past the used length
 // in the written record (docs/SPEC-TABLES.md §3.4).
 const t18DirectBody = `
-int a0 = 0, a1 = 0, a2 = 0, a3 = 0, a4 = 0;
+int a0 = 0, a2 = 0, a3 = 0, a4 = 0;
 int d = (int)Probe.Schema.TableFixedWire.HeaderBytes + 4 + (int)Probe.Schema.TFixedLayoutBytes;
 Probe.T back = new Probe.T();
 Probe.TableReport rep = new Probe.TableReport();
@@ -161,29 +160,6 @@ int Zero(byte[] b, int from, int to, string arm)
     a0 += Zero(w2, 17 + d, 29 + d, "s");
 }
 if (a0 == 0) { Ok("s"); }
-// w: direct WIDE arm. data [17,25), slack [25,29).
-{
-    Probe.T v = new Probe.T();
-    Probe.Schema.TableReset(v);
-    v.Lead = 55; v.Trail = 66; v.Body.Type = Probe.BodyType.W;
-    for (int k = 0; k < 4; k++) { v.Body.W[k] = (char)('a' + k); }
-    v.Body.WLength = 4;
-    byte[] w1 = new byte[Probe.Schema.TFixedMeasure(1)];
-    if (Probe.Schema.TFixedSave(v, w1) != w1.Length) { a1 += Fail("w", "save"); }
-    a1 += Read(v, w1, "w");
-    if (back.Body.Type != Probe.BodyType.W || back.Body.WLength != 4) { a1 += Fail("w", "tag/len"); }
-    for (int k = 0; k < 4; k++) { if (back.Body.W[k] != (char)('a' + k)) { a1 += Fail("w", "data " + k); } }
-    a1 += Zero(w1, 25 + d, 29 + d, "w");
-    Probe.T e = new Probe.T();
-    Probe.Schema.TableReset(e);
-    e.Lead = 1; e.Trail = 2; e.Body.Type = Probe.BodyType.W; e.Body.WLength = 0;
-    byte[] w2 = new byte[Probe.Schema.TFixedMeasure(1)];
-    if (Probe.Schema.TFixedSave(e, w2) != w2.Length) { a1 += Fail("w", "edge save"); }
-    a1 += Read(e, w2, "w");
-    if (back.Body.Type != Probe.BodyType.W || back.Body.WLength != 0) { a1 += Fail("w", "edge tag/len"); }
-    a1 += Zero(w2, 17 + d, 29 + d, "w");
-}
-if (a1 == 0) { Ok("w"); }
 // b: direct bytes arm. data [17,21), slack [21,29).
 {
     Probe.T v = new Probe.T();
@@ -394,7 +370,6 @@ func TestFixedRoadmapCSharpT18UnionArms(t *testing.T) {
 	}{
 		{"union-field-arms/cs/valid-data", t18DirectSchema, t18DirectBody, []string{
 			"T18 union-field-arms/cs/valid-data/s ok",
-			"T18 union-field-arms/cs/valid-data/w ok",
 			"T18 union-field-arms/cs/valid-data/b ok",
 			"T18 union-field-arms/cs/valid-data/a ok",
 			"T18 union-field-arms/cs/valid-data/c ok",

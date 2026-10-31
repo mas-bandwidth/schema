@@ -749,7 +749,7 @@ EMIT(te, their_at, me, my_at, guard, arg):
     30 enum:     if te.size < me.size: emit `widen`, unsigned                      -- a grown ordinal width (bill §12.7)
                  else: emit `ordinal` with a remap table — entry j is the reader's position of the writer's
                        variant j, or 0 when the reader has no such name
-    12 / 33 text: emit `text`, span := min(me.size, te.size) - 4 BYTES, dst := the LENGTH word,
+    12 text:     emit `text`, span := min(me.size, te.size) - 4 BYTES, dst := the LENGTH word,
                   aux := the BUFFER, flavour from the READER's field (1 utf8, 3 bytes)
     every other leaf: te.size == me.size -> `copy` ; te.size < me.size and me.size <= 8 -> `widen` ;
                       otherwise COUNT kind_mismatch

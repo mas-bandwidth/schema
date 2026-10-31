@@ -468,7 +468,7 @@ func t04R29(t *testing.T) {
 	t04Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R29 the count clamps to the writer's bound")
 	t04Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R29 the text clamps to the writer's span")
 	t04Has(t, runtime, "size: their_n.min(my_n),", "R29 the count's bound is the writer's")
-	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),", "R29 the text's cap is the writer's span in units")
+	t04Has(t, runtime, "aux: bytes,", "R29 the text's cap is the writer's span")
 }
 
 // ---- rust/E5 ------------------------------------------------------------------

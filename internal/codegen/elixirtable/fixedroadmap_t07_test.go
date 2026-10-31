@@ -281,7 +281,7 @@ func t07W8(t *testing.T) {
 func t07W7(t *testing.T) {
 	t07Has(t, fixedRuntimeBody, "defp step([{:guard, gsrc, tag, argw, inner} | rest]", "W7 the guard carries the arm ordinal in its own lane")
 	t07Has(t, fixedRuntimeBody, "defp step([{:text, src, dst, aux, size, flavour} | rest]", "W7 the text op carries the flavour in its own lane")
-	t07Has(t, fixedRuntimeBody, "unit = if flavour == 2, do: 2, else: 1", "W7 the flavour decides utf8 against wide, never the guard")
+	t07Has(t, fixedRuntimeBody, "if text_ok?(flavour, binary_part(take, 0, v)) do", "W7 the flavour decides the content rule, never the guard")
 }
 
 // ---- elixir/W16 -------------------------------------------------------------

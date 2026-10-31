@@ -318,14 +318,14 @@ fixed table T
 
 // ---- elixir/C4 ---------------------------------------------------------------
 
-// t05C4 holds elixir/C4 to §4.5 fix 11: text content refuses BY NAME. Both text
-// kinds and the compiled plan's text op throw the named refusal on a content
+// t05C4 holds elixir/C4 to §4.5 fix 11: text content refuses BY NAME. The text
+// kind and the compiled plan's text op throw the named refusal on a content
 // violation, and the generated load catches it rather than landing a default.
 func t05C4(t *testing.T) {
 	runtime := t05Runtime(t)
 	t05Has(t, runtime, "do: throw({:refuse, :text_ill_formed}), else: {used, m}", "C4 the text content rule refuses by name")
-	if n := strings.Count(runtime, "throw({:refuse, :text_ill_formed})"); n != 3 {
-		t.Errorf("C4: the named refusal is thrown %d times, want text/1, wtext/2 and the compiled text op", n)
+	if n := strings.Count(runtime, "throw({:refuse, :text_ill_formed})"); n != 2 {
+		t.Errorf("C4: the named refusal is thrown %d times, want text/1 and the compiled text op", n)
 	}
 	t05No(t, runtime, "do: {default, true}", "C4 ill-formed text no longer defaults in silence")
 	out, err := Generate(unitFrom(t, `package probe
@@ -345,17 +345,17 @@ fixed table T
 // ---- elixir/R24 --------------------------------------------------------------
 
 // t05R24 holds elixir/R24 to all three clauses: ill-formed text in the USED
-// units refuses by name (`text_ill_formed`); the length is counted in BYTES
-// with the clamp in UNITS; and slack is unspecified on read and not a refusal.
+// units refuses by name (`text_ill_formed`); the length and its clamp are
+// counted in BYTES; and slack is unspecified on read and not a refusal.
 func t05R24(t *testing.T) {
 	runtime := t05Runtime(t)
 	// (1) the used units alone refuse by name, on both plans.
 	t05Has(t, runtime, "throw({:refuse, :text_ill_formed})", "R24 ill-formed text refuses by name")
 	// (3) slack is unspecified on read and not a refusal: the content check
 	// reads the USED units only, never the slack.
-	t05Has(t, runtime, "if text_ok?(flavour, binary_part(take, 0, v * unit)) do", "R24 the content check holds the USED units and not the slack")
-	// (2) the length is BYTES, the clamp is in UNITS.
-	t05Has(t, runtime, "cap = div(size, unit)", "R24 the clamp is in units")
+	t05Has(t, runtime, "if text_ok?(flavour, binary_part(take, 0, v)) do", "R24 the content check holds the USED units and not the slack")
+	// (2) the length and the clamp are BYTES: the cap is the span.
+	t05Has(t, runtime, "cap = size", "R24 the clamp is the byte span")
 	out, err := Generate(unitFrom(t, `package probe
 
 fixed table T

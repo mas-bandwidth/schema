@@ -272,13 +272,11 @@ func t07W8(t *testing.T) {
 // t07W7: W7 [verify] "arg and meta are two lanes" (§3.4; the runtime's text
 // op: "THE FLAVOUR RIDES IN META, NOT IN ARG. Arg is the GUARD'S VALUE ... A
 // text field under a union arm needs BOTH, so they cannot share a lane."). The
-// text op reads its unit width from the meta lane and the plan push writes the
-// field's flavour to meta while leaving arg the arm's guard value.
+// plan push writes the field's flavour to meta while leaving arg the arm's
+// guard value.
 func t07W7(t *testing.T) {
 	_, src := t02Table(t, t07Table)
 	n := t02Norm(src)
-	t02Has(t, n, "const unit = e[b + TableFixedLaneMeta] === TableFixedTextWide ? 2 : 1;",
-		"W7 the text op reads its flavour from the meta lane")
 	t02Has(t, n, "TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst[row + TableFixedDstArg]);",
 		"W7 the text push leaves arg the guard's value and writes the flavour to meta")
 }

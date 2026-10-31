@@ -237,7 +237,7 @@ func t06W7(t *testing.T) {
 	t06Has(t, runtime, "public byte meta;", "W7 meta is the op's own lane")
 	t06Has(t, runtime, "if (tagAt(src, srcAt + p.guard, gw) != p.arg) { continue; }",
 		"W7 the guard compares its ordinal in arg, never in meta")
-	t06Has(t, runtime, "final byte meta = flavour != 0 ? flavour : (myKind == 33 ? textWide : textUtf8);",
+	t06Has(t, runtime, "final byte meta = flavour != 0 ? flavour : textUtf8;",
 		"W7 the text op computes its flavour into meta")
 	t06Has(t, runtime, "c.push(theirAt, at, units, auxAt, guard, opText, arg, (byte) 0, (byte) 0, meta);",
 		"W7 the text push writes the flavour to meta and leaves arg the arm's ordinal")

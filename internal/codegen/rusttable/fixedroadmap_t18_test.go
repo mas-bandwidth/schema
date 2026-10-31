@@ -69,7 +69,6 @@ func TestFixedRustT18ArmLines(t *testing.T) {
 	for _, want := range []string{
 		"#[repr(C)]\n#[derive(Clone, Copy)]\npub struct BodyRowArmS {\n    pub value: [u8; 9],",
 		"    pub value_length: i32,\n}",
-		"#[repr(C)]\n#[derive(Clone, Copy)]\npub struct BodyRowArmW {\n    pub value: [u16; 5],",
 		"#[repr(C)]\n#[derive(Clone, Copy)]\npub struct BodyRowArmB {\n    pub value: [u8; 4],",
 		"#[repr(C)]\n#[derive(Clone, Copy)]\npub struct BodyRowArmC {\n    pub value: [i32; 3],",
 		"    pub value_count: i32,\n}",
