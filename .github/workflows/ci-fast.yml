@@ -504,6 +504,22 @@ jobs:
             exit 1
           fi
 
+      # THE LUA PIN, exactly as ci-full.yml's go-test installs it:
+      # internal/codegen/lua, internal/codegen/luatable and the Lua lanes under
+      # internal/ci run generated Lua under the pinned PUC-Rio interpreter and
+      # FAIL, never skip, without it. make/lua.mk's dist-lua builds it from
+      # source at the sha256 it names, into dist/lua-<version>/, the LUA default.
+      - name: install the Lua pin when a Lua package is touched
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          set -euo pipefail
+          case " $PACKAGES " in
+            *" ./internal/codegen/lua"*|*" ./internal/ci "*|*" ./... "*)
+              make dist-lua
+              ;;
+          esac
+
       # THE LUAU PIN: the Luau packages, the compiler's Luau testgen gate and
       # the Luau lanes under internal/ci run generated Luau under the pinned
       # interpreter and fail, never skip, without it

@@ -82,6 +82,26 @@ func TestUnionArraysCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "lua" {
+			// the descriptor-driven runtime carries the construct: both
+			// fields are array rows whose element is the union
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang lua refused the supported shape: %v", err)
+			}
+			code := string(files["ProbeTables.lua"])
+			for _, f := range []string{"history", "undo"} {
+				i := strings.Index(code, `name = "`+f+`"`)
+				if i < 0 {
+					t.Fatalf("--lang lua: no descriptor row for %s", f)
+				}
+				row, _, _ := strings.Cut(code[i:], "\n    },") // one descriptor row, as the formatter lays it out
+				if !strings.Contains(row, `shape = "array"`) || !strings.Contains(row, `elem = { shape = "union", target = "Reply"`) {
+					t.Errorf("--lang lua: %s is not an array of Reply unions: %s", f, row)
+				}
+			}
+			continue
+		}
 		if target == "luau" {
 			// the table descriptors and codecs carry the construct: one
 			// <Base>Table.luau per unit file

@@ -110,12 +110,71 @@
     {
       "name": "base-conformance-2",
       "when": "pull-request",
-      "why": "the shared conformance harness's Go side: the Go leg's wire, walk and wire-fuzz controls, which share one generated Go tree and one build/conformance-go (72 s together on run 40684250024), and the Go rows control beside them. One half of what was the single `base-conformance` group, cut on 2026-10-28 because that group ran 261 s median and 296 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 259 s of control time over 7 controls). Measured about 75 s of control time on run 40684770225 and 108 s on run 40684250024.",
+      "why": "the shared conformance harness's Go side: the Go leg's wire, walk and wire-fuzz controls, which share one generated Go tree and one build/conformance-go (72 s together on run 40684250024), and the Go rows control beside them. One half of what was the single `base-conformance` group, cut on 2026-10-28 because that group ran 261 s median and 296 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 259 s of control time over 7 controls). Measured about 75 s of control time on run 40684770225 and 108 s on run 40684250024. The Lua packet finite-float control rides here because this row installs the pinned Lua interpreter (make dist-lua) and already builds build/schema-lua for conformance-negative-control-lua; on that build it is two small sabotage-tool runs and two Lua checker runs over one generated unit, 3.7 s on the studio with a cold Go build cache, so the row stays inside the 120 s rule.",
       "targets": [
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
         "conformance-go-rows-negative-control"
+      ]
+    },
+    {
+      "name": "lua-format",
+      "when": "pull-request",
+      "why": "the Lua format gate's control: one generated module with its first one-line early-out spelled as a block must fail the pinned StyLua's --check by name, and the unplanted copy pass. It needs only bin/schema's Lua build and the sha256-pinned StyLua the target fetches itself (make dist-stylua), no interpreter.",
+      "targets": [
+        "tables-lua-format-negative-control"
+      ]
+    },
+    {
+      "name": "lua",
+      "when": "pull-request",
+      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "targets": [
+        "conformance-negative-control-lua",
+        "packet-finite-lua-negative-control",
+        "conformance-negative-control-lua-walk",
+        "schema-lua-fuzz-negative-control",
+        "schema-lua-resource-bounds-negative-control",
+        "tables-lua-alloc-negative-control",
+        "tables-lua-alloc-runtime-negative-control",
+        "tables-lua-soak-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-cards-docs",
+      "when": "pull-request",
+      "why": "the Lua port's card driver controls (render, upgrade and taskhash each damaged through a test-only switch, the harness required red on that surface and on no other), the documented-surface control (two edited copies of docs/USAGE.md, one calling a renamed runtime function and one walking nothing, each required to fail the usage gate) and the bench leg's corpus control (a flipped golden byte and a flipped variant byte, each required to fail the bench correctness gate by name). They need the pinned interpreter (make dist-lua), bin/schema, the harness and the Card unit generated for Lua, and no compile weight of their own: the card controls are three harness runs over 43 small cases.",
+      "targets": [
+        "cards-lua-conformance-hash-negative-control",
+        "cards-lua-conformance-negative-control",
+        "cards-lua-conformance-upgrade-negative-control",
+        "tables-lua-bench-gate-negative-control",
+        "tables-lua-usage-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-open-gates",
+      "when": "pull-request",
+      "why": "the Lua port's open-gate reversed witnesses that run the pinned PUC-Rio 5.4.8 (make dist-lua) over the luatable package: the forgery fuzz oracle's two plants (both halves of the block's extent bound removed, and the cook Check's region scan removed; red on a read that left the buffer and on a Check that opened what the tool's cook-check refuses), the random text differential's six-digit float32 cap (red on the engine comparison), and the layout agreement gate's two moves (one block scalar four bytes, one cook pointer slot eight bytes; red on that field and on nothing else), with the runtime-home control beside them, which overlay-rebuilds the compiler with the table module named by the file that sorts first and requires the module to move when an earlier-sorting file joins the unit. Each is one go test over one package or one go build, 5 s for the four test controls and 1.5 s for the overlay build on the studio with a warm Go cache, so the row stays inside the 120 s rule.",
+      "targets": [
+        "tables-lua-accessor-negative-control",
+        "tables-lua-fuzz-negative-control",
+        "tables-lua-json-differential-negative-control",
+        "tables-lua-runtime-home-negative-control",
+        "tables-lua-slot-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-open-gates-compiler",
+      "when": "pull-request",
+      "why": "the Lua port's two open-gate reversed witnesses that live in the compiler package and need no interpreter: the runtime-name scan fed a runtime module that spells an unregistered key in every convention it reads and an emitted set missing a registered name, and the zero-cost comparison fed a table that moves a packet byte, a packet file that vanishes and a non-table file that appears. Each is one go test of one function; the cost is the compiler package's test build, 1.4 s for both on the studio with a warm Go cache, so the row stays inside the 120 s rule.",
+      "targets": [
+        "tables-lua-names-negative-control",
+        "tables-lua-zero-cost-negative-control"
       ]
     },
     {
@@ -1171,6 +1230,18 @@
     {
       "target": "schema-shared-hostile-corpus-negative-control",
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+    },
+    {
+      "target": "tables-lua-finite-float-negative-control",
+      "reason": "the Lua leg's finite-float reversed witness (docs/SPEC-TABLES.md §3.3) is the Go test TestLuaFiniteFloatNegativeControl in internal/codegen/luatable, which ci-full.yml's go-test job runs under the pinned Lua 5.4.8 (make dist-lua) on every pull request, as part of go test ./...; the shared negative-control leg has no Lua toolchain to run it a second time."
+    },
+    {
+      "target": "schema-lua-version-differential-negative-control",
+      "reason": "the card's own workflow (.github/workflows/schema-lua-version-differential.yml) runs the four-interpreter differential on the nightly schedule and on workflow_dispatch, and its negative-control job runs this plant there. The shared leg carries no Lua toolchain; running it here too would need the four interpreters on a runner and prove the same gate a second time."
+    },
+    {
+      "target": "tables-lua-luacheck-negative-control",
+      "reason": "the Lua luacheck lens's own planted dead local. .github/workflows/schema-lua-generated-luacheck-gate.yml runs the lens and this control on every push and pull request on the fleet runner that carries the pinned luacheck 1.2.0 (make/schema-lua-generated-luacheck-gate.mk probes it by version); the shared leg's hosted runners carry no luacheck, so running it here would only prove the tool missing."
     },
     {
       "target": "schema-luau-generated-analyze-strict-gate-negative-control",

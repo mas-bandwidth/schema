@@ -359,6 +359,15 @@ jobs:
         if: matrix.group == 'unit-rest'
         run: go vet ./...
 
+      # THE LUA PIN for the test steps below: internal/codegen/lua,
+      # internal/codegen/luatable and the Lua lanes under internal/ci run
+      # generated Lua under the pinned PUC-Rio interpreter and fail, never
+      # skip, without it. make/lua.mk's dist-lua builds it from source at the
+      # sha256 it names, into dist/lua-<version>/, which is the LUA default.
+      - name: install the Lua pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        run: make dist-lua
+
       # THE Goose PIN for the test steps below: internal/codegen/goose and
       # internal/codegen/goosetable run generated Goose under the pinned compiler
       # and fail, never skip, without it. make/goose.mk's dist-goose installs it
@@ -833,6 +842,11 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # update-goldens ends in `go test ./...`, which runs the Lua packages
+      # under the pinned interpreter (make/lua.mk's dist-lua)
+      - name: install the Lua pin
+        run: make dist-lua
+
       # THE LUAU PIN: update-goldens runs the Luau type-wire golden tests, which
       # run generated Luau under the pinned interpreter and fail, never skip,
       # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
@@ -1030,6 +1044,17 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # The LUA leg's toolchain is the pinned PUC-Rio interpreter, built from
+      # source exactly as `make dist-lua` builds it (make/lua.mk holds the pin
+      # and its sha256; the row's `lua` field is the version). The row's env
+      # carries LUA=lua, so the built interpreter lands on PATH.
+      - name: install the pinned Lua interpreter
+        if: matrix.lua != ''
+        run: |
+          make dist-lua
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/lua-${{ matrix.lua }}/src/lua" "$HOME/.local/bin/lua"
 
       # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
       # names `moo`: .github/actions/moo builds it once per runner image and
@@ -2161,6 +2186,13 @@ jobs:
       # control runs. Every control in the group hangs off these two, and
       # building them here keeps the build cost out of the first control's
       # timing and out of its log.
+      # A row naming `lua` (make/negative-controls.json) runs the Lua port's
+      # controls under the pinned PUC-Rio interpreter, which make/lua.mk's
+      # dist-lua builds from source at the sha256 it names into the LUA default.
+      - name: install the Lua pin
+        if: matrix.lua != ''
+        run: make dist-lua
+
       - name: build bin/schema and the generated tree once
         run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
 

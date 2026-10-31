@@ -1233,7 +1233,9 @@ it (§4.6).
   JavaScript (serialize.js v2.0.1), Go (serialize.go v2.1.1), C#
   (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.1) enforce the rule
   through their serialize runtime,
-  and Java, Dart and Elixir in their own generated float codecs. Luau
+  and Java, Dart and Elixir in their own generated float codecs. Lua
+  (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
+  a write traps naming `non_finite_float`, a read refuses with it. Luau
   (serialize.luau v2.1.3) enforces it through its vendored serialize
   runtime: a write traps naming the finite rule, a read refuses with
   `non_finite_float`. Every packet target enforces it. A
