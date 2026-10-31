@@ -71,10 +71,10 @@ func TestFixedCSharpT18ArmLines(t *testing.T) {
 		t.Fatal("DIRECT: no TFixedWriteBody")
 	}
 	for _, want := range []string{
-		"int len_Body_s = ",                  // the direct text arm's used length
-		"int len_Body_w = ",                  // the direct WIDE arm's used length (no prior pin)
-		"int len_Body_b = ",                  // the direct bytes arm's used length
-		"int count_Body_c = ",                // the direct counted array arm's live count
+		"int len_Body_s = ",                            // the direct text arm's used length
+		"int len_Body_w = ",                            // the direct WIDE arm's used length (no prior pin)
+		"int len_Body_b = ",                            // the direct bytes arm's used length
+		"int count_Body_c = ",                          // the direct counted array arm's live count
 		"TableFixedWire.WriteLittle<int>(value.Body.A", // the direct fixed array arm's elements
 	} {
 		if !strings.Contains(direct, want) {
