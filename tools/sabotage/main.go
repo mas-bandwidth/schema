@@ -59,9 +59,6 @@ var sabotages = map[string][]edit{
 	"go-retain-file-count-floor": {
 		{old: "||count>uint64(max(int64(0),s.limit-s.w.Offset)/minimum)", new: "/* SABOTAGED */"},
 	},
-	"go-retain-message-depth": {
-		{old: "case 13,14,16:return s.framed(e,depth+1)", new: "case 13,14,16:return s.framed(e,depth) /* SABOTAGED */"},
-	},
 	// Packet defaults: remove only the constructor byte copy.
 	"packet-defaults-c-constructor-bytes": {{
 		old: "\t\t\tg.pf(\" };\\n        memcpy( value.%s, bytes, sizeof( bytes ) );\\n    }\\n\", f.Name)",

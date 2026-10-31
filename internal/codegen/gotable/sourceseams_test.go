@@ -315,7 +315,6 @@ table Root {
 		want: []string{
 			"TableRetainReader",
 			"tableRegionLoadRetain",
-			"TableRetainMessageReader",
 		},
 	},
 	{

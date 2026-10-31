@@ -69,10 +69,8 @@ func TestGoMessageFormGoldens(t *testing.T) {
 			case row.file == "":
 				source = connectionProbe(u.Package, announcement)
 			case ir.VariableTables(u)[row.root]:
-				// §3.3: "a plain `table T` may not" ride the message form, so
-				// the Go leg answers this message row ABSENT and asserts
-				// nothing (the manifest row and the C++ reference stay as they
-				// are).
+				// a variable table has no message form (§3.3), so the Go leg
+				// answers this message row ABSENT and asserts nothing
 				return
 			default:
 				source = messageProbe(u.Package, u, row.root, announcement, filepath.Join(root, row.file), filepath.Join(root, row.batch))

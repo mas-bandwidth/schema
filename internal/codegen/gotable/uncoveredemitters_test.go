@@ -18,17 +18,15 @@ import (
 )
 
 // TestGoUncoveredEmitters covers the emitter surface no other test reaches.
-// GenerateOmitting is the omit path; the comment-only stubs emitRegionMessage
-// and emitRetainMessageSurface are removed (statement-less, so no call can
-// cover them), and the message and retain forms below keep the behaviour their
-// call sites frame under test.
+// GenerateOmitting is the omit path, and the message and retain forms below
+// keep the behaviour their call sites frame under test.
 //
-// The message form's retaining read is NOT reachable through a public API:
-// retain.go emits LoadRetain, MeasureRetain and SaveRetain only for a variable
-// table, and a fixed table (the only class the message form carries, §3.3)
-// gets LoadRetainMessages as a refused-by-name constant. The retention witness
-// below is therefore the region form's (§6.6), over a field this build cannot
-// name.
+// Retention on the message form does not exist: retain.go emits LoadRetain,
+// MeasureRetain and SaveRetain only for a variable table, which has no message
+// form, and a fixed table (the only class the message form carries, §3.3) gets
+// LoadRetainMessages and SaveRetainMessages as refused-by-name constants. The
+// retention witness below is therefore the region form's (§6.6), over a field
+// this build cannot name.
 func TestGoUncoveredEmitters(t *testing.T) {
 	t.Parallel()
 	t.Run("GenerateOmitting_omits_only_the_named_form_and_still_compiles", func(t *testing.T) {

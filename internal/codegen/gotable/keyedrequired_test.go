@@ -5,12 +5,11 @@ import (
 	"testing"
 )
 
-// TestGoRequiredKeyedArrayRoundTrips covers a variable table holding an
-// enum-keyed array with `| required` (docs/SPEC-TABLES.md §2.3, §2.4). The
-// message form must compile (the element must not inherit Required, so the
-// keyed count loop reads its index) and round-trip through both the message
-// form and the table wire form, agreeing with the wire writer's per-element
-// elision.
+// TestGoRequiredKeyedArrayRoundTrips covers an enum-keyed array with
+// `| required` (docs/SPEC-TABLES.md §2.3, §2.4): in a variable table it
+// round-trips through the table wire form, and in a fixed table the message
+// form must compile (the element must not inherit Required, so the keyed count
+// loop reads its index) and round-trip a batch.
 func TestGoRequiredKeyedArrayRoundTrips(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
@@ -30,25 +29,6 @@ func TestRequiredKeyedArrayRoundTrips(t *testing.T){
 	if !RootFromJSON(&b,[]byte(%q),&report)||report!=(TableReport{}){t.Fatalf("json %%+v",report)}
 	v:=b.GetRoot()
 
-	w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}}
-	if !RootSaveMessageBody(&w,v){t.Fatal("msg save")}
-	w.Align();if w.Overflow{t.Fatal("overflow")}
-	size:=w.Bits/8
-	out:=make([]byte,2+size);out[0]=2;out[1]=0
-	w2:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:out[2:]}}
-	if !RootSaveMessageBody(&w2,v){t.Fatal("msg save2")}
-	w2.Align();if w2.Overflow{t.Fatal("overflow2")}
-	out=out[:2+w2.Bits/8]
-
-	ann:=make([]byte,AnnounceMeasure());Announce(ann)
-	var vocab TableVocabulary;vocab.Init(make([]TableMessageEntry,TableMessageEntriesHere))
-	var ar TableReport
-	if !AnnounceRead(&vocab,ann,&ar)||!vocab.Announced{t.Fatalf("announce %%+v",ar)}
-	r,count:=tableMessageBatchOpen(&vocab,out,&report)
-	if count!=1{t.Fatalf("batch %%d %%+v",count,report)}
-	var decoded Root
-	if !RootLoadMessageBody(&r,&decoded)||decoded!=*v{t.Fatalf("msg roundtrip got %%+v want %%+v report %%+v",decoded,*v,r.Report)}
-
 	buf:=make([]byte,RootMeasure(v))
 	if RootSave(v,buf)!=int64(len(buf)){t.Fatal("wire save")}
 	var g RootBuilder
@@ -58,4 +38,32 @@ func TestRequiredKeyedArrayRoundTrips(t *testing.T){
 }
 `, text)
 	runGenerated(t, schema, gen)
+
+	const fixedSchema = `package probe
+enum State { A, B }
+fixed table Root {
+	k [State]int32 | required
+	n int32
+}
+`
+	runGenerated(t, fixedSchema, `package probe
+import("testing")
+func TestRequiredKeyedArrayMessageRoundTrips(t *testing.T){
+	var v Root
+	v.K[0]=5;v.N=3
+	values:=[]*Root{&v}
+	n:=RootMeasureMessages(values,nil)
+	if n<2{t.Fatalf("measure %d",n)}
+	out:=make([]byte,n)
+	var wr TableReport
+	if RootSaveMessages(values,out,&wr)!=n||wr!=(TableReport{}){t.Fatalf("save %+v",wr)}
+	ann:=make([]byte,AnnounceMeasure());Announce(ann)
+	var vocab TableVocabulary;vocab.Init(make([]TableMessageEntry,TableMessageEntriesHere))
+	var ar TableReport
+	if !AnnounceRead(&vocab,ann,&ar)||!vocab.Announced{t.Fatalf("announce %+v",ar)}
+	var got [1]Root
+	var report TableReport
+	if count,ok:=RootLoadMessages(got[:],&vocab,out,&report);!ok||count!=1||got[0]!=v{t.Fatalf("msg roundtrip got %+v want %+v report %+v",got[0],v,report)}
+}
+`)
 }

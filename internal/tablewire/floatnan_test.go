@@ -341,32 +341,3 @@ func TestOracleRetainedFloatIsTested(t *testing.T) {
 		}
 	}
 }
-
-// TestOracleRetainedMessageFloatIsTested is ruling 3 on the message form: the
-// retaining batch read tests an unknown float entry's raw bits and refuses
-// the batch on a NaN or an infinity.
-func TestOracleRetainedMessageFloatIsTested(t *testing.T) {
-	t.Parallel()
-	writer := listModel(t, "package rm\n\nfixed table T\n{\n    x int32\n    d float64\n}\n")
-	reader := listModel(t, "package rm\n\nfixed table T\n{\n    x int32\n}\n")
-	inst := writer.New(writer.Lookup("T"))
-	oracleField(t, inst, "x").Cell.I = 9
-	oracleField(t, inst, "d").Cell.F = 3.0e40
-	batch, err := tablewire.EncodeMessages(writer, []*tabletext.Instance{inst})
-	if err != nil {
-		t.Fatal(err)
-	}
-	bad := replacedBits(t, batch, math.Float64bits(3.0e40), 0x7FF0000000000001, 64)
-	vocabulary := &tablewire.Vocabulary{}
-	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(tablewire.Announce(writer.Unit), &announced); err != nil {
-		t.Fatal(err)
-	}
-	store := &tablewire.Retain{Capacity: 1024, IdCapacity: 32}
-	var report tabletext.Report
-	n, ok, err := tablewire.DecodeRetainMessages(reader, []*tabletext.Instance{reader.New(reader.Lookup("T"))}, bad, vocabulary, []*tablewire.Retain{store}, &report)
-	var refusal *tablewire.NonFiniteRefusal
-	if n != 0 || ok || !errors.As(err, &refusal) || !strings.HasPrefix(refusal.Field, "T.0x") {
-		t.Errorf("the retaining batch read answered %d %v %v, want the non_finite_float refusal", n, ok, err)
-	}
-}
