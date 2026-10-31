@@ -315,11 +315,14 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #          instead of a counted kind mismatch: report red; json-write green.
 #   order  (I7)  a byte-swapped block magic is no longer refused by name as a
 #          foreign order: block-reason red; block green.
+#   mapsort (M19) the writer sorts a map's entries DESCENDING: wire red;
+#          report green.
 ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
 ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if false and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
 ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if n < 2 do$$|    if true or n < 2 do|'
 ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
 ELIXIR_CONFORMANCE_ARM_SED    := -e 's| when byte_size(content) >= l and k == a.arm_kind ->| when byte_size(content) >= l ->|'
+ELIXIR_CONFORMANCE_MAPSORT_SED := -e 's~^    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)$$~    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end, :desc)~'
 ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|false -> {:error, :foreign_order}|'
 
 # $(call ELIXIR_CONFORMANCE_CONTROL,dir,emitter,sedvar,red surfaces,green surfaces,what)
@@ -341,7 +344,8 @@ endef
 
 .PHONY: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
-	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order
+	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
+	conformance-negative-control-elixir-mapsort
 conformance-negative-control-elixir-walk: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-walk,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WALK_SED,json-read,json-write wire,a text reader that negates every bool)
 
@@ -360,9 +364,13 @@ conformance-negative-control-elixir-arm: build/conformance-harness
 conformance-negative-control-elixir-order: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-order,internal/codegen/elixirtable/block.go,ELIXIR_CONFORMANCE_ORDER_SED,block-reason,block,a block reader that no longer names a foreign byte order)
 
+conformance-negative-control-elixir-mapsort: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-mapsort,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_MAPSORT_SED,wire,report,a map writer that sorts its entries descending)
+
 test-elixir: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
-	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order
+	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
+	conformance-negative-control-elixir-mapsort
 
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
@@ -851,15 +859,18 @@ tables-elixir-usage-negative-control: build/cook-open/.stamp docs/USAGE.md
 test-elixir: tables-elixir-usage-negative-control
 
 # J2 (docs/PORTING.md) — THE RUNTIME HOME, Elixir side. A unit's shared runtime
-# modules (TableRuntime, BlockRuntime, CookRuntime, BuildVersion, the unit's
-# Table and view modules) are files named by the module, never by the schema
-# file that sorts first, so a file that sorts earlier relocates nothing: every
-# runtime file is present and byte-identical across the two trees. The gate
+# modules are files named by the module, never by the schema file that sorts
+# first, so a file that sorts earlier relocates nothing: the runtime files
+# (ELIXIR_RUNTIME_HOME_FILES) are present and byte-identical across the two
+# trees, and the unit-level modules whose CONTENT is the unit's (the Table
+# descriptors, the build version, the view: ELIXIR_RUNTIME_HOME_NAMED) are
+# present under the same names in both. The gate
 # runs over the compiler ELIXIR_RUNTIME_HOME_SCHEMA so its control can run the
 # same recipe over a sabotaged one.
 ELIXIR_RUNTIME_HOME_SCHEMA ?= ./bin/schema
 ELIXIR_RUNTIME_HOME_DIR    ?= build/runtime-home-elixir
-ELIXIR_RUNTIME_HOME_FILES  := Table.ex TableRuntime.ex BlockRuntime.ex CookRuntime.ex BuildVersion.ex
+ELIXIR_RUNTIME_HOME_FILES  := TableRuntime.ex BlockRuntime.ex CookRuntime.ex FixedRuntime.ex
+ELIXIR_RUNTIME_HOME_NAMED  := Table.ex BuildVersion.ex UnitView.ex
 
 .PHONY: tables-elixir-runtime-home
 tables-elixir-runtime-home: bin/schema
@@ -868,6 +879,12 @@ tables-elixir-runtime-home: bin/schema
 	@printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > $(ELIXIR_RUNTIME_HOME_DIR)/src/Aaa.schema
 	@$(ELIXIR_RUNTIME_HOME_SCHEMA) generate --lang elixir --out $(ELIXIR_RUNTIME_HOME_DIR)/base tables/examples > /dev/null 2>&1
 	@$(ELIXIR_RUNTIME_HOME_SCHEMA) generate --lang elixir --out $(ELIXIR_RUNTIME_HOME_DIR)/added $(ELIXIR_RUNTIME_HOME_DIR)/src > /dev/null 2>&1
+	@for n in $(ELIXIR_RUNTIME_HOME_NAMED); do \
+		for tree in base added; do \
+			test -f $(ELIXIR_RUNTIME_HOME_DIR)/$$tree/$$n || \
+				{ echo "RUNTIME HOME GATE FAILED: the $$tree tree has no $$n (a unit-level module is named by the module, not by a schema file)"; ls $(ELIXIR_RUNTIME_HOME_DIR)/$$tree; exit 1; }; \
+		done; \
+	done
 	@for n in $(ELIXIR_RUNTIME_HOME_FILES); do \
 		for tree in base added; do \
 			test -f $(ELIXIR_RUNTIME_HOME_DIR)/$$tree/$$n || \
@@ -876,7 +893,7 @@ tables-elixir-runtime-home: bin/schema
 		cmp -s $(ELIXIR_RUNTIME_HOME_DIR)/base/$$n $(ELIXIR_RUNTIME_HOME_DIR)/added/$$n || \
 			{ echo "RUNTIME HOME GATE FAILED: the runtime file $$n changed when the unit gained an earlier-sorting file"; exit 1; }; \
 	done
-	@echo "runtime home gate (Elixir): $(ELIXIR_RUNTIME_HOME_FILES) stay where they are and byte-identical when an earlier-sorting file joins the unit"
+	@echo "runtime home gate (Elixir): $(ELIXIR_RUNTIME_HOME_FILES) stay where they are and byte-identical, and $(ELIXIR_RUNTIME_HOME_NAMED) keep their names, when an earlier-sorting file joins the unit"
 
 # Its NEGATIVE CONTROL: put the file-order rule back (the table runtime named
 # by the file that sorts first, ir.ProtocolIdHome) and the gate, run over that
