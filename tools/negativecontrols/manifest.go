@@ -79,6 +79,11 @@ type Group struct {
 	// Squirrel is the pinned interpreter's version (make/squirrel.mk builds
 	// it with `make dist-squirrel`); the row's install step keys on it.
 	Squirrel string `json:"squirrel,omitempty"`
+	// ClangFormat says the row needs the pinned clang-format (make/c.mk's
+	// CLANG_FORMAT_PIN), which the row installs from PyPI as ci-fast's C and
+	// C++ legs do. Like dotnet it is a marker, "pin", and never a version: the
+	// version lives in make/c.mk alone.
+	ClangFormat string `json:"clang_format,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -219,6 +224,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		Moo      string `json:"moo"`
 		Lobster  string `json:"lobster"`
 		Squirrel string `json:"squirrel"`
+		ClangFormat string `json:"clang_format"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -243,6 +249,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			Moo:      g.Moo,
 			Lobster:  g.Lobster,
 			Squirrel: g.Squirrel,
+			ClangFormat: g.ClangFormat,
 		})
 	}
 	return json.Marshal(struct {
