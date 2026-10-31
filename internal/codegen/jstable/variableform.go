@@ -202,6 +202,12 @@ func (g *variableGen) emitRuntime() {
 
 export const TableVariableForm = 1;
 
+// THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3, THE DISTINCTNESS CHECK;
+// docs/LAYERS/1-framing.md F6): an id table of more than 4096 entries is
+// malformed for the whole wire, whatever the buffer would hold, so the
+// distinctness proof never runs past it. kTableProbeBound in the C++ reference.
+export const TableVariableEntryBound = 4096n;
+
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 export const TableNodeTableId = 0xffffffffffffffffn;
 export const TableBuildVersionId = 0xfffffffffffffffen;
@@ -1146,7 +1152,7 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
 	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
 	g.pf("  const count = dv.getBigUint64(bytes.length - 8, true);\n")
-	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
+	g.pf("  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
 	g.pf("  const first = bytes.length - 8 - Number(count) * 8;\n")
 	g.pf("  const ids = [];\n")
 	g.pf("  const seen = new Set();\n")
