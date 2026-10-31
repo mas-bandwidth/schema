@@ -61,6 +61,8 @@ print(report.Reason or "-")
 
 func TestLuaJsonRefusesNulEscapeInBoundedMapValue(t *testing.T) {
 	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+
 	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "maps", "Text.schema"))
 	files, err := Generate(u)
 	if err != nil {

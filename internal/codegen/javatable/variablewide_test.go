@@ -1,13 +1,6 @@
 package javatable
 
-import (
-	"os/exec"
-	"path/filepath"
-	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-)
+import "testing"
 
 // Exact decimal conversion and raw-scale clamping are independent of double
 // precision and of the caller's ability to spell an enormous exponent (§15, §16.2).
