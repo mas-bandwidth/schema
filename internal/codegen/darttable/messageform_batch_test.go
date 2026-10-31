@@ -421,9 +421,15 @@ fixed table T
 	want := []string{
 		"final f = value.b;",
 		"w.put(TableBitWriter._float32Words[0], 32);",
-		"setFloat64(0, value.d, Endian.little)).getUint64(0, Endian.little), 64)",
+		"final f = value.d;",
+		"w.put(TableBitWriter._float64Words[0], 64);",
 		"value.b = TableBitWriter._float32Cell[0];",
-		"setUint64(0, b, Endian.little)).getFloat64(0, Endian.little)",
+		"TableBitWriter._float64Words[0] = b;",
+		"value.d = TableBitWriter._float64Cell[0];",
+		// a NaN or an infinity is refused both ways (docs/SPEC-TABLES.md §3.3)
+		"if (!f.isFinite) return false;",
+		"if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat(",
+		"if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) return r.report.RefuseNonFiniteFloat(",
 	}
 	for _, w := range want {
 		if !strings.Contains(src, w) {

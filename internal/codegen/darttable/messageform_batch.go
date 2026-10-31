@@ -52,17 +52,26 @@ func (g *fixedModule) messageNameSlot(id uint64) int {
 // once, in the unit's runtime home.
 func (g *fixedModule) emitMessageBatchRuntime() {
 	runtime := dartMessageBatchRuntime
+	usesFloat32, usesFloat64 := false, false
 	for _, entry := range ir.TableVocabulary(g.unit) {
-		shape := &entry.Shape
-		usesFloat32 := entry.Kind == ir.TableKindF32
-		for shape != nil {
+		usesFloat32 = usesFloat32 || entry.Kind == ir.TableKindF32
+		usesFloat64 = usesFloat64 || entry.Kind == ir.TableKindF64
+		for shape := &entry.Shape; shape != nil; shape = shape.Inner {
 			usesFloat32 = usesFloat32 || shape.Elem == ir.TableKindF32
-			shape = shape.Inner
+			usesFloat64 = usesFloat64 || shape.Elem == ir.TableKindF64
 		}
-		if usesFloat32 {
-			runtime = strings.Replace(runtime, "class TableBitWriter {\n", "class TableBitWriter {\n"+strings.TrimLeft(dartMessageFloat32Runtime, "\n"), 1)
-			break
-		}
+	}
+	// each width's views only where the unit carries that width: the analyzer
+	// refuses an unused field
+	cells := ""
+	if usesFloat32 {
+		cells += strings.TrimLeft(dartMessageFloat32Runtime, "\n")
+	}
+	if usesFloat64 {
+		cells += strings.TrimLeft(dartMessageFloat64Runtime, "\n")
+	}
+	if cells != "" {
+		runtime = strings.Replace(runtime, "class TableBitWriter {\n", "class TableBitWriter {\n"+cells, 1)
 	}
 	g.pf("%s", runtime)
 	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(g.unit))))
@@ -101,7 +110,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	lower := lowerFirst(st.Name)
 	g.needHome("TableBitWriter", "TableMessageReader", "TableVocabulary", "TableReport",
 		"tableMessageBatchOpen", "tableMessageBatchClose", "tableMessageBatchMax",
-		lower+"SaveMessageBody", lower+"LoadMessageBody", st.Name)
+		lower+"SaveMessageBody", lower+"LoadMessageBody", "init"+capitalize(st.Name), st.Name)
 	g.pf("// ---- %s, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----\n", st.Name)
 	g.pf("/// MeasureMessages sizes the buffer for a batch of %s bodies, or -1 with\n", st.Name)
 	g.pf("/// the reason on the report (docs/SPEC-TABLES.md §3.3).\n")
@@ -141,7 +150,13 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.pf("  if (count > values.length) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return count;\n  }\n")
 	g.pf("  for (var i = 0; i < count; i++) {\n")
-	g.pf("    if (!%sLoadMessageBody(r, values[i])) return i;\n", lower)
+	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", lower)
+	// A NON-FINITE FLOAT REFUSES THE WHOLE BATCH, the tolerant read included
+	// (docs/SPEC-TABLES.md §3.3): every body this call wrote goes back to its
+	// defaults and the read answers no body at all.
+	g.pf("      if (report.nonFiniteFloat.isEmpty) return i;\n")
+	g.pf("      for (var j = 0; j <= i; j++) {\n        init%s(values[j]);\n      }\n", capitalize(st.Name))
+	g.pf("      return 0;\n    }\n")
 	g.pf("  }\n")
 	g.pf("  if (!tableMessageBatchClose(r)) return count;\n")
 	g.pf("  return count;\n}\n\n")
@@ -152,6 +167,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 // (docs/SPEC-TABLES.md §3.3).
 func (g *fixedModule) emitSaveMessageBody(st *ir.Struct) {
 	lower := lowerFirst(st.Name)
+	g.gen.cur = st
 	g.emitFn("bool", lower+"SaveMessageBody", []string{"TableBitWriter w", st.Name + " value"})
 	for _, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
@@ -178,6 +194,7 @@ func (g *fixedModule) emitSaveMessageBody(st *ir.Struct) {
 // each reference dispatched to its field, the zero reference ending the body.
 func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	lower := lowerFirst(st.Name)
+	g.gen.cur = st
 	g.emitFn("bool", lower+"LoadMessageBody", []string{"TableMessageReader r", st.Name + " value"})
 	g.pf("  init%s(value);\n", capitalize(st.Name))
 	g.pf("  while (true) {\n")
@@ -267,6 +284,11 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 			return expr + ".type != 0"
 		}
 	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		// ELISION COMPARES BITS (docs/SPEC-TABLES.md §3.3): a -0 under a +0
+		// default rides, as on the variable form
+		return floatRides(f, expr, g.gen.fixedZeroFor(f))
+	}
 	return expr + " != " + g.gen.fixedZeroFor(f)
 }
 
@@ -335,8 +357,10 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 	// float64 as its 64, exactly the bits math.Float32bits/math.Float64bits
 	// hand the Go reference (internal/codegen/gotable/messagewrite.go:146).
 	// Never widened: kind 10's message width is 32 (ir.TableMessageValueBits).
-	// Float32 NaNs narrow in software so the signalling bit survives; the
-	// bit width remains kind 10's own. Float64 keeps its original bit view.
+	// A NaN OR AN INFINITY IS REFUSED, never quantized, clamped or written
+	// (docs/SPEC-TABLES.md §3.3, both special-values rules): the writer answers
+	// false before the quantizer runs, so measure and save both return -1.
+	// Every finite double narrows to float32 through the ordinary conversion.
 	if kind == ir.TableKindF32 {
 		// A COMPRESSED FLOAT CROSSES AS ITS STEP INDEX (docs/SPEC-TABLES.md
 		// §3.3, packing 2, ir.TableMessageQuantized): the writer clamps
@@ -351,6 +375,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 				countLit := fmt.Sprintf("%d", count)
 				g.pf("%s{\n", ind)
 				g.pf("%s  final f = %s;\n", ind, expr)
+				g.pf("%s  if (!f.isFinite) return false;\n", ind)
 				g.pf("%s  TableBitWriter._float32Cell[0] = f;\n", ind)
 				g.pf("%s  final f32 = TableBitWriter._float32Cell[0];\n", ind)
 				g.pf("%s  TableBitWriter._float32Cell[0] = f32 - %s;\n", ind, fixedFloatLit(float64(shape.QMin)))
@@ -374,23 +399,21 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		// the JIT a double crossing an out-of-line conversion call is boxed.
 		g.pf("%s{\n", ind)
 		g.pf("%s  final f = %s;\n", ind, expr)
-		g.pf("%s  if (!f.isNaN) {\n", ind)
-		g.pf("%s    TableBitWriter._float32Cell[0] = f;\n", ind)
-		g.pf("%s    w.put(TableBitWriter._float32Words[0], 32);\n", ind)
-		g.pf("%s  } else {\n", ind)
-		g.pf("%s    TableBitWriter._float64Cell[0] = f;\n", ind)
-		g.pf("%s    final b = TableBitWriter._float64Words[0];\n", ind)
-		g.pf("%s    var m = (b >>> 29) & 0x7fffff;\n", ind)
-		g.pf("%s    if (m == 0) {\n", ind)
-		g.pf("%s      m = 0x400000;\n", ind)
-		g.pf("%s    }\n", ind)
-		g.pf("%s    w.put(((b >>> 63) << 31) | 0x7f800000 | m, 32);\n", ind)
-		g.pf("%s  }\n", ind)
+		g.pf("%s  if (!f.isFinite) return false;\n", ind)
+		g.pf("%s  TableBitWriter._float32Cell[0] = f;\n", ind)
+		g.pf("%s  w.put(TableBitWriter._float32Words[0], 32);\n", ind)
 		g.pf("%s}\n", ind)
 		return
 	}
 	if kind == ir.TableKindF64 {
-		g.pf("%sw.put((ByteData(8)..setFloat64(0, %s, Endian.little)).getUint64(0, Endian.little), 64);\n", ind, expr)
+		// the same refusal, and the bits through the writer's own cell, at
+		// the assignment (issue 404): no ByteData is made per value
+		g.pf("%s{\n", ind)
+		g.pf("%s  final f = %s;\n", ind, expr)
+		g.pf("%s  if (!f.isFinite) return false;\n", ind)
+		g.pf("%s  TableBitWriter._float64Cell[0] = f;\n", ind)
+		g.pf("%s  w.put(TableBitWriter._float64Words[0], 64);\n", ind)
+		g.pf("%s}\n", ind)
 		return
 	}
 	if ir.TableKindWidth(int(kind)) == 16 {
@@ -610,8 +633,10 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 	}
 	// A FLOAT IS READ BACK FROM ITS IEEE-754 BITS (docs/SPEC-TABLES.md §3.3,
 	// the message form's scalar payload): float32 from its 32 bits and float64
-	// from its 64. Float32 NaNs widen in software; a hardware conversion would
-	// quiet a signalling NaN before a consumer could send it again.
+	// from its 64. A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the
+	// bits become a double and before the field is written: the batch refuses
+	// as non_finite_float, naming the field, and lands nothing.
+	refuse := fmt.Sprintf("r.report.RefuseNonFiniteFloat('%s')", g.gen.floatOwner(f))
 	if kind == ir.TableKindF32 {
 		// A COMPRESSED FLOAT RIDES AS ITS STEP INDEX (docs/SPEC-TABLES.md §3.3,
 		// packing 2, ir.TableMessageQuantized): the width is the announced
@@ -654,19 +679,14 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 				return
 			}
 		}
-		// The widening is AT THE ASSIGNMENT (issue 404, PORTING M3); the bits
-		// are a NaN exactly when their magnitude exceeds infinity's.
+		// The widening is AT THE ASSIGNMENT (issue 404, PORTING M3), and the
+		// bits are a NaN or an infinity exactly when the exponent is all ones.
 		g.pf("%s{\n", ind)
 		g.pf("%s  final b = r.bits.get(32);\n", ind)
 		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
-		g.pf("%s  if ((b & 0x7fffffff) <= 0x7f800000) {\n", ind)
-		g.pf("%s    TableBitWriter._float32Words[0] = b;\n", ind)
-		g.pf("%s    %s = TableBitWriter._float32Cell[0];\n", ind, expr)
-		g.pf("%s  } else {\n", ind)
-		g.pf("%s    final w64 = ((b >>> 31) << 63) | ((b & 0x7fffff) << 29);\n", ind)
-		g.pf("%s    TableBitWriter._float64Words[0] = w64 | 0x7ff0000000000000;\n", ind)
-		g.pf("%s    %s = TableBitWriter._float64Cell[0];\n", ind, expr)
-		g.pf("%s  }\n", ind)
+		g.pf("%s  if ((b & 0x7f800000) == 0x7f800000) return %s;\n", ind, refuse)
+		g.pf("%s  TableBitWriter._float32Words[0] = b;\n", ind)
+		g.pf("%s  %s = TableBitWriter._float32Cell[0];\n", ind, expr)
 		g.pf("%s}\n", ind)
 		g.pf("%sif (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 		if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
@@ -675,9 +695,11 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 			// `float32` and `clampFloat`; docs/SPEC-TABLES.md §3.3, §4) and as
 			// the file form's emitClamp does (fixeddart.go). A float64 field
 			// reads raw and clamps nothing, as Go's scalar case for F64.
+			// A -0 lands as +0, uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL
+			// VALUES), as the oracle's clampFloat lands it.
 			lo, hi, _ := fixedFloatClampEnds(f)
-			g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; }\n",
-				ind, expr, lo, expr, lo, expr, hi, expr, hi)
+			g.pf("%sif (%s < %s) { %s = %s; r.report.clamped++; } else if (%s > %s) { %s = %s; r.report.clamped++; } else if (%s == 0) { %s = 0.0; }\n",
+				ind, expr, lo, expr, lo, expr, hi, expr, hi, expr, expr)
 		}
 		return
 	}
@@ -687,7 +709,9 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		g.pf("%s{\n", ind)
 		g.pf("%s  final b = r.bits.get(64);\n", ind)
 		g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
-		g.pf("%s  %s = (ByteData(8)..setUint64(0, b, Endian.little)).getFloat64(0, Endian.little);\n", ind, expr)
+		g.pf("%s  if ((b & 0x7ff0000000000000) == 0x7ff0000000000000) return %s;\n", ind, refuse)
+		g.pf("%s  TableBitWriter._float64Words[0] = b;\n", ind)
+		g.pf("%s  %s = TableBitWriter._float64Cell[0];\n", ind, expr)
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -921,7 +945,7 @@ func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabula
 	}
 	// the scalar sink is written and never read: the bits are what is kept
 	g.pf("%s    // ignore: unused_local_variable\n", ind)
-	g.pf("%s    var t;\n", ind)
+	g.pf("%s    Object? t;\n", ind)
 	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
 }
 
@@ -1019,6 +1043,7 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }
   if (!vocabulary.announced) { report.Refuse('no_vocabulary'); return -1; }
@@ -1322,13 +1347,18 @@ bool tableTextValid(Uint8List bytes, int start, int length) {
 }
 `
 
-// The views the inline float32 conversion uses (the packet emitter's software
-// rule, spelled at each assignment — issue 404; a Dart library cannot reach
-// another library's private views, SPEC-TABLES §3).
+// The views the inline float conversions use, spelled at each assignment
+// (issue 404; a Dart library cannot reach another library's private views,
+// SPEC-TABLES §3). A table float is finite (§3.3), so each is the ordinary
+// conversion through one cell.
 const dartMessageFloat32Runtime = `
-  static final Float32List _float32Cell = Float32List(2);
+  static final Float32List _float32Cell = Float32List(1);
   static final Uint32List _float32Words = _float32Cell.buffer.asUint32List();
-  static final Float64List _float64Cell = _float32Cell.buffer.asFloat64List();
-  static final Uint64List _float64Words = _float32Cell.buffer.asUint64List();
+
+`
+
+const dartMessageFloat64Runtime = `
+  static final Float64List _float64Cell = Float64List(1);
+  static final Uint64List _float64Words = _float64Cell.buffer.asUint64List();
 
 `

@@ -149,7 +149,12 @@ type fixedGen struct {
 	// that declares the union (the union's class itself may go unused)
 	needTag           func(union string)
 	float32WordsCache bool
+	// cur is the record whose codec is being emitted, which names a float
+	// element copy in a non_finite_float refusal (dartFloatOwner)
+	cur *ir.Struct
 }
+
+func (g *fixedGen) floatOwner(f *ir.Field) string { return dartFloatOwner(g.unit, f, g.cur) }
 
 func (g *fixedGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
 
@@ -234,17 +239,18 @@ func fixedGetter(t ir.FieldType) (string, bool) {
 
 // fixedFloat32Bits and fixedFloat32Value are the runtime's two float32
 // conversions (fixedruntime.go, TableFixedLayout): every float32 cell a
-// generated store or load touches goes through them, bit-exact, NaN payloads
-// and the signalling bit included.
+// generated store or load touches goes through them. A table float is finite
+// (docs/SPEC-TABLES.md §3.3), so both are the ordinary conversion, exact for
+// every finite value, -0 and the subnormals included.
 const (
 	fixedFloat32Bits  = "TableFixedLayout.float32Bits"
 	fixedFloat32Value = "TableFixedLayout.float32Value"
 )
 
 // fixedIsFloat32List reports a scalar float32 element run: a Float32List,
-// whose element assignment would convert through the hardware and quiet a
-// signalling NaN, so a loop over it moves the elements' BITS through a
-// Uint32List view of the same storage instead.
+// whose loops move the elements' BITS through a Uint32List view of the same
+// storage, one word an element, each tested finite on the read
+// (docs/SPEC-TABLES.md §3.3).
 func fixedIsFloat32List(f *ir.Field) bool {
 	return f.Type.Kind == ir.TFloat32 && fixedElementClass(f.Type) == ""
 }
@@ -284,9 +290,10 @@ func (g *fixedGen) store(ind, at string, t ir.FieldType, expr string) {
 		return
 	}
 	if t.Kind == ir.TFloat32 {
-		// A FLOAT32 CELL STORES ITS BITS, never a double through setFloat32:
-		// the hardware conversion quiets a signalling NaN, and the cell stores
-		// what the record held (docs/FIXED-FORM-ALGORITHM.md §3.1).
+		// A FLOAT32 CELL STORES ITS BITS (docs/FIXED-FORM-ALGORITHM.md §3.1):
+		// the value is finite — the save's finite pass refused anything else
+		// before the first byte (docs/SPEC-TABLES.md §3.3) — so the ordinary
+		// narrowing is exact, and the store is one 32-bit word.
 		g.call(ind, "", "view.setUint32",
 			[]string{at, fixedFloat32Bits + "(" + expr + ")", "Endian.little"}, ";")
 		return
@@ -317,7 +324,8 @@ func (g *fixedGen) load(ind, lhs, at string, t ir.FieldType) {
 		return
 	}
 	if t.Kind == ir.TFloat32 {
-		// the bits, widened by hand where the hardware would quiet a NaN
+		// the bits, widened by the ordinary conversion: exact for every
+		// finite float32 (docs/SPEC-TABLES.md §3.3)
 		g.call(ind, lhs+" = ", fixedFloat32Value,
 			[]string{"view.getUint32(" + at + ", Endian.little)"}, ";")
 		return
@@ -777,8 +785,9 @@ func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count, expr
 	}
 	if fixedIsFloat32List(f) {
 		// THE ELEMENTS' BITS, read through a view of the Float32List's own
-		// storage: reading an element as a double would quiet a NaN. Reuse
-		// the caller-owned list's view so each write remains allocation-free.
+		// storage, one word an element; the save's finite pass already
+		// refused a NaN or an infinity (docs/SPEC-TABLES.md §3.3). Reuse the
+		// caller-owned list's view so each write remains allocation-free.
 		g.emitFloat32WordsCache()
 		g.pf("%s{\n", ind)
 		g.call(ind+"  ", "final words = ", "_fixedFloat32Words", []string{expr}, ";")
@@ -847,6 +856,7 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("/// straight line rather than plan entries, so the identity path and a\n")
 	g.pf("/// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED\n")
 	g.pf("/// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.\n")
+	g.cur = st
 	g.fn("void", lowerFirst(st.Name)+"FixedDecode",
 		[]string{st.Name + " value", "Uint8List image", "ByteData view", "int at",
 			"TableFixedReport report"})
@@ -926,15 +936,21 @@ func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, exp
 	}
 	if fixedIsFloat32List(f) {
 		// THE ELEMENTS' BITS, written through a view of the Float32List's own
-		// storage: assigning a double element would quiet a NaN. A declared
-		// range then clamps the element as a double, which an IEEE comparison
-		// does without touching a NaN (emitClamp). Reuse the caller-owned view.
+		// storage once each word is tested finite (docs/SPEC-TABLES.md §3.3).
+		// A declared range then clamps the element as a double (emitClamp).
+		// Reuse the caller-owned view.
 		g.emitFloat32WordsCache()
 		g.pf("%s{\n", ind)
 		g.call(ind+"  ", "final words = ", "_fixedFloat32Words", []string{expr}, ";")
 		g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
-		g.call(ind+"    ", "words[i] = ", "view.getUint32",
+		g.call(ind+"    ", "final bits = ", "view.getUint32",
 			[]string{fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), "Endian.little"}, ";")
+		// each element's raw bits are tested before they land (§3.3)
+		g.pf("%s    if ((bits & 0x7f800000) == 0x7f800000) {\n", ind)
+		g.pf("%s      report.refuseNonFiniteFloat('%s');\n", ind, g.floatOwner(f))
+		g.pf("%s      break;\n", ind)
+		g.pf("%s    }\n", ind)
+		g.pf("%s    words[i] = bits;\n", ind)
 		if fixedHasClamp(f) {
 			g.emitClamp(f, expr+"[i]", ind+"    ")
 		}
@@ -1001,8 +1017,40 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		}
 	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		g.emitDecodeFloat(f, fixedOff(base, at), expr, ind)
+		return
+	}
 	g.load(ind, expr, fixedOff(base, at), f.Type)
 	g.emitClamp(f, expr, ind)
+}
+
+// emitDecodeFloat lands one float cell. A NaN OR AN INFINITY IS REFUSED ON ITS
+// RAW BITS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// finite-only too, same rule as packets"): the test runs before the bits
+// become a double, before the field is written and before a compressed
+// float's bounds, and the load refuses the whole batch as non_finite_float,
+// the field named. Every finite float32 widens to a double exactly, so the
+// conversion is the ordinary one.
+func (g *fixedGen) emitDecodeFloat(f *ir.Field, at, expr, ind string) {
+	g.pf("%s{\n", ind)
+	if f.Type.Kind == ir.TFloat32 {
+		g.call(ind+"  ", "final bits = ", "view.getUint32", []string{at, "Endian.little"}, ";")
+		g.pf("%s  if ((bits & 0x7f800000) == 0x7f800000) {\n", ind)
+	} else {
+		g.call(ind+"  ", "final bits = ", "view.getUint64", []string{at, "Endian.little"}, ";")
+		g.pf("%s  if ((bits & 0x7ff0000000000000) == 0x7ff0000000000000) {\n", ind)
+	}
+	g.pf("%s    report.refuseNonFiniteFloat('%s');\n", ind, g.floatOwner(f))
+	g.pf("%s  } else {\n", ind)
+	if f.Type.Kind == ir.TFloat32 {
+		g.call(ind+"    ", expr+" = ", fixedFloat32Value, []string{"bits"}, ";")
+	} else {
+		g.call(ind+"    ", expr+" = ", "view.getFloat64", []string{at, "Endian.little"}, ";")
+	}
+	g.emitClamp(f, expr, ind+"    ")
+	g.pf("%s  }\n", ind)
+	g.pf("%s}\n", ind)
 }
 
 // ---------------------------------------------------------------------------
@@ -1130,9 +1178,11 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		// (schema#1164, ruled statement B): in the fixed form a compressed
 		// float rides AS THE FLOAT (SPEC §3.4), its bounds are DEFINITIONS in
 		// the digest, and the compiled plan carries no range at all, so the
-		// pass can only be the reader's. `<` and `>` are IEEE comparisons on
-		// purpose: a NaN is below no min and above no max, so it survives
-		// uncounted, and a negative zero is not below a min of +0.
+		// pass can only be the reader's. A NaN or an infinity never reaches
+		// it: the read refused one on its raw bits first (emitDecodeFloat,
+		// docs/SPEC-TABLES.md §3.3). A -0 lands as +0, the value 0 itself,
+		// uncounted (§3.3, A COMPRESSED FLOAT'S SPECIAL VALUES): it is inside
+		// the range and only its spelling differs.
 		lo, hi, ok := fixedFloatClampEnds(f)
 		if !ok {
 			return
@@ -1143,6 +1193,8 @@ func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
 		g.pf("%s} else if (%s > %s) {\n", ind, expr, hi)
 		g.pf("%s  %s = %s;\n", ind, expr, hi)
 		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s} else if (%s == 0) {\n", ind, expr)
+		g.pf("%s  %s = 0.0;\n", ind, expr)
 		g.pf("%s}\n", ind)
 		return
 	default:
@@ -1249,4 +1301,138 @@ func lowerFirst(s string) string {
 		return s
 	}
 	return strings.ToLower(s[:1]) + s[1:]
+}
+
+// ---------------------------------------------------------------------------
+// THE SAVE'S FINITE PASS (docs/SPEC-TABLES.md §3.3)
+// ---------------------------------------------------------------------------
+//
+// A FLOAT IS FINITE (Glenn, 2026-10-27, "tables go finite-only too, same rule
+// as packets"): every writer refuses a NaN or an infinity, so the save asks
+// each record this pass BEFORE the first byte is written and answers -1 on
+// the first refusal, leaving the caller's bytes as they were. It walks only
+// what a write carries as a value — a counted array's live elements, an
+// optional's payload when present, a union's set arm — and answers the first
+// non-finite float's <Owner>.<field>, or '' when every float is finite. A
+// type that holds no float gets no function (the read's twin is the decode's
+// raw-bits test, emitDecodeFloat).
+
+// fixedHoldsFloat is whether a fixed type holds a float anywhere a value lands.
+func fixedHoldsFloat(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedFieldHoldsFloat(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedFieldHoldsFloat(f *ir.Field, seen map[string]bool) bool {
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		return true
+	case ir.TNamed:
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedHoldsFloat(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && fixedFieldHoldsFloat(v.F, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// emitFiniteBody emits <type>FixedFiniteBody for one type that holds a float.
+func (g *fixedGen) emitFiniteBody(st *ir.Struct) {
+	if !fixedHoldsFloat(st, map[string]bool{}) {
+		return
+	}
+	g.cur = st
+	g.pf("/// %s's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or\n", st.Name)
+	g.pf("/// infinity a save would carry, as <Owner>.<field>, or '' for none.\n")
+	g.fn("String", lowerFirst(st.Name)+"FixedFiniteBody", []string{st.Name + " value"})
+	for _, f := range st.Fields {
+		g.emitFiniteField(f, f, "value."+dartName(f.Name), "  ")
+	}
+	g.pf("  return '';\n}\n\n")
+}
+
+// emitFiniteField walks one field line's live extent. named is the
+// declaration the refusal names.
+func (g *fixedGen) emitFiniteField(f, named *ir.Field, expr, ind string) {
+	if !fixedFieldHoldsFloat(f, map[string]bool{}) {
+		return
+	}
+	if f.Type.Optional {
+		g.pf("%sif (%sPresent) {\n", ind, expr)
+		g.emitFinitePayload(f, named, expr, ind+"  ")
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFinitePayload(f, named, expr, ind)
+}
+
+func (g *fixedGen) emitFinitePayload(f, named *ir.Field, expr, ind string) {
+	loop := func(count string) {
+		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
+		g.emitFiniteElement(f, named, expr+"[i]", ind+"  ")
+		g.pf("%s}\n", ind)
+	}
+	switch {
+	case f.KeyEnum != "":
+		loop(fmt.Sprintf("%d", f.KeyEnumRef.Max))
+	case f.Array == ir.ArrayFixed:
+		loop(fmt.Sprintf("%d", f.ArrayBound))
+	case f.Array == ir.ArrayCounted:
+		// the write asserts the count inside its bound; the walk stays
+		// inside the storage either way
+		count := fixedDartSibling(expr, "Count")
+		g.pf("%sfor (var i = 0; i < %s && i < %d; i++) {\n", ind, count, f.ArrayBound)
+		g.emitFiniteElement(f, named, expr+"[i]", ind+"  ")
+		g.pf("%s}\n", ind)
+	default:
+		g.emitFiniteElement(f, named, expr, ind)
+	}
+}
+
+func (g *fixedGen) emitFiniteElement(f, named *ir.Field, expr, ind string) {
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("%sif (!%s.isFinite) return '%s';\n", ind, expr, g.floatOwner(named))
+		return
+	case ir.TNamed:
+	default:
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		if fixedHoldsFloat(r, map[string]bool{}) {
+			fn := lowerFirst(r.Name) + "FixedFiniteBody"
+			g.pf("%s{\n", ind)
+			g.call(ind+"  ", "final why = ", fn, []string{expr}, ";")
+			g.pf("%s  if (why.isNotEmpty) return why;\n", ind)
+			g.pf("%s}\n", ind)
+		}
+	case *ir.Union:
+		g.pf("%sswitch (%s.type) {\n", ind, expr)
+		for i, v := range r.Variants {
+			if v.F == nil || !fixedFieldHoldsFloat(v.F, map[string]bool{}) {
+				continue
+			}
+			arm := *v.F
+			arm.Type.Optional = false
+			g.pf("%s  case %d:\n", ind, i+1)
+			g.emitFinitePayload(&arm, v.F, expr+"."+dartName(v.Name), ind+"    ")
+			g.pf("%s    break;\n", ind)
+		}
+		g.pf("%s  default:\n%s    break;\n%s}\n", ind, ind, ind)
+	}
 }
