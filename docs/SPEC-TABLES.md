@@ -11689,12 +11689,12 @@ fields would get wrong:
   position for them; `schema cook-check` bounds each array inside its node as
   it bounds a count companion, walks each entry's pointer slots as it walks a
   bounded array's elements, and CHECKS THE ORDER, because a cook `Find` cannot
-  search is a forgery. **`schema cook` and `schema uncook` refuse every
-  map-bearing unit BY NAME**, because the tool's engine does not lay out the
-  entry arrays yet (§15); a generated runtime writer is not held to that
-  absence, and Go's map cook is held by an independent layout test,
-  `TestCookWriterMapExtentLayout`. The refusal is the tool's and not the
-  format's: a map is laid out above exactly as any value is.
+  search is a forgery. **`schema cook` and `schema uncook` carry a
+  map-bearing unit**: the tool lays the entry arrays out as above and reads
+  them back through the deltas it wrote, and every generated runtime writer is
+  held to the tool's bytes by the conformance `cook-write` rows that carry a
+  map. Go's map cook is also held by an independent layout test,
+  `TestCookWriterMapExtentLayout`.
 - **AN UNBOUNDED ARRAY's ELEMENTS are laid the same way** (§2.9): after the
   record's own storage, `count × sizeof( T )` at the element's alignment, in
   INDEX order, zero slack. Lists and maps are ONE POPULATION in that extent,
@@ -15505,11 +15505,8 @@ inspects everything in the schema built:
   with its `duplicate` and `malformed` events, the const `Find`, the text
   form's object and `schema cook-check`'s map-slot clause with its order check
   (§7.4). C carries the file wire, region and text forms, including the optional
-  runtime index. The tool's COOK and UNCOOK halves are the one piece still owed for
-  this construct: a map-bearing unit is refused by name at those two surfaces,
-  because a map adds the sort, the entry array's key order and the two reader
-  events to the node extent the list's own halves already
-  carry. What a port needs is the entry as an ordinary array-of-tables element in its
+  runtime index. The tool's COOK and UNCOOK halves carry it too: the entries ride the node
+  extent the list's own halves carry, one population with the lists. What a port needs is the entry as an ordinary array-of-tables element in its
   measure, save and load, the writer's sort, the reader's one compare with its
   two events, the const `Find` as a binary search that allocates nothing,
   ascending iteration, and the text form's keyed object; each holds the same

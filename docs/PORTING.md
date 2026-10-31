@@ -815,8 +815,9 @@ trip, and `schema cook-check`'s MAP-SLOT clause (#380): the four clauses a
 list's slot takes, against `alignof( Entry )` and `count × sizeof( Entry )`,
 plus the fifth a list has no analogue for — the KEYS read ascending with no
 repeat, because a cook a `Find` cannot search is a forgery. The tool's COOK
-and UNCOOK halves are what remains, and those two surfaces refuse a map-bearing
-unit by name until they land.
+and UNCOOK halves carry the entry arrays in the holder's node extent
+(`internal/tablecook`), and the conformance `cook-write` rows that carry a map
+hold every leg's writer to the tool's bytes.
 
 **Measured effect.** Zero bytes past the entries themselves in a region and a
 cook, `Open` still O(1), `Find` in place at `floor( log2 n ) + 1` key compares
