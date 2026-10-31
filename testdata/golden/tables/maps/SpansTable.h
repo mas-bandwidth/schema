@@ -650,16 +650,6 @@ struct TableIds
     // the reference an id takes: the file's own first-use entry, appended on
     // first use. The MESSAGE form names no id at all: its references are
     // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
-    //
-    // ids and chain are left unset by the constructor on purpose: a save
-    // builds one TableIds, and only the entries below count are ever read,
-    // because a bucket's chain links only entries this function appended.
-    // gcc cannot see that invariant through the chain and calls the reads
-    // maybe-uninitialized, so the warning is off for this function alone.
-#if defined( __GNUC__ ) && !defined( __clang__ )
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#endif
     MAPDEMO_TABLE_INLINE uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
@@ -671,9 +661,6 @@ struct TableIds
         ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
-#if defined( __GNUC__ ) && !defined( __clang__ )
-#pragma GCC diagnostic pop
-#endif
 
     // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
     // header, union arm header or blob header names. A REPEAT answers from
@@ -4761,15 +4748,9 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
-//
-// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
-// the target lies elsewhere in the region, outside the eight-byte TableRef, so
-// pointer arithmetic from &ref would leave the slot's object, and an optimizer
-// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
-// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7480,8 +7461,7 @@ template <typename Entry> struct TableMapEach
         }
         auto operator*() const { return TableEntryEach( segment->entries + index ); }
         Iterator & operator++() { index++; Skip(); return *this; }
-        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
-        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
+        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 
@@ -8026,8 +8006,7 @@ template <typename T> struct TableListEach
         }
         Element * operator*() const { return segment->elements + index; }
         Iterator & operator++() { index++; Skip(); return *this; }
-        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
-        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
+        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 

@@ -572,8 +572,7 @@ template <typename Entry> struct TableMapEach
         }
         auto operator*() const { return TableEntryEach( segment->entries + index ); }
         Iterator & operator++() { index++; Skip(); return *this; }
-        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
-        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
+        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 

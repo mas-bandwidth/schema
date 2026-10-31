@@ -1,0 +1,54 @@
+{
+  "note": "Rulings that make a proof cell not applicable by design (tools/matrix proof). Each entry quotes Glenn verbatim, with the date he said it and where the words came from; `applies` names the cells it covers (a conformance surface and a case-name pattern, or a porting-register row; no langs means every language). A ruling only ever covers an ABSENT answer: a leg that answers a covered case is still held to the expectation. Add a ruling only from Glenn's own words.",
+  "rulings": [
+    {
+      "id": "message-form-fixed-only",
+      "date": "2026-10-31",
+      "quotes": [
+        "only fixed tables support message form (bitpacked)",
+        "plain table is not a thing. you invented that. it's called a variable table."
+      ],
+      "source": "relayed by Rowan from the live session",
+      "earlier": [
+        {
+          "commit": "4354b76f160bbe6fce2ee6cf2753994c73237988",
+          "date": "2026-09-09",
+          "message": "schema lang: `fixed table` declares the class, and the compiler refuses what breaks it\n\nGlenn: \"maybe we should be explicit with `fixed` to tables in schema lang\" /\n\"that way if we add any feature that stops it from being fixed, it is a compile\nerror\" / \"otherwise, it could be a bit of a guess whether the table is fixed or\nvariable, couldn't it? we don't want to surprise the user.\" / \"and enforce only\nfixed tables can use message form. this saves more work.\" / on the guarded\nbranch: \"the intent of the lookback conditional is to make it variable size\" /\n\"so that is a disqualifying thing for a fixed table. not supported. only\nvariable.\"\n\n`fixed table X` is a DECLARATION and a plain `table X` is the VARIABLE wire\nalways, whatever its fields are. Six constructs are refused in a fixed table's\nby-value closure, each naming the field and the fixed table it breaks: a map, an\nunbounded array, a pointer, a byte buffer at its used size, a guarded (`if`)\nfield, and a nested plain `table`. The message form is a fixed table's, and a\nmessage-form request naming a plain table is refused naming the table.\n\nir.VariableTables is now the complement of the declared flag, so every emitter\nswitches at once; the old least-fixed-point survives as ir.FixedClosureBreaks,\nwhich is no longer a mode but the CHECK behind the refusal. §17.2's directory\nrule now asks its own question (does the closure hold a pointer, a map or an\nunbounded array?) instead of reading a mode that no longer means that.\n\nEvery table that was inferred fixed took the keyword, which holds the generated\noutput still. bench/corpus/FixedTable.schema keeps `fixed table` and is REFUSED\nhere on purpose: BenchMixed's `if has_extra` guard is in its closure, and the\ncorpus fix belongs to the wire branch. The other guard-disqualified tables were\nleft plain and are listed in the PR.\n\nNo wire change.\n\nCo-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+        }
+      ],
+      "applies": [
+        {
+          "surface": "message",
+          "case": "graph_tree"
+        },
+        {
+          "surface": "retain",
+          "case": "retain_message_tail"
+        },
+        {
+          "surface": "retain-save",
+          "case": "retain_message_tail"
+        }
+      ]
+    },
+    {
+      "id": "wstring-removed-utf8",
+      "date": "2026-10-31",
+      "quotes": [
+        "I thought we removed wstring from serialize, and replaced with utf8, we should do the same from schema",
+        "The argument was that wstring was impossible to effectively do portably. So I agreed to remove it and standardize on utf8 instead."
+      ],
+      "source": "relayed by Rowan from the live session"
+    },
+    {
+      "id": "perf-after-3.0.0",
+      "date": "2026-10-31",
+      "quotes": [
+        "Yes, this is after 3.0.0",
+        "we won't make 3.0.0 until it is correct and at parity. That's the bar.",
+        "We need to prove this before v3.0.0 not just hope that it's correct and complete."
+      ],
+      "source": "relayed by Rowan from the live session"
+    }
+  ]
+}
