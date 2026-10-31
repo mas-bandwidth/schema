@@ -287,6 +287,11 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		// arm declares.
 		retain := tablewire.Retain{Capacity: retainFuzzCapacity, IdCapacity: retainFuzzIdCapacity}
 		decode = func() (bool, error) { return tablewire.DecodeRegionRetain(r.model, inst, data, &retain, &rep) }
+		if r.builder {
+			// the BUILDER ARM retains too: a builder load has no region, so it
+			// is the plain retaining read, with the builder's count refusal
+			decode = func() (bool, error) { return tablewire.DecodeRetain(r.model, inst, data, &retain, &rep) }
+		}
 		encode = func() ([]byte, error) {
 			var saved tabletext.Report
 			out, err := tablewire.EncodeRetain(r.model, inst, &retain, &saved)
@@ -834,8 +839,8 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 }
 
 func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
-	if opts.builder && (opts.retain || opts.message) {
-		return fmt.Errorf("--builder is a non-retaining file arm")
+	if opts.builder && opts.message {
+		return fmt.Errorf("--builder is a file arm: the message form has no builder load")
 	}
 	if opts.driver == "" {
 		return fmt.Errorf("wire-fuzz needs --driver")
@@ -1009,7 +1014,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		arm = "wire-fuzz-builder"
 	}
 	if opts.retain {
-		arm = "wire-fuzz retain"
+		arm += " retain"
 	}
 	fmt.Printf("%s: seed %d, %d seeds over %d roots%s, %d enumerated + %d random = %d mutants, 0 divergences, %.1f s, %.0f mutants/s\n",
 		arm, opts.seed, len(live), len(roots), absence, enumeratedCount, total-enumeratedCount, total, elapsed.Seconds(), rate)

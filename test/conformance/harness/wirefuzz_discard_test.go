@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31; docs/SPEC-TABLES.md §4):
 // on a mutant the oracle reads as damaged, the refusal is the whole of what a
@@ -68,5 +72,28 @@ func TestWireVerdictComparesOnlyTheRefusalOnDamage(t *testing.T) {
 	}
 	if v := wireVerdict(fixedRoot, legReply{loaded: false}, oracleAnswer{report: Counts{Refused: true}}, 10); v == "" {
 		t.Fatal("a leg that hands back no root without the refusal verdict is green")
+	}
+}
+
+// The BUILDER ARM RETAINS too (docs/SPEC-TABLES.md §6.6): a builder root with
+// retention on is read by the plain retaining read, and a clean seed answers
+// the retention report beside the six counters.
+func TestWireFuzzBuilderRetainOracle(t *testing.T) {
+	_, _, units := corpus(t)
+	root, err := newWireRoot(units, "tblrt1", "Node", false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.builder = true
+	wire, err := os.ReadFile(filepath.Join("testdata", "wire", "tables", "retain_rt2.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := root.oracle(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answer.builderStopped || answer.report.Malformed || answer.retained == 0 {
+		t.Fatalf("builder retain oracle: %+v", answer)
 	}
 }
