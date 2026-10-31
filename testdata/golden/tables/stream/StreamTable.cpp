@@ -4244,7 +4244,14 @@ namespace streamdemo {
 
 bool HeaderFromJsonTolerant( Header & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, HeaderTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, HeaderTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; HeaderTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool HeaderFromJson( Header & value, const char * text, int64_t bytes, TableReport * report )
@@ -4279,7 +4286,14 @@ bool ChunkFromJsonTolerant( ChunkBuilder & builder, const char * text, int64_t b
 {
     Chunk * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, ChunkTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, ChunkTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ChunkTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ChunkFromJson( ChunkBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4316,7 +4330,14 @@ bool FeedFromJsonTolerant( FeedBuilder & builder, const char * text, int64_t byt
 {
     Feed * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, FeedTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, FeedTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; FeedTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool FeedFromJson( FeedBuilder & builder, const char * text, int64_t bytes, TableReport * report )

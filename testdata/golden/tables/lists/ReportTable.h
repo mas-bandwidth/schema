@@ -239,7 +239,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -965,8 +965,8 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -8602,7 +8602,7 @@ inline bool BytesLoadBody( TableReader & r, const TableNodeMap & nodes, Bytes & 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -8641,8 +8641,8 @@ inline bool BytesLoadBody( TableReader & r, const TableNodeMap & nodes, Bytes & 
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -8993,7 +8993,7 @@ inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & va
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -9033,8 +9033,8 @@ inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & va
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -9062,8 +9062,8 @@ inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & va
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -9425,7 +9425,7 @@ inline bool FloatsLoadBody( TableReader & r, const TableNodeMap & nodes, Floats 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -9464,8 +9464,8 @@ inline bool FloatsLoadBody( TableReader & r, const TableNodeMap & nodes, Floats 
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -13363,7 +13363,7 @@ inline bool BytesLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, By
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -13402,8 +13402,8 @@ inline bool BytesLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, By
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -13684,7 +13684,7 @@ inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Int
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -13724,8 +13724,8 @@ inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Int
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -13753,8 +13753,8 @@ inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Int
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -14049,7 +14049,7 @@ inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, F
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -14088,8 +14088,8 @@ inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, F
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
