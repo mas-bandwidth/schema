@@ -29,7 +29,8 @@
 //
 // A unit whose protocol id is EQUAL under both compilers is compared, and a
 // differing byte refuses, naming the unit, the instance and the first
-// differing byte. A unit whose id moved is listed, not compared; so is a unit
+// differing byte; so does a packet driver that passes its own checks on one
+// side only, since those checks read the bytes it wrote. A unit whose id moved is listed, not compared; so is a unit
 // either compiler refuses, a driver that builds on one side only, and an
 // instance one side refuses to encode.
 //
@@ -409,6 +410,16 @@ func Judge(old, new Compiler, trees []string, m *Manifest, jsonDir, work string,
 				if err != nil {
 					fail(err)
 					return
+				}
+				// the same driver, the same instances, one id: a run that
+				// passes its own checks on one side only is a difference,
+				// since the driver's checks read the bytes it wrote
+				if (oerr == nil) != (nerr == nil) {
+					side, other, e := new.Name(), old.Name(), nerr
+					if oerr != nil {
+						side, other, e = old.Name(), new.Name(), oerr
+					}
+					add(&r.Differences, fmt.Sprintf("packet wire, unit %s: the driver completes against %s and fails its own check against %s (%s)", unitNames(d.Units), other, side, firstLine(e)))
 				}
 				note := ""
 				if oerr != nil || nerr != nil {

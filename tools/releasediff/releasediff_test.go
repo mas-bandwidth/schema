@@ -241,6 +241,18 @@ func TestJudgeComparesWireBytesUnderAnEqualId(t *testing.T) {
 	if !slices.Equal(r.Differences, want) {
 		t.Errorf("differences %q; want %q", r.Differences, want)
 	}
+	// a driver that passes its own checks on one side only
+	failing := failRun{nw}
+	r2, err := Judge(old, failing, []string{tree}, m, "json", t.TempDir(), 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(r2.Differences, func(d string) bool {
+		return strings.HasPrefix(d, "packet wire, unit examples: the driver completes against v1.0.0 and fails its own check against HEAD (FAILED: buffer[0] == 0x51")
+	}) {
+		t.Errorf("a one-sided driver failure is not a difference: %q", r2.Differences)
+	}
+
 	var out bytes.Buffer
 	r.Print(&out, "v1.0.0", "HEAD")
 	if !strings.Contains(out.String(), "DIFFERENCE under an equal protocol id: "+want[0]) || !strings.Contains(out.String(), "REFUSED, 2 encoding(s)") {
@@ -257,4 +269,16 @@ func TestNewestRelease(t *testing.T) {
 	if _, ok := NewestRelease([]string{"main-0123456789ab"}); ok {
 		t.Error("NewestRelease found a release among promotion tags only")
 	}
+}
+
+// failRun is a compiler whose packet driver writes its pins and then fails
+// one of its own checks.
+type failRun struct{ fake }
+
+func (f failRun) Packet(d PacketDriver, tree, out string) (bool, error) {
+	ran, err := f.fake.Packet(d, tree, out)
+	if !ran || err != nil {
+		return ran, err
+	}
+	return true, errors.New("FAILED: buffer[0] == 0x51 (test/main.cpp:194)")
 }
