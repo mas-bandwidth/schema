@@ -2,19 +2,15 @@ package darttable
 
 // THE MAP DECODE AND REPORT (docs/SPEC-TABLES.md §2.8, §4, §6.6) on the Dart
 // leg must agree with the Go oracle (internal/tablewire mapField and mapKey)
-// byte for byte and counter for counter. Each mutant below is one the Dart
-// wire fuzzer (seed 24845619678) or the card's own construction found the
-// generated Dart map read answering differently from Go:
+// byte for byte and counter for counter on a clean read, and refuse on a
+// damaged one: DAMAGE DISCARDS THE WHOLE LOAD (§4). Each mutant below is one
+// the Dart wire fuzzer (seed 24845619678) or the card's own construction
+// found:
 //
-//   - A widened key AHEAD OF DAMAGE in the same entry: Go sets the entry's
-//     widened flag before it reads on, so the map counts its one `widened`
-//     even though the entry is malformed; the old Dart key scan answered
-//     malformed and counted none.
-//   - A DESCENDING entry: Go judges the key's order from the key scan and
-//     never reads the body, so an unknown inside it never counts; the old
-//     Dart decoded the body first and counted it.
-//   - Two widened keys in ONE map: Go counts one `widened` per MAP; the old
-//     Dart counted one per entry inside the entry body's decode.
+//   - A widened key AHEAD OF DAMAGE in the same entry: damage, refused.
+//   - A DESCENDING entry: damage, refused.
+//   - Two widened keys in ONE map: Go counts one `widened` per MAP, and so
+//     must Dart.
 
 import (
 	"encoding/hex"
@@ -117,6 +113,14 @@ func TestWireMapRootsDecodeAndReportDart(t *testing.T) {
 			}
 
 			got := mapProbe(t, wire, c.root, c.hex)
+			if report.Malformed {
+				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+				// leg owes the refusal, and no counter or saved byte is compared
+				if !got.malformed {
+					t.Errorf("the Dart load did not refuse a damaged map on %s", c.name)
+				}
+				return
+			}
 			if got.unknown != report.Unknown || got.kindMismatch != report.KindMismatch ||
 				got.widened != report.Widened || got.clamped != report.Clamped ||
 				got.duplicate != report.Duplicate || got.malformed != report.Malformed ||

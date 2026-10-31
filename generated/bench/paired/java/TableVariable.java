@@ -736,7 +736,9 @@ public final class TableVariable {
             return -1;
         }
         long count = u64(data, data.length - 8);
-        if (count < 0 || count > (data.length - 9) / 8) {
+        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+        // whatever the buffer would hold
+        if (count < 0 || count > 4096 || count > (data.length - 9) / 8) {
             report.malformed = true;
             return -1;
         }

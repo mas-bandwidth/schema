@@ -13,8 +13,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Rowan's #725 review: cooking the decoded value directly must agree with
-// cooking its text round trip, which drops slots above the live count.
+// Cooking the value a read hands back must agree with cooking its text round
+// trip, which drops slots above the live count. The wire repeats a counted
+// union array and damages the repeat, so DAMAGE DISCARDS THE WHOLE LOAD
+// (docs/SPEC-TABLES.md §4): every read refuses it and hands back the root at
+// its declared defaults, with no stale tail in the storage.
 func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 	source, err := os.ReadFile("../../tables/arms/Carry.schema")
 	if err != nil {
@@ -38,7 +41,7 @@ func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 		t.Run(decode.name, func(t *testing.T) {
 			inst := m.New(m.Lookup("Hand"))
 			var report tabletext.Report
-			if ok, err := decode.fn(m, inst, wire, &report); !ok || err != nil || !report.Malformed {
+			if ok, err := decode.fn(m, inst, wire, &report); ok || err != nil || !report.Malformed {
 				t.Fatalf("decode: %v, %+v", err, report)
 			}
 			entries := fieldByName(t, inst, "entries")
@@ -50,7 +53,7 @@ func TestRepeatedCountedUnionTailCooks(t *testing.T) {
 					t.Fatal("stale counted union tail")
 				}
 			}
-			want := place(t, m, "Hand", `{"past":2}`)
+			want := m.New(m.Lookup("Hand"))
 			for _, big := range []bool{false, true} {
 				got, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
 				if err != nil {
@@ -96,7 +99,7 @@ func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
 	}{
 		{"empty", []byte{13, 0}, 0, false},
 		{"short", []byte{13, 1, 1, 0}, 1, false},
-		{"damaged", []byte{13, 2, 1, 0}, 1, true},
+		{"damaged", []byte{13, 2, 1, 0}, 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := append([]byte{ir.TableWireForm}, body[:len(body)-1]...)
@@ -111,7 +114,9 @@ func TestRepeatedCountedRecordTailDefaults(t *testing.T) {
 			data = binary.LittleEndian.AppendUint64(data, uint64(len(ids)))
 			inst := m.New(m.Lookup("Root"))
 			var report tabletext.Report
-			if ok, err := tablewire.Decode(m, inst, data, &report); !ok || err != nil || report.Malformed != tc.malformed {
+			// damage discards the whole load (§4): the read refuses it and
+			// the root is at its declared defaults
+			if ok, err := tablewire.Decode(m, inst, data, &report); ok == tc.malformed || err != nil || report.Malformed != tc.malformed {
 				t.Fatalf("decode: %v, %+v", err, report)
 			}
 			values := fieldByName(t, inst, "values")

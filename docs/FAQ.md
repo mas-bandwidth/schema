@@ -80,13 +80,12 @@ answer: declare a `table` and its fields are identified by the hash of their
 NAMES, so a reader takes any data a writer ever wrote — unknown fields skipped
 and counted, absent fields defaulted, changed kinds skipped rather than
 misdecoded, a kind that merely grew decoded exactly and counted `widened`,
-out-of-range values clamped, and every event in a read report. **Nothing is
-fatal below the whole wire**: framing damage stops the damaged nesting level,
-keeps what it decoded there, and the parent reads on past the field's own
-length. Two things do stop the file, and both DECODE NOTHING rather than
-mangle anything: a trailer the reader cannot read whole, and a form byte the
-reader does not know, which is a refusal by name and moves no counter at all
-(SPEC-TABLES.md §3, §4). Save games, config, asset archives, tool output and backend messages
+out-of-range values clamped, and every event in a read report. **Damage is
+the one thing that stops a read, and it stops all of it**: a read that meets
+framing damage anywhere refuses the whole load as `malformed` and hands back
+nothing to use, rather than a value that is partly the file and partly
+guesswork. A form byte the reader does not know is a refusal by name and moves
+no counter at all (SPEC-TABLES.md §3, §4). Save games, config, asset archives, tool output and backend messages
 belong there; packets belong on the type wire. What schema does not offer is
 Protobuf's model of ONE wire that does both.
 

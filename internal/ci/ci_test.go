@@ -1137,15 +1137,16 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Verify docs/CONTRIBUTING.md documents the stream -> dev -> main route and
-	// same-repository fleet admission rule in agreement with the workflows.
+	// Verify docs/CONTRIBUTING.md documents the landing route (pull requests
+	// into main) and the same-repository fleet admission rule in agreement
+	// with the workflows.
 	contributingBytes, err := os.ReadFile(filepath.Join(root, "docs", "CONTRIBUTING.md"))
 	if err != nil {
 		t.Fatalf("read docs/CONTRIBUTING.md: %v", err)
 	}
 	contributing := string(contributingBytes)
 	for _, want := range []string{
-		"Streams land on `dev`; `dev` promotes to `main`",
+		"Everything lands on `main` by pull request",
 		"ci-fast.yml",
 		"ci-full.yml",
 		"github.event.pull_request.head.repo.full_name == github.repository",

@@ -634,13 +634,21 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 	}
 	if g.isVar(st.Name) {
 		// The TOLERANT read keeps BASE's signature and answers (docs/SPEC-TABLES.md
-		// §16.2): it reads what it can, counts clamps, kind mismatches and
-		// duplicates onto the report, and answers true unless the text is
-		// malformed.
+		// §16.2): it counts clamps, kind mismatches and duplicates onto the
+		// report and answers true for a whole read. DAMAGE DISCARDS THE WHOLE
+		// LOAD (§4): malformed text answers false with the root reset to its
+		// declared defaults.
 		g.pf("bool %sFromJsonTolerant( %sBuilder & builder, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 		g.pf("    %s * root = builder.GetRoot();\n", st.Name)
 		g.pf("    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed\n")
-		g.pf("    return TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+		g.pf("    TableReport ignored;\n")
+		g.pf("    TableReport * to = report != NULL ? report : &ignored;\n")
+		g.pf("    const bool malformed_before = to->malformed;\n")
+		g.pf("    to->malformed = false;\n")
+		g.pf("    const bool ok = TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, to );\n", st.Name)
+		g.pf("    if ( !ok || to->malformed ) { to->malformed = true; %sTableType()->reset( root ); return false; } // damage discards the whole load (§4)\n", st.Name)
+		g.pf("    to->malformed = malformed_before;\n")
+		g.pf("    return true;\n}\n\n")
 		// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers
 		// false for a text whose report holds a clamp, a kind mismatch, a
 		// malformed value, resets the root to defaults, and overwrites the
@@ -672,8 +680,19 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		g.pf("    return TableJsonWriteGraph( root, %sTableType(), buffer, capacity, allocator );\n}\n\n", st.Name)
 		return
 	}
+	// The TOLERANT read counts clamps, kind mismatches and duplicates and
+	// answers true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD
+	// (docs/SPEC-TABLES.md §4): malformed text answers false with the value
+	// reset to its declared defaults.
 	g.pf("bool %sFromJsonTolerant( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
-	g.pf("    return TableJsonRead( &value, %sTableType(), text, bytes, report );\n}\n\n", st.Name)
+	g.pf("    TableReport ignored;\n")
+	g.pf("    TableReport * to = report != NULL ? report : &ignored;\n")
+	g.pf("    const bool malformed_before = to->malformed;\n")
+	g.pf("    to->malformed = false;\n")
+	g.pf("    const bool ok = TableJsonRead( &value, %sTableType(), text, bytes, to );\n", st.Name)
+	g.pf("    if ( !ok || to->malformed ) { to->malformed = true; %sTableType()->reset( &value ); return false; } // damage discards the whole load (§4)\n", st.Name)
+	g.pf("    to->malformed = malformed_before;\n")
+	g.pf("    return true;\n}\n\n")
 	// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers false
 	// for a text whose report holds a clamp, a kind mismatch or malformed text,
 	// resets the value to its declared defaults
