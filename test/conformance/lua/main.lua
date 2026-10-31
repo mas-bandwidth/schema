@@ -92,7 +92,7 @@ end
 -- A LEG THAT CANNOT ANSWER ONE CASE SAYS SO BESIDE WHERE THE ANSWER WOULD GO
 -- (test/conformance/README.md, "Exit codes"): `<case>.absent`, with the reason.
 local function absent(outdir, name, reason)
-  writeBytes(outdir .. "/" .. name .. ".absent", reason .. "\n")
+  writeBytes(outdir .. "/" .. name .. ".absent", reason)
 end
 
 local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
