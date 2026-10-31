@@ -1610,3 +1610,23 @@ cards-rust-conformance-hash-negative-control: build/conformance-harness cards-ru
 test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negative-control
 test-rust: cards-rust-conformance-upgrade-negative-control cards-rust-conformance-hash-negative-control
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
+
+# M19 (docs/PORTING.md): A MAP IS A SORTED ENTRY ARRAY IN THE HOLDER'S NODE
+# EXTENT, and a list's elements ride the same extent (docs/SPEC-TABLES.md
+# §2.8, §2.9, §7.6). test/rust-cookmap cooks every map and list instance of the
+# corpus with the generated writer, in both byte orders, and holds the bytes to
+# `schema cook`'s (the C++ reference's cook lands on the same bytes in the
+# conformance cook-write rows); then it opens map_full's cook and searches every
+# map of the root in place, a map inside an entry included. Its controls make
+# the carve lay a map's entries unsorted, and an array unaligned, each red on
+# its own line.
+.PHONY: tables-rust-cook-map tables-rust-cook-map-negative-control
+tables-rust-cook-map: build/tables-generated-rust/.stamp
+	cd test/rust-cookmap && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
+	./test/rust-cookmap/target/debug/rust-cookmap
+
+tables-rust-cook-map-negative-control: bin/schema
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control sort
+	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control align
+
+test-rust: tables-rust-cook-map tables-rust-cook-map-negative-control
