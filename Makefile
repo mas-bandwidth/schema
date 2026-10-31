@@ -3542,7 +3542,8 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-lists-negative-controls
 	$(MAKE) tables-arms
 	$(MAKE) tables-arms-negative-controls
-	# A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, schema#480)
+	# A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): every read and every
+	# writer refuses a NaN or an infinity, and -0 rides
 	$(MAKE) tables-float-nan
 	$(MAKE) tables-float-nan-negative-control
 	# RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the round trip, the five
@@ -4118,15 +4119,17 @@ tables-message-form-retain-negative-control: bin/schema test/tables/retain_main.
 	@grep -m1 "FAIL" $(RETAIN_MSG_NC)/log
 	@echo "negative control: removing the message path's call into the walk turns the pinned batch RED"
 
-# ---- A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, SPEC.md
-# ---- §4.3, schema#480) -----------------------------------------------------
+# ---- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables
+# ---- go finite-only too, same rule as packets") -----------------------------
 #
 # The pin is testdata/wire/tables/floats_nan.bin — a signalling NaN, a NaN with
 # a payload past the quiet bit, both signs, at both widths and as array
-# elements. main.cpp writes it and reads it back with every other golden; this
-# binary carries the CLAIM: the bits come back, and come back through §4's
-# widened rung, where a backend holding a float32 in a wider cell would quiet a
-# signalling NaN through the hardware conversion.
+# elements — FROZEN as the shared MUST-REFUSE vector: no writer can produce it
+# any more, and every read refuses it as non_finite_float. This binary carries
+# the CLAIM over every form the C++ leg has: the pin refused at both widths
+# (the float rung included) and landing nothing, every writer refusing every
+# non-finite pattern, a forged fixed record and a forged message refused, and
+# -0 and the subnormals riding bit-exact with -0 never elided.
 FLOATNAN_SOURCES = $$(ls build/tables-generated/f1/*Table.cpp build/tables-generated/f2/*Table.cpp)
 
 build/schema_test_floatnan: build/tables-generated/.stamp test/tables/floatnan_main.cpp test/tables/floatnan.h
@@ -4138,18 +4141,20 @@ build/schema_test_floatnan: build/tables-generated/.stamp test/tables/floatnan_m
 tables-float-nan: build/schema_test_floatnan
 	./build/schema_test_floatnan
 
-# ITS NEGATIVE CONTROL: the reference's widening reads the BITS, and this
-# replaces it with the hardware conversion a port would reach for first. The
-# emitter is sabotaged, ONLY the f1/f2 pair is regenerated from it, and the
-# claim above must go RED — on the payload, not on a compile error.
+# ITS NEGATIVE CONTROL: the READ's mask test is the rule, and this makes it
+# answer "finite" for every pattern — the read a port gets wrong by testing the
+# value after the conversion, or by not testing at all. The emitter is
+# sabotaged, ONLY the f1/f2 pair is regenerated from it, and the pin must go
+# RED — on the refusal, not on a compile error.
 .PHONY: tables-float-nan-negative-control
 tables-float-nan-negative-control: bin/schema build/tables-generated/.stamp
 	@rm -rf build/float-nan-control && mkdir -p build/float-nan-control
-	@sed -e 's@    if ( ( bits \& 0x7F800000u ) == 0x7F800000u \&\& ( bits \& 0x007FFFFFu ) != 0 )@    if ( false ) // SABOTAGED: the hardware conversion quiets a signalling NaN@' \
-		internal/codegen/cpptable/widen.go > build/float-nan-control/widen.go.txt
-	@cmp -s internal/codegen/cpptable/widen.go build/float-nan-control/widen.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the float-NaN sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/widen.go":"%s/build/float-nan-control/widen.go.txt"}}\n' \
+	@sed -e 's@^inline bool TableBitsFinite32( uint32_t bits ) { return .*@inline bool TableBitsFinite32( uint32_t bits ) { (void) bits; return true; } // SABOTAGED: the read never refuses@' \
+		-e 's@^inline bool TableBitsFinite64( uint64_t bits ) { return .*@inline bool TableBitsFinite64( uint64_t bits ) { (void) bits; return true; } // SABOTAGED@' \
+		internal/codegen/cpptable/cpptable.go > build/float-nan-control/cpptable.go.txt
+	@test "$$(grep -c 'SABOTAGED' build/float-nan-control/cpptable.go.txt)" = 2 || \
+		{ echo "NEGATIVE CONTROL FAILED: the finite-float sabotage did not patch both mask tests"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/float-nan-control/cpptable.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/float-nan-control/overlay.json
 	@go build -overlay=build/float-nan-control/overlay.json -o build/schema-float-nan-control ./cmd/schema
 	@./build/schema-float-nan-control generate --lang cpp --out build/float-nan-control/f1 test/tables/F1.schema
@@ -4158,12 +4163,15 @@ tables-float-nan-negative-control: bin/schema build/tables-generated/.stamp
 		test/tables/floatnan_main.cpp build/float-nan-control/f1/*Table.cpp build/float-nan-control/f2/*Table.cpp \
 		-o build/schema_test_floatnan_control
 	@if ./build/schema_test_floatnan_control > build/float-nan-control/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: widening a float32 NaN through the hardware conversion left the pin GREEN"; exit 1; \
+		echo "NEGATIVE CONTROL FAILED: a read that never tests the bits left the finite pin GREEN"; exit 1; \
 	fi
-	@grep -q "through a conversion" build/float-nan-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the pin went red, but not on the payload"; \
+	@grep -q "floats_nan was not refused as non_finite_float by the TOLERANT read" build/float-nan-control/log && \
+	 grep -q "floats_nan was not refused as non_finite_float through the widened rung" build/float-nan-control/log && \
+	 grep -q "a fixed record carrying 0x7f800001 was not refused" build/float-nan-control/log && \
+	 grep -q "a message carrying 0x7f800001 was not refused" build/float-nan-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the pin went red, but not on every read's refusal"; \
 		  cat build/float-nan-control/log; exit 1; }
-	@echo "negative control: a canonicalising widen turns the float bit-pattern pin RED"
+	@echo "negative control: a read that never tests the bits turns the finite-float pin RED"
 
 build/schema_test_lists: build/tables-generated/.stamp test/tables/lists_main.cpp
 	@mkdir -p build
@@ -5171,8 +5179,8 @@ tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
 
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-asan.bin
 
 # THE WIRE FUZZER'S NEGATIVE CONTROLS (docs/SPEC-TABLES.md §4.2). A fuzzer
@@ -5199,7 +5207,7 @@ define wire_fuzz_control
 		test/tables/wire_fuzz_main.cpp \
 		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o build/wire-fuzz-nc-$(1)/leg
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
+	@if ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
 			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the wire fuzzer stayed green"; \
 		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
@@ -5393,7 +5401,7 @@ tables-wire-fuzz-oracle-negative-control: build/conformance-harness build/wire-f
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(ORACLE_NC)/decode.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ORACLE_NC)/overlay.json
 	go build -overlay $(ORACLE_NC)/overlay.json -o $(ORACLE_NC)/harness ./test/conformance/harness
-	@if $(ORACLE_NC)/harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
+	@if $(ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n 0 \
 			--failed $(ORACLE_NC)/failed.bin > $(ORACLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the oracle's clamp is gone and the wire fuzzer stayed green"; \
 		cat $(ORACLE_NC)/log; exit 1; \
@@ -5427,7 +5435,7 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(NESTED_TRAIL_NC)/decode.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(NESTED_TRAIL_NC)/overlay.json
 	go build -overlay $(NESTED_TRAIL_NC)/overlay.json -o $(NESTED_TRAIL_NC)/harness ./test/conformance/harness
-	@if $(NESTED_TRAIL_NC)/harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp \
+	@if $(NESTED_TRAIL_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
 			--replay testdata/wire/tables/nested_arm_trailing.bin --unit messagedemo --root ToolMessage \
 			--failed $(NESTED_TRAIL_NC)/failed.bin > $(NESTED_TRAIL_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the oracle refuses a nested-union envelope's trailing bytes and the wire fuzzer stayed green"; \
@@ -5448,8 +5456,8 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 # name (§3.3).
 .PHONY: tables-wire-fuzz-retain
 tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-retain-asan.bin
 
 # TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
@@ -5475,7 +5483,7 @@ tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build
 	@printf '{"Replace":{"%s/internal/tablewire/retain.go":"%s/$(RETAIN_ORACLE_NC)/retain.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_ORACLE_NC)/overlay.json
 	go build -overlay $(RETAIN_ORACLE_NC)/overlay.json -o $(RETAIN_ORACLE_NC)/harness ./test/conformance/harness
-	@if $(RETAIN_ORACLE_NC)/harness wire-fuzz --finite-owed tables-finite/cpp --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) \
+	@if $(RETAIN_ORACLE_NC)/harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) \
 			--failed $(RETAIN_ORACLE_NC)/failed.bin > $(RETAIN_ORACLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the oracle's drop rule is gone and the retention leg stayed green"; \
 		cat $(RETAIN_ORACLE_NC)/log; exit 1; \
@@ -5511,7 +5519,7 @@ define retain_fuzz_control
 		test/tables/wire_fuzz_main.cpp \
 		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o build/wire-fuzz-nc-$(1)/leg
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --retain --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
+	@if ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
 			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the retention leg stayed green"; \
 		cat build/wire-fuzz-nc-$(1)/log; exit 1; \
@@ -5812,7 +5820,7 @@ tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wir
 	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(NODE_TYPE_NC)/messagedecode.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(NODE_TYPE_NC)/overlay.json
 	go build -overlay $(NODE_TYPE_NC)/overlay.json -o $(NODE_TYPE_NC)/harness ./test/conformance/harness
-	@if $(NODE_TYPE_NC)/harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp \
+	@if $(NODE_TYPE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
 			--replay $(NODE_TYPE_VECTOR) --unit graphdemo --root Scene --message \
 			--failed $(NODE_TYPE_NC)/failed.bin > $(NODE_TYPE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: every closure table is placeable again and the pinned vector stayed green"; \
@@ -5848,7 +5856,7 @@ tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wir
 	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(BLOB_NODE_NC)/messagedecode.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(BLOB_NODE_NC)/overlay.json
 	go build -overlay $(BLOB_NODE_NC)/overlay.json -o $(BLOB_NODE_NC)/harness ./test/conformance/harness
-	@if $(BLOB_NODE_NC)/harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp \
+	@if $(BLOB_NODE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
 			--replay $(BLOB_NODE_VECTOR) --unit graphdemo --root Scene --message \
 			--failed $(BLOB_NODE_NC)/failed.bin > $(BLOB_NODE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the framing is gated on reachability again and the pinned vector stayed green"; \
@@ -5883,7 +5891,7 @@ tables-wire-fuzz-message-text-oracle-negative-control: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(MESSAGE_TEXT_ORACLE_NC)/messagedecode.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_ORACLE_NC)/overlay.json
 	go build -overlay $(MESSAGE_TEXT_ORACLE_NC)/overlay.json -o $(MESSAGE_TEXT_ORACLE_NC)/harness ./test/conformance/harness
-	@if $(MESSAGE_TEXT_ORACLE_NC)/harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp \
+	@if $(MESSAGE_TEXT_ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
 			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
 			--failed $(MESSAGE_TEXT_ORACLE_NC)/failed.bin > $(MESSAGE_TEXT_ORACLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the oracle accepts ill-formed message text again and the pinned vector stayed green"; \
@@ -5909,7 +5917,7 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 		test/tables/wire_fuzz_main.cpp \
 		$(subst build/tables-generated/,$(MESSAGE_TEXT_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o $(MESSAGE_TEXT_LEG_NC)/leg
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --driver $(MESSAGE_TEXT_LEG_NC)/leg \
+	@if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_TEXT_LEG_NC)/leg \
 			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
 			--failed $(MESSAGE_TEXT_LEG_NC)/failed.bin > $(MESSAGE_TEXT_LEG_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the emitted reader accepts ill-formed message text again and the pinned vector stayed green"; \
@@ -5948,7 +5956,7 @@ tables-wire-fuzz-message-blob-oracle-negative-control: build/conformance-harness
 		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_BLOB_ORACLE_NC)/overlay.json
 	go build -overlay $(MESSAGE_BLOB_ORACLE_NC)/overlay.json -o $(MESSAGE_BLOB_ORACLE_NC)/harness ./test/conformance/harness
 	@for vector in $(MESSAGE_BLOB_VECTOR) $(MESSAGE_BLOB_ZERO_VECTOR); do \
-		if $(MESSAGE_BLOB_ORACLE_NC)/harness wire-fuzz --finite-owed tables-finite/cpp --driver ./build/wire-fuzz-cpp \
+		if $(MESSAGE_BLOB_ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
 				--replay $$vector --unit blobdemo --root Catalog --message \
 				--failed $(MESSAGE_BLOB_ORACLE_NC)/failed.bin > $(MESSAGE_BLOB_ORACLE_NC)/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the oracle places an ill-formed *string blob again and $$vector stayed green"; \
@@ -5976,7 +5984,7 @@ tables-wire-fuzz-message-blob-leg-negative-control: build/conformance-harness
 		$(subst build/tables-generated/,$(MESSAGE_BLOB_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o $(MESSAGE_BLOB_LEG_NC)/leg
 	@for vector in $(MESSAGE_BLOB_VECTOR) $(MESSAGE_BLOB_ZERO_VECTOR); do \
-		if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cpp --driver $(MESSAGE_BLOB_LEG_NC)/leg \
+		if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_BLOB_LEG_NC)/leg \
 				--replay $$vector --unit blobdemo --root Catalog --message \
 				--failed $(MESSAGE_BLOB_LEG_NC)/failed.bin > $(MESSAGE_BLOB_LEG_NC)/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the emitted reader places an ill-formed *string blob again and $$vector stayed green"; \

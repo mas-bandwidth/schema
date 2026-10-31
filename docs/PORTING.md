@@ -949,15 +949,14 @@ slot. The text form is not one of them: JSON spells no NaN, the text writer
 refuses a non-finite float and the reader counts a NaN token as a kind
 mismatch (§16.2), so a NaN payload never rides through a text cell.
 
-**Reference.** `internal/codegen/cpptable/widen.go` (`TableWidenF32`, emitted
-into every unit's header) and its use at
-`internal/codegen/cpptable/messageload.go`, until the C++ leg lands the finite
-rule. The compiler's own engines no longer carry the pair: `internal/tablewire`
-and `internal/tablecook` refuse a non-finite float on its raw bits and widen a
-finite one by the ordinary conversion (2026-10-27), and so does the Go leg.
+**Reference.** None left in the tree. The compiler's own engines
+(`internal/tablewire`, `internal/tablecook`), the Go leg and the C++ leg refuse
+a non-finite float on its raw bits and widen a finite one by the ordinary
+conversion (2026-10-27); the C++ leg's `TableWidenF32` is deleted with the
+NaN it existed for.
 
 **Proven in.** C++ (#480). The eight ports were a row on #366; under the finite
-rule a port retires the method instead of carrying it, as the Go leg and the
+rule a port retires the method instead of carrying it, as the Go leg, the C++ leg and the
 tool have.
 
 **Measured effect.** Nothing on the ordinary path: the branch is one mask and
@@ -965,17 +964,18 @@ one compare against an exponent word already loaded, and every finite value
 takes the conversion it took before. What it buys is the byte-identity promise
 holding over a class of values the corpus can now pin.
 
-**Negative control.** `tables-float-nan-negative-control` puts the hardware
-conversion back in `TableWidenF32` through an overlay sabotage (I2),
-regenerates only the F1/F2 pair from the sabotaged emitter, and requires the
-pin to go RED on the payload: the observed failure is `0x7ff0000020000000`
-read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
+**Negative control.** `tables-float-nan-negative-control` now holds the
+finite rule that retires this method: it blinds the C++ read's mask test
+(`TableBitsFinite32`/`TableBitsFinite64`) through an overlay sabotage (I2),
+regenerates only the F1/F2 pair, and requires the pin to go RED on the
+refusal: `floats_nan.bin`, read at both widths, and a forged fixed record and
+message are no longer refused as `non_finite_float`.
 
 **Targets:** tables-float-nan, tables-float-nan-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ✅ `tables-float-nan` `tables-float-nan-negative-control` (the C++ leg's finite-tables card retires it) | ✅ `tables-c-wire-fuzz` | ❌ #366 | — retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingNaNWideningAndLEBOverflow`, `TestGoPlainFloatSpecialValuesAgreeAcrossForms`) | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 |
+| — retired: the C++ leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`tables-float-nan`, `tables-float-nan-negative-control`) | ✅ `tables-c-wire-fuzz` | ❌ #366 | — retired: the Go leg refuses a NaN or an infinity on its raw bits and widens a finite float32 by the ordinary conversion (`TestWireSignalingNaNWideningAndLEBOverflow`, `TestGoPlainFloatSpecialValuesAgreeAcrossForms`) | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ✅ `TestJsFloat32CellsAreBitTransparent` (the block accessor, the form-3 decode and write, and the f32-to-f64 rung; its node half runs under SCHEMA_SLOW=1) | ❌ #366 | ❌ #366 |
 
 ### M22 — Typed table serialization fast path
 
