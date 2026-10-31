@@ -346,7 +346,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             else if ( !TableJsonMapKeyValue( token, token_length, key, key_value, fits ) )
             {
                 // A MALFORMED KEY STOPS THE READ where §16.1's rule stops it,
-                // with the instance holding what was placed before the stop.
+                // and the whole read is discarded (§4).
                 in.report->malformed = true;
                 in.bad = true;
                 return false;
@@ -1804,7 +1804,7 @@ struct TableJsonIn
     int64_t size;
     int64_t pos;
     TableReport * report;
-    bool bad;     // the text is not JSON: the walk stops and keeps what it placed
+    bool bad;     // the text is not JSON: the walk stops and the read is discarded whole
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
 };
 
