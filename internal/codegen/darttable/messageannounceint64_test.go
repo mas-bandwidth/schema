@@ -89,7 +89,7 @@ func checkAnnounceInt64Case(t *testing.T, c announceInt64Case) {
 	u := unitFrom(t, c.schema)
 	st := findTable(t, u, "Box")
 	if !st.IsTable || !st.FixedDeclared {
-		t.Fatalf("§3.3 is a fixed table's; Box is a plain table")
+		t.Fatalf("§3.3 is a fixed table's; Box is a variable table")
 	}
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup("Box"))

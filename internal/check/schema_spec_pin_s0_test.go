@@ -2,7 +2,7 @@
 // the VARIABLE table is the wire for anything LARGE, SPARSE or FREE-FORM —
 // everything the other two refuse to carry. The fixed class's refusals are
 // TestFixedTableClosureRefusals; this is the other end of the same ruling: a
-// plain `table` carries those constructs and stays on the variable wire.
+// variable table carries those constructs and stays on the variable wire.
 package check
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestVariableTableCarriesWhatTheOtherTwoRefuse declares in one plain table
+// TestVariableTableCarriesWhatTheOtherTwoRefuse declares in one variable table
 // every construct the fixed class refuses — a map, an unbounded array, a
 // pointer, an unbounded byte buffer and an unbounded string — and requires
 // them to be accepted, resolved, and on the VARIABLE wire. A fixed table with
@@ -31,7 +31,7 @@ table Big
 }
 `)
 	if !ir.VariableTables(u)["Big"] {
-		t.Fatal("a plain table declaring a map, a list, a pointer and unbounded buffers is the VARIABLE wire")
+		t.Fatal("a variable table declaring a map, a list, a pointer and unbounded buffers is the VARIABLE wire")
 	}
 	big := u.Tables["Big"]
 	if big == nil {

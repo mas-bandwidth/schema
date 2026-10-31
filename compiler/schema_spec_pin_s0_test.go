@@ -22,7 +22,7 @@ func TestEveryTargetHasATableBackend(t *testing.T) {
 	u := unitFromSource(t, tableSrc)
 	for _, target := range c.Targets() {
 		if _, err := c.Generate(u, target, Options{}); err != nil {
-			t.Errorf("--lang %s refused a plain table declaration: %v", target, err)
+			t.Errorf("--lang %s refused a variable table declaration: %v", target, err)
 		}
 	}
 }

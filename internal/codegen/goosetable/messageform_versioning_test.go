@@ -56,7 +56,6 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 	var mu sync.Mutex
 	moved := map[string]int64{}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			writer := evolutionLoad(t, "test/tables/"+c.writer+".schema")

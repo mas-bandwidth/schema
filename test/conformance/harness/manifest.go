@@ -335,6 +335,11 @@ type Connection struct {
 // What the pair pins is the RESOLVED FORM: the two bodies are equal once every
 // reference is replaced by the id it names and every length recomputed, and
 // their reference bytes are expected to differ.
+//
+// A row whose message-form wire is `-` is a NAMED REFUSAL row: its root is a
+// variable table, the message form is fixed tables only (docs/SPEC-TABLES.md
+// §3.3), and every leg answers it absent with VariableMessageRefusal and
+// nothing else.
 type Message struct {
 	Name        string
 	Connection  string
@@ -342,6 +347,15 @@ type Message struct {
 	FileWire    string
 	MessageWire string
 }
+
+// VariableMessageRefusal is the one reason every leg gives for a message row
+// over a variable table (docs/SPEC-TABLES.md §3.3: "only fixed tables support
+// message form (bitpacked)").
+const VariableMessageRefusal = "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"
+
+// Refused reports whether the row is a named refusal row: no message-form
+// wire, because its root is a variable table.
+func (msg Message) Refused() bool { return msg.MessageWire == "-" }
 
 // RetainCase is one RETAIN-UNKNOWN row (docs/SPEC-TABLES.md §6.6): a wire
 // loaded with retention, the counters that load owes, and the file the pair
@@ -355,25 +369,19 @@ type Message struct {
 // capacity is a COUNT and travels as one, so `Ids` is either full or the
 // entries the caller's list holds.
 //
-// A MESSAGE row is the form-2 one (§3.3): the wire is a BATCH, `Connection`
-// names the announcement its references resolve against, and the SAVES are the
-// VARIABLE form, one a body, back to back in body order, which is the one
-// direction retention crosses the forms, because a form-2 SaveRetain refuses by
-// name. A message row's capacity is `full`: `short` is one buffer's rule, a
-// batch takes one buffer a body, and the loader refuses the pair by name
-// (schema#681).
+// Retention is the variable form's alone: the message form is fixed tables
+// only (§3.3) and a fixed table has no retention (§6.6), so every row is a
+// file.
 type RetainCase struct {
-	Name       string
-	Unit       string // the READER's unit; empty on a message row, which names a connection
-	Connection string // the announcement a message row resolves against
-	Root       string
-	Wire       string
-	Short      bool // the retention buffer is one byte short of the last record; never on a message row
-	Ids        int  // the caller's id-list entries; -1 is full
-	Load       RetainCounts
-	SaveLost   int      // the `retain_lost` the SAVE adds
-	Saves      []string // the pinned saves, in body order; empty is a row that does not save
-	Message    bool
+	Name     string
+	Unit     string
+	Root     string
+	Wire     string
+	Short    bool // the retention buffer is one byte short of the last record
+	Ids      int  // the caller's id-list entries; -1 is full
+	Load     RetainCounts
+	SaveLost int    // the `retain_lost` the SAVE adds
+	Saves    string // the pinned save; empty is a row that does not save
 }
 
 // RetainCounts is a retaining load's own three: the two retention counters and
@@ -530,42 +538,15 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: message takes name, connection, root, file-form wire, message-form wire", where)
 			}
 			m.Messages = append(m.Messages, Message{Name: f[1], Connection: f[2], Root: f[3], FileWire: f[4], MessageWire: f[5]})
-		case "retain", "retain-message":
-			// retain         <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
-			// retain-message <case> <connection> <reader unit> <root> ...
-			rc := RetainCase{Name: f[1], Message: f[0] == "retain-message"}
-			want := 10
-			if rc.Message {
-				want = 11
+		case "retain":
+			// retain <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
+			if len(f) != 10 {
+				return nil, fmt.Errorf("%s: retain takes 10 fields and this line has %d", where, len(f))
 			}
-			if len(f) != want {
-				return nil, fmt.Errorf("%s: %s takes %d fields and this line has %d", where, f[0], want, len(f))
-			}
-			// A MESSAGE ROW NAMES BOTH PEERS: the CONNECTION whose announcement
-			// its references resolve against, which is the sender's, and the
-			// READER's own unit, which is the build that cannot name what the
-			// sender wrote (docs/SPEC-TABLES.md §3.3, §6.6).
-			if rc.Message {
-				rc.Connection, rc.Unit = f[2], f[3]
-				f = append(f[:2], f[3:]...) // the columns below line up with the file row's
-			} else {
-				rc.Unit = f[2]
-			}
-			rc.Root, rc.Wire = f[3], f[4]
+			rc := RetainCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]}
 			switch f[5] {
 			case "full":
 			case "short":
-				// SHORT IS ONE BUFFER'S RULE, AND A BATCH TAKES ONE A BODY
-				// (docs/SPEC-TABLES.md §6.6, §3.3, schema#681). "One byte short
-				// of the last record" names a record of ONE port's ONE store,
-				// and the page states no rule for which body of a batch that
-				// record sits in. A message row that carried `short` would be
-				// answered by each leg's own reading of it, and the matrix
-				// would go red on the row rather than on a driver, so the
-				// loader refuses it by name until the page says what it means.
-				if rc.Message {
-					return nil, fmt.Errorf("%s: retain-message takes a full retention capacity; short is one buffer's rule and a batch takes one buffer a body (docs/SPEC-TABLES.md §6.6, §3.3)", where)
-				}
 				rc.Short = true
 			default:
 				return nil, fmt.Errorf("%s: %q is not a retention capacity; it is full or short", where, f[5])
@@ -589,7 +570,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			rc.SaveLost = lost
 			if f[9] != "-" {
-				rc.Saves = strings.Split(f[9], ",")
+				rc.Saves = f[9]
 			}
 			m.Retains = append(m.Retains, rc)
 		case "report":

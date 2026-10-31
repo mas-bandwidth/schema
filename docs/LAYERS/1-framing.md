@@ -341,7 +341,15 @@ non-canonical one, is damage (D1).** §3.1: "it is skipped by its length,
 counted unknown. It KEEPS ITS INDEX." "An index above `node_count + 1`, or one
 whose LEB128 is not canonical ... malformed, which discards the whole load
 (§4)." "a pointer field's payload is a NUMBER: it is bounds-checked and
-stored, never followed."
+stored, and the decode never follows it."
+
+**T8. A pointer naming a node whose descent is still OPEN is damage (D1); a
+second pointer to a CLOSED node is a share and legal.** §3.1: "No writer
+produces a cyclic wire: the numbering walk refuses a cycle at an open entry
+... and a cooked region is never cyclic." "a pointer that reaches a node whose
+descent is still OPEN ... refuses the whole load as `malformed` (§4)." Held by
+`node_cycle_self` and `node_cycle_to_root`, with `node_chain_two` as the legal
+twin.
 
 ## F. The report
 

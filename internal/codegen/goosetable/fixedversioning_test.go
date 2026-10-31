@@ -37,6 +37,7 @@ package goosetable
 import (
 	"bufio"
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"os"
@@ -106,7 +107,6 @@ func TestGooseFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
 	manifest := gooseVersionManifest(t, corpus)
 	for _, r := range gooseVersionRows {
-		r := r
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
 			file := "old_" + r.row + ".bin"
@@ -140,7 +140,6 @@ func TestGooseFixedVersioningOldRefusesNew(t *testing.T) {
 	corpus := fixedCorpus(t)
 	manifest := gooseVersionManifest(t, corpus)
 	for _, r := range gooseVersionRows {
-		r := r
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
 			file := "new_" + r.row + ".bin"
@@ -219,7 +218,7 @@ func TestGooseFixedVersioningHash(t *testing.T) {
 		t.Parallel()
 		data := append([]byte(nil), old...)
 		forged := uint64(0x0EADBEEFCAFEF00D)
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			data[8+i] = byte(forged >> (8 * i))
 		}
 		got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 1, data: data, fresh: true})
@@ -257,7 +256,6 @@ func TestGooseFixedVersioningLineageMerge(t *testing.T) {
 	}
 	newer := evolutionLoad(t, "test/tables/VNEW_lineage_merge.schema")
 	for _, file := range []string{"old_lineage_merge.bin", "a_lineage_merge.bin", "b_lineage_merge.bin", "new_lineage_merge.bin"} {
-		file := file
 		t.Run(strings.TrimSuffix(file, ".bin"), func(t *testing.T) {
 			t.Parallel()
 			line := manifest.line(t, file)
@@ -284,7 +282,7 @@ func TestGooseFixedVersioningRefuseWritesNothing(t *testing.T) {
 	data := gooseCorpusFile(t, corpus, "old_nested_append.bin")
 	lb := int(uint32(data[16]) | uint32(data[17])<<8 | uint32(data[18])<<16 | uint32(data[19])<<24)
 	off := 20 + lb
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		data[off+i] = ^data[off+i]
 	}
 	got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 1,
@@ -303,7 +301,6 @@ func TestGooseFixedVersioningUnknownCensus(t *testing.T) {
 	older := evolutionLoad(t, "test/tables/VOLD_unknown_census.schema")
 	newer := evolutionLoad(t, "test/tables/VNEW_unknown_census.schema")
 	for _, file := range []string{"old_unknown_census.bin", "many_unknown_census.bin"} {
-		file := file
 		t.Run(strings.TrimSuffix(file, ".bin"), func(t *testing.T) {
 			t.Parallel()
 			data := gooseCorpusFile(t, corpus, file)
@@ -349,7 +346,6 @@ func TestGooseFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 		reader *ir.Unit
 		older  []*ir.Unit
 	}{{"compiled", newer, []*ir.Unit{older}}, {"identity", older, nil}} {
-		plan := plan
 		t.Run(plan.name, func(t *testing.T) {
 			t.Parallel()
 			got := gooseVersionProbe(t, gooseVersionCase{reader: plan.reader, older: plan.older, root: "Lineage", capacity: 1,
@@ -386,7 +382,6 @@ func TestGooseFixedVersioningUnionTagBothPlans(t *testing.T) {
 		reader *ir.Unit
 		older  []*ir.Unit
 	}{{"compiled", newer, []*ir.Unit{older}}, {"identity", older, nil}} {
-		plan := plan
 		t.Run(plan.name, func(t *testing.T) {
 			t.Parallel()
 			got := gooseVersionProbe(t, gooseVersionCase{reader: plan.reader, older: plan.older, root: "Lineage", capacity: 1,
@@ -421,7 +416,6 @@ func TestGooseFixedVersioningWriterBoundCount(t *testing.T) {
 		count  byte
 		refuse bool
 	}{{"forged_7", 7, true}, {"minus_1", 0xFF, true}, {"at_0", 0, false}, {"at_4", 4, false}} {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			data := append([]byte(nil), base...)
@@ -535,7 +529,7 @@ func (r gooseVersionResult) before() string {
 
 func gooseFileHash(data []byte) uint64 {
 	var h uint64
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		h |= uint64(data[8+i]) << (8 * i)
 	}
 	return h
@@ -592,13 +586,11 @@ func gooseVersionProbe(t *testing.T, c gooseVersionCase) gooseVersionResult {
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
@@ -770,7 +762,7 @@ func gooseVersionManifest(t *testing.T, corpus string) gooseManifest {
 			continue
 		}
 		var l gooseManifestLine
-		for _, field := range strings.Fields(head) {
+		for field := range strings.FieldsSeq(head) {
 			k, v, _ := strings.Cut(field, "=")
 			switch k {
 			case "file":
