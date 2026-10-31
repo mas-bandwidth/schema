@@ -93,3 +93,24 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 		exit 1; \
 	fi; \
 	echo "Luau table negative control: the load sabotage turns exactly report and retain red; the reader sabotage exactly forgery, cook-forgery, cook-reason and block-reason"
+
+# THE EMITTER CONTROLS (docs/PORTING.md I2, I11): the two above sabotage the
+# emitted tree in place; these two sabotage the EMITTER, a sed over a copy of
+# one embedded runtime file and `go build -overlay` into a private compiler,
+# the units regenerated from it under a mirror of the repository, and the
+# harness required red on exactly the named surfaces with the neighbours green.
+# test/conformance/luau/negative-control holds both and says what each requires.
+#
+# conformance-negative-control-luau-emitter  the load report's unknown counter
+#                                            (report and retain red, wire green)
+# conformance-negative-control-luau-walk     the text walk's field-key match (I11:
+#                                            json-read and json-hostile red,
+#                                            json-write and wire green)
+.PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk
+conformance-negative-control-luau-emitter: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/negative-control report
+
+conformance-negative-control-luau-walk: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/negative-control walk

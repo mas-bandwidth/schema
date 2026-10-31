@@ -1,0 +1,64 @@
+#!/bin/sh
+# THE LUAU VECTORS' CONTROL (make/luau-fuzz.mk, tables-luau-wire-fuzz-vectors):
+# each pinned vector's fix is reverted in a scratch copy of the emitted units,
+# and that vector's replay must diverge. A plant whose anchor is not found once per generated
+# schema_load.luau fails the control rather than passing it vacuously.
+set -eu
+
+out=build/luau-wire-fuzz-vectors-nc
+host=${LUAUFUZZHOST:-build/luaufuzzhost/luaufuzzhost}
+for need in build/conformance-harness "$host" build/conformance-luau build/luau-driver/units.luau; do
+	if [ ! -e "$need" ]; then
+		echo "NEGATIVE CONTROL FAILED: $need is missing (make tables-luau-wire-fuzz-vectors-negative-control builds it)" >&2
+		exit 1
+	fi
+done
+
+# plant <vector> <perl substitution>: the fix reverted, the run red on <vector>
+plant() {
+	name=$1 subst=$2
+	rm -rf "$out"
+	mkdir -p "$out/test/conformance/luau" "$out/build/luau-driver"
+	cp test/conformance/luau/wirefuzz.luau "$out/test/conformance/luau/"
+	cp build/luau-driver/units.luau "$out/build/luau-driver/"
+	cp -R build/conformance-luau "$out/build/conformance-luau"
+	planted=0
+	for f in "$out"/build/conformance-luau/*/schema_load.luau; do
+		before=$(cksum < "$f")
+		perl -0pi -e "$subst" "$f"
+		if [ "$(cksum < "$f")" = "$before" ]; then
+			echo "NEGATIVE CONTROL FAILED: the $name plant matched nothing in $f" >&2
+			exit 1
+		fi
+		planted=$((planted + 1))
+	done
+	if [ "$planted" -lt 1 ]; then
+		echo "NEGATIVE CONTROL FAILED: no generated schema_load.luau to plant in" >&2
+		exit 1
+	fi
+	line=$(grep -v '^#' test/conformance/luau/wire-fuzz-vectors.txt | awk -v n="$name" '$1 == n')
+	if [ -z "$line" ]; then
+		echo "NEGATIVE CONTROL FAILED: $name is not in test/conformance/luau/wire-fuzz-vectors.txt" >&2
+		exit 1
+	fi
+	set -- $line
+	if build/conformance-harness wire-fuzz --driver "$host $out/test/conformance/luau/wirefuzz.luau" \
+		--replay "$4" --unit "$2" --root "$3" --failed "$out/failed.bin" > "$out/log" 2>&1; then
+		cat "$out/log"
+		echo "NEGATIVE CONTROL FAILED: the $name fix reverted left its vector green" >&2
+		exit 1
+	fi
+	if ! grep -q '^harness: FAILED after 0 mutants: ' "$out/log"; then
+		cat "$out/log"
+		echo "NEGATIVE CONTROL FAILED: the $name fix reverted went red, but not as a divergence on its replay" >&2
+		exit 1
+	fi
+	echo "luau vectors negative control: the $name fix reverted turns the $name vector red"
+}
+
+plant map_header_count_past_length \
+	's/local hdr = new_reader\(r\.b, r\.at, r\.e\)(\n(?:[^\n]*\n){4}\t\tif ek ~= 13 then)/local hdr = new_reader(r.b, r.at, endpos)$1/'
+plant keyed_header_count_past_length \
+	's/local hdr = new_reader\(r\.b, r\.at, r\.e\)(\n(?:[^\n]*\n){4}\t\tif ek ~= fd\.ek then)/local hdr = new_reader(r.b, r.at, endpos)$1/'
+plant text_ill_formed_repeat_reads_default \
+	's/\t\t\t\tstore_bytes\(v, fd\.slot, buffer\.fromstring\(def\), 0, #def, #def\)\n//'

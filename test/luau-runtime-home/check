@@ -1,0 +1,24 @@
+#!/bin/sh
+# The Luau runtime-home check (make/luau-open-gates.mk, docs/PORTING.md J2).
+# usage: check <base tree> <added tree> <runtime source dir>
+# Every <Base>Table.luau of the base tree is in the added tree under the same
+# name; every runtime module the emitter embeds that the base tree carries is
+# in the added tree under the same name, byte-identical except schema_view.luau
+# (the unit's own declarations, held to its name only).
+set -eu
+base=$1 added=$2 runtime=$3
+for f in "$base"/*Table.luau; do
+	[ -e "$f" ] || { echo "RUNTIME HOME GATE FAILED: the base tree has no <Base>Table.luau"; exit 1; }
+	n=$(basename "$f")
+	test -f "$added/$n" || { echo "RUNTIME HOME GATE FAILED: the table module $n moved when the unit gained an earlier-sorting file"; exit 1; }
+done
+seen=0
+for f in "$runtime"/*.luau; do
+	n=$(basename "$f")
+	test -f "$base/$n" || continue
+	seen=$((seen + 1))
+	test -f "$added/$n" || { echo "RUNTIME HOME GATE FAILED: the runtime module $n moved when the unit gained an earlier-sorting file"; exit 1; }
+	[ "$n" = schema_view.luau ] && continue
+	cmp -s "$base/$n" "$added/$n" || { echo "RUNTIME HOME GATE FAILED: the runtime module $n changed when the unit gained an earlier-sorting file"; exit 1; }
+done
+[ "$seen" -gt 0 ] || { echo "RUNTIME HOME GATE FAILED: the base tree carries no runtime module under its own name"; exit 1; }

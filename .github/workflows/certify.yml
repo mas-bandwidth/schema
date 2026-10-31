@@ -413,6 +413,14 @@ jobs:
         if: matrix.target == 'tables-goose-release'
         run: make dist-goose
 
+      # The Luau leg's pinned interpreter (make/luau.mk), linux-x64:
+      # tables-luau-release's wire fuzz and usage gate refuse by name without
+      # it (toolchain-luau), and dist-luau refuses any archive whose sha256 is
+      # not the pin's.
+      - name: install the Luau pin
+        if: matrix.target == 'tables-luau-release'
+        run: make dist-luau
+
       - name: ${{ matrix.target }}
         run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
