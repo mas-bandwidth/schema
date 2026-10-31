@@ -266,7 +266,7 @@ tables-dart-standalone: build/tables-generated-dart/.stamp
 .PHONY: tables-dart-standalone-negative-control
 tables-dart-standalone-negative-control:
 	@rm -rf build/dart-standalone-nc && mkdir -p build/dart-standalone-nc
-	@sed 's|h.WriteString("import '"'"'dart:typed_data'"'"';\\n\\n")|h.WriteString("import '"'"'dart:typed_data'"'"';\\nimport '"'"'package:collection/collection.dart'"'"'; // SABOTAGED\\n\\n")|' \
+	@sed 's|h.WriteString("import '"'"'dart:typed_data'"'"';\n\n")|h.WriteString("import '"'"'dart:typed_data'"'"';\nimport '"'"'package:collection/collection.dart'"'"'; // SABOTAGED\n\n")|' \
 		internal/codegen/darttable/block.go > build/dart-standalone-nc/darttable.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-standalone-nc/darttable.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -519,8 +519,8 @@ DART_FUZZ_MUTANTS ?= 4000
 .PHONY: tables-dart-fuzz-negative-control
 tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-nc && mkdir -p build/dart-fuzz-nc
-	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\\n        return (null, TableRefuseReason.badLayout);\\n      }\\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
-	     -e 's|g.pf("    if (padding > extent - used) {\\n      return (null, TableRefuseReason.truncated);\\n    }\\n")|// SABOTAGED: the padding bound is gone|' \
+	@sed -e 's|g.pf("      if (rows > extent - offsetOf) {\n        return (null, TableRefuseReason.badLayout);\n      }\n")|_ = field // SABOTAGED: the rows-inside-extent bound is gone|' \
+	     -e 's|g.pf("    if (padding > extent - used) {\n      return (null, TableRefuseReason.truncated);\n    }\n")|// SABOTAGED: the padding bound is gone|' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -551,7 +551,7 @@ tables-dart-fuzz-negative-control: build/cook-fuzz/.stamp
 .PHONY: tables-dart-fuzz-lead-negative-control
 tables-dart-fuzz-lead-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-fuzz-lead-nc && mkdir -p build/dart-fuzz-lead-nc
-	@sed -e 's#g.pf("    if (base %% %d != 0) {\\n      return (null, TableRefuseReason.unalignedBase);\\n    }\\n", ir.BlockAlign)#// SABOTAGED: the base-alignment check is gone#' \
+	@sed -e 's#g.pf("    if (base %% %d != 0) {\n      return (null, TableRefuseReason.unalignedBase);\n    }\n", ir.BlockAlign)#// SABOTAGED: the base-alignment check is gone#' \
 		internal/codegen/darttable/block.go > build/dart-fuzz-lead-nc/block.go.txt
 	@cmp -s internal/codegen/darttable/block.go build/dart-fuzz-lead-nc/block.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
@@ -1578,7 +1578,7 @@ tables-dart-accessor-negative-control: build/cook-fuzz/.stamp
 .PHONY: tables-dart-slot-negative-control
 tables-dart-slot-negative-control: build/cook-fuzz/.stamp
 	@rm -rf build/dart-agree-slot-nc && mkdir -p build/dart-agree-slot-nc
-	@sed -e 's|g.pf("        offset: %d,\\n", fl.Offset)|g.pf("        offset: %d,\\n", fl.Offset+slotMoved(record, f.Name))|' \
+	@sed -e 's|g.pf("        offset: %d,\n", fl.Offset)|g.pf("        offset: %d,\n", fl.Offset+slotMoved(record, f.Name))|' \
 		internal/codegen/darttable/cook.go > build/dart-agree-slot-nc/cook.go.txt
 	@grep -q 'slotMoved(record, f.Name)' build/dart-agree-slot-nc/cook.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing - the emitter moved"; exit 1; }
@@ -1696,3 +1696,38 @@ tables-dart-wire-fuzz-negative-control: build/conformance-harness
 	sh test/conformance/dart/negative-control wire "$(DART)"
 
 test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
+
+# DAMAGE DISCARDS THE WHOLE LOAD on the Dart leg (docs/SPEC-TABLES.md §4):
+# damage inside a nested body makes WireLoad hand back the type's defaults
+# (fixed and variable roots), WireLoadRetain hand back defaults with the
+# retention store empty, and LoadMessages answer no body with every body at
+# its defaults. The control removes each discard guard in turn from a COPY of
+# its emitter, reached through a Go build overlay, and requires the gate to go
+# red on exactly that read's line. Nothing tracked is written to.
+DART_DISCARD_NC := build/dart-discard-nc
+.PHONY: tables-dart-discard tables-dart-discard-negative-control
+tables-dart-discard:
+	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadDart$$'
+	@echo 'tables Dart discard: every damaged load hands back nothing it decoded'
+tables-dart-discard-negative-control:
+	@rm -rf $(DART_DISCARD_NC) && mkdir -p $(DART_DISCARD_NC)
+	@set -e; for c in \
+		'wireform.go|\tif (r.report.malformed) return %s();|\tif (false) return %s(); // NEGATIVE CONTROL: the discard is gone|fixed: WireLoad handed back' \
+		'retainwire.go|\tif (r.report.malformed) {|\tif (false) { // NEGATIVE CONTROL: the retain discard is gone|retain: WireLoadRetain handed back' \
+		'messageform_batch.go|  if (!tableMessageBatchClose(r)) {\n|  if (!tableMessageBatchClose(r) && false) { // NEGATIVE CONTROL: the batch discard is gone\n|messages: LoadMessages'; do \
+		file=$${c%%|*}; rest=$${c#*|}; from=$${rest%%|*}; rest=$${rest#*|}; to=$${rest%%|*}; want=$${rest#*|}; \
+		d=$(DART_DISCARD_NC)/$${file%.go}; mkdir -p $$d; \
+		FROM="$$from" TO="$$to" perl -pe 'BEGIN{$$f=$$ENV{FROM};$$t=$$ENV{TO}} s/\Q$$f\E/$$t/' \
+			internal/codegen/darttable/$$file > $$d/$$file.txt; \
+		if cmp -s internal/codegen/darttable/$$file $$d/$$file.txt; then echo "NEGATIVE CONTROL: the $$file sabotage patched nothing"; exit 1; fi; \
+		printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/%s.txt"}}\n' "$(CURDIR)" "$$file" "$(CURDIR)" "$$d" "$$file" > $$d/overlay.json; \
+		if DART=$(DART) go test -count=1 -overlay $$d/overlay.json -run '^TestDamageDiscardsTheWholeLoadDart$$' \
+				./internal/codegen/darttable > $$d/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$file discard is gone and the gate stayed green"; cat $$d/log; exit 1; \
+		fi; \
+		grep -q "$$want" $$d/log || { echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason ($$file)"; cat $$d/log; exit 1; }; \
+		grep -m1 "$$want" $$d/log; \
+	done
+	@echo 'negative control: removing each Dart discard (load, retain, message batch) turns the whole-load gate RED'
+
+test-dart: tables-dart-discard tables-dart-discard-negative-control
