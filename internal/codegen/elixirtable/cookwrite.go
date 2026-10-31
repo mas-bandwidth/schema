@@ -8,33 +8,73 @@ import (
 )
 
 // cookHasExtent reports a record whose node is its storage plus an extent
-// (docs/SPEC-TABLES.md §2.9, §7.2): an unbounded array reachable by value.
+// (docs/SPEC-TABLES.md §2.8, §2.9, §7.2): a list or a map reachable BY VALUE,
+// directly, inside a nested record or inside a union arm. It is the tool's
+// recordHasExtent (internal/tablecook/extent.go). A pointer and a byte buffer
+// are nodes of their own and never part of it.
 func cookHasExtent(u *ir.Unit, st *ir.Struct) bool {
-	if st == nil {
-		return false
+	return cookExtentWalk(u, st, nil, map[string]bool{})
+}
+
+func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]bool) bool {
+	var fields []*ir.Field
+	switch {
+	case st != nil:
+		if seen[st.Name] {
+			return false
+		}
+		seen[st.Name] = true
+		fields = st.Fields
+	case un != nil:
+		if seen["union:"+un.Name] {
+			return false
+		}
+		seen["union:"+un.Name] = true
+		for _, v := range un.Variants {
+			if v.F != nil {
+				fields = append(fields, v.F)
+			}
+		}
 	}
-	for _, f := range st.Fields {
-		if f.IsList() {
+	for _, f := range fields {
+		if f.IsMap() || f.IsList() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 			continue
 		}
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && cookHasExtent(u, ref) {
-			return true
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if cookExtentWalk(u, ref, nil, seen) {
+				return true
+			}
+		case *ir.Union:
+			if cookExtentWalk(u, nil, ref, seen) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// cookRecordBytes is one node's record half (docs/SPEC-TABLES.md §7.2): sizeof,
-// or that rounded to the region's alignment floor when an extent follows.
+// cookRecordBytes is one node's record half (docs/SPEC-TABLES.md §2.8, §7.2):
+// sizeof, or, when an extent follows, where that extent begins
+// (ir.CookExtentStart, the one rule every leg and the tool share).
 func cookRecordBytes(u *ir.Unit, st *ir.Struct) int64 {
-	ml := ir.RecordLayout(u, st)
 	if !cookHasExtent(u, st) {
-		return ml.Size
+		return ir.RecordLayout(u, st).Size
 	}
-	return (ml.Size + ir.RegionAlignFloor - 1) & ^(ir.RegionAlignFloor - 1)
+	return ir.CookExtentStart(u, st)
+}
+
+// cookNodeAlign is one node's alignment in a cooked region (docs/SPEC-TABLES.md
+// §2.8, §6.2): its record's, and for a record with an extent the greatest
+// alignment any array that extent can hold too (ir.CookNodeAlign).
+func cookNodeAlign(u *ir.Unit, st *ir.Struct) int64 {
+	if !cookHasExtent(u, st) {
+		return ir.RecordLayout(u, st).Align
+	}
+	return ir.CookNodeAlign(u, st)
 }
 
 // writeCookLayout adds the cook writer's columns (docs/SPEC-TABLES.md §7.6):
@@ -64,6 +104,12 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 		countOff = pieces[1].Offset
 	}
 	fmt.Fprintf(b, ", cook_off: %d, count_off: %d, present_off: %d", off, countOff, presentOff)
+	if f.IsMap() {
+		// a map's holder points at its ENTRY array in the node extent (§2.8):
+		// one generated entry record per key, at the entry's size and alignment
+		ml := ir.RecordLayout(u, f.MapEntry)
+		fmt.Fprintf(b, ", entry_size: %d, entry_align: %d", ml.Size, max(ml.Align, 1))
+	}
 	// one :array key per descriptor: a keyed array is a fixed one whose index
 	// is an enum, and :keyed is the shape the cook dispatches on
 	switch {
@@ -141,42 +187,54 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 	}
 }
 
-// extentWalkClauses are the cook writer's clauses that descend into a nested
-// record for its extent (docs/SPEC-TABLES.md §7.2), each guarded by the nested
-// table's has_extent. In a unit where no table has an extent every one of
-// those guards reads a literal false, which Elixir's type checker reports as a
-// branch that cannot match; each clause's answer is then exactly its
-// function's fallback clause's, so such a unit is emitted without them.
-var extentWalkClauses = []string{
-	"  defp cook_extent_field(%{t: :list, elem_t: :record, elem: elem} = f, value, at) do\n",
-	"  defp cook_extent_field(%{t: :table, elem: elem, name: name}, value, at) do\n",
-	"  defp cook_extent_after(%{elem_kind: 13, elem: elem}, elems, at) do\n",
-	"  defp cook_carve_field(\n         %{t: :table, elem: elem, cook_off: off, name: name},\n",
-	"  defp cook_carve_field(\n         %{t: :list, elem_t: :record, elem: elem, cook_off: off, elem_size: step} = f,\n",
-	"  defp cook_carve_after(\n         %{elem: elem, elem_size: step},\n",
+// cookExtentDef and cookCarveDef are the cook writer's two entries into the
+// extent walk (docs/SPEC-TABLES.md §2.8, §2.9, §7.6), and extentWalkFamilies
+// the walk itself. In a unit where no table has an extent every has_extent
+// the walk branches on reads a literal false, which Elixir's type checker
+// reports as a branch that cannot match, so such a unit is emitted with the
+// two entries answering what the walk would (no extent, nothing carved) and
+// without the walk.
+const cookExtentDef = "  defp cook_extent(desc, value),\n" +
+	"    do: cook_walk_record(desc, value, 0, %{buf: nil, base: 0, at: 0, index: nil, order: nil}).at\n"
+
+const cookCarveDef = "  defp cook_carve(desc, value, node_off, index, order, buf) do\n" +
+	"    ctx = %{buf: buf, base: node_off + desc.record, at: 0, index: index, order: order}\n" +
+	"    cook_walk_record(desc, value, node_off, ctx).buf\n" +
+	"  end\n"
+
+var extentWalkFamilies = []string{
+	"cook_walk_record", "cook_walk_field", "cook_walk_union", "cook_walk_elem",
+	"cook_walk_holder", "cook_put_holder", "cook_put_member", "cook_walk_member",
 }
 
-// withoutExtentWalks drops extentWalkClauses from the cook writer, each from
-// its head through its `end` and the blank line after it. Every clause must
-// be found exactly once, so a template edit that moves one fails loudly.
+// withoutExtentWalks is the cook writer for a unit with no extent anywhere.
+// Every piece must be found, so a template edit that moves one fails loudly.
 func withoutExtentWalks(cook string) string {
-	for _, head := range extentWalkClauses {
-		if strings.Count(cook, head) != 1 {
-			panic("elixirtable: extent walk clause not found exactly once: " + head)
+	cook = replaceOnce(cook, cookExtentDef, "  defp cook_extent(_desc, _value), do: 0\n")
+	cook = replaceOnce(cook, cookCarveDef, "  defp cook_carve(_desc, _value, _node_off, _index, _order, buf), do: buf\n")
+	found := map[string]bool{}
+	cook = dropTopLevel(cook, func(head string) bool {
+		for _, name := range extentWalkFamilies {
+			if strings.HasPrefix(head, "  defp "+name+"(") {
+				found[name] = true
+				return true
+			}
 		}
-		i := strings.Index(cook, head)
-		j := strings.Index(cook[i:], "\n  end\n\n")
-		if j < 0 {
-			panic("elixirtable: extent walk clause has no end: " + head)
+		return false
+	})
+	for _, name := range extentWalkFamilies {
+		if !found[name] {
+			panic("elixirtable: extent walk family not found: " + name)
 		}
-		cook = cook[:i] + cook[i+j+len("\n  end\n\n"):]
 	}
 	return cook
 }
 
 // cookUnionFamilies and cookUnionClauses are the cook writer's pieces that
 // walk or write a union. In a unit with no union there is no @unions, so a
-// unit is emitted without them (withoutUnions is the runtime's twin).
+// unit is emitted without them (withoutUnions is the runtime's twin). The
+// extent walk's union pieces, cookUnionWalkFamilies and cookUnionWalkClauses,
+// are there only when the walk is (withoutExtentWalks).
 var cookUnionFamilies = []string{"cook_collect_arm", "cook_arm", "cook_union"}
 
 var cookUnionClauses = []string{
@@ -186,19 +244,32 @@ var cookUnionClauses = []string{
 	"  defp cook_elem(%{elem_t: :union",
 }
 
-// cookWithoutUnions drops cookUnionFamilies and cookUnionClauses from the cook
-// writer, each with the comment above it. Every one must be found, so a
-// template change that renames one fails the emitter's tests.
-func cookWithoutUnions(cook string) string {
+var cookUnionWalkFamilies = []string{"cook_walk_union"}
+
+var cookUnionWalkClauses = []string{
+	"  defp cook_walk_field(%{t: :union",
+	"  defp cook_walk_elem(%{elem_t: :union",
+}
+
+// cookWithoutUnions drops the union pieces from the cook writer, each with the
+// comment above it. Every one must be found, so a template change that renames
+// one fails the emitter's tests. walks says the extent walk is still there.
+func cookWithoutUnions(cook string, walks bool) string {
+	families := append([]string{}, cookUnionFamilies...)
+	clauses := append([]string{}, cookUnionClauses...)
+	if walks {
+		families = append(families, cookUnionWalkFamilies...)
+		clauses = append(clauses, cookUnionWalkClauses...)
+	}
 	found := map[string]bool{}
 	cook = dropTopLevel(cook, func(head string) bool {
-		for _, name := range cookUnionFamilies {
+		for _, name := range families {
 			if strings.HasPrefix(head, "  defp "+name+"(") {
 				found[name] = true
 				return true
 			}
 		}
-		for _, c := range cookUnionClauses {
+		for _, c := range clauses {
 			if strings.HasPrefix(head, c) {
 				found[c] = true
 				return true
@@ -206,7 +277,7 @@ func cookWithoutUnions(cook string) string {
 		}
 		return false
 	})
-	for _, k := range append(append([]string{}, cookUnionFamilies...), cookUnionClauses...) {
+	for _, k := range append(families, clauses...) {
 		if !found[k] {
 			panic("elixirtable: cook union piece not found: " + k)
 		}
@@ -269,7 +340,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_plan(table, value) do
     try do
-      if table in @cook_uncarried or not is_map(value) do
+      if not is_map(value) do
         throw(:invalid)
       end
 
@@ -341,6 +412,14 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     do: Enum.map_reduce(v, acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
 
   defp cook_collect_field(%{t: :list}, v, _acc) when not is_nil(v), do: throw(:invalid)
+
+  # a MAP's value is its entries ASCENDING BY KEY (docs/SPEC-TABLES.md §2.8):
+  # the writer holds the sort (map_entries, the wire's own), so the numbering,
+  # the record writer and the extent walk all read the one order
+  defp cook_collect_field(%{t: :map} = f, v, acc) when is_map(v),
+    do: Enum.map_reduce(map_entries(f, v), acc, fn e, acc -> cook_collect_elem(f, e, acc) end)
+
+  defp cook_collect_field(%{t: :map}, v, _acc) when not is_nil(v), do: throw(:invalid)
 
   # an enum-keyed array's slots are walked in the key enum's order (§2.4)
   defp cook_collect_field(%{t: :keyed, item: item, key_names: names}, slots, acc)
@@ -415,9 +494,11 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
             {start + size, align, [Map.merge(n, %{offset: start, size: size, extent: 0}) | acc]}
 
           :table ->
+            # a node aligns to its record's alignment and every array its
+            # extent can hold (ir.CookNodeAlign, docs/SPEC-TABLES.md §2.8)
             d = Map.get(n, :desc) || Map.fetch!(@tables, n.elem)
-            align = max(align, d.align)
-            start = cook_align(offset, d.align)
+            align = max(align, d.node_align)
+            start = cook_align(offset, d.node_align)
             ext = if(d.has_extent, do: cook_extent(d, n.value), else: 0)
             size = d.record + ext
 
@@ -429,51 +510,118 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     {cook_align(offset, align), align, Enum.reverse(acc)}
   end
 
-  defp cook_extent(desc, value), do: cook_extent_fields(desc.fields, value, 0)
+  # THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6; the layout
+  # tla/NodeExtent.tla models and internal/tablecook/extent.go writes). A
+  # record's lists and maps lay their arrays after its own storage, from
+  # desc.record on: field by field in declaration order, each holder's WHOLE
+  # array at the running offset rounded to its element's alignment, then,
+  # element by element (entry by entry in key order), the arrays those
+  # elements hold — PRE-ORDER. One walk measures (buf nil) and writes, so the
+  # two cannot drift.
+  defp cook_extent(desc, value),
+    do: cook_walk_record(desc, value, 0, %{buf: nil, base: 0, at: 0, index: nil, order: nil}).at
 
-  defp cook_extent_fields(fields, value, at) do
-    Enum.reduce(fields, at, fn f, at -> cook_extent_field(f, value, at) end)
+  defp cook_carve(desc, value, node_off, index, order, buf) do
+    ctx = %{buf: buf, base: node_off + desc.record, at: 0, index: index, order: order}
+    cook_walk_record(desc, value, node_off, ctx).buf
   end
 
-  defp cook_extent_field(%{t: :list, array: :list} = f, value, at) do
-    elems = cook_list(value, f)
-    at = cook_align(at, f.elem_align) + length(elems) * f.elem_size
-    cook_extent_after(f, elems, at)
-  end
+  defp cook_walk_record(desc, nil, rec, ctx), do: cook_walk_record(desc, %{}, rec, ctx)
 
-  defp cook_extent_field(%{t: :list, elem_t: :record, elem: elem} = f, value, at) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      Enum.reduce(cook_list(value, f), at, fn e, at -> cook_extent_fields(d.fields, e, at) end)
+  defp cook_walk_record(desc, value, rec, ctx) do
+    if desc.has_extent do
+      Enum.reduce(desc.fields, ctx, fn f, ctx -> cook_walk_field(f, value, rec, ctx) end)
     else
-      at
+      ctx
     end
   end
 
-  defp cook_extent_field(%{t: :table, elem: elem, name: name}, value, at) do
-    d = Map.fetch!(@tables, elem)
+  # a LIST's or a MAP's sixteen-byte holder, at the field's own offset
+  defp cook_walk_field(%{t: :list, array: :list} = f, value, rec, ctx),
+    do: cook_walk_holder(f, cook_list(value, f), f.elem_size, f.elem_align, rec + f.cook_off, ctx)
 
-    if d.has_extent do
-      cook_extent_fields(d.fields, Map.get(value, name, %{}), at)
-    else
-      at
-    end
+  defp cook_walk_field(%{t: :map} = f, value, rec, ctx),
+    do: cook_walk_holder(f, cook_list(value, f), f.entry_size, f.entry_align, rec + f.cook_off, ctx)
+
+  # a record held by value, and a fixed or counted array's live elements
+  defp cook_walk_field(%{t: :table, elem: elem} = f, value, rec, ctx),
+    do: cook_walk_record(Map.fetch!(@tables, elem), Map.get(value, f.name), rec + f.cook_off, ctx)
+
+  defp cook_walk_field(%{t: :list, elem_t: t} = f, value, rec, ctx) when t in [:record, :union] do
+    Enum.reduce(Enum.with_index(cook_list(value, f)), ctx, fn {e, i}, ctx ->
+      cook_walk_elem(f, e, rec + f.cook_off + i * f.elem_size, ctx)
+    end)
   end
 
-  defp cook_extent_field(_, _, at), do: at
+  # an enum-keyed array's slots, in the key enum's order (§2.4)
+  defp cook_walk_field(%{t: :keyed, item: item} = f, value, rec, ctx) do
+    slots = Map.get(value, f.name) || %{}
 
-  defp cook_extent_after(%{elem_kind: 13, elem: elem}, elems, at) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      Enum.reduce(elems, at, fn e, at -> cook_extent_fields(d.fields, e, at) end)
-    else
-      at
-    end
+    Enum.reduce(Enum.with_index(f.key_names), ctx, fn {name, i}, ctx ->
+      at = rec + f.cook_off + i * f.elem_size
+      cook_walk_field(item, %{item.name => Map.get(slots, name)}, at, ctx)
+    end)
   end
 
-  defp cook_extent_after(_, _, at), do: at
+  defp cook_walk_field(%{t: :union, elem: union} = f, value, rec, ctx),
+    do: cook_walk_union(union, f, Map.get(value, f.name), rec + f.cook_off, ctx)
+
+  defp cook_walk_field(_f, _value, _rec, ctx), do: ctx
+
+  # a union's SET arm, a field at arm_off past the tag (§2.6, §7.2)
+  defp cook_walk_union(_union, _f, nil, _at, ctx), do: ctx
+
+  defp cook_walk_union(union, f, {arm, payload}, at, ctx) do
+    a = cook_arm(union, arm)
+    cook_walk_field(a, %{a.name => payload}, at + f.arm_off, ctx)
+  end
+
+  defp cook_walk_union(_union, _f, _v, _at, _ctx), do: throw(:invalid)
+
+  defp cook_walk_elem(%{elem_t: :record, elem: elem}, e, at, ctx),
+    do: cook_walk_record(Map.fetch!(@tables, elem), e, at, ctx)
+
+  defp cook_walk_elem(%{elem_t: :union, elem: union} = f, e, at, ctx),
+    do: cook_walk_union(union, f, e, at, ctx)
+
+  defp cook_walk_elem(_f, _e, _at, ctx), do: ctx
+
+  # ONE holder: the whole array at the running offset rounded to the element's
+  # alignment, the slot's self-relative delta to it (zero when empty) and its
+  # int32 count, then, element by element, the arrays each element holds
+  defp cook_walk_holder(f, elems, size, align, slot, ctx) do
+    start = cook_align(ctx.at, align)
+    array = ctx.base + start
+    buf = cook_put_holder(f, elems, size, slot, array, ctx)
+    ctx = %{ctx | at: start + length(elems) * size, buf: buf}
+
+    Enum.reduce(Enum.with_index(elems), ctx, fn {e, i}, ctx ->
+      cook_walk_member(f, e, array + i * size, ctx)
+    end)
+  end
+
+  defp cook_put_holder(_f, _elems, _size, _slot, _array, %{buf: nil}), do: nil
+
+  defp cook_put_holder(f, elems, size, slot, array, ctx) do
+    %{buf: buf, index: index, order: order} = ctx
+    buf = if elems == [], do: buf, else: put_i64(buf, slot, array - slot, order)
+    buf = put_i32(buf, slot + 8, length(elems), order)
+
+    Enum.reduce(Enum.with_index(elems), buf, fn {e, i}, buf ->
+      cook_put_member(f, e, array + i * size, index, order, buf)
+    end)
+  end
+
+  # a map's member is its generated { key, value } ENTRY record (§2.8)
+  defp cook_put_member(%{t: :map, elem: entry}, e, at, index, order, buf),
+    do: cook_record(Map.fetch!(@tables, entry), e, at, index, order, buf)
+
+  defp cook_put_member(f, e, at, index, order, buf), do: cook_elem(f, e, at, index, order, buf)
+
+  defp cook_walk_member(%{t: :map, elem: entry}, e, at, ctx),
+    do: cook_walk_record(Map.fetch!(@tables, entry), e, at, ctx)
+
+  defp cook_walk_member(f, e, at, ctx), do: cook_walk_elem(f, e, at, ctx)
 
   defp cook_list(value, f) do
     case Map.get(value, f.name, []) do
@@ -541,7 +689,10 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end)
   end
 
+  # a LIST's and a MAP's holder is written by the extent walk, which places
+  # the array it points at (§7.6)
   defp cook_field(%{array: :list}, _value, _base, _index, _order, buf), do: buf
+  defp cook_field(%{t: :map}, _value, _base, _index, _order, buf), do: buf
 
   defp cook_field(f, value, base, index, order, buf) do
     # an absent optional reads nil (§2.3)
@@ -773,136 +924,6 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     buf = put_raw(buf, at, v)
     put_i32(buf, len_at, byte_size(v), order)
   end
-
-  defp cook_carve(desc, value, node_off, index, order, buf) do
-    {_, buf} =
-      cook_carve_fields(
-        desc.fields,
-        value,
-        node_off,
-        node_off + desc.record,
-        0,
-        index,
-        order,
-        buf
-      )
-
-    buf
-  end
-
-  defp cook_carve_fields(fields, value, rec, extent_at, cursor, index, order, buf) do
-    Enum.reduce(fields, {cursor, buf}, fn f, {cursor, buf} ->
-      cook_carve_field(f, value, rec, extent_at, cursor, index, order, buf)
-    end)
-  end
-
-  defp cook_carve_field(
-         %{t: :list, array: :list} = f,
-         value,
-         rec,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    elems = cook_list(value, f)
-    count = length(elems)
-    cursor = cook_align(cursor, f.elem_align)
-    start = extent_at + cursor
-    slot = rec + f.cook_off
-
-    buf =
-      if count > 0 do
-        put_i64(buf, slot, start - slot, order)
-      else
-        buf
-      end
-
-    buf = put_i32(buf, slot + 8, count, order)
-
-    buf =
-      Enum.reduce(Enum.with_index(elems), buf, fn {e, i}, buf ->
-        cook_elem(f, e, start + i * f.elem_size, index, order, buf)
-      end)
-
-    cursor = cursor + count * f.elem_size
-    cook_carve_after(f, elems, start, extent_at, cursor, index, order, buf)
-  end
-
-  defp cook_carve_field(
-         %{t: :table, elem: elem, cook_off: off, name: name},
-         value,
-         rec,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      cook_carve_fields(
-        d.fields,
-        Map.get(value, name, %{}),
-        rec + off,
-        extent_at,
-        cursor,
-        index,
-        order,
-        buf
-      )
-    else
-      {cursor, buf}
-    end
-  end
-
-  defp cook_carve_field(
-         %{t: :list, elem_t: :record, elem: elem, cook_off: off, elem_size: step} = f,
-         value,
-         rec,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    d = Map.fetch!(@tables, elem)
-
-    if d.has_extent do
-      Enum.reduce(Enum.with_index(cook_list(value, f)), {cursor, buf}, fn {e, i}, {cursor, buf} ->
-        cook_carve_fields(d.fields, e, rec + off + i * step, extent_at, cursor, index, order, buf)
-      end)
-    else
-      {cursor, buf}
-    end
-  end
-
-  defp cook_carve_field(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}
-
-  defp cook_carve_after(
-         %{elem: elem, elem_size: step},
-         elems,
-         start,
-         extent_at,
-         cursor,
-         index,
-         order,
-         buf
-       ) do
-    d = Map.get(@tables, elem)
-
-    if is_map(d) and d.has_extent do
-      Enum.reduce(Enum.with_index(elems), {cursor, buf}, fn {e, i}, {cursor, buf} ->
-        cook_carve_fields(d.fields, e, start + i * step, extent_at, cursor, index, order, buf)
-      end)
-    else
-      {cursor, buf}
-    end
-  end
-
-  defp cook_carve_after(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}
 
   defp cook_align(v, a) when a <= 1, do: v
   defp cook_align(v, a), do: div(v + a - 1, a) * a
