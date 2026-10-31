@@ -148,6 +148,31 @@ tables-goose-runtime-home-negative-control:
 		cat $(GOOSE_GATES_DIR)/runtime-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate named a table module the sabotage did not touch"; exit 1; fi
 	@echo "goose runtime home negative control: the file-order rule moves the table runtime and the gate names each module it moved"
 
+# THE UNIT MODULE'S CONTROL: the file-order rule put back for the unit's own
+# module. A copy of internal/codegen/goosetable/goosetable.go whose UnitModule
+# is named for the file that sorts first (ir.ProtocolIdHome) rather than the
+# package, built through `go build -overlay`; the gate must go red naming the
+# registry's file-order homes, and no table module.
+GOOSE_GATES_SED_UNIT_HOME := s|^	p := goose.Namespace(u)$$|	p := ir.ProtocolIdHome(u) // SABOTAGED: the file-order rule|
+.PHONY: tables-goose-unit-home-negative-control
+tables-goose-unit-home-negative-control:
+	@mkdir -p $(GOOSE_GATES_DIR)
+	@sed '$(GOOSE_GATES_SED_UNIT_HOME)' internal/codegen/goosetable/goosetable.go >$(GOOSE_GATES_DIR)/goosetable-unitorder.gotext
+	@grep -q SABOTAGED $(GOOSE_GATES_DIR)/goosetable-unitorder.gotext || { \
+		echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/goosetable/goosetable.go":"%s/$(GOOSE_GATES_DIR)/goosetable-unitorder.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" >$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json
+	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json -o build/schema-goose-unitorder ./cmd/schema
+	@if sh make/goose-runtime-home.sh ./build/schema-goose-unitorder $(GOOSE_GATES_DIR)/unit-home-sabotage >$(GOOSE_GATES_DIR)/unit-home-sabotage.log 2>&1; then \
+		cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the runtime home gate stayed green with the unit module on the file order"; exit 1; fi
+	@for f in GuardedUnit.goose AaaUnit.goose; do \
+		grep -q "unit registry in $$f" $(GOOSE_GATES_DIR)/unit-home-sabotage.log || { \
+			cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate did not name the registry in $$f"; exit 1; }; \
+	done
+	@if grep -q 'Table.goose moved' $(GOOSE_GATES_DIR)/unit-home-sabotage.log; then \
+		cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate named a table module the sabotage did not touch"; exit 1; fi
+	@echo "goose unit home negative control: the file-order rule moves the unit registry and the gate names each file-order home"
+
 # THE RELEASE TIER (docs/PORTING.md J3). certify.yml derives every
 # `tables-<lang>-release` target from the makefiles, so this target is all it
 # takes to run there. Today it is the leg's whole PR tier in one place — both
@@ -160,7 +185,8 @@ tables-goose-release:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	$(MAKE) test-goose
 	$(MAKE) tables-goose-fixedform-negative-control tables-goose-strict-negative-control \
-		tables-goose-strict-emitter-negative-control tables-goose-runtime-home-negative-control
+		tables-goose-strict-emitter-negative-control tables-goose-runtime-home-negative-control \
+		tables-goose-unit-home-negative-control
 
 # test-goose carries both gates (make/goose.mk); their controls run in the
 # goose-gates group of make/negative-controls.json.

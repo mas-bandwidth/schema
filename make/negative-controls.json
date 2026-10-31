@@ -988,7 +988,8 @@
       "targets": [
         "tables-goose-runtime-home-negative-control",
         "tables-goose-strict-emitter-negative-control",
-        "tables-goose-strict-negative-control"
+        "tables-goose-strict-negative-control",
+        "tables-goose-unit-home-negative-control"
       ]
     },
     {
