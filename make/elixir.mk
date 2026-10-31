@@ -1906,15 +1906,20 @@ test-elixir: tables-elixir-view
 
 # THE FRAMING SURFACE, its Elixir leg (docs/LAYERS/1-framing.md): the Elixir
 # driver answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control takes the id table's
-# 4096-entry cap out of the emitter's open (§3, THE DISTINCTNESS CHECK; rule
-# F6), rebuilds the corpus, and requires framing RED while report stays green.
-ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|'
+# (test/conformance/framing/gate). Its negative control takes two rules out of
+# the emitter: the id table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6)
+# and the refusal of a pointer naming an OPEN node (§3.1; T8). It rebuilds the
+# corpus and requires framing RED on frame_entries_4097 and both cycle rows,
+# while report stays green.
+ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|' \
+	-e 's|    if open_node?(idx), do: throw(:wire_damaged), else:|    if open_node?(idx), do: :null, else:|' \
+	-e 's|      {root, _open} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)|      {root, _open} -> if false and Map.get(f, :elem) == root, do: throw(:wire_damaged)|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
 conformance-negative-control-elixir-framing: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries read as legal)
-	@grep -q "elixir / framing: frame_entries_4097:" build/elixir-conformance-negative-framing/log || \
-		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on frame_entries_4097"; exit 1; }
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries and a cyclic wire read as legal)
+	@for c in frame_entries_4097 node_cycle_self node_cycle_to_root; do \
+		grep -q "elixir / framing: $$c:" build/elixir-conformance-negative-framing/log || \
+			{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on $$c"; exit 1; }; done
 test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing
