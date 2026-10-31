@@ -674,6 +674,72 @@ tables-elixir-alloc-runtime-negative-control:
 
 test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control
 
+# THE ELIXIR TABLES SOAK (docs/PORTING.md I9), test/elixir-soak/main.exs over
+# the derived manifest and the generated ebin: one PASS is one iteration of
+# every pinned case of the allocation audit above, TABLES_ELIXIR_SOAK_ITERATIONS
+# passes (a count, never a clock: `make shape-gate` refuses a timing primitive
+# outside the sanctioned bench), cut into samples of 200, the audit's own
+# window. Every sample is the audit's own measurement of every case, heap words
+# and binary calls, each held to its pinned budget in 20 20 12 61 79 80 81 98 701 33 100 204 250 395 398 399 400ELIXIR_ALLOC_BUDGET)
+# with the audit's slack; the VM's binary, ETS, persistent-term and atom drift
+# is printed beside it as the weaker instrument and bounds retention. The pin comes first, as in the audit. THE LENGTH CHECK rides
+# every run: the soak must report exactly the passes and samples its count
+# names, so a soak that ignored its count is red, not silently green. The
+# default count is the release act, about an hour on vision (a pass over the
+# pinned corpus is about 0.4 s there); `test-elixir` runs the
+# short form, two samples.
+TABLES_ELIXIR_SOAK_ITERATIONS ?= 9000
+ELIXIR_SOAK_SHORT := 400
+ELIXIR_SOAK_LOG := build/elixir-soak/log
+
+.PHONY: tables-elixir-soak tables-elixir-soak-short tables-elixir-soak-negative-control
+tables-elixir-soak: build/conformance/manifest.txt
+	$(MIX) format --check-formatted test/elixir-soak/main.exs
+	@mkdir -p $(dir $(ELIXIR_SOAK_LOG))
+	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-soak/main.exs \
+		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
+		$(TABLES_ELIXIR_SOAK_ITERATIONS) $(ELIXIR_ALLOC_BUDGET) > $(ELIXIR_SOAK_LOG) 2>&1; \
+		status=$$?; cat $(ELIXIR_SOAK_LOG); exit $$status
+	@grep -q "soak: worker ran $(TABLES_ELIXIR_SOAK_ITERATIONS) passes, driver took $$(( $(TABLES_ELIXIR_SOAK_ITERATIONS) / 200 )) samples" $(ELIXIR_SOAK_LOG) || \
+		{ echo "SOAK LENGTH FAILED: the soak did not run its $(TABLES_ELIXIR_SOAK_ITERATIONS) passes"; exit 1; }
+	@echo "tables Elixir soak: $(TABLES_ELIXIR_SOAK_ITERATIONS) passes, every sample inside the pinned allocation budget"
+
+tables-elixir-soak-short:
+	$(MAKE) tables-elixir-soak TABLES_ELIXIR_SOAK_ITERATIONS=$(ELIXIR_SOAK_SHORT)
+
+# THE SOAK'S NEGATIVE CONTROL: the emitter sabotage the audit's control plants
+# (ELIXIR_ALLOC_SED: every generated load builds sixteen refc binaries and a
+# thousand-cell list and drops them at once), a matched allocate-and-free per
+# pass that retains nothing. Two samples over four pinned cases keep it inside
+# the CI job's ceiling; the soak must go red on the count at both samples, and
+# the drift line must stay [PASS], which is what says the count saw what drift
+# cannot.
+CONFORMANCE_NEGATIVE_ELIXIR_SOAK := build/elixir-soak-negative
+ELIXIR_SOAK_CONTROL_CASES := root_full,archive,keyed_config,profile_elide
+
+tables-elixir-soak-negative-control: build/conformance/manifest.txt
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK),internal/codegen/elixirtable/variableform.go,ELIXIR_ALLOC_SED)
+	@if ELIXIR_SOAK_CASES=$(ELIXIR_SOAK_CONTROL_CASES) \
+			ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/ebin $(ELIXIR) test/elixir-soak/main.exs \
+			build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) 400 $(ELIXIR_ALLOC_BUDGET) \
+			> $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a matched allocate-and-free per generated load left the soak green"; \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; fi
+	@grep -q '^soak: 400 passes over 4 pinned cases' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the control did not soak its four cases"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
+	@[ "$$(grep -c '^SOAK FAILED: sample [12]: 4 cases' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log)" -eq 2 ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the count did not red all four cases at both samples"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
+	@grep -qE '^soak: drift .*\[PASS\]' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: drift went red too, so the control does not show the count seeing what drift cannot"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
+	@grep -m1 '^SOAK FAILED: sample' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log
+	@grep '^soak: drift' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log
+	@echo "elixir soak negative control: a matched allocate-and-free per load reds the count at both samples while drift stays silent"
+
+test-elixir: tables-elixir-soak-short tables-elixir-soak-negative-control
+
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Elixir
 # side. The page's cook example is pulled from docs/USAGE.md into a script that
 # reads the fixture cook and evaluates the fragment verbatim against the
