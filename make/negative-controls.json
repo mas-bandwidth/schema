@@ -466,6 +466,17 @@
       ]
     },
     {
+      "name": "moo-tables",
+      "when": "pull-request",
+      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), the message form's capture call planted out of table_message.moo (retain_message_tail's counters move), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
+      "targets": [
+        "tables-moo-retain-message-negative-control",
+        "tables-moo-retain-negative-control",
+        "tables-moo-retain-refusal-negative-control"
+      ],
+      "moo": "pin"
+    },
+    {
       "name": "block-fuzz",
       "when": "pull-request",
       "why": "the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner.",
@@ -996,6 +1007,19 @@
       "dart": "3.13.2"
     },
     {
+      "name": "moo",
+      "when": "pull-request",
+      "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). Each is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
+      "targets": [
+        "packet-analyze-moo-negative-control",
+        "packet-wire-moo-emitter-negative-control",
+        "packet-wire-moo-negative-control",
+        "schema-moo-generated-analyze-strict-gate-negative-control",
+        "schema-moo-generated-analyze-strict-gate-pin-negative-control"
+      ],
+      "moo": "pin"
+    },
+    {
       "name": "base-cpp-clean",
       "when": "pull-request",
       "why": "the C++ warnings gate's control (docs/PORTING.md J4): the packet emitter is rebuilt under an overlay that writes one placement-new with a C-style cast, the examples corpus is generated with it, and tables-cpp-clean's warnings engine (clang++ -Weverything less the c++98-compat family) must go red naming -Wold-style-cast in ArmDefaults.h while its guard, the unsabotaged output under its own census, stays green. One overlay build of cmd/schema and 20 small translation units: a few seconds on the author's machine; the job is its own row because the controls beside it are Go-cache heavy and this one wants only clang++.",
@@ -1005,6 +1029,14 @@
     }
   ],
   "excluded": [
+    {
+      "target": "tables-moo-json-negative-controls",
+      "reason": "the moo text forms' controls (make/moo-text.mk: the walk control, the float tie rule both ways, the I13 tie-break, the JSONTestSuite end-of-text rule, the carrier pad bits) are go tests of internal/codegen/mootable named *NegativeControl: every pull request already runs them in ci-full's unit-codegen row with the moo pin installed, and the target is a prerequisite of test-moo. A manifest group would run them a second time."
+    },
+    {
+      "target": "schema-moo-nightly-fuzz-negative-control",
+      "reason": "the moo packet-wire fuzz differential's two reversed witnesses (TestMooWireFuzzWriteNegativeControl, TestMooWireFuzzReadNegativeControl) are go tests of internal/codegen/moo: every pull request already runs them in ci-full's unit-codegen row and in make test-moo, with the moo pin installed, and the nightly runs this target in its own job in schema-moo-nightly-fuzz.yml. A manifest group would run them a third time on a row that installs no moo pin."
+    },
     {
       "target": "tables-rust-wide-clamp-negative-control",
       "reason": "run on every full-ci pull request by ci-full.yml's conformance leg for rust (test/conformance/rust/ci.json names it among the leg's build targets), beside the driver it sabotages: the control regenerates the two wide-scalar crates under an overlay and relinks that warm driver in its own target directory, about 15 s, where a negative-controls group would first pay the driver's whole cold build (62 s on the author's machine at four jobs) and leave the owner's two-minute rule."
@@ -1048,6 +1080,22 @@
     {
       "target": "schema-shared-hostile-corpus-negative-control",
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+    },
+    {
+      "target": "packet-defaults-moo-negative-control",
+      "reason": "the moo leg's constructor-bytes control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-finite-moo-negative-control",
+      "reason": "the moo leg's finite-float (read and write) control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-utf8-moo-negative-control",
+      "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-wide-moo-negative-control",
+      "reason": "the moo leg's wide pairing control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
       "target": "tables-cpp-format-negative-control",

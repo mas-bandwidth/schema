@@ -370,6 +370,13 @@ jobs:
       # step of its own: its TestOffsetsComposeFromHalvesElixir measures
       # allocations and is load-sensitive, so it runs with no other package's
       # tests beside it, on a row of its own (2026-10-27).
+      # THE MOO PIN for the emitter rows: internal/codegen/moo runs the
+      # generated modules under the pinned interpreter and its analyzer, and
+      # under SCHEMA_SLOW=1 fails, never skips, without them (make/moo.mk;
+      # .github/actions/moo builds the pin once per runner image and caches it).
+      - uses: ./.github/actions/moo
+        if: matrix.group == 'unit-codegen' || matrix.group == 'slow-gate-codegen'
+
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
         env:
@@ -938,6 +945,12 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
 
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
@@ -2002,6 +2015,12 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # The moo pin (make/moo.mk, MOO_PIN), for a row whose ci.json or group
+      # names `moo`: .github/actions/moo builds it once per runner image and
+      # caches it under the pin.
+      - uses: ./.github/actions/moo
+        if: matrix.moo != ''
 
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and
