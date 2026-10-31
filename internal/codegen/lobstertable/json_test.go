@@ -331,7 +331,8 @@ func patchJson(t *testing.T, g *loadUnit, anchor, with string) {
 // so exactly the hostile rows whose duplicate comes from a table object's key
 // change verdict — every row the reference counts a duplicate for, less the
 // rows whose repeat is an enum-keyed object's slot key (keyed-*,
-// dup-key-rejected-keyed), which counts on its own line.
+// dup-key-rejected-keyed) or a map's key (*map-dup-key), each of which counts
+// on its own line.
 //
 // WRITE: the `&node` label's spelling (§16.7) changes, so exactly the
 // instances whose golden text carries a label go red.
@@ -363,7 +364,7 @@ func TestLobsterJsonNegativeControl(t *testing.T) {
 			}
 			text, _ := os.ReadFile(filepath.Join(root, r.tree, r.root+".json"))
 			goV := goJsonVerdict(g.u, r.root, text)
-			if goV != "refused" && !strings.Contains(r.name, "keyed") && strings.Split(goV, ",")[4] != "0" {
+			if goV != "refused" && !strings.Contains(r.name, "keyed") && !strings.Contains(r.name, "map-dup-key") && strings.Split(goV, ",")[4] != "0" {
 				wantRed = append(wantRed, "hostile "+r.name)
 			}
 			if res.verdict[i] != goV {
