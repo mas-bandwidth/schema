@@ -213,6 +213,17 @@ region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/regio
 # listdemo.Save), on the Certify wire fuzz.
 list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
 
+# A KEYED SLOT WRITTEN AGAIN DISCARDS WHAT WAS RETAINED UNDER IT (§6.6). Depth's
+# keyed field rides twice; the first occurrence's Squad carries a roster entry
+# whose value arrives under the wrong kind, so the retaining read keeps it.
+# The second occurrence rewrites the same slot, and the oracle forgets the
+# slot's instance, records and all, before refilling it. The Rust retaining
+# reader refilled the slot and kept the first occurrence's record, so it saved
+# 194 bytes where the oracle saved 174. Found by the random pass of the
+# retention arm at mutant 745809 of seed 68719476731 (corpus seed map_depth),
+# on tables-rust-release run on vision.
+keyed_slot_rewrite_discards_retained mapdemo Depth testdata/wire/tables/fuzz-vectors/keyed_slot_rewrite_discards_retained.bin
+
 # A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
 # and one malformed counts, naming the field. profile_elide with has_loadout's
 # byte set to 0x11. The JavaScript variable reader read it true and counted
