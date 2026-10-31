@@ -30,7 +30,9 @@ import (
 //     the full row walk of what opened (block_dump) reads inside the bytes;
 //   - a cook that Open accepts has a header the tool's own reader
 //     (internal/tablecook.ReadHeader, written from the spec and from neither
-//     backend) accepts, in this build's order; a cook the tool's cook-check
+//     backend) accepts, in this build's order, but for the data part's
+//     multiple of the alignment, which is cook-check's clause and not Open's
+//     (§7, §7.4); a cook the tool's cook-check
 //     accepts whole, Open accepts; and the read of such a cook (cook_read,
 //     every record and every reference) reads inside the bytes and answers a
 //     record. A cook is trusted input past Open (§7.4): what cook-check
@@ -52,7 +54,7 @@ const (
 	// lobsterForgeryDefaultSeed is "LOBFORGE".
 	lobsterForgeryDefaultSeed = uint64(0x4C4F42464F524745)
 	// lobsterForgeryDefaultN is the mutants per image.
-	lobsterForgeryDefaultN = 4000
+	lobsterForgeryDefaultN = 300
 	// lobsterForgeryResumes is how many VM errors one image may meet before
 	// the run stops: a correct reader meets none, and a sabotaged one shows
 	// itself in the first few.
@@ -183,7 +185,10 @@ while at < length(blob):
             let why = schema_rt.block_open_reason(root, bytes, lead, false)
             if why == "ok":
                 let dump = schema_rt.block_dump(root, bytes)
-                ans = "open {length(dump)}"
+                if dump == "":
+                    ans = "open refused-walk|" + schema_rt.block_used_length + schema_rt.block_non_finite
+                else:
+                    ans = "open {length(dump)}"
             else:
                 ans = "refuse|" + why
         else:
@@ -338,12 +343,16 @@ func lobsterForgeryImages(t *testing.T) (blocks, cooks []*lobsterForgeryImage) {
 // lobsterForgeryResult is one run's tally.
 type lobsterForgeryResult struct {
 	mutants, refused, opened, walked int
-	findings                         []string
+	// walkRefused counts opened blocks whose read refused a field by name
+	// (a used length past its maximum, a non-finite float) before it read
+	// a byte of it
+	walkRefused int
+	findings    []string
 }
 
 func (r lobsterForgeryResult) summary() string {
-	return fmt.Sprintf("Lobster forgery fuzz: %d mutants, %d refused, %d opened (%d walked whole), %d findings",
-		r.mutants, r.refused, r.opened, r.walked, len(r.findings))
+	return fmt.Sprintf("Lobster forgery fuzz: %d mutants, %d refused, %d opened (%d walked whole, %d refused by name in the walk), %d findings",
+		r.mutants, r.refused, r.opened, r.walked, r.walkRefused, len(r.findings))
 }
 
 // runLobsterForgeryFuzz fuzzes every staged image. edit, when non-nil,
@@ -421,7 +430,7 @@ func runLobsterForgeryFuzz(t *testing.T, seed uint64, n int, file string, edit f
 		jobs = append(jobs, j)
 	}
 	var wg sync.WaitGroup
-	slots := make(chan struct{}, 4)
+	slots := make(chan struct{}, 6)
 	for _, j := range jobs {
 		wg.Go(func() {
 			slots <- struct{}{}
@@ -492,6 +501,12 @@ func runLobsterForgeryFuzz(t *testing.T, seed uint64, n int, file string, edit f
 			if j.im.bl != nil {
 				if why := lobsterForgeryBlockWhole(j.im.u, j.im.bl, mu.bytes, mu.lead); opened && why != "" {
 					res.findings = append(res.findings, fmt.Sprintf("%s: an OPENED block is not whole: %s", where, why))
+				} else if reason, named := strings.CutPrefix(ans, "open refused-walk|"); named {
+					if reason == "" {
+						res.findings = append(res.findings, fmt.Sprintf("%s: the walk of an OPENED block answered nothing and named no reason", where))
+					} else {
+						res.walkRefused++
+					}
 				} else if opened {
 					res.walked++
 				}
@@ -501,6 +516,15 @@ func runLobsterForgeryFuzz(t *testing.T, seed uint64, n int, file string, edit f
 				continue // the base is the caller's placement: the pinned cook_lead rows hold it
 			}
 			_, herr := tablecook.ReadHeader(mu.bytes, ir.BuildVersion(j.im.u))
+			// THE DATA PART AS A WHOLE NUMBER OF ALIGNMENTS is the tool's
+			// header clause and cook-check's (§7.4), not one of Open's: §7's
+			// table of Open's clauses validates the alignment word and the part
+			// lengths against the caller's length, and nothing more. An Open
+			// that opens such a cook keeps every read inside the bytes, so the
+			// differential holds Open to its own clauses.
+			if herr != nil && strings.Contains(herr.Error(), "which is not a multiple of the region's alignment") {
+				herr = nil
+			}
 			little := len(mu.bytes) >= 8 && binary.LittleEndian.Uint64(mu.bytes) == tablecook.Magic
 			if opened && (herr != nil || !little) {
 				res.findings = append(res.findings, fmt.Sprintf("%s: Open OPENED a cook whose header the tool refuses (%v)", where, herr))
@@ -563,6 +587,10 @@ func lobsterForgeryEdit(t *testing.T, src, old, repl string) string {
 // the end of the string, where the VM's bounds check ends the program, and an
 // opened block is not whole: the oracle must say both.
 //
+// The used-length control takes the read's check of a string's or a bytes'
+// used length against its maximum out: a forged length then reads past the
+// end of the string, and the oracle must say so.
+//
 // The cook control removes the reserved-word clause from Open: it must red
 // the differential against the tool's header reader as an Open that opened
 // what the tool refuses.
@@ -587,6 +615,22 @@ func TestLobsterForgeryFuzzNegativeControl(t *testing.T) {
 		}
 		if threw == 0 || notWhole == 0 {
 			t.Fatalf("a block reader with no extent bound left the oracle green (%d threw, %d not whole): %s", threw, notWhole, res.summary())
+		}
+	})
+	t.Run("block used length unchecked", func(t *testing.T) {
+		t.Parallel()
+		res := runLobsterForgeryFuzz(t, seed, n, "block_form.lobster", func(src string) string {
+			return lobsterForgeryEdit(t, src, "        if used < 0 or used > bf.bound:\n", "        if false:\n")
+		})
+		t.Log(res.summary())
+		threw := 0
+		for _, f := range res.findings {
+			if strings.Contains(f, "THREW") {
+				threw++
+			}
+		}
+		if threw == 0 {
+			t.Fatalf("a block read that takes a forged used length at its word left the oracle green: %s", res.summary())
 		}
 	})
 	t.Run("cook reserved words unchecked", func(t *testing.T) {

@@ -71,6 +71,14 @@ def block_record(b:BlockLayout, name:string) -> BlockRecord?:
 // is finite, refused on its raw bits by the read and by the builder.
 var block_non_finite = ""
 
+// block_used_length names the first string or bytes the last block_read met
+// whose used length companion lies outside [ 0, its declared maximum ],
+// the field and the length (docs/SPEC-TABLES.md §19.5: a block that
+// opened is walked through its descriptors without one read leaving the
+// bytes the caller passed). The read takes no byte of such a field and answers
+// no record, as the reference walker refuses it by name.
+var block_used_length = ""
+
 def block_float_at(fd:FieldDescriptor, data:string, at:int, size:int) -> float:
     if size == 4:
         let bits = read_uint32_le(data, at)
@@ -159,8 +167,13 @@ def block_read_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:int
     let base = at + bf.offset
     let s = f.s
     if bf.counted and (s == "str" or s == "text" or s == "bytes"):
-        sl.count = read_int32_le(data, at + bf.count_offset)
-        sl.cell.s = substring(data, base, sl.count)
+        let used = read_int32_le(data, at + bf.count_offset)
+        if used < 0 or used > bf.bound:
+            if block_used_length == "":
+                block_used_length = "{bf.name} carries a used length of {used}, outside [ 0, {bf.bound} ]"
+            return
+        sl.count = used
+        sl.cell.s = substring(data, base, used)
     elif bf.is_array and s == "arr":
         let e = elem_of(f)
         for(sl.elems) v, k:
@@ -201,12 +214,14 @@ def block_read_elem(bl:BlockLayout, bf:BlockField, v:Value, fd:FieldDescriptor, 
             v.i = bread_int(data, at, bf.elem_size, false)
 
 // block_read is the block's whole read: nil for a block this build does not
-// open, and nil for one holding a NaN or an infinity in any float, named in
-// block_non_finite (docs/SPEC-TABLES.md §3.3).
+// open, nil for one holding a NaN or an infinity in any float, named in
+// block_non_finite (docs/SPEC-TABLES.md §3.3), and nil for one carrying a
+// used length past its field's maximum, named in block_used_length (§19.5).
 def block_read(root:string, data:string) -> Record?:
     block_non_finite = ""
+    block_used_length = ""
     let rec = block_read_all(root, data)
-    if block_non_finite != "":
+    if block_non_finite != "" or block_used_length != "":
         return nil
     return rec
 
@@ -297,7 +312,11 @@ def block_dump(root:string, data:string) -> string:
     let bl = lookup_block(root)
     assert bl
     let rec = block_read(root, data)
-    assert rec
+    if not rec:
+        // a block that opened and that the read refuses by name: the reason
+        // is in block_non_finite or block_used_length, and there is no row
+        // to walk
+        return ""
     var out = "projection {bl.projection.name} @0\n"
     out += block_dump_record(bl, bl.projection, rec, "")
     for(bl.projection.fields) bf, i:

@@ -108,8 +108,8 @@ tables-lobster-runtime-home-negative-control: tables-lobster-runtime-home
 
 # I3: the forgery fuzz oracle over every block and cook of the corpus
 # (forgeryfuzz_test.go): a mutant refuses, or opens and is whole. The control
-# removes the block reader's two extent bounds and Open's reserved-word check,
-# and requires the oracle red on each.
+# removes the block reader's two extent bounds, the read's used-length check
+# and Open's reserved-word check, and requires the oracle red on each.
 .PHONY: tables-lobster-fuzz tables-lobster-fuzz-negative-control
 tables-lobster-fuzz: lobster-dist-present
 	sh test/slowgate/proof tables-lobster-fuzz \
@@ -117,7 +117,7 @@ tables-lobster-fuzz: lobster-dist-present
 		./internal/codegen/lobstertable -run '^TestLobsterForgeryFuzz$$' -count=1 -timeout 600s
 tables-lobster-fuzz-negative-control: lobster-dist-present
 	sh test/slowgate/proof tables-lobster-fuzz-negative-control \
-		'TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked' \
+		'TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed TestLobsterForgeryFuzzNegativeControl/block_used_length_unchecked TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked' \
 		./internal/codegen/lobstertable -run '^TestLobsterForgeryFuzzNegativeControl$$' -count=1 -timeout 600s
 
 # The controls ride the leg with their gates: each is seconds, and a reversed

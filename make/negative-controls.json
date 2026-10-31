@@ -1047,6 +1047,41 @@
       "lobster": "v2026.8"
     },
     {
+      "name": "lobster-conformance",
+      "when": "pull-request",
+      "why": "the Lobster leg's two conformance controls (test/conformance/lobster/negative-control; docs/PORTING.md I2 and I11): each seds one runtime file the table emitter embeds, builds a private compiler through go build -overlay, regenerates every manifest unit with it and requires the harness red on exactly its surfaces (report: report and retain; walk: json-read and json-hostile) with the neighbours green. On the pinned v2026.8 toolchain, which the row installs through its lobster field. Measured on hulk off one warm build: 17 s and 16 s.",
+      "targets": [
+        "conformance-negative-control-lobster",
+        "conformance-negative-control-lobster-walk"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
+      "name": "lobster-gates",
+      "when": "pull-request",
+      "why": "the Lobster leg's open-gate controls (make/lobster-open-gates.mk): the key accessor's three guards (M5), the map writer's sort (M19), the block lead and the order word (I5, I7), the runtime names both ways (I6), the text differential's float32 cap (I13), the runtime home's file order (J2) and the USAGE fragment (I12). Each is one go test or one script over the pinned v2026.8 toolchain, which the row installs through its lobster field. Measured on hulk off one warm build: 1 s to 3 s each.",
+      "targets": [
+        "tables-lobster-keyed-negative-control",
+        "tables-lobster-maps-sort-negative-control",
+        "tables-lobster-block-lead-negative-control",
+        "tables-lobster-order-negative-control",
+        "tables-lobster-names-negative-control",
+        "tables-lobster-json-differential-negative-control",
+        "tables-lobster-runtime-home-negative-control",
+        "tables-lobster-usage-negative-control"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
+      "name": "lobster-forgery",
+      "when": "pull-request",
+      "why": "the Lobster forgery fuzz oracle's control (docs/PORTING.md I3; internal/codegen/lobstertable/forgeryfuzz_test.go): the block reader's extent bounds, the read's used-length check and Open's reserved-word check each removed in turn, and the oracle required red on each, over the pinned v2026.8 toolchain the row installs through its lobster field. MEASURE_PENDING",
+      "targets": [
+        "tables-lobster-fuzz-negative-control"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
