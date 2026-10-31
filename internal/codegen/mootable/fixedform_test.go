@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -95,35 +96,6 @@ func normaliseManifestValue(v string) string {
 		return "0x" + strings.ToUpper(bits)
 	}
 	return v
-}
-
-// nonFiniteLeaf is the first value the reference wrote as a NaN or an
-// infinity, its leaf name, or "": under the finite rule (SPEC-TABLES §3.3)
-// such a file is a MUST-REFUSE vector, as the Go leg holds it.
-func nonFiniteLeaf(ml manifestLine) string {
-	best := ""
-	for k, v := range ml.values {
-		if !strings.HasPrefix(v, "0x") {
-			continue
-		}
-		bits, err := strconv.ParseUint(strings.TrimPrefix(v, "0x"), 16, 64)
-		if err != nil {
-			continue
-		}
-		nonFinite := false
-		if len(v) == 10 {
-			nonFinite = bits&0x7F800000 == 0x7F800000
-		} else {
-			nonFinite = bits&0x7FF0000000000000 == 0x7FF0000000000000
-		}
-		if nonFinite && (best == "" || k < best) {
-			best = k
-		}
-	}
-	if best == "" {
-		return ""
-	}
-	return best[strings.LastIndex(best, ".")+1:]
 }
 
 // fixedUnit generates a unit for moo with a handed lineage and writes it.
@@ -333,12 +305,30 @@ func compareManifest(t *testing.T, what string, ml manifestLine, dump map[string
 		if raw, ok := strings.CutPrefix(got, "raw="); ok && !strings.HasPrefix(want, "raw=") {
 			got = raw
 		}
+		if widened, ok := widenedFloat32(want, got); ok {
+			want = widened
+		}
 		if got != want {
 			t.Errorf("%s: %s landed %s, the reference wrote %s", what, k, got, want)
 		}
 		compared++
 	}
 	return compared
+}
+
+// widenedFloat32 is the float64 pattern a float32 pattern widens to, when the
+// reference wrote a float32 (0x and eight digits) and the read landed a float64
+// (0x and sixteen): the float rung is the ordinary conversion, exact for every
+// finite float32 (SPEC-TABLES §3.3, §4).
+func widenedFloat32(want, got string) (string, bool) {
+	if len(want) != 10 || len(got) != 18 || !strings.HasPrefix(want, "0x") || !strings.HasPrefix(got, "0x") {
+		return "", false
+	}
+	bits, err := strconv.ParseUint(want[2:], 16, 32)
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("0x%016X", math.Float64bits(float64(math.Float32frombits(uint32(bits))))), true
 }
 
 var fixedOracleVectors = []struct{ file, schema, root string }{
@@ -356,10 +346,9 @@ var fixedOracleVectors = []struct{ file, schema, root string }{
 // TestMooFixedFormAgreesWithTheByteOracle is §7 row 1 over the reference's
 // nine corpus files: each is read through the emitted reader, every value the
 // manifest records lands, the record count is the manifest's, no counter
-// moves, and the value saved back is the reference's file byte for byte. A
-// file the reference wrote with a NaN or an infinity (fu1, fu2) is a
-// MUST-REFUSE vector under the finite rule (SPEC-TABLES §3.3): refused as
-// non_finite_float, naming the field, as the Go leg holds it.
+// moves, and the value saved back is the reference's file byte for byte.
+// Every float in the corpus is finite (SPEC-TABLES §3.3): fu1 and fu2 carry a
+// subnormal and a -0 in `heat`, the values a wrong widening would move.
 func TestMooFixedFormAgreesWithTheByteOracle(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
@@ -374,13 +363,6 @@ func TestMooFixedFormAgreesWithTheByteOracle(t *testing.T) {
 			oracle := corpusFile(t, corpus, v.file)
 			ml := manifest[v.file]
 			r := runFixedLoad(t, g, mod, v.root, oracle)
-			if leaf := nonFiniteLeaf(ml); leaf != "" {
-				want := fmt.Sprintf("refused non_finite_float %s.%s false -", v.root, leaf)
-				if r.head != want {
-					t.Fatalf("a non-finite float the reference wrote must refuse: %s, want %s", r.head, want)
-				}
-				return
-			}
 			if want := fmt.Sprintf("ok %d u0 k0 c0 w0", ml.records); r.head != want {
 				t.Fatalf("the read: %s, want %s", r.head, want)
 			}
@@ -521,14 +503,6 @@ func TestMooFixedVersioningNewReadsOld(t *testing.T) {
 			file := "old_" + r.row + ".bin"
 			ml := manifest[file]
 			got := runFixedLoad(t, g, "VNEW_"+r.row+"Table", rootName, corpusFile(t, corpus, file))
-			if leaf := nonFiniteLeaf(ml); leaf != "" {
-				// the reference's old file holds a NaN: a MUST-REFUSE vector
-				// under the finite rule (SPEC-TABLES §3.3)
-				if want := fmt.Sprintf("refused non_finite_float %s.%s false -", rootName, leaf); got.head != want {
-					t.Fatalf("NEW-READS-OLD %s: %s, want %s", r.row, got.head, want)
-				}
-				return
-			}
 			if !strings.HasPrefix(got.head, fmt.Sprintf("ok %d u%d k0 c0 w", ml.records, r.unknown)) {
 				t.Fatalf("NEW-READS-OLD %s: %s", r.row, got.head)
 			}
@@ -545,6 +519,33 @@ func TestMooFixedVersioningNewReadsOld(t *testing.T) {
 				t.Errorf("no manifest value compared")
 			}
 		})
+	}
+}
+
+// TestMooFixedFormRefusesTheForgedNaN is the finite rule's must-refuse vector
+// on the fixed form (SPEC-TABLES §3.3), forged as the reference's own test
+// forges it (test/tables/fixedform_main.cpp, fu_refusal_case): the float32 the
+// reference wrote into old_float_widen.bin, -1234.5625, is overwritten with a
+// signalling NaN, and the newer reader refuses the file as non_finite_float,
+// naming the field, before it widens anything.
+func TestMooFixedFormRefusesTheForgedNaN(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
+	t.Parallel()
+	corpus := fixedCorpus(t)
+	older := readTestSchema(t, "VOLD_float_widen")
+	newer := readTestSchema(t, "VNEW_float_widen")
+	rootName := rootOf(t, older)
+	g := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
+	file := append([]byte(nil), corpusFile(t, corpus, "old_float_widen.bin")...)
+	written := binary.LittleEndian.AppendUint32(nil, 0xC49A5200)
+	at := strings.Index(string(file), string(written))
+	if at < 0 {
+		t.Fatal("old_float_widen.bin does not hold the reference's float32 -1234.5625")
+	}
+	binary.LittleEndian.PutUint32(file[at:], 0x7F8ABCDE)
+	got := runFixedLoad(t, g, "VNEW_float_widenTable", rootName, file)
+	if want := fmt.Sprintf("refused non_finite_float %s.v false -", rootName); got.head != want {
+		t.Fatalf("the forged NaN: %s, want %s", got.head, want)
 	}
 }
 
