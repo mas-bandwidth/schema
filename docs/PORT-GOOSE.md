@@ -374,21 +374,29 @@ lowercase hex lines.**
   `$GOOSE build -O2 <file>.goose -o <exe>`: the bench machine's C compiler
   (gcc), never TinyCC.
 - **The conformance driver** (`test/conformance/goose/driver`) runs
-  `goose run main.goose -- <surface> <manifest>` (the program's arguments
-  follow `--`; without it `goose run` takes them as more input files and
-  refuses "multiple input files given"), passes the program's exit status
+  `goose run main.goose -- <surface> <manifest> <unit>` (the program's
+  arguments follow `--`; without it `goose run` takes them as more input files
+  and refuses "multiple input files given"), passes the program's exit status
   through (2 is ABSENT), and splits stdout — one line per case: the case
-  name, a space, the answer's bytes in hex, or the word `absent` — into one
-  file per case in `<outdir>` (`<case>.absent` for the absent word). The
-  leg's CI row (`ci.json`) installs the pin with `make dist-goose` before the
-  harness runs. **`main.goose` answers no surface yet**, and `list` is empty:
-  every harness surface reads a form the port does not carry (the id-table
-  wire, the message form, JSON, the cook, the block form), and the one codec
-  it does carry, the fixed form, is judged against the C++ reference's byte
-  oracle by `make test-goose`, which builds `build/fixedform-corpus` and runs
-  under `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to
-  `list` and answers it there; `compiler/carries_goose.go` claims no
-  construct, so the two agree.
+  name, a space, the answer's bytes in hex, or the word `absent` and an
+  optional reason — into one file per case in `<outdir>` (`<case>.absent`
+  holding the reason). The leg's CI row (`ci.json`) installs the pin with
+  `make dist-goose` before the harness runs. **A surface run is one program
+  per unit**: Goose compiles whole programs and each unit carries its own copy
+  of the runtime, so the driver copies `main.goose` beside that unit's
+  generated modules (`build/conformance-goose/<unit>`) with two glue modules:
+  `conformance_unit.goose`, generated, which imports the unit's modules and
+  names its registry, and `unit.goose`, the unit's text glue
+  (`units/<unit>.goose`, the roots that answer `json-hostile` through
+  `goosetable/json_form.go`, or the empty `test/conformance/goose/unit.goose`
+  for a unit that has none). The block and cook surfaces run `accel.goose` in
+  a copy of the unit's directory instead. A case of a unit the target
+  refused is written absent. `list` names the surfaces the leg answers, and
+  main.goose's and accel.goose's headers say what each reads. The fixed form
+  is judged against the C++ reference's byte oracle by `make test-goose`,
+  which builds `build/fixedform-corpus` and runs under
+  `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to `list`
+  and answers it there.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
   per mutant) is a `goose build -O2` executable per unit
   (`test/conformance/goose/wirefuzz.goose`, make/goose-fuzz.mk) writing with

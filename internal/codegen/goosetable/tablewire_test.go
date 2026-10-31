@@ -22,7 +22,9 @@ package goosetable_test
 import (
 	"bufio"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -167,6 +169,15 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 		t.Fatal(err)
 	}
 	files["main.goose"] = main
+	// the unit's text glue, as the shell driver places it
+	text, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "units", key+".goose"))
+	if errors.Is(err, fs.ErrNotExist) {
+		text, err = os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "unit.goose"))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["unit.goose"] = text
 	return files
 }
 
