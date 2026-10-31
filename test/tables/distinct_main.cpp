@@ -33,6 +33,7 @@
 // It names ONE generated unit, for TableOpen and the id table, and no field of
 // it: the check is a property of the wire's trailer, not of any schema.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -57,6 +58,7 @@ static int g_failures = 0;
 static std::vector<uint8_t> wire_of( const std::vector<uint64_t> & ids )
 {
     std::vector<uint8_t> w;
+    w.reserve( 1 + 8 * ids.size() + 8 );
     w.push_back( 1 );                                   // the FORM BYTE (§3)
     for ( size_t i = 0; i < ids.size(); i++ )
     {
@@ -67,16 +69,17 @@ static std::vector<uint8_t> wire_of( const std::vector<uint64_t> & ids )
     return w;
 }
 
-// THE REFERENCE VERDICT, written the slowest way there is on purpose: every
-// pair, no hash, no bound. It is what the two walks in TableOpen are held to.
+// THE REFERENCE VERDICT, with no hash and no bound: a sorted copy and a
+// neighbor compare, so it shares nothing with the probe it checks. It is what
+// the two walks in TableOpen are held to. It is O(n log n) rather than every
+// pair because the sweep below calls it on the order of bound^2 times.
 static bool has_repeat( const std::vector<uint64_t> & ids )
 {
-    for ( size_t i = 1; i < ids.size(); i++ )
+    std::vector<uint64_t> sorted( ids );
+    std::sort( sorted.begin(), sorted.end() );
+    for ( size_t i = 1; i < sorted.size(); i++ )
     {
-        for ( size_t j = 0; j < i; j++ )
-        {
-            if ( ids[j] == ids[i] ) { return true; }
-        }
+        if ( sorted[i] == sorted[i - 1] ) { return true; }
     }
     return false;
 }
