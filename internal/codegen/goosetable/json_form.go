@@ -1,7 +1,7 @@
 // THE JSON TEXT FORM (docs/SPEC-TABLES.md §16) for Goose: card
 // schema-goose-json-form and the text walk of schema-goose-text-form
 // (docs/PORT-GOOSE.md, THE CARD MAP). The walk is ONE runtime,
-// runtime/json.goose, emitted byte for byte into every unit (PORTING M9): it
+// runtime/schema_json.goose, emitted byte for byte into every unit (PORTING M9): it
 // reads the descriptors for every decision — keys, bounds, ranges, variant
 // names — and reaches a record's storage through the per-table ACCESSOR this
 // file emits, `_<T>JsonRead` and `_<T>JsonWrite`, a dispatch on the field
@@ -16,6 +16,9 @@
 //	<T>FromJson(v: T&, text: const u8[:], report: schema_rt::JsonReport&) -> bool  // strict: a clean report
 //	<T>ToJson(v: const T&, out: u8[>..]&) -> i64                                  // appends; -1 refused
 //	<T>ToJsonMeasure(v: const T&) -> i64
+//
+// value_bridge.go also emits <T>ToLoaded and <T>FromLoaded for these roots,
+// joining typed JSON values to the shared form-1 load/save representation.
 //
 // THE FIXED CLASS IS WHAT THIS FILE CARRIES: every scalar kind up to 64 bits,
 // compressed floats, string(N), bytes(N) as base64, enums, flags, nested
@@ -196,11 +199,13 @@ func emitJSONFormPart(g *goose.Gen) error {
 	for _, name := range mine {
 		if st := structs[name]; st != nil {
 			e.emitStruct(st)
+			(&valueEmit{jsonEmit: e}).emitStruct(st, tables[name])
 			if tables[name] {
 				e.emitRoot(st)
 			}
 		} else {
 			e.emitUnion(unions[name])
+			(&valueEmit{jsonEmit: e}).emitUnion(unions[name])
 		}
 	}
 	return e.err

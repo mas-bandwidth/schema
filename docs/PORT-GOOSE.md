@@ -397,6 +397,18 @@ lowercase hex lines.**
   which builds `build/fixedform-corpus` and runs under
   `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to `list`
   and answers it there.
+- **JSON and wire conversion** uses the generated `<T>ToLoaded` and
+  `<T>FromLoaded` functions for roots that already carry the typed JSON API.
+  `ToLoaded(v, TableUnit, data, vals)` appends a value tree and its text bytes
+  to the caller's stores and returns its root index; failure returns -1 and
+  restores both store lengths. `FromLoaded(v, TableUnit, data, vals, root)`
+  reads a successful load's value tree into a fresh typed record, retaining
+  declared defaults for absent fields. It returns false for a missing root
+  or a different root type. Neither conversion parses JSON or wire bytes:
+  `FromJson`/`ToJson` and the shared `load_table`/`save_table` own those forms.
+  The conformance driver's `json-read` and `json-write` surfaces compare both
+  paths with committed fixtures. Pointer graphs, lists, maps and the other
+  shapes refused by `jsonUncarried` remain explicit text absences.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
   per mutant) is a `goose build -O2` executable per unit
   (`test/conformance/goose/wirefuzz.goose`, make/goose-fuzz.mk) writing with

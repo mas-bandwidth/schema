@@ -35,3 +35,13 @@ tables-goose-json-differential-negative-control:
 # The leg gate reaches them (as make/cs.mk's test-cs reaches its differential):
 # a prerequisite added here, so make/goose.mk is not edited.
 test-goose: tables-goose-json-walk tables-goose-json-walk-negative-control tables-goose-json-differential tables-goose-json-differential-negative-control
+
+# I11: regenerate from an actual text-reader emitter sabotage and require the
+# harness to localise it. The normal conformance CI also runs these surfaces.
+.PHONY: tables-goose-json-conformance conformance-negative-control-goose-walk
+tables-goose-json-conformance: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-conformance
+conformance-negative-control-goose-walk: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/walk-negative-control

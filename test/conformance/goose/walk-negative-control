@@ -1,0 +1,68 @@
+#!/bin/sh
+# I11: sabotage the embedded text reader before building the compiler, then
+# regenerate the corpus. The driver and tracked sources remain untouched.
+set -eu
+root=$(pwd)
+out=build/goose-walk-control
+source=internal/codegen/goosetable/runtime/schema_json.goose
+rm -rf "$out"
+mkdir -p "$out"
+from='            if json_name_is(d.fields[i].json, key[..n]) {'
+to='            if i != 0 && json_name_is(d.fields[i].json, key[..n]) {'
+FROM=$from TO=$to perl -0pe 'BEGIN { $c = 0 } $c += s/\Q$ENV{FROM}\E/$ENV{TO}/g; END { exit($c == 1 ? 0 : 1) }' "$source" > "$out/runtime.goose" || {
+    echo "NEGATIVE CONTROL FAILED: text walk clause must occur exactly once" >&2
+    exit 1
+}
+printf '{"Replace":{"%s/%s":"%s/%s/runtime.goose"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+go build -tags schema_leg_goose -overlay "$root/$out/overlay.json" -o "$out/schema-goose" ./cmd/schema
+mkdir -p "$out/units"
+# The localisation control needs one unit, not a compile of every unrelated
+# unit for each surface. The ordinary conformance gate covers the full corpus.
+awk '($1 == "unit" && $2 == "tabledemo") || (($1 == "instance" || $1 == "json-hostile") && $3 == "tabledemo")' testdata/conformance/tables/MANIFEST.txt > "$out/manifest.txt"
+grep '^unit ' "$out/manifest.txt" |
+while read -r _ key paths; do
+    # Match make/goose.mk: a refused unit stays an explicit absence.
+    # shellcheck disable=SC2086
+    if "$out/schema-goose" generate --lang goose --out "$out/units/$key" $paths > "$out/units/$key.log" 2>&1; then
+        rm -f "$out/units/$key.log"
+    else
+        rm -rf "$out/units/$key"
+        mv "$out/units/$key.log" "$out/units/$key.refused"
+    fi
+done
+cat > "$out/driver" <<'DRIVER'
+#!/bin/sh
+if [ "$2" = list ]; then
+    printf '%s\n' wire json-read json-write json-hostile
+    exit 0
+fi
+exec test/conformance/goose/driver "$@"
+DRIVER
+chmod +x "$out/driver"
+printf 'goose %s/driver\n' "$out" > "$out/drivers.txt"
+# Establish that the same oracle, driver, and carried surfaces are green before
+# attributing a failure to the regenerated text reader.
+if ! SCHEMA_GOOSE_GENERATED=build/conformance-goose build/conformance-harness run --manifest "$out/manifest.txt" --only goose --drivers "$out/drivers.txt" --work "$out/baseline" > "$out/baseline.log" 2>&1; then
+    echo "NEGATIVE CONTROL FAILED: unchanged Goose baseline is not green" >&2
+    cat "$out/baseline.log" >&2
+    exit 1
+fi
+if SCHEMA_GOOSE_GENERATED=$out/units build/conformance-harness run --manifest "$out/manifest.txt" --only goose --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    echo "NEGATIVE CONTROL FAILED: text walk sabotage left conformance green" >&2
+    exit 1
+fi
+red=$(grep -oE '^ *goose / [a-z-]+' "$out/log" | sed 's/^ *goose \/ //' | sort -u | tr '\n' ' ')
+want="json-hostile json-read "
+if [ "$red" != "$want" ]; then
+    echo "NEGATIVE CONTROL FAILED: expected [$want] red, got [$red]" >&2
+    cat "$out/log" >&2
+    exit 1
+fi
+for surface in wire json-write; do
+    if ! grep -qE "^$surface +pass" "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED: $surface did not stay green" >&2
+        cat "$out/log" >&2
+        exit 1
+    fi
+done
+echo "Goose text walk control: baseline green; emitter sabotage makes json-read and json-hostile red, wire and json-write green"

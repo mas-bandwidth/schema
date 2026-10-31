@@ -65,6 +65,29 @@ glue() {
 		done
 		echo "    return -1;"
 		echo "}"
+		# Fixed typed JSON records share the form-1 runtime through generated value bridges.
+		echo "fn conformance_json_read(root: const u8[:], text: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)ToLoaded(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var v = $ns::$r { .. }; var report = schema_rt::json_report(); let unit = conformance_unit();"
+			echo "        if !$ns::${r}FromJson(v, text, report) { return -2; }"
+			echo "        let at = $ns::${r}ToLoaded(v, unit, data, vals);"
+			echo "        return if at < 0 { -2 } else { at };"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
+		echo "fn conformance_json_write(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], at: i64, out: u8[>..]&) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)ToLoaded(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var v = $ns::$r { .. }; let unit = conformance_unit();"
+			echo "        if !$ns::${r}FromLoaded(v, unit, data, vals, at) { return -2; }"
+			echo "        let n = $ns::${r}ToJson(v, out);"
+			echo "        return if n < 0 { -2 } else { n };"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
 	} >"$1/conformance_unit.goose"
 	cp "$main" "$1/main.goose"
 	text=test/conformance/goose/units/$(basename "$1").goose
@@ -242,6 +265,11 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 		awk -v k="$key" -v s="$2" '
 			$1 == "connection" { unit_of[$2] = $3 }
 			s == "message" && $1 == "message" && unit_of[$3] == k && $6 == "-" { print $2 " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"; next }
+			(s == "json-read" || s == "json-write") && $1 == "instance" && $3 == k {
+				no_text = 0; for (i = 6; i <= NF; i++) if ($i == "no-text") no_text = 1;
+				if (!no_text) print $2 (s == "json-write" ? ".json" : "") " absent target-refuses-schema";
+				next
+			}
 			(s == "message" && $1 == "message" && unit_of[$3] == k) ||
 			(s == "wire" && $1 == "instance" && $3 == k) ||
 			(s == "report" && $1 == "report" && $3 == k) ||
