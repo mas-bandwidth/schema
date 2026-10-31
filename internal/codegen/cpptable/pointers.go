@@ -1097,6 +1097,8 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
+	g.pf("    const bool malformed_before = out->malformed;\n")
+	g.pf("    out->malformed = false;\n")
 	g.pf("    TableIdTable ids_table;\n")
 	g.pf("    int64_t body_bytes = 0;\n")
 	if st.Integrity != "" {
@@ -1204,6 +1206,10 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    ok = ok && !nodes.refused;\n")
 	}
 	g.pf("    table_release( allocator, directory );\n")
+	g.pf("    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder\n")
+	g.pf("    // holds nothing to use, and false says so\n")
+	g.pf("    if ( out->malformed ) { return false; }\n")
+	g.pf("    out->malformed = malformed_before;\n")
 	g.pf("    return ok;\n}\n\n")
 	g.pf("// The PLAIN %sLoadBuilder IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):\n", n)
 	g.pf("// it refuses whatever the strict read refuses — malformed, clamped,\n")
@@ -1751,6 +1757,8 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
+	g.pf("    const bool malformed_before = out->malformed;\n")
+	g.pf("    out->malformed = false;\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:\n")
 	g.pf("    // a file that is both a newer form and damaged is a REFUSAL and never\n")
 	g.pf("    // damage (docs/SPEC-TABLES.md §3).\n")
@@ -1901,7 +1909,15 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	}
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing\n")
 	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
-	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
+	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the region
+	// holds no root and the retention store holds nothing.
+	if g.retain {
+		g.pf("    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)\n")
+	} else {
+		g.pf("    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)\n")
+	}
+	g.pf("    out->malformed = malformed_before;\n")
 	g.pf("    return root;\n}\n\n")
 	if !g.retain {
 		g.pf("// The PLAIN %sLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it\n", n)

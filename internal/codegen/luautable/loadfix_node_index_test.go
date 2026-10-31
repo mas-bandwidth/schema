@@ -212,6 +212,14 @@ func TestLuauLoadNodeIndexesDoNotShiftAgreesWithTheEngine(t *testing.T) {
 	out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire}))
 	got := loadFixBParse(t, out)
 
+	if want.malformed {
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
+		// owes the refusal, and no counter or saved byte is compared
+		if !got.malformed {
+			t.Errorf("seed %s: the engine discards a damaged load; Luau says {%s}", loadFixBSeed, got.counts())
+		}
+		return
+	}
 	if got.loaded != want.loaded {
 		t.Errorf("seed %s: loaded differs: Luau %t, the engine %t", loadFixBSeed, got.loaded, want.loaded)
 	}

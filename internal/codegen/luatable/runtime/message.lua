@@ -965,9 +965,8 @@ local function message_root(T, root)
 end
 
 -- loadMessages is the read behind both names (docs/SPEC-TABLES.md §6.5):
--- `strict` is the plain name's read. A body the tolerant walk itself stopped
--- on keeps the records ahead of it (BASE's answer); a read that completed but
--- met the strict rule alone is refused with count 0 and every record reset.
+-- `strict` is the plain name's read. Damage discards every body, under both
+-- names (§4). Evolution alone retains the existing strict/tolerant choice.
 function M.loadMessages(T, root, vocab, data, report, strict)
   message_root(T, root)
   report = report or {}
@@ -1018,11 +1017,12 @@ function M.loadMessages(T, root, vocab, data, report, strict)
     end
     if v == nil then
       report.malformed = true
-      return values
+      return {}
     end
     values[i] = v
   end
   if not R:align() or R.off ~= R.nbits then report.malformed = true end
+  if report.malformed then return {} end
   if strict then
     local clamped = 0
     for i = 1, #values do

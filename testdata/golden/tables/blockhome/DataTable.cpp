@@ -3787,7 +3787,14 @@ namespace blockhome {
 
 bool ArmorPlateFromJsonTolerant( ArmorPlate & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ArmorPlateTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ArmorPlateTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ArmorPlateTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ArmorPlateFromJson( ArmorPlate & value, const char * text, int64_t bytes, TableReport * report )
@@ -3820,7 +3827,14 @@ int64_t ArmorPlateToJson( const ArmorPlate & value, char * buffer, int64_t capac
 
 bool ArmorConfigFromJsonTolerant( ArmorConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ArmorConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ArmorConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ArmorConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ArmorConfigFromJson( ArmorConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -3853,7 +3867,14 @@ int64_t ArmorConfigToJson( const ArmorConfig & value, char * buffer, int64_t cap
 
 bool FiringGroupFromJsonTolerant( FiringGroup & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, FiringGroupTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, FiringGroupTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; FiringGroupTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool FiringGroupFromJson( FiringGroup & value, const char * text, int64_t bytes, TableReport * report )
@@ -3886,7 +3907,14 @@ int64_t FiringGroupToJson( const FiringGroup & value, char * buffer, int64_t cap
 
 bool GunnerSettingsFromJsonTolerant( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, GunnerSettingsTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, GunnerSettingsTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; GunnerSettingsTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool GunnerSettingsFromJson( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report )

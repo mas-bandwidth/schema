@@ -242,6 +242,14 @@ func TestLuauLoadTabledemoMalformedAndResaveAgreeWithTheEngine(t *testing.T) {
 				t.Fatalf("seed %#016x %s: the verdict differs: Luau refused=%t, the engine refused=%t",
 					c.seed, c.name, got.refused, want.refused)
 			}
+			if want.counts.malformed {
+				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+				// leg owes the refusal, and no counter or saved byte is compared
+				if !got.counts.malformed {
+					t.Fatalf("seed %#016x %s: the engine discards a damaged load; Luau says %+v", c.seed, c.name, got.counts)
+				}
+				return
+			}
 			if got.counts != want.counts {
 				t.Fatalf("seed %#016x %s: the report differs: Luau says %+v, the engine says %+v",
 					c.seed, c.name, got.counts, want.counts)
