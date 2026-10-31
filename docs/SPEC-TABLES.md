@@ -2386,10 +2386,14 @@ any other, and there is no path that forgives one.
   PARENT). **A wrong key kind that also
   DESYNCHRONIZES the scan — a `string(N)` key read where an integer is
   declared takes the length bytes for the value's — is that same one
-  `kind_mismatch` and nothing more**: the KIND is the honest answer, and the
-  framing damage that follows from reading a key under the wrong rule is a
-  consequence of it rather than a second event to report. The map reads empty
-  and the parent reads on past the map's `L`.
+  `kind_mismatch` and nothing more** while the scan stays in step by `L`: the
+  KIND is the honest answer, and what follows from reading a key under the
+  wrong rule is a consequence of it rather than a second event to report. The
+  map reads empty and the parent reads on past the map's `L`. **Framing that
+  is lost is damage, whatever came first** (§4, DAMAGE DISCARDS THE WHOLE
+  LOAD): an entry whose own `L` runs past the map's `L` is damage, and a map
+  whose `L` runs past the body carrying it is damage even when a key mismatch
+  came first.
 
 **How a FIXED-class reader skips a map**: it does not know it is one. A map
 is a kind `14` field, so a reader without the field reads `L` and skips `L`
@@ -8881,11 +8885,22 @@ tolerance is the versioning model:
   message batch. **Damage is every condition this page calls malformed**: a
   length past the body carrying it, a body or record cut short, a terminator
   early or missing, a reference above the entry count or `0` where an id is
-  required, a non-canonical number, a kind no reader can skip, a count the
+  required, a non-canonical number (a non-minimal LEB128 length, count,
+  index or reference on the form-`1` wire, §3), a kind no reader can skip, a
+  count the
   body cannot cover, a descending map key, an arm whose `L` does not frame
   its kind, a bool byte other than `0` or `1`, ill-formed text, a node table
   that cannot be read whole, a reserved id out of place, and every case that
-  makes the whole wire malformed (§3). A reader may stop at the first damage;
+  makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
+  OPAQUE**, and damage inside them is not damage: an unknown field, a
+  kind-mismatched field and a retained record are skipped by their own `L`
+  without being decoded, so whatever their payload holds is never read as
+  framing, and only their own `L` against the body carrying it is judged. A
+  MAP whose KEY kind disagrees (§2.8) is judged in this order: an entry whose
+  own `L` runs past the map's `L` is damage; a map whose `L` runs past the
+  body carrying it is damage, even when a key mismatch came first; otherwise
+  the key-kind mismatch is one `kind_mismatch` and the map is skipped by its
+  `L`. A reader may stop at the first damage;
   where it stops and what it read on the way are not observable, and no
   conformance row or fuzz comparison looks at them: on damaged input the
   `framing` rows owe the verdict `malformed` and no value, and the wire
@@ -10010,8 +10025,11 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   limit in that sense — the caller refuses a size it will not pay — and
   nothing in the runtime decides that for it.
 - **The plain `LoadMeasure` and `LoadMeasureReason` PURPOSELY DISAGREE on a
-  damaged wire.** `LoadMeasure` sizes the tolerant `Load` and answers a size,
-  and that `Load` then refuses the damaged wire whole as `malformed` (§4);
+  damaged wire.** `LoadMeasure` answers from the framing alone: it sizes the
+  tolerant `Load` and answers a size for damage the framing does not reach,
+  and that `Load` then refuses the damaged wire whole as `malformed` (§4).
+  `LoadMeasure` refusing that damage itself, `-1` before any region is
+  sized, is owed in a later release;
   `LoadMeasureReason` refuses the same wire `wire_damaged` up front, because
   the reason path is the strict read's. A caller
   that knows it will run the tolerant read takes the first, and one that needs
@@ -10189,9 +10207,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   generated read entry point a caller reaches by the plain name refuses
   whatever the strict read above refuses — malformed, clamped,
   kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched,
-  `integrity_mismatch` and `missing_required` — and hands back no recovered value (save the
-  message read's records ahead of a body the tolerant read itself stopped on,
-  below). The plain names
+  `integrity_mismatch` and `missing_required` — and hands back no recovered
+  value. The plain names
   are `<Name>Load` (both shapes: the value read of a fixed-class root and the
   region read of a variable root), `<Name>LoadBuilder`, `<Name>FromJson` (both
   shapes), `<Name>FixedLoad` and the message read `<Name>LoadMessages`;
@@ -10207,8 +10224,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   **Each keeps its signature and answers its own refusal value**: `false` for
   `Load` into a value, `LoadBuilder` and `FromJson`, a nil root for the region
   `Load`, `-1` for `FixedLoad`, and `ok == false` for `LoadMessages`, whose count is
-  `0` when the strict rule alone refused and what the tolerant read answered
-  otherwise. **The
+  `0`. **The
   typed reason reaches the caller through the report it passes**: the plain
   name decides on THIS read alone, so a supplied report is overwritten with
   this read's report (every counter counted, as the tolerant read counts it),
@@ -10223,9 +10239,9 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   the region, and the builder, text and fixed reads walk the framing before
   they decode. On a refusal the value read and the value `FromJson` reset the
   value to its declared defaults, `FixedLoad` resets every value it had
-  written, `LoadMessages` resets every value it had written when the strict
-  rule alone refused (when the tolerant read itself stopped on a body, the
-  records ahead of it keep what they decoded, and the count says how many),
+  written, `LoadMessages` answers a count of `0` and resets every value it had
+  written, whether the strict rule refused or damage did (no record of a
+  damaged batch stands, on the tolerant read and the plain one alike, §4),
   the region read hands back no root, and a builder
   read leaves a builder whose root the caller does not use and shuts down.
   **The tolerant read keeps the recovered value and its report, and exists
@@ -16586,7 +16602,7 @@ TableReport report;
 if ( !SceneFromJson( builder, text, text_bytes, &report ) )
 {
     // the text is not JSON, or its labels do not resolve (report.malformed) —
-    // the builder holds what was placed before the stop
+    // the read is refused whole, and the builder holds nothing to use (§4)
 }
 builder.Lock();
 
@@ -16712,9 +16728,9 @@ encoding of those bytes — a pad bit set, or a CR or LF present — and the
 STRICT read (`LoadText`, which is the strict read) refuses it by that name.
 Every other failure is `base64_damaged`: a byte that is neither in the
 standard alphabet nor `=`, a missing, extra or misplaced `=`, and any text
-that does not decode. A tolerant read of the carrier, where one exists,
-accepts the non-canonical text and reports it `malformed`. No tolerant text
-carrier exists today. A decoded wire the binary
+that does not decode. A non-canonical text is damage, so a tolerant read of
+the carrier, where one exists, refuses it whole as `malformed` like any other
+damage (§4). No tolerant text carrier exists today. A decoded wire the binary
 reader refuses is the
 wire reader's own refusal — a form byte this build does not carry, `unknown_form`
 (§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`

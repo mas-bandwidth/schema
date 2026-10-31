@@ -766,8 +766,8 @@ whose payload is a byte length holding half as many code units, two bytes each
 little-endian. So respelling a field between `string(N)` and `wstring(N)` is
 an ordinary counted kind mismatch and never UTF-8 bytes read as code units.
 The validation above holds on both wires, and only the SHAPE of the refusal
-differs: a packet read stops, while a table read gives the field its declared
-default, counts one `malformed`, and reads on. It is refused as a MAP key,
+differs: a packet read stops, and a table read refuses the whole load as
+`malformed` (SPEC-TABLES.md §4). It is refused as a MAP key,
 with `string(N)` named as the key that works, because `memcmp` over UTF-8 is
 a portable order and little-endian code units have none.
 
@@ -1106,10 +1106,9 @@ skipped by their kind, absent fields take their declared defaults, a field
 whose kind changed is skipped rather than misdecoded, a field whose kind
 merely GREW — an integer to a wider integer of the same signedness, or
 `float32` to `float64` — decodes exactly and counts `widened`, and
-out-of-range values are clamped. Every such event is counted in a report;
-framing damage stops the damaged nesting level, keeps what it decoded there
-and reads on past the field's own length, so one bad subtable never takes
-down the rest of the file. Tables never touch the protocol id —
+out-of-range values are clamped. Every such event is counted in a report.
+Framing damage is not an evolution event: a read that meets it refuses the
+whole load as `malformed` and hands back nothing to use (SPEC-TABLES.md §4). Tables never touch the protocol id —
 add, edit or remove one and no packet byte and no id moves.
 
 **An array's BOUND is not part of that identity either.** Resize a bounded
@@ -1183,7 +1182,8 @@ TableReport report;
 ShipConfig loaded;
 if ( !ShipConfigLoad( loaded, buffer.data(), size, &report ) )
 {
-    // framing damage: report.malformed is set, the good prefix is kept
+    // framing damage: report.malformed is set and loaded holds its defaults —
+    // nothing of a damaged file is used
 }
 if ( report.unknown || report.kind_mismatch || report.clamped )
 {
@@ -1219,8 +1219,8 @@ TableReport report = new TableReport();
 ShipConfig loaded = new ShipConfig();
 if (!Schema.ShipConfigLoad(loaded, buffer, report))
 {
-    // report.Refused names an unsupported form; report.Malformed marks damage.
-    // A stopped root preserves its decoded prefix; invalid file framing resets it.
+    // report.Refused names an unsupported form; report.Malformed marks damage,
+    // and a damaged load is discarded whole: nothing of it is used.
 }
 if (report.Unknown != 0 || report.KindMismatch != 0 || report.Widened != 0 || report.Clamped != 0)
 {
@@ -1262,8 +1262,8 @@ const report = new TableReport();
 const loaded = ShipConfigLoad(bytes, report);        // the value, fresh
 ShipConfigLoad(bytes, report, loaded);               // or your own, overlaid in place
 if (report.Malformed) {
-  // framing damage: the good prefix is kept — what the DATA did is always
-  // the report, never an exception
+  // framing damage: the load is discarded whole and nothing of it is used —
+  // what the DATA did is always the report, never an exception
 }
 if (report.Unknown || report.KindMismatch || report.Clamped) {
   // the data came from a different schema generation — loaded is still
@@ -1377,7 +1377,7 @@ ShipConfig loaded;
 memset( &report, 0, sizeof( report ) );
 if ( !ship_config_load( &loaded, buffer, size, &report ) )
 {
-    /* framing damage: report.malformed is set, the good prefix is kept */
+    /* framing damage: report.malformed is set and nothing of the load is used */
 }
 if ( report.unknown || report.kind_mismatch || report.clamped )
 {
@@ -1500,7 +1500,7 @@ example.ShipConfigSave(&ship, buffer)      // returns size, or -1
 var report example.TableReport
 var loaded example.ShipConfig
 if !example.ShipConfigLoad(&loaded, buffer, &report) {
-    // framing damage: report.Malformed is set, the good prefix is kept
+    // framing damage: report.Malformed is set and nothing of the load is used
 }
 if report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 {
     // the data came from a different schema generation — loaded is still
@@ -1844,9 +1844,9 @@ if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabula
     // received_count now holds the wire's count. Call again with a capacity
     // at or above it. You never parse the bytes yourself.
     //
-    // report.malformed is DAMAGE, and it is terminal for the batch. The
-    // bodies before the damaged one stand and received_count is how many:
-    // read the count and never the slot after it.
+    // report.malformed is DAMAGE, and it discards the whole batch:
+    // received_count is 0 and no body, before the damage or after it, is
+    // a value to use.
 }
 ```
 
@@ -1913,10 +1913,10 @@ wrap the message set in one union root (§2.6).
 more than 256 to `SaveMessages` and it refuses by name and writes nothing, so
 call it again with the rest.
 
-**Damage stops the batch.** A bit stream has no place to resume, so a reference
-past the vocabulary, a length past the buffer or exhaustion stops the batch
-there: the fields decoded before it stand, one `malformed` counts, and nothing
-after is read. An UNKNOWN field does not stop anything, because the announcement
+**Damage discards the batch.** A reference past the vocabulary, a length past
+the buffer or exhaustion is damage, and damage discards the whole load
+(SPEC-TABLES.md §4): `malformed` counts, the count is 0, and no body of the
+batch is delivered. An UNKNOWN field does not stop anything, because the announcement
 gave the reader its width.
 
 **One thing behaves differently here than in a file, and it is `flags`.** A file
@@ -2593,8 +2593,8 @@ is refused naming the map. **Go carries the same eight names** over its
 and a locked, loaded or opened holder's in ascending key order.
 
 **Evolution.** A repeated key on read is last-wins and counts `duplicate`. A
-DESCENDING key is not something a conforming writer produces, so the map keeps
-its ascending prefix, flags `malformed`, and the parent reads on. A key that
+DESCENDING key is not something a conforming writer produces, so it is damage:
+the whole load is refused as `malformed` (SPEC-TABLES.md §4). A key that
 does not fit the reader's bound drops its entry and counts `clamped`, one per
 entry, so keys never clamp into each other. A key kind that disagrees resets
 the map to empty and counts one `kind_mismatch`, and a key kind the reader's
