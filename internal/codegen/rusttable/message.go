@@ -856,7 +856,8 @@ pub struct TableReport {
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
-    /// Pointer cycles remain readable but cannot be serialized by the builder (§3.1).
+    /// The read met a pointer naming an OPEN node, a cycle no writer produces
+    /// (§3.1): the load refuses whole, and a builder save refuses it as data_cycle.
     pub cycle_on_save: bool,
     /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the tolerant
     /// read keeps the one node and counts each extra naming here; every writer

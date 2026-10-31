@@ -475,15 +475,17 @@ impl TableNodeReader {
     /// otherwise with the event counted — an index above node_count + 1 is
     /// malformed, a record of another type (or a blob) is a kind mismatch, and
     /// an index of 1 names the ROOT, which a node slot whose target is not the
-    /// reader's own root table takes as a kind mismatch. (A root pointing at
-    /// itself is a cycle no writer produces, §3.1, and this storage cannot hold
-    /// one: it reads null.)
+    /// reader's own root table takes as a kind mismatch. A slot of the root's
+    /// own table naming it is a cycle no writer produces (§3.1): it reads null
+    /// and marks the cycle, which refuses the whole load.
     pub fn node_slot(&self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
         if !self.good || index == 0 {
             return None;
         }
         if index == 1 {
-            if want != self.root_type { report.kind_mismatch += 1; }
+            // the ROOT is open for the whole read: a slot of the root's own
+            // table naming it is a cycle no writer produces (§3.1), damage
+            if want != self.root_type { report.kind_mismatch += 1; } else { report.cycle_on_save = true; }
             return None;
         }
         let k = (index - 2) as usize;
