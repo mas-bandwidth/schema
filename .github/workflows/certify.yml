@@ -199,7 +199,31 @@ jobs:
       - name: install the Lua pin
         run: make dist-lua
 
+      # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
+      # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
+      # make/squirrel.mk), and each leg's own dist-<lang> target installs it at
+      # the sha256 it names, as ci-full.yml's pins job does. dist-squirrel builds
+      # sq from source, so it runs on both OSes. The goose pin is the
+      # goose-<version>-linux-x64 release and the luau pin is luau-ubuntu.zip:
+      # neither has a macOS build, so on macOS those two legs are not installed
+      # and are named in SCHEMA_SKIP_LEGS on the make test step below.
+      - name: install the Goose pin
+        if: runner.os == 'Linux'
+        run: make dist-goose
+
+      - name: install the Luau pin
+        if: runner.os == 'Linux'
+        run: make dist-luau
+
+      - name: install the Squirrel pin
+        run: make dist-squirrel
+
+      # SCHEMA_SKIP_LEGS on macOS only: goose and luau, whose pins are
+      # linux-x64 builds with no macOS archive (the block above). Every other
+      # leg's toolchain exists on both OSes and is never skipped.
       - name: make test
+        env:
+          SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
         run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       # The committed generated/ tree is what this repo treats as ground
@@ -348,6 +372,33 @@ jobs:
         if: matrix.target == 'tables-lua-release'
         run: make dist-lua
 
+      # THE LOBSTER PIN for tables-lobster-release: its wire fuzz runs the
+      # pinned compiler (make/lobster.mk's dist-lobster, which the target's
+      # leg installs), and the linux release binary links libOpenGL and libGLX,
+      # which the hosted ubuntu image does not carry. Without them the binary
+      # fails to load and the harness reads EOF from the leg (#2370 installs
+      # the same two packages for ci-full.yml's lobster rows).
+      - name: install the Lobster pin
+        if: matrix.target == 'tables-lobster-release'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster
+
+      # The Squirrel leg's pinned sq (make/squirrel.mk): tables-squirrel-release's
+      # wire fuzz and controls refuse by name without it (toolchain-squirrel),
+      # and dist-squirrel builds it from source at the sha256 it names.
+      - name: install the Squirrel pin
+        if: matrix.target == 'tables-squirrel-release'
+        run: make dist-squirrel
+
+      # The Goose leg's pinned compiler (make/goose.mk), linux-x64, which this
+      # ubuntu job runs: tables-goose-release runs test-goose under it.
+      - name: install the Goose pin
+        if: matrix.target == 'tables-goose-release'
+        run: make dist-goose
+
       - name: ${{ matrix.target }}
         run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
@@ -479,7 +530,31 @@ jobs:
       - name: install the Lua pin
         run: make dist-lua
 
+      # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
+      # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
+      # make/squirrel.mk), and each leg's own dist-<lang> target installs it at
+      # the sha256 it names, as ci-full.yml's pins job does. dist-squirrel builds
+      # sq from source, so it runs on both OSes. The goose pin is the
+      # goose-<version>-linux-x64 release and the luau pin is luau-ubuntu.zip:
+      # neither has a macOS build, so on macOS those two legs are not installed
+      # and are named in SCHEMA_SKIP_LEGS on the make test step below.
+      - name: install the Goose pin
+        if: runner.os == 'Linux'
+        run: make dist-goose
+
+      - name: install the Luau pin
+        if: runner.os == 'Linux'
+        run: make dist-luau
+
+      - name: install the Squirrel pin
+        run: make dist-squirrel
+
+      # SCHEMA_SKIP_LEGS on macOS only: goose and luau, whose pins are
+      # linux-x64 builds with no macOS archive (the block above). Every other
+      # leg's toolchain exists on both OSes and is never skipped.
       - name: make test
+        env:
+          SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
         run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       - name: inline gate — adversarial selftest
