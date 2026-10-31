@@ -43,7 +43,7 @@ func TestLobsterFloatOutOfRangeIsTheRangeEnd(t *testing.T) {
 	b.WriteString(`def show(x:float) -> string:
     if x != x:
         return "nan"
-    let neg = (f64bits(x) & 0x8000000000000000) != 0
+    let neg = (schema_rt.f64bits(x) & 0x8000000000000000) != 0
     let sign = if neg: "-" else: "+"
     if x == 0.0:
         return sign + "0"
@@ -55,7 +55,7 @@ func TestLobsterFloatOutOfRangeIsTheRangeEnd(t *testing.T) {
 	for _, c := range cases {
 		zero := "0.0"
 		if strings.HasPrefix(c.token, "-") {
-			zero = "f64frombits(0x8000000000000000)"
+			zero = "schema_rt.f64frombits(0x8000000000000000)"
 		}
 		fmt.Fprintf(&b, "print(show(schema_rt.float_out_of_range(%q, %s)))\n", c.token, zero)
 	}
