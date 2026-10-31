@@ -587,7 +587,7 @@ enum Kind { A, B }
 
 flags Cap { Trace, Verbose }
 
-table Scalars
+fixed table Scalars
 {
     a    int8
     b    int16
@@ -784,7 +784,7 @@ func TestAnnouncementRefusals(t *testing.T) {
 
 const covRangeSender = `package coverrange
 
-table Root
+fixed table Root
 {
     si int32
     ui uint32
@@ -796,7 +796,7 @@ table Root
 
 const covRangeReader = `package coverrange
 
-table Root
+fixed table Root
 {
     si int32 | min = 0, max = 10
     ui uint32 | min = 0, max = 10
