@@ -665,6 +665,21 @@ conformance-big-endian: build/conformance-harness build/conformance-go-be
 conformance-negative-control-go: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control wire
 
+# The same reversed witness on the MESSAGE surface (docs/SPEC-TABLES.md §3.3):
+# one byte of the login_full batch answer flipped in a copy of the driver, and
+# the matrix must go red on that message row while the wire surface stays green.
+.PHONY: conformance-negative-control-go-message
+conformance-negative-control-go-message: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control message
+
+# The generated message form's own controls (internal/codegen/gotable,
+# messageform_negative_test.go): each plants one fault in a copy of the
+# generated source and requires its gate's probe red on its own message.
+.PHONY: tables-go-message-form-negative-controls
+tables-go-message-form-negative-controls:
+	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -count=1 -timeout 600s \
+		-run '^(TestGoMessageFormGoldensNegativeControl|TestGoMessageFormRefusalsNegativeControl|TestGoMessageFormStrictNegativeControl|TestGoMessageFormVersioningNegativeControl|TestGoMessageFormFixedOnlyNegativeControl|TestGoWireIntegrityMessageFormNegativeControl)$$'
+
 .PHONY: conformance-negative-control-go-walk
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
@@ -678,6 +693,8 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
+	$(MAKE) conformance-negative-control-go-message
+	$(MAKE) tables-go-message-form-negative-controls
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
