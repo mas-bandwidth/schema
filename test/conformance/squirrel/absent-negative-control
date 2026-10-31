@@ -1,0 +1,39 @@
+#!/bin/sh
+# THE SQUIRREL LEG's per-case absent control (docs/PORTING.md I4;
+# test/conformance/README.md, "Per-case absent").
+#
+# The leg answers a case it cannot carry with `<case>.absent` (main.nut's
+# writeAbsent, the writer's named refusals, a plain table's message rows). This
+# control runs a scratch copy of the driver whose main.nut writes those answers
+# under another name, so the cases go unanswered, and requires the Squirrel
+# leg's conformance run to go red on the wire surface, where blob_shared's
+# named writer refusal is answered absent. No tracked file is written to.
+#
+# The working directory is the repository root.
+set -eu
+out=build/squirrel-absent-negative-control
+rm -rf "$out"
+mkdir -p "$out"
+sed 's/\.absent"/.unanswered"/g' test/conformance/squirrel/main.nut > "$out/main.nut"
+if cmp -s test/conformance/squirrel/main.nut "$out/main.nut"; then
+	echo "NEGATIVE CONTROL FAILED (absent): the sabotage patched nothing" >&2
+	exit 1
+fi
+sed "s#^main=test/conformance/squirrel/main.nut#main=$out/main.nut#" test/conformance/squirrel/driver > "$out/driver"
+if cmp -s test/conformance/squirrel/driver "$out/driver"; then
+	echo "NEGATIVE CONTROL FAILED (absent): the driver copy names the tracked main.nut" >&2
+	exit 1
+fi
+chmod +x "$out/driver"
+printf 'squirrel %s/driver\n' "$out" > "$out/drivers.txt"
+if ./build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED (absent): unanswered cases left conformance green" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+if ! grep -q "squirrel / wire:" "$out/log"; then
+	echo "NEGATIVE CONTROL FAILED (absent): the wire surface did not go red" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+echo "Squirrel conformance negative control (absent): unanswered absent cases are caught by wire"
