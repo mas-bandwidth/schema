@@ -1558,7 +1558,15 @@
         "tables-luau-versioning-negative-control",
         "tables-luau-wire-fuzz-negative-control",
         "tables-luau-wire-fuzz-vectors-negative-control",
-        "tables-luau-damage-discard-negative-control",
+        "tables-luau-damage-discard-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-forgery",
+      "when": "pull-request",
+      "why": "I3's seeded forgery oracle controls on pinned Luau 0.741: remove both block extent bounds, then the optional cook-check region scan, and require independent bounds/checker findings. Each arm covers 24000 mutants; the focused baseline plus both controls took 59.3 seconds on hetzner1 at GOMAXPROCS=4 (the cook control 49.5 seconds). A separate group keeps this measured work within the owner's one-to-two-minute per-commit budget without assuming room in the existing Luau group.",
+      "targets": [
         "tables-luau-forgery-fuzz-negative-control"
       ],
       "luau": "0.741"
