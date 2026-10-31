@@ -5557,6 +5557,31 @@ tables-cpp-discard-negative-control:
 	@grep -m1 "LoadTolerant answered true" $(CPP_DISCARD_NC)/log
 	@echo "negative control: removing the C++ discard turns the whole-load gate RED"
 
+# The REGION twin of tables-cpp-discard-negative-control: the discard is
+# removed from a COPY of the variable-class LoadTolerant in pointers.go, so a
+# variable root damaged inside a nested body hands back its region root, and
+# TestDamageDiscardsTheWholeLoadCPP must go red on exactly that.
+CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
+.PHONY: tables-cpp-region-discard-negative-control
+tables-cpp-region-discard-negative-control:
+	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
+	@sed -e 's|if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; }|if ( false ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the region discard is gone|' \
+		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(CPP_REGION_DISCARD_NC)/pointers.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_REGION_DISCARD_NC)/overlay.json
+	@if go test -count=1 -overlay $(CPP_REGION_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(CPP_REGION_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ region discard is gone and the gate stayed green"; \
+		cat $(CPP_REGION_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "variable: LoadTolerant handed back a root on damage" $(CPP_REGION_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
+	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
+
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
 # ORACLE is taught the opposite reading, a nested-union arm whose L runs past

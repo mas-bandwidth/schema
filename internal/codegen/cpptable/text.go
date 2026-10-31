@@ -27,8 +27,8 @@ const tableTextRuntime = `
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -101,8 +101,8 @@ inline uint16_t TableUtf16Unit( const uint8_t * bytes, int64_t index )
 // checked AS IT ARRIVES and before the reader's own bound, on the rule kind 12
 // takes for UTF-8. An ODD L is framing damage and the caller rejects it ahead
 // of this, because units is L / 2. SPEC.md §4.12 refuses the same content
-// TERMINALLY on the packet wire; here the field reads its declared default,
-// one malformed counts, and the parent reads on past L.
+// TERMINALLY on the packet wire, and the table read refuses it whole too:
+// malformed counts, and damage discards the whole load (§4).
 inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
 {
     int64_t i = 0;
