@@ -276,6 +276,15 @@ Stated so a reader knows what is not here, and why:
   fresh `Uint8List` and its Load a fresh object graph, so both rows carry
   allocation by design; that is the shipped API.
 
+- **`bench/tables/lobster/leg` measures the port's one runtime walk.** Lobster
+  has no reflection, so its form-1 codec is `load_tolerant` and `save` over
+  the generated descriptors into a `schema_rt.Record`, and that is what the
+  leg times (docs/PORT-LOBSTER.md, THE HARNESS). The public load answers a
+  fresh record with the defaults restored, so the allocation is inside the
+  clock and gate 3 runs exactly what the timed round trip runs. Its rows are
+  the default JIT's (`linkage=jit`); the `--cpp` row is owed
+  (schema-lobster-bench-cpp). It has no fixed-form leg in `bench/paired`.
+
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the
   type board's data-driven rows carry.
