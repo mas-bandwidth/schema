@@ -1009,7 +1009,8 @@
         "tables-java-usage-negative-control",
         "tables-java-release-negative-control",
         "conformance-java-absent-negative-control",
-        "conformance-negative-control-java-framing"
+        "conformance-negative-control-java-framing",
+        "tables-java-generated-fresh-negative-control"
       ],
       "java": "21"
     },
