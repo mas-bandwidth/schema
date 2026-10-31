@@ -2379,7 +2379,10 @@ any other, and there is no path that forgives one.
   clothes. A VALUE field of the wrong kind is §4's ordinary per-field event
   inside the entry: the value reads its default, the entry stays, and the
   count is the field's. A map header whose ELEMENT kind is not `13` is the
-  ordinary array kind mismatch of §4. **A wrong key kind that also
+  ordinary array kind mismatch of §4, and the header itself, the element kind
+  byte and the count, is read against the ENCLOSING body and never against the
+  map's own `L`, exactly as every array's is (§3, THE HEADER AGAINST THE
+  PARENT). **A wrong key kind that also
   DESYNCHRONIZES the scan — a `string(N)` key read where an integer is
   declared takes the length bytes for the value's — is that same one
   `kind_mismatch` and nothing more**: the KIND is the honest answer, and the
@@ -3046,8 +3049,10 @@ complete that header. This does not extend the element body: element reads
 remain bounded by `L`. The pinned `list_count_cross_length.bin` exercises this
 boundary: region measurement succeeds, the region decode reports damage, and
 the builder refuses the completed count if it exceeds the storage cap, keeping
-its prior counters. A count header incomplete even in the enclosing buffer
-remains inert.
+its prior counters. A count header that cannot complete even in the enclosing
+buffer is framing damage inside the field, not inertness: `malformed` counts,
+the field keeps its declared default, and the parent reads on past `L` (§3,
+THE HEADER AGAINST THE PARENT; `array_header_incomplete_at_end`).
 
 **How a reader without the field skips it**: by `L`, under §3's second skip
 rule, counting `unknown`. **How a FIXED-class reader meets one**: it does not
@@ -5014,6 +5019,34 @@ one document rather than two.
   own kind, so the arm rules below apply once per element rather than once for
   the array.
 
+  **THE HEADER AGAINST THE PARENT.** An array body's header, the element kind
+  byte and the count, is read against the ENCLOSING body's buffer and never
+  against the field's own `L`, for kind `14`, for kind `16` and for a map
+  alike: a canonical LEB128 count is up to ten bytes and an `L` of `2` is the
+  shortest body that carries a header at all, so a count whose spelling
+  continues past `L` is completed from the bytes after it. The elements stay
+  bounded by `L`: a count that crossed `L` covers no element bytes, so the
+  element kind is judged first and a foreign one is the ordinary kind
+  mismatch (above) and nothing more, and a kind that agrees leaves §4's count
+  the body cannot cover, the prefix empty and `malformed` counting. A count
+  that cannot complete even in the enclosing buffer is framing damage inside
+  the field: `malformed` counts, the field keeps its declared default, and the
+  parent reads on past `L`. A body of fewer than two bytes is inert (§4).
+  Whatever the header turned out to be, the parent resumes at the byte after
+  `L`. **AN ARRAY ARM IS THE ONE PLACE THE BOUND IS NOT THE ENCLOSING BODY**:
+  an arm's `L` stands in for the field's own length (the arm payload table,
+  below), and the buffer an arm payload is read from is the arm's, so an
+  array arm's header is read inside the arm's `L` and a count that crosses it
+  is that arm's own framing damage, the union reading `None`
+  (`arm_array_count_past_arm_length`). Held by the `framing` rows of
+  docs/LAYERS/1-framing.md and by the wire fuzzer's pinned vectors.
+
+  **A LENGTH THAT RUNS PAST THE BODY CARRYING IT IS FRAMING DAMAGE ON THAT
+  BODY**, by §4's row: the body stops where the length was met, keeps what it
+  decoded before it, `malformed` counts, and the enclosing body reads on past
+  the damaged body's own `L`; at the root there is no enclosing body and the
+  read ends with the root's decoded fields standing.
+
   **A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD**, and that holds for a
   kind `13` field, an array element, a map entry and an arm whose payload is a body alike. The zero
   reference is the last byte of the payload's `L`. A terminator that arrives
@@ -5047,7 +5080,7 @@ one document rather than two.
   | a `string(N)` | `12` | the length | the bytes, no terminator, a kind `12` payload without its own `L`. Ill-formed UTF-8 and a zero byte are that arm's own damage, the union reading `None` |
   | a `wstring(N)` | `33` | the byte length, which is twice the code unit count | the code units, two bytes each little-endian, a kind `33` payload without its own `L`. An odd `L`, an unpaired surrogate and a zero unit are each that arm's own damage, the union reading `None` |
   | a `bytes(N)` | `14` | the array body's length | the array body: element kind `6`, `N`, then the bytes |
-  | an array `[N]T` / `[..N]T` | `14` | the array body's length | the array body: element kind, `N`, then the elements, a kind `14` payload without its own `L` |
+  | an array `[N]T` / `[..N]T` | `14` | the array body's length | the array body: element kind, `N`, then the elements, a kind `14` payload without its own `L`, its header read inside the ARM's `L` (above) |
   | a pointer `*T` | `17` | the index's own length | the node index, null as `0` (§3.1) |
   | a union | `15` | the inner arm id's length, or that plus the inner kind byte, its `L` and its payload | the union payload in its place: the inner arm id reference, then its kind, its own `L` and its payload when the id is not `0` |
   | NO PAYLOAD (§2.6) | `32` | `0` | nothing rides: the arm id, the kind byte and a zero `L` are the whole of it |
@@ -5126,7 +5159,11 @@ one document rather than two.
   `L` bytes.
   **A kind a reader does not know at all is not skippable** and is framing
   damage, which is why the set is closed and why a new kind is a wire change
-  rather than an addition. Kind `31` is the one way a later major adds one
+  rather than an addition. The event met before the skip stands with it: at a
+  position the reader cannot name the field was counted `unknown` when its id
+  was met, and at a position it names the kind is judged against the
+  declaration first, so `kind_mismatch` counts, and the failed skip is the
+  damage (`frame_kind_unknown_37`, `frame_kind_unknown_37_named`). Kind `31` is the one way a later major adds one
   without becoming that change (above).
 
 **The id table is the last thing in the file, and a reader finds it from the
@@ -5169,7 +5206,9 @@ little-endian u64, and the body ends where the first entry begins.
 **Five ways a reference or a table is MALFORMED**, and each lands where §4
 puts framing damage:
 
-- **A table that cannot be read whole**: fewer than eight bytes in the file,
+- **A table that cannot be read whole**: fewer than eight bytes in the file
+  (a buffer of no bytes included: it has no form byte to read, and it is
+  malformed, never refused),
   or a count whose `8 × count + 8` runs past the front of the file, or a
   count that leaves no room for the form byte, or bytes left over between the
   root body's terminator and the first entry. The whole wire is malformed,
@@ -5562,7 +5601,10 @@ the payload opens with the count and then carries the records:
   every other id (§3).
 - **Kind `12` is §3's opaque byte payload**, so a reader that cannot name
   the id skips the field by its `L` and counts it **unknown**, once (§4). No
-  new skip rule. **The field rides ONCE**: a `L` with sixty-four bits of
+  new skip rule. **The field rides ONCE**, and a reader that meets it twice
+  takes the LAST occurrence as the numbering, on §3's last-wins rule, stepping
+  over the earlier one as it steps over any repeated field
+  (`node_table_twice`). A `L` with sixty-four bits of
   capability frames a numbering of any size, so the whole numbering is one
   contiguous payload and a save's node bodies have no aggregate ceiling.
 - **The node table is whole or it is nothing.** Numbering is positional, so
@@ -5933,7 +5975,10 @@ again is reaching an entry still open — the cycle refusal, above.
 ### 3.2 Enum-keyed arrays on the wire: slots by name
 
 An enum-keyed array (§2.4) rides as **kind `16`, its own kind**, and its
-body opens as an array's does, `element kind (u8)` and then the count.
+body opens as an array's does, `element kind (u8)` and then the count, read
+against the ENCLOSING body and never against the field's own `L` (§3, THE
+HEADER AGAINST THE PARENT): a count whose spelling crosses `L` is completed
+from the parent, and the triples stay bounded by `L`.
 Kind `16` exists so that the keyed and the positional spellings cannot be
 mistaken for one another: they are different encodings, a reader meeting
 the wrong one reports a kind mismatch instead of decoding a body under the
