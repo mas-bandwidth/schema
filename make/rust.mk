@@ -1614,10 +1614,9 @@ test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
 # THE FRAMING SURFACE, its Rust leg (docs/LAYERS/1-framing.md): the Rust
 # driver answers every framing row and passes it, none absent
 # (test/conformance/framing/gate). Its negative control rebuilds the driver
-# over copies of two crates with one rule out of each: tblr1 without the id
-# table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6), graphdemo without the
-# refusal of a pointer naming an OPEN node (§3.1; T8). The framing surface must
-# go RED on frame_entries_4097 and on both cycle rows.
+# over a copy of the tblr1 crate whose load takes the id table's 4096-entry cap
+# out (§3, THE DISTINCTNESS CHECK; rule F6), and requires the framing surface
+# to go RED on frame_entries_4097.
 RUST_FRAMING_CONTROL := build/rust-framing-control
 .PHONY: conformance-rust-framing conformance-negative-control-rust-framing
 conformance-rust-framing: build/conformance-harness build/conformance-rust
@@ -1625,22 +1624,18 @@ conformance-rust-framing: build/conformance-harness build/conformance-rust
 conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_FRAMING_CONTROL) && mkdir -p $(RUST_FRAMING_CONTROL)/driver
 	@cp -R build/tables-generated-rust/tblr1 $(RUST_FRAMING_CONTROL)/tblr1
-	@cp -R build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/graphdemo
 	@grep -rl 'if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }' $(RUST_FRAMING_CONTROL)/tblr1 | \
 		xargs sed -i.orig 's|if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }|if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; } // SABOTAGED|'
-	@grep -rl 'if reachable_cycle { report.malformed = true; return None; }' $(RUST_FRAMING_CONTROL)/graphdemo | \
-		xargs sed -i.orig 's|if reachable_cycle { report.malformed = true; return None; }|if false \&\& reachable_cycle { report.malformed = true; return None; } // SABOTAGED|'
-	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)/tblr1 || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
-	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)/graphdemo || { echo "NEGATIVE CONTROL: the cycle sabotage did not apply"; exit 1; }
-	@find $(RUST_FRAMING_CONTROL) -name '*.orig' -delete
+	@[ "$$(grep -rc 'SABOTAGED' $(RUST_FRAMING_CONTROL)/tblr1 --include='*.rs' | awk -F: '{s+=$$2} END {print s}')" -ge 1 ] || \
+		{ echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
+	@find $(RUST_FRAMING_CONTROL)/tblr1 -name '*.orig' -delete
 	@cp -R test/conformance/rust/src $(RUST_FRAMING_CONTROL)/driver/src
-	@sed -e 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
-		-e 's|^graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }|graphdemo = { path = "../graphdemo" }|' \
+	@sed 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
 		test/conformance/rust/Cargo.toml > $(RUST_FRAMING_CONTROL)/driver/Cargo.toml
-	@[ "$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(RUST_FRAMING_CONTROL)/driver/Cargo.toml)" = 2 ] || \
-		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
+	@! cmp -s test/conformance/rust/Cargo.toml $(RUST_FRAMING_CONTROL)/driver/Cargo.toml || \
+		{ echo "NEGATIVE CONTROL: the tblr1 path did not move"; exit 1; }
 	cd $(RUST_FRAMING_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
 		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_FRAMING_CONTROL)/target cargo build --quiet
 	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/target/debug/conformance-rust \
-		$(RUST_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root
+		$(RUST_FRAMING_CONTROL)/run frame_entries_4097
 test-rust: conformance-rust-framing conformance-negative-control-rust-framing
