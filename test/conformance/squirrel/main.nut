@@ -45,7 +45,8 @@ local exists = function(path) {
 
 local readBytes = function(path) {
   local f = file(path, "rb");
-  local b = f.readblob(f.len());
+  // an empty file is an empty blob: readblob(0) raises "no data left to read"
+  local b = f.len() == 0 ? blob(0) : f.readblob(f.len());
   f.close();
   return b;
 };
