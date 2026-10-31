@@ -11,6 +11,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `c-two-units/` | C two units in one TU | `make tables-c-two-units` | `make tables-c-two-units` |
 | `conformance/` | cross-language table matrix | `make conformance` | `make conformance` |
 | `cookgen/` | cook fixture generator | `make tables-cook-scale` | `go build -o build/cookgen ./test/cookgen` |
+| `cpp-tables/` | C++ table runtime-home digest | `make tables-cpp-runtime-home` | `make tables-cpp-runtime-home` |
 | `cs/` | C# packet tests | `make test-cs` | `make test-cs` |
 | `cs-block/` | C# block tests | `make test-cs` | `make test-cs` |
 | `cs-cook/` | C# cook tests | `make test-cs` | `make test-cs` |
@@ -33,6 +34,8 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `go/` | Go packet tests | `make test-go` | `make test-go` |
 | `go-ludicrous/` | Go int128 tests | `make test-go` | `make test-go` |
 | `go-tables/` | Go table tests | `make test-go` | `make test-go` |
+| `goose/` | Goose packet tests | `make test-goose` | `make test-goose` |
+| `goose-ludicrous/` | Goose int128 tests | `make test-goose` | `make test-goose` |
 | `guard/` | C++ include-guard test | `./build/schema_test_guard` | `./build/schema_test_guard` |
 | `java/` | Java packet tests | `make test-java` | `make test-java` |
 | `java-fixedform/` | Java fixed-form tests | `make test-java` | `make test-java` |
@@ -50,6 +53,8 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-wide/` | packet wide-text gates | `make test` | `make test` |
 | `py-packet/` | python packet rows | `make tables-py-packet` | `make tables-py-packet` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
+| `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
+| `rust-alloc/` | Rust allocation gate, per read path | `make tables-rust-alloc` | `make tables-rust-alloc` |
 | `rust-fixedform/` | Rust fixed-form tests | `make test-rust` | `make test-rust` |
 | `rust-fuzz/` | Rust fuzz driver | `make test-rust` | `make test-rust` |
 | `rust-ludicrous/` | Rust int128 tests | `make test-rust` | `make test-rust` |

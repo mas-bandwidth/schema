@@ -34,6 +34,7 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 | `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
+| `conformance-negative-control-rust-walk` | the field-key match in the Rust emitter's `json_fields` reader | `rust / json-read` | `json-write`, `wire` |
 
 Two of those rows are the reason two surfaces exist at all. The row-dump one is
 why `block-dump` is separate from `block`: `Open` reads the prologue and the

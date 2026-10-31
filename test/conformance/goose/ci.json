@@ -1,0 +1,2 @@
+{"targets": "dist-goose build/conformance-harness build/conformance-goose",
+ "goose": "v2026.2"}
