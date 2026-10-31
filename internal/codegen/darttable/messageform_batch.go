@@ -156,11 +156,15 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	// A NON-FINITE FLOAT REFUSES THE WHOLE BATCH, the tolerant read included
 	// (docs/SPEC-TABLES.md §3.3): every body this call wrote goes back to its
 	// defaults and the read answers no body at all.
-	g.pf("      if (report.nonFiniteFloat.isEmpty) return i;\n")
+	// DAMAGE DISCARDS THE WHOLE BATCH the same way (docs/SPEC-TABLES.md §4):
+	// no body this call decoded is handed back.
 	g.pf("      for (var j = 0; j <= i; j++) {\n        init%s(values[j]);\n      }\n", capitalize(st.Name))
 	g.pf("      return 0;\n    }\n")
 	g.pf("  }\n")
-	g.pf("  if (!tableMessageBatchClose(r)) return count;\n")
+	// damage after the last body (the pad, trailing bytes) discards the batch too
+	g.pf("  if (!tableMessageBatchClose(r)) {\n")
+	g.pf("    for (var j = 0; j < count; j++) {\n      init%s(values[j]);\n    }\n", capitalize(st.Name))
+	g.pf("    return 0;\n  }\n")
 	g.pf("  return count;\n}\n\n")
 }
 
