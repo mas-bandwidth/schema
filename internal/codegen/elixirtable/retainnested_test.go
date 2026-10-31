@@ -1,6 +1,7 @@
 package elixirtable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,9 +85,7 @@ IO.puts("load=#{load.retained},#{load.retain_lost},#{load.unknown} save=#{save.r
 		t.Fatal("the witness cannot find the body lookup in the generated runtime")
 	}
 	sabotaged := map[string][]byte{}
-	for name, data := range files {
-		sabotaged[name] = data
-	}
+	maps.Copy(sabotaged, files)
 	sabotaged[VariableTableModule+".ex"] = []byte(strings.Replace(string(table), found, planted, 1))
 	text, old := run(t, sabotaged)
 	if string(old) == string(want) || text == "load=9,2,11 save=0 size=true edited=1" {

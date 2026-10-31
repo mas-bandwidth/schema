@@ -6260,6 +6260,7 @@ include make/checks/schema-shared-hostile-corpus.mk
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
+		--results build/conformance/results.json \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
 # THE PUBLISHED MATRIX (issue #581): docs/MATRIX.md is generated from the one
@@ -6619,7 +6620,12 @@ build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
 	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
 	@touch $@
 
-build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
+# The runtime check is ORDER-ONLY: it runs first on every invocation, but a
+# phony prerequisite would relink the dump every time, and the corpus rule
+# below would then rewrite build/fixedform-corpus under every port's tests
+# that are reading it at the same moment (`go test -p N` over the *table
+# packages, one of which runs `make tables-rust-fixedform`).
+build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp | tables-fixedform-corpus-check
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
@@ -6629,18 +6635,24 @@ build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-gen
 	    $(VLISTS_INCLUDES) \
 	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
 
+# The corpus is written beside the live one and swapped in whole, so a reader
+# never sees a directory that is half written.
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
-	@rm -rf build/fixedform-corpus
-	@mkdir -p build/fixedform-corpus
-	./build/schema_test_fixedform_dump build/fixedform-corpus
+	@rm -rf build/fixedform-corpus.next
+	@mkdir -p build/fixedform-corpus.next
+	./build/schema_test_fixedform_dump build/fixedform-corpus.next
 # ---- rowan/corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
 # emitter to use. Nothing under build/ is committed; the line below only refuses
 # to call the corpus finished when the manifest did not arrive.
-	@test -s build/fixedform-corpus/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
-	@touch $@
+	@test -s build/fixedform-corpus.next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
+	@touch build/fixedform-corpus.next/.stamp
+	@rm -rf build/fixedform-corpus.prev
+	@if test -d build/fixedform-corpus; then mv build/fixedform-corpus build/fixedform-corpus.prev; fi
+	@mv build/fixedform-corpus.next build/fixedform-corpus
+	@rm -rf build/fixedform-corpus.prev
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
@@ -6939,7 +6951,19 @@ RELEASE_MAIN ?= origin/main
 promotion-tag:
 	go run ./tools/releasetag promotion-tag -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
 
-release: release-differential
+# THE RELEASE LOCK (Glenn, 2026-10-31: "We need to prove this before v3.0.0
+# not just hope that it's correct and complete"). release refuses, before any
+# tag is made, unless PROOF names the proof report the ci-full `proof` job
+# wrote AT THE COMMIT BEING RELEASED and that report is green: no red cell and
+# docs/proof.json in step with the results (tools/matrix VerifyRelease). The
+# refusal names the red cells. release.yml downloads the report from the
+# ci-full run on the commit; a release with no report refuses by name. The
+# lock runs first, so a red proof refuses before the previous-release
+# differential's build; the differential then runs, and the tagger last.
+MATRIX_GOFLAGS ?=
+release:
+	go run $(MATRIX_GOFLAGS) ./tools/matrix release-check -report '$(PROOF)' -commit $$(git rev-parse '$(RELEASE_COMMIT)^{commit}')
+	$(MAKE) --no-print-directory release-differential
 	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) -main $(RELEASE_MAIN) $(if $(PUSH),-push)
 
 # THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463): the WIRE bytes
@@ -7052,6 +7076,71 @@ release-differential-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: a variable-form sabotage was named on another wire"; exit 1; }
 	@echo "negative control: a union tag moved in the C++ packet writer, and a true bool written as 2 in the Go engine's variable form, each under an unchanged protocol id, turn the previous-release differential RED on that wire alone, naming the unit, the instance and the byte"
 
+# release-proof-refusal holds the lock at the make level: `make release`
+# handed a RED proof report at HEAD must refuse FROM THE PROOF GATE, naming a
+# red cell, and never reach the tagger. The version is deliberately not a
+# version, so a lock that let the release through would still tag nothing:
+# the tagger refuses on its grammar, and that refusal is what this check
+# tells apart from the lock's. Its control, release-proof-gate-negative-control,
+# runs it with VerifyRelease sabotaged to pass a red report and requires it red.
+RELEASE_PROOF_CHECK := build/release-proof
+.PHONY: release-proof-refusal release-proof-gate-negative-control
+release-proof-refusal:
+	@mkdir -p $(RELEASE_PROOF_CHECK)
+	@printf '{"commit":"%s","cells":2,"red":[{"row":"surface wire","lang":"goose","status":"red","why":"held for this check"}]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_PROOF_CHECK)/red.json
+	@if $(MAKE) --no-print-directory release VERSION=not-a-version RELEASE_COMMIT=HEAD PROOF=$(RELEASE_PROOF_CHECK)/red.json MATRIX_GOFLAGS='$(MATRIX_GOFLAGS)' > $(RELEASE_PROOF_CHECK)/out.txt 2>&1; then \
+		echo "release-proof-refusal FAILED: make release went through with a red proof"; cat $(RELEASE_PROOF_CHECK)/out.txt; exit 1; fi
+	@grep -q 'release REFUSES: the proof at .* surface wire / goose' $(RELEASE_PROOF_CHECK)/out.txt || \
+		{ echo "release-proof-refusal FAILED: make release refused, but not from the proof gate naming the red cell"; cat $(RELEASE_PROOF_CHECK)/out.txt; exit 1; }
+	@! grep -q 'tools/releasetag' $(RELEASE_PROOF_CHECK)/out.txt || \
+		{ echo "release-proof-refusal FAILED: the tagger ran after a red proof"; cat $(RELEASE_PROOF_CHECK)/out.txt; exit 1; }
+	@echo "release-proof-refusal: make release refuses a red proof at the commit, naming the cell, before the tagger runs"
+
+release-proof-gate-negative-control:
+	@rm -rf $(RELEASE_PROOF_CHECK)-control && mkdir -p $(RELEASE_PROOF_CHECK)-control
+	go run ./tools/sabotage -name release-proof-gate -out $(RELEASE_PROOF_CHECK)-control/proof.gotext tools/matrix/proof.go
+	@printf '{"Replace":{"%s/tools/matrix/proof.go":"%s/$(RELEASE_PROOF_CHECK)-control/proof.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_PROOF_CHECK)-control/overlay.json
+	@if $(MAKE) --no-print-directory release-proof-refusal MATRIX_GOFLAGS=-overlay=$(CURDIR)/$(RELEASE_PROOF_CHECK)-control/overlay.json > $(RELEASE_PROOF_CHECK)-control/red.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a lock that passes a red proof left release-proof-refusal green"; cat $(RELEASE_PROOF_CHECK)-control/red.out; exit 1; fi
+	@grep -q 'release-proof-refusal FAILED' $(RELEASE_PROOF_CHECK)-control/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: release-proof-refusal went red for another reason"; cat $(RELEASE_PROOF_CHECK)-control/red.out; exit 1; }
+	@echo "negative control: with VerifyRelease sabotaged to pass red cells, make release lets a red proof through and release-proof-refusal goes RED"
+
+# THE PROOF TABLE (docs/MATRIX.md, "Proof: the 3.0.0 gate"; tools/matrix
+# proof). `proof` runs the conformance matrix, then computes the table from
+# its per-case results and fails, printing the red list, while any cell is red
+# or docs/proof.json is not what the results compute. `proof-write`
+# regenerates docs/proof.json and the page from the same results.
+.PHONY: proof proof-write proof-negative-control
+proof: conformance
+	go run ./tools/matrix proof -results build/conformance/results.json
+
+proof-write: conformance
+	go run ./tools/matrix proof -results build/conformance/results.json -write
+
+# THE PROOF GATE'S NEGATIVE CONTROL, end to end: the Go leg runs the real
+# harness twice through a substituted registry, once as it is and once through
+# a driver that deletes its answer for one wire case (root_full) after
+# answering. The clean run's `surface wire / go` cell must be proven and the
+# sabotaged run's must be red NAMING wire/root_full.
+PROOF_CONTROL := build/proof-control
+proof-negative-control: build/conformance-harness build/conformance-go table-base64-go
+	@rm -rf $(PROOF_CONTROL) && mkdir -p $(PROOF_CONTROL)
+	@printf '#!/bin/sh\ntest/conformance/go/driver "$$@" || exit $$?\nif [ "$$2" = wire ]; then rm -f "$$3/root_full"; fi\n' > $(PROOF_CONTROL)/deleting-driver
+	@chmod +x $(PROOF_CONTROL)/deleting-driver
+	@echo "go test/conformance/go/driver" > $(PROOF_CONTROL)/clean.txt
+	@echo "go $(PROOF_CONTROL)/deleting-driver" > $(PROOF_CONTROL)/sabotaged.txt
+	@./build/conformance-harness run --drivers $(PROOF_CONTROL)/clean.txt --work $(PROOF_CONTROL)/clean-work --results $(PROOF_CONTROL)/clean.json > $(PROOF_CONTROL)/clean.out 2>&1 || \
+		{ echo "proof-negative-control: the clean Go leg failed"; cat $(PROOF_CONTROL)/clean.out; exit 1; }
+	@go run ./tools/matrix proof -results $(PROOF_CONTROL)/clean.json -cell 'surface wire/go' || \
+		{ echo "NEGATIVE CONTROL FAILED: the clean Go leg's surface wire cell is not proven"; exit 1; }
+	@./build/conformance-harness run --drivers $(PROOF_CONTROL)/sabotaged.txt --work $(PROOF_CONTROL)/sabotaged-work --results $(PROOF_CONTROL)/sabotaged.json > $(PROOF_CONTROL)/sabotaged.out 2>&1 || true
+	@if go run ./tools/matrix proof -results $(PROOF_CONTROL)/sabotaged.json -cell 'surface wire/go' > $(PROOF_CONTROL)/cell.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: with go's wire/root_full answer deleted, the cell stayed proven"; cat $(PROOF_CONTROL)/cell.out; exit 1; fi
+	@grep -q 'red .*wire/root_full' $(PROOF_CONTROL)/cell.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the cell went red without naming wire/root_full"; cat $(PROOF_CONTROL)/cell.out; exit 1; }
+	@echo "negative control: deleting the Go leg's wire/root_full answer turns 'surface wire / go' RED, naming the case"
+
 # THE BUILD VERSION'S FORM GATE (docs/VERSIONING.md, "The release policy"):
 # `release` refuses a PATCH release whose commit's ir.BuildVersionForm differs
 # from the newest v tag's, and TestReleaseFormGate holds it for a patch, a
@@ -7127,6 +7216,8 @@ tables-wire-text-total-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the missing clamp"; \
 		  cat build/tablewire-no-total.log; exit 1; }
 	@echo "negative control: removing the engine's total clamp turns the text-total test RED"
+
+test: release-proof-refusal
 
 .PHONY: slow-gate-scan
 slow-gate-scan:
