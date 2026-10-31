@@ -5,17 +5,15 @@
 # is the floor every other surface stands on: a leg that cannot answer a row
 # has not read the bytes.
 #
-# usage: gate <lang> <driver command> <work dir>                the gate: green or exit 1
-#        gate <lang> <driver command> <work dir> <case>...      a negative control: the
-#             harness must go RED on the framing surface, naming every <case>
+# usage: gate <lang> <driver command> <work dir>            the gate: green or exit 1
+#        gate <lang> <driver command> <work dir> <case>     a negative control: the
+#             harness must go RED on the framing surface, naming <case>
 #
 # The run is the harness's own (`run --drivers`), over a wrapper that lists
 # `framing` alone, so the gate costs one runtime start and nothing else.
 set -e
-lang=$1 driver=$2 work=$3
-[ -n "$lang" ] && [ -n "$driver" ] && [ -n "$work" ] || { echo "usage: gate <lang> <driver> <work> [case...]"; exit 2; }
-shift 3
-want_red="$*"
+lang=$1 driver=$2 work=$3 want_red=$4
+[ -n "$lang" ] && [ -n "$driver" ] && [ -n "$work" ] || { echo "usage: gate <lang> <driver> <work> [case]"; exit 2; }
 rm -rf "$work" && mkdir -p "$work"
 cat > "$work/driver" <<WRAP
 #!/bin/sh
@@ -37,17 +35,10 @@ if [ -z "$want_red" ]; then
 	echo "framing gate: the $lang leg passes $rows/$rows framing rows, none absent"
 	exit 0
 fi
-if [ $rc -eq 0 ]; then
+if [ $rc -eq 0 ] || ! grep -q "$lang / framing: $want_red:" "$work/log"; then
 	cat "$work/log"
-	echo "NEGATIVE CONTROL FAILED: the sabotaged $lang reader left framing GREEN"
+	echo "NEGATIVE CONTROL FAILED: the sabotaged $lang reader did not turn framing RED on $want_red"
 	exit 1
 fi
-for want in $want_red; do
-	if ! grep -q "$lang / framing: $want:" "$work/log"; then
-		cat "$work/log"
-		echo "NEGATIVE CONTROL FAILED: the sabotaged $lang reader did not turn framing RED on $want"
-		exit 1
-	fi
-	grep -m1 "$lang / framing: $want:" "$work/log"
-done
-echo "negative control: the sabotaged $lang reader turns framing RED on: $want_red"
+grep -m1 "$lang / framing: $want_red:" "$work/log"
+echo "negative control: the sabotaged $lang reader turns framing RED on $want_red"

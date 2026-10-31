@@ -1199,7 +1199,7 @@
     {
       "name": "elixir-framing",
       "when": "pull-request",
-      "why": "the Elixir framing control (docs/LAYERS/1-framing.md, F6): the emitter loses the id table's 4096-entry cap and the refusal of a pointer naming an open node (T8), and the matrix must go red on framing, at frame_entries_4097, node_cycle_self and node_cycle_to_root, while report stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-mapsort is.",
+      "why": "the Elixir framing control (docs/LAYERS/1-framing.md, F6): the emitter's open loses the id table's 4096-entry cap, and the matrix must go red on framing, at frame_entries_4097, while report stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-mapsort is.",
       "targets": [
         "conformance-negative-control-elixir-framing"
       ],
