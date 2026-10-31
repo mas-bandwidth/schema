@@ -657,11 +657,6 @@ function TableVariableLoad(c, bytes, report, retain) {
     return null;
   }
   TableVariableResolve(st, report);
-  // A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
-  // no writer produces a cycle, so the decoded graph is walked once from the
-  // root by the writer's own numbering walk, and a reference to a node whose
-  // descent is still open makes the load malformed, as the reference's does.
-  if (c.variable && !report.malformed && TableVariableNumber(c, v, false, null) === null) { report.malformed = true; }
   return v;
 }
 

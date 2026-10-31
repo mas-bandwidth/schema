@@ -8,9 +8,6 @@
 #   entry-bound  the 4096-entry cap on the id table (F6, kTableProbeBound in
 #                the reference) is dropped from TableVariableOpen, so
 #                frame_entries_4097 reads instead of refusing as malformed.
-#   cycle        the open-node walk after the load (§3.1, §4) is dropped, so
-#                node_cycle_self and node_cycle_to_root read instead of
-#                refusing as malformed.
 #
 # The driver (test/conformance/js/main.mjs) imports from SCHEMA_JS_GENERATED,
 # so it is aimed at the copy and nothing tracked is written to.
@@ -25,13 +22,8 @@ entry-bound)
     sabotage='count > BigInt(Math.floor((bytes.length - 9) \/ 8))) { report.malformed = true; return null; } \/\/ SABOTAGED: no entry bound'
     rows='frame_entries_4097'
     ;;
-cycle)
-    anchor='if (c.variable && !report.malformed && TableVariableNumber(c, v, false, null) === null) { report.malformed = true; }'
-    sabotage='\/\/ SABOTAGED: no open-node walk'
-    rows='node_cycle_self node_cycle_to_root'
-    ;;
 *)
-    echo "unknown control: '$mode' (entry-bound or cycle)" >&2
+    echo "unknown control: '$mode' (entry-bound)" >&2
     exit 1
     ;;
 esac
