@@ -524,8 +524,11 @@ at once. So: no patch release moves the build version's form; a minor release
 may bump it only together with a wire change, announced first in the release
 notes, exactly as the protocol id's rule reads; a major may. A schema edit
 moving the id is the user's own act and is priced by the cook cost model
-below. The repository today has a form version constant and no gate on which
-release may bump it; the 3.0.0 release adds the gate.
+below. `make release` holds the first rule: `tools/releasetag` reads
+`BuildVersionForm` out of `ir/buildversion.go` at the newest v tag and at the
+commit, and refuses a patch release whose form differs, by name
+(`TestReleaseFormGate`, with `release-form-gate-negative-control` beside it).
+The minor's condition, with the wire and announced, is the release's review.
 
 ## The same-build forms: cook and block
 
