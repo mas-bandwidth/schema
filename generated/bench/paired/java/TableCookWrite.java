@@ -49,13 +49,13 @@ public final class TableCookWrite {
             }
             // a record that holds a list or a map is its storage rounded to the
             // region's floor of eight, then its extent (§7.6)
-            return info.hasExtent ? aligned(info.size, FLOOR) + extent : info.size;
+            return info.hasExtent ? extentStart(info) + extent : info.size;
         }
 
-        // a record node starts at its own type's alignment, a blob at eight, its
-        // header's (internal/tablecook/region.go)
+        // a record node starts at the greater of its record's alignment and every
+        // element's its extent can hold, a blob at eight, its header's
         long align() {
-            return info != null ? info.align : 8;
+            return info != null ? Math.max(info.align, info.extentAlign) : 8;
         }
     }
 
@@ -69,6 +69,12 @@ public final class TableCookWrite {
     }
 
     private static final long FLOOR = 8; // the region's alignment floor (§7.1)
+
+    // where a node's extent begins: its record's size rounded to the greater of
+    // the floor and every element alignment its types can hold (§7.6)
+    private static long extentStart(TableCookInfo info) {
+        return aligned(info.size, Math.max(FLOOR, info.extentAlign));
+    }
 
     private static long aligned(long n, long a) {
         if (n < 0 || a <= 0 || (a & (a - 1)) != 0 || n > Long.MAX_VALUE - (a - 1)) {
@@ -645,7 +651,7 @@ public final class TableCookWrite {
                                 out,
                                 order,
                                 at,
-                                at + aligned(n.info.size, FLOOR),
+                                at + extentStart(n.info),
                                 new long[1],
                                 n.value,
                                 n.info);

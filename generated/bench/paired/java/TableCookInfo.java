@@ -66,6 +66,13 @@ public final class TableCookInfo {
      */
     public boolean hasExtent;
 
+    /**
+     * the greatest alignment of any element or entry the extent can hold, from the TYPES: the node
+     * aligns to the greater of this and its record's, and the extent begins at the record's size
+     * rounded to the greater of this and eight (§7.6). 1 for a record with no extent.
+     */
+    public int extentAlign = 1;
+
     public int size;
     public int align;
     public int numFields;
