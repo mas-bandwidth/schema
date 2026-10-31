@@ -186,7 +186,7 @@ func (g *gen) emitCarveValue(b *strings.Builder, f *ir.Field, x, at, ind string)
 			}
 			fmt.Fprintf(b, "%s    %s::%s(a) => {\n", ind, ref.Name, rustVariant(arm.Name))
 			armAt := fmt.Sprintf("%s + %d", at, armOffset)
-			g.emitCarveField(b, arm.F, "(*a)", "("+armAt+")", 0, ind+"        ")
+			g.emitCarveField(b, arm.F, "(*a)", armAt, 0, ind+"        ")
 			fmt.Fprintf(b, "%s    }\n", ind)
 		}
 		fmt.Fprintf(b, "%s    _ => {}\n", ind)
