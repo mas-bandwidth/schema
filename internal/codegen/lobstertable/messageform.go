@@ -3,9 +3,10 @@
 // runtime/message.lobster. The walk lives once in the runtime; what is emitted
 // here are the compile-time constants the reference emits as literals — the
 // unit's announcement and build version (ir.TableAnnouncement), the roots that
-// may ride (a FIXED table's, §3.3), and every field's and every union arm's
-// SLOT in the unit's vocabulary (ir.TableVocabularySlots), so a writer never
-// looks a slot up by shape.
+// may ride (a FIXED table's, §3.3), and the SLOT in the unit's vocabulary
+// (ir.TableVocabularySlots) of every field and every union arm a fixed table
+// reaches, so a writer never looks a slot up by shape. A variable table
+// registers nothing: the message form is fixed tables only.
 package lobstertable
 
 import (
@@ -20,14 +21,14 @@ import (
 func init() { Register("message-form", emitMessageForm) }
 
 // MessageRoot reports whether a table may ride the message form: a FIXED
-// table's, never a plain table or a map's generated entry (§3.3).
+// table's, never a variable table or a map's generated entry (§3.3).
 func MessageRoot(st *ir.Struct) bool {
 	return st.IsTable && st.FixedDeclared && !st.IsMapEntry()
 }
 
 func emitMessageForm(g *lobster.Gen) error {
 	u := g.Unit
-	reach := closure(u)
+	reach := messageClosure(u)
 	slots := ir.TableVocabularySlots(u)
 	base := g.File.Base
 	g.Import("message")
@@ -35,7 +36,12 @@ func emitMessageForm(g *lobster.Gen) error {
 	g.Pf("// form's compile-time constants (docs/SPEC-TABLES.md §3.3)\n")
 	g.Pf("let _%sMessageUnit = %s.message_unit(%s, %s)\n", base, rt, lobster.StringLit(ir.TableAnnouncement(u)),
 		lobster.IntLit(new(big.Int).SetUint64(ir.BuildVersion(u))))
-	structs := append([]*ir.Struct{}, g.File.Tables...)
+	var structs []*ir.Struct
+	for _, st := range g.File.Tables {
+		if reach[st.Name] {
+			structs = append(structs, st)
+		}
+	}
 	for _, d := range g.File.Decls {
 		if st, ok := d.(*ir.Struct); ok && reach[st.Name] {
 			structs = append(structs, st)
@@ -56,7 +62,12 @@ func emitMessageForm(g *lobster.Gen) error {
 			g.Pf("let _%sMessageRoot = %s.message_root(%s)\n", st.Name, rt, lobster.StringLit([]byte(st.Name)))
 		}
 	}
-	unions := append([]*ir.Union{}, g.File.TableUnions...)
+	var unions []*ir.Union
+	for _, un := range g.File.TableUnions {
+		if reach[un.Name] {
+			unions = append(unions, un)
+		}
+	}
 	for _, d := range g.File.Decls {
 		if un, ok := d.(*ir.Union); ok && reach[un.Name] {
 			unions = append(unions, un)

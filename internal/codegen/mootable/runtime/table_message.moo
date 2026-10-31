@@ -16,6 +16,10 @@
 -- value in this build's storage (docs/PORT-MOO.md, THE VALUE MAPPING), with
 -- §4's evolution counters.
 --
+-- THE FORM IS FIXED TABLES ONLY (§3.3): a root that is not a fixed table is
+-- refused by name, and a fixed root's closure holds no pointer, blob, map,
+-- unbounded array or guarded branch, so a body is its fields alone.
+--
 -- moo has no float: a compressed float quantizes and dequantizes in float32
 -- on bit patterns through serialize.moo's own soft-float (serialize_float),
 -- the arithmetic serialize.moo's compressed float runs, so the index a message
@@ -29,15 +33,8 @@ local Fl = require("./serialize_float")
 
 local Int64 = V.Int64
 local Uint64 = V.Uint64
-local Int128 = V.Int128
-local Uint128 = V.Uint128
 
 local MS = {}
-
--- RETAIN-UNKNOWN's hook for the body being read (docs/SPEC-TABLES.md §6.6;
--- table_retain.moo): nil on every plain read, set once per body by LoadMessages,
--- so the plain walk pays one upvalue test where a retaining read has a hook
-local _retain: any = nil
 
 local BATCH_MAX = 256
 local DEFAULT_MAX_ENTRIES = 4096 -- ir.TableVocabularyMaxEntries
@@ -52,9 +49,6 @@ local F_VALUES_MAX = 0x4F7FFFFF -- 4294967040, the largest float32 below 2^32
 local NODE_ID = V.NodeTableId
 local VERSION_ID = V.BuildVersionId
 local VOCAB_ID = V.MessageVocabularyId
-local BYTES_ID = V.BytesBlobId
-local STRING_ID = V.StringBlobId
-local KEY_ID = V.MapKeyId
 
 local POW2: { number } = {}
 do
@@ -809,28 +803,7 @@ local function fieldsById(d: any): { [string]: any }
 	return m
 end
 
-local function guardHolds(fd: any, v: any): boolean
-	if fd.guard == nil then
-		return true
-	end
-	for _, pair in fd.guard do
-		if v[pair[1]] ~= pair[2] then
-			return false
-		end
-	end
-	return true
-end
-
 local function liveCount(fd: any, holder: any, val: any): number
-	if fd.array == "list" then
-		if type(val) == "buffer" then
-			return buffer.len(val)
-		end
-		if type(val) ~= "table" then
-			return 0
-		end
-		return #val
-	end
 	if fd.array == "counted" then
 		local c = holder[fd.slot .. "Count"]
 		if type(c) ~= "number" then
@@ -1021,9 +994,6 @@ local function encodeElement(c: any, fd: any, shape: any, x: any): boolean
 	local ek = shape.elem
 	if ek == 13 then
 		return encodeBody(c, S.lookup(e.t), x)
-	elseif ek == 17 then
-		put(c.w, if not x then 0 else c.nodes.index[x], c.indexBits)
-		return true
 	elseif ek == 30 then
 		return encodeEnum(c, e, x, fd)
 	elseif ek == 15 then
@@ -1061,8 +1031,6 @@ local function elemDefault(e: any, x: any): boolean
 		return atDefault(e, x)
 	elseif s == "enum" then
 		return x == 0 or x == nil
-	elseif s == "ptr" or s == "sblob" or s == "bblob" then
-		return not x
 	elseif s == "union" then
 		return type(x) ~= "table" or x.Type == 0
 	end
@@ -1083,7 +1051,7 @@ local function encodeKeyed(c: any, fd: any, entry: any, val: any): boolean
 			return fail(c, "invalid_value", fd)
 		end
 		if shape.elem == 13 then
-			local probe: any = { w = newWriter(true), refBits = c.refBits, indexBits = c.indexBits, nodes = c.nodes, why = nil, missing = false }
+			local probe: any = { w = newWriter(true), refBits = c.refBits, why = nil, missing = false }
 			if not encodeBody(probe, S.lookup(e.t), x) then
 				c.why = probe.why
 				return false
@@ -1113,49 +1081,6 @@ local function encodeKeyed(c: any, fd: any, entry: any, val: any): boolean
 	return true
 end
 
-local function keyLess(keyfd: any, a: any, b: any): boolean
-	local ka, kb = a[keyfd.slot], b[keyfd.slot]
-	if type(ka) == "string" and type(kb) == "string" then
-		return ka < kb
-	end
-	if type(ka) == "boolean" then
-		return (not ka) and kb
-	end
-	if type(ka) == "number" and type(kb) == "number" then
-		return ka < kb
-	end
-	local C = if keyfd.cls == "I64" then Int64 elseif keyfd.cls == "U64" then Uint64 elseif keyfd.cls == "I128" then Int128 else Uint128
-	local ok, r = pcall(C.cmp, ka, kb)
-	return ok and r < 0
-end
-
-local function encodeMap(c: any, fd: any, entry: any, val: any): boolean
-	if type(val) ~= "table" or #val == 0 then
-		return true
-	end
-	local ed = S.lookup(fd.t)
-	local keyfd = nil
-	for _, f in ed.fields do
-		if f.id == KEY_ID then
-			keyfd = f
-		end
-	end
-	local order = table.clone(val)
-	if keyfd ~= nil then
-		table.sort(order, function(a: any, b: any): boolean
-			return keyLess(keyfd, a, b)
-		end)
-	end
-	wref(c, entry.slot)
-	put(c.w, #order, countBits(entry.shape))
-	for _, ev in order do
-		if not encodeBody(c, ed, ev) then
-			return false
-		end
-	end
-	return true
-end
-
 -- the entry this build announces for slot k
 local function mineEntry(slot: number): any
 	local e = home.entries[slot]
@@ -1172,17 +1097,6 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 	local s = fd.s
 	local val = v[fd.slot]
 	local w = c.w
-	if s == "ptr" or s == "sblob" or s == "bblob" then
-		if val == nil then
-			return true
-		end
-		wref(c, entry.slot)
-		put(w, c.nodes.index[val], c.indexBits)
-		return true
-	end
-	if s == "map" then
-		return encodeMap(c, fd, entry, val)
-	end
 	if fd.present ~= nil then
 		if not v[fd.present] then
 			return true
@@ -1229,7 +1143,7 @@ local function encodeField(c: any, d: any, k: number, fd: any, v: any): boolean
 		if fd.e.s == "str" or fd.e.s == "text" then
 			return fail(c, "invalid_value", fd) -- a text list: no element kind 12 rides this form
 		end
-		if fd.array == "counted" or fd.array == "list" then
+		if fd.array == "counted" then
 			local n = liveCount(fd, v, val)
 			if n == 0 then
 				return true
@@ -1309,9 +1223,6 @@ encodeArm = function(c: any, un: any, u: any, named: any): boolean
 	local shape = entry.shape
 	if s == "tab" then
 		return encodeBody(c, S.lookup(arm.t), val)
-	elseif s == "ptr" or s == "sblob" or s == "bblob" then
-		put(c.w, if not val then 0 else c.nodes.index[val], c.indexBits)
-		return true
 	elseif s == "str" then
 		return encodeText(c, arm, shape, entry.kind, u, val, arm)
 	elseif s == "bytes" then
@@ -1338,47 +1249,22 @@ encodeBody = function(c: any, d: any, v: any): boolean
 		return fail(c, "invalid_value", nil)
 	end
 	for k, fd in d.fields do
-		if guardHolds(fd, v) then
-			if not encodeField(c, d, k, fd, v) then
-				return false
-			end
+		if not encodeField(c, d, k, fd, v) then
+			return false
 		end
 	end
 	put(c.w, 0, c.refBits)
 	return true
 end
 
--- the numbering is the variable form's (table_save.moo): one walk, one order
-local Save = require("./table_save")
-
-local function encodeRoot(c: any, d: any, v: any): boolean
-	local nodes, why = Save.number(d, v)
-	if nodes == nil then
-		c.why = why
-		return false
+-- THE MESSAGE FORM IS FIXED TABLES ONLY (§3.3): a root that is not a fixed
+-- table is refused by name before a byte is read or written
+local function messageRoot(root: string): any
+	local d = S.lookup(root)
+	if not (d.table and d.fixed) then
+		error("schema: " .. root .. " is not a fixed table: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)")
 	end
-	c.nodes = nodes
-	c.indexBits = bitsReq(0, 1)
-	if #nodes.list > 0 then
-		c.indexBits = bitsReq(0, #nodes.list + 1)
-		wname(c, NODE_ID)
-		put(c.w, #nodes.list, 32)
-		for _, n in nodes.list do
-			wname(c, n.typeId)
-			if n.blob ~= nil then
-				local len = buffer.len(n.blob)
-				if n.str and not V.utf8(n.blob, 0, len) then
-					return fail(c, "invalid_value", nil)
-				end
-				put(c.w, len, 32)
-				align(c.w)
-				putBytes(c.w, n.blob, 0, len)
-			elseif not encodeBody(c, n.d, n.v) then
-				return false
-			end
-		end
-	end
-	return encodeBody(c, d, v)
+	return d
 end
 
 local function writeBatch(root: string, values: { any }, measuring: boolean, report: any): (any, number)
@@ -1391,11 +1277,11 @@ local function writeBatch(root: string, values: { any }, measuring: boolean, rep
 	if home == nil then
 		error("schema: this build has no message vocabulary: no unit is loaded, or its announcement carries a kind the message form does not spell (docs/SPEC-TABLES.md §3.3)")
 	end
-	local d = S.lookup(root)
-	local c: any = { w = newWriter(measuring), refBits = home.refBits, indexBits = 1, nodes = nil, why = nil, missing = false }
+	local d = messageRoot(root)
+	local c: any = { w = newWriter(measuring), refBits = home.refBits, why = nil, missing = false }
 	put(c.w, n - 1, 8)
 	for _, v in values do
-		if not encodeRoot(c, d, v) then
+		if not encodeBody(c, d, v) then
 			local why = c.why or { name = "invalid_value" }
 			report.refused = true
 			report.reason = why.name
@@ -1830,9 +1716,6 @@ local function decodeEnum(t: any, e: any, element: boolean): (any, boolean)
 		end
 	end
 	t.report.unknown += 1
-	if _retain ~= nil then
-		_retain.lost(t.report) -- an enum variant this build cannot name (§6.6)
-	end
 	return 0, true
 end
 
@@ -1903,11 +1786,6 @@ local function decodeWide(t: any, fd: any, entry: any, holder: any): boolean
 	return true
 end
 
--- a pointer (or blob) index lands through resolution after the body
-local function pend(t: any, holder: any, key: any, idx: number, d: any, null: any)
-	t.pending[#t.pending + 1] = { holder = holder, key = key, index = idx, d = d, null = null }
-end
-
 local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, keep: boolean): boolean
 	local e = fd.e
 	local ek = shape.elem
@@ -1916,28 +1794,11 @@ local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, k
 		local d = S.lookup(e.t)
 		local inst = d.new()
 		if keep then
-			if _retain ~= nil then
-				_retain.forgetBody(d, dst[i]) -- the element's earlier body goes with it (§6.6)
-			end
 			dst[i] = inst
 		end
 		return decodeBody(t, d, inst)
-	elseif ek == 17 then
-		local idx, ok = index(t)
-		if not ok then
-			return dmal(t)
-		end
-		if keep then
-			local null: any = nil
-			if fd.array == "list" then
-				null = false
-			end
-			dst[i] = null
-			pend(t, dst, i, idx, e, null)
-		end
-		return true
 	elseif ek == 15 then
-		local u, ok = decodeArm(t, e, dst, i)
+		local u, ok = decodeArm(t, e)
 		if keep then
 			dst[i] = u
 		end
@@ -1966,20 +1827,6 @@ local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, k
 	return true
 end
 
--- AN ELEMENT THE READER IS DROPPING (an unknown keyed slot's, a key past this
--- build's slots, an element past this build's bound) is DECODED into a sink,
--- because a bit stream has to be walked past: nothing in it is a field of this
--- region, so it runs with RETENTION OFF and the slot or element that was
--- excluded took everything under it with it (§6.6). Only the callers of a
--- dropped element come here, so the plain walk pays nothing per element.
-local function decodeDropped(t: any, fd: any, shape: any, dst: any, i: number): boolean
-	local was = _retain
-	_retain = nil
-	local done = decodeElement(t, fd, shape, dst, i, false)
-	_retain = was
-	return done
-end
-
 -- a positional array (array): the count, the align, the elements; a count past
 -- this build's bound keeps the first N and counts clamped
 local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
@@ -2000,40 +1847,17 @@ local function decodeArray(t: any, fd: any, entry: any, holder: any): boolean
 	local inner = shape.inner or {}
 	local run = runBits(entry.kind, shape.elem, inner)
 	local kept = n
-	local dst: any
-	if fd.array == "list" then
-		if n > INT32_MAX or n > left(r) / math.max(run, 1) then
-			return dmal(t)
-		end
-		if _retain ~= nil then
-			-- A SECOND OCCURRENCE OF A COLLECTION REPLACES IT WHOLE, and it takes
-			-- its discard HERE, past the count and the align (§6.6)
-			_retain.supersede(holder, fd.slot, fd)
-		end
-		dst = {}
-		holder[fd.slot] = dst
-	else
-		if n > fd.bound then
-			kept = fd.bound
-			t.report.clamped += 1
-		end
-		if _retain ~= nil then
-			_retain.supersede(holder, fd.slot, fd)
-		end
-		dst = holder[fd.slot]
+	if n > fd.bound then
+		kept = fd.bound
+		t.report.clamped += 1
 	end
+	local dst = holder[fd.slot]
 	local walk = n
 	if run >= 0 and walk > kept then
 		walk = kept
 	end
 	for i = 1, walk do
-		local elemOk: boolean
-		if i <= kept or _retain == nil then
-			elemOk = decodeElement(t, fd, shape, dst, i, i <= kept)
-		else
-			elemOk = decodeDropped(t, fd, shape, dst, i)
-		end
-		if not elemOk then
+		if not decodeElement(t, fd, shape, dst, i, i <= kept) then
 			return false
 		end
 	end
@@ -2076,179 +1900,14 @@ local function decodeKeyed(t: any, fd: any, entry: any, holder: any): boolean
 		local keep = true
 		if at == 0 then
 			t.report.unknown += 1
-			if _retain ~= nil then
-				_retain.lost(t.report) -- a keyed slot this build cannot name (§6.6)
-			end
 			keep = false
 		elseif at > fd.bound then
 			t.report.clamped += 1
 			keep = false
 		end
-		local elemOk: boolean
-		if keep or _retain == nil then
-			elemOk = decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep)
-		else
-			elemOk = decodeDropped(t, fd, shape, {}, 1)
-		end
-		if not elemOk then
+		if not decodeElement(t, fd, shape, if keep then dst else {}, if keep then at else 1, keep) then
 			return false
 		end
-	end
-	return true
-end
-
--- the key one map entry carries, scanned ahead of the body (mapEntryKey)
-local function scanKey(t: any, keyfd: any): (any, boolean, boolean, boolean)
-	local r = t.r
-	local saved = r.off
-	local quiet = { malformed = false, clamped = 0, unknown = 0, nonFinite = 0, kindMismatch = 0 }
-	local scan = { r = r, v = t.v, report = quiet, indexBits = t.indexBits }
-	local key: any = nil
-	local bad, widened = false, false
-	local function done(whole: boolean): (any, boolean, boolean, boolean)
-		r.off = saved
-		return key, bad, widened, whole
-	end
-	while true do
-		local ref, ok = reference(scan)
-		if not ok then
-			return done(false)
-		end
-		if ref == 0 then
-			return done(true)
-		end
-		local e = entryAt(scan, ref)
-		if e == nil or reserved(e.id) then
-			return done(false)
-		end
-		if e.id ~= KEY_ID or keyfd == nil then
-			if not skipEntry(scan, e.kind, e.shape) then
-				return done(false)
-			end
-			continue
-		end
-		local want = keyfd.k
-		bad = e.kind ~= want and not V.widens(e.kind, want)
-		widened = widened or (e.kind ~= want and not bad)
-		if bad then
-			if not skipEntry(scan, e.kind, e.shape) then
-				return done(false)
-			end
-			continue
-		end
-		if keyfd.s == "str" or keyfd.s == "text" then
-			local n, nok = get(r, bitsReq(0, e.shape.max))
-			if not nok or not ralign(r) or not has(r, n * 8) then
-				return done(false)
-			end
-			local at = r.base + r.off // 8
-			r.off += n * 8
-			if not V.utf8(r.b, at, n) then
-				return done(false)
-			end
-			key = buffer.readstring(r.b, at, n)
-		else
-			local x, xok = decodeScalar(scan, keyfd, e.kind, e.shape, keyfd)
-			if not xok then
-				return done(false)
-			end
-			key = x
-		end
-	end
-end
-
-local function keyCompare(keyfd: any, a: any, b: any): number
-	if type(a) == "string" and type(b) == "string" then
-		return if a < b then -1 elseif a > b then 1 else 0
-	end
-	if type(a) == "number" and type(b) == "number" then
-		return if a < b then -1 elseif a > b then 1 else 0
-	end
-	if type(a) == "boolean" then
-		return if a == b then 0 elseif a then 1 else -1
-	end
-	local C = if keyfd.cls == "I64" then Int64 elseif keyfd.cls == "U64" then Uint64 elseif keyfd.cls == "I128" then Int128 else Uint128
-	return C.cmp(a, b)
-end
-
-local function decodeMap(t: any, fd: any, entry: any, holder: any): boolean
-	local n, ok = get(t.r, countBits(entry.shape))
-	if not ok then
-		return dmal(t)
-	end
-	n += entry.shape.min
-	if n > INT32_MAX then
-		return dmal(t)
-	end
-	local ed = S.lookup(fd.t)
-	local keyfd = fieldsById(ed)[KEY_ID]
-	keyfd = if keyfd ~= nil then keyfd.fd else nil
-	local landed: { any } = {}
-	if _retain ~= nil then
-		-- A SECOND OCCURRENCE OF A MAP REPLACES IT WHOLE (§6.6)
-		_retain.supersede(holder, fd.slot, fd)
-	end
-	holder[fd.slot] = landed
-	local last: any = nil
-	local hasLast = false
-	local keyWidened = false
-	local i = 1
-	while i <= n do
-		local key, bad, widened, whole = scanKey(t, keyfd)
-		if not whole then
-			return dmal(t)
-		end
-		if widened and not keyWidened then
-			keyWidened = true
-			t.report.widened += 1
-		end
-		if bad then
-			holder[fd.slot] = {}
-			t.report.kindMismatch += 1
-			while i <= n do
-				if not skipBody(t) then
-					return dmal(t)
-				end
-				i += 1
-			end
-			return true
-		end
-		if keyfd ~= nil and type(key) == "string" and keyfd.bound ~= nil and keyfd.bound > 0 and #key > keyfd.bound then
-			t.report.clamped += 1
-			if not skipBody(t) then
-				return dmal(t)
-			end
-		else
-			local order = -1
-			if hasLast then
-				order = keyCompare(keyfd, last, key)
-			end
-			if order > 0 then
-				return dmal(t)
-			end
-			local vals = ed.new()
-			t.mapKey = true
-			local bok = decodeBody(t, ed, vals)
-			t.mapKey = false
-			if _retain ~= nil then
-				_retain.builtMap(holder, fd.slot, ed, vals)
-			end
-			if not bok then
-				return false
-			end
-			if order == 0 then
-				if _retain ~= nil then
-					_retain.forgetBody(ed, landed[#landed]) -- last wins WHOLE (§6.6)
-				end
-				landed[#landed] = vals
-				t.report.duplicate += 1
-			else
-				landed[#landed + 1] = vals
-			end
-			last = if keyfd ~= nil then vals[keyfd.slot] else nil
-			hasLast = true
-		end
-		i += 1
 	end
 	return true
 end
@@ -2256,16 +1915,7 @@ end
 -- one field's payload under its announced entry (field)
 local function decodeField(t: any, fd: any, entry: any, holder: any): boolean
 	local s = fd.s
-	if s == "map" then
-		return decodeMap(t, fd, entry, holder)
-	elseif s == "ptr" or s == "sblob" or s == "bblob" then
-		local idx, ok = index(t)
-		if not ok then
-			return dmal(t)
-		end
-		pend(t, holder, fd.slot, idx, fd, nil)
-		return true
-	elseif s == "arr" and fd.array == "keyed" then
+	if s == "arr" and fd.array == "keyed" then
 		return decodeKeyed(t, fd, entry, holder)
 	elseif s == "str" and fd.wide then
 		return decodeWide(t, fd, entry, holder)
@@ -2274,10 +1924,7 @@ local function decodeField(t: any, fd: any, entry: any, holder: any): boolean
 	elseif s == "arr" then
 		return decodeArray(t, fd, entry, holder)
 	elseif s == "union" then
-		if _retain ~= nil then
-			_retain.supersede(holder, fd.slot, fd) -- the union written again (§6.6)
-		end
-		local u, ok = decodeArm(t, fd, holder, fd.slot)
+		local u, ok = decodeArm(t, fd)
 		holder[fd.slot] = u
 		return ok
 	elseif s == "enum" then
@@ -2290,9 +1937,6 @@ local function decodeField(t: any, fd: any, entry: any, holder: any): boolean
 	elseif s == "tab" then
 		local d = S.lookup(fd.t)
 		local inst = d.new()
-		if _retain ~= nil then
-			_retain.forgetBody(d, holder[fd.slot]) -- a second occurrence replaces the body whole (§6.6)
-		end
 		holder[fd.slot] = inst
 		return decodeBody(t, d, inst)
 	elseif s == "text" then
@@ -2309,7 +1953,7 @@ end
 -- one union value (unionCell): the arm's reference, then the payload a field
 -- of the arm's type carries; an arm this build cannot name reads None and
 -- counts unknown, a retyped one kind_mismatch
-decodeArm = function(t: any, fd: any, holder: any, key: any): (any, boolean)
+decodeArm = function(t: any, fd: any): (any, boolean)
 	local un = S.lookup(fd.t)
 	local u = un.new()
 	local ref, ok = reference(t)
@@ -2332,9 +1976,6 @@ decodeArm = function(t: any, fd: any, holder: any, key: any): (any, boolean)
 	end
 	if tag == 0 then
 		t.report.unknown += 1
-		if _retain ~= nil then
-			_retain.lost(t.report) -- a union arm this build cannot name (§6.6)
-		end
 		return u, skipEntry(t, entry.kind, entry.shape)
 	end
 	local arm = un.arms[tag]
@@ -2352,9 +1993,6 @@ decodeArm = function(t: any, fd: any, holder: any, key: any): (any, boolean)
 	elseif arm.s == "tab" then
 		local d = S.lookup(arm.t)
 		local inst = d.new()
-		if _retain ~= nil and holder ~= nil then
-			_retain.builtArm(holder, key, d, inst) -- the occurrence's own body (§6.6)
-		end
 		u[arm.slot] = inst
 		return u, decodeBody(t, d, inst)
 	end
@@ -2363,8 +2001,6 @@ end
 
 -- one body: fields until the zero reference (body)
 decodeBody = function(t: any, d: any, v: any): boolean
-	local mapKey = t.mapKey
-	t.mapKey = false
 	local byId = fieldsById(d)
 	while true do
 		local ref, ok = reference(t)
@@ -2381,14 +2017,8 @@ decodeBody = function(t: any, d: any, v: any): boolean
 		local hit = byId[entry.id]
 		if hit == nil then
 			t.report.unknown += 1
-			-- THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits: the
-			-- plain read's own verdict on an unknown entry is the skip's
-			local at = t.r.off
 			if not skipEntry(t, entry.kind, entry.shape) then
 				return dmal(t)
-			end
-			if _retain ~= nil then
-				_retain.captureMessage(t, v, d, entry, at, t.r.off)
 			end
 			continue
 		end
@@ -2399,11 +2029,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 				if not decodeField(t, fd, entry, v) then
 					return false
 				end
-				if mapKey and entry.id == KEY_ID then
-					-- the MAP counts one widened, at the key (§2.8, §4)
-				else
-					t.report.widened += 1
-				end
+				t.report.widened += 1
 				if fd.present ~= nil and fd.s ~= "arr" then
 					v[fd.present] = true
 				end
@@ -2424,169 +2050,14 @@ decodeBody = function(t: any, d: any, v: any): boolean
 	end
 end
 
--- resolution (§3.1): 0 is null, 1 the root, k + 1 record k
-local function resolve(t: any)
-	if not t.good then
-		return
-	end
-	local landed: { [any]: boolean } = {}
-	for _, p in t.pending do
-		local value: any = nil
-		if p.index ~= 0 then
-			if p.index == 1 then
-				if p.d.s == "ptr" and p.d.t == t.rootDesc.name then
-					value = t.root
-				else
-					t.report.kindMismatch += 1
-				end
-			elseif p.index - 2 >= #t.nodes then
-				t.report.malformed = true
-			else
-				local n = t.nodes[p.index - 1]
-				if n.kind == "s" or n.kind == "b" then
-					if (p.d.s == "sblob" and n.kind == "s") or (p.d.s == "bblob" and n.kind == "b") then
-						if landed[n] then
-							t.report.blobShared = (t.report.blobShared or 0) + 1
-						end
-						landed[n] = true
-						value = n.blob
-					else
-						t.report.kindMismatch += 1
-					end
-				elseif n.kind == "t" then
-					if p.d.s == "ptr" and n.desc.name == p.d.t then
-						value = n.v
-					else
-						t.report.kindMismatch += 1
-					end
-				end
-			end
-		end
-		if value == nil then
-			value = p.null
-		end
-		if p.holder ~= nil and p.key ~= nil then
-			p.holder[p.key] = value
-		end
-	end
-end
-
--- one root body: a variable root's NODE TABLE first (root, nodeTable)
-local function decodeRoot(t: any, d: any, v: any): boolean
-	t.pending = {}
-	t.nodes = {}
-	t.root = v
-	t.rootDesc = d
-	t.good = true
-	if not d.variable then
-		t.indexBits = 0
-		return decodeBody(t, d, v)
-	end
-	t.indexBits = bitsReq(0, 1)
-	local r = t.r
-	local at = r.off
-	local ref, ok = reference(t)
-	if not ok then
-		return dmal(t)
-	end
-	local e = entryAt(t, ref)
-	if e == nil and ref ~= 0 then
-		return dmal(t)
-	end
-	if e ~= nil and e.id == NODE_ID then
-		local count, cok = get(r, 32)
-		if not cok then
-			return dmal(t)
-		end
-		t.indexBits = bitsReq(0, count + 1)
-		local placed: { [string]: any } = {}
-		for _, name in d.place.tables do
-			local pd = S.lookup(name)
-			placed[pd.id] = pd
-		end
-		local recs: { any } = {}
-		for _ = 1, count do
-			local tref, tok = reference(t)
-			if not tok then
-				return dmal(t)
-			end
-			local te = nameAt(t, tref)
-			if te == nil then
-				return false
-			end
-			if te.id == BYTES_ID or te.id == STRING_ID then
-				local n, nok = get(r, 32)
-				if not nok or not ralign(r) or not has(r, n * 8) then
-					return dmal(t)
-				end
-				local blob = buffer.create(n)
-				buffer.copy(blob, 0, r.b, r.base + r.off // 8, n)
-				r.off += n * 8
-				recs[#recs + 1] = { id = te.id, blob = blob }
-			else
-				local s = r.off
-				if not skipBody(t) then
-					return dmal(t)
-				end
-				recs[#recs + 1] = { id = te.id, s = s, e = r.off }
-			end
-		end
-		local stop = r.off
-		for i, rec in recs do
-			if rec.blob ~= nil then
-				local str = rec.id == STRING_ID
-				if (str and not d.place.str) or (not str and not d.place.bytes) then
-					t.report.unknown += 1
-					if _retain ~= nil then
-						_retain.lost(t.report) -- a blob this root reaches no edge to (§6.6)
-					end
-					t.nodes[i] = { kind = "x" }
-				else
-					if str and not V.utf8(rec.blob, 0, buffer.len(rec.blob)) then
-						return dmal(t)
-					end
-					t.nodes[i] = { kind = if str then "s" else "b", blob = rec.blob }
-				end
-			else
-				local pd = placed[rec.id]
-				if pd == nil then
-					t.report.unknown += 1
-					if _retain ~= nil then
-						_retain.lost(t.report) -- a node record of a type this build cannot place (§6.6)
-					end
-					t.nodes[i] = { kind = "x" }
-				else
-					t.nodes[i] = { kind = "t", desc = pd, v = pd.new() }
-				end
-			end
-		end
-		for i, rec in recs do
-			local n = t.nodes[i]
-			if n.kind == "t" then
-				r.off = rec.s
-				local sn = r.n
-				r.n = rec.e
-				local bok = decodeBody(t, n.desc, n.v)
-				r.n = sn
-				if not bok then
-					return false
-				end
-			end
-		end
-		r.off = stop
-	else
-		r.off = at
-	end
-	return decodeBody(t, d, v)
-end
-
 -- LoadMessages decodes a batch of root against the announced vocabulary v
 -- (DecodeMessages) and answers how many bodies it delivered and the values.
 -- -1 with report.reason is a refusal (newer_form, no_vocabulary,
 -- integrity_mismatch, non_finite_float); a count above capacity is
 -- batch_too_large and returns the wire's M; damage inside body k delivers
 -- bodies 1 to k - 1 with report.malformed set.
-function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?, hooks: { any }?): (number, { any })
+function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, { any })
+	local d = messageRoot(root)
 	local rep: any = report or {}
 	resetReport(rep)
 	local len = buffer.len(data)
@@ -2598,7 +2069,6 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 		refuse(rep, "newer_form")
 		return -1, {}
 	end
-	local d = S.lookup(root)
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local n = len
 		if n < 6 or buffer.readu32(data, n - 4) ~= V.crc32c(data, n - 4) then
@@ -2629,14 +2099,12 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 		refuse(rep, "batch_too_large")
 		return count, {}
 	end
-	local t: any = { r = r, v = v, report = rep, indexBits = 0, mapKey = false }
+	local t: any = { r = r, v = v, report = rep, indexBits = 0 }
 	local values = {}
 	local got = count
 	for i = 1, count do
 		local value = d.new()
-		_retain = if hooks ~= nil then hooks[i] else nil
-		local bok = decodeRoot(t, d, value)
-		resolve(t)
+		local bok = decodeBody(t, d, value)
 		if not bok then
 			rep.malformed = true
 			got = i - 1
@@ -2644,7 +2112,6 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 		end
 		values[i] = value
 	end
-	_retain = nil
 	if rep.nonFinite > 0 then
 		rep.reason = "non_finite_float: " .. tostring(rep.nonFiniteField)
 		rep.field = rep.nonFiniteField
@@ -2655,27 +2122,5 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	return got, values
 end
-
--- THE BIT STREAM'S OWN PRIMITIVES, for the retaining walk (table_retain.moo):
--- it re-reads the bits an unknown entry's skip delimited and writes them in
--- the variable form's spelling, so it reads with the very reader the plain
--- walk does and states no second width (§3.3, §6.6)
-MS.bitio = table.freeze({
-	get = get,
-	getLimbs = getLimbs,
-	ralign = ralign,
-	has = has,
-	reference = reference,
-	entryAt = entryAt,
-	reserved = reserved,
-	bitsReq = bitsReq,
-	valueBits = valueBits,
-	countBits = countBits,
-	aligns = aligns,
-	add4 = add4,
-	lowBits = lowBits,
-	signExtend = signExtend,
-	left = left,
-})
 
 return table.freeze(MS)

@@ -138,7 +138,6 @@ local cookwrite = require("cookwrite")
 local B = require("block")
 local BB = require("blockbuild")
 local retain = require("retain")
-local RM = require("retainmessage")
 local inputs = require("inputs")
 local finite = ` + fsCaseList(fsFinite) + `
 local nonfinite = ` + fsCaseList(fsNonFinite) + `
@@ -332,10 +331,6 @@ for _, c in ipairs(nonfinite) do
     r = report()
     values = T.LoadMessages("Root", vocab, m, r)
     check("msg-" .. width .. tail .. "strict", values ~= nil and #values == 0 and r.reason == named, r.reason)
-    r = report()
-    local store = { list = {} }
-    values = RM.LoadRetainMessages(T, "Root", vocab, m, { store }, r)
-    check("retmsg-" .. width .. tail .. "retaining", values ~= nil and #values == 0 and r.nonFiniteFloat == s.owner, r.reason)
 
     local fx = patch_bytes(fixed, is32, from, to)
     ok, err = pcall(T.ReadFixed, "Root", fx)
@@ -518,8 +513,8 @@ func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 		}
 	}
 	// the probe ran every row: 6 finite x 3, 6 non-finite x 3 slots x 8
-	// writers, 3 extra writer rows, 6 x 3 x 11 reads and 2 x 6 x 2 retained
-	if want := 6*3 + 6*3*8 + 3 + 6*3*11 + 2*6*2; len(checks) != want {
+	// writers, 3 extra writer rows, 6 x 3 x 10 reads and 2 x 6 x 2 retained
+	if want := 6*3 + 6*3*8 + 3 + 6*3*10 + 2*6*2; len(checks) != want {
 		t.Errorf("the probe answered %d checks, want %d", len(checks), want)
 	}
 
@@ -586,8 +581,6 @@ var fsSabotages = []fsSabotage{
 	{"load.lua", "if b & F64_EXP == F64_EXP then\n      r.at = r.at + 8", "if false then\n      r.at = r.at + 8", "var-f64:"},
 	{"message.lua", "if v & D.F32_EXP == D.F32_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "msg-f32:"},
 	{"message.lua", "if v & D.F64_EXP == D.F64_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "msg-f64:"},
-	{"retainmessage.lua", "if v & F32_EXP == F32_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "retmsg-f32:"},
-	{"retainmessage.lua", "if v & F64_EXP == F64_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "retmsg-f64:"},
 	{"fixed.lua", `if string.unpack("<I4", buf, pos) & F32_EXP == F32_EXP then`, "if false then", "fixed-f32:"},
 	{"fixed.lua", `if string.unpack("<i8", buf, pos) & F64_EXP == F64_EXP then`, "if false then", "fixed-f64:"},
 	{"cook.lua", `bad = string.unpack("<I4", s.data, at + 1) & 0x7f800000 == 0x7f800000`, "bad = false", "cookcheck-f32:"},

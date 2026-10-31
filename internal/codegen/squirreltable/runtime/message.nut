@@ -13,11 +13,6 @@ local refuse = function(r, why) {
   return -1;
 };
 
-_M.RefuseTable <- function(name, report) {
-  reset(report);
-  return refuse(report, "message_form_plain_table:" + name);
-};
-
 local equalBytes = function(a, b) {
   if (a.len() != b.len()) return false;
   for (local i = 0; i < a.len(); i++) if ((a[i] & 0xff) != (b[i] & 0xff)) return false;

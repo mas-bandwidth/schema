@@ -45,6 +45,12 @@ return function(ctx: any): { [string]: Surface }
 					continue
 				end
 				ctx.tables(unit)
+				local St: any = ctx.module(unit, "schema_tables")
+				local root = St.lookup(f[4])
+				if not (root.table and root.fixed) then
+					ctx.refuse(f[2], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+					continue
+				end
 				local MS: any = ctx.module(unit, "table_message")
 				local report: any = {}
 				local vocabulary = MS.NewVocabulary()

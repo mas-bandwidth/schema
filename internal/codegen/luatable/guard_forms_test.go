@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -44,10 +43,9 @@ func guardInstance(t *testing.T, m *tabletext.Model, def *ir.Struct) *tabletext.
 	return inst
 }
 
-// guardProbe is the Lua main for one form: it builds the same value the Go
-// engine holds, writes it with the named module verb, and prints the bytes as
-// one hex line.
-func guardProbe(module, verb string) string {
+// guardProbe is the Lua main: it builds the same value the Go engine holds,
+// writes it as JSON, and prints the bytes as one hex line.
+func guardProbe(module string) string {
 	return `local T = require("` + module + `")
 local J = require("json")
 local v = T.NewGuarded()
@@ -56,27 +54,19 @@ v.always = T.NewNode()
 v.always.value = 7
 v.resting = T.NewNode()
 v.resting.value = 9
-local out
-if "` + verb + `" == "json" then
-  out = J.ToJson(T, "Guarded", v)
-  assert(out ~= nil, "ToJson refused the value")
-else
-  local vocab = { announced = true, refBits = T.MessageRefBits }
-  out = T.SaveMessages("Guarded", vocab, { v })
-  assert(out ~= nil, "SaveMessages refused the value")
-end
+local out = J.ToJson(T, "Guarded", v)
+assert(out ~= nil, "ToJson refused the value")
 print((out:gsub(".", function(c) return string.format("%02x", c:byte()) end)))
 `
 }
 
-// TestLuaTableJsonAndMessageHonourGuards pins §3 and §3.1 on the two Lua save
-// forms the variable save already keeps: a field under a false guard is elided
-// whatever its storage holds, and it is not an edge, so its pointer target
-// takes no node. The value is guard_true_both_edges with the guard false and
-// the guarded pointer still set; each form must write what the Go engine
-// (tabletext.Write for JSON, tablewire.EncodeMessage for the message form)
-// writes for the same value.
-func TestLuaTableJsonAndMessageHonourGuards(t *testing.T) {
+// TestLuaTableJsonHonoursGuards pins §3 and §3.1 on the Lua JSON save: a field
+// under a false guard is elided whatever its storage holds, and it is not an
+// edge, so its pointer target takes no node. The value is
+// guard_true_both_edges with the guard false and the guarded pointer still
+// set; the save must write what the Go engine (tabletext.Write) writes for the
+// same value.
+func TestLuaTableJsonHonoursGuards(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
@@ -112,11 +102,11 @@ func TestLuaTableJsonAndMessageHonourGuards(t *testing.T) {
 		t.Fatalf("unit %s: %v", row.unit, err)
 	}
 
-	run := func(t *testing.T, verb string) []byte {
+	run := func(t *testing.T) []byte {
 		t.Helper()
 		dir := t.TempDir()
 		luarun.WriteFiles(t, dir, files)
-		probe := guardProbe(module, verb)
+		probe := guardProbe(module)
 		luarun.WriteFiles(t, dir, map[string][]byte{"main.lua": []byte(probe)})
 		out := luarun.Run(t, dir, "main.lua", nil)
 		got, err := hex.DecodeString(strings.TrimSpace(string(out)))
@@ -134,22 +124,9 @@ func TestLuaTableJsonAndMessageHonourGuards(t *testing.T) {
 			t.Fatalf("the Go engine refused the value: %v", err)
 		}
 		want = append(want, '\n')
-		got := run(t, "json")
+		got := run(t)
 		if !bytes.Equal(got, want) {
 			t.Errorf("the JSON save wrote the false-guard field or numbered its target\n    lua    %s\n    engine %s", hexBytes(got), hexBytes(want))
-		}
-	})
-
-	t.Run("message_guard_false_drops_guarded_pointer", func(t *testing.T) {
-		t.Parallel()
-		inst := guardInstance(t, m, def)
-		want, err := tablewire.EncodeMessage(m, inst)
-		if err != nil {
-			t.Fatalf("the Go engine refused the value: %v", err)
-		}
-		got := run(t, "message")
-		if !bytes.Equal(got, want) {
-			t.Errorf("the message save wrote the false-guard field or numbered its target\n    lua    %s\n    engine %s", hexBytes(got), hexBytes(want))
 		}
 	})
 }
