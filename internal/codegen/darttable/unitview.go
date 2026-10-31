@@ -134,10 +134,10 @@ func generateUnitViewFiles(u *ir.Unit) map[string][]byte {
   final void Function(dynamic, dynamic) write;
   final bool optional;
   final List<String> tags;
-  ViewField(this.name, this.json, this.typeName, this.id,
+  const ViewField(this.name, this.json, this.typeName, this.id,
       this.optional, this.kind, this.bound, this.elemSize,
       this.read, this.write, this.doc, this.tags);
-}
+@@VIEWFIELD_ACCESS@@}
 final class ViewType {
   final String name, file, doc;
   final List<String> tags;
@@ -182,8 +182,13 @@ final class UnitViewInfo {
 
 `)
 	pf("// The registry is name-ordered; generated map-entry tables are not declarations (§2.8).\n")
-	pf("final UnitViewInfo _unitView = UnitViewInfo(%s, %s,\n", viewDartString(u.Package), dartU64Literal(u.ProtocolId))
+	pf("const UnitViewInfo _unitView = UnitViewInfo(%s, %s,\n", viewDartString(u.Package), dartU64Literal(u.ProtocolId))
 	closure := ir.TableClosure(u)
+	// a field's storage accessors are static members of ViewField: a static
+	// tear-off is a constant and a closure is not, so the registry is one const
+	// value (docs/PORTING.md M13), and the members live in a claimed class so no
+	// schema name collides with them (SPEC §4.6)
+	var access []string
 	for _, group := range []struct {
 		kind string
 		set  map[string]*ir.Struct
@@ -201,8 +206,10 @@ final class UnitViewInfo {
 				if group.kind == "type" && !closure[name] {
 					json, id = "-", 0
 				}
+				n := len(access)
 				member := fieldMember(f)
-				pf("      ViewField(%s,%s,%s,%s,%t,%d,%d,%s,(dynamic v) => v.%s,(dynamic v, dynamic x) { v.%s = x; },%s,%s), // ignore: avoid_dynamic_calls -- the unit view registry is type-agnostic by design\n", viewDartString(f.Name), viewDartString(json), viewDartString(ir.TableTypeSpelling(f)), dartU64Literal(id), f.Type.Optional, viewDartFieldKind(f), viewDartArmBound(f), viewDartElementSize(f), member, member, viewDartString(f.Doc), viewDartTags(f.Tags))
+				access = append(access, fmt.Sprintf("  static dynamic _r%d(dynamic v) => v.%s; // ignore: avoid_dynamic_calls -- the unit view registry is type-agnostic by design\n  static void _w%d(dynamic v, dynamic x) { v.%s = x; } // ignore: avoid_dynamic_calls -- the unit view registry is type-agnostic by design\n", n, member, n, member))
+				pf("      ViewField(%s,%s,%s,%s,%t,%d,%d,%s,ViewField._r%d,ViewField._w%d,%s,%s),\n", viewDartString(f.Name), viewDartString(json), viewDartString(ir.TableTypeSpelling(f)), dartU64Literal(id), f.Type.Optional, viewDartFieldKind(f), viewDartArmBound(f), viewDartElementSize(f), n, n, viewDartString(f.Doc), viewDartTags(f.Tags))
 			}
 			pf("    ]),\n")
 		}
@@ -320,5 +327,6 @@ final class UnitViewInfo {
 		pf("    ViewConstant(%s,%s,%s,%t,%d,%s,%s,%s),\n", viewDartString(name), viewDartString(viewDartFile(u, name)), viewDartString(c.Storage), c.IsFloat, integer, dartU64Literal(real), viewDartString(c.Doc), viewDartTags(c.Tags))
 	}
 	pf("  ]);\nUnitViewInfo UnitView() => _unitView;\n")
-	return map[string][]byte{runtimeHome(u) + "View.dart": []byte(b.String())}
+	view := strings.Replace(b.String(), "@@VIEWFIELD_ACCESS@@", strings.Join(access, ""), 1)
+	return map[string][]byte{runtimeHome(u) + "View.dart": []byte(view)}
 }
