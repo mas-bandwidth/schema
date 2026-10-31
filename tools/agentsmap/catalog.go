@@ -164,6 +164,7 @@ var catalog = []Entry{
 
 	// tools/
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
+	e("tools/cellmerge", "three-way PORTING.md row merge for diff3 hunks", "go test ./tools/cellmerge", "go run ./tools/cellmerge docs/PORTING.md"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),

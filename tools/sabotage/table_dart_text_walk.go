@@ -37,3 +37,14 @@ func init() {
 		new: "  if (true /* SABOTAGED: every node written in place */) {\n    body(null);",
 	}}
 }
+
+// THE DART LEG'S FRAMING CONTROL (docs/LAYERS/1-framing.md F6,
+// docs/SPEC-TABLES.md §3): the id table's 4096-entry maximum is taken out of
+// the reader's open(), so a table of 4097 entries reads as clean. `dart /
+// framing` goes red on frame_entries_4097 alone.
+func init() {
+	sabotages["table-dart-id-table-cap"] = []edit{{
+		old: "    if (count > 4096) return 2;\n",
+		new: "    // SABOTAGED: the 4096-entry id-table maximum is gone\n",
+	}}
+}
