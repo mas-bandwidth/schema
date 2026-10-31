@@ -225,11 +225,7 @@ func init() {
 		Name{Name: "tableRegionToJSON", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableRegionValueEdges", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableStringTypeID", What: "the canonical region and graph text runtime"},
-		Name{Name: "tableUtf16Valid", What: "wide text conversion"},
-		Name{Name: "tableUtf16UnitsValid", What: "wide text: the writer's check of the caller's own UTF-16 units (docs/FIXED-FORM-ALGORITHM.md §3.1)"},
-		Name{Name: "tableUtf16Clamp", What: "wide text conversion"},
-		Name{Name: "tableJSONWriteWString", What: "wide text conversion"},
-		Name{Name: "tableJSONWriteStringBody", What: "wide text conversion"},
+		Name{Name: "tableJSONWriteStringBody", What: "the JSON writer: a string body between its quotes"},
 
 		Name{Name: "tableJSONWide", What: "exact wide scalar text conversion"},
 		Name{Name: "tableJSONWideSigned", What: "exact wide scalar text conversion"},
@@ -446,7 +442,6 @@ func init() {
 		Name{Name: "TableRefuseLengthOverBound", What: "the fixed form refusal reason length_over_bound"},
 		Name{Name: "tableFixedTag", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextUTF8", What: "the fixed form (form 3)"},
-		Name{Name: "tableFixedTextWide", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextBytes", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedNoGuard", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedEntryBytes", What: "the fixed form (form 3)"},
@@ -454,7 +449,6 @@ func init() {
 		// The write-side text rule (docs/FIXED-FORM-ALGORITHM.md §3.1): the fixed
 		// form's refusal of ill-formed UTF-8 and NUL, the twin of the reader's.
 		Name{Name: "tableFixedUTF8Ok", What: "the fixed form (form 3): the writer's UTF-8 and no-NUL rule over a text field's used bytes"},
-		Name{Name: "tableFixedUnitsIllFormed", What: "the fixed form (form 3): the writer's wstring rule, true when the used units are not paired UTF-16 or hold a zero unit"},
 		// <T>FixedPlanMax (docs/FIXED-FORM-ALGORITHM.md §5.2): the generated
 		// export, claimed under the template spelling the page writes. A plan
 		// slice of this length never refuses plan_too_large for a layout the

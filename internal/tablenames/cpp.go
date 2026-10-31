@@ -132,7 +132,6 @@ func init() {
 		{Name: "TableTextFormReader", What: "the strict s-expression lexer and parser (§16.9.1)"},
 		{Name: "TableB64Val", What: "one base64 alphabet position (§16.9.2)"},
 		{Name: "TableB64Valid", What: "canonical base64: zero pad bits and no stray byte, with its decoded length (§16.9.2)"},
-		{Name: "TableUtf16Length", What: "a UTF-8 string's length in UTF-16 code units (§16.9.2)"},
 		{Name: "TableTextFormKeyNode", What: "whether a node is a record key: a keyword or a string (§16.9.1)"},
 		{Name: "TableTextFormJsonString", What: "escape decoded UTF-8 as a JSON string (§16.9.2)"},
 		{Name: "TableTextFormRecord", What: "resolve one record against its descriptor (§16.9.2)"},
