@@ -1486,6 +1486,12 @@ defmodule WireFuzz do
           # §3.3), and the refusal is the answer the oracle compares
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
+        {:error, :newer_form, report} ->
+          # A FORM THIS READER DOES NOT KNOW IS REFUSED BY NAME (docs/SPEC-TABLES.md
+          # §3): nothing is decoded, the verdict is the answer, and the
+          # defaults the load stands on are not compared
+          stdout_write(header(1, Map.put(report, :refused, true), measure) <> <<-1::little-signed-64>>)
+
         {:error, _reason, report} ->
           # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
           # damage discards the whole load): its report, malformed among it,
