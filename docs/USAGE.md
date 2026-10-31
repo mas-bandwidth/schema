@@ -4952,7 +4952,8 @@ end
 `<Base>Table.luau` of descriptors per schema file, with the runtime modules
 (`schema_tables`, `schema_load`, `schema_save`, `schema_cookread`, ...) beside
 them, each reached as `require("./<module>")`. A value is a plain Luau table
-built by its descriptor's constructor, and the bytes are a Luau `buffer`. An
+built by its descriptor's constructor, its fields in UpperCamelCase slots
+(`hull.Turrets`, `turret.Damage`), and the bytes are a Luau `buffer`. An
 enum-keyed array is a plain array with key k at index k; `S.keyed(table,
 field)` is the accessor that refuses None and any key past the enum's last
 variant by name. The plain read is the strict one: it answers the value, or
@@ -4969,14 +4970,14 @@ require("./KeyedTable")
 local hulls = S.lookup("HullConfig")
 local hull = hulls.new()                            -- every field at its declared default
 local turrets = S.keyed("HullConfig", "turrets")    -- one slot per Weapon variant
-turrets.get(hull.turrets, turrets.key("Missile")).damage = 25
+turrets.get(hull.Turrets, turrets.key("Missile")).Damage = 25
 
 local bytes = save.save(hulls, hull)                -- the id-table wire, as a buffer
 local report = {}
 local back = load.load("HullConfig", bytes, report) -- nil and report.reason on a refusal
 if back == nil then error("the hull did not read: " .. report.reason) end
-for key, turret in turrets.each(back.turrets) do
-  use(turret.damage)
+for key, turret in turrets.each(back.Turrets) do
+  use(turret.Damage)
 end
 ```
 <!-- /luau-table-usage -->

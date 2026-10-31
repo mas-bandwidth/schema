@@ -22,9 +22,10 @@
 #
 # main.luau finds its staged inputs and the generated units by paths relative
 # to itself (../../../build/...), so the sabotaged units run under a MIRROR of
-# the repository: every top-level entry linked, except build/ (the mirror's
-# own: the regenerated units and the driver's staging) and test/ (the mirror
-# holds a copy of the leg's driver and main.luau only).
+# the repository: every top-level entry linked, except test/ (the mirror holds
+# a copy of the leg's driver and main.luau only) and build/, whose entries are
+# linked one by one but for the two the mirror owns: build/conformance-luau
+# (the regenerated units and the driver's staging) and build/luau-driver.
 #
 # usage: test/conformance/luau/negative-control <report|walk>
 set -eu
@@ -59,6 +60,11 @@ for entry in "$root"/* "$root"/.[!.]*; do
 	name=$(basename "$entry")
 	case "$name" in build | test | .git) continue ;; esac
 	[ -e "$entry" ] && ln -s "$entry" "$mirror/$name"
+done
+for entry in "$root"/build/*; do
+	name=$(basename "$entry")
+	case "$name" in conformance-luau | luau-driver | luau-table-control-*) continue ;; esac
+	ln -s "$entry" "$mirror/build/$name"
 done
 cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
 cp build/luau-driver/units.luau "$mirror/build/luau-driver/units.luau"

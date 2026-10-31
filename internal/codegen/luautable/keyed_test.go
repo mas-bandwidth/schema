@@ -26,19 +26,19 @@ local function row(name, ...)
 	for i = 1, select("#", ...) do parts[i] = tostring((select(i, ...))) end
 	print(name .. "\t" .. table.concat(parts, "\t"))
 end
-row("none refused", refuses(acc.get, hull.turrets, 0), refuses(acc.set, hull.turrets, 0, {}))
-row("past max refused", refuses(acc.get, hull.turrets, acc.max + 1), refuses(acc.set, hull.turrets, acc.max + 1, {}))
-row("negative and non-integer refused", refuses(acc.get, hull.turrets, -1), refuses(acc.get, hull.turrets, 1.5), refuses(acc.get, hull.turrets, "1"))
-row("max is reachable", not refuses(acc.get, hull.turrets, acc.max), acc.max == 3)
-for key = 1, acc.max do acc.set(hull.turrets, key, { damage = key * 10 }) end
+row("none refused", refuses(acc.get, hull.Turrets, 0), refuses(acc.set, hull.Turrets, 0, {}))
+row("past max refused", refuses(acc.get, hull.Turrets, acc.max + 1), refuses(acc.set, hull.Turrets, acc.max + 1, {}))
+row("negative and non-integer refused", refuses(acc.get, hull.Turrets, -1), refuses(acc.get, hull.Turrets, 1.5), refuses(acc.get, hull.Turrets, "1"))
+row("max is reachable", not refuses(acc.get, hull.Turrets, acc.max), acc.max == 3)
+for key = 1, acc.max do acc.set(hull.Turrets, key, { Damage = key * 10 }) end
 local placed = {}
 for key = 1, acc.max do
-	local turret = acc.get(hull.turrets, key)
-	placed[#placed + 1] = if turret then tostring(turret.damage) else "nil"
+	local turret = acc.get(hull.Turrets, key)
+	placed[#placed + 1] = if turret then tostring(turret.Damage) else "nil"
 end
-row("set places by key", table.concat(placed, ","), hull.turrets[1].damage == 10 and hull.turrets[3].damage == 30)
+row("set places by key", table.concat(placed, ","), hull.Turrets[1].Damage == 10 and hull.Turrets[3].Damage == 30)
 local seen = {}
-for key, turret in acc.each(hull.turrets) do seen[#seen + 1] = key .. "=" .. tostring(turret.damage) end
+for key, turret in acc.each(hull.Turrets) do seen[#seen + 1] = key .. "=" .. tostring(turret.Damage) end
 row("each yields key beside element", table.concat(seen, ","))
 row("key by variant name", acc.key("Cannon"), acc.key("Mine"), refuses(acc.key, "Railgun"))
 row("a field that is not keyed is refused by name", refuses(S.keyed, "HullConfig", "health"))

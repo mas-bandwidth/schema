@@ -18,7 +18,7 @@ tables-luau-runtime-home: bin/schema
 	@printf 'package tabledemo\n\ntype AaaPacket\n{\n    tag uint8\n}\n' > build/runtime-home-luau/src/Aaa.schema
 	@./bin/schema generate --lang luau --out build/runtime-home-luau/base tables/examples 2>/dev/null
 	@./bin/schema generate --lang luau --out build/runtime-home-luau/added build/runtime-home-luau/src 2>/dev/null
-	@sh test/luau-runtime-home/check build/runtime-home-luau/base build/runtime-home-luau/added internal/codegen/luautable/runtime
+	@sh test/luau-runtime-home/check build/runtime-home-luau/base build/runtime-home-luau/added Aaa
 	@echo "runtime home gate (Luau): every <Base>Table.luau keeps its name and the schema_*.luau runtime stays byte-identical when an earlier-sorting file joins the unit"
 
 # Its NEGATIVE CONTROL: put the file-order rule back (the runtime named by the
@@ -35,7 +35,7 @@ tables-luau-runtime-home-negative-control: bin/schema tables-luau-runtime-home
 	@rm -rf build/runtime-home-luau/base-sabotage build/runtime-home-luau/added-sabotage
 	@./build/schema-luau-runtime-home-sabotaged generate --lang luau --out build/runtime-home-luau/base-sabotage tables/examples 2>/dev/null
 	@./build/schema-luau-runtime-home-sabotaged generate --lang luau --out build/runtime-home-luau/added-sabotage build/runtime-home-luau/src 2>/dev/null
-	@if sh test/luau-runtime-home/check build/runtime-home-luau/base-sabotage build/runtime-home-luau/added-sabotage internal/codegen/luautable/runtime > build/runtime-home-luau/control.log 2>&1; then \
+	@if sh test/luau-runtime-home/check build/runtime-home-luau/base-sabotage build/runtime-home-luau/added-sabotage Aaa > build/runtime-home-luau/control.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the file-order rule left the runtime home in place — the gate is watching nothing"; exit 1; \
 	fi
 	@grep -q 'RUNTIME HOME GATE FAILED' build/runtime-home-luau/control.log || \
@@ -78,7 +78,7 @@ tables-luau-usage: toolchain-luau bin/schema $(USAGE_DOC)
 tables-luau-usage-negative-control:
 	@rm -rf build/luau-usage-negative && mkdir -p build/luau-usage-negative
 	sed 's/save\.save(hulls, hull)/save.sav(hulls, hull)/' docs/USAGE.md > build/luau-usage-negative/renamed.md
-	sed 's/^  use(turret\.damage)$$/  local _ = turret.damage/' docs/USAGE.md > build/luau-usage-negative/walks-nothing.md
+	sed 's/^  use(turret\.Damage)$$/  local _ = turret.Damage/' docs/USAGE.md > build/luau-usage-negative/walks-nothing.md
 	@for c in renamed walks-nothing; do \
 		if cmp -s docs/USAGE.md build/luau-usage-negative/$$c.md; then \
 			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \

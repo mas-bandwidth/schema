@@ -120,13 +120,10 @@ func luauEmittedKeys(t *testing.T, units []*ir.Unit) map[string]bool {
 			maps.Copy(files, types)
 		}
 		perDecl := map[string]bool{}
-		for _, f := range u.Files {
-			for _, d := range f.Decls {
-				name := ir.DeclName(d)
-				perDecl[name] = true
-				perDecl["New"+name] = true
-				perDecl[name+"Descriptor"] = true
-			}
+		for name := range u.DeclFile {
+			perDecl[name] = true
+			perDecl["New"+name] = true
+			perDecl[name+"Descriptor"] = true
 		}
 		for _, data := range files {
 			for _, k := range luauModuleKeys(string(data)) {
