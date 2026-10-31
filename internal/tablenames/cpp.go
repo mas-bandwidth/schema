@@ -146,6 +146,13 @@ func init() {
 		Name{Name: "table_float_to_bits", What: "float -> u32 bits"},
 		Name{Name: "table_bits_to_double", What: "u64 bits -> double"},
 		Name{Name: "table_double_to_bits", What: "double -> u64 bits"},
+		// THE FINITE RULE (docs/SPEC-TABLES.md §3.3): the read's test on the raw
+		// bits, the writer's on a value, and the report's refusal
+		Name{Name: "TableBitsFinite32", What: "true when a float32's raw bits are finite: the read's non_finite_float test (§3.3)"},
+		Name{Name: "TableBitsFinite64", What: "true when a float64's raw bits are finite: the read's non_finite_float test (§3.3)"},
+		Name{Name: "TableFloatFinite", What: "true when a float or a double is finite: the writer's refusal of a NaN or an infinity (§3.3)"},
+		Name{Name: "TableNonFiniteFloat", What: "a read meeting a NaN or an infinity: refused as non_finite_float (§3.3)"},
+		Name{Name: "TableNonFiniteRefused", What: "a load's own end: whether its walk met a non-finite float, the refusal stamped (§3.3)"},
 		// C#'s twins, plus the reader's in-place prefill. These are VERB-FIRST on
 		// purpose: §11 freezes the name-first suffixes a closure member claims
 		// (internal/check's tableGeneratedVerbs), and a port does not mint another —
