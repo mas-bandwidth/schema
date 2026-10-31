@@ -258,16 +258,19 @@ straight from the value.
 
 The lua column of [PORTING.md](PORTING.md) is checked against the tree, cell by
 cell (2026-10-29). Carried, each naming its proof: M1, M4b, M5, M6, M7, M8, M9,
-M12, M13, M14, M15, M16, M18, M19, M20, M22, I1, I4, I5, I7, I9, I14, I15 and
-J4. `—`, the platform's reason stated: M2 and M3 (a Lua 5.4 integer and float
-are unboxed values), M4 (no inlining directive or aliasing qualifier), M10 (the
-VM owns allocation), M11 (no struct layout), M17 (no arena: a blob is one string
-of its own length), M21 (retired by the finite-only rule: the conversion only
-ever sees a finite float32) and J5 (no table-wire bench). Every other cell is
-`❌`: the register's grammar requires a `#NNN`, the only issue that names the
-Lua port is #381 (closed, the language list), so the cells cite it beside the
-`port/lua/open/*` roadmap entry that carries the work (roadmap entries, never new
-issues). I2 and I11 are the negative controls, which the gates work carries.
+M11, M12, M13, M14, M15, M16, M18, M19, M20, M22, I1, I3, I4, I5, I6, I7, I9,
+I10, I13, I14, I15, J1, J2 and J4. `—`, the platform's reason stated: M2 and M3
+(a Lua 5.4 integer and float are unboxed values), M4 (no inlining directive or
+aliasing qualifier), M10 (the VM owns allocation), M17 (no arena: a blob is one
+string of its own length), M21 (retired by the finite-only rule: the conversion
+only ever sees a finite float32) and J5 (no table-wire bench). M11 and J1 are
+carried in the Lua form: Lua has no generated accessor, so the gate holds the
+runtime's layout derivation to the compiler's rather than an accessor to a
+descriptor. Every other cell is `❌`: the register's grammar requires a `#NNN`,
+the only issue that names the Lua port is #381 (closed, the language list), so
+the cells cite it beside the `port/lua/open/*` roadmap entry that carries the
+work (roadmap entries, never new issues). I2 and I11 are the negative controls,
+which the gates work carries.
 
 ## THE CARD MAP
 
@@ -302,11 +305,20 @@ announcement read above (`retain-message-cross-build`); the message form's
 refusal of a plain `table` root (`message-form-plain-table`: `loadMessages`
 does not check `MessageRoots`, so `graph_tree` on the plain `Scene` answers
 bytes where the Go reference answers absent, and the refusal needs a reason
-name SPEC-TABLES §11 does not yet give); block and cook accessors; the
-forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
-the random text differential; the runtime-home control; the bench and release
-tier; the card facade; and a union arm named `tag`, whose payload shares the
-discriminator's key (`arm-named-tag`, found by the M18 gate).
+name SPEC-TABLES §11 does not yet give); the labelled bench board
+(`bench-board`: the leg and its gate are in, a measured sitting is not); and a
+union arm named `tag`, whose payload shares the discriminator's key
+(`arm-named-tag`, found by the M18 gate).
+
+Closed 2026-10-29: the USAGE example (`tables-lua-usage`, docs/USAGE.md's
+`lua-table-usage` fragment run against `tables/pointers`, with a two-witness
+control); the bench leg and the release tier (`bench/tables/lua`,
+`tables-lua-bench-gate`, `tables-lua-release`, which certify.yml derives from
+the Makefile); and the card facade (`tables/cards/lua`: `cards.lua`, its driver,
+`make cards-lua-conformance` on all nine surfaces, three controls). The card
+leg found two faults in `runtime/retain.lua`, fixed there: `wire_nodes` read the
+node table's leading count as a node, and the capture counted the unit's own
+string and bytes blob nodes as `retain_lost`.
 
 ## DEEPEN
 

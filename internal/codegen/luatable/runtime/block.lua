@@ -51,8 +51,19 @@ local function elem_of(T, d)
     return { size = 8, align = 8 }
   elseif s == "int" then
     if d.timestamp then return { size = 8, align = 8 } end
+    -- a bits(N) slot is a uint32 up to 32 bits and a uint64 past them, whatever
+    -- its wire width (ir.elementPiece); the descriptor's width is the wire's
+    if d.bits ~= nil then
+      local w = d.bits <= 32 and 4 or 8
+      return { size = w, align = w }
+    end
     local w = d.width
     return { size = w, align = w < 8 and w or 8 }
+  elseif s == "wide" then
+    -- a 128-bit integer, and a fixed of 128 bits, is sixteen bytes AT SIXTEEN:
+    -- the C ABI's natural alignment for a 128-bit integer (ir.elementPiece,
+    -- docs/SPEC-TABLES.md §7.2, §19.3). Found by the layout agreement gate.
+    return { size = d.width, align = d.width }
   elseif s == "enum" then
     -- A block row's enum slot holds the ordinal at the enum's own derived
     -- storage width; the descriptor's kind is the table-wire kind and has no

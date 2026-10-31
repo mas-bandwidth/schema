@@ -504,6 +504,10 @@ end
 local function widens(kind, declared)
   if declared == 3 or declared == 4 or declared == 5 then return kind >= 2 and kind < declared end
   if declared == 7 or declared == 8 or declared == 9 then return kind >= 6 and kind < declared end
+  -- the 128-bit rungs (ir.TableKindWidens): int128 takes kinds 2..5, uint128
+  -- takes kinds 6..9, and scalar_at extends the narrower value into the pair
+  if declared == 18 then return kind >= 2 and kind <= 5 end
+  if declared == 19 then return kind >= 6 and kind <= 9 end
   if declared == 11 then return kind == 10 end
   return false
 end

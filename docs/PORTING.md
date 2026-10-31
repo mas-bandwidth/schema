@@ -508,7 +508,7 @@ asserts on a foreign target.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `internal/codegen/cpptable/cook.go:334-336` | ✅ `internal/codegen/ctable/ctable.go:291-293` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) | — no struct layout control in Lua; the build version is the contract (docs/PORT-LUA.md) |
+| ✅ `internal/codegen/cpptable/cook.go:334-336` | ✅ `internal/codegen/ctable/ctable.go:291-293` | ✅ `internal/codegen/rusttable/block.go:87-93` `TestCookLayoutIsAssertedAtCompileTime` | ✅ `internal/codegen/gotable/block.go:491-572` (at package init) | ✅ `internal/codegen/cstable/block.go:431-437` | ✅ `internal/codegen/javatable/block.go:479` | ✅ `internal/codegen/jstable/block.go:610-639` | — no second model to check against: the generated offsets ARE the model and the build version refuses a producer that disagrees (docs/SPEC-TABLES.md) | — no struct layout control, so the accelerators are read-only at the compiler's offsets and the build version is the contract (`internal/codegen/elixirtable/elixirtable.go:15-18`) | ✅ `tables-lua-accessor-descriptor-agreement` (the Lua form: a record's layout is derived at run time from the descriptors, so there is no constant baked into generated code to assert; `B.BlockOpen` checks each array's pitch against the row's own derived size, `internal/codegen/luatable/runtime/block.lua`, and the gate holds that derivation to the compiler's, offset for offset) |
 
 ### M12 — Byte order is the reader's, not the host's
 
@@ -1100,7 +1100,7 @@ walk finding (or under ASan as a `heap-buffer-overflow` in C).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ✅ `tables-dart-fuzz` `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` | ❌ #381 roadmap `port/lua/open/forgery-fuzz` (the block and cook forgeries are the pinned `forgery` and `cook-forgery` rows; `schema-lua-nightly-fuzz` mutates the load, strict, text and JSON readers, not a block or cook) |
+| ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-c-fuzz` `tables-c-fuzz-negative-control` | ❌ #413 (the oracle and both-bounds sabotage exist in `tables-rust-fuzz`; nothing runs it) | ✅ `tables-go-fuzz` `tables-go-fuzz-extent-negative-control` | ✅ `tables-block-fuzz` `tables-block-fuzz-extent-negative-control` | ✅ `tables-java-fuzz` `tables-java-fuzz-negative-control` | ✅ `tables-js-fuzz` `tables-js-fuzz-negative-control` | ✅ `tables-dart-fuzz` `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz` `tables-elixir-fuzz-negative-control` | ✅ `tables-lua-fuzz` `tables-lua-fuzz-negative-control` (`internal/codegen/luatable/forgeryfuzz_test.go`: a mutated block must refuse or open whole against the compiler's layout, a mutated cook must agree with the tool's cook-check, and a full walk of what opened must read inside the bytes; a `string.unpack` past the end raises, which is the bounds instrument. 24,000 mutants over 2 blocks and 4 cooks at the pinned seed `0x4c5541464f524745`: 15,982 refused, 8,018 opened and walked whole, 0 findings; `LUA_FORGERY_SEED` and `LUA_FORGERY_N` are the knobs. The control removes BOTH halves of the block's extent bound (2,809 findings) and, separately, the cook Check's region scan (289). Its first run found `Check` opening a cook whose alignment word was forged to 64, which the tool refuses: fixed in `internal/codegen/luatable/runtime/cook.lua`) |
 
 ### I4 — Per-case absent
 
@@ -1189,7 +1189,7 @@ the claim loop emptied.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ❌ #381 roadmap `port/lua/open/runtime-name-scan` (`internal/tablenames/lua.go` registers the one module-scope name, but no scan holds every emitted name registered and every registered name emitted, and no control plants one) |
+| ❌ #414 (the positive scan; the control already exists — `TestCppRuntimeNameScanGoesRed`, `compiler/tablescpp_test.go:62`) | ✅ `TestCTableRuntimeNameScanGoesRed` | ✅ `tables-rust-names-negative-control` | ✅ `TestGoRuntimeNameScanGoesRed` | ✅ `TestCsRuntimeNameScanGoesRed` | ✅ `TestJavaRuntimeNameScanGoesRed` | ✅ `TestJsModuleScopeScanSeesEveryConvention` | ✅ `tables-dart-names-negative-control` | ✅ `TestElixirRuntimeNameCollisionRepro` | ✅ `TestLuaTableRuntimeNamesAreClaimed` `TestLuaRuntimeFileNamesAreClaimed` `TestLuaRuntimeNameScanGoesRed` `tables-lua-names` `tables-lua-names-negative-control` (a Lua runtime spells everything it shares as a key of its returned module table, so the scan reads every such key out of the emitted text, in `function M.k(`, `function M:k(` and `M.k =` spellings, for every unit of the corpus, and holds it to `internal/tablenames/lua.go` both ways; the one claimable Lua spelling is a runtime module's FILE name, refused beside a table and kept in a table-free unit. The control plants an unregistered key in each convention and a registered name nothing emits) |
 
 ### I7 — Cross-endian refusal as a named gate
 
@@ -1241,7 +1241,7 @@ the reference on the same numbers; a sitting on the box is what certifies.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 roadmap `port/lua/open/release-tier` (no Lua bench leg yet) |
+| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 roadmap `port/lua/open/bench-board` (the leg `bench/tables/lua` and its gate `tables-lua-bench-gate` are in; the labelled board needs a measured sitting, which only a certify run takes) |
 
 ### I9 — The soak is gated on the allocation count or a floor
 
@@ -1305,7 +1305,7 @@ symbol scan over the generated tree.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-zero-cost` `tables-block-zero-cost` `TestTablesMoveNoGeneratedPacketByte` | ✅ `tables-c-zero-cost` `TestCEmitsTableSources` | ✅ `tables-rust-features` `TestTableFreeUnitEmitsNothing` | ✅ `TestTablesMoveNoGeneratedGoByte` `TestGoEmitsTableSources` | ✅ `tables-block-zero-cost` `TestCsEmitsTableSources` | ✅ `tables-java-zero-cost` `TestJavaTablesMoveNoGeneratedPacketByte` | ✅ `TestJsEmitsTableSources` `tables-js-standalone` | ✅ `tables-block-zero-cost` `TestDartEmitsTableSources` | ✅ `TestElixirEmitsTableModules` | ❌ #381 roadmap `port/lua/open/zero-cost` (a table-free unit gets no table module, `internal/codegen/luatable/luatable.go:82`, but no gate holds the byte identity of the non-table output) |
+| ✅ `tables-zero-cost` `tables-block-zero-cost` `TestTablesMoveNoGeneratedPacketByte` | ✅ `tables-c-zero-cost` `TestCEmitsTableSources` | ✅ `tables-rust-features` `TestTableFreeUnitEmitsNothing` | ✅ `TestTablesMoveNoGeneratedGoByte` `TestGoEmitsTableSources` | ✅ `tables-block-zero-cost` `TestCsEmitsTableSources` | ✅ `tables-java-zero-cost` `TestJavaTablesMoveNoGeneratedPacketByte` | ✅ `TestJsEmitsTableSources` `tables-js-standalone` | ✅ `tables-block-zero-cost` `TestDartEmitsTableSources` | ✅ `TestElixirEmitsTableModules` | ✅ `tables-lua-zero-cost` `tables-lua-zero-cost-negative-control` `TestLuaTablesMoveNoGeneratedPacketByte` `TestLuaZeroCostGateGoesRed` (`compiler/tableslua_test.go`: adding a table moves no byte of the non-table output and grows only the table module and the embedded runtime, a table-free unit emits none of them, and the table module spells no block or cook symbol) |
 
 ### I11 — The conformance negative control sabotages the emitter
 
@@ -1352,7 +1352,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` | ❌ #381 roadmap `port/lua/open/usage` (docs/USAGE.md has no Lua example yet) |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` | ✅ `tables-lua-usage` `tables-lua-usage-negative-control` |
 
 ### I13 — The text differential against a third implementation
 
@@ -1376,7 +1376,7 @@ a float32 at `-266744.625` rendering as an eight-digit tie.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ✅ `tables-java-json-differential` (`TestTextDifferentialJava`, `TestTextDifferentialJavaNegativeControl`) | ✅ `tables-js-text-differential` | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable and fixed roots; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ✅ `tables-elixir-json-differential`, `tables-elixir-json-differential-negative-control` (`TestTextDifferentialElixir`) | ❌ #381 roadmap `port/lua/open/text-differential` (`TestLuaJsonAgreesWithTheCorpus` compares every pinned instance with the engine's text; no random differential yet) |
+| ❌ #419 (a WIRE differential, `tables-flat-wire`; no text one) | ❌ #419 | ❌ #419 | ❌ #419 | ✅ `tables-cs-json-differential` `tables-cs-json-differential-negative-control` `TestCsTextDifferential` (`internal/codegen/cstable/textdifferential_test.go`; its first run found float64 written at fifteen digits, fixed in `internal/codegen/cstable/json.go`) | ✅ `tables-java-json-differential` (`TestTextDifferentialJava`, `TestTextDifferentialJavaNegativeControl`) | ✅ `tables-js-text-differential` | ✅ `tables-dart-text-differential`, control `tables-dart-text-differential-negative-control` (variable and fixed roots; first run: 6 of 200 on the Go seed, ties `toStringAsFixed` broke away from even) | ✅ `tables-elixir-json-differential`, `tables-elixir-json-differential-negative-control` (`TestTextDifferentialElixir`) | ✅ `tables-lua-json-differential` `tables-lua-json-differential-negative-control` `TestLuaTextDifferential` (`internal/codegen/luatable/textdifferential_test.go`: 200 random float instances drawn in Lua from the Elixir leg's splitmix64 seed, the engine's text byte-compared with the leg's and the engine's pack of the leg's text byte-compared with the leg's wire; 5,000 more at a second seed were clean on the first run; the control caps a float32 at six digits and goes red on 199 of 200) |
 
 ### I14 — The allocation gate refuses to certify off the pinned runtime
 
@@ -1479,11 +1479,24 @@ and a pointer slot is an eight-byte delta that the row getter also reads one
 byte of, which the gate pins as the low byte of the delta until the getter is
 settled.
 
+**Lua.** There is no accessor to hold against the descriptor, so the second
+derivation is the compiler's: `internal/codegen/luatable/layoutagree_test.go`
+dumps the layout the Lua runtime derives (`B.Layout` for every block projection
+and row, the descriptors' `at` for every cook record) and requires it line for
+line equal to `ir.Blocks` and `ir.RecordLayout`. `tables-lua-accessor-negative-control`
+moves `RenderCamera.camera_id` four bytes in `block.lua` and
+`tables-lua-slot-negative-control` moves `TreeNode.left`'s descriptor offset eight
+in the emitted module; each must turn the gate red on that field and on nothing
+else. Its first run found three real disagreements in `B.Layout`: a 128-bit
+integer and a 128-bit fixed were sized as one byte at one, and a `bits(N)` slot
+took its wire width where the block row holds a `uint32` (up to 32 bits) or a
+`uint64`.
+
 **Targets:** accessor-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-accessor-descriptor-agreement` `tables-accessor-negative-control` `tables-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ✅ `tables-cs-accessor-descriptor-agreement` `tables-cs-accessor-negative-control` `tables-cs-slot-negative-control` | ✅ `tables-java-accessor-agreement` `tables-java-accessor-negative-control` `tables-java-slot-negative-control` | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ✅ `tables-dart-agree` `tables-dart-accessor-negative-control` `tables-dart-slot-negative-control` | ✅ `tables-elixir-accessor-descriptor-agreement` `tables-elixir-accessor-negative-control` `tables-elixir-slot-negative-control` (plain scalar block-record fields and pointer cook slots (make/elixir.mk:279)) | ❌ #381 roadmap `port/lua/open/accessor-agreement` (the block and cook are read through the descriptors alone, `internal/codegen/luatable/runtime/block.lua:140`; no generated accessor exists to hold against them) |
+| ✅ `tables-accessor-descriptor-agreement` `tables-accessor-negative-control` `tables-slot-negative-control` | ❌ #421 | ❌ #421 | ✅ `tables-go-accessor-descriptor-agreement` `tables-go-accessor-negative-control` `tables-go-slot-negative-control` | ✅ `tables-cs-accessor-descriptor-agreement` `tables-cs-accessor-negative-control` `tables-cs-slot-negative-control` | ✅ `tables-java-accessor-agreement` `tables-java-accessor-negative-control` `tables-java-slot-negative-control` | ✅ `tables-js-accessor-negative-control` `tables-js-slot-negative-control` | ✅ `tables-dart-agree` `tables-dart-accessor-negative-control` `tables-dart-slot-negative-control` | ✅ `tables-elixir-accessor-descriptor-agreement` `tables-elixir-accessor-negative-control` `tables-elixir-slot-negative-control` (plain scalar block-record fields and pointer cook slots (make/elixir.mk:279)) | ✅ `tables-lua-accessor-descriptor-agreement` `tables-lua-accessor-negative-control` `tables-lua-slot-negative-control` (Lua generates no accessor: the block and cook are read through the descriptors alone, `internal/codegen/luatable/runtime/block.lua`, so what is held is the layout's two independent derivations, the compiler's model against the Lua runtime's own arithmetic, for every block projection, block row and cook record of the corpus's 33 units, 104 and 203 of them, in `internal/codegen/luatable/layoutagree_test.go`; the controls move `RenderCamera.camera_id` four bytes in `block.lua` and `TreeNode.left`'s descriptor offset eight, and each reds on that field alone. Its first run found `B.Layout` sizing a 128-bit integer, a 128-bit fixed and a `bits(N)` slot wrong, fixed in `block.lua`) |
 
 ### J2 — The runtime home, with a file-order control
 
@@ -1508,7 +1521,7 @@ lines of correct output into a diff nobody could read (#347).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ❌ #381 roadmap `port/lua/open/runtime-home` (the table module is named by the package, `internal/codegen/luatable/luatable.go:70`, and a schema file of that name is refused, but no gate adds an earlier-sorting file and requires nothing to move) |
+| ❌ #422 | ❌ #422 | ❌ #422 | ✅ `tables-go-runtime-home` `tables-go-runtime-home-negative-control` | ✅ `tables-runtime-home` `tables-runtime-home-negative-control` | ✅ `tables-java-runtime-home` `tables-java-runtime-home-negative-control` | ✅ `tables-js-runtime-home` `tables-js-runtime-home-negative-control` | ✅ `tables-dart-runtime-home` `tables-dart-runtime-home-negative-control` | ❌ #422 | ✅ `tables-lua-runtime-home` `tables-lua-runtime-home-negative-control` (`make/lua-open-gates.mk`: the table module stays `TabledemoTables.lua` and every embedded runtime file stays byte-identical when an earlier-sorting schema file joins the unit; the control puts the file-order rule back through `go build -overlay` and the module moves from `GuardedTables.lua` to `AaaTables.lua`) |
 
 ### J3 — The release tier
 
@@ -1534,7 +1547,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ❌ #381 roadmap `port/lua/open/release-tier` (no `tables-lua-release` yet) |
+| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ✅ `tables-lua-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
@@ -1597,12 +1610,12 @@ in `test/conformance/harness/cards.go`, with `SCHEMA_CARDS_SURFACES` and
 `edit` 8/8, `taskhash` 3/3, `view` 1/1), comparing every byte and refusal
 verdict against the Go reference answers (`tla/CardVersioning.tla`,
 `tla/CardHops.tla`). `make cards-conformance-all` runs the Go leg and all
-eight non-Go legs with all nine surfaces required.
+nine non-Go legs with all nine surfaces required.
 
 **Reference.** `test/conformance/harness/cards.go`, `tables/cards/cmd/cards-driver/main.go`,
 and `make cards-conformance-all` in `make/go.mk`.
 
-**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir.
+**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Lua.
 
 **Measured effect.** Structural: every leg's card codec, facade bounds, brief
 parser/renderer, `v1` to `v2` upgrader, field editors, task hash, and
@@ -1612,12 +1625,13 @@ descriptor view agree byte for byte on the 43-case corpus.
 `cards-c-conformance-negative-control`, `cards-cpp-conformance-negative-control`,
 `cards-cs-conformance-negative-control`, `cards-rust-conformance-negative-control`,
 `cards-java-conformance-negative-control`, `cards-js-conformance-negative-control`,
-`cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`.
+`cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`,
+`cards-lua-conformance-negative-control`.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` (`tables/cards/cmd/cards-driver/main.go`) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) | ❌ #381 roadmap `port/lua/open/cards` (no Lua card facade or cards driver yet) |
+| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` (`tables/cards/cmd/cards-driver/main.go`) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) | ✅ `cards-lua-conformance` (`tables/cards/lua/driver.lua`) |
 
 
