@@ -184,13 +184,6 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 	}
 	for _, rc := range m.Retains {
 		unit := rc.Unit
-		if rc.Message {
-			conn, err := m.LookupConnection(rc.Connection)
-			if err != nil {
-				return nil, err
-			}
-			unit = conn.Unit
-		}
 		if err := add("retain", rc.Name, unit, rc.Root); err != nil {
 			return nil, err
 		}
