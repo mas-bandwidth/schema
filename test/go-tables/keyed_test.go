@@ -6,43 +6,57 @@
 // would index past its end. §2.4's argument for the first is the argument for
 // the second, and this is the test that says the port took both.
 //
-// It is a GATE and not a nicety: Go's own bounds check catches the upper case
-// on a slice, but `TableKeyed` hands back a POINTER a caller then writes
-// through, and the panic is what stops that at the index rather than at some
-// later dereference. The lower case Go's bounds check never sees at all —
-// `slots[-1]` is `slots[key-1]` with key 0, which is a runtime panic in this
-// build and a silent read one slot back in any language that did the
-// arithmetic without the compare.
+// It is a GATE and not a nicety: Go's own bounds check panics at both ends
+// too, but it names an INDEX, and the technique is the guard that names the
+// KEY in every build (docs/PORTING.md M5). So each test requires the guard's
+// own refusal, and a build that dropped either compare, leaving only the
+// runtime's index panic, is red.
 package schematables
 
 import (
+	"strings"
 	"testing"
 
 	"tabledemo"
 )
 
-// refuses reports whether f panicked, so both arms read the same way.
-func refuses(f func()) (panicked bool) {
-	defer func() { panicked = recover() != nil }()
+// refusal is the TableKeyed refusal f raised, or "" when f returned or
+// panicked for any other reason. The guard is the technique, not Go's own
+// bounds check: `slots[key-1]` with key 0 or key past E.Max panics anyway,
+// but with a runtime.Error that names an INDEX, so a test that only asked
+// whether f panicked would stay green with the guard removed (docs/PORTING.md
+// M5: the refusal names a key, in every build).
+func refusal(f func()) (refused string) {
+	defer func() {
+		if r := recover(); r != nil {
+			if s, ok := r.(string); ok && strings.Contains(s, "enum-keyed array") {
+				refused = s
+			}
+		}
+	}()
 	f()
-	return false
+	return ""
 }
 
 func TestKeyedRefusesNone(t *testing.T) {
 	var hull tabledemo.HullConfig
-	if !refuses(func() { _ = tabledemo.TableKeyed(hull.Turrets[:], 0) }) {
-		t.Error("None keyed a slot — it names no variant and the storage holds nothing for it")
+	if refusal(func() { _ = tabledemo.TableKeyed(hull.Turrets[:], 0) }) == "" {
+		t.Error("None keyed a slot, or was refused by the runtime's bounds check rather than by the key guard — it names no variant and the storage holds nothing for it")
 	}
 }
 
 func TestKeyedRefusesPastMax(t *testing.T) {
 	var hull tabledemo.HullConfig
 	past := len(hull.Turrets) + 1
-	if !refuses(func() { _ = tabledemo.TableKeyed(hull.Turrets[:], past) }) {
-		t.Errorf("key %d keyed a slot in an array of %d — nothing is stored past E.Max", past, len(hull.Turrets))
+	if refusal(func() { _ = tabledemo.TableKeyed(hull.Turrets[:], past) }) == "" {
+		t.Errorf("key %d keyed a slot in an array of %d, or was refused by the runtime's bounds check rather than by the key guard — nothing is stored past E.Max", past, len(hull.Turrets))
 	}
 	// and the boundary itself: E.Max IS a named variant and must be reachable
-	if refuses(func() { _ = tabledemo.TableKeyed(hull.Turrets[:], len(hull.Turrets)) }) {
+	if refused := func() (panicked bool) {
+		defer func() { panicked = recover() != nil }()
+		_ = tabledemo.TableKeyed(hull.Turrets[:], len(hull.Turrets))
+		return false
+	}(); refused {
 		t.Error("E.Max is a named variant and keys the last slot — the guard refused it")
 	}
 }
