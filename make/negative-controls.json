@@ -903,6 +903,10 @@
   ],
   "excluded": [
     {
+      "target": "tables-moo-json-negative-controls",
+      "reason": "the moo text forms' controls (make/moo-text.mk: the walk control, the float tie rule both ways, the I13 tie-break, the JSONTestSuite end-of-text rule, the carrier pad bits) are go tests of internal/codegen/mootable named *NegativeControl: every pull request already runs them in ci-full's unit-codegen row with the moo pin installed, and the target is a prerequisite of test-moo. A manifest group would run them a second time."
+    },
+    {
       "target": "tables-cs-clean-negative-control-run",
       "reason": "the body of tables-cs-clean-negative-control, which calls it only when the pinned dotnet resolves; the cs-packet group already runs the wrapper, so running the body again proves the same planted misindent twice."
     },
@@ -937,6 +941,22 @@
     {
       "target": "schema-shared-hostile-corpus-negative-control",
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+    },
+    {
+      "target": "packet-defaults-moo-negative-control",
+      "reason": "the moo leg's constructor-bytes control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-finite-moo-negative-control",
+      "reason": "the moo leg's finite-float (read and write) control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-utf8-moo-negative-control",
+      "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
+    },
+    {
+      "target": "packet-wide-moo-negative-control",
+      "reason": "the moo leg's wide pairing control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     }
   ]
 }
