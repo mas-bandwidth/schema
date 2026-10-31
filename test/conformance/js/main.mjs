@@ -550,7 +550,7 @@ function surfaceReason(kindName, lines, outDir) {
 // carries the unit's `TableVocabulary` and `AnnounceRead`; the table module
 // carries the root's `LoadMessages`, `MeasureMessages` and `SaveMessages`
 // verbs (docs/SPEC-TABLES.md §3.3). A row whose unit this backend cannot
-// generate, or whose root is a plain `table` the form refuses by name, is
+// generate, or whose root is a variable table, which has no message form, is
 // answered `<case>.absent` beside where the answer would go.
 const messageRows = [
   ["backenddemo", "LoginRequest", "backend/BackenddemoTable.js", "backend/BackendTable.js"],
@@ -560,7 +560,6 @@ const messageRows = [
   ["vocabdemo", "Wide00", "vocab/VocabdemoTable.js", "vocab/VocabTable.js"],
   ["vocab9demo", "Wide19", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
-  ["graphdemo", "Scene", "pointers/GraphdemoTable.js", "pointers/GraphTable.js"],
 ];
 
 function messageRow(unit, root) {
@@ -572,13 +571,12 @@ function messageRow(unit, root) {
 
 // A LEG THAT CANNOT ANSWER ONE CASE SAYS SO BESIDE WHERE THE ANSWER WOULD GO,
 // `<case>.absent`, and the matrix counts it (test/conformance/README.md, "Exit
-// codes"). The JavaScript table backend emits the form-2 verbs for its FIXED
-// roots only, so a message row whose unit cannot be generated for this backend
-// (docs/SPEC-TABLES.md §11) or whose root is a plain `table` the form refuses
-// by name (§3.3) is such a case; the surface itself is answered, so the matrix
-// counts the rows rather than the feature.
+// codes"). The message form is fixed tables only (docs/SPEC-TABLES.md §3.3),
+// so a message row whose unit cannot be generated for this backend (§11) or
+// whose root is a variable table is such a case; the surface itself is
+// answered, so the matrix counts the rows rather than the feature.
 function messageAbsent(outDir, name, reason) {
-  writeFileSync(join(outDir, name + ".absent"), reason + "\n");
+  writeFileSync(join(outDir, name + ".absent"), reason);
 }
 
 async function surfaceMessage(lines, outDir) {
@@ -588,7 +586,7 @@ async function surfaceMessage(lines, outDir) {
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
     const row = messageRow(conn[2], f[3]);
-    if (row === null) { messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3"); continue; }
+    if (row === null) { messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); continue; }
     let runtime, unit;
     try {
       runtime = await load(row[2]);
@@ -601,7 +599,7 @@ async function surfaceMessage(lines, outDir) {
     const measureMessages = unit[f[3] + "MeasureMessages"];
     const saveMessages = unit[f[3] + "SaveMessages"];
     if (loadMessages === undefined || measureMessages === undefined || saveMessages === undefined) {
-      messageAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
+      messageAbsent(outDir, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
       continue;
     }
     // AnnounceRead the connection's announcement into one direction's
@@ -1027,14 +1025,7 @@ async function surfaceRetain(lines, outDir, saves) {
   const capacityBytes = 1 << 20;
   const fullIds = 1 << 17;
   for (const f of lines) {
-    if (f[0] !== "retain" && f[0] !== "retain-message") { continue; }
-    if (f[0] === "retain-message") {
-      // A retain-message row's root is a plain `table` (RT1's Node), which
-      // carries no message verbs: a form-2 SaveRetain refuses by name (§3.3),
-      // so the row is absent here and the reason names the clause.
-      retainAbsent(outDir, f[1], "plain table: docs/SPEC-TABLES.md §3.3");
-      continue;
-    }
+    if (f[0] !== "retain") { continue; }
     // retain <case> <unit> <root> <wire> <capacity> <ids>
     const codec = await retainCodec(f[2], f[3]);
     if (codec === null) {

@@ -31,7 +31,7 @@ func buildUnit(t *testing.T, src string) *ir.Unit {
 // backend refuses variable-class constructs that are not part of the card
 // record's closure, naming the table, field, and construct
 // (docs/SPEC-TABLES.md §2.1, §2.3, §2.4, §2.5, §2.6, §2.8, §11). The card's
-// own constructs — a plain table, bool/int32/int64/enum fields, string(N),
+// own constructs — a variable table, bool/int32/int64/enum fields, string(N),
 // *string and unbounded []T of table elements — are accepted.
 func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	t.Parallel()
@@ -45,7 +45,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		construct string
 	}{
 		{
-			name: "plain table with card constructs",
+			name: "variable table with card constructs",
 			def: `package test
 				enum Tier { flash, pro, heavy, frontier }
 				table PathText { s string(192) }
@@ -194,7 +194,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 // still owes; this test pins the acceptance boundary it must reach.
 // TestCardDeclarationsPinTheVariableFormGap loads the two declarations of the
 // testdata/cards pair (base.schema, new.schema) and proves they parse, check
-// and generate with the constructs the card record uses — a plain table root,
+// and generate with the constructs the card record uses — a variable table root,
 // a table as an unbounded list element, an int32 with min/max, a bool, an enum
 // and a `was` rename on a *string field (docs/SPEC-TABLES.md §2.5, §2.9, §3,
 // §5). The pair is the comparison the variable-form round trip owes; the

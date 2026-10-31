@@ -292,3 +292,59 @@ A model checked here does not prove any reader. The concrete proof is the
 `framing` conformance surface, which runs the hand-built vectors of
 docs/LAYERS/1-framing.md through every leg, and the engine's oracle check
 beside it.
+
+# tla/NodeExtent
+
+A LAYOUT model of the node extent (docs/SPEC-TABLES.md §2.8, §2.9, §7.2,
+§7.6): where a cooked node's maps and lists lay their arrays. It carries the
+arithmetic the writers carry — `internal/tablecook/extent.go`, the C++
+reference's `ExtentAt` and `ExtentPack`, the Rust carve in
+`internal/codegen/rusttable/cookcarve.go` — and an abstract "the entries are
+somewhere in the node" cannot see: the node's base, the record rounded to the
+region's floor of eight, the running offset, each array rounded to its
+element's alignment, `count × size`, and the PRE-ORDER rule (a container's whole
+array first, then each element's own arrays).
+
+One node holds two containers in field order, A then B, and each element of A
+may hold one child container. Every shape is chosen at Init: the node's
+alignment (eight or sixteen, because a holder holds a sixteen-byte slot at
+eight) and base, the record's size, each element's size and alignment (at most
+eight), every count and every child count. A map's entries are a list's
+elements with the generated `{ key, value }` table as the element; the key order
+is not index arithmetic and is not modelled.
+
+## Properties
+
+- **AlignedInRegion** — every array sits at its element's alignment in the region.
+- **NoOverlap** — no two arrays share a byte (lists and maps are one population).
+- **Contained** — every array ends inside the extent the layout reserved.
+- **OutsideRecord** — no array touches the record's own storage.
+- **PreOrder** — a container's whole array comes before its elements' arrays.
+- **SlotResolves** — each child slot lives inside its parent's array.
+
+## Reversed witnesses
+
+| cfg | switch | invariant violated | the bug it is |
+|---|---|---|---|
+| `MCNodeExtentSkipAlign.cfg` | `SkipAlign` | `AlignedInRegion` | an array laid at the running offset unaligned (the Rust carve's control `test/rust-cookmap/control align`, and the tool's `tables-lists-tool-cook-negative-control`) |
+| `MCNodeExtentChildrenFirst.cfg` | `ChildrenFirst` | `NoOverlap` | an element's child array laid before the parent's whole array is reserved |
+| `MCNodeExtentExtentOverRecord.cfg` | `ExtentOverRecord` | `OutsideRecord` | the extent begun at the node's base instead of after the record |
+
+## Running
+
+From this directory, with `/opt/tla/tla2tools.jar`:
+
+```
+nice -n 19 timeout 300s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCNodeExtent.cfg -metadir "$JOB/tlc-MCNodeExtent" MCNodeExtent
+```
+
+Repeat for each of the four cfgs. The runs are recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+An element aligned sixteen (a 128-bit list element) inside a node aligned eight
+sits at eight modulo sixteen whenever the node does: the layout aligns a node
+to its record and an array to its element relative to the extent, so nothing
+puts such an array on a sixteen-byte boundary. The model holds element
+alignments at eight or less and names this rather than ruling on it.

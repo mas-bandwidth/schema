@@ -78,7 +78,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"TableRefuseLayoutSizeMismatch", "TableRefuseLayoutTooDeep", "TableRefuseLayoutTreeUnclosed",
 		"TableRefuseLayoutUnknown", "TableRefuseLayoutUnsupported", "TableRefuseLengthOverBound",
 		"TableRefuseMessageFormAsFile", "TableRefuseNewerForm", "TableRefuseNoLayout", "TableRefuseNonFiniteFloat",
-		"TableRefuseNotFixed", "TableRefusePlanTooLarge", "TableRefusePreviousForm", "TableRefuseReservedNotZero",
+		"TableRefusePlanTooLarge", "TableRefusePreviousForm", "TableRefuseReservedNotZero",
 		"TableRefuseTextIllFormed", "TableRefuseTruncated", "TableRefuseUnknownForm", "TableReport",
 		"fixed_arg_width", "fixed_build_plan", "fixed_chain_holds", "fixed_chains_equal", "fixed_check_entry",
 		"fixed_check_fail", "fixed_clone_entry", "fixed_compile", "fixed_compile_entry", "fixed_copy_run",

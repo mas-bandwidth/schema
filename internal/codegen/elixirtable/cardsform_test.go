@@ -18,7 +18,7 @@ func cardUnit(fields ...*ir.Field) *ir.Unit {
 }
 
 // TestCardConstructsAreNotRefused pins docs/SPEC-TABLES.md §2.5, §2.9: the
-// card record's slice — a plain `table` root, tables as list elements, bool,
+// card record's slice — a variable table root, tables as list elements, bool,
 // int32, int64 and enum fields, string(N), *string and []T — is accepted by
 // the backend's boundary.
 func TestCardConstructsAreNotRefused(t *testing.T) {

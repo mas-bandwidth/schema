@@ -41,7 +41,7 @@ func messageRows(t *testing.T) []messageRow {
 		if len(x) >= 5 && x[0] == "connection" {
 			conns[x[1]] = conn{x[2], x[4]}
 		}
-		if len(x) >= 6 && x[0] == "message" {
+		if len(x) >= 6 && x[0] == "message" && x[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 			lines = append(lines, x)
 		}
 	}
@@ -267,7 +267,7 @@ func compareMessageRows(t *testing.T, patch func(dir string)) (map[string]bool, 
 // every manifest message row (docs/SPEC-TABLES.md §3.3): the announcement's
 // report, the batch read's report, count and verdict, every decoded body, and
 // the saved batch, which must also be the row's message golden byte for byte.
-// A root that is a plain table is absent on both sides (§3.3).
+// A root that is a variable table is absent on both sides (§3.3).
 func TestLobsterMessageForm(t *testing.T) {
 	t.Parallel()
 	bad, _, total := compareMessageRows(t, nil)
