@@ -11,9 +11,8 @@ import (
 // union (docs/SPEC-TABLES.md §2.6): { tag = <arm index>, <slot> = <payload> }.
 // An arm named `tag` must not store its payload over the discriminator, so its
 // slot is the name with underscores appended until it names no arm; every other
-// arm's slot is its name. The wire pin is the conformance instance
-// stream_arm_tag (tables/stream Frame.tag), which the Lua leg answers on wire,
-// json-read, json-write and cook-write.
+// arm's slot is its name. The shared wire pin, the conformance instance
+// stream_arm_tag (tables/stream Frame.tag), is proposed in #2358.
 func TestLuaArmSlotKeepsTheDiscriminator(t *testing.T) {
 	un := func(names ...string) *ir.Union {
 		u := &ir.Union{Name: "U"}
