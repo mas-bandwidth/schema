@@ -43,6 +43,7 @@ var strictGateDirs = []string{
 	"tables/scalars",
 	"tables/maps",
 	"tables/lists",
+	"tables/widelist",
 	"tables/arms",
 	"tables/backend",
 	"tables/vocab",
