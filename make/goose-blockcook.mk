@@ -84,3 +84,56 @@ tables-goose-order-negative-control: build/conformance-harness build/conformance
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control-accel block-order
 	sh test/conformance/goose/negative-control-accel cook-order-word
+
+# THE DOCUMENTED SURFACE (docs/PORTING.md I12): docs/USAGE.md's Goose fragment
+# (between the goose-table-usage markers) wrapped in a main that reads the
+# cook, compiled and run by the pinned compiler beside the tables/pointers unit
+# over a Scene cook test/cookgen writes and `schema cook-check` accepts. The
+# walk must read at least one node, so a fragment that opens and walks nothing
+# is red too.
+USAGE_GOOSE_DIR ?= build/goose-usage
+.PHONY: tables-goose-usage tables-goose-usage-negative-control
+tables-goose-usage: bin/schema $(USAGE_DOC) $(SCHEMAS_TABLES_POINTERS)
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@rm -rf $(USAGE_GOOSE_DIR) && mkdir -p $(USAGE_GOOSE_DIR)
+	go build -tags schema_leg_goose -o $(USAGE_GOOSE_DIR)/schema ./cmd/schema
+	$(USAGE_GOOSE_DIR)/schema generate --lang goose --out $(USAGE_GOOSE_DIR)/unit tables/pointers
+	go run ./test/cookgen --bytes 4096 --root Scene --ref head --chain ListNode --next next --out $(USAGE_GOOSE_DIR)/Scene.cook
+	./bin/schema cook-check --root Scene $(USAGE_GOOSE_DIR)/Scene.cook tables/pointers
+	@{ printf '%s\n' 'import os;'; \
+	   for f in $(USAGE_GOOSE_DIR)/unit/*.goose; do echo "import .$$(basename $$f .goose);"; done; \
+	   printf '%s\n' 'fn main() {'; \
+	   printf '%s\n' '    let argv = args();'; \
+	   printf '%s\n' '    var bytes: u8[>..] = [];'; \
+	   printf '%s\n' '    if argv.len < 2 || !read_file(argv[1], bytes) { write_stderr("usage: usage.goose <Scene.cook>\n"); exit(1); }'; \
+	   sed -n '/<!-- goose-table-usage -->/,/<!-- \/goose-table-usage -->/p' $(USAGE_DOC) | sed '1,2d' | sed '$$d' | sed '$$d' | sed 's/^/    /'; \
+	   printf '%s\n' '    if walked == 0 { write_stderr("the cook walk read no node\n"); exit(1); }'; \
+	   printf '%s\n' '    write_stdout(str("usage: docs/USAGE.md Goose cook example opened the Scene cook and walked ", walked, " node(s), values summing to ", total, "\n"));'; \
+	   printf '%s\n' '}'; } > $(USAGE_GOOSE_DIR)/usage.goose
+	@mv $(USAGE_GOOSE_DIR)/usage.goose $(USAGE_GOOSE_DIR)/unit/usage.goose
+	@grep -q 'SceneCookOpenReason' $(USAGE_GOOSE_DIR)/unit/usage.goose || \
+		{ echo "MISSING: $(USAGE_DOC) carries no goose-table-usage example"; exit 1; }
+	"$(GOOSE)" run $(USAGE_GOOSE_DIR)/unit/usage.goose -- $(USAGE_GOOSE_DIR)/Scene.cook
+
+# THE REVERSED WITNESSES: two edited copies of the page must each turn the gate
+# red: the first renames the accessor the page calls (the surface moved: the
+# compile fails), the second walks a field the Scene's chain does not start at
+# (the example runs but reads no node).
+tables-goose-usage-negative-control:
+	@rm -rf build/goose-usage-negative && mkdir -p build/goose-usage-negative
+	sed 's/graphdemo::ListNodeRowValue(/graphdemo::ListNodeRowValu(/' docs/USAGE.md > build/goose-usage-negative/renamed.md
+	sed 's/var node = graphdemo::SceneRowHead(region, 0);/var node = graphdemo::SceneRowAlias(region, 0);/' docs/USAGE.md > build/goose-usage-negative/walks-nothing.md
+	printf 'ListNodeRowValu\n' > build/goose-usage-negative/renamed.want
+	printf 'the cook walk read no node\n' > build/goose-usage-negative/walks-nothing.want
+	@for c in renamed walks-nothing; do \
+		if cmp -s docs/USAGE.md build/goose-usage-negative/$$c.md; then \
+			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \
+		if $(MAKE) tables-goose-usage USAGE_DOC=build/goose-usage-negative/$$c.md USAGE_GOOSE_DIR=build/goose-usage-negative/$$c > build/goose-usage-negative/$$c.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Goose usage gate"; exit 1; fi; \
+		grep -q "$$(cat build/goose-usage-negative/$$c.want)" build/goose-usage-negative/$$c.log || { \
+			cat build/goose-usage-negative/$$c.log; \
+			echo "NEGATIVE CONTROL FAILED: the $$c copy failed the gate, but not on $$(cat build/goose-usage-negative/$$c.want)"; exit 1; }; \
+		echo "tables-goose-usage negative control: the $$c copy fails the gate on $$(cat build/goose-usage-negative/$$c.want)"; \
+	done
+
+test-goose: tables-goose-usage

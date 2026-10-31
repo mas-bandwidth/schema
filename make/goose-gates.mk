@@ -202,7 +202,8 @@ tables-goose-release:
 		tables-goose-strict-emitter-negative-control tables-goose-runtime-home-negative-control \
 		tables-goose-unit-home-negative-control
 	$(MAKE) conformance-negative-control-goose tables-goose-accel-negative-control \
-		tables-goose-order-negative-control tables-goose-fuzz-negative-control
+		tables-goose-order-negative-control tables-goose-fuzz-negative-control \
+		tables-goose-usage-negative-control
 
 # test-goose carries both gates (make/goose.mk); their controls run in the
 # goose-gates group of make/negative-controls.json.

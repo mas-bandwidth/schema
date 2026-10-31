@@ -1056,10 +1056,11 @@
     {
       "name": "goose-conformance",
       "when": "pull-request",
-      "why": "the Goose leg's own conformance controls (test/conformance/goose/negative-control): each copies build/conformance-goose, breaks one runtime clause (the load's unknown-field count) and runs the harness over wire, report, retain and retain-save against the copy (report and retain red, wire and retain-save green; 60 s on amd-2), and the accelerators' order-word control (two harness runs over the accelerator surfaces, each Open's byte-order clause taken out of a copy: forgery or cook-forgery red, the foreign surfaces green), so the group needs Go, the host C++ compiler for the reference leg, the ../serialize sibling and the pinned Goose compiler (make dist-goose), and nothing else.",
+      "why": "the Goose leg's own conformance controls (test/conformance/goose/negative-control): each copies build/conformance-goose, breaks one runtime clause (the load's unknown-field count) and runs the harness over wire, report, retain and retain-save against the copy (report and retain red, wire and retain-save green; 60 s on amd-2), and the accelerators' order-word control (two harness runs over the accelerator surfaces, each Open's byte-order clause taken out of a copy: forgery or cook-forgery red, the foreign surfaces green), and the usage page's two reversed witnesses (docs/USAGE.md's Goose fragment renamed and walking nothing, each a goose run of a small program), so the group needs Go, the host C++ compiler for the reference leg, the ../serialize sibling and the pinned Goose compiler (make dist-goose), and nothing else.",
       "targets": [
         "conformance-negative-control-goose",
-        "tables-goose-order-negative-control"
+        "tables-goose-order-negative-control",
+        "tables-goose-usage-negative-control"
       ]
     },
     {
