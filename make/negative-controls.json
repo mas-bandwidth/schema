@@ -702,7 +702,15 @@
         "tables-rust-wire-fuzz-negative-control",
         "tables-rust-finite-float-negative-control",
         "tables-rust-keyed-negative-control",
-        "tables-rust-map-sort-negative-control"
+        "tables-rust-map-sort-negative-control",
+        "tables-rust-cook-layout-negative-control",
+        "tables-rust-byte-order-negative-control",
+        "tables-rust-order-word-negative-control",
+        "tables-rust-node-label-negative-control",
+        "tables-rust-usage-negative-control",
+        "tables-rust-release-negative-control",
+        "tables-rust-clippy-negative-control",
+        "conformance-rust-absent-negative-control"
       ],
       "rust": "stable"
     },
