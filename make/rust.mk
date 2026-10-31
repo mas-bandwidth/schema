@@ -1633,34 +1633,49 @@ test-rust: tables-rust-cook-map tables-rust-cook-map-negative-control
 
 # THE FRAMING SURFACE, its Rust leg (docs/LAYERS/1-framing.md): the Rust
 # driver answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control rebuilds the driver
-# over copies of two crates with one rule out of each: tblr1 without the id
-# table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6), graphdemo without the
-# refusal of a pointer naming an OPEN node (§3.1; T8). The framing surface must
-# go RED on frame_entries_4097 and on both cycle rows.
+# (test/conformance/framing/gate). The diamond-chain row (2^40 paths over 82
+# shared nodes) passing is the linear-time check: a walk that re-entered a
+# closed node would not finish. Its negative control rebuilds the driver over
+# copies of two crates, twice. First, one rule out of each: tblr1 without the
+# id table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6), graphdemo without
+# the cycle refusal (§3.1, §4; T8); framing must go RED on frame_entries_4097
+# and the three cycle rows. Second, graphdemo taking a CLOSED (built) node for
+# an open one, so a share reads as a cycle: framing must go RED on
+# node_diamond_chain.
 RUST_FRAMING_CONTROL := build/rust-framing-control
 .PHONY: conformance-rust-framing conformance-negative-control-rust-framing
 conformance-rust-framing: build/conformance-harness build/conformance-rust
 	sh test/conformance/framing/gate rust test/conformance/rust/driver build/conformance-rust-framing
-conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
-	@rm -rf $(RUST_FRAMING_CONTROL) && mkdir -p $(RUST_FRAMING_CONTROL)/driver
-	@cp -R build/tables-generated-rust/tblr1 $(RUST_FRAMING_CONTROL)/tblr1
-	@cp -R build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/graphdemo
-	@grep -rl 'if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }' $(RUST_FRAMING_CONTROL)/tblr1 | \
-		xargs sed -i.orig 's|if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }|if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; } // SABOTAGED|'
-	@grep -rl 'if reachable_cycle { report.malformed = true; return None; }' $(RUST_FRAMING_CONTROL)/graphdemo | \
-		xargs sed -i.orig 's|if reachable_cycle { report.malformed = true; return None; }|if false \&\& reachable_cycle { report.malformed = true; return None; } // SABOTAGED|'
-	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)/tblr1 || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
-	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)/graphdemo || { echo "NEGATIVE CONTROL: the cycle sabotage did not apply"; exit 1; }
-	@find $(RUST_FRAMING_CONTROL) -name '*.orig' -delete
-	@cp -R test/conformance/rust/src $(RUST_FRAMING_CONTROL)/driver/src
+# $(call RUST_FRAMING_SABOTAGE,dir,crate,from,to)
+define RUST_FRAMING_SABOTAGE
+	@grep -rl '$(3)' $(1)/$(2) | xargs sed -i.orig 's|$(3)|$(4) /* SABOTAGED */|'
+	@grep -rq SABOTAGED $(1)/$(2) || { echo "NEGATIVE CONTROL: the $(2) sabotage did not apply"; exit 1; }
+	@find $(1)/$(2) -name '*.orig' -delete
+endef
+# $(call RUST_FRAMING_DRIVER,dir): the driver over the two copied crates
+define RUST_FRAMING_DRIVER
+	@mkdir -p $(1)/driver && cp -R test/conformance/rust/src $(1)/driver/src
 	@sed -e 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
 		-e 's|^graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }|graphdemo = { path = "../graphdemo" }|' \
-		test/conformance/rust/Cargo.toml > $(RUST_FRAMING_CONTROL)/driver/Cargo.toml
-	@[ "$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(RUST_FRAMING_CONTROL)/driver/Cargo.toml)" = 2 ] || \
+		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
+	@[ "$$$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(1)/driver/Cargo.toml)" = 2 ] || \
 		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
-	cd $(RUST_FRAMING_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
-		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_FRAMING_CONTROL)/target cargo build --quiet
-	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/target/debug/conformance-rust \
-		$(RUST_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+endef
+conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
+	@rm -rf $(RUST_FRAMING_CONTROL) && mkdir -p $(RUST_FRAMING_CONTROL)/rules $(RUST_FRAMING_CONTROL)/share
+	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/rules/
+	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/share/
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL)/rules,tblr1,if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; },if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; })
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL)/rules,graphdemo,if report.cycle_on_save { report.malformed = true; return None; },if false \&\& report.cycle_on_save { report.malformed = true; return None; })
+	@grep -rl 'TableNodeSlot::Built(_, n) => return Some(n.clone()),' $(RUST_FRAMING_CONTROL)/share/graphdemo | \
+		xargs sed -i.orig 's|TableNodeSlot::Built(_, n) => return Some(n.clone()),|TableNodeSlot::Built(_, _) => { report.cycle_on_save = true; return None; } /* SABOTAGED */|'
+	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)/share/graphdemo || { echo "NEGATIVE CONTROL: the share sabotage did not apply"; exit 1; }
+	@find $(RUST_FRAMING_CONTROL)/share -name '*.orig' -delete
+	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL)/rules)
+	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL)/share)
+	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/rules/target/debug/conformance-rust \
+		$(RUST_FRAMING_CONTROL)/rules/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
+	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/share/target/debug/conformance-rust \
+		$(RUST_FRAMING_CONTROL)/share/run node_diamond_chain
 test-rust: conformance-rust-framing conformance-negative-control-rust-framing

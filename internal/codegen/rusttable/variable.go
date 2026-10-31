@@ -375,6 +375,9 @@ pub struct TableNodeReader {
     /// which blob records a slot has already named (§2.5): each later naming
     /// of the same record counts blob_shared on the tolerant read
     pub blob_named: Vec<bool>,
+    /// the ROOT's descent is open while its body decodes and closed after:
+    /// a slot naming the root while it is open is a cycle (§3.1)
+    pub root_open: bool,
 }
 
 impl TableNodeReader {
@@ -389,7 +392,7 @@ impl TableNodeReader {
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };
+        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true };
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
@@ -476,8 +479,9 @@ impl TableNodeReader {
     /// malformed, a record of another type (or a blob) is a kind mismatch, and
     /// an index of 1 names the ROOT, which a node slot whose target is not the
     /// reader's own root table takes as a kind mismatch. A slot of the root's
-    /// own table naming it is a cycle no writer produces (§3.1): it reads null
-    /// and marks the cycle, which refuses the whole load.
+    /// own table naming it while the root's descent is open is a cycle no
+    /// writer produces (§3.1): it reads null and marks the cycle, which
+    /// refuses the whole load. Once the root is closed it reads null.
     pub fn node_slot(&self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
         if !self.good || index == 0 {
             return None;
@@ -485,7 +489,7 @@ impl TableNodeReader {
         if index == 1 {
             // the ROOT is open for the whole read: a slot of the root's own
             // table naming it is a cycle no writer produces (§3.1), damage
-            if want != self.root_type { report.kind_mismatch += 1; } else { report.cycle_on_save = true; }
+            if want != self.root_type { report.kind_mismatch += 1; } else if self.root_open { report.cycle_on_save = true; }
             return None;
         }
         let k = (index - 2) as usize;
