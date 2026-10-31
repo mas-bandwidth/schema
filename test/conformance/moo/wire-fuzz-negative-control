@@ -54,16 +54,33 @@ if SCHEMA_MOO_GENERATED="$out/conformance-moo" MOOFUZZ_STAGE="$out/stage" \
 	echo "NEGATIVE CONTROL FAILED: a load that does not count a string frame past its body left the wire fuzz green" >&2
 	exit 1
 fi
-# EXACTLY the plant's row: a report divergence, and the two tuples (unknown,
-# kind_mismatch, widened, clamped, duplicate, malformed, verdict) equal in
-# every field but the sixth, which is false on the leg and true in the oracle.
-line=$(grep '^harness: FAILED after [0-9]* mutants: the report differs: ' "$out/log" || true)
-leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\), the oracle says .*/\1/p')
-oracle=$(printf '%s\n' "$line" | sed -n 's/.*the oracle says \([^ ]*\)$/\1/p')
-if [ -z "$leg" ] || [ -z "$oracle" ] \
-	|| [ "$(printf '%s' "$leg" | cut -d, -f6)" != false ] \
-	|| [ "$(printf '%s' "$oracle" | cut -d, -f6)" != true ] \
-	|| [ "$(printf '%s' "$leg" | cut -d, -f1-5,7-)" != "$(printf '%s' "$oracle" | cut -d, -f1-5,7-)" ]; then
+# EXACTLY the plant's row. The oracle reads the mutant as damaged and the leg
+# does not: under the discard rule (docs/SPEC-TABLES.md §4, damage discards the
+# whole load) the harness names the leg's report beside the oracle's malformed
+# verdict; a harness that still compares the whole report names both tuples
+# (unknown, kind_mismatch, widened, clamped, duplicate, malformed, verdict),
+# which must be equal in every field but the sixth. Either way the leg's sixth
+# field is false.
+line=$(grep '^harness: FAILED after [0-9]* mutants: ' "$out/log" || true)
+case "$line" in
+*"the oracle discards a damaged load (malformed); the leg says "*)
+	leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\)$/\1/p')
+	ok=$([ -n "$leg" ] && [ "$(printf '%s' "$leg" | cut -d, -f6)" = false ] && echo yes || echo no)
+	;;
+*"the report differs: "*)
+	leg=$(printf '%s\n' "$line" | sed -n 's/.*the leg says \([^ ]*\), the oracle says .*/\1/p')
+	oracle=$(printf '%s\n' "$line" | sed -n 's/.*the oracle says \([^ ]*\)$/\1/p')
+	ok=no
+	if [ -n "$leg" ] && [ -n "$oracle" ] \
+		&& [ "$(printf '%s' "$leg" | cut -d, -f6)" = false ] \
+		&& [ "$(printf '%s' "$oracle" | cut -d, -f6)" = true ] \
+		&& [ "$(printf '%s' "$leg" | cut -d, -f1-5,7-)" = "$(printf '%s' "$oracle" | cut -d, -f1-5,7-)" ]; then
+		ok=yes
+	fi
+	;;
+*) ok=no ;;
+esac
+if [ "$ok" != yes ]; then
 	cat "$out/log"
 	echo "NEGATIVE CONTROL FAILED: the wire fuzz went red, but not on the malformed count the plant removed" >&2
 	exit 1
