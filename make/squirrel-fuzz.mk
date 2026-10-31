@@ -18,3 +18,11 @@
 tables-squirrel-wire-fuzz: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel.bin
 	./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" --builder --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel-builder.bin
+
+.PHONY: tables-squirrel-release-negative-control
+# THE RELEASE TIER'S CONTROL (test/conformance/squirrel/release-negative-control):
+# the load overlaid so a stopped builder reports finished, the corpus
+# regenerated, and the release tier's builder-arm fuzz run against it at seed 1
+# and the PR count must go red on the builder's completion.
+tables-squirrel-release-negative-control: build/conformance-harness toolchain-squirrel
+	SQ="$(SQ)" sh test/conformance/squirrel/release-negative-control --seed 1 --n 2000

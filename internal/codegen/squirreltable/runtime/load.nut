@@ -449,7 +449,7 @@ local blobOfRange = function(b, at, len) {
 local ARRAY_SELECTED = 0, ARRAY_DAMAGED = 1, ARRAY_FOREIGN = 2;
 
 // mutual recursion: every load walk names one of these
-local bodyRead, readField, readFieldArray, readArrayBody, readElement, readKeyedElem, readUnionInto, readArmPayload, readMapField;
+local bodyRead, readField, readFieldArray, readArrayBody, readArrayElems, readElement, readKeyedElem, readUnionInto, readArmPayload, readMapField;
 
 // THE NODE TABLE (docs/SPEC-TABLES.md §3.1): the root body's reserved field,
 // scanned before any value decode. The numbering is positional and whole or
@@ -522,6 +522,7 @@ local guardHolds = function(fd, v) {
 // holds, refuses the record: report.malformed and the field, whole at any
 // depth (docs/SPEC-TABLES.md §2.3).
 bodyRead = function(c, r, T, table, v, report, st, nested) {
+  if (report.countRefusal) return false;
   local carried = {};
   for (;;) {
     local ref = leb(r);
@@ -592,6 +593,10 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       continue;
     }
     if (!readField(fd, r, T, table, v, report, st, nested)) return false;
+    // A COLLECTION COUNT PAST THE INT32 STORAGE CAP STOPS THE READ (docs/SPEC-TABLES.md
+    // §2.9, §6.1; the engine's CountRefusal): the caller discards the partial
+    // value, and no event after the cap is read
+    if (report.countRefusal) return false;
   }
 };
 
@@ -699,6 +704,7 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     local inst = tableDesc(T, fd.table).make();
     v[fd.member] = inst;
     bodyRead(tableDesc(T, fd.table), sub, T, table, inst, report, st, true);
+    if (report.countRefusal) return false;
     if (sub.at != sub.end) {
       report.malformed = true;
       v[fd.member] = tableDesc(T, fd.table).make();
@@ -708,12 +714,17 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     return true;
   }
   if (shape == "union") {
+    // A UNION FIELD IS REPLACED ONCE ITS ARM HEADER READS (the engine's
+    // unionCell): a repeat whose arm reference names no entry, or whose kind
+    // or L cannot be read, is framing damage that stops this body and leaves
+    // the earlier occurrence standing (docs/SPEC-TABLES.md §4). Only an
+    // ELEMENT of an array of unions resets at its arm id.
     local u = unionDesc(T, fd.table);
     local inst = u.make();
+    if (!readUnionInto(r, T, table, u, inst, report, st)) return false;
     v[fd.member] = inst;
-    local ok = readUnionInto(r, T, table, u, inst, report, st);
     if (fd.optional) v[fd.member + "Present"] = true;
-    return ok;
+    return true;
   }
   if (shape == "bytes" || shape == "arr") {
     return readFieldArray(fd, r, T, table, v, report, st);
@@ -808,26 +819,30 @@ readMapField = function(fd, r, T, table, v, report, st) {
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   local end = r.at + L;
-  local sub = newReader(r.b, r.at, end);
   local empty = [];
   if (L < 2) {
-    // a body shorter than its own header is inert (docs/SPEC-TABLES.md §3)
-    v[fd.member] = empty;
+    // a body shorter than its own header is inert (docs/SPEC-TABLES.md §3):
+    // the field keeps the value it has, and a repeat replaces nothing
     r.at = end;
     return true;
   }
-  local elemKind = u8(sub);
-  local count = leb(sub);
-  if (sub.bad) {
+  // THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is (the
+  // engine's mapField and subTo; docs/SPEC-TABLES.md §2.8, §3): a count that
+  // runs past the map's L still reads, the element kind is judged, and the
+  // entries walk an empty body
+  local elemKind = u8(r);
+  local count = leb(r);
+  if (r.bad) {
+    r.bad = false;
     report.malformed = true;
-    v[fd.member] = empty;
     r.at = end;
     return true;
   }
+  local sub = newReader(r.b, r.at, end < r.at ? r.at : end);
   if (elemKind != 13) {
-    // a foreign ELEMENT kind is the ordinary array kind mismatch (§2.8, §4)
+    // a foreign ELEMENT kind is the ordinary array kind mismatch (§2.8, §4);
+    // a skipped repeat keeps the earlier occurrence
     report.kindMismatch = report.kindMismatch + 1;
-    v[fd.member] = empty;
     r.at = end;
     return true;
   }
@@ -836,7 +851,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
     report.countRefusal = true;
     v[fd.member] = empty;
     r.at = end;
-    return true;
+    return false;
   }
   local ed = tableDesc(T, fd.entry);
   local arr = [];
@@ -876,6 +891,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
     // report is a delegate witness whose slots live behind _get and _set.
     local before = mapEntryCounters(report);
     if (!readMapEntry(ed, es, T, table, ent, report, st)) {
+      if (report.countRefusal) return false;
       report.malformed = true;
       break;
     }
@@ -903,12 +919,33 @@ readMapField = function(fd, r, T, table, v, report, st) {
   return true;
 };
 
+// AN ARRAY FIELD'S HEADER IS READ AGAINST THE PARENT, and only its elements
+// are bounded by its L (docs/SPEC-TABLES.md §2.8, §3; the engine's arrayBody
+// and subTo). A canonical count can be up to ten bytes, so a count spelled
+// wide enough runs past L and still reads: a positional count clamps at the
+// bound, a keyed body's element kind is judged, and the elements walk an
+// empty body. The same holds for every array shape, positional, unbounded
+// and keyed.
 readFieldArray = function(fd, r, T, table, v, report, st) {
   local L = leb(r);
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
-  local sub = newReader(r.b, r.at, r.at + L);
-  local sel = readArrayBody(fd, sub, T, table, v, report, st);
-  r.at += L;
+  local end = r.at + L;
+  local sel = ARRAY_SELECTED;
+  if (L >= 2) {
+    local ek = u8(r);
+    local count = leb(r);
+    if (r.bad) {
+      // a damaged count is framing damage inside the field's own L: counted,
+      // and the walk goes on past it
+      r.bad = false;
+      report.malformed = true;
+      sel = ARRAY_DAMAGED;
+    } else {
+      local sub = newReader(r.b, r.at, end < r.at ? r.at : end);
+      sel = readArrayElems(fd, sub, ek, count, T, table, v, report, st);
+    }
+  }
+  r.at = end;
   if (fd.optional && sel != ARRAY_FOREIGN) v[fd.member + "Present"] = true;
   return true;
 };
@@ -916,12 +953,19 @@ readFieldArray = function(fd, r, T, table, v, report, st) {
 // AN ARRAY BODY (docs/SPEC-TABLES.md §2.9, §3): a body shorter than its own
 // header is inert; a damaged count is malformed and keeps the field; an
 // element kind that is not this array's (and does not widen) is a kind
-// mismatch and keeps the field; a bounded array's excess is clamped.
+// mismatch and keeps the field; a bounded array's excess is clamped. An ARM's
+// array is framed by the arm's L, so its header is read inside it.
 readArrayBody = function(fd, r, T, table, v, report, st) {
   if (r.end - r.at < 2) return ARRAY_SELECTED;
   local ek = u8(r);
   local count = leb(r);
   if (r.bad) { report.malformed = true; return ARRAY_DAMAGED; }
+  return readArrayElems(fd, r, ek, count, T, table, v, report, st);
+};
+
+// THE ELEMENTS of an array whose header (element kind, count) is read, out of
+// a reader bounded by the array's own body.
+readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
   local want = fd.shape == "bytes" ? 6 : fd.elem.kind;
   if (ek != want) {
     if (!widens(ek, want)) {
@@ -997,6 +1041,7 @@ readArrayBody = function(fd, r, T, table, v, report, st) {
       }
       local sr = newReader(r.b, r.at, r.at + elen);
       local res = readKeyedElem(fd, fd.elem, sr, ek, T, table, out, slot, report, st);
+      if (report.countRefusal) break;
       if (res[1]) out[slot] = res[0];
       r.at += elen;
     }
@@ -1069,6 +1114,7 @@ readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
     local d = tableDesc(T, e.table);
     local inst = d.make();
     bodyRead(d, sr, T, table, inst, report, st, true);
+    if (report.countRefusal) return [null, false];
     if (sr.at != sr.end) { report.malformed = true; inst = d.make(); }
     return [inst, true];
   }
@@ -1117,6 +1163,7 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     local d = tableDesc(T, e.table);
     local inst = d.make();
     bodyRead(d, sub, T, table, inst, report, st, true);
+    if (report.countRefusal) return false;
     if (sub.at != sub.end) { report.malformed = true; inst = d.make(); }
     r.at += L;
     out.append(inst);
@@ -1272,6 +1319,7 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     local child = d.make();
     inst[p.member] = child;
     bodyRead(d, sub, T, table, child, report, st, true);
+    if (report.countRefusal) return false;
     if (sub.at != sub.end) {
       report.malformed = true;
       inst.Type = 0;
@@ -1445,6 +1493,7 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     foreach (n in st.nodes) {
       if (n == null || n.kind != "t") continue;
       bodyRead(n.d, newReader(n.b, n.at, n.end), T, table, n.v, report, st, true);
+      if (report.countRefusal) break;
     }
   }
   local finished = bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);

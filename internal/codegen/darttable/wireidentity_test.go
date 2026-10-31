@@ -19,13 +19,11 @@ import (
 // the conformance wire surface (graph_shared, list_shared) and
 // TestVariableClassBeyondCardConstructsDart.
 //
-// The reversed witness takes the OPEN-entry test out of the generated
-// runtime, so a cycle numbers as an ordinary shared node, and requires the
-// probe red on the cycle alone.
+// Its reversed witness is TestWireIdentityMapDartNegativeControl.
 func TestWireIdentityMapDart(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart")
-	u := buildUnit(t, "package ring\n\ntable Node\n{\n    name string(8)\n    next *Node\n    other *Node\n}\n")
+	u := buildUnit(t, identityProbeSchema)
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +32,21 @@ func TestWireIdentityMapDart(t *testing.T) {
 	if out, err := runIdentityProbe(t, dart, files, packetFiles(t, u), nil); err != nil {
 		t.Fatalf("the identity map probe failed: %v\n%s", err, out)
 	}
+}
+
+// TestWireIdentityMapDartNegativeControl is the gate's negative control
+// (tables-dart-identity-negative-control): the reversed witness takes the
+// OPEN-entry test out of the generated runtime, so a cycle numbers as an
+// ordinary shared node, and requires the same probe red on the cycle alone.
+func TestWireIdentityMapDartNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "dart")
+	u := buildUnit(t, identityProbeSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dart := dartBinary(t)
 	const open = "    if (open.contains(obj)) {\n"
 	blind := func(f map[string][]byte) {
 		for name, src := range f {
@@ -50,6 +63,8 @@ func TestWireIdentityMapDart(t *testing.T) {
 		t.Errorf("the reversed witness must fail on the cycle alone:\n%s", out)
 	}
 }
+
+const identityProbeSchema = "package ring\n\ntable Node\n{\n    name string(8)\n    next *Node\n    other *Node\n}\n"
 
 func runIdentityProbe(t *testing.T, dart string, files, packet map[string][]byte, edit func(map[string][]byte)) ([]byte, error) {
 	t.Helper()

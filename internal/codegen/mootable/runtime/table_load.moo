@@ -513,10 +513,14 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 	local endpos = r.at + n
 	local landed: { any } = {}
 	if n >= 2 then
-		local sub = new_reader(r.b, r.at, endpos)
-		local ek = r_u8(sub)
-		local count = r_leb(sub)
-		if sub.bad then
+		-- THE HEADER IS READ AS AN ARRAY'S IS (array_body): its count is one
+		-- LEB128 bounded by the enclosing body, not by this field's L, as the
+		-- reference's and the engine's map readers read it
+		local head = new_reader(r.b, r.at, r.e)
+		local ek = r_u8(head)
+		local count = r_leb(head)
+		local sub = new_reader(r.b, if head.at > endpos then endpos else head.at, endpos)
+		if head.bad then
 			report.malformed = true
 			r.at = endpos
 			return true
@@ -691,10 +695,13 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 		dst = v[fd.slot]
 	end
 	if n >= 2 then
-		local sub = new_reader(r.b, r.at, endpos)
-		local ek = r_u8(sub)
-		local count = r_leb(sub)
-		if sub.bad then
+		-- the header's count is bounded by the enclosing body, as an
+		-- array's is (array_body) and as the reference's keyed reader reads it
+		local head = new_reader(r.b, r.at, r.e)
+		local ek = r_u8(head)
+		local count = r_leb(head)
+		local sub = new_reader(r.b, if head.at > endpos then endpos else head.at, endpos)
+		if head.bad then
 			report.malformed = true
 			r.at = endpos
 			return true

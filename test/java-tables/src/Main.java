@@ -400,6 +400,19 @@ public final class Main {
         if (graphdemo.SceneCook.open(be, 0, be.length) != null) {
             fail("a cook of the OTHER byte order opened — the magic and the order word both had to refuse it");
         }
+        // THE HALF NO HARNESS SURFACE FORGES (docs/PORTING.md I7): this reader's
+        // own cook with its magic intact and the ORDER WORD (offset 16) as the
+        // other order writes 1, so only the order-word check stands between it
+        // and an open.
+        describe("a cook whose magic is intact and whose order word says the other order");
+        byte[] forged = le.clone();
+        for (int i = 16; i < 24; i++) {
+            forged[i] = 0;
+        }
+        forged[23] = 1;
+        if (graphdemo.SceneCook.open(forged, 0, forged.length) != null) {
+            fail("a cook with an intact magic and the OTHER order word opened — the order word was not checked");
+        }
         System.out.println("OK");
         return 0;
     }

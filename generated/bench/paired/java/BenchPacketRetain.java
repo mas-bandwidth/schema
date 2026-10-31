@@ -584,10 +584,10 @@ public final class BenchPacketRetain {
             w.put8(8);
             w.put32(v.bits23);
         }
-        if (v.flag) {
+        if (v.flag != false) {
             w.putLeb(w.ref(BenchPacketVariable.F_flag));
             w.put8(1);
-            w.put8(1);
+            w.put8(v.flag ? 1 : 0);
         }
         if (Float.floatToRawIntBits(v.x) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchPacketVariable.F_x));
