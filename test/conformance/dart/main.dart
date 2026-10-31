@@ -1689,7 +1689,9 @@ bool _sameBytes(List<int> a, List<int> b) {
 
 // THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
 // `report` surface prints it, then the §16 text of the value the read left,
-// unless the row says `no-value` or the read was refused. A derived line is
+// unless the row says `no-value` or the read was refused. DAMAGE DISCARDS THE
+// WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that reports malformed answers
+// the report line alone, and no value is written after it. A derived line is
 // `framing <case> <unit> <root> <wire> [no-value]`.
 int surfaceFraming(String outDir) {
   for (final f in kind('framing')) {
@@ -1700,7 +1702,9 @@ int surfaceFraming(String outDir) {
       continue;
     }
     final noValue = f.length > 5 && f[5] == 'no-value';
-    if (line.trimRight().endsWith(',refused') || noValue) {
+    final fields = line.trimRight().split(',');
+    final damaged = fields.length == 7 && fields[5] == 'true';
+    if (fields.last == 'refused' || damaged || noValue) {
       File('$outDir/${f[1]}').writeAsStringSync(line);
       continue;
     }
