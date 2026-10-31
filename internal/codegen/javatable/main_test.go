@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -59,17 +59,11 @@ func capJavaTools() (string, error) {
 		javac, java = "javac", "java"
 	}
 	// Resolved to paths before PATH changes: a bare name (JAVAC=javac) would
-	// otherwise find the wrapper itself.
-	javac, err1 := exec.LookPath(javac)
-	java, err2 := exec.LookPath(java)
-	if err1 != nil || err2 != nil {
+	// otherwise find the wrapper itself. Resolving only stats files; no JDK
+	// runs here, so TestMain is not a toolchain test (internal/slowtest).
+	javac, java = onPath(javac), onPath(java)
+	if javac == "" || java == "" {
 		return "", nil
-	}
-	if javac, err1 = filepath.Abs(javac); err1 != nil {
-		return "", err1
-	}
-	if java, err2 = filepath.Abs(java); err2 != nil {
-		return "", err2
 	}
 	dir, err := os.MkdirTemp("", "javatable-jdk-")
 	if err != nil {
@@ -91,4 +85,24 @@ func capJavaTools() (string, error) {
 	_ = os.Setenv("JAVA", j)
 	_ = os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return dir, nil
+}
+
+// onPath is name as an absolute path: itself when it names a file, else the
+// first executable of that name on PATH; "" when there is none.
+func onPath(name string) string {
+	if strings.ContainsRune(name, filepath.Separator) {
+		if abs, err := filepath.Abs(name); err == nil {
+			return abs
+		}
+		return ""
+	}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		p := filepath.Join(dir, name)
+		if st, err := os.Stat(p); err == nil && !st.IsDir() && st.Mode()&0o111 != 0 {
+			if abs, err := filepath.Abs(p); err == nil {
+				return abs
+			}
+		}
+	}
+	return ""
 }

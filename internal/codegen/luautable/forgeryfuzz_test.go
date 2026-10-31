@@ -262,7 +262,7 @@ func luauForgeryImages(t *testing.T) (blocks, cooks []*luauForgeryImage) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(manifest), "\n") {
+	for line := range strings.SplitSeq(string(manifest), "\n") {
 		row := strings.Fields(line)
 		if len(row) < 5 || row[0] != "block" {
 			continue

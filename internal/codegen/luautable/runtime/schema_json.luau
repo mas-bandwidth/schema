@@ -1378,7 +1378,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
     out.tag = tag
-    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false) then
+    if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false) then
       return nil
     end
   end
@@ -2227,7 +2227,7 @@ edge_union = function(T: any, u: any, val: any, out: { any }, cache: any)
   if tag == 0 or u == nil then return end
   local arm = u.arms[tag]
   if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
+  edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache)
 end
 
 edges = function(T: any, desc: any, v: any, out: { any }, cache: any): { any }
@@ -2348,7 +2348,7 @@ local function write_union(T: any, u: any, val: any, depth: number, g: any, w: a
   if arm.field == nil then
     raw(w, "null")
   else
-    if not write_value(T, arm.field, val[arm.name], depth + 1, g, w, false) then return false end
+    if not write_value(T, arm.field, val[arm.slot], depth + 1, g, w, false) then return false end
   end
   line(w, depth)
   put(w, '}')
@@ -2759,11 +2759,11 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
     if tag ~= 0 then
       local arm = A.Unions[fd.target].arms[tag]
       if arm ~= nil and arm.field ~= nil then
-        out[arm.slot] = conv_to_lua(arm.field, x[arm.name], A, memo)
-        if arm.raw.s == "str" then out[arm.slot .. "Length"] = #x[arm.name] end
-        if arm.raw.s == "bytes" then out[arm.slot .. "Length"] = #x[arm.name] end
+        out[arm.slot] = conv_to_lua(arm.field, x[arm.slot], A, memo)
+        if arm.raw.s == "str" then out[arm.slot .. "Length"] = #x[arm.slot] end
+        if arm.raw.s == "bytes" then out[arm.slot .. "Length"] = #x[arm.slot] end
         -- a counted array arm carries its Count, as a table field does
-        if arm.raw.s == "arr" and arm.raw.array == "counted" then out[arm.slot .. "Count"] = #x[arm.name] end
+        if arm.raw.s == "arr" and arm.raw.array == "counted" then out[arm.slot .. "Count"] = #x[arm.slot] end
       end
     end
     return out
@@ -2879,7 +2879,7 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
         if arm.raw.s == "arr" and arm.raw.array == "counted" then
           memo.count[x[arm.slot]] = x[arm.slot .. "Count"] or 0
         end
-        out[arm.name] = conv_from_lua(arm.field, x[arm.slot], A, memo)
+        out[arm.slot] = conv_from_lua(arm.field, x[arm.slot], A, memo)
       end
     end
     return out
