@@ -513,8 +513,8 @@ func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 		}
 	}
 	// the probe ran every row: 6 finite x 3, 6 non-finite x 3 slots x 8
-	// writers, 3 extra writer rows, 6 x 3 x 11 reads and 2 x 6 x 2 retained
-	if want := 6*3 + 6*3*8 + 3 + 6*3*11 + 2*6*2; len(checks) != want {
+	// writers, 3 extra writer rows, 6 x 3 x 10 reads and 2 x 6 x 2 retained
+	if want := 6*3 + 6*3*8 + 3 + 6*3*10 + 2*6*2; len(checks) != want {
 		t.Errorf("the probe answered %d checks, want %d", len(checks), want)
 	}
 

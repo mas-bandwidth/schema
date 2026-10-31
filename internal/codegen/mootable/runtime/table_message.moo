@@ -1798,7 +1798,7 @@ local function decodeElement(t: any, fd: any, shape: any, dst: any, i: number, k
 		end
 		return decodeBody(t, d, inst)
 	elseif ek == 15 then
-		local u, ok = decodeArm(t, e, dst, i)
+		local u, ok = decodeArm(t, e)
 		if keep then
 			dst[i] = u
 		end
