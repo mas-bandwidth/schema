@@ -106,6 +106,20 @@ tables-lobster-runtime-home-negative-control: tables-lobster-runtime-home
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the registry module"; cat build/runtime-home-lobster-sabotage.log; exit 1; }
 	@echo "runtime home negative control (Lobster): a registry module named by the first schema file moves when an earlier-sorting file joins, and the gate goes red on it"
 
+# I3: the forgery fuzz oracle over every block and cook of the corpus
+# (forgeryfuzz_test.go): a mutant refuses, or opens and is whole. The control
+# removes the block reader's two extent bounds and Open's reserved-word check,
+# and requires the oracle red on each.
+.PHONY: tables-lobster-fuzz tables-lobster-fuzz-negative-control
+tables-lobster-fuzz: lobster-dist-present
+	sh test/slowgate/proof tables-lobster-fuzz \
+		'TestLobsterForgeryFuzz' \
+		./internal/codegen/lobstertable -run '^TestLobsterForgeryFuzz$$' -count=1 -timeout 600s
+tables-lobster-fuzz-negative-control: lobster-dist-present
+	sh test/slowgate/proof tables-lobster-fuzz-negative-control \
+		'TestLobsterForgeryFuzzNegativeControl/block_extent_bounds_removed TestLobsterForgeryFuzzNegativeControl/cook_reserved_words_unchecked' \
+		./internal/codegen/lobstertable -run '^TestLobsterForgeryFuzzNegativeControl$$' -count=1 -timeout 600s
+
 # The controls ride the leg with their gates: each is seconds, and a reversed
 # witness that `make test` never ran is a witness nothing reaches.
 test-lobster: tables-lobster-keyed tables-lobster-keyed-negative-control
@@ -114,6 +128,7 @@ test-lobster: tables-lobster-block-lead tables-lobster-block-lead-negative-contr
 test-lobster: tables-lobster-names tables-lobster-names-negative-control
 test-lobster: tables-lobster-json-differential tables-lobster-json-differential-negative-control
 test-lobster: tables-lobster-runtime-home tables-lobster-runtime-home-negative-control
+test-lobster: tables-lobster-fuzz tables-lobster-fuzz-negative-control
 
 # I12: docs/USAGE.md's Lobster fragment, run verbatim over the tables/pointers
 # unit and a Scene cook cookgen writes (the cook the Lua and JavaScript usage
