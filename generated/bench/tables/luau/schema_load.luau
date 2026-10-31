@@ -1155,7 +1155,7 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any): boole
 		return ok
 	end
 	local ok, selected, intact = read_field(arm, new_reader(r.b, lpos, sub.e), u)
-	return ok and selected ~= false and intact ~= false
+	return ok == true and selected ~= false and intact ~= false
 end
 
 -- AN ARM HEADER IS A FIELD HEADER (§3, §2.6): the arm id reference, the arm's
