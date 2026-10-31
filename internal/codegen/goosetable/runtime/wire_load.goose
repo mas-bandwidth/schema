@@ -5,8 +5,8 @@
 // reads any data and the differences are REPORTED, never fatal: unknown ids
 // are skipped by their length and counted, a kind that grew is widened and
 // counted, out-of-range values clamp and count, a repeated map key counts
-// duplicate, framing damage stops the damaged nesting level and the parent
-// reads on, and a form byte this reader does not carry is refused.
+// duplicate, and a form byte this reader does not carry is refused. Damage
+// anywhere discards the whole load; no partial root is returned (§4).
 //
 // The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
 // load_registry): each value's descriptor names its Loader, and the field,
@@ -67,7 +67,7 @@ struct LoadReport {
     non_finite: bool,  // §3.3: a NaN or an infinity refused the read
     retained: i64,     // §6.6: the unknown fields whose bytes were kept
     retain_lost: i64,  // §6.6: every unknown the load or save could not keep
-    stopped: bool,     // §3: framing damage stopped the walk; the value keeps what it decoded
+    stopped: bool,     // §3: framing damage stopped the walk; the whole load is discarded
     reason: i64,       // a refusal's name (LoadRefuse*; load_refusal_name), 0 for none
 }
 
@@ -1697,6 +1697,8 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     // A NON-FINITE FLOAT IS THE READ'S OWN REFUSAL (§3.3): it outranks every
     // other verdict, and the caller discards the partial value
     if report.non_finite { report.reason = LoadRefuseNonFiniteFloat; return -1; }
+    // §4: damage in any body invalidates the whole plain or retaining load.
+    if report.malformed { return -1; }
     return c.root_val;
 }
 

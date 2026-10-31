@@ -323,6 +323,9 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	if len < 9 then report.malformed = true; return false end
 	local count = integer.tonumber(buffer.readinteger(data, len - 8))
 	if count > math.floor((len - 9) / 8) then report.malformed = true; return false end
+	-- the id table holds at most 4096 entries (docs/SPEC-TABLES.md §3,
+	-- ir.TableWireIdTableBound), whatever the buffer would hold
+	if count > 4096 then report.malformed = true; return false end
 	local start = len - 8 - count * 8
 	local ids = {}
 	for i = 0, count - 1 do
@@ -621,7 +624,7 @@ local function refuseNonFinite(report: any, field: string, read: boolean)
 end
 
 -- LoadMessagesTolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5,
--- §3.3): every body it recovered, with the damage on the report.
+-- §3.3): evolution may recover a value, but damage discards the whole batch.
 function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
 	local desc = messageRoot(root)
 	if report == nil then report = {} end
@@ -659,7 +662,7 @@ function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: nu
 	end
 	if malformed then
 		report.malformed = true
-		return got, bodies
+		return 0, {}
 	end
 	if dep.found then
 		local copy = buffer.create(len)
@@ -667,7 +670,7 @@ function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: nu
 		local got2, bodies2, malformed2 = walkBodies(v, copy, desc, count, true)
 		if malformed2 then
 			report.malformed = true
-			return got2, bodies2
+			return 0, {}
 		end
 		return got2, bodies2
 	end

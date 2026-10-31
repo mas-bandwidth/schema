@@ -50,6 +50,11 @@ local function hexstr(b)
 end
 local report = fresh()
 local v = load.loadTolerant("Lists", inputs.wire, report)
+if report.malformed then
+ print("DAMAGE " .. tostring(v == nil))
+ print(string.format("%d,%d,%d,%d,%d,%s", report.unknown, report.kindMismatch, report.widened, report.clamped, report.duplicate, tostring(report.malformed)))
+ return
+end
 if report.refused > 0 then print("REFUSED"); return end
 local d = St.lookup("Lists")
 local out = save.save(d, v)
@@ -141,6 +146,12 @@ func runTextListProbe(t *testing.T, g *generatedUnit, wire []byte) textListRun {
 	}
 	out := strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire})))
 	lines := strings.Split(out, "\n")
+	if len(lines) == 2 && strings.HasPrefix(lines[0], "DAMAGE ") {
+		if lines[0] != "DAMAGE true" {
+			t.Fatalf("damaged text list returned a usable value: %s", out)
+		}
+		return textListRun{report: lines[1]}
+	}
 	if len(lines) != 4 {
 		t.Fatalf("unexpected probe output %q", out)
 	}
