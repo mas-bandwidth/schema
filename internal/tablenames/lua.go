@@ -35,7 +35,7 @@ var luaModuleKeys = map[string][]string{
 	"cook.lua":       {"Check", "Open"},
 	"cookwrite.lua":  {"Cook", "CookMeasure"},
 	"descriptor.lua": {
-		"F32_EXP", "F64_EXP", "by_id", "bytes_less", "check_defaults", "count_of", "deprecated_variant", "field",
+		"F32_EXP", "F64_EXP", "ID_TABLE_BOUND", "by_id", "bytes_less", "check_defaults", "count_of", "deprecated_variant", "field",
 		"fingerprint", "finite", "fresh", "guard_holds", "keyed", "list_layout", "map_entries", "number_nodes",
 		"pointer_reachable", "prepare", "record_size", "refuse_deprecated", "refuse_non_finite", "region_align",
 		"reset", "reset_elem", "seal",

@@ -45,7 +45,5 @@ func refuseLists(u *ir.Unit, target string) error {
 // written — and reads them back through the deltas it wrote. `cook-check`
 // carries §7.4's element-array clause beside them.
 //
-// The MAP's tool cook half is still owed and still refused by name
-// ([refuseToolMaps]): the two constructs share the extent but a map adds the
-// sort, the entry array's key order and the two reader events, and none of
-// that is what a list needed.
+// A MAP rides the same extent with its generated `{ key, value }` entry table
+// as the element, its entries in ascending key order.
