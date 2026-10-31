@@ -711,7 +711,6 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
 	return javaFile(u, "the cook closure's layout contract, run once (docs/SPEC-TABLES.md §20.3).", b.String())
 }
 
-
 // cookHasExtent is the tool's recordHasExtent (internal/tablecook/extent.go):
 // a record holds a list or a map BY VALUE at any depth — directly, inside a
 // nested record, or inside a union arm — and so its node is its storage rounded
