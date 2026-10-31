@@ -32,7 +32,6 @@ import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tab
 import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
-import '../../../build/tables-generated-dart/wide/WideWire.dart' as widedemo;
 import '../../../build/tables-generated-dart/v1/Tblv1Wire.dart' as tblv1;
 import '../../../build/tables-generated-dart/v2/Tblv2Wire.dart' as tblv2;
 import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
@@ -761,10 +760,9 @@ int surfaceCook(String outDir) {
 // Every instance root answers wire: its form-1 load re-saved byte for byte,
 // the same pair json-read and json-write already exercise.
 // graphdemo, blobdemo and listdemo answer wire, json-read, json-write and
-// report for the roots the variable class carries. mapdemo, messagedemo,
-// scalars and widedemo answer the same four for every root: maps, unions and
-// their arrays, keyed and fixed arrays, optionals, flags, wstring and the wide
-// scalars on form 1 and in the text (docs/SPEC-TABLES.md §2.3, §2.6, §2.8, §3,
+// report for the roots the variable class carries. mapdemo, messagedemo and
+// scalars answer the same four for every root: maps, unions and their arrays,
+// keyed and fixed arrays, optionals, flags and the wide scalars on form 1 and in the text (docs/SPEC-TABLES.md §2.3, §2.6, §2.8, §3,
 // §15, §16). The V, W and R evolution units answer wire and report on form 1;
 // W1/W2 also exercise default-bearing text round trips.
 // Other unsupported rows stay absent. no-text rows are not asked for a text.
@@ -836,10 +834,6 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return messagedemo.toolMessageWireSave(messagedemo.toolMessageWireLoad(wire));
     case 'scalars SimState':
       return scalardemo.simStateWireSave(scalardemo.simStateWireLoad(wire));
-    case 'widedemo Caption':
-      return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
-    case 'widedemo Stamp':
-      return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
     case 'listdemo Army':
       return listdemo.armyWireSave(listdemo.armyWireLoad(wire));
     case 'listdemo Mixed':
@@ -930,10 +924,6 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       return messagedemo.toolMessageWireSave(messagedemo.toolMessageFromJson(text));
     case 'scalars SimState':
       return scalardemo.simStateWireSave(scalardemo.simStateFromJson(text));
-    case 'widedemo Caption':
-      return widedemo.captionWireSave(widedemo.captionFromJson(text));
-    case 'widedemo Stamp':
-      return widedemo.stampWireSave(widedemo.stampFromJson(text));
     case 'listdemo Army':
       return listdemo.armyWireSave(listdemo.armyFromJson(text));
     case 'listdemo Mixed':
@@ -1034,10 +1024,6 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return messagedemo.toolMessageToJson(messagedemo.toolMessageWireLoad(wire));
     case 'scalars SimState':
       return scalardemo.simStateToJson(scalardemo.simStateWireLoad(wire));
-    case 'widedemo Caption':
-      return widedemo.captionToJson(widedemo.captionWireLoad(wire));
-    case 'widedemo Stamp':
-      return widedemo.stampToJson(widedemo.stampWireLoad(wire));
     case 'listdemo Army':
       return listdemo.armyToJson(listdemo.armyWireLoad(wire));
     case 'listdemo Mixed':
@@ -1197,14 +1183,6 @@ String? loadReport(String unit, String root, Uint8List wire) {
     case 'scalars SimState':
       final r = scalardemo.TableWireReport();
       scalardemo.simStateWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
-    case 'widedemo Caption':
-      final r = widedemo.TableWireReport();
-      widedemo.captionWireLoad(wire, r);
-      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
-    case 'widedemo Stamp':
-      final r = widedemo.TableWireReport();
-      widedemo.stampWireLoad(wire, r);
       return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     // THE P SET's presence evolution and the M SET's arm evolution
     // (docs/SPEC-TABLES.md §4, §5): a value, an optional and a pointer reading
@@ -2344,14 +2322,6 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoad, vocabdemo.wide09WireSave),
           retain: _retainCodec(vocabdemo.TableRetain.new, vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoadRetain, vocabdemo.wide09WireSaveRetain));
-    case 'widedemo Caption':
-      return _FuzzRoot(
-          _plainCodec(widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoad, widedemo.captionWireSave),
-          retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoadRetain, widedemo.captionWireSaveRetain));
-    case 'widedemo Stamp':
-      return _FuzzRoot(
-          _plainCodec(widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoad, widedemo.stampWireSave),
-          retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoadRetain, widedemo.stampWireSaveRetain));
   }
   return null;
 }

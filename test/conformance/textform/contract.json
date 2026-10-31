@@ -15,7 +15,6 @@
     "nodes": "[..3]Node",
     "pairs": "[2]int32",
     "optional": "?[..4]int32",
-    "wide": "wstring(4)",
     "bytes": "bytes(4)",
     "signed": "int128",
     "unsigned": "uint128",

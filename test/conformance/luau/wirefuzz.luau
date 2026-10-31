@@ -55,8 +55,8 @@ type Entry = { u: Unit, root: string, retain: boolean }
 
 local KIND_BOOL, KIND_STRING, KIND_TABLE, KIND_ARRAY = 1, 12, 13, 14
 local KIND_UNION, KIND_KEYED, KIND_POINTER = 15, 16, 17
-local KIND_ENUM, KIND_ESCAPE, KIND_NOPAYLOAD, KIND_WSTRING = 30, 31, 32, 33
-local KIND_RESERVED_FLOAT16, KIND_TIMESTAMP = 34, 36
+local KIND_ENUM, KIND_ESCAPE, KIND_NOPAYLOAD = 30, 31, 32
+local KIND_RETIRED_WSTRING, KIND_RESERVED_FLOAT16, KIND_TIMESTAMP = 33, 34, 36
 local NODE_FIELD_ID = 0xFFFFFFFFFFFFFFFFi
 local BYTES_TYPE_ID = 0x2F2EC0474F1C4FE4i
 local STRING_TYPE_ID = 0x704BE0D8FAAFFC58i
@@ -258,13 +258,13 @@ local function r_skip(r: any, kind: number): boolean
 		return true
 	end
 	if kind == KIND_STRING or kind == KIND_TABLE or kind == KIND_ARRAY or kind == KIND_KEYED
-		or kind == KIND_ESCAPE or kind == KIND_NOPAYLOAD or kind == KIND_WSTRING then
+		or kind == KIND_ESCAPE or kind == KIND_NOPAYLOAD then
 		local n = r_leb(r)
 		if n == nil or not r_has(r, n) then return false end
 		r.at = r.at + n
 		return true
 	end
-	if kind == KIND_RESERVED_FLOAT16 then return false end
+	if kind == KIND_RETIRED_WSTRING or kind == KIND_RESERVED_FLOAT16 then return false end
 	if kind == KIND_UNION then
 		local arm = r_leb(r)
 		if arm == nil then return false end

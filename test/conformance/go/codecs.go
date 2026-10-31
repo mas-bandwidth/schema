@@ -21,7 +21,6 @@ import (
 	tblscalars2 "tblscalars2"
 	"vocab9demo"
 	"vocabdemo"
-	widedemo "widedemo"
 
 	"tbla1"
 	"tbla2"
@@ -665,12 +664,6 @@ var codecTable = []codec{
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == messagedemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
-	row("widedemo", "Caption", widedemo.CaptionReset, widedemo.CaptionLoadTolerant, widedemo.CaptionMeasure, widedemo.CaptionSave, widedemo.CaptionFromJSONTolerant, widedemo.CaptionToJSONMeasure, widedemo.CaptionToJSON, widedemo.CaptionCookMeasure, widedemo.CaptionCookFrom, func(r *widedemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused || r.NonFiniteFloat != ""}
-	}),
-	row("widedemo", "Stamp", widedemo.StampReset, widedemo.StampLoadTolerant, widedemo.StampMeasure, widedemo.StampSave, widedemo.StampFromJSONTolerant, widedemo.StampToJSONMeasure, widedemo.StampToJSON, widedemo.StampCookMeasure, widedemo.StampCookFrom, func(r *widedemo.TableReport) report {
-		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widedemo.TableOpenRefused || r.NonFiniteFloat != ""}
-	}),
 
 	row("scalars", "SimState", scalardemo.SimStateReset, scalardemo.SimStateLoadTolerant, scalardemo.SimStateMeasure, scalardemo.SimStateSave, scalardemo.SimStateFromJSONTolerant, scalardemo.SimStateToJSONMeasure, scalardemo.SimStateToJSON, scalardemo.SimStateCookMeasure, scalardemo.SimStateCookFrom, func(r *scalardemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == scalardemo.TableOpenRefused || r.NonFiniteFloat != ""}

@@ -10,21 +10,21 @@
 //
 // The arms are nested TYPES rather than field lines of their own, because a
 // text arm spelled directly makes its holder VARIABLE (§2.2) and this form's
-// conformance set is fixed roots only. One arm per text flavour, in ordinal
-// order, so the ordinal and the flavour DISAGREE at every arm but the first:
+// conformance set is fixed roots only. Text arms of both flavours, in ordinal
+// order, so the ordinal and the flavour DISAGREE at the second arm:
 //
-//   1 wide    wstring(4)      ordinal 1, flavour 2
+//   1 short   string(4)       ordinal 1, flavour 1
 //   2 narrow  string(6)       ordinal 2, flavour 1
-//   3 raw     bytes(4)        ordinal 3, flavour 3 — the one that agrees
+//   3 raw     bytes(4)        ordinal 3, flavour 3
 //   4 list    a COUNTED ARRAY under an arm, and a scalar behind it
 //
 // FM2 inserts an arm in the middle, so every ordinal past the first moves and
 // the two sides read each other through a COMPILED plan.
 package tblfm1
 
-type MarkWide
+type MarkShort
 {
-    w wstring(4)
+    w string(4)
     n int32 = 0 | min = 0, max = 1000
 }
 
@@ -51,7 +51,7 @@ type MarkList
 
 union Mark
 {
-    wide   MarkWide
+    short  MarkShort
     narrow MarkNarrow
     raw    MarkRaw
     list   MarkList

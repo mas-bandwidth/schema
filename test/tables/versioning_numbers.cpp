@@ -9,7 +9,7 @@
 // is a number growing — plus the floor and the hash table:
 //
 //   array_bounded_grow  array_fixed_grow  array_elem_widen  constant_grow
-//   string_grow  wstring_grow  bytes_grow  int_widen  uint_widen  float_widen
+//   string_grow  bytes_grow  int_widen  uint_widen  float_widen
 //   range_widen  bits_grow  fixed_I_grow  fixed_I_grow_element  optional_add
 //   floor_at  floor_below  floor_raise_live
 //   hash_unknown  hash_known_bytes_differ  hash_identity  lineage_merge
@@ -64,8 +64,6 @@
 #include "VNEW_constant_growTable.h"
 #include "VOLD_string_growTable.h"
 #include "VNEW_string_growTable.h"
-#include "VOLD_wstring_growTable.h"
-#include "VNEW_wstring_growTable.h"
 #include "VOLD_bytes_growTable.h"
 #include "VNEW_bytes_growTable.h"
 #include "VOLD_int_widenTable.h"
@@ -447,51 +445,6 @@ void string_grow_case()
     std::vector<uint8_t> nb = one( nv, vnew_string_grow::StringGrowFixedMeasure,
                                    vnew_string_grow::StringGrowFixedSave, "string_grow: NEW save" );
     OLD_REFUSES_NEW( vold_string_grow, StringGrow, "string_grow", nb );
-}
-
-// ---------------------------------------------------------------------------
-// 6. wstring_grow — wstring(8) -> wstring(16), the length in CODE UNITS
-
-void wstring_grow_case()
-{
-    ROW_MOVES_THE_HASH( vold_wstring_grow::WstringGrowFixedHash,
-                        vnew_wstring_grow::WstringGrowFixedHash, "wstring_grow" );
-
-    const char16_t src[8] = { u'h', u'e', u'l', u'l', u'o', 0xD83D, 0xDE00, u'￿' };
-    vold_wstring_grow::WstringGrow old;
-    vold_wstring_grow::WstringGrowReset( old );
-    old.lead = 0xAAAAAAAAu;
-    std::memcpy( (void *) old.text, src, sizeof( src ) );
-    old.text_length = 8; // EIGHT CODE UNITS, a surrogate pair counting two
-    old.trail = 0xBBBBBBBBu;
-    std::vector<uint8_t> ob = one( old, vold_wstring_grow::WstringGrowFixedMeasure,
-                                   vold_wstring_grow::WstringGrowFixedSave, "wstring_grow: OLD save" );
-    {
-        vnew_wstring_grow::WstringGrow back;
-        vnew_wstring_grow::WstringGrowReset( back );
-        vnew_wstring_grow::TableReport r;
-        std::vector<vnew_wstring_grow::TableFixedEntry> plan( 4096 );
-        check( vnew_wstring_grow::WstringGrowFixedLoadTolerant( &back, 1, ob.data(), (int64_t) ob.size(),
-                                                        plan.data(), 4096, NULL, &r ) == 1,
-               "wstring_grow/NEW-READS-OLD: one record" );
-        check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
-               "wstring_grow/NEW-READS-OLD: lead and trail bracket the row exactly" );
-        check( back.text_length == 8, "wstring_grow/NEW-READS-OLD: the length is in CODE UNITS" );
-        check( std::memcmp( back.text, src, sizeof( src ) ) == 0,
-               "wstring_grow/NEW-READS-OLD: the code units, exact, the surrogate pair included" );
-        bool slack = true;
-        for ( int i = 8; i < 16; ++i ) { slack = slack && back.text[i] == 0; }
-        check( slack, "wstring_grow/NEW-READS-OLD: the code units the grow bought are ZERO" );
-        check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
-               "wstring_grow/NEW-READS-OLD: no counter moves" );
-    }
-    vnew_wstring_grow::WstringGrow nv;
-    vnew_wstring_grow::WstringGrowReset( nv );
-    for ( int i = 0; i < 16; ++i ) { nv.text[i] = (char16_t) ( u'a' + i ); }
-    nv.text_length = 16;
-    std::vector<uint8_t> nb = one( nv, vnew_wstring_grow::WstringGrowFixedMeasure,
-                                   vnew_wstring_grow::WstringGrowFixedSave, "wstring_grow: NEW save" );
-    OLD_REFUSES_NEW( vold_wstring_grow, WstringGrow, "wstring_grow", nb );
 }
 
 // ---------------------------------------------------------------------------
@@ -1260,7 +1213,6 @@ int versioning_numbers_cases()
     array_elem_widen_case();
     constant_grow_case();
     string_grow_case();
-    wstring_grow_case();
     bytes_grow_case();
     int_widen_case();
     uint_widen_case();

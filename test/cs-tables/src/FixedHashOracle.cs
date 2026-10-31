@@ -147,7 +147,5 @@ static partial class Program
         ("Vocabdemo.Wide07", Vocabdemo.Schema.Wide07FixedLayout, new byte[0], 0x29839c896de7c2b4ul, Vocabdemo.Schema.Wide07FixedHash),
         ("Vocabdemo.Wide08", Vocabdemo.Schema.Wide08FixedLayout, new byte[0], 0x262986278543731dul, Vocabdemo.Schema.Wide08FixedHash),
         ("Vocabdemo.Wide09", Vocabdemo.Schema.Wide09FixedLayout, new byte[0], 0x10b725d9949a4e7eul, Vocabdemo.Schema.Wide09FixedHash),
-        ("Wide.Caption", Wide.Schema.CaptionFixedLayout, new byte[0], 0x41a53b39b715a03aul, Wide.Schema.CaptionFixedHash),
-        ("Wide.Stamp", Wide.Schema.StampFixedLayout, new byte[0], 0x820f5d6ffaf5e7eeul, Wide.Schema.StampFixedHash),
     };
 }

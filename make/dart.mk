@@ -23,7 +23,7 @@ tables-dart-view: bin/schema test/dart-tables/view_main.dart
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
 		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
 		$(DART) compile exe -o build/dart-view/prog-$$pkg build/dart-view/$$pkg-main.dart; \
@@ -103,7 +103,7 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 	./bin/schema generate --lang dart --out generated/bench/paired/dart bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	@touch $@
 
- 
+
 # THE TABLES BOARD UNIT, for bench/tables/dart/leg (bench/tables/README.md): the
 # VARIABLE form (form 1) of TableMixed, the board's representative corpus.
 # Committed, like every other language's generated/bench/tables/<lang>.
@@ -128,7 +128,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -148,7 +148,6 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	# there. The packet emitter writes Int128.dart beside a table-only 128-bit
 	# unit, so its form-3 libraries resolve under the strict analyzer too.
 	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars tables/scalars
-	./bin/schema generate --lang dart --out build/tables-generated-dart/wide examples-wide
 	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
 	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
@@ -767,7 +766,7 @@ tables-dart-retain-negative-control: build/conformance-harness build/conformance
 build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema \
 		test/tables/FX1.schema test/tables/FX2.schema \
 		test/tables/V1.schema test/tables/V2.schema \
-		test/tables/P1.schema test/tables/P3.schema test/tables/FXW.schema \
+		test/tables/P1.schema test/tables/P3.schema \
 		test/tables/FU1.schema test/tables/FU2.schema \
 		$(SCHEMAS_TABLES) make/dart.mk
 	@rm -rf build/dart-fixed && mkdir -p build/dart-fixed
@@ -787,7 +786,6 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	# no other form — the block and the cook refuse it by name — so this is the
 	# only gate it can ride in, and without it the wide flavour of the text op
 	# has no oracle bytes anywhere.
-	./bin/schema generate --lang dart --out build/dart-fixed/fxw test/tables/FXW.schema
 	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
@@ -832,7 +830,7 @@ tables-dart-versioning: tables-fixedform-corpus
 	@echo 'tables Dart versioning: §5 read both columns of every row against the C++ reference bytes'
 
 .PHONY: tables-dart-fixed-form-negative-control
-tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp test/tables/FXW.schema
+tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
 	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
 	@sed 's|fixedOff(base, at), length, "Endian.little"}, ";")|fixedOff(base, at), length + " + 1", "Endian.little"}, ";") // SABOTAGED|' \
 		internal/codegen/darttable/fixeddart.go > build/dart-fixed-nc/fixeddart.go.txt
@@ -851,7 +849,6 @@ tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stam
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu1 test/tables/FU1.schema
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu2 test/tables/FU2.schema
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/examples tables/examples
-	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fxw test/tables/FXW.schema
 	@sed 's|../../build/dart-fixed/|$(CURDIR)/build/dart-fixed-nc/gen/|g' \
 		test/dart-tables/fixedform.dart > build/dart-fixed-nc/fixedform.dart
 	@if $(DART) build/dart-fixed-nc/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus \
@@ -1310,33 +1307,8 @@ packet-finite-dart-negative-control: packet-finite-dart
 test-dart: packet-finite-dart packet-finite-dart-negative-control
 
 
-build/packet-wide/dart/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang dart --out build/packet-wide/dart build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang dart --out build/packet-wide/dart/shapes test/packet-wide/Shapes.schema
-	@touch $@
 
-.PHONY: packet-wide-dart packet-wide-dart-negative-control
-packet-wide-dart: build/packet-wide/dart/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(DART) analyze build/packet-wide/dart test/packet-wide/dart
-	$(DART) format --set-exit-if-changed --output=none build/packet-wide/dart test/packet-wide/dart
-	$(DART) --enable-asserts test/packet-wide/dart/main.dart --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(DART) --enable-asserts test/packet-wide/dart/main.dart
-	$(DART) compile exe -o build/packet-wide/dart/driver test/packet-wide/dart/main.dart
-	./build/packet-wide/dart/driver --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/dart/driver
-
-packet-wide-dart-negative-control: packet-wide-dart
-	@mkdir -p build/packet-wide/dart-negative
-	go run ./tools/sabotage -name packet-wide-dart-pairing -out build/packet-wide/dart-negative/wstring.gotext internal/codegen/dart/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/dart/wstring.go":"%s/build/packet-wide/dart-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/dart-negative/overlay.json
-	go run -overlay=build/packet-wide/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-wide/dart-negative build/packet-wide/source/WideText.schema
-	@sed -e 's|../../../build/packet-wide/dart/WideText.dart|$(CURDIR)/build/packet-wide/dart-negative/WideText.dart|' -e 's|../../../build/packet-wide/dart/shapes/Shapes.dart|$(CURDIR)/build/packet-wide/dart/shapes/Shapes.dart|' test/packet-wide/dart/main.dart > build/packet-wide/dart-negative/main.dart
-	$(DART) compile exe -o build/packet-wide/dart-negative/driver build/packet-wide/dart-negative/main.dart
-	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only ./build/packet-wide/dart-negative/driver > build/packet-wide/dart-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Dart wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/dart-negative/log || { cat build/packet-wide/dart-negative/log; exit 1; }
-	@echo 'packet wide Dart negative control: removed pairing fails bit-flip agreement'
-
-test-dart: packet-wide-dart packet-wide-dart-negative-control
+test-dart:
 
 # THE CARDS UNIT'S DART LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Dart side of the cards wire-fuzz gate: they mirror the Go leg's

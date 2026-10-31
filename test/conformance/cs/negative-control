@@ -13,7 +13,7 @@ for mode in wire json; do
     go run ./tools/sabotage -name "$sabotage" -out "$dir/source.gotext" "$source"
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$PWD" "$source" "$PWD" "$dir" > "$dir/overlay.json"
     go build -overlay="$dir/overlay.json" -o "$dir/schema" ./cmd/schema
-    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 caption pointers blobs p2 w1 w2 lists maps stream g1 backend vocab vocab9 r1 r2 rt1; do
+    for unit in examples block v1 v2 p1 p3 k1 k2 messages m1 m2 a1 a2 scalars scalars2 pointers blobs p2 w1 w2 lists maps stream g1 backend vocab vocab9 r1 r2 rt1; do
         case "$unit" in
             examples|block|messages) input=tables/$unit ;;
             v1) input=test/tables/V1.schema ;; v2) input=test/tables/V2.schema ;;
@@ -23,7 +23,6 @@ for mode in wire json; do
             a1) input=test/tables/A1.schema ;; a2) input=test/tables/A2.schema ;;
             scalars) input=tables/scalars ;;
             scalars2) input=test/tables/Scalars2.schema ;;
-            caption) input=examples-wide/Caption.schema ;;
             pointers) input=tables/pointers ;;
             blobs) input=tables/blobs ;;
             p2) input=test/tables/P2.schema ;;

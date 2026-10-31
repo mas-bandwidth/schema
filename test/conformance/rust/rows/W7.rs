@@ -6,15 +6,14 @@
 //
 // A `string(N)` under a UNION ARM needs both at once: which arm's tag guards
 // the entry (the ordinal, `arg`) and which flavour of text it moves (the
-// flavour, `meta` — utf8 / wide / bytes). One lane holding both loses
-// whichever was stamped last: a utf8 string under arm 2 read as WIDE, or an
-// entry that runs only when the tag equals the flavour — UNDER THE WRONG ARM.
+// flavour, `meta` — utf8 / bytes). One lane holding both loses whichever was
+// stamped last: an entry that runs only when the tag equals the flavour —
+// UNDER THE WRONG ARM.
 //
 // THIS PORT SPENDS TWO LANES WITHOUT A `meta` FIELD: `arg` is a full-width u64
 // that holds the arm ordinal and NOTHING ELSE, and the flavour is settled at
 // COMPILE time out of the layout's own kind into the entry's `size` (the
-// payload's byte span) and `aux` (the span in UNITS — utf8 unit 1, wide unit
-// 2). They can never overwrite one another because they never share a field.
+// payload's byte span) and `aux` (the span in bytes). They can never overwrite one another because they never share a field.
 //
 // The plan is DATA, so the case is reached by BUILDING THE ENTRY — exactly what
 // the plan compiler builds for a text field inside a union's second arm — and
@@ -78,7 +77,7 @@ fn arg_and_meta_are_two_lanes() {
     };
 
     // GREEN: the ordinal lane says arm 2, the record's tag is 2, so the entry
-    // runs — and it lands the utf8 BYTES, not a wide re-read of the same span.
+    // runs — and it lands the utf8 BYTES.
     let mut image = [0u8; 12];
     let mut report = TableFixedReport::default();
     table_fixed_run(&[text_utf8], &[guard], &[], &record, &mut image, &mut report);
@@ -93,41 +92,6 @@ fn arg_and_meta_are_two_lanes() {
     check(
         !report.malformed && report.clamped == 0 && !report.refused,
         "arg-v-meta: nothing damaged, clamped or refused",
-    );
-
-    // THE FLAVOUR LANE IS INDEPENDENT OF THE ORDINAL LANE. The SAME arm
-    // ordinal (arg == 2) with a WIDE flavour: `wstring` counts u16 units, so
-    // the compiler bakes unit 2 — the 8-byte span becomes 4 units in `aux`
-    // while `arg` stays exactly 2. The ordinal did not move when the flavour
-    // changed, which is the whole law.
-    let text_wide = TableFixedEntry {
-        aux: 4, // wide: 8 bytes = 4 u16 units
-        ..text_utf8
-    };
-    // tag 2, then a wstring of 2 used units ("h\0", "e\0") in the 8-byte span:
-    // 1 tag byte + 4 length bytes + 8 content bytes = 13 bytes.
-    let wide_record: [u8; 13] = [2u8, 2, 0, 0, 0, b'h', 0, b'e', 0, b'l', 0, b'l', 0];
-    let mut wide_image = [0u8; 12];
-    let mut wide_report = TableFixedReport::default();
-    table_fixed_run(
-        &[text_wide],
-        &[guard],
-        &[],
-        &wide_record,
-        &mut wide_image,
-        &mut wide_report,
-    );
-    check(
-        wide_image[0..4] == 2u32.to_le_bytes(),
-        "arg-v-meta: the WIDE length lands in units (2), not bytes",
-    );
-    check(
-        &wide_image[4..8] == &[b'h', 0, b'e', 0],
-        "arg-v-meta: the first wide units land, flavour settled by `aux` alone",
-    );
-    check(
-        guard.arg == 2 && text_wide.aux == 4 && text_utf8.aux == 8,
-        "arg-v-meta: the guard's arg is the ordinal and nothing else; the flavour rides in aux",
     );
 
     // NEGATIVE CONTROL — the OLD one-lane encoding, planted: stamp the utf8

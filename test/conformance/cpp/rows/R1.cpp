@@ -34,7 +34,6 @@
 #include "VNEW_unknown_censusTable.h"       // vnew_unknown_census (uses Item prefix)
 #include "VNEW_cfloat_range_widenTable.h"   // vnew_cfloat_range_widen
 #include "VNEW_cfloat_res_refineTable.h"    // vnew_cfloat_res_refine
-#include "VNEW_wstring_growTable.h"         // vnew_wstring_grow
 
 // Floor / lineage merge — these define the same constant names in different
 // namespaces, so we handle them in explicit blocks.
@@ -90,7 +89,6 @@ int main()
     ASSERT_NS_TABLE( vnew_cfloat_range_widen, CfloatRangeWiden, "CfloatRangeWiden/VNEW_cfloat_range_widen" );
     ASSERT_NS_TABLE( vnew_cfloat_res_refine, CfloatResRefine, "CfloatResRefine/VNEW_cfloat_res_refine" );
     ASSERT_NS_TABLE( vnew_hostile_bool, Hbb, "Hbb/VNEW_hostile_bool" );
-    ASSERT_NS_TABLE( vnew_wstring_grow, WstringGrow, "WstringGrow/VNEW_wstring_grow" );
     ASSERT_NS_TABLE( vnew_unknown_census, Item, "Item/VNEW_unknown_census" );
 
     // Count 3: VOLD + VMID + identity

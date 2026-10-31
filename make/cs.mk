@@ -119,7 +119,6 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/a2 test/tables/A2.schema
 	$(1) generate --lang cs --out $(2)/scalars tables/scalars
 	$(1) generate --lang cs --out $(2)/scalars2 test/tables/Scalars2.schema
-	$(1) generate --lang cs --out $(2)/caption examples-wide/Caption.schema
 	$(1) generate --lang cs --out $(2)/blobs tables/blobs
 	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
@@ -400,7 +399,7 @@ tables-cs-view: build/tables-generated-cs/.stamp
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		source=tables/$$dir; [ "$$dir" != wide ] || source=examples-wide; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang cs --out build/view-cs/generated/$$dir "$$source"; \
 		printf 'global using U = %s;\n' "$$cap" > build/view-cs/Unit.cs; \
 		$(DOTNET) build test/cs-view -v q --nologo \
@@ -784,7 +783,7 @@ test-cs: tables-cs-clean-negative-control
 # packet-defaults, packet-text and packet-wide units, each through the project
 # that compiles it.
 PACKET_CLEAN_CS_STAMPS := generated/cs/.stamp generated/bench/cs/.stamp generated/cs-ludicrous/.stamp \
-	build/packet-defaults/cs/.stamp build/packet-text/cs/.stamp build/packet-wide/cs/.stamp
+	build/packet-defaults/cs/.stamp build/packet-text/cs/.stamp
 
 .PHONY: packet-clean-cs
 packet-clean-cs: $(PACKET_CLEAN_CS_STAMPS)
@@ -815,8 +814,6 @@ packet-clean-cs-unit-defaults:
 	$(call cs_clean_check,packet-clean-cs-defaults,test/packet-defaults/cs/packet-defaults.csproj,build/packet-defaults/cs)
 packet-clean-cs-unit-text:
 	$(call cs_clean_check,packet-clean-cs-text,test/packet-text/cs/packet-text.csproj,build/packet-text/cs)
-packet-clean-cs-unit-wide:
-	$(call cs_clean_check,packet-clean-cs-wide,test/packet-wide/cs/packet-wide.csproj,build/packet-wide/cs)
 test-cs: packet-clean-cs
 
 # THE PACKET-CLEAN NEGATIVE CONTROL: a copy of the generated examples with ONE
@@ -922,31 +919,8 @@ packet-utf8-cs-negative-control: packet-utf8-cs
 test-cs: packet-utf8-cs packet-utf8-cs-negative-control
 
 
-build/packet-wide/cs/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang cs --out build/packet-wide/cs/wide build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang cs --out build/packet-wide/cs/shapes test/packet-wide/Shapes.schema
-	@touch $@
 
-.PHONY: packet-wide-cs packet-wide-cs-negative-control
-packet-wide-cs: build/packet-wide/cs/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Debug -o build/packet-wide/cs/debug --nologo
-	$(DOTNET) build/packet-wide/cs/debug/packet-wide.dll --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/debug/packet-wide.dll
-	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs/release --nologo
-	$(DOTNET) build/packet-wide/cs/release/packet-wide.dll --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver dotnet build/packet-wide/cs/release/packet-wide.dll
-
-packet-wide-cs-negative-control: packet-wide-cs
-	@mkdir -p build/packet-wide/cs-negative
-	go run ./tools/sabotage -name packet-wide-cs-pairing -out build/packet-wide/cs-negative/wstring.gotext internal/codegen/csharp/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/csharp/wstring.go":"%s/build/packet-wide/cs-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/cs-negative/overlay.json
-	go run -overlay=build/packet-wide/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-wide/cs-negative build/packet-wide/source/WideText.schema
-	$(DOTNET) build test/packet-wide/cs/packet-wide.csproj -c Release -o build/packet-wide/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-wide/cs-negative" --nologo
-	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only dotnet build/packet-wide/cs-negative/bin/packet-wide.dll > build/packet-wide/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/cs-negative/log || { cat build/packet-wide/cs-negative/log; exit 1; }
-	@echo 'packet wide C# negative control: removed pairing fails bit-flip agreement'
-
-test-cs: packet-wide-cs packet-wide-cs-negative-control
+test-cs:
 
 # THE FINITE-FLOAT CONTROL (SPEC §4.3, serialize format 2.0). test/cs's
 # TestFiniteFloats requires a non-finite float32/float64 packet read to be

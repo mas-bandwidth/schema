@@ -76,9 +76,7 @@ require tblscalars2 v0.0.0
 
 replace tblscalars2 => ../../../build/tables-generated-go/scalars2
 
-require widedemo v0.0.0
 
-replace widedemo => ../../../build/tables-generated-go/wide
 
 require messagedemo v0.0.0
 

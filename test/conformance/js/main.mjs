@@ -630,10 +630,9 @@ async function surfaceMessage(lines, outDir) {
 // The variable form, form byte 1, over the roots this leg's variable wire
 // carries: the pointer corpus's Scene (graphdemo), the byte-buffer corpus's
 // Catalog (blobdemo), every root of the map corpus (mapdemo: Cells and Pairs
-// hold fixed-length arrays [N]T as map values, Text a wstring(N)), the scalar
-// corpus's SimState (scalars, tblscalars2: fixed/ufixed and 128-bit kinds),
-// the wide-text corpus's Caption and Stamp (widedemo) and the message corpus's
-// ToolMessage (messagedemo), each through its unit's
+// hold fixed-length arrays [N]T as map values, Text text and byte buffers),
+// the scalar corpus's SimState (scalars, tblscalars2: fixed/ufixed and 128-bit
+// kinds) and the message corpus's ToolMessage (messagedemo), each through its unit's
 // <Package>Variable.js, and the stream, list, backend, vocabulary and
 // evolution-pair units below. A case whose pair is not here is answered
 // `<case>.absent` beside where the answer would go, which the matrix counts as
@@ -660,7 +659,7 @@ const wireRows = [
   // a map whose value is a fixed-length array [N]T (§2.8, §3)
   ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
   ["mapdemo", "Pairs", "maps/MapdemoVariable.js"],
-  // a map whose value is a wstring(N), kind 33 (§2.8, §3)
+  // a map whose value is text or a byte buffer (§2.8, §3)
   ["mapdemo", "Text", "maps/MapdemoVariable.js"],
   // the rest of the map corpus (§2.8): string(N) and integer keys, values of
   // every carried field line, maps of maps and of pointers
@@ -677,12 +676,8 @@ const wireRows = [
   // declared width (§3, §15), and the evolved type reading them (§4)
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
   ["tblscalars2", "SimState", "scalars2/Scalardemo2Variable.js"],
-  // wstring(N) as a field, in a type, in an array of that type and as an arm
-  // (§3; SPEC.md §4.12)
-  ["widedemo", "Caption", "wide/WideVariable.js"],
-  ["widedemo", "Stamp", "wide/WideVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
-  // carried field type, wide text among them (§2.6, §3)
+  // carried field type (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
   // the stream corpus (§2.6, §3): a union arm that is a table, the parts
   // array and the chain, and the report rows its forged counts owe
@@ -840,7 +835,6 @@ const textUnits = {
   tblr1: "r1/Tblr1Variable.js", tblr2: "r2/Tblr2Variable.js",
   tblp1: "p1/Tblp1Variable.js", tblp3: "p3/Tblp3Variable.js",
   tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
-  widedemo: "wide/WideVariable.js",
   listdemo: "lists/ListdemoVariable.js",
 };
 

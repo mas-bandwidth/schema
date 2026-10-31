@@ -1,6 +1,6 @@
 // RealWorld.schema — BENCH-STANDARD §1.7's realistic snapshot shape: one flat
 // packet of individually serialized small scalar fields in seeded-random mixed
-// order. ZERO bulk — no string, bytes, wstring, or [N]uint8 fields, so the
+// order. ZERO bulk — no string, bytes or [N]uint8 fields, so the
 // bulk share is 0% of wire bits (§1.7 rule 4): every wire bit here flows
 // through an individual serialize statement, which is the work this estate
 // exists to measure.

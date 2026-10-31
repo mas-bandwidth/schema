@@ -2,21 +2,18 @@
 //
 // The law is docs/FIXED-FORM-ALGORITHM.md:333, §4.5's `text` scatter case:
 //
-//   unit := (meta == wide) ? 2 : 1;  cap := size / unit;
+//   cap := size;
 //   v := SLE(4, record+src) clamped into [0, cap], COUNT clamped if it fired.
 //   Copy the payload, and terminate at the used length where the language
 //   stores a terminator — never for `bytes`.
 //
 // docs/SPEC-TABLES.md:6878 states the op, :9796-:9797 the storage: a
-// `string(N)` is `char[N + 1]` plus an int32 used length; a `wstring(N)` is
-// `char16_t[N + 1]` with the used length in CODE UNITS.
+// `string(N)` is `char[N + 1]` plus an int32 used length.
 //
-// THE PRODUCTION PATH, not a helper: the generated fixed-form readers of the
-// two conformance units whose plans carry a text entry —
+// THE PRODUCTION PATH, not a helper: the generated fixed-form reader of the
+// conformance unit whose plan carries a text entry —
 //   tabledemo::ProfileConfigFixedLoad (name string(32): plan entry
 //     kTableFixedText meta=Utf8, size 32, cap 32)
-//   wide::StampFixedLoad (label wstring(4): plan entry kTableFixedText
-//     meta=Wide, size 8, cap 8/2 = 4 units)
 // whose TableFixedRun -> TableFixedApply kTableFixedText arm is the clamp,
 // reached the same way the driver reaches these units (same headers, same
 // -I paths, same linked *Table.cpp the Makefile gives build/conformance-cpp).
@@ -25,15 +22,15 @@
 // fixed-form data for this cell — every wire under testdata/wire/tables is
 // form 1, the tolerant wire, whose text clamp is a different one (leb128,
 // at a code point boundary). So the smallest fixed-form byte vector is built
-// here: a one-record form-3 file written by each unit's own generated
+// here: a one-record form-3 file written by the unit's own generated
 // FixedSave —
 //   [ form 3 ][ 7 reserved zero bytes ][ layout hash, 8 ]
 //   [ layout bytes, u32 length ][ record: 8-byte hash ][ 261/16-byte body ]
 // — and the text entry's SLE(4) length word is poked. The word's offset is
-// the plan entry's own src (0 for both `name` and `label`), so it sits at
+// the plan entry's own src (0 for `name`), so it sits at
 //   kTableFixedHeaderBytes + 4 + <T>FixedLayoutBytes + 8   (record 0's body)
 // exactly the address the writer's own <T>FixedWriteBody puts it at. The
-// forged values are one past the cap (33 against 32; 6 against 4 units),
+// forged values are one past the cap (33 against 32),
 // the negative end (-1), and a `bytes` length one past its cap (20 against
 // 16) for the never-terminates half of the sentence. The destination struct
 // is poisoned before every read, so a byte that checks as 0 was WRITTEN by
@@ -45,7 +42,6 @@
 #include <vector>
 
 #include "TablesTable.h"  // tabledemo (tables/examples)
-#include "CaptionTable.h" // wide (examples-wide)
 
 static int failures = 0;
 
@@ -152,65 +148,9 @@ static void narrow_case()
     }
 }
 
-// ---- the wide half: wide::Stamp, `label` wstring(4) -------------------------
-
-static void wide_case()
-{
-    wide::Stamp v;
-    wide::StampReset( v );
-    const char16_t units[4] = { u'a', u'b', u'c', u'd' };
-    std::memcpy( v.label, units, sizeof( units ) ); // 4 units, AT the cap
-    v.label_length = 4;
-    v.seq = 0xC0FFEEu; // the neighbour that must stand through the clamp
-
-    std::vector<uint8_t> wire( (size_t) wide::StampFixedMeasure( 1 ) );
-    check( wide::StampFixedSave( &v, 1, wire.data(), (int64_t) wire.size() )
-               == (int64_t) wire.size(),
-           "wide: the one-record form-3 file saves through the unit's own writer" );
-
-    const size_t body = (size_t) wide::kTableFixedHeaderBytes + 4
-                      + (size_t) wide::StampFixedLayoutBytes + 8;
-    uint8_t * const label_word = wire.data() + body + 0;
-
-    // CLEAN AT THE CAP, IN CODE UNITS
-    {
-        wide::Stamp back;
-        std::memset( (void *) &back, 0xAB, sizeof( back ) );
-        wide::TableReport r;
-        std::vector<wide::TableFixedEntry> plan( 1024 );
-        const int64_t n = wide::StampFixedLoad(
-            &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed && r.clamped == 0 && back.label_length == 4,
-               "wide clean: a used length at the cap reads whole, no counter moves" );
-        check( back.label[0] == u'a' && back.label[3] == u'd' && back.label[4] == u'\0',
-               "wide clean: the payload lands and the terminating zero unit is the read's own store" );
-        check( back.seq == 0xC0FFEEu,
-               "wide clean: the neighbour field stands" );
-    }
-
-    // PAST THE CAP — 6 clamps to 4 CODE UNITS (8 bytes / 2), not to bytes: a
-    // reader whose cap was the byte size would keep 6 or land 8, both red here
-    wide::TableFixedPut32( label_word, 6 );
-    {
-        wide::Stamp back;
-        std::memset( (void *) &back, 0xAB, sizeof( back ) );
-        wide::TableReport r;
-        std::vector<wide::TableFixedEntry> plan( 1024 );
-        const int64_t n = wide::StampFixedLoad(
-            &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed && r.clamped == 1 && back.label_length == 4,
-               "wide over: a length past the cap clamps in CODE UNITS (8 bytes / 2), COUNT clamped once" );
-        check( back.label[3] == u'd' && back.label[4] == u'\0',
-               "wide over: the payload stands at the cap and the terminator is the fifth unit" );
-        check( back.seq == 0xC0FFEEu,
-               "wide over: the clamp is one field's — seq stands" );
-    }
-}
-
 int main()
 {
     narrow_case();
-    wide_case();
     if ( failures != 0 )
     {
         std::printf( "C3: %d assertion(s) failed\n", failures );

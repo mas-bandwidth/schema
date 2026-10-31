@@ -59,7 +59,6 @@
     <Compile Include="../../build/tables-generated-cs/p2/*.cs" />
     <Compile Include="../../build/tables-generated-cs/blobs/*.cs" />
     <Compile Include="../../build/tables-generated-cs/pointers/*.cs" />
-    <Compile Include="../../build/tables-generated-cs/caption/*.cs" />
     <Compile Include="../../build/tables-generated-cs/scalars2/*.cs" />
     <Compile Include="../../build/tables-generated-cs/scalars/*.cs" />
     <Compile Include="../../build/tables-generated-cs/csunions/*.cs" />

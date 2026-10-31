@@ -25,7 +25,6 @@
 #include "P3Table.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
-#include "FXWTable.h"
 #include "FU1Table.h"
 #include "FU2Table.h"
 
@@ -45,8 +44,6 @@
 #include "VNEW_constant_growTable.h"
 #include "VOLD_string_growTable.h"
 #include "VNEW_string_growTable.h"
-#include "VOLD_wstring_growTable.h"
-#include "VNEW_wstring_growTable.h"
 #include "VOLD_bytes_growTable.h"
 #include "VNEW_bytes_growTable.h"
 #include "VOLD_int_widenTable.h"
@@ -127,7 +124,7 @@ static bool spill( const char * dir, const char * name, const std::vector<uint8_
 // reason that it then copies its accidents. So the emitter SAYS what it wrote:
 // `manifest.txt`, one line per corpus file, beside the bytes.
 //
-// Every value below is stored through MS / MSI / MSE / MSEI / MSTR / MWCPY,
+// Every value below is stored through MS / MSI / MSE / MSEI / MSTR,
 // which perform the assignment AND record the line from the SAME expression,
 // so a changed value changes both or neither. `emit` finalises the row from the
 // file name and the type, so the row, the side, the root and the record count
@@ -225,15 +222,11 @@ static std::string man_quote( const std::string & raw )
 
 // THE VALUE'S TEXT. Integers in decimal, a float by its BITS as well as its
 // digits (a signalling NaN's payload is the value, the FU ruling), a bool as the
-// wire's 1/0, a fixed(I,F) as the real AND the scaled raw, text quoted — and
-// wide text in ONE encoding, `u"…"`, wherever it appears.
+// wire's 1/0, a fixed(I,F) as the real AND the scaled raw, text quoted.
 // A BOOL RIDES AS ONE BYTE THAT IS 1 OR 0 (§3.4), and the PRESENT COMPANION
 // owes `1` and not a fresh value's `false` (§5.9 #40) — so the manifest says
 // what the wire says and never C++'s `true`/`false`.
 inline std::string man_text( bool v ) { return v ? "1" : "0"; }
-// there is NO `man_text( char16_t )`: one encoding for wide text everywhere, and
-// it is `man_wtext`'s `u"…"` (§5.9 #32). A per-code-unit hex line was the second
-// encoding this corpus carried and it is gone.
 static std::string man_dec( long long v ) { char b[32]; std::snprintf( b, sizeof( b ), "%lld", v ); return b; }
 static std::string man_udec( unsigned long long v ) { char b[32]; std::snprintf( b, sizeof( b ), "%llu", v ); return b; }
 inline std::string man_text( signed char v ) { return man_dec( v ); }
@@ -271,19 +264,6 @@ static std::string man_fixed( long long raw, int frac )
     char b[80];
     std::snprintf( b, sizeof( b ), "%.17g|raw=%lld", real, raw );
     return b;
-}
-
-static std::string man_wtext( const char16_t * src, size_t n )
-{
-    std::string out = "u\"";
-    for ( size_t i = 0; i < n; ++i )
-    {
-        char b[16];
-        const unsigned u = (unsigned) src[i];
-        if ( u >= 0x20 && u < 0x7F && u != '"' && u != '\\' && u != ',' ) { out += (char) u; }
-        else { std::snprintf( b, sizeof( b ), "\\u%04X", u ); out += b; }
-    }
-    return out + "\"";
 }
 
 // A PAYLOAD UNDER AN ABSENT OPTIONAL IS NOT A VALUE (§5.9 #32). The writer
@@ -325,19 +305,6 @@ static void man_add( const std::string & path, const std::string & text )
 #define MSEI( LV, VAL, ... )  do { man_add( man_path( #LV, { __VA_ARGS__ } ), man_dec( (long long) ( (LV) = (VAL) ) ) ); } while ( 0 )
 #define MSTR( LV, VAL )       do { std::strcpy( LV, VAL ); man_add( man_path( #LV, {} ), man_quote( VAL ) ); } while ( 0 )
 #define MSTRI( LV, VAL, ... ) do { std::strcpy( LV, VAL ); man_add( man_path( #LV, { __VA_ARGS__ } ), man_quote( VAL ) ); } while ( 0 )
-
-// the wide copy, with the source array's own length: a unit count, never bytes
-template <size_t N>
-static void man_wcopy( char16_t * dst, const char16_t ( & src )[N], const std::string & path )
-{
-    std::memcpy( (void *) dst, src, N * sizeof( char16_t ) );
-    man_add( path, man_wtext( src, N ) );
-}
-#define MWCPY( LV, SRC )      man_wcopy( LV, SRC, man_path( #LV, {} ) )
-// the same copy under a SUBSCRIPT the call site is looping over: without it a
-// wide field reached through an index had to be stored unit by unit, and the
-// manifest then carried TWO encodings for wide text (§5.9 #32).
-#define MWCPYI( LV, SRC, ... ) man_wcopy( LV, SRC, man_path( #LV, { __VA_ARGS__ } ) )
 
 // a fixed(I,F) field: the store is the raw scaled integer and the record says
 // the real beside it
@@ -655,42 +622,6 @@ static bool pack_file( const char * dir )
     return emit( dir, "pack.bin", v, tabledemo::PackConfigFixedMeasure, tabledemo::PackConfigFixedSave );
 }
 
-// ---- the WIDE TEXT unit (docs/SPEC-TABLES.md §3.4, kind 33) ----
-//
-// The wide flavour's ONLY oracle bytes. A length in CODE UNITS and 2N bytes
-// behind it, at the body's head and again at a NESTED offset, with a narrow
-// `string(8)` between them so a leg that counted bytes where it owed units
-// comes out wrong here and nowhere else has to catch it.
-static bool fxw_file( const char * dir )
-{
-    std::vector<tblfxw::FxWide> v( 2 );
-
-    tblfxw::FxWideReset( v[0] );
-    // seven BASIC-PLANE code units, one short of the bound
-    const char16_t hello[7] = { u'h', u'e', u'l', u'l', u'o', u' ', u'!' };
-    MWCPY( v[0].caption, hello );
-    MS( v[0].caption_length, 7 );
-    MSTR( v[0].label, "narrow" );
-    MS( v[0].label_length, 6 );
-    const char16_t inner0[4] = { u'a', u'b', u'c', u'd' };
-    MWCPY( v[0].inner.text, inner0 );
-    MS( v[0].inner.text_length, 4 );
-    MS( v[0].seq, 41 );
-
-    tblfxw::FxWideReset( v[1] );
-    // AN ASTRAL PAIR AND THE TWO BASIC-PLANE ENDS OF THE RANGE: a surrogate
-    // pair is TWO code units and the length counts both, which is the number
-    // a leg using bytes gets wrong by a factor of two.
-    const char16_t astral[5] = { u'\uE000', 0xD83D, 0xDE00, u'\uFFFF', u'z' };
-    MWCPY( v[1].caption, astral );
-    MS( v[1].caption_length, 5 );
-    MS( v[1].label_length, 0 ); // empty, and its eight bytes are slack
-    MS( v[1].inner.text_length, 0 );
-    MS( v[1].seq, 1000 ); // the declared max, so the clamp has no false case here
-
-    return emit( dir, "fxw.bin", v, tblfxw::FxWideFixedMeasure, tblfxw::FxWideFixedSave );
-}
-
 // ---- FU1 / FU2: TEXT UNDER A UNION ARM, AND THE TWO WIDENING RUNGS ---------
 //
 // The nested-union pair was the one fixture in this corpus with NO oracle bytes
@@ -851,17 +782,6 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 0xAAAAAAAAu ); MSTR( v[0].text, "abcdefgh" ); MS( v[0].text_length, 8 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_string_grow, StringGrow, "new_string_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MSTR( v[0].text, "0123456789abcdef" ); MS( v[0].text_length, 16 ); MS( v[0].trail, 0xBBBBBBBBu ); );
-
-    const char16_t wsrc[8] = { u'h', u'e', u'l', u'l', u'o', 0xD83D, 0xDE00, u'￿' };
-    VROW( vold_wstring_grow, WstringGrow, "old_wstring_grow.bin",
-          MS( v[0].lead, 0xAAAAAAAAu ); MWCPY( v[0].text, wsrc ); MS( v[0].text_length, 8 ); MS( v[0].trail, 0xBBBBBBBBu ); );
-    // ONE ENCODING FOR WIDE TEXT: the grown side is a wide copy too, so both
-    // sides of this pair read `u"…"` and neither reads a column of hex units.
-    const char16_t wgrown[16] = { u'a', u'b', u'c', u'd', u'e', u'f', u'g', u'h',
-                                  u'i', u'j', u'k', u'l', u'm', u'n', u'o', u'p' };
-    VROW( vnew_wstring_grow, WstringGrow, "new_wstring_grow.bin",
-          MS( v[0].lead, 0xAAAAAAAAu ); MWCPY( v[0].text, wgrown );
-          MS( v[0].text_length, 16 ); MS( v[0].trail, 0xBBBBBBBBu ); );
 
     VROW( vold_bytes_grow, BytesGrow, "old_bytes_grow.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); for ( int i = 0; i < 8; ++i ) { MSI( v[0].blob[i], (uint8_t) ( 0xF0 + i ), (long long) ( i ) ); }
@@ -1298,7 +1218,7 @@ int main( int argc, char ** argv )
     if ( argc != 2 ) { std::fprintf( stderr, "usage: %s <outdir>\n", argv[0] ); return 1; }
     const char * dir = argv[1];
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
-         !keyed_file( dir ) || !pack_file( dir ) || !fxw_file( dir ) ||
+         !keyed_file( dir ) || !pack_file( dir ) ||
          !fu1_file( dir ) || !fu2_file( dir ) ) { return 1; }
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
     if ( !versioning_numbers_files( dir ) ) { return 1; }

@@ -21,7 +21,7 @@ LUA_LUACHECK_CONFIG := build/lua-luacheck.rc
 # every schema directory a Makefile generate target reads, plus the per-file
 # units under test/tables (the tables_generate macro names each file) and the
 # two-file guard unit.
-LUA_LUACHECK_DIRS := examples examples128 examples-wide bench/corpus \
+LUA_LUACHECK_DIRS := examples examples128 bench/corpus \
 	tables/examples tables/pointers tables/block tables/blockhome \
 	tables/messages tables/stream tables/blobs tables/scalars tables/maps \
 	tables/lists tables/arms tables/backend tables/vocab tables/vocab9

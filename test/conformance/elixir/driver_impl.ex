@@ -541,8 +541,7 @@ defmodule Driver do
   # key itself except where the schema's package line says otherwise
   @unit_packages %{
     "scalars" => "scalardemo",
-    "tblscalars2" => "scalardemo2",
-    "widedemo" => "wide"
+    "tblscalars2" => "scalardemo2"
   }
 
   # the namespace a manifest unit key names: the key itself except where the

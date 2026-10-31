@@ -751,7 +751,6 @@ public final class Driver {
     private static String variableUnitPackage(String unit) {
         switch (unit) {
             case "scalars": return "scalardemo";
-            case "widedemo": return "wide";
             case "tblscalars2": return "scalardemo2";
             default: return unit;
         }

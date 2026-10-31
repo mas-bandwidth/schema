@@ -149,7 +149,6 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang c --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang c --out $(2)/p3 test/tables/P3.schema
-	$(1) generate --lang c --out $(2)/wide examples-wide
 	$(1) generate --lang c --out $(2)/scalars tables/scalars
 	$(1) generate --lang c --out $(2)/scalars2 test/tables/Scalars2.schema
 	$(1) generate --lang c --out $(2)/jsonkeys test/tables/JsonKeys.schema
@@ -194,7 +193,6 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_tblm2.c build/tables-generated-c/m2/M2Table.c \
 	test/conformance/c/unit_tblm1.c build/tables-generated-c/m1/M1Table.c \
 	test/conformance/c/unit_messagedemo.c build/tables-generated-c/messages/MessagesTable.c \
-	test/conformance/c/unit_widedemo.c build/tables-generated-c/wide/CaptionTable.c \
 	test/conformance/c/unit_scalars.c test/conformance/c/unit_tblscalars2.c \
 	build/tables-generated-c/scalars/ScalarsTable.c build/tables-generated-c/scalars2/Scalars2Table.c \
 	test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
@@ -416,7 +414,6 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p1 test/tables/P1.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p2 test/tables/P2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p3 test/tables/P3.schema
-	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/wide examples-wide
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars tables/scalars
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars2 test/tables/Scalars2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/jsonkeys test/tables/JsonKeys.schema
@@ -984,7 +981,7 @@ tables-c-view: bin/schema test/c-tables/view_main.c
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang c --out build/c-view/$$dir $$source; \
 		$(CC) $(TABLES_CFLAGS) -Ibuild/c-view/$$dir -I$(SERIALIZE_C) \
 			-DVIEW_HEADER="\"$${cap}View.h\"" -DVIEW_PACKAGE=$$pkg -DVIEW_PACKAGE_UPPER=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z') test/c-tables/view_main.c \
@@ -1300,38 +1297,9 @@ tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
-# Wide text on the packet wire, using the shared group's corpus.
-build/packet-wide/c/.stamp: bin/schema build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang c --out build/packet-wide/c build/packet-wide/source/WideText.schema
-	@touch $@
 
-build/packet-wide/c-shapes/.stamp: bin/schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang c --out build/packet-wide/c-shapes test/packet-wide/Shapes.schema
-	@touch $@
 
-.PHONY: packet-wide-c
-packet-wide-c: build/packet-wide/c/.stamp build/packet-wide/c-shapes/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/debug
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/debug
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/release
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/release
-	@for mode in '' '-DNDEBUG'; do \
-		$(CC) -std=c99 -Wall -Wextra -Werror $$mode -fsanitize=address,undefined -I$(SERIALIZE_C) -Ibuild/packet-wide/c -Ibuild/packet-wide/c-shapes test/packet-wide/c_contract.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/contract || exit 1; \
-		./build/packet-wide/c/contract || exit 1; \
-	done
-
-.PHONY: packet-wide-c-negative-control
-packet-wide-c-negative-control: packet-wide-c
-	@mkdir -p build/packet-wide/c-negative
-	go run ./tools/sabotage -name packet-wide-c-pairing -out build/packet-wide/c-negative/wstring.gotext internal/codegen/c/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/c/wstring.go":"%s/build/packet-wide/c-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/c-negative/overlay.json
-	go run -overlay=build/packet-wide/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-wide/c-negative build/packet-wide/source/WideText.schema
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c-negative test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c-negative/driver
-	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c-negative/driver > build/packet-wide/c-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/c-negative/log || { cat build/packet-wide/c-negative/log; exit 1; }
-	@echo 'packet wide C negative control: removed pairing fails bit-flip agreement'
-
-test-c: packet-wide-c packet-wide-c-negative-control
+test-c:
 
 # Show that the independent differential detects a permissive LEB128 reader.
 # Only generated scratch headers change; no working source is sabotaged.

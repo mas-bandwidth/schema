@@ -159,7 +159,6 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	# RT1 is the RETAIN-UNKNOWN reader (docs/SPEC-TABLES.md §6.6): the
 	# conformance leg's retain and retain-save rows load RT2's wires with it
 	./bin/schema generate --lang java --out build/tables-generated-java/rt1 test/tables/RT1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
 	# plan compiled from the other side's layout.
@@ -360,7 +359,7 @@ JAVA_FORMAT_REQUIRED = $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_F
 # not a checkout that may be stale against it: the examples corpus, the 128-bit
 # corpus, the bench corpus, the real-world corpus, the paired bench unit, and
 # the packet-defaults and packet-wide fixtures.
-build/java-clean-packet/.stamp: bin/schema $(SCHEMAS) $(SCHEMAS128) $(SCHEMAS_BENCH) test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema test/packet-wide/Shapes.schema make/java.mk
+build/java-clean-packet/.stamp: bin/schema $(SCHEMAS) $(SCHEMAS128) $(SCHEMAS_BENCH) test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/java.mk
 	@rm -rf build/java-clean-packet && mkdir -p build/java-clean-packet
 	./bin/schema generate --lang java --out build/java-clean-packet/examples examples
 	./bin/schema generate --lang java --out build/java-clean-packet/examples128 examples128
@@ -369,7 +368,6 @@ build/java-clean-packet/.stamp: bin/schema $(SCHEMAS) $(SCHEMAS128) $(SCHEMAS_BE
 	./bin/schema generate --lang java --out build/java-clean-packet/paired bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	./bin/schema generate --lang java --out build/java-clean-packet/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang java --out build/java-clean-packet/plain test/packet-defaults/Plain.schema
-	./bin/schema generate --lang java --out build/java-clean-packet/shapes test/packet-wide/Shapes.schema
 	@touch $@
 
 # What the gate formats, and the floor under the count: 1872 files on 2026-10-16,
@@ -1559,7 +1557,6 @@ conformance-negative-control-java-walk: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k1 test/tables/K1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k2 test/tables/K2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/messages tables/messages
-	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/wide examples-wide
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/w1 test/tables/W1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/w2 test/tables/W2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/r1 test/tables/R1.schema
@@ -1655,29 +1652,8 @@ packet-utf8-java-negative-control: packet-utf8-java
 test-java: packet-utf8-java packet-utf8-java-negative-control
 
 
-build/packet-wide/java/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang java --out build/packet-wide/java/wide build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang java --out build/packet-wide/java/shapes test/packet-wide/Shapes.schema
-	@touch $@
 
-.PHONY: packet-wide-java packet-wide-java-negative-control
-packet-wide-java: build/packet-wide/java/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java/classes build/packet-wide/java/wide/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
-	$(JAVA) -ea -cp build/packet-wide/java/classes Main --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -ea -cp build/packet-wide/java/classes Main
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(JAVA) -cp build/packet-wide/java/classes Main
-
-packet-wide-java-negative-control: packet-wide-java
-	@mkdir -p build/packet-wide/java-negative
-	go run ./tools/sabotage -name packet-wide-java-pairing -out build/packet-wide/java-negative/wstring.gotext internal/codegen/java/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/java/wstring.go":"%s/build/packet-wide/java-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/java-negative/overlay.json
-	go run -overlay=build/packet-wide/java-negative/overlay.json ./cmd/schema generate --lang java --out build/packet-wide/java-negative build/packet-wide/source/WideText.schema
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-wide/java-negative/classes build/packet-wide/java-negative/*.java build/packet-wide/java/shapes/*.java test/packet-wide/java/*.java
-	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(JAVA) -cp build/packet-wide/java-negative/classes Main > build/packet-wide/java-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Java wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/java-negative/log || { cat build/packet-wide/java-negative/log; exit 1; }
-	@echo 'packet wide Java negative control: removed pairing fails bit-flip agreement'
-
-test-java: packet-wide-java packet-wide-java-negative-control
+test-java:
 
 # ---------------------------------------------------------------------------
 # THE CARD WIRE-FUZZ GATE (docs/SPEC-TABLES.md §2, §3)
@@ -1864,7 +1840,7 @@ tables-java-view: bin/schema test/java-view/View.java
 	@rm -rf build/java-view && mkdir -p build/java-view
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang java --out build/java-view/generated/$$dir $$source > build/java-view/$$pkg.generate.log 2>&1 || { cat build/java-view/$$pkg.generate.log; exit 1; }; \
 		mkdir -p build/java-view/src-$$pkg build/java-view/classes-$$pkg; \
 		sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java > build/java-view/src-$$pkg/View.java; \

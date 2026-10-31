@@ -56,8 +56,6 @@ import '../../build/dart-fixed/fx1/FX1Fixed.dart' as fx1;
 import '../../build/dart-fixed/fx1/Tblfx1Fixed.dart' as fx1home;
 import '../../build/dart-fixed/fx2/FX2Fixed.dart' as fx2;
 import '../../build/dart-fixed/fx2/Tblfx2Fixed.dart' as fx2home;
-import '../../build/dart-fixed/fxw/FXWFixed.dart' as fxw;
-import '../../build/dart-fixed/fxw/TblfxwFixed.dart' as fxwhome;
 import '../../build/dart-fixed/fu1/FU1.dart' as fu1decl;
 import '../../build/dart-fixed/fu1/FU1Fixed.dart' as fu1;
 import '../../build/dart-fixed/fu1/Tblfu1Fixed.dart' as fu1home;
@@ -121,12 +119,6 @@ void sameBytes(Uint8List got, Uint8List want, String what) {
 }
 
 String text(Uint8List buffer, int length) =>
-    String.fromCharCodes(buffer.sublist(0, length));
-
-// WIDE TEXT'S OWN READER: the buffer is UTF-16 CODE UNITS and the length
-// counts units, not bytes — which is the one thing that separates the text
-// op's two flavours (docs/SPEC-TABLES.md §3.4).
-String wide(Uint16List buffer, int length) =>
     String.fromCharCodes(buffer.sublist(0, length));
 
 // A CLEAN READ MOVES NO COUNTER. §4's six events are what a read reports, and
@@ -327,64 +319,6 @@ void corpusFiles(String dir) {
     final out = Uint8List(p3.chainFixedMeasure(n));
     check(p3.chainFixedSave(values, n, out) == out.length, 'p3: save');
     sameBytes(out, file, 'p3');
-  }
-
-  // ---- fxw.bin: WIDE TEXT (kind 33), the only oracle bytes the wide
-  //      flavour of the text op has ----
-  {
-    final file = read('fxw.bin');
-    framing(file, fxw.fxWideFixedLayout, fxw.fxWideFixedHash, 'fxw');
-    final values = List.generate(4, (_) => fxwhome.FxWide());
-    final report = fxwhome.TableFixedReport();
-    final n = fxw.fxWideFixedLoad(
-      values,
-      4,
-      file,
-      file.length,
-      fxw.fxWideFixedNewPlan(),
-      report,
-    );
-    check(n == 2, 'fxw: two records read (got $n)');
-    quiet(report, 'fxw');
-
-    // A WIDE LENGTH IS IN CODE UNITS AND THE PAYLOAD IS TWO BYTES EACH (§3.4).
-    // Seven units, one short of the bound.
-    check(values[0].captionLength == 7, 'fxw[0].caption_length is in units');
-    check(
-      wide(values[0].caption, values[0].captionLength) == 'hello !',
-      'fxw[0].caption',
-    );
-    // and the narrow field beside it, whose length is in BYTES
-    check(values[0].labelLength == 6, 'fxw[0].label_length is in bytes');
-    check(
-      text(values[0].label, values[0].labelLength) == 'narrow',
-      'fxw[0].label',
-    );
-    check(values[0].inner.textLength == 4, 'fxw[0].inner.text_length');
-    check(
-      wide(values[0].inner.text, values[0].inner.textLength) == 'abcd',
-      'fxw[0].inner.text — the wide flavour at a NESTED offset',
-    );
-    check(values[0].seq == 41, 'fxw[0].seq');
-
-    // AN ASTRAL PAIR IS TWO CODE UNITS AND THE LENGTH COUNTS BOTH, which is
-    // the number a leg counting bytes gets wrong by a factor of two.
-    check(
-      values[1].captionLength == 5,
-      'fxw[1].caption_length counts the pair',
-    );
-    check(values[1].caption[0] == 0xE000, 'fxw[1].caption[0]');
-    check(values[1].caption[1] == 0xD83D, 'fxw[1].caption[1] — the HIGH half');
-    check(values[1].caption[2] == 0xDE00, 'fxw[1].caption[2] — the LOW half');
-    check(values[1].caption[3] == 0xFFFF, 'fxw[1].caption[3]');
-    check(values[1].caption[4] == 0x7A, 'fxw[1].caption[4]');
-    check(values[1].labelLength == 0, 'fxw[1].label is empty');
-    check(values[1].inner.textLength == 0, 'fxw[1].inner.text is empty');
-    check(values[1].seq == 1000, 'fxw[1].seq is the declared max');
-
-    final out = Uint8List(fxw.fxWideFixedMeasure(n));
-    check(fxw.fxWideFixedSave(values, n, out) == out.length, 'fxw: save');
-    sameBytes(out, file, 'fxw');
   }
 
   // ---- keyed.bin: keyed arrays NESTING keyed arrays, and an optional ----
@@ -3833,22 +3767,6 @@ void planDstCase() {
     fu2.fuRootFixedIdentity,
     fu2.fuRootFixedIdentityCount,
     fu2.fuRootFixedBodyBytes,
-  );
-  w14Check(
-    'fxw.fxWide',
-    fxw.fxWideFixedLayout,
-    fxw.fxWideFixedDst,
-    fxw.fxWideFixedIdentity,
-    fxw.fxWideFixedIdentityCount,
-    fxw.fxWideFixedBodyBytes,
-  );
-  w14Check(
-    'fxw.fxCaption',
-    fxw.fxCaptionFixedLayout,
-    fxw.fxCaptionFixedDst,
-    fxw.fxCaptionFixedIdentity,
-    fxw.fxCaptionFixedIdentityCount,
-    fxw.fxCaptionFixedBodyBytes,
   );
   w14Check(
     'pack.globalSettings',

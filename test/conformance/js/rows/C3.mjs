@@ -3,7 +3,7 @@
 //
 // The law, in the spec's own words:
 //
-//   `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`;
+//   `text` | `cap := size`;
 //   `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it
 //   fired. Copy the payload, and terminate at the used length where the
 //   language stores a terminator — never for `bytes`.
@@ -29,12 +29,9 @@
 //
 //   2. THE RUN'S TEXT OP, `TableFixedOpText`
 //      (build/tables-generated-js/p1/Tblp1Table.js, `case TableFixedOpText`),
-//      reached the way this leg's own fixed-form suite reaches the runtime
-//      (test/js-tables/fixedform.mjs, `wideTextCodeUnits`): a hand-built plan
-//      over hand-built bytes through `TableFixedRun`, the ONE loop identity
-//      and compiled both take. This file asserts the NARROW flavour;
-//      `wideTextCodeUnits` holds the WIDE one — together they pin
-//      `unit := (meta == wide) ? 2 : 1`.
+//      reached the way this leg's own fixed-form suite reaches the runtime: a
+//      hand-built plan over hand-built bytes through `TableFixedRun`, the ONE
+//      loop identity and compiled both take.
 //
 // The vector is built with the generated unit's OWN writer (`ChainFixedSave`)
 // and the forged length is planted into the record it produced, one field at
@@ -74,10 +71,10 @@ const AT_NAME = 0;      // name string(16): length word at body+0
 const AT_LINK = 20;     // link: ChainFixedWriteBody nests Link at body+20
 const AT_TAG = AT_LINK + 4; // tag string(8): LinkFixedWriteBody puts its length at link+4
 
-// THE RUN'S CONSTANTS, SPELLED OUT (internal/codegen/jstable/fixedruntime.go,
-// exactly as fixedform.mjs's C5 spells them): a plan entry is nine int32
-// lanes — op, src, dst, size, aux, guard, arg, meta, argw — TableFixedOpText
-// is 2, and the text flavours are UTF-8 (narrow) 1 and wide 2. NoGuard is -1.
+// THE RUN'S CONSTANTS, SPELLED OUT (internal/codegen/jstable/fixedruntime.go):
+// a plan entry is nine int32 lanes — op, src, dst, size, aux, guard, arg,
+// meta, argw — TableFixedOpText is 2, and the UTF-8 text flavour is 1.
+// NoGuard is -1.
 const OP_TEXT = 2;
 const FLAVOUR_UTF8 = 1;
 

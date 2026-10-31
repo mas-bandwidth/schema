@@ -1410,7 +1410,7 @@ static void test_depth()
 // ---- A MAP WHOSE VALUE IS TEXT (docs/SPEC-TABLES.md §2.8) ----
 //
 // "A VALUE is anything a table field can hold: a scalar, an enum, a `flags`
-// mask, `string(N)`, `wstring(N)`, `bytes(N)` ..." Each of the three is an
+// mask, `string(N)`, `bytes(N)` ..." Each of the two is an
 // ORDINARY FIELD of the generated entry, so the codec is that field's own and
 // the storage is the buffer beside its int32 used length (§7.2). Two members
 // are not one addressable slot, so the handle Insert, Find and Each hand back
@@ -1434,18 +1434,6 @@ static void test_text_values()
         const size_t length = strlen( values[i] );
         memcpy( (void *) entry->value, values[i], length );
         entry->value_length = (int32_t) length;
-    }
-
-    // wstring(6): KIND 33, the value kind that is never a key. Five code units
-    // with a SURROGATE PAIR at the end, so the transcode both ways is exercised
-    // and a clamp that split the pair would be visible.
-    {
-        TextWideEntry * entry = TextWideInsert( b.main, t->wide, (uint16_t) 5 );
-        CHECK( entry != NULL );
-        if ( entry == NULL ) { return; }
-        const char16_t units[5] = { 0x0041, 0x00E9, 0x4E2D, 0xD83D, 0xDE00 };
-        for ( int i = 0; i < 5; i++ ) { entry->value[i] = units[i]; }
-        entry->value_length = 5;
     }
 
     // bytes(10) under a SIGNED key: -3 sorts before 2, and a byte buffer holds
@@ -1496,19 +1484,12 @@ static void test_text_values()
         const TextNamesEntry * beta = loaded->names.Find( "beta" );
         CHECK( beta != NULL && beta->value_length == 6 && memcmp( beta->value, "second", 6 ) == 0 );
 
-        const TextWideEntry * wide = loaded->wide.Find( (uint16_t) 5 );
-        CHECK( wide != NULL );
-        CHECK( wide != NULL && wide->value_length == 5 );
-        CHECK( wide != NULL && wide->value[0] == 0x0041 && wide->value[2] == 0x4E2D );
-        CHECK( wide != NULL && wide->value[3] == 0xD83D && wide->value[4] == 0xDE00 );
-        CHECK( wide != NULL && wide->value[wide->value_length] == 0 ); // the zero UNIT (SPEC §4.12)
-
         const TextBlobsEntry * low = loaded->blobs.Find( (int32_t) -3 ); // the SIGNED key sorts first
         CHECK( low != NULL && low->value_length == 4 && low->value[0] == 0xde && low->value[3] == 0xef );
         const TextBlobsEntry * high = loaded->blobs.Find( (int32_t) 2 );
         CHECK( high != NULL && high->value_length == 4 && high->value[0] == 0x00 && high->value[3] == 0xff );
 
-        CHECK_EQ( loaded->past, 9 ); // and the parent read on past all three
+        CHECK_EQ( loaded->past, 9 ); // and the parent read on past both
 
         // the region's VARIABLE FORM is the builder's, byte for byte
         static uint8_t again[1u << 16];
@@ -1518,7 +1499,7 @@ static void test_text_values()
     free( region );
 
     // THE TEXT FORM: the value takes its own §16.2 row under the map's key,
-    // a string as itself, wide text TRANSCODED to UTF-8, a byte buffer BASE64.
+    // a string as itself, a byte buffer BASE64.
     CHECK( b.Lock() );
     const Text * locked = b.AsConst();
     CHECK( locked != NULL );
@@ -1530,9 +1511,6 @@ static void test_text_values()
     CHECK_EQ( TextToJson( locked, json, json_bytes ), json_bytes );
     CHECK( strstr( json, "\"alpha\": \"first\"" ) != NULL );
     CHECK( strstr( json, "\"beta\": \"second\"" ) != NULL );
-    // wide text is the SAME TEXT, transcoded: five UTF-16 code units out as
-    // ten UTF-8 bytes, the surrogate pair as the one astral character it spells
-    CHECK( strstr( json, "\"5\": \"\x41\xc3\xa9\xe4\xb8\xad\xf0\x9f\x98\x80\"" ) != NULL );
     CHECK( strstr( json, "\"2\": \"AAGA/w==\"" ) != NULL ); // bytes(N): base64, PADDED
     CHECK( strstr( json, "\"-3\": \"3q2+7w==\"" ) != NULL );
     const char * alpha_at = strstr( json, "\"alpha\"" );

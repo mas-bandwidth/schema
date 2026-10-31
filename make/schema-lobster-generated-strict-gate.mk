@@ -33,7 +33,7 @@ SCHEMA_LOBSTER_STRICT_GATE_INCLUDED := 1
 
 SCHEMA_LOBSTER_STRICT_DIR    := build/schema-lobster-strict
 SCHEMA_LOBSTER_STRICT_NC_DIR := build/schema-lobster-strict-negative
-SCHEMA_LOBSTER_STRICT_TREES  := examples examples128 examples-wide
+SCHEMA_LOBSTER_STRICT_TREES  := examples examples128
 SCHEMA_LOBSTER_STRICT_MAIN   := schema_strict_main.lobster
 
 # The toolchain, resolved to an absolute path because each unit compiles from

@@ -3,7 +3,7 @@
 // LAW (the file ./repo holds is the law; this comment is the pointer):
 // "`bytes(N)` is walked as an ARRAY OF `u8` - kind `14` with one synthetic
 // child at kind `6`, size `1` - never as a text kind; only `string(N)` (`12`)
-// and `wstring(N)` (`33`) are text kinds in a layout."
+// is a text kind in a layout."
 //
 // PRODUCTION PATH (named call site): the schema compiler emits
 // tabledemo::ProfileConfigFixedLayout (tabledemo declares

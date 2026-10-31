@@ -56,8 +56,7 @@ DART_NIGHTLY_FUZZ_UNITS := \
 	p3:test/tables/P3.schema \
 	g1:test/tables/G1.schema \
 	m1:test/tables/M1.schema \
-	m2:test/tables/M2.schema \
-	wide:examples-wide
+	m2:test/tables/M2.schema
 
 .PHONY: schema-dart-nightly-fuzz-corpus
 schema-dart-nightly-fuzz-corpus: bin/schema

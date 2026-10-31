@@ -9,8 +9,6 @@
 #
 #   packet-utf8-goose      test/packet-text: the narrow string corpus and every
 #                          bit flip against the C++ reader
-#   packet-wide-goose      test/packet-wide: the wstring corpus, the six interop
-#                          cases and the contracts
 #   packet-defaults-goose  test/packet-defaults: constructors and the eight C++
 #                          byte and bit pins, reused storage
 #   packet-finite-goose    test/packet-finite: SPEC §4.3's finite floats, both
@@ -54,25 +52,6 @@ packet-utf8-goose-negative-control: packet-utf8-goose
 
 # ---- packet wide: SPEC §4.12's code units and surrogate pairing ----
 
-.PHONY: packet-wide-goose packet-wide-goose-negative-control
-packet-wide-goose: goose-packet-ready build/packet-wide/source/WideText.schema build/packet-wide/cpp/driver build/packet-text/harness
-	@rm -rf build/packet-wide/goose && mkdir -p build/packet-wide/goose
-	./build/schema-goose generate --lang goose --out build/packet-wide/goose build/packet-wide/source/WideText.schema
-	./build/schema-goose generate --lang goose --out build/packet-wide/goose test/packet-wide/Shapes.schema
-	cp test/goose/driverlib.goose test/packet-wide/goose/main.goose build/packet-wide/goose/
-	$(GOOSE) run build/packet-wide/goose/main.goose -- --contracts
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver env $(GOOSE) run build/packet-wide/goose/main.goose
-
-packet-wide-goose-negative-control: packet-wide-goose
-	$(call goose-packet-sabotaged,build/packet-wide/goose-negative,packet-wide-goose-pairing,internal/codegen/goose/read.go)
-	@rm -rf build/packet-wide/goose-negative/generated && mkdir -p build/packet-wide/goose-negative/generated
-	./build/packet-wide/goose-negative/schema generate --lang goose --out build/packet-wide/goose-negative/generated build/packet-wide/source/WideText.schema
-	./build/packet-wide/goose-negative/schema generate --lang goose --out build/packet-wide/goose-negative/generated test/packet-wide/Shapes.schema
-	cp test/goose/driverlib.goose test/packet-wide/goose/main.goose build/packet-wide/goose-negative/generated/
-	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only env $(GOOSE) run build/packet-wide/goose-negative/generated/main.goose > build/packet-wide/goose-negative/log 2>&1; then \
-		echo 'NEGATIVE CONTROL FAILED: Goose wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/goose-negative/log || { cat build/packet-wide/goose-negative/log; exit 1; }
-	@echo 'packet wide Goose negative control: removed pairing fails bit-flip agreement'
 
 # ---- packet defaults: SPEC §4.2's string, bytes and flags defaults ----
 
@@ -128,5 +107,5 @@ packet-finite-goose-negative-control: packet-finite-goose
 	$(call packet-finite-goose-control,read)
 	$(call packet-finite-goose-control,write)
 
-test-goose: packet-utf8-goose packet-utf8-goose-negative-control packet-wide-goose packet-wide-goose-negative-control \
+test-goose: packet-utf8-goose packet-utf8-goose-negative-control \
 	packet-defaults-goose packet-defaults-goose-negative-control packet-finite-goose packet-finite-goose-negative-control

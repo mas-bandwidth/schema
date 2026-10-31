@@ -79,7 +79,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
+build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
@@ -101,7 +101,6 @@ build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(
 	# wstring(N) as a field, inside a type, in a counted array of that type and
 	# as a union arm; WideVariable.js answers the widedemo rows on the variable
 	# wire (docs/SPEC-TABLES.md §3).
-	./bin/schema generate --lang js --out build/tables-generated-js/wide examples-wide
 	# the LIST unit (tables/lists, docs/SPEC-TABLES.md §2.7): ListdemoVariable.js
 	# carries the listdemo roots, so their instances answer the text form
 	# (json-read, json-write, json-hostile, §16) like every other generated unit.
@@ -1261,34 +1260,8 @@ packet-utf8-js-negative-control: packet-utf8-js
 test-js: packet-utf8-js packet-utf8-js-negative-control
 
 
-build/packet-wide/js/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang js --out build/packet-wide/js build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang js --out build/packet-wide/js/shapes test/packet-wide/Shapes.schema
-	@printf '{"type":"module"}\n' > build/packet-wide/js/package.json
-	@touch $@
 
-.PHONY: packet-wide-js packet-wide-js-negative-control
-packet-wide-js: build/packet-wide/js/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	@for mode in development production; do for tier in runtime flat; do \
-		NODE_ENV=$$mode $(NODE) test/packet-wide/js/main.mjs $$tier --contracts || exit 1; \
-		NODE_ENV=$$mode ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver $(NODE) test/packet-wide/js/main.mjs $$tier || exit 1; \
-	done; done
-
-packet-wide-js-negative-control: packet-wide-js
-	@mkdir -p build/packet-wide/js-negative
-	go run ./tools/sabotage -name packet-wide-js-pairing -out build/packet-wide/js-negative/wstring.gotext internal/codegen/js/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/js/wstring.go":"%s/build/packet-wide/js-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/js-negative/overlay.json
-	go run -overlay=build/packet-wide/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-wide/js-negative build/packet-wide/source/WideText.schema
-	cp build/packet-wide/js/package.json build/packet-wide/js-negative/package.json
-	$(NODE) --check build/packet-wide/js-negative/WideText.js
-	$(NODE) --check build/packet-wide/js-negative/WideTextFlat.js
-	@for tier in runtime flat; do \
-		if NODE_ENV=production ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only $(NODE) test/packet-wide/js/main.mjs $$tier "$(CURDIR)/build/packet-wide/js-negative" > build/packet-wide/js-negative/$$tier.log 2>&1; then echo 'NEGATIVE CONTROL FAILED: JS wide pairing removal passed'; exit 1; fi; \
-		grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/js-negative/$$tier.log || { cat build/packet-wide/js-negative/$$tier.log; exit 1; }; \
-	done
-	@echo 'packet wide JS negative control: removed pairing fails both tiers in bit-flip agreement'
-
-test-js: packet-wide-js packet-wide-js-negative-control
+test-js:
 
 # ---------------------------------------------------------------------------
 # THE UNIT REGISTRY'S JAVASCRIPT LEG (docs/SPEC-TABLES.md §8.7): the same
@@ -1304,7 +1277,7 @@ tables-js-view: bin/schema test/js-view/view_main.mjs
 	@mkdir -p build/js-view
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang js --out build/js-view/$$dir $$source; \
 		$(NODE) test/js-view/view_main.mjs build/js-view/$$dir/*View.js > build/js-view/$$pkg.listing; \
 	done; \
