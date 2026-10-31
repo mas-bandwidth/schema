@@ -1853,18 +1853,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp read_payload(%{t: :table} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, body} ->
-        elem_desc = Map.fetch!(@tables, f.elem)
-
-        case entries(body, ids, elem_desc.string_blob, false) do
-          {:ok, fields, []} ->
-            # the nested body's events FOLD into the holder's (§4): a fresh
-            # report here would drop every event the holder counted before it
-            {value, nested} = decode(elem_desc, fields, nodes, ids)
-            {:cont, value, merge_report(report, nested)}
-
-          _ ->
-            {:cont, %{}, %{report | malformed: true}}
-        end
+        # a nested body reads as an element does (§3, §4), and its events FOLD
+        # into the holder's: a fresh report here would drop every event the
+        # holder counted before it
+        {value, nested} = read_element(Map.fetch!(@tables, f.elem), body, nodes, ids)
+        {:cont, value, merge_report(report, nested)}
 
       :error ->
         {:cont, %{}, %{report | malformed: true}}
@@ -2372,32 +2365,35 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # DEFAULTS and one malformed counts, and the list reads on past it. A clean
   # body reads its value, and an event inside it folds into the list's report.
   defp read_element(desc, sub, nodes, ids) do
-    if ends_early?(sub, ids) do
-      {%{}, malformed_report()}
-    else
-      case entries(sub, ids, false, false) do
-        {:ok, fields, []} ->
-          # a list element's report FOLDS into the enclosing one (§4): the
-          # counters sum and malformed sticks, so an event inside an element
-          # is never lost when the element's own walk returns.
-          decode(desc, fields, nodes, ids)
+    case entries(sub, ids, false, false) do
+      {:ok, fields, []} ->
+        # a list element's report FOLDS into the enclosing one (§4): the
+        # counters sum and malformed sticks, so an event inside an element
+        # is never lost when the element's own walk returns. A body whose
+        # terminator is not the last byte of its L is framing damage (§3):
+        # the events its fields earned count, the element reads its
+        # declared defaults, and one malformed counts.
+        {value, report} = decode(desc, fields, nodes, ids)
 
-        {:stop, fields, [], 0} ->
-          # the element's body ran off its own end with no terminator: the
-          # prefix decoded stands, and one malformed counts (§3)
-          {value, report} = decode(desc, fields, nodes, ids)
-          {value, %{report | malformed: true}}
+        if ends_early?(sub, ids),
+          do: {%{}, %{report | malformed: true}},
+          else: {value, report}
 
-        {:stop, fields, [], _remaining} ->
-          # the element's body is damaged mid-walk: the events its prefix
-          # already earned count, the element reads its declared defaults, and
-          # one malformed counts (§3, §4)
-          {_value, report} = decode(desc, fields, nodes, ids)
-          {%{}, %{report | malformed: true}}
+      {:stop, fields, [], 0} ->
+        # the element's body ran off its own end with no terminator: the
+        # prefix decoded stands, and one malformed counts (§3)
+        {value, report} = decode(desc, fields, nodes, ids)
+        {value, %{report | malformed: true}}
 
-        _ ->
-          {%{}, malformed_report()}
-      end
+      {:stop, fields, [], _remaining} ->
+        # the element's body is damaged mid-walk: the events its prefix
+        # already earned count, the element reads its declared defaults, and
+        # one malformed counts (§3, §4)
+        {_value, report} = decode(desc, fields, nodes, ids)
+        {%{}, %{report | malformed: true}}
+
+      _ ->
+        {%{}, malformed_report()}
     end
   end
 
