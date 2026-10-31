@@ -7397,10 +7397,10 @@ static void test_escape_and_payload_free_kinds()
         CHECK( report.kind_mismatch == 1 && report.unknown == 0 && !report.malformed );
         CHECK( out.body.type == messagedemo::ToolBodyType::None );
     }
-    // BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the
-    // append rule): a nested-union arm whose L runs past the whole inner union
-    // it frames is NOT damage. The inner union decodes, the bytes after it are
-    // stepped over with the arm, the parent reads on and nothing counts.
+    // A NESTED UNION FILLS ITS ARM'S L EXACTLY (docs/SPEC-TABLES.md §3): a
+    // nested-union arm whose L runs past the whole inner union it frames
+    // carries a byte no writer put there, so it is damage and the whole load
+    // is refused (§4).
     {
         uint8_t wire[256];
         WireBuilder b;
@@ -7420,14 +7420,12 @@ static void test_escape_and_payload_free_kinds()
         pin_table_golden( "nested_arm_trailing", wire, n );
         messagedemo::ToolMessage out;
         messagedemo::TableReport report;
-        CHECK( messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
-        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0 );
-        CHECK( out.body.type == messagedemo::ToolBodyType::Origin );
-        CHECK( out.body.origin.type == messagedemo::OriginType::Pid && out.body.origin.pid == 5 );
-        CHECK( out.sequence == 41 );
+        CHECK( !messagedemo::ToolMessageLoadTolerant( out, wire, n, &report ) );
+        CHECK( report.malformed );
+        CHECK( out.body.type == messagedemo::ToolBodyType::None && out.sequence == 0 );
     }
-    // ITS TOP-LEVEL TWIN: the same byte after the ROOT's terminator, outside
-    // every envelope, is claimed by nothing and the file is malformed (§3:
+    // ITS TOP-LEVEL TWIN: the same byte after the ROOT's terminator is claimed
+    // by nothing and the file is malformed on the same rule (§3:
     // any byte between the root's terminator and the id table's first entry).
     {
         uint8_t wire[256];

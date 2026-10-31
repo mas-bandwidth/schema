@@ -5555,14 +5555,14 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 	@if $(NESTED_TRAIL_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
 			--replay testdata/wire/tables/nested_arm_trailing.bin --unit messagedemo --root ToolMessage \
 			--failed $(NESTED_TRAIL_NC)/failed.bin > $(NESTED_TRAIL_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the oracle refuses a nested-union envelope's trailing bytes and the wire fuzzer stayed green"; \
+		echo "NEGATIVE CONTROL FAILED: the oracle reads a nested-union envelope's trailing bytes clean and the wire fuzzer stayed green"; \
 		cat $(NESTED_TRAIL_NC)/log; exit 1; \
 	fi
 	@grep -q "nested_arm_trailing.bin" $(NESTED_TRAIL_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector nested_arm_trailing"; \
 		  cat $(NESTED_TRAIL_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(NESTED_TRAIL_NC)/log
-	@echo "negative control: refusing a nested-union envelope's trailing bytes in the oracle turns the pinned vector RED"
+	@echo "negative control: reading a nested-union envelope's trailing bytes clean in the oracle turns the pinned vector RED"
 
 # ---- THE RETENTION LEG (docs/SPEC-TABLES.md §6.6, §4.2) ---------------------
 #
