@@ -97,12 +97,12 @@ defmodule Soak do
     {pid, mon} =
       spawn_monitor(fn -> send(parent, {:soaked, self(), run(parent, cases, lead, window)}) end)
 
-    {samples, ran, drift} = collect_samples(pid, mon, [])
+    {sampled, ran, drift} = collect_samples(pid, mon, [])
 
     by_name = Map.new(cases, &{&1.name, &1})
 
     over =
-      for {i, figures} <- samples do
+      for {i, figures} <- sampled do
         cols =
           for {name, {w, b}} <- figures,
               c <- [Map.fetch!(by_name, name)],
@@ -129,7 +129,7 @@ defmodule Soak do
       end
       |> Enum.reject(&(&1 == []))
 
-    IO.puts("soak: worker ran #{ran} passes, driver took #{length(samples)} samples")
+    IO.puts("soak: worker ran #{ran} passes, driver took #{length(sampled)} samples")
 
     {live_drift, binary_drift} = drift
     drift_ok = live_drift <= @live_drift_words and binary_drift <= @binary_drift_bytes

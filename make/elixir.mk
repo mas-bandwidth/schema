@@ -678,65 +678,66 @@ test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tabl
 # the derived manifest and the generated ebin: one PASS is one iteration of
 # every pinned case of the allocation audit above, TABLES_ELIXIR_SOAK_ITERATIONS
 # passes in one long-lived process (a count, never a clock: `make shape-gate`
-# refuses a timing primitive outside the sanctioned bench), cut into sixteen
-# samples. Every sample re-measures the audit's two counters, heap words and
-# binary calls per pass, and must sit inside the sum of the pinned budgets in
-# $(ELIXIR_ALLOC_BUDGET) with the audit's slack; the live-heap and binary-memory
-# drift is printed beside it as the weaker instrument. The pin comes first, as
-# in the audit. The default count is the release act, about an hour on vision
-# (a pass over the pinned corpus is about 0.1 s there); `test-elixir` runs the
-# short form with an explicit count.
-TABLES_ELIXIR_SOAK_ITERATIONS ?= 36000
-ELIXIR_SOAK_SHORT := 64
+# refuses a timing primitive outside the sanctioned bench), cut into samples of
+# 200, the audit's own window. Every sample re-measures the audit's two
+# counters, heap words and binary calls, for every case and holds each to its
+# pinned budget in $(ELIXIR_ALLOC_BUDGET) with the audit's slack; the live-heap
+# and binary-memory drift is printed beside it as the weaker instrument and
+# bounds retention. The pin comes first, as in the audit. THE LENGTH CHECK rides
+# every run: the soak must report exactly the passes and samples its count
+# names, so a soak that ignored its count is red, not silently green. The
+# default count is the release act, about an hour on vision (a pass over the
+# pinned corpus is about a quarter of a second there); `test-elixir` runs the
+# short form, two samples.
+TABLES_ELIXIR_SOAK_ITERATIONS ?= 13800
+ELIXIR_SOAK_SHORT := 400
+ELIXIR_SOAK_LOG := build/elixir-soak/log
 
-.PHONY: tables-elixir-soak tables-elixir-soak-length tables-elixir-soak-negative-control
+.PHONY: tables-elixir-soak tables-elixir-soak-short tables-elixir-soak-negative-control
 tables-elixir-soak: build/conformance/manifest.txt
 	$(MIX) format --check-formatted test/elixir-soak/main.exs
-	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-soak/main.exs \
-		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
-		$(TABLES_ELIXIR_SOAK_ITERATIONS) $(ELIXIR_ALLOC_BUDGET)
-
-# THE LENGTH CHECK: a 40-pass soak must run 40 passes and take its sixteen
-# samples, so a soak that ignores its count (and would run something else while
-# claiming the release act's) is red here, not silently green.
-tables-elixir-soak-length: build/conformance/manifest.txt
-	@mkdir -p build/elixir-soak-length
+	@mkdir -p $(dir $(ELIXIR_SOAK_LOG))
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-soak/main.exs \
-		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) 40 $(ELIXIR_ALLOC_BUDGET) \
-		> build/elixir-soak-length/log 2>&1 || { cat build/elixir-soak-length/log; exit 1; }
-	@grep -q 'soak: worker ran 40 passes, driver took 16 samples' build/elixir-soak-length/log || \
-		{ echo "SOAK LENGTH FAILED: the soak did not run its 40 passes in 16 samples"; \
-		  cat build/elixir-soak-length/log; exit 1; }
-	@echo "soak length: a 40-pass Elixir soak ran 40 passes in 16 samples"
+		build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) \
+		$(TABLES_ELIXIR_SOAK_ITERATIONS) $(ELIXIR_ALLOC_BUDGET) > $(ELIXIR_SOAK_LOG) 2>&1; \
+		status=$$?; cat $(ELIXIR_SOAK_LOG); exit $$status
+	@grep -q "soak: worker ran $(TABLES_ELIXIR_SOAK_ITERATIONS) passes, driver took $$(( $(TABLES_ELIXIR_SOAK_ITERATIONS) / 200 )) samples" $(ELIXIR_SOAK_LOG) || \
+		{ echo "SOAK LENGTH FAILED: the soak did not run its $(TABLES_ELIXIR_SOAK_ITERATIONS) passes"; exit 1; }
+	@echo "tables Elixir soak: $(TABLES_ELIXIR_SOAK_ITERATIONS) passes, every sample inside the pinned allocation budget"
+
+tables-elixir-soak-short:
+	$(MAKE) tables-elixir-soak TABLES_ELIXIR_SOAK_ITERATIONS=$(ELIXIR_SOAK_SHORT)
 
 # THE SOAK'S NEGATIVE CONTROL: the emitter sabotage the audit's control plants
 # (ELIXIR_ALLOC_SED: every generated load builds sixteen refc binaries and a
 # thousand-cell list and drops them at once), a matched allocate-and-free per
-# pass that retains nothing. The soak must go red on the count, and the drift
-# line must stay [PASS], which is what says the count saw what drift cannot.
+# pass that retains nothing. Two samples over four pinned cases keep it inside
+# the CI job's ceiling; the soak must go red on the count at both samples, and
+# the drift line must stay [PASS], which is what says the count saw what drift
+# cannot.
 CONFORMANCE_NEGATIVE_ELIXIR_SOAK := build/elixir-soak-negative
+ELIXIR_SOAK_CONTROL_CASES := root_full,archive,keyed_config,profile_elide
 
 tables-elixir-soak-negative-control: build/conformance/manifest.txt
 	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK),internal/codegen/elixirtable/variableform.go,ELIXIR_ALLOC_SED)
-	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/ebin $(ELIXIR) test/elixir-soak/main.exs \
-			build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) $(ELIXIR_SOAK_SHORT) $(ELIXIR_ALLOC_BUDGET) \
+	@if ELIXIR_SOAK_CASES=$(ELIXIR_SOAK_CONTROL_CASES) \
+			ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/ebin $(ELIXIR) test/elixir-soak/main.exs \
+			build/conformance/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) 400 $(ELIXIR_ALLOC_BUDGET) \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a matched allocate-and-free per generated load left the soak green"; \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; fi
-	@[ "$$(grep -c '^SOAK FAILED: sample' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log)" -eq 16 ] || \
-		{ echo "NEGATIVE CONTROL FAILED: the count did not red every one of the sixteen samples"; \
+	@grep -q '^soak: 400 passes over 4 pinned cases' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the control did not soak its four cases"; \
+		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
+	@[ "$$(grep -c '^SOAK FAILED: sample [12]: 4 cases' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log)" -eq 2 ] || \
+		{ echo "NEGATIVE CONTROL FAILED: the count did not red all four cases at both samples"; \
 		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
 	@grep -qE '^soak: drift .*\[PASS\]' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: drift went red too, so the control does not show the count seeing what drift cannot"; \
 		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log; exit 1; }
 	@grep -m1 '^SOAK FAILED: sample' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log
 	@grep '^soak: drift' $(CONFORMANCE_NEGATIVE_ELIXIR_SOAK)/log
-	@echo "elixir soak negative control: a matched allocate-and-free per load reds the count at all sixteen samples while drift stays silent"
-
-.PHONY: tables-elixir-soak-short
-tables-elixir-soak-short:
-	$(MAKE) tables-elixir-soak TABLES_ELIXIR_SOAK_ITERATIONS=$(ELIXIR_SOAK_SHORT)
-	$(MAKE) tables-elixir-soak-length
+	@echo "elixir soak negative control: a matched allocate-and-free per load reds the count at both samples while drift stays silent"
 
 test-elixir: tables-elixir-soak-short tables-elixir-soak-negative-control
 
