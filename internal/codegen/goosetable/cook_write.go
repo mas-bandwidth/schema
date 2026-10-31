@@ -123,8 +123,8 @@ func (w *cookWriter) fresh(prefix string) string {
 // elemTypeOf is the Goose type of one storage element of a field: its slot
 // type with any trailing array bound removed.
 func elemTypeOf(slot string) string {
-	if i := strings.Index(slot, "["); i >= 0 {
-		return slot[:i]
+	if before, _, ok := strings.Cut(slot, "["); ok {
+		return before
 	}
 	return slot
 }
