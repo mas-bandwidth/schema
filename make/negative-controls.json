@@ -914,6 +914,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-soak",
+      "when": "pull-request",
+      "why": "the Elixir soak's sabotaged emitter (docs/PORTING.md I9): every load allocating and dropping sixteen refc binaries and a thousand-cell list must red the count at both samples of a 400-pass soak over four pinned cases while the drift line stays silent. A group of its own because it rebuilds the corpus through a sabotaged compiler, as elixir-alloc does: 96 s on vision.",
+      "targets": [
+        "tables-elixir-soak-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-offsets",
       "when": "pull-request",
       "why": "the Elixir composed-offset control: the block's offset_of read back as a whole word must red the forged-offset check. 95 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",

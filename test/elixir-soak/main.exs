@@ -54,8 +54,11 @@ defmodule Soak do
   @heap_slack 64
   @binary_slack 8
   # retention the drift line tolerates in the VM: allocator bookkeeping, far
-  # under one retained instance of the corpus; an atom made per pass is a leak
+  # under one retained instance of the corpus
   @table_drift_bytes 65_536
+  # the instrument's own first-use atoms (the trace and its messages, measured
+  # at four); an atom made per pass is a whole sample's worth
+  @atom_drift 64
   @binary_drift_bytes 1_048_576
 
   def main([manifest, otp_want, elixir_want, passes | rest]) do
@@ -128,11 +131,13 @@ defmodule Soak do
         cols != []
       end)
 
-    IO.puts(
-      "soak: worker ran #{samples * @window} passes, driver took #{samples} samples"
-    )
+    IO.puts("soak: worker ran #{samples * @window} passes, driver took #{samples} samples")
 
-    drift = Enum.zip_with(vm_footprint(), drift0, fn {k, v1, bound}, {k, v0, bound} -> {k, v1 - v0, bound} end)
+    drift =
+      Enum.zip_with(vm_footprint(), drift0, fn {k, v1, bound}, {k, v0, bound} ->
+        {k, v1 - v0, bound}
+      end)
+
     drift_ok = Enum.all?(drift, fn {_k, d, bound} -> d <= bound end)
 
     IO.puts(
@@ -152,7 +157,10 @@ defmodule Soak do
         System.halt(1)
 
       not drift_ok ->
-        IO.puts("SOAK FAILED: the VM's binary, ETS, persistent term or atom footprint drifted past its bound")
+        IO.puts(
+          "SOAK FAILED: the VM's binary, ETS, persistent term or atom footprint drifted past its bound"
+        )
+
         System.halt(1)
 
       true ->
@@ -178,7 +186,7 @@ defmodule Soak do
       {"binary bytes", :erlang.memory(:binary), @binary_drift_bytes},
       {"ets bytes", :erlang.memory(:ets), @table_drift_bytes},
       {"persistent term bytes", :persistent_term.info().memory, @table_drift_bytes},
-      {"atoms", :erlang.system_info(:atom_count), 0}
+      {"atoms", :erlang.system_info(:atom_count), @atom_drift}
     ]
   end
 
