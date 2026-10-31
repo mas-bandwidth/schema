@@ -83,15 +83,76 @@ func cookFieldExtent(f *ir.Field) bool {
 	return cookFieldHasExtent(f, map[*ir.Struct]bool{}, map[*ir.Union]bool{})
 }
 
-// cookRecordBytes is one node's RECORD half: its sizeof, rounded to the
-// region's alignment floor when the record can hold an extent, which is where
-// the extent begins (§7.2).
+// cookExtentAlign is the greatest alignment of any element or entry the
+// record's extent can hold, at any depth: a list's element, a map's
+// generated entry, and those their elements hold in turn. 1 for a record
+// with no extent.
+func cookExtentAlign(u *ir.Unit, st *ir.Struct) int64 {
+	return cookExtentAlignSeen(u, st, map[*ir.Struct]bool{}, map[*ir.Union]bool{})
+}
+
+func cookExtentAlignSeen(u *ir.Unit, st *ir.Struct, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) int64 {
+	if st == nil || seenS[st] {
+		return 1
+	}
+	seenS[st] = true
+	align := int64(1)
+	for _, f := range st.Fields {
+		align = max(align, cookFieldExtentAlign(u, f, seenS, seenU))
+	}
+	return align
+}
+
+func cookFieldExtentAlign(u *ir.Unit, f *ir.Field, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) int64 {
+	switch {
+	case f.IsMap():
+		return max(ir.RecordLayout(u, f.MapEntry).Align, cookExtentAlignSeen(u, f.MapEntry, seenS, seenU))
+	case f.IsList():
+		_, align := ir.ListElementLayout(u, f)
+		elem := scalarOnly(f)
+		elem.Type.Pointer = f.Type.Pointer
+		return max(align, cookFieldExtentAlign(u, elem, seenS, seenU))
+	}
+	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+		return 1
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return cookExtentAlignSeen(u, ref, seenS, seenU)
+	case *ir.Union:
+		if seenU[ref] {
+			return 1
+		}
+		seenU[ref] = true
+		align := int64(1)
+		for _, v := range ref.Variants {
+			if v.F != nil {
+				align = max(align, cookFieldExtentAlign(u, v.F, seenS, seenU))
+			}
+		}
+		return align
+	}
+	return 1
+}
+
+// cookNodeAlign is a node's alignment in the region: the greater of its
+// record's and every element's its extent can hold, so an array aligned
+// relative to the extent is aligned in the region too.
+func cookNodeAlign(u *ir.Unit, st *ir.Struct) int64 {
+	return max(ir.RecordLayout(u, st).Align, cookExtentAlign(u, st))
+}
+
+// cookRecordBytes is one node's RECORD half: its sizeof, and for a record
+// that can hold an extent that rounded to the region's alignment floor and to
+// the greatest element alignment its extent can hold, which is where the
+// extent begins (§7.2).
 func cookRecordBytes(u *ir.Unit, st *ir.Struct) int64 {
 	ml := ir.RecordLayout(u, st)
 	if !cookHasExtent(st) {
 		return ml.Size
 	}
-	return (ml.Size + ir.RegionAlignFloor - 1) / ir.RegionAlignFloor * ir.RegionAlignFloor
+	a := max(ir.RegionAlignFloor, cookExtentAlign(u, st))
+	return (ml.Size + a - 1) / a * a
 }
 
 // emitCookCarver emits `<t>_cook_carve` for one carried record that can hold

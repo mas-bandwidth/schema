@@ -237,8 +237,7 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	} else {
 		b.WriteString("fn cook_record_layout(type_id: u64) -> Option<(i64, i64)> {\n    match type_id {\n")
 		for _, st := range targets {
-			ml := ir.RecordLayout(g.unit, st)
-			fmt.Fprintf(b, "        0x%016x => Some((%d, %d)),\n", ir.TableWireId(st.WireName()), cookRecordBytes(g.unit, st), ml.Align)
+			fmt.Fprintf(b, "        0x%016x => Some((%d, %d)),\n", ir.TableWireId(st.WireName()), cookRecordBytes(g.unit, st), cookNodeAlign(g.unit, st))
 		}
 		b.WriteString("        _ => None,\n    }\n}\n\n")
 	}
@@ -516,7 +515,7 @@ func (g *gen) emitCookRootWriter(b *strings.Builder, st *ir.Struct) {
 	rb := cookRecordBytes(g.unit, st)
 	if cookHasExtent(st) {
 		fmt.Fprintf(b, "    let mut m = TableCarve { extent_at: 0, at: 0 };\n    %s(v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
-		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d + m.at, %d, cook_record_layout, cook_record_extent, order)?;\n", rb, ml.Align)
+		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d + m.at, %d, cook_record_layout, cook_record_extent, order)?;\n", rb, cookNodeAlign(g.unit, st))
 		fmt.Fprintf(b, "    %s(v, &mut w, 0);\n", fn(st.Name, "cook_body"))
 		b.WriteString("    // THE ROOT'S EXTENT, and the extent written is the extent measured (§2.8, §2.9)\n")
 		fmt.Fprintf(b, "    let mut c = TableCarve { extent_at: %d, at: 0 };\n    %s(v, &mut c, Some(&mut w), 0);\n", rb, fn(st.Name, "cook_carve"))
