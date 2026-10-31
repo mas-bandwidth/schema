@@ -623,7 +623,7 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
-  const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [] };
+  const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [], owner: 0 };
   if (raw !== null) {
     const place = c.place;
     for (const rec of raw) {
@@ -648,14 +648,19 @@ function TableVariableLoad(c, bytes, report, retain) {
       }
       st.nodes.push({ kind: "t", codec: nc, v: nc.make(), body: rec.body });
     }
-    for (const n of st.nodes) {
+    for (let k = 0; k < st.nodes.length; k++) {
+      const n = st.nodes[k];
       if (n === null || n.kind !== "t") { continue; }
+      // the graph vertex every pointer slot this body stores starts from: the
+      // root is vertex 0 and record k is vertex k + 1 (§3.1, the cycle check)
+      st.owner = k + 1;
       // RETENTION INSIDE A NODE RECORD (§6.6): the record's path starts with
       // the node's own identity, so its unknown fields ride back into the same
       // record's tail on the save.
       TableVariableBodyRead(n.codec, new TableVariableReader(n.body, 0, n.body.length), table, n.v, report, st, true, retain, TableVariableRetainNodePath(n.v));
     }
   }
+  st.owner = 0;
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
   // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
   // any damage the walk met after it (§3.3): nothing lands.
@@ -683,11 +688,14 @@ function TableVariableLoad(c, bytes, report, retain) {
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
   const strings = new Map();
-  for (const [holder, key, index, d] of st.pending) {
+  // the loaded graph's edges, one per table pointer slot that resolved to a
+  // node: from the vertex whose body stored the slot to the vertex it names
+  const from = [], to = [];
+  for (const [holder, key, index, d, owner] of st.pending) {
     let value = null, str = null;
     if (st.good && index !== 0) {
       if (index === 1) {
-        if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; } else { report.kindMismatch++; }
+        if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; from.push(owner); to.push(0); } else { report.kindMismatch++; }
       } else if (index - 2 >= st.nodes.length) {
         report.malformed = true;
       } else {
@@ -699,6 +707,8 @@ function TableVariableResolve(st, report) {
             if (n.kind === "b") { value = n.blob; } else { report.kindMismatch++; }
           } else if (n.kind === "t" && n.codec === d.c) {
             value = n.v;
+            from.push(owner);
+            to.push(index - 1);
           } else {
             report.kindMismatch++;
           }
@@ -731,6 +741,54 @@ function TableVariableResolve(st, report) {
       for (const e of ents) { m.set(e.key, e.value); }
     }
   }
+  // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
+  // produces one, so a loaded graph with a cycle refuses the whole load.
+  if (st.good && !report.malformed && TableVariableCyclic(st.nodes.length + 1, from, to)) {
+    report.malformed = true;
+  }
+}
+
+// THE CYCLE CHECK (docs/SPEC-TABLES.md §3.1): the vertices are the root (0)
+// and every record (k + 1), the edges every table pointer slot the load
+// stored, a slot under a false guard included and a cycle the root never
+// reaches included. Each vertex carries one of three marks and is ENTERED
+// ONCE: a pointer to an OPEN vertex is a cycle, a pointer to a CLOSED one a
+// legal share, never re-entered. The walk keeps its own stack, so a chain's
+// length is never a call depth, and the work is linear in vertices plus edges.
+function TableVariableCyclic(count, from, to) {
+  if (from.length === 0) { return false; }
+  // the edges grouped by the vertex they leave, counted then placed
+  const first = new Int32Array(count + 1);
+  for (let i = 0; i < from.length; i++) { first[from[i] + 1]++; }
+  for (let k = 0; k < count; k++) { first[k + 1] += first[k]; }
+  const fill = first.slice(0, count);
+  const edges = new Int32Array(from.length);
+  for (let i = 0; i < from.length; i++) { edges[fill[from[i]]++] = to[i]; }
+  const mark = new Uint8Array(count); // 0 unvisited, 1 open, 2 closed
+  const stack = new Int32Array(count);
+  const next = new Int32Array(count);
+  for (let start = 0; start < count; start++) {
+    if (mark[start] !== 0) { continue; }
+    let depth = 0;
+    stack[depth++] = start;
+    mark[start] = 1;
+    next[start] = first[start];
+    while (depth > 0) {
+      const v = stack[depth - 1];
+      if (next[v] === first[v + 1]) {
+        mark[v] = 2;
+        depth--;
+        continue;
+      }
+      const t = edges[next[v]++];
+      if (mark[t] === 1) { return true; }
+      if (mark[t] === 2) { continue; }
+      mark[t] = 1;
+      next[t] = first[t];
+      stack[depth++] = t;
+    }
+  }
+  return false;
 }
 
 // ONE BODY (§3, §4): fields by id in any order, a field this table cannot name
@@ -927,7 +985,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       // followed (§3.1)
       const index = r.leb();
       if (r.bad) { report.malformed = true; return false; }
-      st.pending.push([v, fd.n, index, fd]);
+      st.pending.push([v, fd.n, index, fd, st.owner]);
       return true;
     }
     case "tab": {
@@ -1062,7 +1120,7 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
       const index = r.leb();
       if (r.bad) { report.malformed = true; return false; }
       out[i] = null;
-      st.pending.push([out, i, index, e]);
+      st.pending.push([out, i, index, e, st.owner]);
       return true;
     }
     case "enum": {

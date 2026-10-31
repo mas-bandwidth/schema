@@ -1685,3 +1685,18 @@ tables-js-batch-discard-negative-control:
 	$(call js_jstable_control,js-batch-discard-dropped,internal/codegen/jstable/messagebatch.go,^TestMessageFormBatchJavaScript$$,./internal/codegen/jstable/,damage inside body 2 delivered a body)
 
 test-js: tables-js-discard-negative-control tables-js-batch-discard-negative-control
+
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the gate loads the
+# manifest's cycle rows through Load and LoadRetain and requires nothing back,
+# and the chain and the forty-level diamond chain beside them to load. Its
+# control blinds the three-mark walk to an OPEN vertex, through a tools/sabotage
+# copy reached by a Go overlay, and requires the gate red on a cyclic wire.
+.PHONY: tables-js-cycle tables-js-cycle-negative-control
+tables-js-cycle:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestCyclicWireIsDamageJavaScript$$'
+	@echo 'tables JS cycle: a cyclic wire is damage, a shared node is not (§3.1)'
+
+tables-js-cycle-negative-control:
+	$(call js_jstable_control,js-cycle-dropped,internal/codegen/jstable/variableruntime.go,^TestCyclicWireIsDamageJavaScript$$,./internal/codegen/jstable/,a cyclic wire loaded)
+
+test-js: tables-js-cycle tables-js-cycle-negative-control

@@ -280,3 +280,85 @@ for (const row of %s) {
 		}
 	})
 }
+
+// TestCyclicWireIsDamageJavaScript is the JavaScript leg's gate for A CYCLIC
+// WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn, 2026-10-31): the
+// manifest's cycle rows (a node naming itself, a node naming the root, a cycle
+// in the middle of a chain) load as nothing through Load and LoadRetain with
+// the report saying malformed, and the two acyclic rows beside them load: a
+// chain, and a diamond chain of forty levels whose 2^40 paths a walk that
+// re-entered shared nodes would never finish.
+func TestCyclicWireIsDamageJavaScript(t *testing.T) {
+	t.Parallel()
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]bool{ // case -> it must load
+		"node_cycle_self":    false,
+		"node_cycle_to_root": false,
+		"node_cycle_mid":     false,
+		"node_chain_two":     true,
+		"node_diamond_chain": true,
+	}
+	type row struct {
+		Case string `json:"case"`
+		Root string `json:"root"`
+		Wire string `json:"wire"`
+		Load bool   `json:"load"`
+	}
+	var rows []row
+	f, err := os.Open(filepath.Join(repo, "testdata/conformance/tables/MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		fs := strings.Fields(sc.Text())
+		if len(fs) < 6 || fs[0] != "framing" {
+			continue
+		}
+		load, ok := cases[fs[1]]
+		if !ok {
+			continue
+		}
+		if fs[2] != "graphdemo" {
+			t.Fatalf("%s names unit %s, not graphdemo", fs[1], fs[2])
+		}
+		if want := "malformed"; !load && fs[5] != want {
+			t.Fatalf("%s: the manifest's verdict is %s, not %s", fs[1], fs[5], want)
+		}
+		rows = append(rows, row{fs[1], fs[3], filepath.Join(repo, fs[4]), load})
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != len(cases) {
+		t.Fatalf("the manifest holds %d of the %d cycle rows", len(rows), len(cases))
+	}
+	js, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitForMeasure(t, repo, "tables/pointers")
+	jsDiscardRun(t, u, nil, fmt.Sprintf(`
+for (const row of %s) {
+  const wire = new Uint8Array(readFileSync(row.wire));
+  const r = new m.TableVariableReport();
+  const v = m[row.root + "Load"](wire, r);
+  const retain = new m.TableVariableRetain(new Uint8Array(1 << 16), new Array(256));
+  const rr = new m.TableVariableReport();
+  const rv = m[row.root + "LoadRetain"](wire, retain, rr);
+  if (row.load) {
+    if (v === null || r.malformed) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
+    if (rv === null || rr.malformed) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
+    continue;
+  }
+  if (v !== null || !r.malformed) { fail(row.case + ": a cyclic wire loaded (malformed=" + r.malformed + ")"); }
+  if (rv !== null || !rr.malformed || retain.used !== 0 || retain.count !== 0) {
+    fail(row.case + ": a cyclic wire loaded retained (malformed=" + rr.malformed + " used=" + retain.used + ")");
+  }
+}
+`, js))
+}

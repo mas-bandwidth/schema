@@ -886,10 +886,11 @@
       "name": "js-discard",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md \u00a74): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
+      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md \u00a74): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
       "targets": [
         "tables-js-discard-negative-control",
-        "tables-js-batch-discard-negative-control"
+        "tables-js-batch-discard-negative-control",
+        "tables-js-cycle-negative-control"
       ]
     },
     {

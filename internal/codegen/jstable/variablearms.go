@@ -665,7 +665,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       const index = r.leb();
       if (r.bad || r.at !== r.end) { report.malformed = true; return null; }
       holder.value = null;
-      st.pending.push([holder, "value", index, f]);
+      st.pending.push([holder, "value", index, f, st.owner]);
       return holder;
     }
     case "str": {
