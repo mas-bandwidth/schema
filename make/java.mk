@@ -1400,7 +1400,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
-		build/tables-generated-java/messages/*.java build/tables-generated-java/wide/*.java \
+		build/tables-generated-java/messages/*.java \
 		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java \
 		build/tables-generated-java/rt1/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
