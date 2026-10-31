@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -732,6 +732,47 @@ defmodule Driver do
       case report_line(table_module(unit), root, wire) do
         :absent -> write_absent(outdir, name)
         line -> write(outdir, name, line)
+      end
+    end
+  end
+
+  # THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+  # `report` surface prints it, then the §16 text of the value the read left,
+  # unless the row says `no-value` or the read was refused. A derived line is
+  # `framing <case> <unit> <root> <wire> [no-value]`. A damaged read owes the
+  # refusal alone (§4, DAMAGE DISCARDS THE WHOLE LOAD), so its value is not
+  # written.
+  defp run("framing", rows, outdir) do
+    for [name, unit, root, wire | rest] <- rows(rows, "framing") do
+      case table_module(unit) do
+        nil ->
+          write_absent(outdir, name)
+
+        mod ->
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, report} ->
+              line = report_counters(report) <> ",read\n"
+
+              cond do
+                Map.get(report, :malformed, false) or rest == ["no-value"] ->
+                  write(outdir, name, line)
+
+                true ->
+                  case mod.to_json(root, value) do
+                    {:ok, text} -> write(outdir, name, line <> IO.iodata_to_binary(text))
+                    _ -> raise "#{name}: to_json refused the value"
+                  end
+              end
+
+            {:error, _refusal, %{reason: "unknown_form"}} ->
+              write(outdir, name, "0,0,0,0,0,false,refused\n")
+
+            {:error, _refusal, %{reason: "wire_damaged"}} ->
+              write(outdir, name, "0,0,0,0,0,true,read\n")
+
+            _ ->
+              write_absent(outdir, name)
+          end
       end
     end
   end
