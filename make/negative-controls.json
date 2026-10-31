@@ -7,6 +7,7 @@
       "targets": [
         "check-enum-bound-negative-control",
         "tables-cpp-bench-gate-negative-control",
+        "tables-cpp-release-flags-negative-control",
         "generated-tree-negative-controls",
         "tables-c-runtime-home-negative-control",
         "tables-c-slot-negative-control",

@@ -1534,7 +1534,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
+| ✅ `tables-cpp-release` (the long wire fuzz, two seeds, and the INT32_MAX base64 reproduction; and `tables-cpp-release-battery`: the tables, maps, lists, arms and retain suites, the soak and the block fuzz built `-O2 -DNDEBUG`, with `tables-cpp-release-flags-negative-control`) | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 

@@ -5351,7 +5351,7 @@ tables-cpp-names-negative-control:
 # seconds and do not fit the owner's two-minute per-commit rule, which is why
 # the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
 .PHONY: tables-cpp-release
-tables-cpp-release:
+tables-cpp-release: tables-cpp-release-battery
 	$(MAKE) tables-wire-fuzz N=500000
 	$(MAKE) tables-wire-fuzz SEED=2 N=500000
 	$(MAKE) tables-wire-fuzz-retain N=500000
