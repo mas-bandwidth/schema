@@ -25,3 +25,15 @@ func init() {
 		new: "  return s; // SABOTAGED: text_holds_zero removed",
 	}}
 }
+
+// THE DART LEG'S SHARED-NODE TEXT CONTROL (docs/PORTING.md M14,
+// docs/SPEC-TABLES.md §16.7): _writePtr writes every node in place, so a node
+// two slots name is written twice in full with no "&node" label. `dart /
+// json-write` goes red on the shared-node rows; the reader and the wire never
+// run this branch and stay green.
+func init() {
+	sabotages["table-dart-text-share"] = []edit{{
+		old: "  if ((sh.count[node] ?? 0) <= 1) {\n    body(null);",
+		new: "  if (true /* SABOTAGED: every node written in place */) {\n    body(null);",
+	}}
+}

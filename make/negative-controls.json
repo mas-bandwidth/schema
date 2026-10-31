@@ -750,6 +750,8 @@
       "targets": [
         "conformance-negative-control-dart-walk",
         "conformance-negative-control-dart-zero",
+        "conformance-negative-control-dart-share",
+        "conformance-negative-control-dart-absent",
         "conformance-negative-control-dart-block",
         "tables-dart-wire-fuzz-negative-control",
         "schema-dart-runs-hostile-corpus-negative-control",
@@ -790,7 +792,10 @@
         "tables-dart-finite-float-negative-control",
         "tables-dart-cookwrite-negative-control",
         "tables-dart-clean-negative-control",
-        "tables-dart-retain-negative-control"
+        "tables-dart-retain-negative-control",
+        "tables-dart-identity-negative-control",
+        "tables-dart-map-sort-negative-control",
+        "tables-dart-byte-order-negative-control"
       ],
       "dart": "3.13.2"
     },
