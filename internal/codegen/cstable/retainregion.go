@@ -63,5 +63,12 @@ func tableRetainRegionSource() string {
 	s = tableReplace(s, "if (reference == 0) { union.SetTag(f, 0); return true; }", "if (reference == 0) { union.DiscardUnion(); union.SetTag(f, 0); return true; }")
 	s = tableReplace(s, "            union.SetTag(f, 0);\n            int tag", "            union.DiscardUnion(); union.SetTag(f, 0);\n            int tag")
 	s = tableReplace(s, "RetainDiscard(value.Store, value.Path, f.Ordinal)", "value.DiscardField(f)")
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the retention
+	// store keeps nothing a damaged load captured, nor anything an earlier load
+	// left in it.
+	s = tableReplace(s, "            else { Damage(report); Finish(report, Verdict.Damaged); }\n            return IntPtr.Zero;",
+		"            else { Damage(report); Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; }\n            return IntPtr.Zero;")
+	s = tableReplace(s, "Finish(report, Verdict.Damaged); return IntPtr.Zero; }\n        report.Malformed = malformedBefore;",
+		"Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }\n        report.Malformed = malformedBefore;")
 	return s
 }

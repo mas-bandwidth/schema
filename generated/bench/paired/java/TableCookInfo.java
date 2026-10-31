@@ -60,6 +60,19 @@ public final class TableCookInfo {
      */
     public java.util.function.Supplier<Object> defaults;
 
+    /**
+     * the record holds a list or a map BY VALUE, at any depth: its node is its storage rounded to
+     * eight, then its EXTENT (docs/SPEC-TABLES.md §7.6).
+     */
+    public boolean hasExtent;
+
+    /**
+     * the greatest alignment of any element or entry the extent can hold, from the TYPES: the node
+     * aligns to the greater of this and its record's, and the extent begins at the record's size
+     * rounded to the greater of this and eight (§7.6). 1 for a record with no extent.
+     */
+    public int extentAlign = 1;
+
     public int size;
     public int align;
     public int numFields;

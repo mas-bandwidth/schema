@@ -221,14 +221,14 @@ test-goose: tables-goose-strict tables-goose-runtime-home
 GOOSE_NAMES_DIR := build/goose-names-control
 .PHONY: tables-goose-names tables-goose-names-negative-control
 tables-goose-names:
-	go test -count=1 -timeout 600s -run '^(TestGooseEveryPackageNameIsClaimed|TestGooseNamesScanSeesTheRuntime)$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^(TestGooseEveryPackageNameIsClaimed|TestGooseNamesScanSeesTheRuntime)$$' ./internal/codegen/goosetable/
 tables-goose-names-negative-control:
 	@rm -rf $(GOOSE_NAMES_DIR) && mkdir -p $(GOOSE_NAMES_DIR)
 	@sed 's|^func (g \*Gen) Declare(name string) {$$|func (g *Gen) Declare(name string) { if strings.HasSuffix(name, "CookOpen") { return } // SABOTAGED: unclaimed|' \
 		internal/codegen/goose/goose.go > $(GOOSE_NAMES_DIR)/goose.go.txt
 	@grep -q SABOTAGED $(GOOSE_NAMES_DIR)/goose.go.txt || { echo "NEGATIVE CONTROL FAILED: the Declare sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goose/goose.go":"%s/$(GOOSE_NAMES_DIR)/goose.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(GOOSE_NAMES_DIR)/overlay.json
-	@if go test -count=1 -timeout 600s -overlay=$(GOOSE_NAMES_DIR)/overlay.json -run '^TestGooseEveryPackageNameIsClaimed$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 600s -overlay=$(GOOSE_NAMES_DIR)/overlay.json -run '^TestGooseEveryPackageNameIsClaimed$$' \
 			./internal/codegen/goosetable/ > $(GOOSE_NAMES_DIR)/log 2>&1; then \
 		cat $(GOOSE_NAMES_DIR)/log; echo "NEGATIVE CONTROL FAILED: CookOpen names went unclaimed and the gate stayed green"; exit 1; fi
 	@grep -q 'CookOpen into namespace .* without claiming it' $(GOOSE_NAMES_DIR)/log || { \

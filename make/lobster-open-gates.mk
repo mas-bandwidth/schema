@@ -181,3 +181,11 @@ tables-lobster-damage-discard: lobster-dist-present
 	sh test/slowgate/proof $@ 'TestLobsterDamageDiscardsValues' ./internal/codegen/lobstertable -run '^TestLobsterDamageDiscardsValues$$' -count=1
 tables-lobster-damage-discard-negative-control: lobster-dist-present
 	sh test/slowgate/proof $@ 'TestLobsterDamageDiscardNegativeControl' ./internal/codegen/lobstertable -run '^TestLobsterDamageDiscardNegativeControl$$' -count=1
+
+# M9: every generated unit carries the same descriptor-driven text walk.
+.PHONY: tables-lobster-json-walk tables-lobster-json-walk-negative-control
+tables-lobster-json-walk: lobster-dist-present
+	sh test/slowgate/proof $@ 'TestLobsterJsonWalkIsOneRuntime TestLobsterJsonMatchesTheReference' ./internal/codegen/lobstertable -run '^TestLobster(JsonWalkIsOneRuntime|JsonMatchesTheReference)$$' -count=1
+tables-lobster-json-walk-negative-control: lobster-dist-present
+	sh test/slowgate/proof $@ 'TestLobsterJsonWalkNegativeControl TestLobsterJsonNegativeControl' ./internal/codegen/lobstertable -run '^TestLobster(JsonWalkNegativeControl|JsonNegativeControl)$$' -count=1
+test-lobster: tables-lobster-json-walk tables-lobster-json-walk-negative-control

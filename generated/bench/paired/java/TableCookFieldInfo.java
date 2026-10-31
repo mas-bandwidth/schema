@@ -33,6 +33,15 @@ public final class TableCookFieldInfo {
     public InfoRef recordRef;
     public int tag; // a union ARM's tag (§7.2); 0 for a record's field
 
+    /**
+     * a LIST or MAP holder: one element's size and alignment in the node extent, and the element as
+     * a field at offset zero (a map's is its entry record).
+     */
+    public int extentSize;
+
+    public int extentAlign;
+    public TableCookFieldInfo element;
+
     public TableCookInfo record() {
         return recordRef == null ? null : recordRef.get();
     }
@@ -70,5 +79,13 @@ public final class TableCookFieldInfo {
         f.storage = storage;
         f.recordRef = record;
         return f;
+    }
+
+    /** this field as a LIST or MAP holder over elements of the given size and alignment. */
+    public TableCookFieldInfo extent(int size, int align, TableCookFieldInfo element) {
+        this.extentSize = size;
+        this.extentAlign = align;
+        this.element = element;
+        return this;
     }
 }
