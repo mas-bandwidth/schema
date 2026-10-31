@@ -26,14 +26,16 @@
 //   retain       load with retention (§6.6), print the load's three counters
 //                and the save's retain_lost
 //   retain-save  the bytes that retaining save writes back
+// The message form, form 2 (docs/SPEC-TABLES.md §3.3):
+//   message      AnnounceRead the connection's announcement, LoadMessages the
+//                batch against it, SaveMessages what landed: the bytes
 // The JSON text form (docs/SPEC-TABLES.md §16.2, §16.3):
 //   json-hostile FromJsonTolerant of <tree>/<root>.json and its report, through
 //                the unit's text glue: unit.goose, which the shell driver
 //                copies from units/<unit>.goose, or the empty unit.goose beside
 //                this file for a unit that has none (every row ABSENT)
 // The cook's and the block form's surfaces are accel.goose's: the shell
-// driver runs that program for them. The message form is ABSENT here until
-// its card lands.
+// driver runs that program for them.
 import os;
 import .conformance_unit;
 import .unit;
@@ -128,14 +130,16 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
 // surface_retain: the RETAIN-UNKNOWN round trip (docs/SPEC-TABLES.md §6.6).
 // `full` is a buffer the whole load fits in; `short` is one byte short of the
 // LAST record, found by loading once at full and reading what it used. The
-// id capacity is `full` or a count. The form-2 row (`retain-message`) reads a
-// message batch, which the message form carries: absent here.
+// id capacity is `full` or a count. The form-2 row (`retain-message`) names a
+// variable table root (RT1's Node), which carries no message verbs (§3.3: only
+// a fixed table rides the message form): a named absence, as the Go leg
+// answers it.
 fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
     for line in lines {
         let f = words(line);
         if f.len < 1 { continue; }
         if f[0] == "retain-message" {
-            if f.len > 3 && f[3] == unit { absent(f[1], ""); }
+            if f.len > 3 && f[3] == unit { absent(f[1], "variable table: §3.3"); }
             continue;
         }
         // the derived manifest carries no expectation: the harness keeps the
@@ -210,6 +214,41 @@ fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
+// surface_message: the MESSAGE FORM's round trip (docs/SPEC-TABLES.md §3.3).
+// A message row names its CONNECTION, whose announcement is the peer's
+// vocabulary and whose unit is the unit under test; the glue's
+// conformance_message carries every root the unit has the message form for,
+// which is a fixed table's (§3.3: only a fixed table rides the message form):
+// a variable table's row is a named absence, as the Go leg answers it.
+fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 6 || f[0] != "message" { continue; }
+        var conn: i64 = -1;
+        for i in lines.len {
+            let c = words(lines[i]);
+            if c.len >= 5 && c[0] == "connection" && c[1] == f[2] && c[2] == unit { conn = i; }
+        }
+        if conn < 0 { continue; }
+        let c = words(lines[conn]);
+        var ann: u8[>..] = [];
+        load_file(c[4], ann);
+        var wire: u8[>..] = [];
+        load_file(f[5], wire);
+        var out: u8[>..] = [];
+        let n = conformance_message(f[3], ann, wire, out);
+        if n == -1 {
+            absent(f[1], "variable table: §3.3");
+            continue;
+        }
+        if n < 0 {
+            write_stderr(str("driver: ", f[1], " does not round-trip (", n, ")\n"));
+            exit(1);
+        }
+        answer(f[1], out);
+    }
+}
+
 fn main() {
     let argv = args();
     if argv.len < 3 {
@@ -217,7 +256,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nreport\nretain\nretain-save\njson-hostile\n");
+        write_stdout("wire\nmessage\nreport\nretain\nretain-save\njson-hostile\n");
         return;
     }
     if argv.len != 4 {
@@ -230,6 +269,7 @@ fn main() {
     let unit = argv[3];
     if argv[1] == "report" { surface_report(lines, unit); return; }
     if argv[1] == "wire" { surface_wire(lines, unit); return; }
+    if argv[1] == "message" { surface_message(lines, unit); return; }
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
     if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
     if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }

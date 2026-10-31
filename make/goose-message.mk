@@ -44,3 +44,35 @@ tables-goose-message-form-negative-control:
 	@grep -q 'SaveMessages wrote' $(GOOSE_MESSAGE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for another reason"; cat $(GOOSE_MESSAGE_NC)/log; exit 1; }
 	@echo 'negative control: a dropped text align reds exactly the three golden rows that carry text'
+
+# THE PEER READ's NEGATIVE CONTROL (make/negative-controls.json, group goose):
+# §4's widening rule dropped from the runtime's msg_accept (the sed is checked
+# to have matched), overlaid onto the embedded runtime/message.goose, so an
+# announced kind below this reader's on the same ladder is a kind mismatch.
+# The control requires the versioning gate (messageform_versioning_test.go,
+# the Go reference over VOLD/VNEW in both directions) to go red on EXACTLY the
+# five rows whose newer reader widens — array_elem_widen, bits_grow,
+# float_widen, int_widen, uint_widen — and on no other row.
+GOOSE_MESSAGE_PEER_NC := build/goose-message-peer-nc
+.PHONY: tables-goose-message-peer-negative-control
+tables-goose-message-peer-negative-control: build/fixedform-corpus/.stamp
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@rm -rf $(GOOSE_MESSAGE_PEER_NC) && mkdir -p $(GOOSE_MESSAGE_PEER_NC)
+	@sed 's/    if msg_widens(their_kind, their_elem, kind, elem) {/    if false \&\& msg_widens(their_kind, their_elem, kind, elem) { \/\/ SABOTAGED/' \
+		internal/codegen/goosetable/runtime/message.goose > $(GOOSE_MESSAGE_PEER_NC)/message.goose
+	@grep -q SABOTAGED $(GOOSE_MESSAGE_PEER_NC)/message.goose || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not apply to runtime/message.goose"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/goosetable/runtime/message.goose":"%s/$(GOOSE_MESSAGE_PEER_NC)/message.goose"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(GOOSE_MESSAGE_PEER_NC)/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v -timeout 600s -overlay $(GOOSE_MESSAGE_PEER_NC)/overlay.json \
+			-run '^TestGooseMessageFormVersioning$$' ./internal/codegen/goosetable/ > $(GOOSE_MESSAGE_PEER_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the dropped widening rule left the Goose message versioning gate green"; \
+		cat $(GOOSE_MESSAGE_PEER_NC)/log; exit 1; \
+	fi
+	@grep -E -- '--- FAIL: TestGooseMessageFormVersioning/' $(GOOSE_MESSAGE_PEER_NC)/log | awk '{print $$3}' | sort > $(GOOSE_MESSAGE_PEER_NC)/failed
+	@printf '%s\n' TestGooseMessageFormVersioning/new_reads_old/array_elem_widen TestGooseMessageFormVersioning/new_reads_old/bits_grow \
+		TestGooseMessageFormVersioning/new_reads_old/float_widen TestGooseMessageFormVersioning/new_reads_old/int_widen TestGooseMessageFormVersioning/new_reads_old/uint_widen > $(GOOSE_MESSAGE_PEER_NC)/expected
+	@cmp -s $(GOOSE_MESSAGE_PEER_NC)/failed $(GOOSE_MESSAGE_PEER_NC)/expected || \
+		{ echo "NEGATIVE CONTROL FAILED: the dropped widening rule reddened other rows than the five widening rows:"; \
+		  cat $(GOOSE_MESSAGE_PEER_NC)/failed; exit 1; }
+	@echo 'negative control: a dropped widening rule reds exactly the five widening rows of the Goose message versioning gate'

@@ -118,8 +118,9 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 			}
 			fmt.Fprintf(&m, "retain %s %s %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]), f[5], f[6])
 		case f[0] == "retain-message" && len(f) >= 5:
-			// the form-2 row is the message form's: a named absence here
-			c.want["retain"][f[1]], c.unitOf["retain"][f[1]] = "absent ", f[3]
+			// the form-2 row names a variable table root, which rides no
+			// message form (§3.3): absent by the Go leg's reason
+			c.want["retain"][f[1]], c.unitOf["retain"][f[1]] = "absent variable table: §3.3", f[3]
 			fmt.Fprintf(&m, "retain-message %s %s %s\n", f[1], f[2], f[3])
 		}
 	}
@@ -163,6 +164,9 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 		fmt.Fprintf(&glue, "import .%s;\n", m)
 	}
 	fmt.Fprintf(&glue, "fn conformance_unit() -> schema_rt::LoadUnit { return %s::%s; }\n", goose.Namespace(u), goosetable.UnitName)
+	// the message surface's arm (the shell driver writes one per root); these
+	// gates drive no message row, so the glue carries none
+	glue.WriteString("fn conformance_message(root: const u8[:], announce: const u8[:], wire: const u8[:], out: u8[>..]&) -> i64 { return -1; }\n")
 	files["conformance_unit.goose"] = []byte(glue.String())
 	main, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "main.goose"))
 	if err != nil {

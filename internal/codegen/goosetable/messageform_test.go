@@ -234,6 +234,9 @@ type gooseMsgCase struct {
 	values   [][]string // one assignment list per body
 	data     []byte     // the batch the leg loads
 	capacity int
+	// announce is the PEER's announcement the load resolves against
+	// (AnnounceRead); nil reads under the unit's own (`<Root>Announce`)
+	announce []byte
 }
 
 type gooseMsgResult struct {
@@ -246,6 +249,10 @@ type gooseMsgResult struct {
 	loadMalformed   bool
 	loadClamped     int64
 	loadCount       int64
+	loadUnknown     int64
+	loadMismatch    int64
+	loadWidened     int64
+	announced       string
 	got, want       []string
 	resaved         string
 	raw             string
@@ -303,9 +310,17 @@ func gooseMsgProbe(t *testing.T, c gooseMsgCase) gooseMsgResult {
 	if c.data != nil {
 		fmt.Fprintf(&b, "    var back: %s[%d] = [%s { .. }; %d];\n", root, c.capacity, root, c.capacity)
 		b.WriteString("    var data: u8[>..] = [];\n    if !read_file(\"in.bin\", data) { print(\"read-failed\"); return; }\n")
+		b.WriteString("    var voc = schema_rt::MsgVocabulary { .. };\n    var vrep = schema_rt::MsgReport { .. };\n")
+		if c.announce != nil {
+			b.WriteString("    var peer: u8[>..] = [];\n    if !read_file(\"announce.bin\", peer) { print(\"read-failed\"); return; }\n")
+			b.WriteString("    let announced = schema_rt::announce_read(voc, peer, vrep);\n")
+		} else {
+			fmt.Fprintf(&b, "    let announced = schema_rt::announce_read(voc, %s::%sAnnounce, vrep);\n", ns, c.root)
+		}
+		b.WriteString("    print(\"announced \", (if announced { 1 } else { 0 }), \" \", schema_rt::msg_reason_name(vrep.reason), \" \", (if vrep.malformed { 1 } else { 0 }), \" \", vrep.unknown);\n")
 		b.WriteString("    var lrep = schema_rt::MsgReport { .. };\n")
-		fmt.Fprintf(&b, "    let n = %s::%sLoadMessages(back[0..%d], data, lrep);\n", ns, c.root, c.capacity)
-		b.WriteString("    print(\"load \", n, \" \", schema_rt::msg_reason_name(lrep.reason), \" \", (if lrep.malformed { 1 } else { 0 }), \" \", lrep.clamped, \" \", lrep.count);\n")
+		fmt.Fprintf(&b, "    let n = %s::%sLoadMessages(back[0..%d], voc, data, lrep);\n", ns, c.root, c.capacity)
+		b.WriteString("    print(\"load \", n, \" \", schema_rt::msg_reason_name(lrep.reason), \" \", (if lrep.malformed { 1 } else { 0 }), \" \", lrep.clamped, \" \", lrep.count, \" \", lrep.unknown, \" \", lrep.kind_mismatch, \" \", lrep.widened);\n")
 		b.WriteString("    var k: i64 = 0;\n    while k < n {\n        print(\"got\");\n        image(back[k]);\n        print(\"want\");\n        image(vals[k]);\n        k += 1;\n    }\n")
 		b.WriteString("    if n > 0 {\n        var again: u8[>..] = [];\n        var arep = schema_rt::MsgReport { .. };\n")
 		fmt.Fprintf(&b, "        let a = %s::%sSaveMessages(back[0..n], again, arep);\n", ns, c.root)
@@ -324,6 +339,9 @@ func gooseMsgProbe(t *testing.T, c gooseMsgCase) gooseMsgResult {
 	inputs := map[string][]byte{}
 	if c.data != nil {
 		inputs["in.bin"] = c.data
+	}
+	if c.announce != nil {
+		inputs["announce.bin"] = c.announce
 	}
 	out := string(gooserun.Run(t, dir, "main.goose", inputs))
 	return gooseMsgParse(t, out)
@@ -358,6 +376,11 @@ func gooseMsgParse(t *testing.T, out string) gooseMsgResult {
 			r.loadMalformed = f[3] == "1"
 			r.loadClamped, _ = strconv.ParseInt(f[4], 10, 64)
 			r.loadCount, _ = strconv.ParseInt(f[5], 10, 64)
+			r.loadUnknown, _ = strconv.ParseInt(f[6], 10, 64)
+			r.loadMismatch, _ = strconv.ParseInt(f[7], 10, 64)
+			r.loadWidened, _ = strconv.ParseInt(f[8], 10, 64)
+		case strings.HasPrefix(l, "announced "):
+			r.announced = strings.TrimPrefix(l, "announced ")
 		case l == "got":
 			r.got = append(r.got, next(i))
 			i++
@@ -479,7 +502,12 @@ func TestGooseMessageFormMatchesTheGoldens(t *testing.T) {
 			for _, inst := range insts {
 				values = append(values, gooseInstAssign(t, "", inst))
 			}
-			r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: row.root, values: values, data: golden})
+			// the read resolves against the CONNECTION's announcement, read
+			// through AnnounceRead as an endpoint reads its peer's
+			r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: row.root, values: values, data: golden, announce: announce})
+			if r.announced != "1 ok 0 0" {
+				t.Fatalf("AnnounceRead of %s answered %q", row.conn, r.announced)
+			}
 			if r.announce != hex.EncodeToString(announce) {
 				t.Fatalf("%sAnnounce is not the connection's golden %s", row.root, row.conn)
 			}
@@ -559,6 +587,9 @@ func gooseMsgFromFixed(t *testing.T, u *ir.Unit, root string, file []byte, recor
 	out := strings.TrimSpace(string(gooserun.Run(t, dir, "main.goose", map[string][]byte{"in.bin": file})))
 	if refused, ok := strings.CutPrefix(out, "save-refused "); ok {
 		return nil, refused
+	}
+	if strings.HasPrefix(out, "fixed-load ") {
+		return nil, out // the fixed reader refused the file: no values to save
 	}
 	batch, err := hex.DecodeString(out)
 	if err != nil {
@@ -819,6 +850,13 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 			".WeightsCount = 2", ".Weights[0] = 25600", ".Weights[1] = 1",
 		},
 		{
+			// THE 128-BIT CLAMP: both lanes past the declared max, an int128
+			// (6000000000 over 5000000000) and a fixed(112, 16) (1000001 x 2^16
+			// over 1000000 x 2^16); the offsets ride, and the read clamps each
+			".Energy.lo = 6000000000", ".Energy.hi = 0",
+			".Reach.lo = 65536065536", ".Reach.hi = 0",
+		},
+		{
 			".Energy.lo = 18446744068709551616", ".Energy.hi = 18446744073709551615", // -5000000000
 			".Reach.lo = 65536000000", ".Reach.hi = 0",
 		},
@@ -847,7 +885,7 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	}
 	r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: back, data: batch})
 	r.agrees(t, want, len(values))
-	if r.loadClamped != 1 {
-		t.Fatalf("the load counted %d clamps, want 1 (Ratio)", r.loadClamped)
+	if r.loadClamped != 3 {
+		t.Fatalf("the load counted %d clamps, want 3 (Ratio, and the 128-bit Energy and Reach)", r.loadClamped)
 	}
 }

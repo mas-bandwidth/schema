@@ -17,14 +17,18 @@
 // when the unit gains a file; every use folds as a constant (Goose's named
 // constants). `<Root>Announce` is the announcement under the root's name.
 //
-// THE READ HERE IS AGAINST THE UNIT'S OWN VOCABULARY — a peer at this build
-// version, whose announcement is byte for byte `<Root>Announce` — and it
-// dispatches every reference by the same compile-time slots. Resolving a
-// PEER's announcement (AnnounceRead: a form-1 file read tolerantly, a
-// vocabulary of another build, its shapes, the skip of an entry this reader
-// cannot name) is owed to the id-table wire's card and lands stacked on it
-// (docs/PORT-GOOSE.md, THE CARD MAP: schema-goose-table-wire-load); this file
-// owes it nothing but the dispatch table it will fill.
+// THE READ IS BY PEER ENTRY (§3.3, §4): a connection's reader first reads the
+// PEER's announcement with AnnounceRead (runtime/message.goose: a form-1 file
+// read tolerantly into a vocabulary of the peer's build, each entry's id, kind
+// and shape), and every reference of a body resolves against that vocabulary.
+// The entry's id selects this reader's declaration through a match on the
+// 64-bit ids, and the payload decodes at the SENDER's announced shape: an id
+// this reader cannot name is `unknown` and is stepped over by its shape, a
+// kind below this reader's on the same ladder is `widened` and decodes, any
+// other kind is `kind_mismatch` and is stepped over, and this reader's own
+// bounds clamp what lands — the 128-bit kinds across both lanes. The Go
+// reference (internal/tablewire, messagedecode.go) is the oracle, decision for
+// decision.
 //
 // THE FORM IS A FIXED TABLE'S (§3.3): its roots are the unit's fixed roots,
 // and every struct and union their closure reaches by value gets a body
@@ -36,6 +40,7 @@ import (
 	"hash/fnv"
 	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strings"
 
@@ -551,150 +556,262 @@ func (e *msgEmit) usesDefaults(st *ir.Struct) bool {
 }
 
 // ---------------------------------------------------------------------------
-// THE READ (against the unit's own vocabulary)
+// THE READ (against the PEER's announced vocabulary, docs/SPEC-TABLES.md §3.3)
 // ---------------------------------------------------------------------------
+//
+// A body is read the way the Go reference reads it (internal/tablewire,
+// messagedecode.go): every reference resolves against the vocabulary
+// AnnounceRead set from the sender's announcement, the entry's id selects this
+// reader's declaration, and the payload decodes at the SENDER's announced
+// shape before this reader's own bounds apply. An id this reader cannot name
+// is counted `unknown` and stepped over by its shape; an announced kind below
+// this reader's on the same ladder is `widened` and decodes; any other kind is
+// `kind_mismatch` and is stepped over. The dispatch is a match on the 64-bit
+// ids, compile-time constants.
 
-// getScalar lands one value: the inverse of putScalar, with the reader's own
-// bound applied (a ranged offset past the range reconstructs and clamps,
-// §3.3), a quantized index above its count refused as damage, and a
-// non-finite float refusing the batch.
-func (e *msgEmit) getScalar(ind int, f *ir.Field, kind uint8, shape ir.TableMessageShape, dst string) {
-	if en := enumOf(f); en != nil {
-		e.getEnum(ind, en, dst)
-		return
-	}
-	v := e.loopVar()
-	switch int(kind) {
-	case ir.TableKindBool:
-		e.p(ind, "%s = schema_rt::msg_get(r, 1) != 0;", dst)
-		return
-	case ir.TableKindF64:
-		e.p(ind, "let raw%s = schema_rt::msg_get(r, 64);", v)
-		e.p(ind, "if !schema_rt::msg_finite64(raw%s) { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseNonFiniteFloat); }", v)
-		e.p(ind, "%s = schema_rt::fixed_bits_f64(raw%s);", dst, v)
-		return
-	case ir.TableKindF32:
-		if shape.Packing == ir.TableMessageQuantized {
-			count, delta, _ := ir.TableMessageQuantization(shape)
-			e.p(ind, "let index%s = schema_rt::msg_get(r, %d);", v, shape.Bits)
-			e.p(ind, "if index%s > %d { return schema_rt::msg_damage(r); }", v, count)
-			e.p(ind, "var q%s: f32 = schema_rt::msg_dequantize(index%s, %s, %s, %d);", v, v, f32Lit(shape.QMin), f32Lit(delta), count)
-			if f.HasFloatRange {
-				lo, hi := f32Lit(float32(f.FMin)), f32Lit(float32(f.FMax))
-				e.p(ind, "if q%s < %s {", v, lo)
-				e.p(ind+1, "q%s = %s;", v, lo)
-				e.p(ind+1, "r.clamped += 1;")
-				e.p(ind, "} else if q%s > %s {", v, hi)
-				e.p(ind+1, "q%s = %s;", v, hi)
-				e.p(ind+1, "r.clamped += 1;")
-				e.p(ind, "}")
-			}
-			e.p(ind, "%s = q%s;", dst, v)
-			return
-		}
-		e.p(ind, "let raw%s = schema_rt::msg_get(r, 32) as! u32;", v)
-		e.p(ind, "if !schema_rt::msg_finite32(raw%s) { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseNonFiniteFloat); }", v)
-		e.p(ind, "%s = schema_rt::fixed_bits_f32(raw%s);", dst, v)
-		return
-	}
-	bits := ir.TableMessageValueBits(kind, shape)
-	if e.fx.kindOf(f) == kInt128 {
-		if shape.Packing != ir.TableMessageRanged {
-			e.p(ind, "%s.lo = schema_rt::msg_get(r, 64);", dst)
-			e.p(ind, "%s.hi = schema_rt::msg_get(r, 64);", dst)
-			return
-		}
-		// the offset across both lanes, then the base added with its carry;
-		// the reader's own 128-bit bound is not applied here (owed, #2236)
-		blo, bhi := lanes128(shape.Base)
-		e.p(ind, "let lo%s = schema_rt::msg_get(r, %d);", v, min(bits, 64))
-		if bits > 64 {
-			e.p(ind, "let hi%s = schema_rt::msg_get(r, %d);", v, bits-64)
-		} else {
-			e.p(ind, "let hi%s: u64 = 0;", v)
-		}
-		e.p(ind, "%s.lo = lo%s + %s;", dst, v, blo)
-		e.p(ind, "%s.hi = hi%s + %s + (if %s.lo < lo%s { 1 } else { 0 });", dst, v, bhi, dst, v)
-		return
-	}
-	typ := e.fx.storageType(f)
-	if shape.Packing == ir.TableMessageRanged {
-		// the span the declaration allows; an offset past it clamps (§3.3)
-		span := new(big.Int).Lsh(big.NewInt(1), uint(bits))
-		span.Sub(span, big.NewInt(1))
-		if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed {
-			if lo, hi, ok := ir.TableRawRange(f); ok {
-				span = new(big.Int).Sub(hi, lo)
-			}
-		}
-		e.p(ind, "var off%s = schema_rt::msg_get(r, %d);", v, bits)
-		if bits < 64 && span.Cmp(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))) < 0 {
-			e.p(ind, "if off%s > %s {", v, span.String())
-			e.p(ind+1, "off%s = %s;", v, span.String())
+// readClamp emits the declared-bound clamp of one integer value held in the
+// local `x` (i64 for a signed storage, u64 for an unsigned one), counting each
+// clamp (internal/tablewire scalar: a declared range, and a bits(N) below its
+// storage).
+func (e *msgEmit) readClamp(ind int, f *ir.Field, x string) {
+	t := f.Type
+	if lo, hi, ok := ir.TableRawRange(f); ok && (t.Kind == ir.TInt || t.Kind == ir.TFixed) {
+		if t.Signed {
+			l, h := goose.IntLit(lo), goose.IntLit(hi)
+			e.p(ind, "if %s < %s {", x, l)
+			e.p(ind+1, "%s = %s;", x, l)
+			e.p(ind+1, "r.clamped += 1;")
+			e.p(ind, "} else if %s > %s {", x, h)
+			e.p(ind+1, "%s = %s;", x, h)
 			e.p(ind+1, "r.clamped += 1;")
 			e.p(ind, "}")
+			return
 		}
-		sum := "off" + v
-		if base := u64Lit(shape.Base); base != "0" {
-			sum = fmt.Sprintf("(off%s + %s)", v, base)
-		}
-		if e.wide64(f) {
-			e.p(ind, "%s = %s;", dst, sum)
+		l, h := u64Lit(lo), u64Lit(hi)
+		if lo.Sign() > 0 {
+			e.p(ind, "if %s < %s {", x, l)
+			e.p(ind+1, "%s = %s;", x, l)
+			e.p(ind+1, "r.clamped += 1;")
+			e.p(ind, "} else if %s > %s {", x, h)
 		} else {
-			e.p(ind, "%s = %s as! %s;", dst, sum, typ)
+			e.p(ind, "if %s > %s {", x, h)
 		}
+		e.p(ind+1, "%s = %s;", x, h)
+		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind, "}")
 		return
 	}
-	if e.wide64(f) {
-		e.p(ind, "%s = schema_rt::msg_get(r, %d);", dst, bits)
-		return
+	if t.Kind == ir.TBits && t.Width < 64 {
+		m := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1))
+		e.p(ind, "if %s > %s {", x, m.String())
+		e.p(ind+1, "%s = %s;", x, m.String())
+		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind, "}")
 	}
-	e.p(ind, "%s = schema_rt::msg_get(r, %d) as! %s;", dst, bits, typ)
 }
 
-// getEnum lands a variant reference: 0 is None, a variant's slot its
-// ordinal; any other reference contradicts the position it was used in, which
-// is damage (§3.3).
-func (e *msgEmit) getEnum(ind int, en *ir.Enum, dst string) {
-	v := e.loopVar()
-	e.p(ind, "let ref%s = schema_rt::msg_get(r, %s);", v, msgRefBits)
-	e.p(ind, "if ref%s == 0 {", v)
-	e.p(ind+1, "%s = 0;", dst)
-	for i := range en.Variants {
-		e.p(ind, "} else if ref%s == %s {", v, e.nameSlot(ir.TableWireId(en.VariantWireName(i))))
-		e.p(ind+1, "%s = %d;", dst, i+1)
+// clamps reports whether a 64-bit-or-narrower integer declaration has a
+// bound to apply on the read.
+func clamps(f *ir.Field) bool {
+	_, _, ok := ir.TableRawRange(f)
+	return (ok && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed)) || (f.Type.Kind == ir.TBits && f.Type.Width < 64)
+}
+
+// readClamp128 is THE 128-BIT CLAMP: a value decoded into an int128,
+// uint128 or 128-bit fixed declaration takes this reader's declared range on
+// the raw scale (tabletext.WideClamp), compared across both lanes, signed for
+// a signed declaration.
+func (e *msgEmit) readClamp128(ind int, f *ir.Field, v string) {
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok {
+		return
 	}
-	e.p(ind, "} else {")
-	e.p(ind+1, "return schema_rt::msg_damage(r);")
+	signed := f.Type.Signed
+	less := func(a, b string) string { // a < b, as 128-bit values
+		if signed {
+			return fmt.Sprintf("((%s.hi as! i64) < (%s.hi as! i64) || (%s.hi == %s.hi && %s.lo < %s.lo))", a, b, a, b, a, b)
+		}
+		return fmt.Sprintf("(%s.hi < %s.hi || (%s.hi == %s.hi && %s.lo < %s.lo))", a, b, a, b, a, b)
+	}
+	blo, bhi := lanes128(lo)
+	tlo, thi := lanes128(hi)
+	e.p(ind, "let floor%s = schema_rt::Int128 { lo: %s, hi: %s };", v, blo, bhi)
+	e.p(ind, "let ceil%s = schema_rt::Int128 { lo: %s, hi: %s };", v, tlo, thi)
+	e.p(ind, "if %s {", less(v, "floor"+v))
+	e.p(ind+1, "%s = floor%s;", v, v)
+	e.p(ind+1, "r.clamped += 1;")
+	e.p(ind, "} else if %s {", less("ceil"+v, v))
+	e.p(ind+1, "%s = ceil%s;", v, v)
+	e.p(ind+1, "r.clamped += 1;")
 	e.p(ind, "}")
 }
 
-func (e *msgEmit) getElement(ind int, f *ir.Field, kind uint8, shape ir.TableMessageShape, dst string) {
-	switch int(kind) {
-	case ir.TableKindTable, ir.TableKindUnion:
-		e.p(ind, "if !_%sMsgLoad(r, %s) { return false; }", f.Type.Name, dst)
-	default:
-		e.getScalar(ind, f, kind, shape, dst)
+// getScalar lands ONE value of declaration f from the entry `en` (a local
+// holding its vocabulary index), decoded at the sender's shape: a bool's bit,
+// a float (an f32 raw or quantized, an f64, or an f32 widened into one), an
+// integer as two's-complement lanes then this reader's bounds, an enum by its
+// variant reference.
+func (e *msgEmit) getScalar(ind int, f *ir.Field, en, dst string, element bool) {
+	if enum := enumOf(f); enum != nil {
+		e.getEnum(ind, f, enum, dst, element)
+		return
+	}
+	v := e.loopVar()
+	switch f.Type.Kind {
+	case ir.TBool:
+		e.p(ind, "%s = schema_rt::msg_bool(r);", dst)
+		return
+	case ir.TFloat64:
+		// an f64 lands as read, and an f32 widened into it is exact: neither
+		// takes this reader's declared range (internal/tablewire scalar)
+		e.p(ind, "%s = schema_rt::msg_f64(r, %s);", dst, en)
+		return
+	case ir.TFloat32:
+		if !f.HasFloatRange {
+			e.p(ind, "%s = schema_rt::msg_f32(r, %s);", dst, en)
+			return
+		}
+		// THE ONE RULE (§3.3): compared as float64, one past an end clamps
+		// and counts, and a -0 lands as +0, uncounted
+		e.p(ind, "var q%s = schema_rt::msg_f32(r, %s);", v, en)
+		e.p(ind, "if !r.ok { return false; }")
+		e.p(ind, "let wide%s: f64 = q%s;", v, v)
+		e.p(ind, "if wide%s < schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMin))
+		e.p(ind+1, "q%s = %s;", v, f32Lit(float32(f.FMin)))
+		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind, "} else if wide%s > schema_rt::fixed_bits_f64(0x%016x) {", v, math.Float64bits(f.FMax))
+		e.p(ind+1, "q%s = %s;", v, f32Lit(float32(f.FMax)))
+		e.p(ind+1, "r.clamped += 1;")
+		e.p(ind, "} else if wide%s == 0.0 {", v)
+		e.p(ind+1, "q%s = 0.0;", v)
+		e.p(ind, "}")
+		e.p(ind, "%s = q%s;", dst, v)
+		return
+	}
+	e.p(ind, "let lo%s, hi%s = schema_rt::msg_number(r, %s);", v, v, en)
+	if e.fx.kindOf(f) == kInt128 || clamps(f) {
+		e.p(ind, "if !r.ok { return false; }") // damage is never clamped
+	}
+	if e.fx.kindOf(f) == kInt128 {
+		e.p(ind, "var w%s = schema_rt::Int128 { lo: lo%s, hi: hi%s };", v, v, v)
+		e.readClamp128(ind, f, "w"+v)
+		e.p(ind, "%s = w%s;", dst, v)
+		return
+	}
+	typ := e.fx.storageType(f)
+	if (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed {
+		if clamps(f) {
+			e.p(ind, "var x%s = lo%s as! i64;", v, v)
+			e.readClamp(ind, f, "x"+v)
+		} else {
+			e.p(ind, "let x%s = lo%s as! i64;", v, v)
+		}
+		if typ == "i64" {
+			e.p(ind, "%s = x%s;", dst, v)
+		} else {
+			e.p(ind, "%s = x%s as! %s;", dst, v, typ)
+		}
+		return
+	}
+	src := "lo" + v
+	if clamps(f) {
+		e.p(ind, "var x%s = lo%s;", v, v)
+		e.readClamp(ind, f, "x"+v)
+		src = "x" + v
+	}
+	if e.wide64(f) {
+		e.p(ind, "%s = %s;", dst, src)
+	} else {
+		e.p(ind, "%s = %s as! %s;", dst, src, typ)
 	}
 }
 
-// getValue lands a field's payload under its own entry: text (kept to the
-// reader's bound, the excess counted clamped), an array's count and elements
-// (the excess past the bound stepped over and counted), a keyed array's
+// getEnum lands a variant reference: 0 is None, a name this enum cannot name
+// is §4's ordinary `unknown` (None lands), and a deprecated variant reads as
+// the field's declared default, or an element's 0 (§2.15).
+func (e *msgEmit) getEnum(ind int, f *ir.Field, en *ir.Enum, dst string, element bool) {
+	v := e.loopVar()
+	e.p(ind, "let name%s = schema_rt::msg_name(r);", v)
+	e.p(ind, "if !r.ok { return false; }")
+	e.p(ind, "if name%s < 0 {", v)
+	e.p(ind+1, "%s = 0;", dst)
+	e.p(ind, "} else {")
+	e.p(ind+1, "match schema_rt::msg_id(r, name%s) {", v)
+	for i := range en.Variants {
+		land := fmt.Sprint(i + 1)
+		if i < len(en.VariantTags) && slices.Contains(en.VariantTags[i], "deprecated") {
+			land = "0"
+			if !element {
+				land = e.enumDefault(f)
+			}
+		}
+		e.p(ind+2, "0x%016x => { %s = %s; },", ir.TableWireId(en.VariantWireName(i)), dst, land)
+	}
+	e.p(ind+2, "_ => {")
+	e.p(ind+3, "%s = 0;", dst)
+	e.p(ind+3, "r.unknown += 1;")
+	e.p(ind+2, "},")
+	e.p(ind+1, "}")
+	e.p(ind, "}")
+}
+
+// enumDefault is an enum field's declared default as its ordinal.
+func (e *msgEmit) enumDefault(f *ir.Field) string {
+	if !f.HasDefault || f.DefVariant == "" {
+		return "0"
+	}
+	for i, vn := range enumOf(f).Variants {
+		if vn == f.DefVariant {
+			return fmt.Sprint(i + 1)
+		}
+	}
+	return "0"
+}
+
+// elemType is one element's Goose type, for the scratch an element past this
+// reader's bound is read into.
+func (e *msgEmit) elemType(el *ir.Field) string {
+	switch {
+	case e.isStruct(el):
+		return e.fx.structType(el.Type.Ref.(*ir.Struct))
+	case e.isUnion(el):
+		return e.fx.unionType(el.Type.Ref.(*ir.Union))
+	case el.Type.Kind == ir.TBool:
+		return "bool"
+	case el.Type.Kind == ir.TFloat32:
+		return "f32"
+	case el.Type.Kind == ir.TFloat64:
+		return "f64"
+	case e.fx.kindOf(el) == kInt128:
+		return "schema_rt::Int128"
+	}
+	return e.fx.storageType(el)
+}
+
+// getElement reads one element from the element entry `en` at its element
+// kind's own framing: a nested body, a union's arm, or a value.
+func (e *msgEmit) getElement(ind int, el *ir.Field, en, dst string) {
+	switch {
+	case e.isStruct(el), e.isUnion(el):
+		e.p(ind, "if !_%sMsgLoad(r, %s) { return false; }", el.Type.Name, dst)
+	default:
+		e.getScalar(ind, el, en, dst, true)
+	}
+}
+
+// getValue lands a field's payload from the entry `en`: text (kept to the
+// reader's bound, the excess counted clamped), an array's elements (the
+// excess past the bound stepped over by the announced width, or read into a
+// scratch and dropped where each element resolves something), a keyed array's
 // present slots, or one element.
-func (e *msgEmit) getValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, pl place) {
+func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 	el := elemOf(f)
 	v := e.loopVar()
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		bits := ir.TableMessageBitsRequired(0, entry.Shape.Max)
-		if f.Type.Kind == ir.TBytes {
-			bits = ir.TableMessageCountBits(entry.Shape)
-		}
-		e.p(ind, "let n%s = schema_rt::msg_get(r, %d) as! i64;", v, bits)
-		e.p(ind, "if !schema_rt::msg_align_read(r) || !schema_rt::msg_has(r, n%s * 8) { return schema_rt::msg_damage(r); }", v)
+		e.p(ind, "let n%s = schema_rt::msg_text_len(r, %s);", v, en)
+		e.p(ind, "if !r.ok { return false; }")
 		e.p(ind, "let at%s = r.pos >> 3;", v)
-		keep := fmt.Sprintf("n%s", v)
 		if f.Type.Kind == ir.TString {
 			e.p(ind, "if !schema_rt::fixed_utf8_ok(r.b, at%s, n%s) { return schema_rt::msg_damage(r); }", v, v)
 			e.p(ind, "let k%s = schema_rt::msg_utf8_keep(r.b, at%s, n%s, %d);", v, v, v, f.Type.Size)
@@ -702,7 +819,7 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 			e.p(ind, "var k%s = n%s;", v, v)
 			e.p(ind, "if k%s > %d { k%s = %d; }", v, f.Type.Size, v, f.Type.Size)
 		}
-		e.p(ind, "if k%s < %s { r.clamped += 1; }", v, keep)
+		e.p(ind, "if k%s < n%s { r.clamped += 1; }", v, v)
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < k%s {", i, v)
@@ -712,8 +829,8 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 		e.p(ind, "%s = k%s as! i32;", pl.length, v)
 		e.p(ind, "r.pos += n%s * 8;", v)
 	case f.Type.Kind == ir.TWString:
-		e.p(ind, "let n%s = schema_rt::msg_get(r, %d) as! i64;", v, ir.TableMessageBitsRequired(0, entry.Shape.Max))
-		e.p(ind, "if !schema_rt::msg_has(r, n%s * 16) { return schema_rt::msg_damage(r); }", v)
+		e.p(ind, "let n%s = schema_rt::msg_wide_len(r, %s);", v, en)
+		e.p(ind, "if !r.ok { return false; }")
 		e.p(ind, "var high%s = false;", v)
 		e.p(ind, "var k%s: i64 = 0;", v)
 		i := e.loopVar()
@@ -742,58 +859,101 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 		e.p(ind, "}")
 		e.p(ind, "%s = k%s as! i32;", pl.length, v)
 	case f.KeyEnum != "":
-		e.p(ind, "let n%s = schema_rt::msg_get(r, %d);", v, ir.TableMessageBitsRequired(0, entry.Shape.Max))
+		slots := slotCount(f)
+		e.p(ind, "let n%s = schema_rt::msg_keyed_count(r, %s);", v, en)
+		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
 		i := e.loopVar()
-		e.p(ind, "var %s: u64 = 0;", i)
+		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < n%s {", i, v)
 		e.p(ind+1, "if !r.ok { return false; }")
-		e.p(ind+1, "let ky = schema_rt::msg_get(r, %s);", msgRefBits)
+		e.p(ind+1, "let key%s = schema_rt::msg_name(r);", v)
+		e.p(ind+1, "if key%s < 0 { return schema_rt::msg_damage(r); }", v)
+		e.p(ind+1, "match schema_rt::msg_id(r, key%s) {", v)
 		for k := range f.KeyEnumRef.Variants {
-			kw := "} else if"
-			if k == 0 {
-				kw = "if"
+			id := ir.TableWireId(f.KeyEnumRef.VariantWireName(k))
+			e.p(ind+2, "0x%016x => {", id)
+			if int64(k) < slots {
+				e.getElement(ind+3, el, "el"+v, pl.at(fmt.Sprint(k)).val)
+			} else {
+				// a key past this build's slots is dropped and counted clamped
+				e.p(ind+3, "r.clamped += 1;")
+				e.p(ind+3, "var sc: %s = %s;", e.elemType(el), e.scratchInit(el))
+				e.getElement(ind+3, el, "el"+v, "sc")
 			}
-			e.p(ind+1, "%s ky == %s {", kw, e.nameSlot(ir.TableWireId(f.KeyEnumRef.VariantWireName(k))))
-			e.getElement(ind+2, el, entry.Shape.Elem, inner(entry.Shape), pl.at(fmt.Sprint(k)).val)
+			e.p(ind+2, "},")
 		}
-		if len(f.KeyEnumRef.Variants) > 0 {
-			e.p(ind+1, "} else {")
-			e.p(ind+2, "return schema_rt::msg_damage(r);")
-			e.p(ind+1, "}")
-		} else {
-			e.p(ind+1, "return schema_rt::msg_damage(r);")
-		}
+		// a key this enum cannot name drops its element, read all the same
+		e.p(ind+2, "_ => {")
+		e.p(ind+3, "r.unknown += 1;")
+		e.p(ind+3, "var sc: %s = %s;", e.elemType(el), e.scratchInit(el))
+		e.getElement(ind+3, el, "el"+v, "sc")
+		e.p(ind+2, "},")
+		e.p(ind+1, "}")
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
 	case f.Array != ir.ArrayNone:
-		bits := ir.TableMessageCountBits(entry.Shape)
-		e.p(ind, "let n%s = (schema_rt::msg_get(r, %d) as! i64) + %d;", v, bits, entry.Shape.Min)
-		if ir.TableMessageAligns(entry.Kind, entry.Shape) {
-			e.p(ind, "if !schema_rt::msg_align_read(r) { return false; }")
-		}
+		e.p(ind, "let n%s = schema_rt::msg_count(r, %s);", v, en)
+		e.p(ind, "if !r.ok { return false; }")
+		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
 		e.p(ind, "var k%s = n%s;", v, v)
 		e.p(ind, "if k%s > %d {", v, f.ArrayBound)
 		e.p(ind+1, "k%s = %d;", v, f.ArrayBound)
 		e.p(ind+1, "r.clamped += 1;")
 		e.p(ind, "}")
+		// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC (§3.3); an
+		// element that resolves something is read into a scratch and dropped
+		e.p(ind, "let run%s = schema_rt::msg_run_bits(r, %s);", v, en)
+		e.p(ind, "var walk%s = n%s;", v, v)
+		e.p(ind, "if run%s >= 0 && walk%s > k%s { walk%s = k%s; }", v, v, v, v, v)
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < k%s {", i, v)
+		e.p(ind, "while %s < walk%s {", i, v)
 		e.p(ind+1, "if !r.ok { return false; }")
-		e.getElement(ind+1, el, entry.Shape.Elem, inner(entry.Shape), pl.at(i).val)
+		if e.isStruct(el) || e.isUnion(el) || enumOf(el) != nil {
+			e.p(ind+1, "if %s < k%s {", i, v)
+			e.getElement(ind+2, el, "el"+v, pl.at(i).val)
+			e.p(ind+1, "} else {")
+			e.p(ind+2, "var sc: %s = %s;", e.elemType(el), e.scratchInit(el))
+			e.getElement(ind+2, el, "el"+v, "sc")
+			e.p(ind+1, "}")
+		} else {
+			// a value element's width is announced, so the walk stops at k
+			e.getElement(ind+1, el, "el"+v, pl.at(i).val)
+		}
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
-		if w := ir.TableMessageValueBits(entry.Shape.Elem, inner(entry.Shape)); w >= 0 && enumOf(el) == nil {
-			e.p(ind, "if !schema_rt::msg_skip(r, (n%s - k%s) * %d) { return false; }", v, v, w)
-		} else {
-			e.p(ind, "if k%s < n%s { return schema_rt::msg_damage(r); }", v, v)
-		}
+		e.p(ind, "if walk%s < n%s && !schema_rt::msg_skip_run(r, (n%s - walk%s) as! u64, run%s) { return schema_rt::msg_damage(r); }", v, v, v, v, v)
 		if f.Array == ir.ArrayCounted {
 			e.p(ind, "%sCount = k%s as! i32;", pl.val, v)
 		}
 	default:
-		e.getElement(ind, el, entry.Kind, entry.Shape, pl.val)
+		e.getElement(ind, el, en, pl.val)
 	}
+}
+
+// scratchInit is a fresh value of one element's type, for a read whose value
+// is dropped.
+func (e *msgEmit) scratchInit(el *ir.Field) string {
+	switch e.elemType(el) {
+	case "bool":
+		return "false"
+	case "f32", "f64":
+		return "0.0"
+	}
+	if e.isStruct(el) || e.isUnion(el) || e.fx.kindOf(el) == kInt128 {
+		return e.elemType(el) + " { .. }"
+	}
+	return "0"
+}
+
+// accept emits the kind check of one entry `en` against this reader's own
+// entry for the same id; on a mismatch the entry was counted and stepped over
+// and `onSkip` runs.
+func (e *msgEmit) accept(ind int, en string, mine ir.TableVocabularyEntry, onSkip string) {
+	v := e.loopVar()
+	e.p(ind, "let acc%s = schema_rt::msg_accept(r, %s, %d, %d);", v, en, mine.Kind, mine.Shape.Elem)
+	e.p(ind, "if acc%s < 0 { return false; }", v)
+	e.p(ind, "if acc%s == 2 { %s }", v, onSkip)
 }
 
 // ---------------------------------------------------------------------------
@@ -828,29 +988,24 @@ func (e *msgEmit) emitStruct(st *ir.Struct) {
 	e.loop = 0
 	e.p(0, "fn _%sMsgLoad(r: schema_rt::MsgReader&, v: %s&) -> bool {", n, typ)
 	e.p(1, "v = %s { .. };", typ)
-	e.p(1, "while true {")
-	e.p(2, "let sl = schema_rt::msg_get(r, %s);", msgRefBits)
-	e.p(2, "if !r.ok { return false; }")
-	e.p(2, "if sl == 0 { return true; }")
-	for i, f := range st.Fields {
-		kw := "} else if"
-		if i == 0 {
-			kw = "if"
-		}
+	e.p(1, "loop {")
+	e.p(2, "let en = schema_rt::msg_field(r);")
+	e.p(2, "if en < 0 { return r.ok; }")
+	e.p(2, "match schema_rt::msg_id(r, en) {")
+	for _, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
-		e.p(2, "%s sl == %s {", kw, e.slot(entry))
-		e.getValue(3, f, entry, fieldPlace("v", f))
+		e.p(3, "0x%016x => {", entry.Id)
+		e.accept(4, "en", entry, "continue;")
+		e.getValue(4, f, "en", fieldPlace("v", f))
 		if f.Type.Optional {
-			e.p(3, "%s = true;", presentOf("v", f))
+			e.p(4, "%s = true;", presentOf("v", f))
 		}
+		e.p(3, "},")
 	}
-	if len(st.Fields) > 0 {
-		e.p(2, "} else {")
-		e.p(3, "return schema_rt::msg_damage(r);")
-		e.p(2, "}")
-	} else {
-		e.p(2, "return schema_rt::msg_damage(r);")
-	}
+	e.p(3, "_ => {")
+	e.p(4, "if !schema_rt::msg_unknown(r, en) { return false; }")
+	e.p(3, "},")
+	e.p(2, "}")
 	e.p(2, "if !r.ok { return false; }")
 	e.p(1, "}")
 	e.p(1, "return false;")
@@ -901,39 +1056,34 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 	e.loop = 0
 	e.p(0, "fn _%sMsgLoad(r: schema_rt::MsgReader&, v: %s&) -> bool {", n, typ)
 	e.p(1, "v = %s { .. };", typ)
-	e.p(1, "let sl = schema_rt::msg_get(r, %s);", msgRefBits)
-	e.p(1, "if !r.ok { return false; }")
-	e.p(1, "if sl == 0 { return true; }")
+	e.p(1, "let en = schema_rt::msg_arm(r);")
+	e.p(1, "if en < 0 { return r.ok; }")
+	e.p(1, "match schema_rt::msg_id(r, en) {")
 	for i, v := range un.Variants {
-		kw := "} else if"
-		if i == 0 {
-			kw = "if"
-		}
 		entry := ir.TableArmEntry(v)
-		e.p(1, "%s sl == %s {", kw, e.slot(entry))
-		e.p(2, "v.Type = %d;", i+1)
+		e.p(2, "0x%016x => {", entry.Id)
+		// a WIDENED arm is selected and decodes; a mismatched one is None
+		e.accept(3, "en", entry, "return true;")
+		e.p(3, "v.Type = %d;", i+1)
 		switch {
 		case v.Void():
 		case v.Body():
-			e.p(2, "if !_%sMsgLoad(r, v.%s) { return false; }", v.Ref.Name, ir.GoExportName(v.Name))
+			e.p(3, "if !_%sMsgLoad(r, v.%s) { return false; }", v.Ref.Name, ir.GoExportName(v.Name))
 		default:
-			e.getValue(2, armField(v), entry, armPlace("v", v))
+			e.getValue(3, armField(v), "en", armPlace("v", v))
 		}
+		e.p(2, "},")
 	}
-	if len(un.Variants) > 0 {
-		e.p(1, "} else {")
-		e.p(2, "return schema_rt::msg_damage(r);")
-		e.p(1, "}")
-	} else {
-		e.p(1, "return schema_rt::msg_damage(r);")
-	}
+	// an arm this union cannot name: None, counted unknown, stepped over
+	e.p(2, "_ => { return schema_rt::msg_unknown(r, en); },")
+	e.p(1, "}")
 	e.p(1, "return r.ok;")
 	e.p(0, "}\n")
 }
 
 // emitRoot writes a fixed root's batch API (§3.3): the announcement as a
-// constant, MeasureMessages, SaveMessages and LoadMessages over the unit's own
-// vocabulary.
+// constant, MeasureMessages and SaveMessages under the unit's own vocabulary,
+// and LoadMessages against the peer's (schema_rt::announce_read).
 func (e *msgEmit) emitRoot(st *ir.Struct) {
 	n := st.Name
 	typ := e.fx.structType(st)
@@ -986,11 +1136,11 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	}
 
 	e.loop = 0
-	e.p(0, "// %sLoadMessages reads ONE batch into values against the unit's own vocabulary and", n)
+	e.p(0, "// %sLoadMessages reads ONE batch into values against the peer's vocabulary (AnnounceRead) and", n)
 	e.p(0, "// returns the bodies delivered: a capacity short of the wire's count is batch_too_large")
 	e.p(0, "// with report.count set and nothing decoded; damage inside body k delivers bodies 1 to")
 	e.p(0, "// k - 1 and sets malformed; a non-finite float refuses the batch (§3.3).")
-	e.p(0, "fn %sLoadMessages(values: %s[:], data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
+	e.p(0, "fn %sLoadMessages(values: %s[:], voc: const schema_rt::MsgVocabulary&, data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::MsgReport { .. };")
 	e.p(1, "if data.len < 1 {")
 	e.p(2, "report.malformed = true;")
@@ -1000,7 +1150,11 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(2, "report.reason = schema_rt::MsgRefuseNewerForm;")
 	e.p(2, "return -1;")
 	e.p(1, "}")
-	e.p(1, "var r = schema_rt::MsgReader { b: data, pos: 8, end: data.len * 8, .. };")
+	e.p(1, "if !voc.announced {")
+	e.p(2, "report.reason = schema_rt::MsgRefuseNoVocabulary;")
+	e.p(2, "return -1;")
+	e.p(1, "}")
+	e.p(1, "var r = schema_rt::MsgReader { b: data, pos: 8, end: data.len * 8, voc: voc, .. };")
 	e.p(1, "let count = (schema_rt::msg_get(r, 8) as! i64) + 1;")
 	e.p(1, "if !r.ok {")
 	e.p(2, "report.malformed = true;")
@@ -1019,12 +1173,15 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(4, "return -1;")
 	e.p(3, "}")
 	e.p(3, "report.malformed = true;")
-	e.p(3, "report.clamped = r.clamped;")
-	e.p(3, "return i;")
+	e.p(3, "break;")
 	e.p(2, "}")
 	e.p(2, "i += 1;")
 	e.p(1, "}")
+	e.p(1, "report.unknown = r.unknown;")
+	e.p(1, "report.kind_mismatch = r.kind_mismatch;")
+	e.p(1, "report.widened = r.widened;")
 	e.p(1, "report.clamped = r.clamped;")
+	e.p(1, "if report.malformed { return i; }")
 	e.p(1, "if !schema_rt::msg_align_read(r) || r.pos != r.end { report.malformed = true; }")
 	e.p(1, "return count;")
 	e.p(0, "}\n")

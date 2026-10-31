@@ -45,6 +45,24 @@ glue() {
 			echo "import .$b;"
 		done
 		echo "fn conformance_unit() -> schema_rt::LoadUnit { return $ns::TableUnit; }"
+		# THE MESSAGE FORM's round trip, one arm per root the unit carries it
+		# for (a fixed root's <Root>LoadMessages): AnnounceRead the peer's
+		# announcement, LoadMessages the batch against it, SaveMessages what
+		# landed. -1 is a root the leg carries no message form for.
+		echo "fn conformance_message(root: const u8[:], announce: const u8[:], wire: const u8[:], out: u8[>..]&) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)LoadMessages(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var voc = schema_rt::MsgVocabulary { .. };"
+			echo "        var rep = schema_rt::MsgReport { .. };"
+			echo "        if !schema_rt::announce_read(voc, announce, rep) { return -2; }"
+			echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
+			echo "        let n = $ns::${r}LoadMessages(values[0..256], voc, wire, rep);"
+			echo "        if n < 1 || rep.malformed || rep.reason != 0 { return -3; }"
+			echo "        return $ns::${r}SaveMessages(values[0..n], out, rep);"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
 	} >"$1/conformance_unit.goose"
 	cp "$main" "$1/main.goose"
 	text=test/conformance/goose/units/$(basename "$1").goose
@@ -196,6 +214,8 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 	if [ ! -d "$u" ]; then
 		# a refused unit answers none of its cases
 		awk -v k="$key" -v s="$2" '
+			$1 == "connection" { unit_of[$2] = $3 }
+			(s == "message" && $1 == "message" && unit_of[$3] == k) ||
 			(s == "wire" && $1 == "instance" && $3 == k) ||
 			(s == "report" && $1 == "report" && $3 == k) ||
 			((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
