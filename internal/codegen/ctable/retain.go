@@ -18,7 +18,7 @@ func (g *tableGen) retainRuntime() string {
 	if !g.hasProbes {
 		retainOut = strings.ReplaceAll(retainOut, " if(w->check_default){w->offset=2;return 1;}\n", "")
 	}
-	return strings.NewReplacer("@DEPTH@", fmt.Sprint(g.retainDepth()), "@KNOWN@", ids.String(), "@RETAIN_OUT@", retainOut, "@RETAIN_MESSAGE@", cRetainMessage+cRetainGraph).Replace(cRetainRuntime)
+	return strings.NewReplacer("@DEPTH@", fmt.Sprint(g.retainDepth()), "@KNOWN@", ids.String(), "@RETAIN_OUT@", retainOut, "@RETAIN_GRAPH@", cRetainGraph).Replace(cRetainRuntime)
 }
 func (g *tableGen) retainDepth() int {
 	var field func(*ir.Field) int
@@ -226,6 +226,6 @@ static SCHEMA_UNUSED int table_retain_capture(TableReader * r,uint64_t id,uint8_
 }
 
 @RETAIN_OUT@
-@RETAIN_MESSAGE@
+@RETAIN_GRAPH@
 #endif
 `

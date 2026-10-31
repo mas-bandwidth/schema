@@ -630,7 +630,7 @@ static partial class Program
 
     // ---- guarded fields stay off the wire when the guard says so ----
     //
-    // On Guarded.schema's Patrol, a plain `table`, and not on Tables.schema's
+    // On Guarded.schema's Patrol, a variable table, and not on Tables.schema's
     // ProfileConfig, which is a `fixed table`: a lookback conditional exists to
     // make a body vary in size, and that is "a disqualifying thing for a fixed
     // table. not supported. only variable." (docs/SPEC-TABLES.md §2.2, §3.4).
@@ -1824,11 +1824,9 @@ static partial class Program
         TestBlobJsonAllocation();
         TestAllocationGate();
         TestAllocationGateCanGoRed();
-        TestNativeMessages();
         TestRetention();
         TestRetentionContracts();
         TestRetentionPaths();
-        TestCollectionMessages();
         TestCollectionEdges();
         TestGoldenWireWrite();
         TestGoldenWireRead();

@@ -83,7 +83,7 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
     conformance_text_raw( out, s, strlen( s ) );
 }
 
-int conformance_retain(int message,const uint8_t * announcement,int64_t announcement_bytes,const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
+int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
 
 /* the per-unit entry points, each defined in that unit's own translation unit */
 const ConformanceCodec * conformance_codecs_armdemo(int * count);

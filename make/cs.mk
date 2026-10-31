@@ -167,11 +167,16 @@ tables-cs-standalone: build/tables-generated-cs/.stamp
 
 .PHONY: tables-cs-variable-surface
 tables-cs-variable-surface: build/tables-generated-cs/.stamp
-	@for verb in LoadMeasure Load Save Measure LoadMessages SaveMessages Cook CookMeasure; do \
+	@for verb in LoadMeasure Load Save Measure Cook CookMeasure; do \
 		grep -Fq "Scene$$verb(" build/tables-generated-cs/pointers/*Table.cs || \
 			{ echo "VARIABLE SURFACE GATE FAILED: Scene$$verb is absent"; exit 1; }; \
 	done
-	@echo "tables C# variable surface: pointered roots carry file, message and cook verbs"
+	@for verb in LoadMessages SaveMessages MeasureMessages LoadRetainMessages SaveRetainMessages; do \
+		if grep -Fq "Scene$$verb(" build/tables-generated-cs/pointers/*.cs; then \
+			echo "VARIABLE SURFACE GATE FAILED: Scene$$verb is emitted, and the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)"; exit 1; \
+		fi; \
+	done
+	@echo "tables C# variable surface: pointered roots carry file and cook verbs and no message verb"
 
 # ---------------------------------------------------------------------------
 # THE COOK's C# READ SIDE (docs/SPEC-TABLES.md §7) --------------------------------
@@ -614,10 +619,6 @@ tables-cs-pack-negative-control: bin/schema
 tables-cs-finite-float-negative-control: bin/schema
 	sh test/cs-tables/finite-negative-control "$(DOTNET)"
 
-.PHONY: tables-cs-message-blob-endian-negative-control
-tables-cs-message-blob-endian-negative-control: bin/schema
-	sh test/cs-tables/message-blob-endian-control "$(DOTNET)"
-
 # J1 — ACCESSOR AND DESCRIPTOR AGREEMENT (docs/PORTING.md, schema#421), the C#
 # half. The generated managed class's public fields and the generated
 # descriptor's delegates are two independent derivations of one layout, and a
@@ -654,7 +655,6 @@ tables-cs-release:
 	$(MAKE) tables-cs-soak-negative-control
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
-	$(MAKE) tables-cs-message-blob-endian-negative-control
 	$(MAKE) conformance-negative-control-cs
 
 # J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
@@ -877,7 +877,6 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-retain-fuzz
 	$(MAKE) tables-cs-retain-negative-control
 	$(MAKE) tables-cs-pack-negative-control
-	$(MAKE) tables-cs-message-blob-endian-negative-control
 	$(MAKE) tables-cs-fixedform-arm-negative-control
 	$(MAKE) conformance-negative-control-cs
 	$(MAKE) tables-cook-open-cs

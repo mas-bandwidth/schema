@@ -67,9 +67,11 @@ table Note
 }
 `
 
+// A fixed table: the message form, whose f32-shaped entry the float rung
+// reads, is a fixed table's (docs/SPEC-TABLES.md §3.3).
 const deadCF64Src = `package probe
 
-table Note
+fixed table Note
 {
     ratio float64
     tally int32
@@ -80,7 +82,7 @@ table Note
 // so nothing on the float rung is declared and nothing widens into it.
 const deadCF32Src = `package probe
 
-table Note
+fixed table Note
 {
     ratio float32
     tally int32

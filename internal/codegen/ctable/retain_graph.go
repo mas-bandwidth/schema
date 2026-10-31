@@ -38,7 +38,6 @@ func (g *tableGen) emitRetainRoots(members []*ir.Struct) {
 			continue
 		}
 		g.emitRetainFileRoot(st)
-		g.emitRetainMessageRoot(st)
 	}
 }
 func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
@@ -87,26 +86,6 @@ func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * root,TableRetain * retain,uint8_t * buffer,int64_t capacity,TableReport * report)\n{return %s(root,retain,buffer,capacity,report,table_default_allocator());}\n", g.api(n, "save_retain"), n, g.api(n, "save_retain_with_allocator"))
 }
 
-func (g *tableGen) emitRetainMessageRoot(st *ir.Struct) {
-	n := st.Name
-	previous := g.body.String()
-	g.body.Reset()
-	g.retain = true
-	g.emitMessageGraphLoad(st)
-	g.retain = false
-	names := map[string]string{g.sym(n, "message_load_into"): g.sym(n, "message_load_into_retain")}
-	for name := range ir.TableClosure(g.unit) {
-		fn := g.api(name, "load_message_body")
-		names[fn] = fn + "_retain"
-	}
-	code := g.body.String()
-	g.body.Reset()
-	g.body.WriteString(previous)
-	g.body.WriteString(retainedCode(code, names, g.sym(n, "message_load_into")))
-	g.pf("static SCHEMA_UNUSED int %s(const %s ** roots,int64_t * count,uint8_t * region,int64_t region_bytes,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableRetain * retains,TableReport * report)\n{\n", g.api(n, "load_retain_messages"), n)
-	g.pf(" TableReport ignored={0};TableMessageReader r;TableRetainWalk retention;int64_t bodies,capacity,used=0,i;int32_t non_finite_before;int ok;if(!report)report=&ignored;\n if(!roots||!count){report->malformed=1;return 0;}capacity=*count;*count=0;bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n if(!region||region_bytes<0||((uintptr_t)region&(kTableAlign-1))){report->malformed=1;return 0;}memset(region,0,(size_t)region_bytes);\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){roots[i]=NULL;memset(&retention,0,sizeof(retention));retention.retain=retains?retains+i:NULL;table_retain_reset(retention.retain,NULL,NULL);if(!%s(&r,region,region_bytes,&used,roots+i,retention))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;*count=0;memset(region,0,(size_t)region_bytes);return 0;}\n return ok;\n}\n", g.sym(n, "message_load_into_retain"))
-}
-
 // C99 has no variadic templates. The diagnostic bit-field is instantiated only
 // when the refused macro is called, so fixed-only units carry no runtime state.
 func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
@@ -114,10 +93,11 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 		if st.IsMapEntry() {
 			continue
 		}
-		if !g.isVar(st.Name) {
-			for _, verb := range []string{"load_retain", "measure_retain", "save_retain", "load_retain_messages"} {
-				g.pf("/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */\n#define %s(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))\n", g.api(st.Name, verb))
-			}
+		if g.isVar(st.Name) {
+			continue
+		}
+		for _, verb := range []string{"load_retain", "measure_retain", "save_retain", "load_retain_messages"} {
+			g.pf("/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */\n#define %s(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))\n", g.api(st.Name, verb))
 		}
 		g.pf("/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */\n#define %s(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))\n", g.api(st.Name, "save_retain_messages"))
 	}

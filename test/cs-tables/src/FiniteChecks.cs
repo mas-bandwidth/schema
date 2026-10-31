@@ -143,15 +143,12 @@ static partial class Program
             }
         }
 
-        // ---- the variable class: form 1, the region, the message and the region message ----
+        // ---- the variable class: form 1 and the region ----
         {
             const uint pi = 0x40490fdbu;
             L.Floats floats = new L.Floats { Values = new float[] { 1.5f, BitConverter.UInt32BitsToSingle(pi) }, ValuesCount = 2, Past = 3 };
             byte[] file = new byte[L.Schema.FloatsMeasure(floats)];
             Check(L.Schema.FloatsSave(floats, file) == file.Length, "Floats saves");
-            L.Floats[] batch = { floats };
-            byte[] message = new byte[L.Schema.FloatsMeasureMessages(batch)];
-            Check(L.Schema.FloatsSaveMessages(batch, message) == message.Length, "Floats saves as a message");
             foreach (uint bad in new uint[] { 0x7fc00001u, 0xff800000u })
             {
                 byte[] wire = (byte[])file.Clone();
@@ -160,19 +157,9 @@ static partial class Program
                 Check(!L.Schema.FloatsLoad(back, wire, report) && report.Refused && report.Reason == "non_finite_float: " + ValuesName &&
                     back.ValuesCount == 0 && back.Past == 0, $"form 1 refuses list element 0x{bad:x8} and lands nothing");
                 RegionRefuses(wire, $"the region read refuses list element 0x{bad:x8}");
-
-                byte[] bits = (byte[])message.Clone();
-                Check(PatchBits(bits, pi, bad), "the message holds the element's bits");
-                L.TableVocabulary vocabulary = new L.TableVocabulary();
-                L.Schema.AnnounceRead(vocabulary, L.Schema.Announce(), new L.TableReport());
-                L.Floats[] into = { new L.Floats() }; report = new L.TableReport();
-                Check(L.Schema.FloatsLoadMessages(into, bits, vocabulary, report, out int count) == L.Schema.TableWire.Verdict.Refused &&
-                    count == 0 && report.Refused && report.NonFiniteFloat == ValuesName && into[0].ValuesCount == 0 && into[0].Past == 0,
-                    $"the message read refuses list element 0x{bad:x8} and delivers no body");
-                RegionMessageRefuses(bits, vocabulary, $"the region message read refuses list element 0x{bad:x8}");
             }
             floats.Values[0] = float.NaN;
-            Check(L.Schema.FloatsMeasure(floats) == -1 && L.Schema.FloatsMeasureMessages(batch) == -1 && L.Schema.FloatsCookMeasure(floats) == -1,
+            Check(L.Schema.FloatsMeasure(floats) == -1 && L.Schema.FloatsCookMeasure(floats) == -1,
                 "the variable writers refuse a NaN list element");
         }
     }
@@ -187,21 +174,6 @@ static partial class Program
             L.TableReport report = new L.TableReport();
             Check(L.Schema.FloatsLoad((IntPtr)data, need, wire, report) == null && report.Refused &&
                 report.Reason == "non_finite_float: " + ValuesName, what);
-        }
-        finally { NativeMemory.AlignedFree(data); }
-    }
-
-    static unsafe void RegionMessageRefuses(byte[] bits, L.TableVocabulary vocabulary, string what)
-    {
-        long need = L.Schema.FloatsLoadMeasure(vocabulary, bits, out _, out _);
-        if (need < 0) { Check(false, what + ": the region message measure refused the framing"); return; }
-        byte* data = (byte*)NativeMemory.AlignedAlloc(checked((nuint)(need + 64)), 64);
-        try
-        {
-            L.TableReport report = new L.TableReport();
-            Span<IntPtr> roots = stackalloc IntPtr[1];
-            Check(L.Schema.FloatsLoadMessages((IntPtr)data, need, roots, bits, vocabulary, report, out int count) == L.Schema.TableWire.Verdict.Refused &&
-                count == 0 && roots[0] == IntPtr.Zero && report.NonFiniteFloat == ValuesName, what);
         }
         finally { NativeMemory.AlignedFree(data); }
     }
