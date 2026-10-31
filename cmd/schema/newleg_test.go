@@ -175,10 +175,13 @@ func TestNewLegLuaYieldsABuildingTestingSkeleton(t *testing.T) {
 	// the skeleton builds beside them, not whether their suites pass in a copy.
 	// tables/goruntime is the shared Go runtime the generated fuzz unit under
 	// internal/ imports (docs/SPEC-TABLES.md §8.4), so it comes along.
+	// A package's //go:embed files are part of its build, so they come along
+	// with the sources that name them.
 	for _, dir := range []string{"cmd", "compiler", "internal", "ir", filepath.Join("tables", "goruntime")} {
 		copyScaffoldTree(t, filepath.Join(root, dir), filepath.Join(tree, dir), func(rel string) bool {
 			return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
 		})
+		copyEmbeddedFiles(t, root, tree, dir)
 	}
 	copyScaffoldTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(string) bool { return true })
 
@@ -272,6 +275,53 @@ func copyScaffoldTree(t *testing.T, from, to string, keep func(rel string) bool)
 			return nil
 		}
 		copyScaffoldFile(t, p, filepath.Join(to, rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// copyEmbeddedFiles copies, from root into tree, every file a //go:embed
+// directive in a non-test source under dir names.
+func copyEmbeddedFiles(t *testing.T, root, tree, dir string) {
+	t.Helper()
+	err := filepath.Walk(filepath.Join(root, dir), func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if info.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for line := range strings.SplitSeq(string(src), "\n") {
+			patterns, ok := strings.CutPrefix(strings.TrimSpace(line), "//go:embed ")
+			if !ok {
+				continue
+			}
+			for _, pattern := range strings.Fields(patterns) {
+				matches, err := filepath.Glob(filepath.Join(filepath.Dir(p), filepath.FromSlash(pattern)))
+				if err != nil {
+					return err
+				}
+				for _, m := range matches {
+					rel, err := filepath.Rel(root, m)
+					if err != nil {
+						return err
+					}
+					copyScaffoldFile(t, m, filepath.Join(tree, rel))
+				}
+			}
+		}
 		return nil
 	})
 	if err != nil {
