@@ -7,9 +7,10 @@
 // binary out of literal-width segments, and reads it by matching that binary
 // and building the struct in one expression; its verdict is a tagged tuple and
 // never an exception, its writer TRUSTS the caller up to O(1) contract checks
-// that raise ArgumentError, and its floats travel bit-transparently as
-// {:nonfinite, bits} where no BEAM float term can hold the pattern. The fixed
-// form is exactly that shape with BYTE-WIDTH fields in place of bit windows:
+// that raise ArgumentError, and its floats are FINITE: a NaN or an infinity is
+// refused on write and on read as non_finite_float (docs/SPEC-TABLES.md §3.3),
+// as the packet codec refuses one. The fixed form is exactly that shape with
+// BYTE-WIDTH fields in place of bit windows:
 //
 //	THE WRITE is one binary APPENDED TO, the packet codec's `data =
 //	<<data::binary, ...>>`. Where the reference memcpy's a constant template
@@ -58,6 +59,10 @@ type fixedGen struct {
 	// leafLists are the walks over runs of BOUNDED leaves one type's projection
 	// asked for, emitted beside it.
 	leafLists []leafList
+	// present is the present test of the OPTIONAL scalar whose payload is
+	// being decoded, nil everywhere else: an absent optional's payload is
+	// unspecified (§3.4), so a float there is not refused as non-finite.
+	present node
 	// blank and lineStart are where the output stands, for emitLines to keep
 	// the formatter's one blank line and never two.
 	blank     bool
@@ -825,7 +830,12 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	case f.Type.Kind == ir.TWString:
 		g.readText(out, f, v, 2, present)
 	default:
+		prior := g.present
+		if f.Type.Optional {
+			g.present = present
+		}
 		g.readElement(out, f, v, f.Name)
+		g.present = prior
 	}
 }
 
@@ -1009,31 +1019,31 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		// A BOOL LANDS AS `byte != 0`, which is what a form that writes 0 or 1
 		// and reads anything owes a hostile writer.
 		return leafDec{spec: name + "::unsigned-8", wrap: raw(name + " != 0")}
-	case ir.TFloat32:
-		// A RANGED FLOAT IS HELD TO THIS READER'S OWN BOUNDS AND COUNTED,
-		// exactly as a ranged integer below is (schema#1164, ruled statement
-		// B). R.fclamp/3 and R.fclamps/4 rather than min/max and R.clamps/4
-		// because f32_value/1 answers the TUPLE {:nonfinite, bits} for an
-		// infinity or a NaN, and a tuple sorts ABOVE every number in Erlang's
-		// term order: an unguarded comparison would clamp a NaN to the maximum
-		// and count it. Both runtime clauses guard on is_float/1.
+	case ir.TFloat32, ir.TFloat64:
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): R.f32_value/1 and
+		// R.f64_value/1 refuse a NaN or an infinity on its raw bits, before
+		// the bits become a float, so a RANGED float's bounds below only ever
+		// see a finite value. A ranged float is held to this READER'S OWN
+		// bounds and counted, exactly as a ranged integer below is
+		// (schema#1164, ruled statement B). An absent optional's payload is
+		// unspecified and takes the present test (R.f32_value/2).
+		bits, value := 32, "R.f32_value"
+		if f.Type.Kind == ir.TFloat64 {
+			bits, value = 64, "R.f64_value"
+		}
+		term := fmt.Sprintf("%s(%s)", value, name)
+		if g.present != nil {
+			term = fmt.Sprintf("%s(%s, %s)", value, name, g.present.flat())
+		}
+		spec := fmt.Sprintf("%s::little-unsigned-%d", name, bits)
 		if lo, hi, ok := fixedFloatRangeOf(f); ok {
 			return leafDec{
-				spec:  name + "::little-unsigned-32",
-				wrap:  rawf("R.fclamp(R.f32_value(%s), %s, %s)", name, lo, hi),
-				count: rawf("R.fclamps(c, R.f32_value(%s), %s, %s)", name, lo, hi),
+				spec:  spec,
+				wrap:  rawf("R.fclamp(%s, %s, %s)", term, lo, hi),
+				count: rawf("R.fclamps(c, %s, %s, %s)", term, lo, hi),
 			}
 		}
-		return leafDec{spec: name + "::little-unsigned-32", wrap: rawf("R.f32_value(%s)", name)}
-	case ir.TFloat64:
-		if lo, hi, ok := fixedFloatRangeOf(f); ok {
-			return leafDec{
-				spec:  name + "::little-unsigned-64",
-				wrap:  rawf("R.fclamp(R.f64_value(%s), %s, %s)", name, lo, hi),
-				count: rawf("R.fclamps(c, R.f64_value(%s), %s, %s)", name, lo, hi),
-			}
-		}
-		return leafDec{spec: name + "::little-unsigned-64", wrap: rawf("R.f64_value(%s)", name)}
+		return leafDec{spec: spec, wrap: raw(term)}
 	}
 	spec := fmt.Sprintf("%s::little-unsigned-%d", name, width)
 	if f.Type.Signed {

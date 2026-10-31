@@ -312,23 +312,20 @@ const fixedRuntimeBody = `  @moduledoc """
 
   @doc """
   A RANGED FLOAT AGAINST ITS READER'S OWN BOUNDS, held and counted separately
-  from 'clamps/4' because a float32 that is not finite does not arrive here as
-  a number at all: 'f32_value/1' answers the TUPLE '{:nonfinite, bits}' for an
-  infinity or a NaN, and in Erlang's term order every tuple sorts ABOVE every
-  number, so an unguarded 'v > hi' would "clamp" a NaN to the maximum and count
-  it. The 'is_float/1' guard is the whole point of these two, and IEEE does the
-  rest: a NaN is below no min and above no max, and a negative zero is not
-  below a min of +0.
+  from 'clamps/4' so a float bound reads as a float bound. A NaN or an infinity
+  never arrives here: 'f32_value/1' and 'f64_value/1' refuse one on its raw
+  bits first, as non_finite_float (docs/SPEC-TABLES.md §3.3), so every value
+  these see is a finite float, and a negative zero is not below a min of +0.
 
   Which bound is the reader's own and not the writer's is schema#1164, ruled
   statement B: a compressed float rides AS THE FLOAT in the fixed form, its
   bounds are definitions in the digest, and the compiled plan carries no range.
   """
-  def fclamp(v, lo, _hi) when is_float(v) and v < lo, do: lo
-  def fclamp(v, _lo, hi) when is_float(v) and v > hi, do: hi
+  def fclamp(v, lo, _hi) when v < lo, do: lo
+  def fclamp(v, _lo, hi) when v > hi, do: hi
   def fclamp(v, _lo, _hi), do: v
 
-  def fclamps(acc, v, lo, hi) when is_float(v) and (v < lo or v > hi), do: acc + 1
+  def fclamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1
   def fclamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
@@ -375,68 +372,69 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   # ---------------------------------------------------------------------------
-  # FLOATS ARE BIT-TRANSPARENT, the serialize.elixir convention
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the table form's rule since
+  # 2026-10-27, the same rule as the packet wire's)
   # ---------------------------------------------------------------------------
   #
-  # A non-finite IEEE-754 pattern is one no BEAM float term can hold, so it
-  # reads back as {:nonfinite, bits} and writes from the same form — exactly as
-  # the packet codec does, because a fixed record and a packet body carry the
-  # same value in the same language.
+  # A read tests the RAW BITS for an all-ones exponent before they become a
+  # float and refuses the whole read as non_finite_float, the tolerant one too:
+  # the throw is caught where the read's other uniform refusals are, and no
+  # destination byte lands. A write refuses what is not a float or narrows past
+  # float32's range to an infinity, the packet codec's own reason (a BEAM float
+  # holds no NaN and no infinity of its own). -0 and the subnormals are values.
+
+  def f32_value(bits) when (bits &&& 0x7F800000) == 0x7F800000,
+    do: throw({:refuse, :non_finite_float})
 
   def f32_value(bits) do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      <<value::float-32-little>> = <<bits::little-32>>
-      value
-    else
-      {:nonfinite, bits}
-    end
+    <<value::float-32-little>> = <<bits::little-32>>
+    value
   end
+
+  # AN ABSENT OPTIONAL'S PAYLOAD IS UNSPECIFIED (§3.4): nobody wrote it, so its
+  # bits are not a float any read refuses, and it lands 0.0 where they spell no
+  # float at all.
+  def f32_value(bits, true), do: f32_value(bits)
+  def f32_value(bits, false) when (bits &&& 0x7F800000) == 0x7F800000, do: 0.0
+  def f32_value(bits, false), do: f32_value(bits)
 
   def f32_bits(value) when is_float(value) do
     <<bits::little-32>> = <<value::float-32-little>>
 
     if (bits >>> 23 &&& 0xFF) == 0xFF do
-      raise ArgumentError, "float overflows float32; write {:nonfinite, bits} instead"
+      raise ArgumentError, "non_finite_float: #{inspect(value)} overflows float32"
     end
 
     bits
   end
 
-  # AND THE OTHER HALF OF THE PACKET CODEC'S CONTRACT: a ` + "`" + `{:nonfinite, bits}` + "`" + `
-  # carrying a FINITE pattern is a caller who tagged an ordinary number, and it
-  # raises rather than riding. The tag is not a spelling of "a float" — it is
-  # the ONLY way to spell a pattern no BEAM float term holds — so a finite
-  # pattern under it means the value surface and the wire disagree about what
-  # the field contains, and letting it ride would put a number on the wire that
-  # reads back as a float the writer never wrote.
-  def f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do
-    if (bits >>> 23 &&& 0xFF) != 0xFF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
-    end
-
-    bits
+  def f32_bits(value) do
+    raise ArgumentError,
+          "non_finite_float: a float32 writes a finite float, got: #{inspect(value)}"
   end
+
+  def f64_value(bits) when (bits >>> 52 &&& 0x7FF) == 0x7FF,
+    do: throw({:refuse, :non_finite_float})
 
   def f64_value(bits) do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      <<value::float-64-little>> = <<bits::little-64>>
-      value
-    else
-      {:nonfinite, bits}
-    end
+    <<value::float-64-little>> = <<bits::little-64>>
+    value
   end
+
+  def f64_value(bits, true), do: f64_value(bits)
+
+  def f64_value(bits, false) when (bits >>> 52 &&& 0x7FF) == 0x7FF, do: 0.0
+
+  def f64_value(bits, false), do: f64_value(bits)
 
   def f64_bits(value) when is_float(value) do
     <<bits::little-64>> = <<value::float-64-little>>
     bits
   end
 
-  def f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
-    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
-      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
-    end
-
-    bits
+  def f64_bits(value) do
+    raise ArgumentError,
+          "non_finite_float: a float64 writes a finite float, got: #{inspect(value)}"
   end
 
   @doc """
@@ -1724,11 +1722,17 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   defp step([{:widenf, src, dst} | rest], body, writes, report) do
-    # every f32 value is exactly representable in an f64, infinities and NaN
-    # payloads included, so there is nothing to round and nothing to lose
+    # every finite f32 is exactly representable in an f64, so the ordinary
+    # conversion widens it with nothing to round and nothing to lose. A NaN or
+    # an infinity stays non-finite in the image and the projection refuses it
+    # there (§3.3), where it knows whether an optional's payload is present.
     case body do
       <<_::binary-size(^src), bits::little-unsigned-32, _::binary>> ->
-        wide = f64_bits(widen_float(f32_value(bits)))
+        wide =
+          if (bits &&& 0x7F800000) == 0x7F800000,
+            do: 0x7FF8000000000000,
+            else: f64_bits(f32_value(bits))
+
         writes = [{dst, <<wide::little-unsigned-64>>} | writes]
         step(rest, body, writes, bump(report, :widened))
 
@@ -1830,25 +1834,6 @@ const fixedRuntimeBody = `  @moduledoc """
 
   defp image_bytes(v, width, true), do: <<v::little-signed-size(width)-unit(8)>>
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
-
-  defp widen_float({:nonfinite, bits}) do
-    # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 — AND A SIGNALLING
-    # NaN IS QUIETED, because that is what the reference does. Its rung is the
-    # C++ ` + "`" + `(double) f` + "`" + `, and every hardware f32→f64 convert (cvtss2sd, fcvt)
-    # turns an sNaN into the corresponding qNaN: the payload is carried and the
-    # QUIET BIT — the destination mantissa's top bit — is set. Preserving the
-    # signalling state instead would put a pattern on this side of the rung
-    # that the reference cannot produce, and the byte oracle compares patterns.
-    #
-    # AN INFINITY IS NOT A NaN and keeps its zero payload: setting the quiet bit
-    # on ±inf would hand back a NaN nobody wrote.
-    sign = bits >>> 31 &&& 1
-    mantissa = bits &&& 0x7FFFFF
-    wide = sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29
-    {:nonfinite, if(mantissa == 0, do: wide, else: wide ||| 0x8000000000000)}
-  end
-
-  defp widen_float(value), do: value
 
   # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
   # ALL: it lands None and counts one ` + "`" + `clamped` + "`" + `, which is the answer §3 gives

@@ -915,6 +915,37 @@ tables-elixir-json-differential-negative-control:
 
 test-elixir: tables-elixir-json-differential tables-elixir-json-differential-negative-control
 
+# FINITE TABLE FLOATS on the Elixir leg (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27: "Tables go finite-only too, same rule as packets"): every read,
+# variable, retaining, message and fixed, refuses a NaN or an infinity on its
+# raw bits as non_finite_float, every writer refuses one, and -0 rides by its
+# bits. TestElixirFiniteFloat generates its own three units and runs a probe
+# over every float position, so no corpus is a prerequisite. It is a FUNCTIONAL
+# test (it runs elixir), so the target runs it under SCHEMA_REQUIRE_CORPUS=1 and
+# fails on any SKIP. The control sabotages the variable read's bit test at each
+# width, the retained unknown's test, the message read's, the fixed read's and
+# the variable writer's, one at a time, and each must red exactly its own rows.
+.PHONY: tables-elixir-finite-float tables-elixir-finite-float-negative-control
+tables-elixir-finite-float:
+	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloat$$' 2>&1); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloat' || { echo 'tables-elixir-finite-float: TestElixirFiniteFloat did not run'; exit 1; }
+	@echo 'tables Elixir finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides'
+
+tables-elixir-finite-float-negative-control:
+	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloatNegativeControl$$' 2>&1); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float-negative-control: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloatNegativeControl' || { echo 'tables-elixir-finite-float-negative-control: the control did not run'; exit 1; }
+	@echo 'tables Elixir finite floats negative control: each sabotaged refusal reds exactly its own rows'
+
+test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-control
+
 # THE VARIABLE CLASS'S REMAINING CONSTRUCTS (docs/SPEC-TABLES.md §2.3, §2.4,
 # §2.6, §2.8, §3, §3.2, §4.12): maps, union arms of every field type and
 # arrays of unions, optional fields and optional arrays, enum-keyed arrays,
@@ -1407,7 +1438,7 @@ build/elixir-cards-ebin/.stamp: cards-elixir-generate test/conformance/elixir/dr
 # seed/mutant claim explicitly.
 cards-elixir-wire-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir \
+		./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-elixir-wire-fuzz.log 2>&1; \
@@ -1426,7 +1457,7 @@ test-elixir: cards-elixir-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 cards-elixir-retain-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir \
+		./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-elixir-retain-fuzz.log 2>&1; \
@@ -1457,7 +1488,7 @@ ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG)
 	@ELIXIR_WIRE_FUZZ_ABSENT=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_ABSENT_LOG) \
-		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-elixir-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
 		if [ ! -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) ]; then \

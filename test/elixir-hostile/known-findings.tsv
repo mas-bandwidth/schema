@@ -8,11 +8,9 @@ conformance-dup-key-rejected-scalar	elixir-hostile-conformance-dup-key-rejected-
 conformance-dup-key-wrong-shape	elixir-hostile-conformance-dup-key-wrong-shape	inputs/conformance-dup-key-wrong-shape.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-int128-integral-forms	elixir-hostile-conformance-int128-integral-forms	inputs/conformance-int128-integral-forms.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-num-float32-subnormal	elixir-hostile-conformance-num-float32-subnormal	inputs/conformance-num-float32-subnormal.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-num-float32-upper-band	elixir-hostile-conformance-num-float32-upper-band	inputs/conformance-num-float32-upper-band.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-optional-array-element-shape	elixir-hostile-conformance-optional-array-element-shape	inputs/conformance-optional-array-element-shape.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-pointer-array-element-shape	elixir-hostile-conformance-pointer-array-element-shape	inputs/conformance-pointer-array-element-shape.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-union-table-arm-wrong-shape	elixir-hostile-conformance-union-table-arm-wrong-shape	inputs/conformance-union-table-arm-wrong-shape.json	the text reader decodes a different value than the engine (digest mismatch)
 fuzz-text-surrogate_pair	elixir-hostile-fuzz-text-surrogate-pair	inputs/fuzz-text-surrogate_pair.txt	the text reader decodes a different value than the engine (digest mismatch)
 wire-count-refusal	elixir-hostile-wire-count-refusal	inputs/wire-count-refusal.bin	the variable reader accepts a collection count past the int32 storage cap the engine refuses
 wire-form-02	elixir-hostile-wire-form-02	inputs/wire-form-02.bin	the variable reader names newer_form where the engine names message_form_as_file
-wire-non-finite-float	elixir-hostile-wire-non-finite-float	inputs/wire-non-finite-float.bin	the wire reader lands a NaN float32 where the engine refuses non_finite_float; owed by the finite-tables Elixir card (docs/roadmap.sexp tables-finite/elixir)

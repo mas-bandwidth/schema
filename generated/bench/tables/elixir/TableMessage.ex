@@ -747,6 +747,9 @@ defmodule Benchtable.TableMessage do
         :error -> {:error, :malformed}
       end
     end
+  catch
+    # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -765,6 +768,8 @@ defmodule Benchtable.TableMessage do
         :error -> {:error, :malformed}
       end
     end
+  catch
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -797,6 +802,11 @@ defmodule Benchtable.TableMessage do
           {:malformed, k, bodies}
       end
     end
+  catch
+    # A NaN OR AN INFINITY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3), the
+    # first one the walk meets, and outranks any damage after it: no body is
+    # delivered.
+    :non_finite_float -> {:error, :non_finite_float}
   end
 
   def load_messages(%__MODULE__{announced: true}, <<2>>, _capacity), do: {:error, :malformed}
@@ -1258,6 +1268,12 @@ defmodule Benchtable.TableMessage do
   defp bit_length(n, b) when n > 0, do: bit_length(n >>> 1, b + 1)
   defp bit_length(_n, b), do: b
 
+  # A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a read tests the raw bits for
+  # an all-ones exponent before they become a float and refuses the batch, and
+  # a write refuses a float64 that narrows past float32's range to an infinity
+  # (a BEAM float holds no NaN and no infinity of its own).
+  defp f64_from_bits(v) when (v >>> 52 &&& 0x7FF) == 0x7FF, do: throw(:non_finite_float)
+
   defp f64_from_bits(v) do
     <<f::little-float-64>> = <<v::little-64>>
     f
@@ -1268,6 +1284,8 @@ defmodule Benchtable.TableMessage do
     v
   end
 
+  defp f32_from_bits(v) when (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float)
+
   defp f32_from_bits(v) do
     <<f::little-float-32>> = <<v::little-32>>
     f
@@ -1275,6 +1293,6 @@ defmodule Benchtable.TableMessage do
 
   defp f32_to_bits(f) do
     <<v::little-32>> = <<f::little-float-32>>
-    v
+    if (v &&& 0x7F800000) == 0x7F800000, do: throw(:non_finite_float), else: v
   end
 end
