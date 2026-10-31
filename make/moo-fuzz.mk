@@ -39,7 +39,7 @@ moo-wire-fuzz: toolchain-moo
 #
 # THE ROOTS THE LEG ANSWERS 0 FOR are held to a pinned list BY NAME, as the
 # Luau leg holds its own (make/luau-fuzz.mk): the driver notes each one into
-# the file MOOFUZZ_NOTE names, and the recipe fails on any difference from
+# the file MOOFUZZ_NOTE names (made empty before the run), and the recipe fails on any difference from
 # test/conformance/moo/wire-fuzz-absent.txt and on any count other than
 # MOO_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved.
 #
@@ -73,21 +73,19 @@ $(MOOFUZZHOST): tools/moofuzzhost/main.cpp make/moo.mk
 		-isystem $(MOOFUZZHOST_SRC)/VM/include -isystem $(MOOFUZZHOST_SRC)/Compiler/include \
 		-isystem $(MOOFUZZHOST_SRC)/Common/include -isystem $(MOOFUZZHOST_SRC)/Ast/include \
 		-c tools/moofuzzhost/main.cpp -o build/moofuzzhost/main.o
-	@$(CXX) -o $@ build/moofuzzhost/main.o $(foreach l,Luau.Compiler Luau.Inliner Luau.Bytecode Luau.Ast Luau.VM Moo.Fixed Luau.Common,$(firstword $(wildcard $(MOOFUZZHOST_CMAKE)/lib$(l).a))) -lm -lpthread
+	@$(CXX) -o $@ build/moofuzzhost/main.o $(foreach l,Luau.Compiler Luau.Inliner Luau.Bytecode Luau.Ast Luau.VM Moo.Fixed Luau.Common,$(MOOFUZZHOST_CMAKE)/lib$(l).a) -lm -lpthread
 	@echo "moofuzzhost: built against moo $(MOO_PIN)"
 
 # one run of the pipe: $(1) the extra harness flags, $(2) the log, $(3) the absent
 # list the driver notes, $(4) the pinned list, $(5) its count
 define moo-wire-fuzz-run
 	@mkdir -p build/wire-fuzz
-	@rm -f $(3)
+	@rm -f $(3) && touch $(3)
 	@MOOFUZZ_NOTE=$(CURDIR)/$(3) \
 		./build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver \
 		--seed $(MOO_WIRE_FUZZ_SEED) --n $(MOO_WIRE_FUZZ_N) $(1) --failed build/wire-fuzz/failed-moo.bin \
 		> $(2) 2>&1; \
 		status=$$?; cat $(2); \
-		if [ ! -f $(3) ]; then \
-			echo "tables-moo-wire-fuzz: the driver noted no absent-root list"; exit 1; fi; \
 		sort -u $(3) > $(3).sorted; \
 		grep -v '^#' $(4) | sort > $(3).pinned; \
 		n=$$(wc -l < $(3).sorted | tr -d ' '); \
