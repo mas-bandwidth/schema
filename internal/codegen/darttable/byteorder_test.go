@@ -141,4 +141,3 @@ func sortedNames(m map[string][]byte) []string {
 	sort.Strings(names)
 	return names
 }
-

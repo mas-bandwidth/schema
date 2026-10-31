@@ -1,6 +1,7 @@
 package luautable_test
 
 import (
+	"maps"
 	"strings"
 	"testing"
 )
@@ -107,9 +108,7 @@ func TestLuauKeyedNegativeControls(t *testing.T) {
 			t.Fatalf("%s: schema_tables.luau has no %q to plant over; the control would be vacuous", c.name, c.from)
 		}
 		planted := &generatedUnit{files: map[string][]byte{}, loaded: true}
-		for k, v := range g.files {
-			planted.files[k] = v
-		}
+		maps.Copy(planted.files, g.files)
 		planted.files["schema_tables.luau"] = []byte(strings.Replace(src, c.from, c.to, 1))
 		got := luauKeyedRows(t, planted)
 		red := map[string]bool{}

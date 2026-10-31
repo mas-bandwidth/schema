@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -21,6 +22,7 @@ import (
 // The reversed witness hands back the caller's order unsorted and must go red.
 func TestJavaMapWriterHoldsTheSort(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "javac and java (it builds and runs the map-sort probe)")
 	javac, javaBin := javaTools(t)
 	dir := t.TempDir()
 	schema := "package probe\ntable Root {\n names map[string(16)]int32\n ids map[uint64]int32\n tail int32\n}\n"
