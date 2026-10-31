@@ -1485,6 +1485,15 @@ tables-java-release:
 	$(MAKE) tables-java-block-lead-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
 	$(MAKE) tables-java-runtime-home-negative-control
+	# THE PROOF TABLE'S CONTROLS that `make test` cannot afford (docs/PORTING.md I4,
+	# J3, J4, M21): the per-case absent gate and its control each run the
+	# harness over the Java leg, and the rest rebuild the compiler.
+	$(MAKE) conformance-java-absent
+	$(MAKE) conformance-java-absent-negative-control
+	$(MAKE) tables-java-release-negative-control
+	$(MAKE) tables-java-clean-drift-negative-control
+	$(MAKE) tables-java-clean-formatter-missing-negative-control
+	$(MAKE) tables-java-finite-float-negative-control
 
 # THE RELEASE TIER'S NEGATIVE CONTROL (docs/PORTING.md J3). The instrument only
 # this tier runs is the whole-tree compile under -Xlint:all -Werror
