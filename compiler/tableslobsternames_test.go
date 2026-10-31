@@ -2,8 +2,6 @@ package compiler
 
 import (
 	"maps"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -54,44 +52,10 @@ func lobsterRuntimeNames(text string) []string {
 	return slices.Sorted(maps.Keys(seen))
 }
 
-// lobsterManifestUnits is every unit of the conformance manifest: the corpus
-// reaches every form, so the union of what the emitted runtime defines is the
-// whole runtime.
-func lobsterManifestUnits(t *testing.T) []*ir.Unit {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "testdata", "conformance", "tables", "MANIFEST.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var units []*ir.Unit
-	for line := range strings.SplitSeq(string(data), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 3 || f[0] != "unit" {
-			continue
-		}
-		var paths []string
-		for _, p := range f[2:] {
-			paths = append(paths, filepath.Join("..", p))
-		}
-		gathered, err := GatherPaths(paths)
-		if err != nil {
-			t.Fatal(err)
-		}
-		u, err := New().Load(gathered)
-		if err != nil {
-			t.Fatalf("unit %s: %v", f[1], err)
-		}
-		units = append(units, u)
-	}
-	if len(units) == 0 {
-		t.Fatal("the manifest names no unit")
-	}
-	return units
-}
-
 // lobsterEmittedNames is the union, over the units the Lobster table backend
-// generates, of every name its emitted runtime modules define.
-func lobsterEmittedNames(t *testing.T, units []*ir.Unit) map[string]bool {
+// generates (every unit of the conformance manifest, lobsterManifestUnits: the
+// corpus reaches every form, so the union is the whole runtime), of every name its emitted runtime modules define.
+func lobsterEmittedNames(t *testing.T, units map[string]*ir.Unit) map[string]bool {
 	t.Helper()
 	emitted := map[string]bool{}
 	for _, u := range units {
