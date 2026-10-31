@@ -163,8 +163,8 @@ tables-goose-runtime-home-negative-control:
 	@echo "goose runtime home negative control: the file-order rule moves the table runtime and the gate names each module it moved"
 
 # THE UNIT MODULE'S CONTROL: the file-order rule put back for the unit's own
-# module. A copy of internal/codegen/goosetable/goosetable.go whose UnitModule
-# is named for the file that sorts first (ir.ProtocolIdHome) rather than the
+# module. A copy of internal/codegen/goosetable/goosetable.go whose
+# PackageModule is named for the file that sorts first (ir.ProtocolIdHome) rather than the
 # package, built through `go build -overlay`; the gate must go red naming the
 # registry's file-order homes, and no table module.
 GOOSE_GATES_SED_UNIT_HOME := s|^	p := goose.Namespace(u)$$|	p := ir.ProtocolIdHome(u) // SABOTAGED: the file-order rule|
@@ -180,7 +180,7 @@ tables-goose-unit-home-negative-control:
 	@if sh make/goose-runtime-home.sh ./build/schema-goose-unitorder $(GOOSE_GATES_DIR)/unit-home-sabotage >$(GOOSE_GATES_DIR)/unit-home-sabotage.log 2>&1; then \
 		cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the runtime home gate stayed green with the unit module on the file order"; exit 1; fi
 	@for f in GuardedUnit.goose AaaUnit.goose; do \
-		grep -q "unit registry in $$f" $(GOOSE_GATES_DIR)/unit-home-sabotage.log || { \
+		grep -q "unit-wide TableUnit in $$f" $(GOOSE_GATES_DIR)/unit-home-sabotage.log || { \
 			cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate did not name the registry in $$f"; exit 1; }; \
 	done
 	@if grep -q 'Table.goose moved' $(GOOSE_GATES_DIR)/unit-home-sabotage.log; then \

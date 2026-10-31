@@ -91,27 +91,39 @@ type part struct {
 
 var parts []part
 
-// unitParts are the contributions to the unit's own module, UnitModule:
-// data that spans every file (the table wire's registry, the message form's
-// vocabulary, the accelerators' record numbers). It lives at a home named
-// for the package, so a file that sorts earlier relocates nothing
-// (docs/PORTING.md J2), and every file's modules name it rather than
-// copy its numbers.
-var unitParts []part
+// unitParts are the contributions to the unit's PACKAGE MODULES: data that
+// spans every file (the table wire's registry, the message form's
+// vocabulary, the accelerators' record numbers), one module per surface,
+// <Package><Surface>.goose. Each lives at a home named for the package, so a
+// file that sorts earlier relocates nothing (docs/PORTING.md J2), and every
+// file's modules name it rather than copy its numbers. A surface keeps its
+// own module, so a consumer that never reads it imports nothing of it (the
+// zero-cost rule, docs/SPEC-TABLES.md §19).
+var unitParts []unitPart
 
-// RegisterUnit joins a later form to the unit's own module; parts run in
-// name order.
-func RegisterUnit(name string, fn Part) {
-	unitParts = append(unitParts, part{name, fn})
+type unitPart struct {
+	name, surface string
+	fn            Part
+}
+
+// RegisterUnit joins a later form to the unit's package module for surface;
+// parts run in name order.
+func RegisterUnit(name, surface string, fn Part) {
+	unitParts = append(unitParts, unitPart{name, surface, fn})
 	sort.Slice(unitParts, func(i, j int) bool { return unitParts[i].name < unitParts[j].name })
 }
 
-// UnitModule is the base of the unit's own module, without .goose: the
-// package, capitalized, then "Unit" (tabledemo -> TabledemoUnit).
-func UnitModule(u *ir.Unit) string {
+// PackageModule is the base of the unit's package module for surface,
+// without .goose: the package, capitalized, then the surface (tabledemo,
+// "Cook" -> TabledemoCook).
+func PackageModule(u *ir.Unit, surface string) string {
 	p := goose.Namespace(u)
-	return strings.ToUpper(p[:1]) + p[1:] + "Unit"
+	return strings.ToUpper(p[:1]) + p[1:] + surface
 }
+
+// UnitModule is the package module that holds the unit registry:
+// TabledemoUnit.
+func UnitModule(u *ir.Unit) string { return PackageModule(u, "Unit") }
 
 // Register joins a later form to every table module; parts run in name
 // order (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
@@ -183,14 +195,22 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		maps.Copy(out, side)
 	}
-	if len(unitParts) > 0 {
-		g := goose.NewGen(u, &ir.File{Base: UnitModule(u)}, names)
-		g.Kind, g.ForPackage = "unit module", true
-		for _, p := range unitParts {
-			if err := p.fn(g); err != nil {
-				return nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
-			}
+	gens := map[string]*goose.Gen{}
+	var surfaces []string
+	for _, p := range unitParts {
+		g := gens[p.surface]
+		if g == nil {
+			g = goose.NewGen(u, &ir.File{Base: PackageModule(u, p.surface)}, names)
+			g.Kind, g.ForPackage = "package module", true
+			gens[p.surface] = g
+			surfaces = append(surfaces, p.surface)
 		}
+		if err := p.fn(g); err != nil {
+			return nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
+		}
+	}
+	for _, s := range surfaces {
+		g := gens[s]
 		if err := g.Err(); err != nil {
 			return nil, err
 		}
@@ -213,8 +233,17 @@ func Refuse(u *ir.Unit) error {
 	for _, f := range u.Files {
 		bases[strings.ToLower(f.Base)] = true
 	}
-	if home := UnitModule(u); bases[strings.ToLower(home)] {
-		return fmt.Errorf("schema file %s collides with the unit module %s.goose, which the Goose table surface writes for package %s; rename the file", home, home, u.Package)
+	// a file's own modules (<Base>, <Base>Table, <Base>Block, <Base>Cook) may
+	// not land where a package module lives
+	for _, p := range unitParts {
+		m := PackageModule(u, p.surface)
+		for _, f := range u.Files {
+			for _, own := range []string{"", "Table", "Block", "Cook"} {
+				if strings.EqualFold(f.Base+own, m) {
+					return fmt.Errorf("schema file %s collides with the package module %s.goose, which the Goose table surface writes for package %s; rename the file", f.Base, m, u.Package)
+				}
+			}
+		}
 	}
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {
