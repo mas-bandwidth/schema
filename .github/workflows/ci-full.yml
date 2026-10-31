@@ -1420,6 +1420,8 @@ jobs:
             target: tables-c-big-endian-negative-control
           - leg: go
             target: conformance-big-endian
+          - leg: go-control
+            target: conformance-big-endian-negative-control
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
