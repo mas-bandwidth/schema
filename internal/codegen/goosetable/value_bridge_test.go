@@ -5,11 +5,13 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A refused typed pack must leave both caller-owned stores unchanged. A
 // failed wire load (-1) must never turn into a usable default typed record.
 func TestGooseValueBridgeRollbackAndRefusal(t *testing.T) {
+	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the typed value bridge)")
 	m := readJSONManifest(t)
 	_, files, err := jsonUnitFiles(t, "tabledemo", m.units["tabledemo"])
 	if err != nil {
