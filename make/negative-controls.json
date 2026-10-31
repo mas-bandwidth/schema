@@ -675,7 +675,8 @@
         "tables-dart-float-jit-sdk-negative-control",
         "tables-dart-float-jit-boxing-negative-control",
         "tables-dart-text-differential-negative-control",
-        "tables-dart-cookwrite-negative-control"
+        "tables-dart-cookwrite-negative-control",
+        "tables-dart-retain-negative-control"
       ],
       "dart": "3.13.2"
     },
