@@ -41,9 +41,23 @@ import (
 // is the application.
 func runMessagePair(t *testing.T, writerSrc, readerSrc, setup, asserts string) {
 	t.Helper()
+	if out, err := runMessagePairEdited(t, writerSrc, readerSrc, setup, asserts, nil); err != nil {
+		t.Fatalf("message endpoint probe: %v\n%s", err, out)
+	}
+}
+
+// runMessagePairEdited is runMessagePair with an edit applied to the READER's
+// generated files, and the run's output and error returned rather than judged:
+// a negative control plants a fault in the reader through it and requires red.
+func runMessagePairEdited(t *testing.T, writerSrc, readerSrc, setup, asserts string, editReader func(map[string][]byte)) ([]byte, error) {
+	t.Helper()
 	dir := t.TempDir()
+	reader := generatedPackage(t, readerSrc)
+	if editReader != nil {
+		editReader(reader)
+	}
 	writePackageDir(t, filepath.Join(dir, "oldpeer"), generatedPackage(t, writerSrc))
-	writePackageDir(t, filepath.Join(dir, "newpeer"), generatedPackage(t, readerSrc))
+	writePackageDir(t, filepath.Join(dir, "newpeer"), reader)
 	src := fmt.Sprintf(`package probe
 
 import (
@@ -94,9 +108,7 @@ func TestRemote(t *testing.T) {
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated endpoint pair)")
 	cmd := exec.Command("go", "test", "-count=1", ".")
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("message endpoint probe: %v\n%s", err, out)
-	}
+	return cmd.CombinedOutput()
 }
 
 // generatedPackage is one unit's generated Go sources, tables and packet
