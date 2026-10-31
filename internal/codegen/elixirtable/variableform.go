@@ -3638,11 +3638,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # the field can store and reads as the wrong shape (docs/SPEC-TABLES.md
   # §16.2); no infinity is ever stored.
   # An integer token compares exactly: 2^128 - 2^103 is the midpoint and one
-  # below it still rounds to the largest float32.
+  # below it still rounds to the largest float32, which is what it stores, since
+  # its nearest double is the midpoint itself and that would narrow to infinity.
   defp json_float_in_width(raw, 4) when is_integer(raw) do
-    if abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448,
-      do: :error,
-      else: {:ok, raw * 1.0}
+    cond do
+      abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448 -> :error
+      raw * 1.0 >= 3.4028235677973366e38 -> {:ok, 3.4028234663852886e38}
+      raw * 1.0 <= -3.4028235677973366e38 -> {:ok, -3.4028234663852886e38}
+      true -> {:ok, raw * 1.0}
+    end
   end
 
   defp json_float_in_width(raw, 4) do
