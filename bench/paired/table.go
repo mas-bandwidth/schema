@@ -1952,6 +1952,7 @@ func rustPlanModules() ([]string, error) {
 func rustCrateManifest(name, comment string) string {
 	return "# " + comment + "\n# Written by bench/paired -mode build (rustPlanManifest); build wiring, not generator output.\n" +
 		"[package]\nname = \"" + name + "\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[lib]\npath = \"lib.rs\"\n\n" +
+		"[features]\nblock = []\ncook = []\n\n" +
 		"[dependencies]\nserialize = { package = \"serialize-official\", path = \"../../serialize.rs\" }\n"
 }
 
