@@ -91,6 +91,7 @@ func tableMessageRuntime(u *ir.Unit) string {
 	b.WriteString(runtime)
 	return b.String()
 }
+
 // messageCarries reports whether the message form emits st (docs/SPEC-TABLES.md
 // §3.3). The message form is FIXED TABLES ONLY: it emits a body codec for a
 // fixed table and for every declaration a fixed table reaches by value, and

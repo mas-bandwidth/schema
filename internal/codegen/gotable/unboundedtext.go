@@ -214,4 +214,3 @@ func unboundedTextCook(u *ir.Unit, s string) string {
 func(w *tableCookWriter) text(slot unsafe.Pointer,at int64,live bool)bool{if w.numbering==nil{return false};t,ok:=tableTextBytes((*TableRef)(slot),w.numbering.arena);if !ok{return false};if !live||len(t)==0{return true};w.at=(w.at+7)&^7;start:=w.at;w.at+=tableRegionRound(9+int64(len(t)));w.put(at,uint64(start-at),8);if w.buffer!=nil{w.put(start,uint64(len(t)),4);copy(w.buffer[start+8:start+8+int64(len(t))],t)};return true}
 `
 }
-
