@@ -487,6 +487,14 @@
       ]
     },
     {
+      "name": "base-c-framing",
+      "when": "pull-request",
+      "why": "the C driver's framing control (docs/LAYERS/1-framing.md): a complete C conformance driver rebuilt against a scratch copy of the generated units with the 4096-entry id-table cap removed, and one harness run of the C leg. Alone for the reason base-c-absent is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "conformance-negative-control-c-framing"
+      ]
+    },
+    {
       "name": "base-c-format",
       "when": "pull-request",
       "clang_format": "pin",
@@ -768,6 +776,15 @@
       "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case absent answers (SpillAbsent and the wire surface's blob_shared rows) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",
       "targets": [
         "conformance-cs-absent-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-framing",
+      "when": "pull-request",
+      "why": "the C# leg's framing control (docs/LAYERS/1-framing.md, F6): the conformance driver built against a copy of the generated C# tree whose file read has no 4096-entry id-table cap, run through the shared framing gate, which must go red on frame_entries_4097. One dotnet build and one framing-only harness run, about 15 s on vision.",
+      "targets": [
+        "conformance-negative-control-cs-framing"
       ],
       "dotnet": "pin"
     },
