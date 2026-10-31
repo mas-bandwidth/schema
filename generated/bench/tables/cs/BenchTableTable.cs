@@ -2869,7 +2869,10 @@ namespace Benchtable
                 }
                 if (input.Bad || !ok)
                 {
+                    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
+                    // the walk placed before the damage is handed back.
                     input.Report.Malformed = true;
+                    info.Reset(value);
                     return false;
                 }
                 return true;
@@ -4124,10 +4127,19 @@ namespace Benchtable
                     // §3.3), outranking damage met after it: no body is delivered.
                     if (NonFiniteRefused(report))
                     { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (!good) { Damage(report); return Finish(report, Verdict.Damaged); }
+                    if (!good) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
                 }
-                if (!r.Align() || r.At != r.End) { Damage(report); return Finish(report, Verdict.Damaged); }
+                if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
                 return Finish(report, Verdict.Ok);
+            }
+            // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
+            // the read touched goes back to its declared defaults and the count is zero,
+            // so nothing decoded before the damage is a value to use.
+            static Verdict DiscardBatch(object[] values, TableTypeInfo type, TableReport report, ref int count, int last)
+            {
+                for (int j = 0; j <= last && j < values.Length; j++) { type.Reset(values[j]); }
+                count = 0;
+                return Finish(report, Verdict.Damaged);
             }
 
             static bool NativeExtent(TableTypeInfo type)
@@ -5179,10 +5191,17 @@ namespace Benchtable
                 if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+                bool malformedBefore = report.Malformed;
+                report.Malformed = false;
                 if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
                 bool complete = ReadBody(ref r, value, type, report, false);
-                if (NonFiniteRefused(report)) { type.Reset(value); return Finish(report, Verdict.Refused); }
-                return Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped);
+                if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+                // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
+                // walk decoded is handed back, and the verdict is the damage.
+                if (report.Malformed) { type.Reset(value); return Finish(report, Verdict.Damaged); }
+                report.Malformed = malformedBefore;
+                if (!complete) { type.Reset(value); return Finish(report, Verdict.BodyStopped); }
+                return Finish(report, Verdict.Ok);
             }
         }
         // ---- form-1 table wire: end ----

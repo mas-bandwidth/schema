@@ -37,8 +37,8 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		{"vocabulary_too_large", "`vocabulary_too_large` covers both bounds, the entry count and the vocabulary's bytes."},
 		{"announcement_strict_checks", "THE ANNOUNCEMENT READS TOLERANTLY, WITH EXACTLY TWO STRICT CHECKS ... A FAILED STRICT CHECK IS MALFORMED, not a refusal."},
 		{"batch_too_large", "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME ... `M` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME."},
-		{"damage_inside_body", "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`."},
-		{"bytes_after_pad", "BYTES AFTER THE PAD ARE MALFORMED."},
+		{"damage_inside_body", "damage anywhere in a form-`2` batch refuses the whole batch, `malformed` counts, and nothing the read produced is a value to use."},
+		{"bytes_after_pad", "BYTES AFTER THE PAD ARE MALFORMED ... damage anywhere in a form-`2` batch refuses the whole batch."},
 		{"form_byte", "a form a reader does not know is a REFUSAL by name and never damage ... a reader handed a form-`2` wire where a file was expected refuses by name."},
 		{"skip_depth_body_below_128", "The skip walk is bounded at depth 128."},
 		{"skip_depth_body_at_128", "The skip walk is bounded at depth 128."},
@@ -565,11 +565,11 @@ static class Held
         Ok(row);
     }
 
-    // "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1. The returned count
-    // states k - 1, ONE malformed counts, and nothing at or after body k is
-    // read." M is three: body 1 empty, body 2's first reference 0xF above the
-    // announced entry count, body 3 empty. A reference is four bits, low bit
-    // first, so byte 0 holds body 1's low nibble and body 2's high nibble.
+    // "damage anywhere in a form-2 batch refuses the whole batch, malformed
+    // counts, and nothing the read produced is a value to use." M is three:
+    // body 1 empty, body 2's first reference 0xF above the announced entry
+    // count, body 3 empty. A reference is four bits, low bit first, so byte 0
+    // holds body 1's low nibble and body 2's high nibble.
     static void DamageInsideBody()
     {
         const string row = "damage_inside_body";
@@ -579,7 +579,7 @@ static class Held
         Root[] storage = Bodies(3);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, wire, vocab, report, out int count);
-        if (count != 1 || !report.Malformed || report.Refused) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
+        if (count != 0 || !report.Malformed || report.Refused) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
         Ok(row);
     }
 
@@ -601,7 +601,7 @@ static class Held
         Root[] storage = Bodies(1);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, padded, vocab, report, out int count);
-        if (count != 1 || !report.Malformed) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
+        if (count != 0 || !report.Malformed) { Fail(row, "count=" + count + " malformed=" + report.Malformed); return; }
         Ok(row);
     }
 
