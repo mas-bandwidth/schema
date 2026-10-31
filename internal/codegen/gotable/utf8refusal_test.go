@@ -17,7 +17,6 @@ const utf8RefusalProbe = "package probe\n" +
 	"  `{\"s\":\"`+\"\\xed\\xa0\\x80\"+`\"}`,\n" +
 	"  `{\"s\":\"`+\"\\xc0\\xaf\"+`\"}`,\n" +
 	"  `{\"`+\"\\xff\"+`\":1}`,\n" +
-	"  `{\"w\":\"`+\"\\xff\"+`\"}`,\n" +
 	"  `{\"s\":\"`+\"\\xf4\\x90\\x80\\x80\"+`\"}`,\n" +
 	"  `{\"s\":\"`+\"\\xe0\\xff\"+`\"}`}\n" +
 	" for _,c:=range refusals {\n" +
@@ -29,11 +28,6 @@ const utf8RefusalProbe = "package probe\n" +
 	"  x:=`{\"s\":\"`+\"\\xf0\\x9f\\x98\\x80\"+`\"}`\n" +
 	"  if !RootFromJSON(&v,[]byte(x),&r)||r.Malformed{t.Fatal(\"narrow clean\")}\n" +
 	"  if v.SLength!=4||v.S[0]!=0xf0||v.S[1]!=0x9f||v.S[2]!=0x98||v.S[3]!=0x80{t.Fatalf(\"narrow: %x\",v.S[:v.SLength])}\n" +
-	" }\n" +
-	" {var v Root;var r TableReport\n" +
-	"  x:=`{\"w\":\"`+\"\\xe2\\x82\\xac\"+`\"}`\n" +
-	"  if !RootFromJSON(&v,[]byte(x),&r)||r.Malformed{t.Fatal(\"wide clean\")}\n" +
-	"  if v.WLength!=1||v.W[0]!=0x20ac{t.Fatalf(\"wide: %x\",v.W[:v.WLength])}\n" +
 	" }\n" +
 	"}\n"
 

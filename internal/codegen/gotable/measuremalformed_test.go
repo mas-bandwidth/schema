@@ -510,8 +510,10 @@ func measureMalformedKeyedProbe() string {
 // that moves any of them changed what the tolerant load recovers. Seeds 4 and 1
 // moved when table floats went finite only (SPEC-TABLES §3.3, 2026-10-27): the
 // damaged wires whose float bytes became a NaN or an infinity are now refused
-// by the tolerant load, by design, instead of landed.
-var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "b96fc5b8d8564d8c", 1: "7b597995a4b1475e", 0: "63ddc043eeaf9665"}
+// by the tolerant load, by design, instead of landed. Seed 1 moved when kind 33 was retired
+// (SPEC-TABLES §3): a mutant whose kind byte lands on 33 is damage now, where
+// it was a wide-text payload stepped over by its length.
+var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "b96fc5b8d8564d8c", 1: "dc44942c8c67d509", 0: "63ddc043eeaf9665"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)

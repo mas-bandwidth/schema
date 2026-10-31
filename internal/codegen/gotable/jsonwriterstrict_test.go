@@ -199,9 +199,6 @@ func TestStorage(t *testing.T) {
 		v.S[2] = 0x1f
 		v.S[3] = 0x7f
 		v.SLength = 4
-		v.W[0] = 0xd800
-		v.W[1] = 0
-		v.WLength = 2
 		v.G = math.MaxFloat32
 		v.B[0] = 0x00
 		v.B[1] = 0xff

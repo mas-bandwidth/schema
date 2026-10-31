@@ -169,7 +169,7 @@ table Var {
 		}
 		want := []string{
 			"Var/must:below", "Var/must:above", "Kinds/fx:below", "Kinds/fx:above",
-			"Kinds/ws:above", "Kinds/bs:above", "Kinds/tags:count", "Kinds/tags[0]:above",
+			"Kinds/bs:above", "Kinds/tags:count", "Kinds/tags[0]:above",
 			"Kinds/big:below", "Kinds/big:above", "Kinds/gated:below", "Kinds/gated:above",
 			"Kinds/trio:count", "Kinds/pick.n:below", "Kinds/pick.n:above", "Kinds/inner.k:below", "Kinds/inner.k:above",
 			"Var/name:above", "Var/n:below", "Var/n:above",

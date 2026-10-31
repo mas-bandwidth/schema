@@ -310,14 +310,12 @@ func TestMixedShapes(t *testing.T) {
 	a.Grade = GradeGold
 	a.Note, a.NotePresent = 42, true
 	a.BlobLength = int32(copy(a.Blob[:], []byte{9, 0, 7}))
-	a.Text[0], a.Text[1], a.TextLength = 'h', 'i', 2
 	a.Slots[0].V, a.Slots[2].V = 5, 6
 	a.Stat.A, a.Stat.On, a.Stat.C = -1, true, 1<<40
 	a.Stats[0].A, a.Stats[0].C, a.StatsCount = 3, -4, 1
 	a.NamesLength = int32(copy(a.Names[:], "abcde"))
 	a.Maybe.V, a.MaybePresent = 77, true
 	b.F = -0.5
-	b.Text[0], b.Text[1], b.Text[2], b.Text[3], b.TextLength = 'w', 'x', 'y', 'z', 4
 	b.Stats[1].On, b.StatsCount = true, 2
 	want := []Wide{a, b}
 	buf := make([]byte, WideFixedMeasure(2))
