@@ -21,7 +21,7 @@ func TestLuauCarriesUnboundedText(t *testing.T) {
 		t.Fatalf("luau must carry unbounded text: files=%d err=%v", len(files), err)
 	}
 	for _, target := range c.Targets() {
-		if target == "go" || target == "luau" {
+		if target == "go" || target == "luau" || carries(target, carryUnboundedText) {
 			continue
 		}
 		target := target

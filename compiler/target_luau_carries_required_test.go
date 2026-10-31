@@ -21,7 +21,7 @@ func TestLuauCarriesRequired(t *testing.T) {
 		t.Fatalf("luau must carry | required: files=%d err=%v", len(files), err)
 	}
 	for _, target := range c.Targets() {
-		if target == "go" || target == "luau" {
+		if target == "go" || target == "luau" || carries(target, carryRequired) {
 			continue
 		}
 		target := target

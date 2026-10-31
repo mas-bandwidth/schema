@@ -21,7 +21,7 @@ func TestLuauCarriesTextList(t *testing.T) {
 		t.Fatal("luau generated no files")
 	}
 	for _, lang := range c.Targets() {
-		if lang == "go" || lang == "luau" {
+		if lang == "go" || lang == "luau" || carries(lang, carryTextList) {
 			continue
 		}
 		if _, err := c.Generate(u, lang, Options{"runtime": "standalone"}); err == nil {

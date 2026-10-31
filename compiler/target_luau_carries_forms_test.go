@@ -21,6 +21,9 @@ func TestLuauCarriesFormsDeclaration(t *testing.T) {
 			}
 			continue
 		}
+		if carries(target, carryForms) {
+			continue
+		}
 		if err == nil || !strings.Contains(err.Error(), "forms on table Shape") {
 			t.Errorf("target %q error = %v, want the named forms refusal", target, err)
 		}
