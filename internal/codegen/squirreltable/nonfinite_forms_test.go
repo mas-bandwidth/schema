@@ -80,7 +80,7 @@ func nfFormsLocations(t *testing.T) []nfFormsLoc {
 }
 
 // the finite values each slot holds in the base record: distinctive bits the
-// read rows find in the oracle's batch and replace
+// read rows find in the oracle's batch and replace.
 var nfFormsBase = map[string]uint64{
 	"a": uint64(math.Float32bits(1.25)), "b": math.Float64bits(-7.0e-200),
 	"c": uint64(math.Float32bits(13.5)), "d": math.Float64bits(3.0e100),
