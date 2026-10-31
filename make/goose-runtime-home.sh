@@ -10,7 +10,7 @@
 # <Base>Block.goose) — the runtime — to be present in both trees under the same
 # name with the same bytes, and (2) each original file's <Base>Table.goose,
 # <Base>Cook.goose and <Base>Block.goose to be byte-identical. The unit's package modules,
-# <Package><Surface>.goose (internal/codegen/goosetable PackageModule), hold the
+# <package>_<surface>.goose (internal/codegen/goosetable PackageModule), hold the
 # data that spans every file, so their bytes grow with the unit; each is held
 # to its HOME instead: present under the package's name in both trees whenever
 # either tree has one, and the only module that declares its unit-wide data
@@ -39,10 +39,10 @@ own() { # own <dir> <file>: the file is a schema file's own module
 }
 
 pkg=$(sed -n 's/^package \([A-Za-z0-9_]*\).*/\1/p' tables/examples/*.schema | head -1)
-P=$(printf '%s' "$pkg" | cut -c1 | tr '[:lower:]' '[:upper:]')$(printf '%s' "$pkg" | cut -c2-)
+P=${pkg}_
 # the package modules (internal/codegen/goosetable PackageModule), each with the
 # declaration that is unit-wide data and may live nowhere else
-homes="Unit:TableUnit Cook:CookRecords Block:BlockRecords Message:MessageVocabulary"
+homes="unit:TableUnit cook:CookRecords block:BlockRecords message:MessageVocabulary"
 ishome() {
 	for h in $homes; do [ "$1" = "$P${h%%:*}.goose" ] && return 0; done
 	return 1
@@ -102,4 +102,4 @@ if [ $bad -ne 0 ]; then
 	echo "GOOSE RUNTIME HOME GATE FAILED: a module moved when an earlier-sorting file joined the unit"
 	exit 1
 fi
-echo "goose runtime home gate: $runtime runtime modules and $tables file modules unmoved, and $units package modules at $P<Surface>.goose, when an earlier-sorting file joins the unit"
+echo "goose runtime home gate: $runtime runtime modules and $tables file modules unmoved, and $units package modules at ${P}<surface>.goose, when an earlier-sorting file joins the unit"

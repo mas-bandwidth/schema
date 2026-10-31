@@ -167,7 +167,7 @@ tables-goose-runtime-home-negative-control:
 # PackageModule names the registry's module for the file that sorts first
 # (ir.ProtocolIdHome) rather than the package, built through `go build -overlay`; the gate must go red naming the
 # registry's file-order homes, and no table module.
-GOOSE_GATES_SED_UNIT_HOME := s|^	p := goose.Namespace(u)$$|	p := goose.Namespace(u); if surface == "Unit" { p = ir.ProtocolIdHome(u) } // SABOTAGED: the file-order rule|
+GOOSE_GATES_SED_UNIT_HOME := s|^	p := goose.Namespace(u)$$|	p := goose.Namespace(u); if surface == "unit" { p = ir.ProtocolIdHome(u) } // SABOTAGED: the file-order rule|
 .PHONY: tables-goose-unit-home-negative-control
 tables-goose-unit-home-negative-control:
 	@mkdir -p $(GOOSE_GATES_DIR)
@@ -179,7 +179,7 @@ tables-goose-unit-home-negative-control:
 	@go build -tags schema_leg_goose -overlay=$(GOOSE_GATES_DIR)/goosetable-unit-overlay.json -o build/schema-goose-unitorder ./cmd/schema
 	@if sh make/goose-runtime-home.sh ./build/schema-goose-unitorder $(GOOSE_GATES_DIR)/unit-home-sabotage >$(GOOSE_GATES_DIR)/unit-home-sabotage.log 2>&1; then \
 		cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the runtime home gate stayed green with the unit module on the file order"; exit 1; fi
-	@for f in GuardedUnit.goose AaaUnit.goose; do \
+	@for f in Guarded_unit.goose Aaa_unit.goose; do \
 		grep -q "unit-wide TableUnit in $$f" $(GOOSE_GATES_DIR)/unit-home-sabotage.log || { \
 			cat $(GOOSE_GATES_DIR)/unit-home-sabotage.log; echo "NEGATIVE CONTROL FAILED: the gate did not name the registry in $$f"; exit 1; }; \
 	done

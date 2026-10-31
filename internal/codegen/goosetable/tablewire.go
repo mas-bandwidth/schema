@@ -28,7 +28,7 @@ import (
 const UnitName = "TableUnit"
 
 func init() {
-	RegisterUnit("tablewire", "Unit", emitTableWireUnit)
+	RegisterUnit("tablewire", "unit", emitTableWireUnit)
 }
 
 // unitDecls is every struct and union the table walk can meet, by name:
