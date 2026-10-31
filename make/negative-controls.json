@@ -506,6 +506,19 @@
       ]
     },
     {
+      "name": "engine-nowriter",
+      "when": "pull-request",
+      "why": "the engine's refusals of input no writer produces (docs/SPEC-TABLES.md \u00a74; Glenn, #391 and 2026-10-31), the oracle every leg is fuzzed and scored against: each blinds one refusal in a copy of its source under a build overlay and requires the engine's own gate red on exactly that refusal's row. Five Go test builds, and the sixth blinds `schema cook-check`'s cycle refusal (item 6); Go and nothing else.",
+      "targets": [
+        "tables-engine-nowriter-repeated-id-negative-control",
+        "tables-engine-nowriter-header-negative-control",
+        "tables-engine-nowriter-map-key-negative-control",
+        "tables-engine-nowriter-json-name-negative-control",
+        "tables-engine-nowriter-nested-arm-negative-control",
+        "tables-cookcheck-cycle-negative-control"
+      ]
+    },
+    {
       "name": "wire-fuzz-message-oracle",
       "when": "pull-request",
       "why": "the tolerant-wire oracles for the message form's text and blob records, and the retain one. Measured 3 s over 3 controls.",

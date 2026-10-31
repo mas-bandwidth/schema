@@ -5585,6 +5585,64 @@ tables-cpp-nowriter-json-name-negative-control:
 tables-cpp-nowriter-nested-arm-negative-control:
 	$(call cpp_nowriter_control,nested-arm,arms.go,-e 's@if ( %s.offset != %s.size ) { %s = %s; r.report->malformed = true; break; } // bytes after the inner union@if ( false \&\& %s.offset != %s.size ) { %s = %s; r.report->malformed = true; break; } // bytes after the inner union@',item5: a byte after the inner union: the load was not refused)
 
+# INPUT NO WRITER PRODUCES IS DAMAGE, in the engine every leg is fuzzed and
+# scored against (docs/SPEC-TABLES.md §4; Glenn, #391 and 2026-10-31). One
+# control per refusal: the refusal is blinded in a COPY of its source, given to
+# go test through a build overlay, and the named gate must go red naming exactly
+# that refusal's row. Nothing tracked is written to.
+#
+# $(1) the item, $(2) the source file, $(3) the sed script, $(4) the package,
+# $(5) the gate, $(6) the line the gate must print.
+ENGINE_NOWRITER_NC := build/engine-nowriter-nc
+define engine_nowriter_control
+	@rm -rf $(ENGINE_NOWRITER_NC)-$(1) && mkdir -p $(ENGINE_NOWRITER_NC)-$(1)
+	@sed $(3) $(2) > $(ENGINE_NOWRITER_NC)-$(1)/source.go.txt
+	@cmp -s $(2) $(ENGINE_NOWRITER_NC)-$(1)/source.go.txt && \
+		{ echo "NEGATIVE CONTROL: the $(1) sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/$(2)":"%s/$(ENGINE_NOWRITER_NC)-$(1)/source.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_NOWRITER_NC)-$(1)/overlay.json
+	@if go test -count=1 -overlay $(ENGINE_NOWRITER_NC)-$(1)/overlay.json -run '^$(5)$$$$' \
+			$(4) > $(ENGINE_NOWRITER_NC)-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the engine's $(1) refusal is gone and $(5) stayed green"; \
+		cat $(ENGINE_NOWRITER_NC)-$(1)/log; exit 1; \
+	fi
+	@grep -q "$(6)" $(ENGINE_NOWRITER_NC)-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(5) went red, but not on $(1)"; \
+		  cat $(ENGINE_NOWRITER_NC)-$(1)/log; exit 1; }
+	@grep -m1 "$(6)" $(ENGINE_NOWRITER_NC)-$(1)/log
+	@echo "negative control: blinding the engine's $(1) refusal turns $(5) RED"
+endef
+
+# item 2: one id twice in one body is read, the last occurrence winning
+.PHONY: tables-engine-nowriter-repeated-id-negative-control
+tables-engine-nowriter-repeated-id-negative-control:
+	$(call engine_nowriter_control,repeated-id,internal/tablewire/decode.go,-e 's@if !named || seen\[ref\] {@if !named {@',./test/conformance/harness,TestFramingVectorsReadThroughTheEngine,frame_repeat_id: the rule discards the load as damaged)
+
+# item 3: a count spelled past L is completed from the parent's bytes
+.PHONY: tables-engine-nowriter-header-negative-control
+tables-engine-nowriter-header-negative-control:
+	$(call engine_nowriter_control,header,internal/tablewire/decode.go,-e 's@if !good || r.off > end {@if !good {@' -e 's@return r.sub(end - r.off)@if end < r.off { end = r.off }; return r.sub(end - r.off)@',./test/conformance/harness,TestFramingVectorsReadThroughTheEngine,array_header_crosses_L_foreign_kind: the rule discards the load as damaged)
+
+# item 4, the wire: one map key twice lands as an ascending one
+.PHONY: tables-engine-nowriter-map-key-negative-control
+tables-engine-nowriter-map-key-negative-control:
+	$(call engine_nowriter_control,map-key,internal/tablewire/decode.go,-e 's@if order >= 0 {@if order > 0 {@',./test/conformance/harness,TestFramingVectorsReadThroughTheEngine,map_repeat_key: the rule discards the load as damaged)
+
+# item 4, the text: one JSON member name twice is read again
+.PHONY: tables-engine-nowriter-json-name-negative-control
+tables-engine-nowriter-json-name-negative-control:
+	$(call engine_nowriter_control,json-name,internal/tabletext/read.go,-e 's@if seen\[string(key)\] {@if false \&\& seen[string(key)] {@',./internal/tabletext,TestRepeatedKeyIsDamage,a repeated key must refuse the read)
+
+# item 5: bytes after a nested union inside its arm's L are stepped over
+.PHONY: tables-engine-nowriter-nested-arm-negative-control
+tables-engine-nowriter-nested-arm-negative-control:
+	$(call engine_nowriter_control,nested-arm,internal/tablewire/decode.go,-e 's@if ok \&\& n != r.off {@if false {@',./test/conformance/harness,TestReportRowsDecodeThroughTheEngine,nested_arm_trailing: the engine reads)
+
+# item 6: `schema cook-check` reads a cyclic cook as whole
+.PHONY: tables-cookcheck-cycle-negative-control
+tables-cookcheck-cycle-negative-control:
+	$(call engine_nowriter_control,cookcheck-cycle,internal/tablecook/check.go,-e 's@if err := s.acyclic(byTypeId); err != nil {@if err := s.acyclic(byTypeId); false \&\& err != nil {@',./internal/tablecook,TestCookCheckRefusesACycleByName,a cyclic cook was not refused as a cycle)
+
 # A NESTED UNION FILLS ITS ARM'S L EXACTLY (docs/SPEC-TABLES.md §3, §4): the
 # standing control for the pinned vector nested_arm_trailing. The ORACLE is
 # taught the old reading, a nested-union arm whose L runs past the whole inner
@@ -5596,7 +5654,7 @@ NESTED_TRAIL_NC := build/wire-fuzz-nc-nested-arm-trailing
 .PHONY: tables-wire-fuzz-nested-arm-trailing-negative-control
 tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness build/wire-fuzz-cpp
 	@rm -rf $(NESTED_TRAIL_NC) && mkdir -p $(NESTED_TRAIL_NC)
-	@sed -e '/ok = r.unionCell(&fv.Cell, fv)$$/{n;s|if ok \&\& r.off != n {|if false \&\& ok \&\& r.off != n { // NEGATIVE CONTROL: the envelope read clean|;}' \
+	@sed -e '/ok = r.unionCell(&fv.Cell, fv)$$/{n;s|if ok \&\& n != r.off {|if false \&\& ok \&\& n != r.off { // NEGATIVE CONTROL: the envelope read clean|;}' \
 		internal/tablewire/decode.go > $(NESTED_TRAIL_NC)/decode.go.txt
 	@cmp -s internal/tablewire/decode.go $(NESTED_TRAIL_NC)/decode.go.txt && \
 		{ echo "NEGATIVE CONTROL: the nested-arm sabotage patched nothing"; exit 1; } || true
