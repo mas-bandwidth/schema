@@ -100,3 +100,13 @@ TOOLCHAIN_PINS_goose := GOOSE
 CONFORMANCE_LEGS  += $(call unless_skipped,goose,build/conformance-goose)
 BENCH_TABLES_LEGS += generated/bench/tables/goose/.stamp
 GOLDENS_LEGS      += update-goldens-goose
+
+# THE LEG'S CONFORMANCE NEGATIVE CONTROLS (test/conformance/goose/negative-control):
+# one clause of the Goose runtime broken in a copy of the generated units, and
+# the harness must turn red exactly the surface that clause owns: `load` breaks
+# the tolerant load's unknown-field count, so report and retain go red while
+# wire and retain-save stay green.
+.PHONY: conformance-negative-control-goose
+conformance-negative-control-goose: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control load
