@@ -182,9 +182,10 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
 	// OWN (docs/SPEC-TABLES.md §6.5). The decode runs under the tolerant name,
 	// unchanged; the plain name is a thin wrapper over it.
-	g.pf("/* %s is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the\n", g.api(st.Name, "load_tolerant"))
-	g.pf("   recovered value and its report, and answers 0 only for a refusal or a\n")
-	g.pf("   body the walk could not finish. */\n")
+	g.pf("/* %s is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what\n", g.api(st.Name, "load_tolerant"))
+	g.pf("   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the\n")
+	g.pf("   report) and answers 0 with the value reset for a refusal or for damage\n")
+	g.pf("   anywhere in the wire, which discards the whole load (§4). */\n")
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_tolerant"), st.Name)
 	g.pf("    TableReport ignored; TableReader r; int32_t non_finite_before; int whole;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n")
 	g.pf("    %s( value );\n    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n", g.api(st.Name, "reset"))
@@ -193,7 +194,11 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
 	// any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing lands.
 	g.pf("    if ( table_non_finite_refused( report, non_finite_before ) ) { %s( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */\n", g.api(st.Name, "reset"))
-	g.pf("    return whole;\n}\n\n")
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a walk that met
+	// damage, whether it stopped or stepped over it, hands back nothing it
+	// decoded: the value is reset to its declared defaults and the read answers 0.
+	g.pf("    if ( !whole || report->malformed ) { %s( value ); return 0; } /* damage discards the whole load (§4) */\n", g.api(st.Name, "reset"))
+	g.pf("    return 1;\n}\n\n")
 	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses\n", g.api(st.Name, "load"))
 	g.pf("   whatever the strict read refuses -- an unknown form, wire damage, a clamp\n")
 	g.pf("   or a kind mismatch -- answering 0 with the value reset to its declared\n")
