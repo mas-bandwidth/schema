@@ -1155,10 +1155,10 @@ tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.s
 tables-java-order: build/java-tables/.stamp build/cook-open/.stamp
 	$(JAVA) -cp build/java-tables Main order build/cook-open/Scene.cook build/cook-open/Scene-be.cook
 
-# java_tables_sabotage DIR,GOFILES,SEDVAR builds a compiler over COPIES of the
+# java_tables_sabotage DIR,GOFILES,SEDVAR,SOURCES builds a compiler over COPIES of the
 # emitter files GOFILES with the sed script in the variable SEDVAR applied (each
 # copy must change), regenerates the tables leg's six units with it, and
-# compiles them with the leg's sources into DIR/classes. The controls below are
+# compiles them with SOURCES (the leg's, or none) into DIR/classes. The controls below are
 # each one call of it and one run of the gate they break.
 define java_tables_sabotage
 	@rm -rf $(1) && mkdir -p $(1)
@@ -1173,7 +1173,7 @@ define java_tables_sabotage
 			{ cat $(1)/generate.log; exit 1; }; done
 	@grep -rlq SABOTAGED $(1)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted nothing sabotaged"; exit 1; }
-	$(JAVAC) --release 17 -nowarn -d $(1)/classes $(1)/generated/*/*.java $(JAVA_TABLES_LEG_SOURCES)
+	$(JAVAC) --release 17 -nowarn -d $(1)/classes $(1)/generated/*/*.java $(4)
 endef
 
 # ITS TWO NEGATIVE CONTROLS, one per check the gate holds.
@@ -1193,7 +1193,7 @@ JAVA_ORDER_LE_SABOTAGE := build/java-order-le-sabotage
 JAVA_ORDER_LE_SED := s@return (i32(data, at) & 0xffffffffL) | ((long) i32(data, at + 4) << 32);@return java.nio.ByteBuffer.wrap(data).getLong(at); // SABOTAGED: the JVM default order@
 .PHONY: tables-java-order-negative-control tables-java-order-le-negative-control
 tables-java-order-negative-control: build/cook-open/.stamp
-	$(call java_tables_sabotage,$(JAVA_ORDER_WORD_SABOTAGE),internal/codegen/javatable/cook.go,JAVA_ORDER_WORD_SED)
+	$(call java_tables_sabotage,$(JAVA_ORDER_WORD_SABOTAGE),internal/codegen/javatable/cook.go,JAVA_ORDER_WORD_SED,$(JAVA_TABLES_LEG_SOURCES))
 	@if $(JAVA) -cp $(JAVA_ORDER_WORD_SABOTAGE)/classes Main order build/cook-open/Scene.cook build/cook-open/Scene-be.cook \
 			> $(JAVA_ORDER_WORD_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a cook Open with no order-word check left the order gate green"; \
@@ -1205,7 +1205,7 @@ tables-java-order-negative-control: build/cook-open/.stamp
 	@grep -m1 "FAILED:" $(JAVA_ORDER_WORD_SABOTAGE)/log
 	@echo "negative control: the order-word check planted out turns the order gate RED on the forged cook alone"
 tables-java-order-le-negative-control: build/cook-open/.stamp
-	$(call java_tables_sabotage,$(JAVA_ORDER_LE_SABOTAGE),internal/codegen/javatable/block.go,JAVA_ORDER_LE_SED)
+	$(call java_tables_sabotage,$(JAVA_ORDER_LE_SABOTAGE),internal/codegen/javatable/block.go,JAVA_ORDER_LE_SED,$(JAVA_TABLES_LEG_SOURCES))
 	@if $(JAVA) -cp $(JAVA_ORDER_LE_SABOTAGE)/classes Main order build/cook-open/Scene.cook build/cook-open/Scene-be.cook \
 			> $(JAVA_ORDER_LE_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a reader in the JVM's default order left the order gate green"; \
@@ -1252,7 +1252,7 @@ test-java: tables-java-layout-contract tables-java-layout-contract-negative-cont
 JAVA_LAYOUT_SABOTAGE := build/java-layout-sabotage
 JAVA_LAYOUT_SED := s@if (accessors != descriptors) {@if (false) { // SABOTAGED: the layout contract compares nothing@
 tables-java-layout-contract-negative-control: build/cook-open/.stamp
-	$(call java_tables_sabotage,$(JAVA_LAYOUT_SABOTAGE),internal/codegen/javatable/block.go internal/codegen/javatable/cook.go,JAVA_LAYOUT_SED)
+	$(call java_tables_sabotage,$(JAVA_LAYOUT_SABOTAGE),internal/codegen/javatable/block.go internal/codegen/javatable/cook.go,JAVA_LAYOUT_SED,$(JAVA_TABLES_LEG_SOURCES))
 	@if $(MAKE) --no-print-directory tables-java-layout-planted JAVA_LAYOUT_GEN=$(JAVA_LAYOUT_SABOTAGE)/generated \
 			JAVA_LAYOUT_DIR=$(JAVA_LAYOUT_SABOTAGE)/layout > $(JAVA_LAYOUT_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a layout contract that compares nothing left the layout gate green"; \
@@ -1495,7 +1495,7 @@ JAVA_RELEASE_SABOTAGE := build/java-release-sabotage
 JAVA_RELEASE_SED := s@return data\[at\] & 0xff;@return (int) (data[at] \& 0xff); // SABOTAGED: a redundant cast@
 .PHONY: tables-java-release-negative-control
 tables-java-release-negative-control: build/cook-open/.stamp
-	$(call java_tables_sabotage,$(JAVA_RELEASE_SABOTAGE),internal/codegen/javatable/block.go,JAVA_RELEASE_SED)
+	$(call java_tables_sabotage,$(JAVA_RELEASE_SABOTAGE),internal/codegen/javatable/block.go,JAVA_RELEASE_SED,$(JAVA_TABLES_LEG_SOURCES))
 	@if $(MAKE) --no-print-directory tables-java-compile-all-run JAVA_COMPILE_ALL_DIRS='$(JAVA_RELEASE_SABOTAGE)/generated/*/' \
 			JAVA_COMPILE_ALL_OUT=$(JAVA_RELEASE_SABOTAGE)/all TABLES_JAVA_COMPILE_ALL_MIN=6 > $(JAVA_RELEASE_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a redundant cast in every unit left the release compile gate green"; \
@@ -1594,7 +1594,7 @@ conformance-java-absent: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_ABSENT) && mkdir -p $(JAVA_ABSENT)
 	@printf 'java %s/test/conformance/java/driver\n' "$(CURDIR)" > $(JAVA_ABSENT)/drivers.txt
 	JAVA=$(JAVA) ./build/conformance-harness run --drivers $(JAVA_ABSENT)/drivers.txt \
-		--work $(JAVA_ABSENT)/work --results $(JAVA_ABSENT)/results.json > $(JAVA_ABSENT)/log 2>&1 || \
+		--work $(JAVA_ABSENT)/work > $(JAVA_ABSENT)/log 2>&1 || \
 		{ cat $(JAVA_ABSENT)/log; echo "conformance-java-absent: the Java leg is not green"; exit 1; }
 	@grep -qE ' pass [1-9][0-9]*/[0-9]+ \+[1-9][0-9]*a' $(JAVA_ABSENT)/log || \
 		{ cat $(JAVA_ABSENT)/log; echo "conformance-java-absent: no surface carries a per-case absence"; exit 1; }
