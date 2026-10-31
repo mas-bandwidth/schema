@@ -616,6 +616,12 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int
 			// rule asks for.
 			return ""
 		}
+		if ans.report.Refused && reply.report == ans.report {
+			// A FORM THE READER DOES NOT CARRY IS REFUSED (docs/SPEC-TABLES.md
+			// §3): nothing was decoded, so a leg that refuses it by the same
+			// verdict and hands back no root has answered it.
+			return ""
+		}
 		return "the leg returned no root — its LoadMeasure sized a region its Load then refused"
 	}
 	if ans.measureRefused {

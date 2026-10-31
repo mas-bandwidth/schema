@@ -59,4 +59,14 @@ func TestWireVerdictComparesOnlyTheRefusalOnDamage(t *testing.T) {
 	if v := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0, 0}, retained: 1}, clean, 10); v == "" {
 		t.Fatal("a clean mutant's retention report is no longer compared")
 	}
+
+	// a fixed root whose form the reader does not carry: both sides refuse
+	// and the leg hands back no root
+	fixedRoot := &wireRoot{}
+	if v := wireVerdict(fixedRoot, legReply{loaded: false, report: Counts{Refused: true}}, oracleAnswer{report: Counts{Refused: true}}, 10); v != "" {
+		t.Fatalf("a leg that refuses a form the oracle refuses, with no root, is red: %s", v)
+	}
+	if v := wireVerdict(fixedRoot, legReply{loaded: false}, oracleAnswer{report: Counts{Refused: true}}, 10); v == "" {
+		t.Fatal("a leg that hands back no root without the refusal verdict is green")
+	}
 }
