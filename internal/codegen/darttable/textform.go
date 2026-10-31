@@ -187,6 +187,16 @@ String _jsonEnum(int v, String Function(int) name, String where) {
   return _jsonString(n);
 }
 
+// _jsonText is the ZERO RULE (§16.3, text_holds_zero), one helper for every
+// place the read stores text: a string(N) or wstring(N) value, a *string
+// value, a text-list element, a map key. A stored string that decodes to
+// U+0000 refuses the read, because no wire carries a zero in text. A string
+// the read only SKIPS (an unknown key's value) never reaches here.
+String _jsonText(String s) {
+  if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
+  return s;
+}
+
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
 // mismatch; a string past N is clamped at a CODE POINT boundary and counted,
 // never cut through a multi-byte character (§16.3).
@@ -195,7 +205,7 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r) {
     r.kindMismatch++;
     return '';
   }
-  if (utf8.encode(val).length <= bound) return val;
+  if (utf8.encode(_jsonText(val)).length <= bound) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -799,7 +809,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
-			g.pf("\t\t\t\telse if (val is String) { v.%s = val; }\n", name)
+			g.pf("\t\t\t\telse if (val is String) { v.%s = _jsonText(val); }\n", name)
 			g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
 		} else {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
@@ -850,7 +860,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			case wireKindEnum:
 				g.pf("\t\t\t\t\tv.%s.add(%sFromName(item, r));\n", name, dartName(enumRef(f).Name))
 			case wireKindString:
-				g.pf("\t\t\t\t\tif (item is String) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
+				g.pf("\t\t\t\t\tif (item is String) { v.%s.add(_jsonText(item)); } else { r.kindMismatch++; }\n", name)
 			default:
 				lo, hi := jsonIntBounds(f)
 				if f.Type.Kind == ir.TBits && f.Type.Width < 64 {

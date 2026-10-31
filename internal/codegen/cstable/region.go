@@ -308,6 +308,7 @@ const tableRegionSource = `
             // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
             // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
             if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
+            if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
             if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
             if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
         }
@@ -645,7 +646,7 @@ const tableRegionSource = `
     static unsafe IntPtr NativeLoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report, long total, long dataBytes, string reason)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
-        report.Refused = false; report.Reason = null;
+        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (total < 0)
         {
             if (reason != null) { report.Refused = true; report.Reason = reason == "unknown_form" ? (bytes[0] == 2 ? "message_form_as_file" : "newer_form") : reason; Finish(report, Verdict.Refused); }
@@ -701,6 +702,8 @@ const tableRegionSource = `
         }
         state.Next = Align(type.StorageSize, type.RegionAlign); state.End = state.Next + rootExtent;
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
+        // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
+        if (NonFiniteRefused(report)) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
         Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return region;
     }
 `

@@ -20,7 +20,7 @@ records, framed by ids, kinds and lengths.
 
 ## Scope and performance standard
 
-The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**.
+The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**, and **Dart** (`bench/tables/dart/leg`).
 Glenn's September 8 direction is the **fastest correct implementation for each
 language**. The shared workload fixes the work being measured; each language may
 use its best correct representation, compiler and runtime techniques. Optimize
@@ -259,15 +259,22 @@ Stated so a reader knows what is not here, and why:
   is a leg whose rows are named `bench_fixed`. When a form-1 JavaScript wire
   lands, its `leg` lands with it.
 
-- **`bench/tables/dart` has a runner and NO `leg`**, for the same reason: Dart
-  has no form-1 table wire (schema#514: the backend carries form 3 and only
-  form 3), so this page's tolerant pass has nothing to run.
+- **`bench/tables/dart` carries both forms, in two runners.**
   `bench/tables/dart/table_main.dart` is the FIXED form's leg for
   [`bench/paired`](../paired/README.md), where it is a table-only language: it
   names the same flags and emits the same CSV columns as the C++ reference
-  (linkage `aot`), it runs as the AOT executable `dart compile exe` builds — the
+  (linkage `aot`), runs as the AOT executable `dart compile exe` builds — the
   form that ships — over `generated/bench/paired/dart`, and its rows are named
-  `bench_fixed`. When a form-1 Dart wire lands, its `leg` lands with it.
+  `bench_fixed`. `bench/tables/dart/table_form1_main.dart` is the VARIABLE
+  form's leg, registered here by `bench/tables/dart/leg`: `TableMixed` of
+  `BenchTable.schema` written, loaded and round-tripped on the tolerant wire
+  over `testdata/wire/bench_table.bin` and its 64 variants, gated before the
+  clock (golden, 64-variant load and re-save, two rotations), rows named
+  `bench_table`, AOT as well. It is a separate runner on purpose: it answers to
+  the board's corpus id and its own generated unit
+  (`generated/bench/tables/dart`), so no paired row moves. Dart's Save returns a
+  fresh `Uint8List` and its Load a fresh object graph, so both rows carry
+  allocation by design; that is the shipped API.
 
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the

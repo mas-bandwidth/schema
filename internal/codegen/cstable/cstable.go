@@ -250,7 +250,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
 	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
-	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large }\n")
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
@@ -687,6 +687,13 @@ public sealed class TableReport
     public int Retained, RetainLost;
     public bool Refused;
     public string Reason;
+    // NonFiniteFloat names the float a read found to be a NaN or an infinity
+    // on its raw bits, as <Table>.<field> (docs/SPEC-TABLES.md §3.3): the
+    // field is not written, and the load, the tolerant one too, refuses as
+    // non_finite_float and lands nothing. The first name wins; null on every
+    // other read.
+    public string NonFiniteFloat;
+    internal string NonFiniteReason;
     public Schema.TableWire.Verdict Verdict;
     public bool Malformed;     // framing damage; decode stopped, partial result kept
     // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
@@ -766,6 +773,10 @@ public sealed class TableFieldInfo
     public Func<ulong, string> KeyName;
     public Func<ulong, ulong> KeyId;
 
+    // a float32/float64 field's name for a non-finite refusal (docs/SPEC-TABLES.md
+    // §3.3), <Owner>.<field>, and the whole reason; constants, so a refusing
+    // read allocates nothing. null on every other kind.
+    public string NonFiniteField, NonFiniteReason;
     // Typed callbacks retain exact integer bounds and defaults without boxing.
     public ulong DefaultRaw;
     public Func<object, bool> WireGuard;

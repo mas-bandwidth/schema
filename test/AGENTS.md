@@ -19,6 +19,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `cs-tables/` | C# table tests | `make test-cs` | `make test-cs` |
 | `cs-view/` | C# view tests | `make test-cs` | `make test-cs` |
 | `dart/` | Dart packet tests | `make test-dart` | `make test-dart` |
+| `dart-hostile/` | Dart hostile-corpus runner | `make schema-dart-runs-hostile-corpus` | `make schema-dart-runs-hostile-corpus` |
 | `dart-ludicrous/` | Dart int128 tests | `make test-dart` | `make test-dart` |
 | `dart-tables/` | Dart table tests | `make test-dart` | `make test-dart` |
 | `elixir/` | Elixir packet tests | `make test-elixir` | `make test-elixir` |
