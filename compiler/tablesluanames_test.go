@@ -23,9 +23,10 @@ import (
 // `local` at module scope is private to its file, and everything a runtime
 // shares is a KEY OF THE MODULE TABLE its file returns (`_M.Tables`,
 // `B.BlockOpen`, `R.ReadStrict`). A schema name reaches a runtime table in
-// exactly two spellings, both written by the emitter and neither able to land on
+// exactly three spellings, all written by the emitter and none able to land on
 // a runtime key: the constructor `_M.New<Declaration>` (and no runtime key
-// begins with New), and the descriptor maps `_M.Tables["<Name>"]`,
+// begins with New), the typed save `_M.SaveTyped<Table>` (the unit module's
+// one SaveTyped-prefixed key), and the descriptor maps `_M.Tables["<Name>"]`,
 // `_M.Unions["<Name>"]` (a string key into a map, never a field of the module).
 // So the registry's Lua names are all SCOPED (they claim nothing), and what
 // holds the claim is this scan: every key of every returned module table the
@@ -96,7 +97,8 @@ func luaManifestUnits(t *testing.T) []*ir.Unit {
 // luaEmittedKeys is the union, over the units the Lua table backend generates,
 // of every module-table key its emitted table sources spell (the unit's table
 // module, its view and every runtime file), minus the constructors
-// `New<Declaration>` the emitter writes per declaration.
+// `New<Declaration>` and the typed saves `SaveTyped<Table>` the emitter writes
+// per declaration.
 func luaEmittedKeys(t *testing.T, units []*ir.Unit) map[string]bool {
 	t.Helper()
 	emitted := map[string]bool{}
@@ -118,6 +120,7 @@ func luaEmittedKeys(t *testing.T, units []*ir.Unit) map[string]bool {
 		constructors := map[string]bool{}
 		for name := range u.Tables {
 			constructors["New"+name] = true
+			constructors["SaveTyped"+name] = true
 		}
 		for name := range u.Structs {
 			constructors["New"+name] = true
