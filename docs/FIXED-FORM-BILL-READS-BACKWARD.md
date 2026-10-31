@@ -46,7 +46,7 @@ The table's own law, additions and deprecation only, extends to every definition
 | the `fixed` keyword | the same | a variable table where the reader has a fixed one, or the reverse: a different form, not a version |
 
 | a range or constraint | absent on the writer where the reader has none, or inside the reader's | ADDED where none was (old values would clamp); a constraint added to a text field |
-| a text kind (`string`, `wstring`, `bytes`) | the same | any change between the three (old bytes stop being valid under the new content rules) |
+| a text kind (`string`, `bytes`) | the same | any change between the two (old bytes stop being valid under the new content rules) |
 | an array's shape (`[N]`, `[..N]`, `[Enum]`) and its key enum | the same shape and key | a shape change or a swapped key; an element type follows the widening ladder, an element narrowed is refused |
 | a reader-side limit a table declares (a record count, a batch size) | at most the reader's | smaller; where the limit is a compiler flag it is outside the law and the doc says so. **RESERVED: no table spelling of one exists yet** — the digest's `'L'` row is empty (ALGORITHM §5.2, pinned by `TestTableFixedDefinitionsDigestLReservedUntilALimitExists`), and `--fixed-record-limit` is a flag |
 | a deprecated field | still written, still in its place, read on every plan | leaving the layout (that is a removal); undeprecating (one way, §12.3) |

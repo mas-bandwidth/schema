@@ -71,9 +71,7 @@ own paired allocator contract.
 The surface includes form-1 files, announcements and bitpacked form-2 message
 batches, both cook byte orders, block build/open, JSON, reflection and UnitView.
 All field shapes use the same descriptors: optional and keyed arrays, general
-union arms, wide scalars, bounded UTF-16 strings, maps and unbounded lists.
-`*wstring` remains outside the compiler's current table vocabulary; the native
-UTF-16 allocation helper does not make it a supported wire pointer type.
+union arms, wide scalars, bounded strings, maps and unbounded lists.
 
 Retain-unknown uses caller-owned byte and ID stores plus node attribution. Load
 reports capacity losses; save reports retained records whose paths or identities
@@ -104,7 +102,7 @@ finding by rule id and file before it fails:
 
 - `make packet-clean-cs` holds the packet units (the examples, the 128-bit
   examples, the bench and RealWorld corpora, and the packet-defaults,
-  packet-text and packet-wide units). It is green.
+  packet-text units). It is green.
   `packet-clean-cs-negative-control` plants a misindented block and an unused
   private field in one copied unit and requires `error WHITESPACE` and
   `error CS0169` on that file.

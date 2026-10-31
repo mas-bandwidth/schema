@@ -51,7 +51,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"unicode/utf16"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"

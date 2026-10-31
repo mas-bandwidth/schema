@@ -48,20 +48,16 @@ the buffer. Specifically:
   not refused before it drives a copy or an allocation.
 - An enum value that is not a declared variant being accepted.
 - A text payload that is not well formed being accepted ON THE PACKET WIRE:
-  malformed UTF-8 in a
-  `string(N)`, or in a `wstring(N)` a code unit group above `0xFFFF`, an
-  unpaired surrogate, or a zero group among the transmitted units. The rules
-  are stated once in SPEC §4.7 and §4.12 and every target owes the same
+  malformed UTF-8 or a zero byte in a `string(N)`. The rules are stated
+  once in SPEC §4.7 and every target owes the same
   verdict, so a target that skips one is a divergence bug as well as an
   acceptance bug. **The TABLE wire enforces the same rules and reports rather
   than stops** (SPEC-TABLES §3, §4): a kind `12` payload that is not
-  well-formed UTF-8 or that carries a zero byte, and a kind `33` payload with
-  an unpaired surrogate or a zero unit, each leave the field at its declared
-  default, count one `malformed`, and let the parent read on past `L`. **A
-  table reader that STORES any of them is an acceptance bug on this list**,
+  well-formed UTF-8 or that carries a zero byte leaves the field at its declared
+  default, counts one `malformed`, and lets the parent read on past `L`. **A
+  table reader that STORES one is an acceptance bug on this list**,
   exactly as a packet reader that accepts one is. In scope beside it is the
-  framing: a length past a declared bound, and an odd `L` on a kind `33`
-  payload or a `*wstring` blob, each refused before it drives a copy.
+  framing: a length past a declared bound, refused before it drives a copy.
 - **A table read made to materialize more than the framing justifies.** The
   pointer graph is flat and a node is materialized once however many pointers
   name it, so references cannot multiply a record; and `LoadMeasure` returns

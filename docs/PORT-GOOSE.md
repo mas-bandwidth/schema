@@ -71,7 +71,6 @@ keyword, a scalar type name, `std`, `main` or the runtime's namespace
 | a type `T` | `T`, a nested struct, inline | `T { .. }` |
 | a union `U` (§4.8) | `struct U { Type: UType, <Arm>: <arm value>... }`; `type UType = u8;` with `UTypeNone`, arms from 1, `UTypeMax`, `EnumNameUType` | `Type = 0`, every payload arm pre-allocated; a payload-free arm has no slot |
 | `string(N)`, `bytes(N)` | `u8[N]` and `<Name>Length: i32` beside it (SPEC §4.7) | the default's bytes in place, length set |
-| `wstring(N)` (§4.12) | `u16[N]` of UTF-16 code units and `<Name>Length: i32` | the default's code units |
 | `[N]T`, `[E]T` (enum-keyed: key k at index k) | `T[N]` inline | each element at its default |
 | `[..N]T`, `[A..N]T` | `T[N]` and `<Name>Count: i32` beside it | the count born at A (SPEC §4.6) |
 | `const` | a typed global `let` at its storage, folded to its literal, the schema spelling kept in a trailing comment | — |
@@ -309,7 +308,7 @@ so the driver (`compiler/generate.go`) refuses each by name.
 
 **The chain.** `compiler/target_goose.go`'s `Generate` calls, in the order
 `schema new-leg` writes them: `ir.RefuseWideTableKinds` (fixed-point and
-128-bit table kinds), `refuseWideText` (`wstring(N)`), `refuseUnported`
+128-bit table kinds), `refuseUnported`
 (string, bytes and flags defaults; was-rows; a union in a table closure and
 its payload-free arm; an array of unions; `*bytes`; `*string`),
 `refuseOptionalArrays`, `refuseMaps` and `refuseLists`. Each refusal reads its
@@ -318,8 +317,8 @@ that registry. It does not call `refuseTables`: the table surface
 (descriptors and constructors) is emitted now, and the codecs fill it.
 
 **What the skeleton carries.** The type surface, constructed at its defaults:
-every packet field kind except `wstring(N)` and a string, bytes or flags
-default (both refused above), enums, flags, unions (the
+every packet field kind except a string, bytes or flags default (refused
+above), enums, flags, unions (the
 payload-free arm included, which the packet surface carries in every
 target), and a `[A..B]` count born at `A`. Its claims sit in
 `compiler/*_test.go` beside the other nine targets' (`bornAtMinimum`,
@@ -327,8 +326,7 @@ target), and a `[A..B]` count born at `A`. Its claims sit in
 packet wire has landed since (THE PACKET WIRE): goose left
 `packetWriterOwed` and carries its write-side claims in `refusesEveryBuild`
 and `tagRefusesEveryBuild`, and `compiler/carries_goose_packet.go` registers
-wide text on the packet wire and the string, bytes and flags packet
-defaults.
+the string, bytes and flags packet defaults.
 
 **How a later card carries a construct.** In its OWN new file
 `compiler/carries_goose_<surface>.go`, tag `schema_leg_goose`, never by
@@ -340,11 +338,10 @@ editing `target_goose.go` or `carries_goose.go`:
   registers the set;
 - a construct with a register function joins from the file's `init()`:
   `registerListCarrier("goose")`, `registerMapCarrier`,
-  `registerOptionalArrayCarrier`, `registerWideTextCarrier`,
-  `registerStringCarrier`, `registerPacketValueDefaultCarrier`;
+  `registerOptionalArrayCarrier`, `registerStringCarrier`, `registerPacketValueDefaultCarrier`;
 - a construct whose registry has no register function (`tableArmTargets`,
-  `unionArrayTargets`, `blobTargets`, `valueDefaultTargets`, `wasRowTargets`,
-  `tableWideTextTargets`) is appended to from the same `init()`, and
+  `unionArrayTargets`, `blobTargets`, `valueDefaultTargets` and `wasRowTargets`)
+  is appended to from the same `init()`, and
   `registerBuiltin`'s flags in `target_goose.go` stay `false`.
 
 The same card turns the matching cross-target gate from "goose refuses" to
@@ -432,7 +429,7 @@ language has no build-removable check. So the generated writer checks every
 value the wire cannot carry BEFORE the runtime sees it and returns the kind,
 the form Go makes native: `SERIALIZE_ERROR_VALUE_OUT_OF_RANGE` for a value
 outside its range, a count or length past its bound, a mask bit above the
-flags width, an interior null in wide text, an out-of-set union tag (which
+flags width, an out-of-set union tag (which
 writes nothing); `SERIALIZE_ERROR_NON_FINITE_FLOAT` for a NaN or an infinity
 (SPEC §4.3). The claims are `refusesEveryBuild` and `tagRefusesEveryBuild` in
 `compiler/countedbirth_test.go` and `compiler/uniontagwrite_test.go`.
@@ -459,7 +456,7 @@ value above the signed half as negative.
 golden tests in Goose, against `testdata/wire`, at `-O1` and under
 `--debug`. `make/goose-packet.mk` holds the shared packet gates, each with
 its registered control (group `goose-packet`): `packet-utf8-goose`,
-`packet-wide-goose`, `packet-defaults-goose` and `packet-finite-goose`.
+`packet-defaults-goose` and `packet-finite-goose`.
 
 ## THE REGISTER
 
@@ -499,7 +496,7 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-vt-collections | maps, blobs and unbounded arrays (M19) | `goosetable/collections.go`, its runtime file, `compiler/carries_goose_collections.go` |
 | schema-goose-vt-optionals | optionals, enum-keyed arrays and `\| required` (M5) | `goosetable/optionals.go`, its runtime file, `compiler/carries_goose_optionals.go` |
 | schema-goose-vt-text-lists | text lists, the total bound and unbounded text | `goosetable/text_lists.go`, its runtime file, `compiler/carries_goose_text_lists.go` |
-| schema-goose-vt-wide-kinds | timestamps, one-sided ranges, enum and escape kinds, wstring | `goosetable/wide_kinds.go`, its runtime file, `compiler/carries_goose_wide_kinds.go` |
+| schema-goose-vt-wide-kinds | timestamps, one-sided ranges, enum and escape kinds | `goosetable/wide_kinds.go`, its runtime file, `compiler/carries_goose_wide_kinds.go` |
 | schema-goose-vt-defaults-renames | defaults, renames, deprecation and the build version | `goosetable/defaults_renames.go`, its runtime file, `compiler/carries_goose_defaults_renames.go` |
 | schema-goose-vt-retain-unknown | retain-unknown on load and save | `goosetable/retain_unknown.go`, its runtime file |
 | schema-goose-vt-integrity-forms | the integrity trailer and the forms declaration | `goosetable/integrity_forms.go`, its runtime file, `compiler/carries_goose_integrity_forms.go` |

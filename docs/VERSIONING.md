@@ -566,15 +566,18 @@ drift is a build error on both generated sides before it is anything else.
 ## The kind space and the wire form
 
 Every field on the table wire carries a kind byte from a closed set: bool,
-the integers by width and sign, the floats, string, wstring, table, array,
+the integers by width and sign, the floats, string, table, array,
 union, keyed array, pointer index, the 128-bit integers, the fixed-point
 widths, a
 kind of its own for enums so that an enum and its raw integer can never be
 confused on the wire, the escape kind, and the payload-free kind a union arm
 takes. **A kind is spent only to close a silent
-edit**; blocks spend none. One number past the set is RESERVED BY NAME and
-never written, `34` for `float16` (SPEC.md §4.10), so the construct a later
-major adds has its number written down before it is built.
+edit**; blocks spend none. Two numbers outside the set are HELD BY NAME and
+never written. `33` is RETIRED: wide text is not part of schema, and text is
+UTF-8 `string` (SPEC.md §4.12), so the number that once named it is never
+reused. `34` is RESERVED for `float16` (SPEC.md §4.10), so the construct a
+later major adds has its number written down before it is built. A reader of
+this major meets either one only as damage.
 
 **A reader that does not know a kind cannot skip it.** That is the nature of
 a closed set, and it is why a new kind is a wire change. Two rules make that
@@ -1145,8 +1148,7 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #523: the message form, form byte `2`, the batch primitive and the bitpacked
   body, the announcement and its two reserved ids, the announced unit vocabulary
   of id, kind and shape triples in its compiler-settled order, the two
-  announcement bounds, the batch bound, the mask's declared width and the
-  wstring's sixteen bits a unit, and the names §11 owes it. The C++ reference
+  announcement bounds, the batch bound, the mask's declared width, and the names §11 owes it. The C++ reference
   carries the form and `internal/tablenames` claims §11's names. What is owed
   is the eight ports and the form's `LoadRetain` (SPEC-TABLES.md §3.3), whose
   form 2 write refuses by name and whose form 2 read is not built.
@@ -1162,10 +1164,6 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   counters, `internal/tablewire`'s own retention, the wire fuzzer's retention
   leg, which needed it, the MESSAGE form's `LoadRetain` and the conformance
   manifest's retain rows are built.
-- #522: `*wstring`, the unbounded twin of wide text — the blob record is
-  specified and no backend emits one (SPEC-TABLES.md §2.5). The BOUNDED
-  spelling's table half, kind `33`, has landed in the C++ reference and the
-  tool with the storage, the cook, the text row and the table-form goldens.
 - #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
   `list_migrates` golden that pins "the same bytes" as `[..N]T`
   (SPEC-TABLES.md §2.9). The C++ reference carries the construct and the

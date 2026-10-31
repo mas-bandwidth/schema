@@ -52,12 +52,12 @@ representation cannot express a cycle**, and there is no cycle rule to write.
 | anything else | none |
 
 **`bytes(N)` is walked as an ARRAY OF `u8`** — kind `14` with one synthetic child at kind `6`, size `1` — never
-as a text kind; only `string(N)` (`12`) and `wstring(N)` (`33`) are text kinds in a layout. **The hash** is
+as a text kind; `string(N)` (`12`) is the only text kind in a layout. **The hash** is
 `h := 0xcbf29ce484222325; for each byte v: h ^= v; h *= 0x100000001b3` over the layout's bytes as written,
 **the 4-byte count included**, and then over the DEFINITIONS DIGEST (§5.2) — the facts a range, a `bits(N)`, a
 `fixed(I,F)` split or a `flags` bit count states and the layout's sizes do not, which never ride the wire. An
 empty digest leaves the hash the layout's alone. It is a wire identity, never a security claim (fix 8). **The closed
-kind set is `1..30`, `32`, `33`, `35`** — `31` (§3's framing escape) and `34` (reserved) are not in it, and a
+kind set is `1..30`, `32`, `35`** — `31` (§3's framing escape), `33` (retired) and `34` (reserved) are not in it, and a
 kind outside it names a form this reader never saw: `REFUSE layout_kind_unknown`, never stepped over.
 
 **THE KIND CODES, the whole closed set.** A port needs the NUMBERS and not only the set's shape, and they are
@@ -73,7 +73,7 @@ wire format and frozen (`ir/tablekind.go:17-62`, `ir/tablewire.go:117-127`, `ir/
 | `12` | string(N) | `30` | enum |
 | `13` | table | `31` | §3's framing escape — **NOT in the closed set** |
 | `14` | array — and `bytes(N)`, as an array of `6` | `32` | a variant, or a payload-free arm: size `0`, no children |
-| `15` | union | `33` | wstring(N) |
+| `15` | union | `33` | retired (wide text) — **NOT in the closed set** |
 | `16` | enum-keyed array | `34` | reserved (float16) — **NOT in the closed set** |
 | `17` | a `*T` pointer index | `35` | the OPTIONAL wrapper — a LAYOUT kind, the one §3.4 adds to §3's set |
 
@@ -120,7 +120,7 @@ or a chain of single-child entries is a stack depth the wire chooses.
 | kind | admitted size | shape |
 |---|---|---|
 | every LEAF (`1`–`11`, `17`–`29`) | the width its kind fixes — §3's `C` table — except `6`/`7`, which admit `4` as well as `1`/`2` because a `bits(N)` rides at its declared storage width | no children |
-| `12` string(N) / `33` wstring(N) | `>= 4`; for `33`, `size-4` also even | no children |
+| `12` string(N) | `>= 4` | no children |
 | `13` table | `== sum` | — |
 | `14` array | `size % elem == 0`, **or** `size >= 4 and (size-4) % elem == 0` | 1 child, `elem != 0` |
 | `15` union | `size > widest`, and `size - widest` is an ordinal width | at least 1 child |
@@ -190,7 +190,7 @@ constants, so measuring never reads a value.
 | a nested `table` / `type` `T` | `C(T)` | inline; no length, no terminator |
 | `[N]T` | `N * C(T)` | no count rides; every element is live |
 | `[Min..Max]T` | `4 + Max*C(T)` | **the count (i32 LE) THEN `Max` elements** |
-| `string(N)`, `bytes(N)` / `wstring(N)` | `4 + N` / `4 + 2N` | the length (i32 LE) THEN the payload — in BYTES for the first two, in CODE UNITS for `wstring` |
+| `string(N)`, `bytes(N)` | `4 + N` | the length (i32 LE) THEN the payload, in BYTES |
 | a UNION | `tag width + max(C(arm))` | **the tag THEN the widest arm**; tag `0` is `None` |
 | `?T` | `1 + C(T)` | **the present flag THEN the payload, which rides WHOLE** |
 | `[Enum]T` | `slots * C(T)` | every slot live, in the key enum's declared order; no key rides |
@@ -223,8 +223,7 @@ and `length <= N` are a caller contract; a release build removes them exactly as
 and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (Glenn,
 2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
 outside `0..Max`, a length outside `0..N`, a value off its declared `min`/`max`, an ordinal or union tag past its
-set, a `string` whose used bytes are not UTF-8 or hold a NUL, and a `wstring` whose used units are not paired
-UTF-16 or hold a zero unit. The check is over the LIVE extent only (a counted array's `count` elements, an
+set, and a `string` whose used bytes are not UTF-8 or hold a NUL. The check is over the LIVE extent only (a counted array's `count` elements, an
 absent optional's payload not at all, a union's taken arm), the same extent the read-side bounds pass walks
 (§4), and it runs over the whole batch before the first byte is stored, so a refused batch leaves the buffer
 untouched. It clamps nothing: a refused record is never turned into a lawful one. Having checked the live extent,
@@ -286,8 +285,8 @@ COMPILED plan still carries only the two lanes refuses a third nested union ther
 a link (§5.8 row 6).
 
 **`arg` and `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never share one.** (fix 12) A `string(N)`
-under a union arm needs both, and one lane gives whichever was stamped last: a byte string under arm `2` read as
-WIDE, or an entry that runs only when the tag equals the flavour — **under the wrong arm**. Neither is visible
+under a union arm needs both, and one lane gives whichever was stamped last: a text string under arm `3` read as
+BYTES, or an entry that runs only when the tag equals the flavour — **under the wrong arm**. Neither is visible
 to this build's own records; only to a peer's.
 
 | op | `src` | `dst` | `size` | `aux` | other |
@@ -300,7 +299,7 @@ to this build's own records; only to a peer's.
 | `widenf` | source (4) | destination (8) | — | — | f32 into f64 |
 | `const` | — | the tag's storage | the tag width | **the constant**: this reader's own arm ordinal | `guard`, `arg` |
 
-Flavours: `1` utf8, `2` wide, `3` bytes. An **identity plan carries only `copy`, `count` and `text`** — an enum
+Flavours: `1` utf8, `3` bytes; `2` is retired with wide text and never reused. An **identity plan carries only `copy`, `count` and `text`** — an enum
 ordinal and a union tag ride inside plain `copy` runs there, so the range closing of §4.5 must live in the
 SCATTER and not only in `ordinal`. **A `bytes(N)` takes the ARRAY's row, not a text field's — the count to `aux`
 and the elements to `dst`**, where a text field's row is the other way round (fix 10). Backwards, a plan compiled
@@ -380,7 +379,7 @@ The reader validates on load in **every** build, release included; a count or le
 |---|---|
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
 | `count` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE count_over_bound` — before any destination byte is written. Else `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
-| `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)`; if `v < 0` or `v > cap` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
+| `text` | `cap := size`; `v := SLE(4, record+src)`; if `v < 0` or `v > cap` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N` (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction (a non-finite f32 never reaches `widenf`: the read refuses it, SPEC-TABLES.md §3.3) |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
@@ -450,7 +449,7 @@ WIDENS(a, b):                            -- b may replace a
   LADDER(a, b) or kind(a) == kind(b)     or FAIL "kind changed"       -- LADDER: int into wider int same signedness, f32 into f64,
                                                                        -- ordinal/tag width wider, bits(N) into wider storage,
                                                                        -- fixed(I,F) into wider I at equal F (bill §12.2);
-                                                                       -- string/wstring/bytes and [N]/[..N]/[Enum] never cross
+                                                                       -- string/bytes and [N]/[..N]/[Enum] never cross
   match kind:
     table, type:   fields(a) is a SUBSET of fields(b) by NAME and a SUBSEQUENCE of it by position (append-only per
                    branch, any interleaving after a merge; bill §11.3); every a-field WIDENS into its b-field;
@@ -458,7 +457,7 @@ WIDENS(a, b):                            -- b may replace a
     enum:          variants(a) prefix of variants(b) by name   or FAIL "variant removed | inserted | reordered | renamed"
     union:         arms(a) prefix of arms(b) by name; each payload WIDENS   or FAIL "arm ..."
     flags:         flags(a) prefix of flags(b)                 or FAIL "flag removed | moved"
-    [N], [..N], string(N), wstring(N), bytes(N):  N(a) <= N(b) or FAIL "bound narrowed"; element WIDENS
+    [N], [..N], string(N), bytes(N):  N(a) <= N(b) or FAIL "bound narrowed"; element WIDENS
     [Enum]T:       Enum WIDENS (its own rule); element WIDENS
     int, float:    width(a) <= width(b), same ladder, same signedness   or FAIL "narrowed | ladder | signedness"
     ranged:        range(b) ⊇ range(a), or b unranged               or FAIL "range narrowed | added"
@@ -751,7 +750,7 @@ EMIT(te, their_at, me, my_at, guard, arg):
                  else: emit `ordinal` with a remap table — entry j is the reader's position of the writer's
                        variant j, or 0 when the reader has no such name
     12 / 33 text: emit `text`, span := min(me.size, te.size) - 4 BYTES, dst := the LENGTH word,
-                  aux := the BUFFER, flavour from the READER's field (1 utf8, 2 wide, 3 bytes)
+                  aux := the BUFFER, flavour from the READER's field (1 utf8, 3 bytes)
     every other leaf: te.size == me.size -> `copy` ; te.size < me.size and me.size <= 8 -> `widen` ;
                       otherwise COUNT kind_mismatch
 ```
@@ -767,7 +766,7 @@ hands both down beside the reader's layout entry (`Dst` and `Aux` on `TableFixed
 | `35` optional | the payload's own storage; the wrapper row adds none | the PRESENT byte | `T` into `?T` lands `present`, a CONSTANT `1` — constant in its VALUE and still carrying the row's own `guard`/`arg` (§5.9 #13) — at `aux` (971-980); `?T` into `?T` lands the writer's flag with a one-byte `copy` at `aux` (1008) |
 | a COUNTED array `[..N]T` | the element run | the live COUNT word | `count` writes its four bytes at `aux` (1024) |
 | `bytes(N)` | the BUFFER | the LENGTH word | the same `count` op, at `aux` — `bytes(N)` is an ARRAY row (fix 10) |
-| `12` / `33` text | the LENGTH word | the BUFFER | `text` puts the length at `dst` and copies the payload to `aux` (1137, 281-295) |
+| `12` text | the LENGTH word | the BUFFER | `text` puts the length at `dst` and copies the payload to `aux` (1137, 281-295) |
 | `15` union | the union's own storage | the TAG — **`dst` PLUS the tag's offset inside that storage**, the `AuxExtendsDst` row | both `const`s write at `aux`: the unguarded `None` (1074) and each arm's ordinal (1090) |
 | `13` table, `14` uncounted, `16` keyed | the field's storage | unused, `0` | nothing; these recurse |
 | every LEAF | the field's storage | unused, `0` | `copy`, `widen`, `widenf`, `ordinal` write at `dst` |
@@ -788,25 +787,24 @@ and they are not the same number:
 
 ```
 TEXT(p):
-  unit := 2 when the flavour is WIDE, else 1                  -- wstring(N) rides as UTF-16 code units
-  cap  := p.span / unit                                       -- the CAP is in UNITS, the SPAN is in BYTES
+  cap  := p.span                                              -- the CAP and the SPAN are both BYTES
   v    := LE(4, src + p.src) read as SIGNED
   if v < 0 or v > cap: REFUSE length_over_bound               -- before any destination byte is written
   PUT(4, dst + p.dst, v)                                      -- the length lands at DST
-  COPY(dst + p.aux, src + p.src + 4, p.span)                  -- THE WHOLE SPAN, never v * unit
+  COPY(dst + p.aux, src + p.src + 4, p.span)                  -- THE WHOLE SPAN, never v
   if the flavour is not BYTES:                                -- terminate AT THE USED LENGTH
-      ZERO(dst + p.aux + v * unit, unit)
+      ZERO(dst + p.aux + v, 1)
 ```
 
-Three facts, and a port gets them wrong one at a time. **The cap is `span / unit`**: a `wstring(64)` whose span
-is 128 bytes refuses at 64, and a port that refuses at 128 lets a length past the buffer through. **The copy is
+Three facts, and a port gets them wrong one at a time. **The cap is the span**: a `string(64)` refuses a length
+of 65, and a port that refuses only past the storage's terminator byte lets a length past the bound through. **The copy is
 the WHOLE SPAN and not the used length**: the writer wrote `length` units onto a ZEROED template and stopped
 (fix 1), so the bytes behind the length are the writer's zeros, and copying them is how read-then-save-back
-comes out byte-identical (§7 item 1). A port that copies `v * unit` passes every value check and fails the
+comes out byte-identical (§7 item 1). A port that copies `v` bytes passes every value check and fails the
 dump identity — and **on a POISONED destination it fails louder**, because the `0x5A` behind the terminator
-survives into the buffer and the saved file carries it back out. **The terminator is a STORE of ONE UNIT at
-the used length**, which the storage has room for because text storage is one unit longer than the bound. So
-the bytes a text entry LANDS are `[aux, aux + span + unit)` for a text flavour and `[aux, aux + span)` for
+survives into the buffer and the saved file carries it back out. **The terminator is a STORE of ONE BYTE at
+the used length**, which the storage has room for because text storage is one byte longer than the bound. So
+the bytes a text entry LANDS are `[aux, aux + span + 1)` for a text flavour and `[aux, aux + span)` for
 `bytes` (the reference: fixedruntime.go:436-437) — which is what the prefill's cover subtracts. The reader's
 own span past `min(me.size, te.size) - 4` gets NO entry at all: a reader whose bound GREW takes the writer's
 units and the PREFILL answers the rest.
@@ -1212,8 +1210,8 @@ reads `e.size = my_n`, so row 4 owes a RE-READ and the probe is what settles it 
 counters `0` — while the range/ordinal clamp keeps `clamped == 1` and never `>= 1`, the half no reference
 case asserts today.
 
-**What to mark UNPORTED rather than RED**: a row whose KIND the leg's language surface cannot hold at all — kind
-`33` in a JavaScript table, refused before §5 is reached — is ⚪ in both columns with the refusal that blocks it
+**What to mark UNPORTED rather than RED**: a row whose KIND the leg's language surface cannot hold at all, refused
+before §5 is reached, is ⚪ in both columns with the refusal that blocks it
 cited, skipped by name, and never folded into a green (§5.9 #44). A leg's row table carries three marks: green,
 red-and-named, and unported-with-the-reason.
 
@@ -1539,9 +1537,8 @@ LAST field and runs to the end of the line: split the head on spaces, then take 
 — a quoted value may carry spaces, and the commas inside one are escaped (`\,`). `root=` is NOT unique across
 rows (FU1's and FU2's is `FuRoot`, a lineage pair's two sides share one name by construction); `row=` is the
 per-file name. A record's values are prefixed `r<i>.`, nested fields are
-dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide — **ONE encoding
-for wide text everywhere, both sides of a pair included, and never a column of per-code-unit hex** — and
-`\uXXXX`, never `\xNN`, for anything not printable ASCII), a float is given as digits AND bits
+dotted, array and keyed slots carry the index the bytes carry, text is quoted (`\uXXXX`, never `\xNN`, for anything
+not printable ASCII), a float is given as digits AND bits
 (`-0|0x80000000`, `1.40129846e-45|0x00000001` — a finite value's bits are the value, the sign of a `-0` and a
 subnormal's mantissa included; no file in the corpus carries a NaN or an infinity, which every read refuses as
 `non_finite_float`, docs/SPEC-TABLES.md §3.3), **a `fixed(I,F)` as `<real>|raw=<int>`** — the
@@ -1711,9 +1708,8 @@ pass 2 a DEAD report (the JavaScript leg), or run the census in pass 1 only. Thi
 thing able to move it, which is why it has to be right in a leg no fixture can red.
 
 **44. A ROW A LEG CANNOT GENERATE AT ALL IS UNPORTED, NOT RED.** #31 covers a red the leg did not write and §5.7
-covers a red left named; neither covers a row whose KIND THE LEG'S LANGUAGE SURFACE CANNOT HOLD. `wstring_grow`
-is not a §5 failure on the JavaScript leg: kind `33` is refused in a JavaScript table (`refuseWideText`, #366), so
-there is no probe to generate and no reader to write. **Such a row is marked UNPORTED and skipped BY NAME, with
+covers a red left named; neither covers a row whose KIND THE LEG'S LANGUAGE SURFACE CANNOT HOLD. A row whose
+kind a language refuses has no probe to generate and no reader to write. **Such a row is marked UNPORTED and skipped BY NAME, with
 the refusal that blocks it cited** — ⚪ in both columns and not 🔴 — because a red is a debt this section owes and
 an unported row is a debt another section owes. A leg's row table therefore carries three marks, not two: green,
 red-and-named, and unported-with-the-reason. **What a leg may never do is fold it into a green**, and what a
@@ -1815,7 +1811,7 @@ not transliterate.** Then **prove against the oracle, in this order**:
 
 | # | the proof |
 |---|---|
-| 1 | **`make tables-fixedform-corpus`** writes nine form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements), `fxw` (the wide-text unit), `fu1`/`fu2` (text under a union arm, and §4's TWO WIDENING RUNGS — `mark int16` at `-1`, `INT16_MIN` and `INT16_MAX` into FU2's `int32`, and `heat float32` as the smallest subnormal, a `-0` and an ordinary `1.5` into FU2's `float64`, each widening to exactly its own value; schema#876 cards 15 and 16, made finite by the 2026-10-27 rule, docs/SPEC-TABLES.md §3.3). **Read EACH of the nine and save it back; the bytes must be identical** — the shared byte oracle is every vector, not one — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
+| 1 | **`make tables-fixedform-corpus`** writes eight form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements), `fu1`/`fu2` (text under a union arm, and §4's TWO WIDENING RUNGS — `mark int16` at `-1`, `INT16_MIN` and `INT16_MAX` into FU2's `int32`, and `heat float32` as the smallest subnormal, a `-0` and an ordinary `1.5` into FU2's `float64`, each widening to exactly its own value; schema#876 cards 15 and 16, made finite by the 2026-10-27 rule, docs/SPEC-TABLES.md §3.3). **Read EACH of the eight and save it back; the bytes must be identical** — the shared byte oracle is every vector, not one — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
 | 2 | **read a file written under ANOTHER schema's layout** — `fx1`/`fx2` both directions, `p1` into `p3`. That is the plan path, and the whole of what the versioning invariant is worth |
 | 3 | **the negative controls, one per named rule and one per named refusal**: each of §1.1's seven, over a file that reads clean and is broken in exactly one place; `layout_malformed` for a header shorter than a layout and for a header hash that is not the hash of the layout behind it; `plan_too_large` for a one-entry plan slice; `batch_too_large` for a batch past the caller's room; `previous_form`, `message_form_as_file` and `newer_form` for form bytes `1`, `2` and `6`; `no_layout` for a record hash naming nothing; `malformed` for a ragged tail. **Each comes back under ITS OWN NAME, nothing decoded, no counter moved, and every byte of the caller's destination as it was before the load** — never clamped, never zero-filled, never prefilled; the controls are cut from the reference's own corpus files, so they hold over the bytes the oracle holds and not only over a leg's own writer. A validation nobody watched fail is a validation nobody has |
 | 4 | **the wrong plan must go red**, and so must each fix's own bug: this build's identity plan over another schema's record, the swapped `bytes(N)` row, the shared `arg`/`meta` lane, a whole-span copy over stained slack |
@@ -1832,7 +1828,7 @@ already names.
 
 | construct | fixture | cpp | c | go | cs | rust | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|---|---|
-| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack`/`fxw`/`fu1`/`fu2` | golden | | | | | | | | |
+| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack`/`fu1`/`fu2` | golden | | | | | | | | |
 | dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3`, `fu1` into FU2 (NEW-READS-OLD) | golden | | | | | | | | |
 | the two widening rungs asserted after the compiled read | `fu1` into FU2: `mark int16`→`int32` SIGN-EXTENDED, `heat float32`→`float64` on the payload bits | golden | | | | | | | | |
 | OLD-REFUSES-NEW | `fu2` under FU1: `layout_unknown` on Go (`layout_newer` on a leg that has not taken §5.3's rule), the file's hash, nothing decoded (COMPILE from the lock) | golden | | | | | | | | |
@@ -1863,7 +1859,7 @@ Where this page and the C++ reference or §3.4 disagree, **this page is the ruli
 | 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on the 65536's declared/derived split, and the flat-element fold says what spends a leaf | LANDED, `eeb5563b` |
 | 5 | **The ranged clamp** — a ranged integer clamps on load and counts, fixed-point on the raw scale | LANDED, `a17e1b0c` — §4.6 |
 | 6 | **The measurement file** — `test/bench/fixedform_measure.cpp` no longer compiles against the generated plan and is in no test target, so the ratios §3.4 quotes are unverifiable today | pending |
-| 7 | **Wide kinds**, two halves — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path; and the wide TEXT flavour has NO oracle bytes anywhere, so a leg counting BYTES where it owes UTF-16 CODE UNITS still passes | the first LANDED, `22a161c5`; the oracle in flight (Dart) |
+| 7 | **Wide kinds** — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path | LANDED, `22a161c5` |
 | 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | in flight (JS) |
 | 9 | **The Envelope clamp count** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy, and counted nothing | LANDED, `a17e1b0c` — §4.6 |
 | 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | LANDED, `79e34542` |

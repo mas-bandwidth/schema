@@ -11434,64 +11434,6 @@ Unit tests use no real time, sockets, network or outside services; anything that
 Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every *_test.go, every file under a testdata/ directory, tla/RUNS.tsv, tla/CASES.tsv and tla/COVERAGE.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope.
 ROADMAP.md is generated: commit the page `make roadmap` writes and never edit it by hand.
 Touch only the files PATHS names; a fix that needs another file goes into the report as a proposed diff, not a commit. \"Not done\" is a welcome report; a green claim you did not run is not.")
-(:id "sprint-out/rust-variable-class-carries-wstring-in-every-position" :sprint-card "rust-variable-class-carries-wstring-in-every-position" :brief "RESULT: rust-variable-class-carries-wstring-in-every-position sha=0b424c16482c tier: pro
-REPO: mas-bandwidth/schema
-BASE: sprint/schema-rust
-KIND: feature
-PRIORITY: normal
-STREAM: schema-rust
-DEPENDS-ON: rust-base-forward-merge-schema-go
-LAND-AFTER: rust-variable-class-carries-counted-array-minimums
-PATHS: internal/codegen/rusttable/variablerefusal.go, internal/codegen/rusttable/variablecodec.go, internal/codegen/rusttable/variabletext.go, docs/roadmap.sexp, ROADMAP.md
-NEW: internal/codegen/rusttable/variablewstring_test.go
-TEST: internal/codegen/rusttable TestRustVariableWstringEveryPosition
-START: internal/codegen/rusttable/variablerefusal.go, internal/codegen/rusttable/variablecodec.go, docs/SPEC-TABLES.md (read)
-STOP: when DONE-WHEN below holds and the commit is on your branch, or the deadline is reached; then report, with not-done named.
-DEADLINE: finish within 120 minutes.
-GATE-NEEDS: linux
-TOOLCHAIN: a Linux bench with go, rustc and cargo on PATH (make/rust.mk prepends RUSTUP_BIN, a macOS default, to PATH, so cargo on PATH is enough), and sbcl for make roadmap (tools/roadmap/roadmap.mk refuses without it).
-The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
-You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
-Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
-Libraries considered: the Go standard library and the repository's own oracles (internal/tablewire, internal/tabletext, internal/rfc3339) for the reference answers; the generated runtime of the leg and its standard library only; no new dependency in either language.
-
-# The Rust variable class carries wstring(N) as an element, an optional and an enum-keyed slot (port to the standard, family: feature: variable class)
-
-USE CASE (Glenn, 2026-10-18): \"We do all features across all languages.\" The Rust leg reaches schema-go's behaviour at GO TIP for this feature, with the same answers on the same inputs.
-
-THE STANDARD AND THE ORACLE. The standard is docs/SPEC-TABLES.md and docs/USAGE.md as rust-base-takes-schema-go-d808c3f brought them onto BASE from sprint/schema-go (d808c3f54, GO TIP, or the later commit that card merges); schema-go's behaviour at GO TIP is the oracle for every expected answer. Expected answers come from the Go side and never from a hand reckoning: the engine packages (internal/tablewire, internal/tabletext, internal/rfc3339) where they answer the case, else the generated Go of the same unit through gotable (the Go test named under THE RULE shows the probe), its answers pinned in the new test as literals with a comment naming the Go test they came from. Write no spec text: a gap or a contradiction in the standard goes in the report, quoted.
-
-THE RULE. docs/SPEC-TABLES.md §3 (table kind 33) and SPEC §4.12: wstring(N) in every field position Go carries it. Oracle: the Go leg's generated codec of the same unit and internal/tablewire.
-
-THE TASK. Remove the leg's own refusal at variablerefusal.go:198 for wstring(N) as an array element, an optional or an enum-keyed slot and carry it in the variable codec and its JSON. The new test runs [..N]wstring(M), ?wstring(M) and [E]wstring(M) through wire and JSON and asserts the Go bytes and texts.
-
-TESTS. A Go test that only reads the generator's output is a unit test: it uses no real time, sockets, network or outside services. A test that compiles or runs Rust (rustc, cargo) is a functional test: it skips by name when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, fails by name when SCHEMA_REQUIRE_CORPUS=1, and runs on the bench with that variable set, so it never passes on a SKIP. Use the leg's existing harness: the rusttable functional-test pattern (a generated crate built with cargo beside a Go oracle, as retainroots_test.go and messageform_batch_test.go do) and the conformance driver test/conformance/rust/src/main.rs where a surface answers; never a new harness.
-
-GENERATED. make test-rust regenerates generated/rust, generated/bench/rust, generated/bench/rust-realworld and generated/bench/paired/rust in the worktree. PATHS does not name them: restore them with git checkout -- generated/ and list in the pull request body each file that changed, for the coordinator's regeneration at the stream merge.
-
-ROADMAP. Where docs/roadmap.sexp holds a rust cell for this feature, flip it to :done naming the test and the target that runs it; where it holds none, add nothing and say so; then make roadmap and make roadmap-check.
-
-DONE-WHEN: TestRustVariableWstringEveryPosition RUN and PASS, none SKIP; make test-rust and make conformance green or reds named as present at BASE; make roadmap-check clean. Red at BASE: TestRustVariableWstringEveryPosition does not exist (`go test -run TestRustVariableWstringEveryPosition` reports no tests to run), and at BASE variablerefusal.go:198 refuses wstring(N) as an array element, an optional or an enum-keyed slot for the rust variable form.
-
-STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names. Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it. Build and test only on the Linux bench JOB.md names, never the working Mac. Confirm the forward merge is in: git merge-base --is-ancestor d808c3f54 HEAD answers 0.
-STEP 2. Red first: the test on the TEST: line, TestRustVariableWstringEveryPosition, in the new internal/codegen/rusttable/variablewstring_test.go, opening with t.Parallel(). Run SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/rusttable/ -run TestRustVariableWstringEveryPosition -v and keep the failing line (paste it in the pull request).
-STEP 3. Make it pass in the files PATHS names, and only those; walk THE TASK above in order. Cite the spec section from each function that implements a rule.
-STEP 4. Run the gate: SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/rusttable/ ./compiler/ ./internal/ci/ and read the last line of each; then make test-rust and make conformance; then make roadmap and make roadmap-check, all on the bench. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
-STEP 5. Commit on your own branch with the trailer. Nothing reaches the forge from inside the wall: in the job the git shim records a push, the pull request is the finish JOB.md names (STEP 6), and the member makes both, against the BASE: line's branch, from outside the wall when the card finishes. The pull request body states the diff stat, what was deleted, the tests with what each pins, and what was not done.
-STEP 6. End as JOB.md says: where JOB.md ends the card with its pull request, that is the end and there is nothing else to write, the gate's lines in the pull request body; where it asks for RESULT.md, write it in JOB.md's shape (head, branch, verdict, gate, output, report).
-
-RULES.
-Work only in the job directory this card names.
-Never force-push or rebase a shared branch.
-Never kill a process you did not start.
-Never start a server on this machine.
-No `rm -rf` outside the job directory.
-Report what was not done.
-No gh, no push: JOB.md's finish does both, from outside the wall. Never merge. Every `go test` gets `-timeout 600s`; every new test opens with `t.Parallel()`; never `go clean`; never git stash.
-Unit tests use no real time, sockets, network or outside services; anything that does is a functional test. Two independent cold reads before merge.
-Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every *_test.go, every file under a testdata/ directory, tla/RUNS.tsv, tla/CASES.tsv and tla/COVERAGE.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope.
-ROADMAP.md is generated: commit the page `make roadmap` writes and never edit it by hand.
-Touch only the files PATHS names; a fix that needs another file goes into the report as a proposed diff, not a commit. \"Not done\" is a welcome report; a green claim you did not run is not.")
 (:id "sprint-out/rust-view-carries-every-section-8-1-column" :sprint-card "rust-view-carries-every-section-8-1-column" :brief "RESULT: rust-view-carries-every-section-8-1-column sha=0b424c16482c tier: pro
 REPO: mas-bandwidth/schema
 BASE: sprint/schema-rust

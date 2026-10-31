@@ -43,7 +43,6 @@ wide class; a float is its IEEE bit pattern.**
 | `float64` | `serialize.Uint64` holding the **binary64 pattern** | as `float32` |
 | `string(N)` | `string` | moo's own text; the write checks UTF-8 and the zero byte, the read refuses them |
 | `bytes(N)` | `buffer` of N, and `<Name>Length` | the storage principle: allocated once |
-| `wstring(N)` | `buffer` of 2N (UTF-16LE code units), and `<Name>Length` in units | |
 | `[N]uint8` | `buffer` of N, 0-based | |
 | `[N]T`, `[..N]T` | a 1-based array of N, and `<Name>Count` for a counted one | the count is born at its minimum (SPEC §4.6) |
 | a type, a union | a table with every field present from construction; a union `{ Type, <arms> }` | |
@@ -80,7 +79,7 @@ and union, against serialize.moo's streams; there is no private bit writer.
 - **A read refuses** through the stream's one latch, so `stream:refusal()` names
   the reason (`past_end`, `value_out_of_range`, `non_finite_float`,
   `embedded_nul`, `invalid_utf8`, `nonzero_padding`), or, for a rule only
-  schema knows (`const`, `reserved`, the wstring rules of §4.12), by returning
+  schema knows (`const`, `reserved`), by returning
   `false` unlatched. Hostile bytes never raise. A packet reader calls
   `stream:serializeEnd()` after the top-level read.
 - **Constants are built once.** Wide literals and Float32 declarations live in a
@@ -198,8 +197,8 @@ stacked on layer 1, landed one at a time against current main.
    harness, the toolchain and its CI step, the analyzer gate, the register
    column and the roadmap. The `schema_leg_moo` build tag stays on
    `compiler/target_moo.go` until the port joins the builtins.
-2. **The packet gates**: moo legs of `test/packet-defaults`, `packet-finite`,
-   `packet-text` and `packet-wide`, with their negative controls; the
+2. **The packet gates**: moo legs of `test/packet-defaults`, `packet-finite`
+   and `packet-text`, with their negative controls; the
    `generated/moo` tree and its goldens.
 3. **Tables**: the fixed form and the variable wire (`internal/codegen/mootable`).
 4. **The text forms**: JSON and text, both ways.

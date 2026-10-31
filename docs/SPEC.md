@@ -142,7 +142,7 @@ one of them (Excluded, below).
 **Included — each fact moves the wire, for every declaration the closure
 below carries:** the package; every type's field order; field NAMES; type
 kind, width and signedness; declared bounds; array kind and bounds;
-string/wstring/bytes capacity; float range, resolution and step count; fixed
+string/bytes capacity; float range, resolution and step count; fixed
 `I` and `F`; specified defaults (both ends must agree on the value a
 constructor materializes — untaken branches read as ZEROS, never
 defaults, per §5);
@@ -504,10 +504,11 @@ from this projection rather than carried in it.
   replacement named.
 - **Reserved words:** `package const enum type table map message object if else
   switch case align reserved`, the wire-type keywords `bits bool float32
-  float64 string wstring bytes fixed ufixed`, and the integer family `int8
-  int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128` — plus `int` and
-  `uint`, reserved so `int` gets a "did you mean int32?" diagnostic instead
-  of a parse error. Reserved words cannot be used as names — except inside an
+  float64 string bytes fixed ufixed`, and the integer family `int8
+  int16 int32 int64 uint8 uint16 uint32 uint64 int128 uint128` — plus `int`,
+  `uint` and `wstring`, reserved so `int` gets a "did you mean int32?"
+  diagnostic and `wstring` gets the refusal that names `string` (§4.12)
+  instead of a parse error. Reserved words cannot be used as names — except inside an
   `enum` or `flags` body, where a variant name may be any identifier-shaped
   word, a reserved word included, because a variant name is only ever read
   inside its own declaration's body or after `E.` and so never meets a type
@@ -648,8 +649,6 @@ Scalar      = IntType
             | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
             | "string" "(" IntExpr ")"
-            | "wstring" "(" IntExpr ")"                          // wstring(N) — N in UTF-16 CODE
-                                                                 // UNITS (§4.12)
             | "bytes" "(" IntExpr ")"
             | "timestamp"                                        // nanoseconds since the Unix epoch
                                                                  // (§4.13); TABLE fields only
@@ -731,10 +730,9 @@ FloatExpr   = float expression over float literals, int literals and const names
   as every quoted string in the language is), and `flags` fields (a brace
   list of the declaration's variant names, each at most once, whose bits are
   the fresh mask: `caps Caps = { Jump, Crouch }`, and `{}` the zero mask).
-  Arrays, `wstring(N)`, composite and union fields take no field-level
-  override. Composite fields and array elements follow their type's
-  construction rule recursively; union fields start at `None` and wide-text
-  buffers start empty.
+  Arrays, composite and union fields take no field-level override.
+  Composite fields and array elements follow their type's construction rule
+  recursively; union fields start at `None`.
   **A counted array's COUNT is the one stated exception to zero
   initialization.** A `[A..B]T` count with A above zero is BORN AT A, its
   declared minimum, in every target. Zero is outside that count's own wire
@@ -935,7 +933,7 @@ sequence    uint16
   `health int16 | ui_tuned, min = 0, max = MaxHealth`, with the open
   namespace ahead of the closed one.
 - **The line between positional and attribute:** a *size* that defines the
-  type's shape stays positional — `bits(64)`, `string(64)`, `wstring(64)`,
+  type's shape stays positional — `bits(64)`, `string(64)`,
   `bytes(N)`, `fixed(I, F)`, array bounds. A *constraint or refinement* of a
   named type is a qualifier. A flags declaration's `| max = 8` is the same syntax; it is one
   general mechanism. The glyph is deliberately the language's own — a DSL
@@ -1214,7 +1212,7 @@ it (§4.6).
   zigzag on the wire, ever.
 - **`align` emits zero bits up to the next byte boundary — zero bits when
   already aligned**; readers verify the padding is zero.
-- **Length prefixes** (`string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T`,
+- **Length prefixes** (`string(N)`, `bytes(N)`, `[..N]T`,
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
 - **A BARE FLOAT IS FINITE, AND RIDES AS ITS IEEE-754 BIT PATTERN.** This is
@@ -1267,7 +1265,6 @@ classic twin, which is the wire oracle for the stated model.
 | `reserved(Bits)` | zeros; read rejects nonzero | `serialize_bits` + compare |
 | `align` | zero-pad to the next byte boundary; read rejects nonzero padding | `serialize_align` |
 | `f string(N)` | length in [0, N], align, then the used bytes — N = max length; the bound sizes the length prefix's bits | `serialize_string` with buffer N + 1 |
-| `f wstring(N)` | length in [0, N], **no alignment**, then one 32-bit group per UTF-16 code unit. N is the max length in CODE UNITS, and the bound sizes the length prefix's bits (§4.12) | format 1.1's `serialize_wstring` with buffer N + 1 (removed in format 2.0; the generated code composes the same bits from `serialize_int` and `serialize_bits`, §4.12) |
 | `f bytes(N)` | identical shape: length in [0, N], align, then the used bytes | `serialize_int` + `serialize_bytes` |
 | `f [N]T` | N elements, back to back | element per element |
 | `f [..N]T` / `f [Min..N]T` | count in [Min, N] encoded relative to Min, then that many elements | `serialize_int` + the element loop |
@@ -1282,13 +1279,9 @@ the door is held open by the reserved `column` token (§4.11, schema#554) and no
 byte moves today.
 
 **Wire fidelity.** For every legal write, the bits are identical to the named
-classic twins. **Classic `serialize_wstring` (format 1.1) is the normative
-twin for `wstring(N)`**, a description of the bytes rather than a call
-(format 2.0 removed it; §4.12): serialize.modern's `wstring_` inserts an `align` between the
-length and the code units, and that alignment is the one thing schema does
-not do (§4.12). On the *read* side, schema's generated readers enforce the
-language's validation rules uniformly (e.g. the interior-null rule of §4.7
-and the UTF-16 well-formedness rules of §4.12), which can be stricter than a
+classic twins. On the *read* side, schema's generated readers enforce the
+language's validation rules uniformly (e.g. the interior-null and UTF-8
+rules of §4.7), which can be stricter than a
 hand-written classic reader; acceptance is uniform across the targets, which
 is what the conformance gates check.
 
@@ -1479,7 +1472,7 @@ All compile errors with positions:
   requires at least one bit — which also means generated code needs no
   degenerate support from any runtime. What stays an error: an INVERTED range
   (min > max) anywhere; `[Min..N]T` with Min ≥ N (`[N]T` is the degenerate
-  spelling); `string(N)` and `wstring(N)` with N < 2; `bytes(N)` with N < 1;
+  spelling); `string(N)` with N < 2; `bytes(N)` with N < 1;
   `[N]T` with N < 1; `[..N]T` with N < 1; `resolution` ≤ 0. An empty `type`
   body is legal — zero wire bits, presence as the payload; a unit with
   no `.schema` files is an error.
@@ -1488,8 +1481,8 @@ All compile errors with positions:
   `None = 0`, so its wire range is the degenerate `[0, 0]` and it costs zero
   bits — the value is recovered from the range alone, under the same rule as
   any degenerate range.
-- **A derived size past the cap:** an array bound, a `string(N)`, a
-  `wstring(N)` and a `bytes(N)` are capped at int32 one at a time (§4.3),
+- **A derived size past the cap:** an array bound, a `string(N)` and a
+  `bytes(N)` are capped at int32 one at a time (§4.3),
   and what they multiply
   to is capped too. A field's wire width, an array's whole storage, a record's
   storage and a `MaxBytes` buffer bound are each refused past 2^40 bytes
@@ -1699,9 +1692,9 @@ an accept: `string-accept-shortest-two-byte-sequence`,
 `string-accept-the-same-two-byte-sequence-completed` and
 `string-accept-the-same-three-byte-sequence-completed`.
 
-**Wide text is a separate construct**, not a spelling of this one: `wstring(N)`
-carries UTF-16 code units, counts its bound in code units, and performs no
-alignment (§4.12).
+**Text is UTF-8 and nothing else.** There is no wide text: a program that
+holds `wchar_t`, UTF-16 or UTF-32 text converts it to UTF-8 at its own
+boundary (§4.12).
 
 ### 4.8 Unions — `union`, first-class one-of fields
 
@@ -1753,7 +1746,7 @@ union Value
 - **An arm is any field type, or none.** A variant's payload is what a
   field's type can be: a scalar with its bounds, a compressed float, a
   `fixed(I, F)`, a 128-bit integer, an `enum`, a `flags` mask, `string(N)`,
-  `wstring(N)`, `bytes(N)`, a bounded array `[N]T` or `[..N]T`, a declared
+  `bytes(N)`, a bounded array `[N]T` or `[..N]T`, a declared
   `type`, another union, and, inside a table closure, a `table` and a pointer `*T`
   (SPEC-TABLES.md §2.6). **An arm may also have NO PAYLOAD**, written as
   its name alone: the arm selects and carries nothing, which is what a
@@ -2078,244 +2071,39 @@ list one document rather than two. The message form's batch (SPEC-TABLES.md
 §3.3) is the first place a batch exists on a wire at all, and this is the door
 the same idea walks through for types.
 
-### 4.12 Wide strings: `wstring(N)`
+### 4.12 Text is UTF-8: no wide strings
 
-**Declaration.** `f wstring(N)`. **N is the capacity in UTF-16 CODE UNITS**,
-not in code points and not in bytes, so a character outside the basic plane
-occupies two of them. The bound is positional, part of the type's shape,
-exactly as `string(N)`'s is, and it does two jobs: it sizes the length
-prefix's bits and it sizes the storage. A `wstring` field takes no
-attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
-compile error, the same floor `string(N)` carries (§4.6).
+**There is no wide text type.** Text in schema is `string(N)` (§4.7), and on
+the table wire `*string` and the unbounded `string` (SPEC-TABLES.md §2.5,
+§2.13.1), and every one of them is UTF-8. Wide text cannot be stored portably
+across the targets — a `wchar_t` is sixteen bits on one host and thirty-two on
+another, and half the targets hold no UTF-16 type at all — so the language
+carries one encoding and the conversion belongs to the program that holds
+the other one. This is serialize's own rule: its format 2.0 has no `wstring`
+operation, and schema mirrors it.
 
-**Backend status.** All ten packet targets carry the storage, groups and
-read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart, Elixir and
-Squirrel. C++ and Squirrel also carry table kind `33` in every table form. The other eight targets refuse wide text
-reachable from a table by name (SPEC-TABLES.md §3); an unrelated table in the
-same unit does not prevent a packet type from carrying wide text. `*wstring`,
-the unbounded twin, is specified ahead of implementation and no backend emits
-the blob record (SPEC-TABLES.md §2.5).
+**`wstring` is a reserved word and names no type.** Every spelling of it —
+`wstring(N)` at a field, an element, an arm, a map key or value, `?wstring(N)`,
+`*wstring` and the bare word — is refused by the parser with one diagnostic
+that names the fix:
 
-**Why the language carries a wide type at all:** on a host whose native text
-is already UTF-16, the wire and the string hold the same units, so text
-crosses the boundary as a copy of code units rather than as a transcode.
+    wstring is not a schema type: text is string, which is UTF-8 — declare
+    string(N) and convert wide text to UTF-8 at the application's boundary
 
-**The wire.** Two steps, and no alignment in either of them:
+(`declare *string` for the pointer spelling). The field reads on as the
+`string` the message names, so the refusal is the unit's only diagnostic.
 
-1. **the length**, a ranged integer over [0, N] in `bits_required(0, N)`
-   bits, encoded like any other ranged integer (§4.3),
-2. **each code unit as a 32-BIT GROUP**, in order, packed LSB-first like
-   every other value.
+**Converting at the boundary.** A C++ program holding `std::u16string`,
+`std::wstring` or `char32_t` text converts it to UTF-8 before it stores the
+field and back after it reads it; serialize ships `serialize_utf.h` for
+exactly that conversion, outside the format. Java, C#, JavaScript and Dart
+strings are UTF-16 in memory and convert with the platform's UTF-8 encoder
+(`StandardCharsets.UTF_8`, `Encoding.UTF8`, `TextEncoder`, `utf8.encode`).
+Go, Rust and Elixir strings are already UTF-8.
 
-`MaxBits` for the field is therefore `bits_required(0, N) + 32 * N`, with no
-padding term. A `wstring(N)` field introduces no alignment point, so unlike
-`string` and `bytes` it does not make its type's layout depend on the entry
-bit offset (§6.1).
-
-**Classic `serialize_wstring` is normative.** serialize.modern's `wstring_`
-inserts an `align` between the length and the code units, and that align is
-the one thing schema does not do. The classic twin for the row is
-`serialize_wstring` over a buffer of N + 1, whose length field is
-`serialize_int( length, 0, buffer_size - 1 )` and whose first group begins
-at the bit immediately after it.
-
-**No runtime call carries it.** serialize format 2.0 removed `wstring` and
-its wire form from every runtime. Schema's `wstring(N)` does not depend on
-it: in every target the generated code composes the field itself, the
-length as a ranged integer and each code unit as a 32-bit group, so the
-bytes above are unchanged by any runtime upgrade. The format 1.1
-`serialize_wstring` stays the description of those bytes, not a call.
-
-**Validation: what every generated reader enforces, uniformly.** The rules
-are stated once here and hold in all nine targets, in every build mode, in
-this order:
-
-- **The length.** A decoded length outside [0, N] fails the read. The check
-  runs before the group loop, so the length never drives a copy it has not
-  been bounded for.
-- **The group value.** A group above `0xFFFF` is not a UTF-16 code unit and
-  fails the read, on every target and every platform, whatever local wide
-  character type the host happens to have.
-- **The interior null.** A zero group among the transmitted groups fails the
-  read. This is §4.7's interior-null rule in code-unit terms, and it exists
-  for the same reason: a payload whose wire length disagrees with the length
-  a downstream consumer computes from a terminator carries two lengths, and
-  everything between them rides past whichever side uses the other.
-- **Surrogate pairing.** A high surrogate (`0xD800`-`0xDBFF`) not
-  immediately followed by a low surrogate (`0xDC00`-`0xDFFF`) fails, a low
-  surrogate not immediately preceded by a high surrogate fails, and a high
-  surrogate as the final transmitted group fails. Well-formed **pairs** are
-  valid, and they are how astral text travels.
-- **Exhaustion at any group.** Running out of input mid-read fails, like any
-  other read (§5), whether the length field or any group is the part that
-  runs past the end.
-
-**What no reader enforces**, stated so that no target can be stricter than
-another: nothing else about the text is examined. Noncharacters are
-accepted, `0xFFFF` included. There is no normalization, no case folding, no
-code-point count, and no check that the code units spell anything in
-particular. A reader that adds a check here is as wrong as one that drops a
-check above, because what the nine targets owe each other is an identical
-accept or reject verdict on identical bytes.
-
-**A refusal is terminal.** Nothing after a failing read has a defined
-position, so the read fails in the target's own error idiom (§6.1) and
-leaves the output object unspecified (§5). Refusal is the only conforming
-answer: no target traps, panics or aborts on a malformed payload.
-
-**The two text types are symmetric on read:** `string(N)` refuses malformed
-UTF-8 (§4.7) and `wstring(N)` refuses unpaired surrogates, both on the read
-path, both in all nine targets, and both terminal.
-
-**BOTH WIRES CARRY `wstring(N)`, and they validate it differently on
-purpose.** The table wire gives wide text KIND `33`, `L` bytes holding `L / 2`
-UTF-16 code units two bytes each little-endian, an odd `L` being framing
-damage on the body that carries it (SPEC-TABLES.md §3). Its unbounded twin is
-`*wstring`, a blob node under the reserved id `fnv1a64( "wstring" )`
-(SPEC-TABLES.md §2.5, §3.1), its storage is `char16_t[N + 1]` and an `int32`
-used length in code units (SPEC-TABLES.md §7.2), and its text form is a JSON
-string transcoded at the boundary (SPEC-TABLES.md §16.2). **The validation
-above holds on both, and only the SHAPE of the refusal differs.** A packet
-read is terminal, so an unpaired surrogate, a zero code unit or a group above
-`0xFFFF` fails the read and stops it. A table read is tolerant and
-length-framed, so the same content is FRAMING-CLASS DAMAGE there: the field
-reads its declared default, one `malformed` counts, and the parent reads on
-past `L` (SPEC-TABLES.md §3, §4). **Neither reader accepts it**, which is what
-keeps the paragraph above true as written — every generated reader enforces
-these rules, in all nine targets, in every build mode — and what lets the table
-wire's `Save` check the used length alone, because ill-formed text never
-reaches storage from either wire. A group above `0xFFFF` has no case on the
-table wire at all, two bytes being unable to spell one. `string(N)` is held the same way on both
-wires for the same reason (§4.7).
-A `wstring(N)` MAP KEY is refused by name, the diagnostic naming `string(N)`,
-because `memcmp` over UTF-8 is a portable order and little-endian code units
-have none (SPEC-TABLES.md §2.8, §11). The protocol id needs no
-`ProjectionVersion` bump for any of this: a wstring field projects its
-capacity beside its kind (§3.1), and no unit could declare the construct
-before.
-
-**The packet wire's write side** follows §5's doctrine and §4.7's precedent
-exactly. Two things are checked on every packet write, in every target, in
-that target's own idiom (§5): **the used length is within [0, N]**, because it
-guards the copy, and **a zero code unit among the used units is refused**,
-exactly as §4.7 refuses the interior null and symmetric with the reader's
-zero-group refusal. **The table wire's `Save` checks the used length and
-nothing about the content**, which is the shape kind `12` already has there:
-ill-formed text is a READ-side verdict on that wire, framing-class damage the
-reader answers with the declared default and one `malformed`
-(SPEC-TABLES.md §3). Surrogate pairing is NOT checked on write. It is a writer
-obligation whose enforcement is the reader on the other end, which refuses
-an unpaired surrogate under the rules above. A code unit above `0xFFFF`
-cannot be written at all, because the storage holds 16 bits per unit in
-every target. In Elixir, where the storage is a binary rather than a counted
-buffer, the write additionally requires an EVEN `byte_size` and raises
-`ArgumentError` otherwise, which is that target's write-refusal idiom under
-§5: an odd binary has no last code unit.
-
-**Storage, and the conversion rule at the boundary.** Storage is a
-pre-allocated buffer of UTF-16 code units with a used length beside it,
-under §6.1's rule that nothing is dynamically sized, and the generated read
-and write paths transcode in no target. **This is a stated departure from
-the reference's destination rule**, which decodes into the language's own
-string type and recombines surrogate pairs on a runtime whose strings are
-not UTF-16. schema stores code units in every target instead, because that
-destination would allocate per value and §6.1 forbids it, and the wire is
-unchanged either way:
-
-| target | storage | boundary conversion |
-|---|---|---|
-| C++ | `char16_t[N + 1]` + `int32_t` length | none. A caller holding `std::u16string`, or `wchar_t[]` on Windows, copies code units. The field is code units and never `wchar_t`, so a 4-byte `wchar_t` caller splits astral code points into pairs in its own code |
-| C | `uint16_t[N + 1]` + `int32_t` length | none, the C++ rule in C's own types |
-| C# | `char[]` (capacity N, pre-allocated) + `int` length | none. `char` IS a UTF-16 code unit: `new string(buf, 0, len)` and `String.CopyTo` copy |
-| Java | `char[N]` + `int` length | none. `char` IS a UTF-16 code unit: `new String(buf, 0, len)` and `String.getChars` copy |
-| JavaScript | `Uint16Array(N)` + length | none. A JS string is UTF-16 code units: `String.fromCharCode` and `charCodeAt` copy |
-| Dart | `Uint16List(N)` + `int` length | none. A Dart `String` is UTF-16 code units: `String.fromCharCodes` and `String.codeUnits` copy |
-| Go | `[N]uint16` + `int32` length | a transcode, in application code, in both directions: `utf16.Encode` from the runes of a Go string on the way in, `utf16.Decode` on the way out |
-| Rust | `[u16; N]` + length | a transcode, in application code, in both directions: `str::encode_utf16` on the way in, `String::from_utf16` on the way out |
-| Elixir | a binary of 16-bit little-endian code units, `byte_size(v) >>> 1` being the used length | a transcode, in application code, in both directions: `:unicode.characters_to_binary(s, :utf8, {:utf16, :little})` on the way in and the inverse on the way out. The little-endian convention is in-memory only and never reaches the wire, which carries each code unit as the 32-bit group above |
-
-**The honest cost, per target.** On C#, Java, JavaScript, Dart, and C++ or C
-on a UTF-16 host, the boundary is a copy of code units with no transcoding
-step, which is the reason the type exists. On Go, Rust and Elixir, whose
-native text is UTF-8, the transcode is real and is paid in application code
-in both directions. No target transcodes inside the generated read or write
-path, and no target allocates per value, under the estate's standing Elixir
-exception: a decoded BEAM binary IS an allocation, so the Elixir leg pins
-the per-read allocation COUNT rather than claiming zero (PORTING.md M1).
-
-**A successful read terminates the C string.** In C and C++, a successful
-read writes the **zero unit at index `length`**, always, so the buffer is a
-valid `char16_t` or `uint16_t` string after every accepted read. That is
-what the `+ 1` in those two storage rows is for. In the other seven targets
-the used length is the truth, and a successful read writes nothing past it,
-under §5's tail rule.
-
-**Goldens.** The wire is pinned to serialize's shared corpus
-(`conformance/wstring.txt`), which a `wstring(7)` field reproduces exactly,
-its 3-bit length field being the corpus's `buffer_size` 8. **The row's own
-golden is `wstring-worked-example`**, three basic-plane code units in 13
-bytes. The accepted set at `wstring(7)` adds `wstring-empty`,
-`wstring-single-basic-plane-character`, `wstring-accept-group-ffff`,
-`wstring-accept-just-below-the-surrogate-block`,
-`wstring-accept-just-above-the-surrogate-block`,
-`wstring-accept-surrogate-pair` and
-`wstring-accept-two-basic-plane-groups`, and at `wstring(4)` it adds
-`wstring-accept-length-inside-a-five-character-buffer`. The refused set is
-the corpus's seventeen refusals, hand-authored bytes with a checked-in
-verdict, so they ride **gate 7** (§7.2) in every target rather than gate 5's
-generated sweeps: the two group-above-`0xFFFF` vectors, the seven
-unpaired-surrogate vectors, the three interior-null vectors and the three
-past-end vectors at `wstring(7)`, and the two out-of-range length vectors at
-`wstring(4)`, whose 3-bit length field over [0, 4] is what makes lengths 5,
-6 and 7 expressible and refusable. Two corpus vectors have no schema
-declaration that reproduces them, `wstring-buffer-size-1-zero-bit-length-field`
-and `wstring-no-alignment-before-the-characters`, because their
-`buffer_size` of 1 and 2 sits below the N floor of 2. The no-alignment
-property loses nothing by it: the worked example's first group begins at bit
-3, so an align before the groups moves every byte after it.
-
-**The TABLE form's goldens take the same names with `-table` on them**, and
-they are the accepted set above and nothing else: `wstring-table-empty`,
-`wstring-table-single-basic-plane-character`,
-`wstring-table-accept-group-ffff`,
-`wstring-table-accept-just-below-the-surrogate-block`,
-`wstring-table-accept-just-above-the-surrogate-block`,
-`wstring-table-accept-surrogate-pair`,
-`wstring-table-accept-two-basic-plane-groups` and
-`wstring-table-accept-length-inside-a-five-character-buffer`, each the same
-text as its packet twin, each pinned as bytes under kind `33` and read back
-through the report. **The corpus's seventeen refusals carry over as
-COUNTED refusals rather than terminal ones, and the accounting is worth
-stating.** The seven unpaired-surrogate vectors and the three interior-null
-vectors are each one `malformed` on the table wire where they are a failed
-read on the packet wire, and they ride under the same names with `-table` on
-them. The two group-above-`0xFFFF` vectors have no table analogue at all,
-because two bytes cannot spell a group above `0xFFFF`. The two out-of-range
-length vectors become a CLAMP, `wstring-table-clamp-past-the-bound` and
-`wstring-table-clamp-splitting-a-surrogate-pair`, one `clamped` each. The
-three past-end vectors become the table wire's own framing damage, and the
-table form adds the two refusals that are its alone,
-`wstring-table-odd-length` and `wstring-table-length-past-the-body`, each one
-`malformed`. That accounting is the row's real content: **the same text on two
-wires, the same verdict on every vector either wire can express, and a
-difference only in what a refusal COSTS — a stopped read on one, a defaulted
-field and a counter on the other.**
-
-Beside the corpus, the cross-language matrix takes a `wstring(7)` field
-holding serialize.js's interop cases: empty, three basic-plane code
-units, `0xE000`, `0xFFFF`, an astral pair between two basic-plane units,
-and seven code units, the most the bound carries. **That field and the
-golden source and golden-id pins for a wstring-bearing unit (gates 1, 2
-and 7) live in `examples-wide/WideText.schema`.** The packet test stages that
-unchanged file separately from the directory's table declaration and baseline.
-C++ and each packet port pin the same packet source and protocol id, replay
-the shared text corpus, and compare generated writes and reads. All nine
-packet targets now carry that isolated unit; the other eight targets still
-refuse the directory's table-wide unit. The packet fixture remains an
-independent unit so its protocol identity and the established `examples/`
-identity stay stable. `make packet-wire-nine` runs the defaults, UTF-8 and
-wide-string checks with all eight ports' negative controls; `make test` also
-runs them within the full language legs.
+**The table wire's kind `33` is retired.** It is held by name and never
+reused, no writer emits it, and a reader meets it only as damage, exactly as
+it meets the reserved kind `34` (SPEC-TABLES.md §3).
 
 ### 4.13 Timestamps: `timestamp`
 
@@ -2382,8 +2170,8 @@ moves (§3.1).
 
 **Reads validate everything** — integer ranges, enum bounds, alignment
 padding, constants, reserved bits, count bounds, string lengths, the
-interior-null rule, the UTF-8 and UTF-16 well-formedness rules of §4.7 and
-§4.12, and buffer exhaustion (running out of input mid-read is a
+interior-null rule, the UTF-8 well-formedness rules of §4.7, and buffer
+exhaustion (running out of input mid-read is a
 read failure like any other) — and fail on any violation, because network
 input is the trust boundary. Generated read code never lets a value that
 controls iteration go unchecked before use.
@@ -2460,7 +2248,7 @@ faces untrusted bytes.
 **None of this reaches the read side.** "Of course, on read side we MUST
 always do the checks!" (2026-09-07). Every read-side refusal §4 and this
 section name — ranges, counts, bounds, wire constants, reserved bits, enum
-values, union tags, UTF-8 in `string(N)` and UTF-16 in `wstring(N)` — runs
+values, union tags, UTF-8 in `string(N)` — runs
 in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
 face untrusted bytes; writers do not.
 
@@ -2469,8 +2257,8 @@ write code's job is to
 make misuse impossible by construction — bounds come from the schema. Every
 write-side contract
 asserts in DEBUG ONLY, and only where a target carries the idiom at all. Text
-well-formedness is not one of them. UTF-8 in `string(N)` and UTF-16 in
-`wstring(N)` are READ-side refusals in every target (§4.7, §4.12), so the
+well-formedness is not one of them. UTF-8 in `string(N)` is a READ-side
+refusal in every target (§4.7), so the
 guarantee rests on the reader rather than on a write-side check some
 targets carry and others do not. Ranges are trusted
 inputs everywhere: generated code never feeds attacker-influenced values as
@@ -2491,9 +2279,8 @@ keeps prior tail data. A selected union payload instead starts with its
 construction values, so unread capacity retains those values.
 **The tail rule has exactly one stated exception**, and it is the C string
 terminator: in C and C++, a successful read of a `string(N)` writes the zero
-byte at index `length` and a successful read of a `wstring(N)` writes the
-zero unit at index `length`, so those buffers are valid C strings after
-every accepted read (§4.7, §4.12). Nothing else past a used length or a used
+byte at index `length`, so those buffers are valid C strings after every
+accepted read (§4.7). Nothing else past a used length or a used
 count is written, in any target. Whole-object comparison in the conformance matrix is
 defined over a fresh output or the used prefix. Write reads only taken
 fields.
@@ -2521,7 +2308,6 @@ Per `type`, per target:
    | enum `E` | `enum class E : uintN_t` (N = smallest fitting max) | `enum E : uintN` | `type E uintN` + consts | `#[repr(transparent)] struct E(pub uN)` + consts |
    | `flags E` | `uint64_t` + one mask const per variant | `ulong` + consts | `uint64` + consts | `u64` + consts |
    | `string(N)` | `char[N + 1]` + `int32_t` length (the `+ 1` holds the zero byte a successful read writes at index `length`, §4.7) | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
-   | `wstring(N)` | `char16_t[N + 1]` + `int32_t` length (the `+ 1` holds the zero unit a successful read writes at index `length`, §4.12) | `char[]` (capacity N, pre-allocated) + `int` length | `[N]uint16` + `int32` length | `[u16; N]` + length |
    | `bytes(N)` | `uint8_t[N]` + `int32_t` length | `byte[]` (capacity N, pre-allocated) + `int` length | `[N]byte` + `int32` length | `[u8; N]` + length |
    | `[N]T` | `T[N]` | `T[N]` (pre-allocated) | `[N]T` | `[T; N]` |
    | `[..N]T` | `T[N]` + `int32_t` count | `T[N]` (pre-allocated) + `int` count | `[N]T` + `int32` count | `[T; N]` + count |
@@ -2531,9 +2317,7 @@ Per `type`, per target:
    The C target mirrors the C++ storage rules in C's own types (`bool` is
    C99's, from `<stdbool.h>`); JavaScript
    storage is `Number` for wire widths of 32 bits or fewer and `BigInt` for
-   64 and 128 (the serialize.js value-domain seam). `wstring(N)` storage in
-   all nine targets, and the conversion rule each one carries at the
-   boundary, is §4.12's own table.
+   64 and 128 (the serialize.js value-domain seam).
 
    **The storage principle behind every row: nothing is dynamically sized.**
    Generated storage never heap-allocates per value in any target: every
@@ -3284,9 +3068,8 @@ Every row to date is settled, deferred with its design banked, or discarded.
 2. ~~Storage-type overrides~~ — settled by the integer family: storage is
    declared by the type name (`thrust int8 | min = 0, max = 100`); no
    override mechanism exists.
-3. ~~Wide strings and relative integers~~ — wide strings are settled:
-   `wstring(N)` is §4.12, its wire the classic `serialize_wstring` and its
-   reader rules uniform across the nine targets. Relative integers are out
+3. ~~Wide strings and relative integers~~ — text is UTF-8 `string(N)` and
+   there is no wide text (§4.12). Relative integers are out
    of scope by decision (§4.10): the construct belongs to the delta layer,
    which is replicant's and serialize.pro's.
 4. ~~`schemafmt` timing~~ — settled: built early, as the parser's first

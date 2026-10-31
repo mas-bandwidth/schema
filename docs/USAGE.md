@@ -15,7 +15,7 @@ compiler does.
   - [Integers](#integers) · [Ranged integers](#ranged-integers) ·
     [bits(N)](#bitsn) · [bool](#bool) · [Floats](#floats) ·
     [Compressed floats](#compressed-floats) · [fixed(I, F)](#fixedi-f) · [ufixed(I, F)](#ufixedi-f) ·
-    [Strings and bytes](#strings-and-bytes) · [wstring(N)](#wstringn) ·
+    [Strings and bytes](#strings-and-bytes) · [Wide text](#wide-text) ·
     [Arrays](#arrays) · [Composition](#composition)
 - [Branches: if / else](#branches-if--else)
 - [Defaults](#defaults)
@@ -704,72 +704,27 @@ failure. So Latin-1 bytes in a `string(32)` are refused by every reader that
 sees them. If your payload is genuinely arbitrary bytes, declare `bytes(N)`,
 which is the same wire with no encoding rule (SPEC.md §4.7).
 
-### wstring(N)
+### Wide text
 
-*On the packet wire in all nine targets: C++, C, Rust, Go, C#, Java,
-JavaScript, Dart and Elixir. All nine also carry table kind `33`, and no
-target refuses table-reachable wide text. The packet corpus and source/id pins
-use the isolated `examples-wide/WideText.schema` unit.
-SPEC.md §4.12 defines the packet wire; SPEC-TABLES.md §3 defines the table
-wire.*
+Text in schema is `string(N)`, and it is UTF-8 in every target and on every
+wire. There is no wide string type: `wstring` is a reserved word, and every
+spelling of it is refused with one diagnostic that names the fix.
 
 ```
 title wstring(64)
 ```
 
-Wide text: UTF-16 code units, with **N counted in CODE UNITS**, not code
-points and not bytes, so a character outside the basic plane occupies two of
-them. It exists for a host whose native text is already UTF-16, where the wire
-and the string hold the same units and text crosses the boundary as a copy
-rather than a transcode.
+```
+wstring is not a schema type: text is string, which is UTF-8 — declare
+string(N) and convert wide text to UTF-8 at the application's boundary
+```
 
-The wire is two steps and **no alignment in either**: the length as a ranged
-integer over `[0, N]`, then each code unit as a 32-bit group, packed
-LSB-first like every other value. `MaxBits` is therefore
-`bits_required(0, N) + 32 * N`, with no padding term. And because it
-introduces no alignment point, a `wstring` field does not make its type's
-layout depend on the entry bit offset the way `string` and `bytes` do.
-
-A `wstring` takes no attributes and no `= default`, and `wstring(N)` with N
-below 2 is a compile error, the same floor `string(N)` carries.
-
-**The reader enforces four rules, identically in all nine targets and in every
-build mode.** A decoded length outside `[0, N]` fails. A group above `0xFFFF`
-fails, whatever wide character type the host happens to have. A zero group
-among the transmitted units fails, which is `string(N)`'s interior-null rule
-in code-unit terms. And surrogates must PAIR: a high surrogate not
-immediately followed by a low one fails, a low surrogate not immediately
-preceded by a high one fails, and a high surrogate as the final group fails.
-Well-formed pairs are how astral text travels. Nothing else about the text is
-examined: noncharacters are accepted, `0xFFFF` included, and there is no
-normalization, no case folding and no code-point count. A reader that adds a
-check here is as wrong as one that drops a check above.
-
-**The write side checks two things**, in each target's own idiom: the used
-length is within `[0, N]`, because it guards the copy, and a zero code unit
-among the used units is refused. Surrogate pairing is NOT checked on write.
-It is a writer obligation the reader on the other end enforces.
-
-Storage is a pre-allocated buffer of code units with a used length beside it,
-and nothing transcodes inside the generated read or write path. What the
-boundary costs is per language. On C#, Java, JavaScript, Dart, and C++ or C on
-a UTF-16 host it is a copy of code units, which is the reason the type exists.
-On Go, Rust and Elixir, whose native text is UTF-8, the transcode is real and
-is paid in your own code: `utf16.Encode`/`utf16.Decode` in Go,
-`str::encode_utf16`/`String::from_utf16` in Rust, and
-`:unicode.characters_to_binary/3` in Elixir. In C and C++ a successful read
-also writes the zero unit at index `length`, which is what the `+ 1` in
-`char16_t[N + 1]` is for.
-
-`wstring(N)` rides the TABLE wire too, under a wide-text kind of its own,
-whose payload is a byte length holding half as many code units, two bytes each
-little-endian. So respelling a field between `string(N)` and `wstring(N)` is
-an ordinary counted kind mismatch and never UTF-8 bytes read as code units.
-The validation above holds on both wires, and only the SHAPE of the refusal
-differs: a packet read stops, while a table read gives the field its declared
-default, counts one `malformed`, and reads on. It is refused as a MAP key,
-with `string(N)` named as the key that works, because `memcmp` over UTF-8 is
-a portable order and little-endian code units have none.
+A program whose native text is UTF-16 or `wchar_t` converts it at its own
+boundary, before it writes and after it reads: serialize's `serialize_utf.h`
+for C and C++, `Encoding.UTF8` in C#, `StandardCharsets.UTF_8` in Java,
+`TextEncoder`/`TextDecoder` in JavaScript, and `utf8.encode`/`utf8.decode` in
+Dart. Size `N` in UTF-8 bytes, which is up to three per basic-plane character
+and four per astral one (SPEC.md §4.12).
 
 
 ### Arrays
@@ -2517,8 +2472,7 @@ table Fleet
 one of `int8` through `int64` and `uint8` through `uint64`, bare. No `| min`,
 no `| max` and no default, because a key is an identity and clamping an
 identity merges two entries. Every other key is refused by name with its
-reason. A `wstring(N)` key names `string(N)`, because `memcmp` over UTF-8 is a
-portable order and little-endian code units have none. An enum key names
+reason. An enum key names
 `[E]T`. A `bool`, a float, a `flags`, `bits(N)`, `bytes(N)`, a 128-bit
 integer, a `fixed`/`ufixed`, a `type`, a `table`, a pointer, an optional and a
 union are each refused too.
@@ -2709,7 +2663,7 @@ writer declared `[]T` clamps at N and counts once, which is the price of
 adding a bound.
 
 
-### Byte buffers: `bytes(N)`, `*bytes`, `*string` and `*wstring`
+### Byte buffers: `bytes(N)`, `*bytes` and `*string`
 
 A bounded blob is `bytes(N)` — N bytes of inline storage in every instance,
 at a bound you declare, with its used length beside it. When the size varies
@@ -2717,9 +2671,7 @@ wildly per node, the bound costs you: a `bytes(65536)` field is 64 KB in
 every instance whether it is used or not.
 
 **A buffer at exactly its used size is `*bytes`, and `*string` is the same
-node with a terminator** (SPEC-TABLES.md §2.5). `*wstring` is the third
-spelling and does the same in UTF-16 code units — *specified, and no backend
-emits the blob record (SPEC-TABLES.md §2.5).* Each is a POINTER to a BLOB
+node with a terminator** (SPEC-TABLES.md §2.5). Each is a POINTER to a BLOB
 NODE of exactly its bytes, and every pointer rule applies: table body only,
 no default, no `?`, no array, no bound — and the field makes its holder
 variable, so the builder is where the bytes are put:
@@ -2730,7 +2682,6 @@ table Asset
     name    string(32)
     data    *bytes   // the asset, at exactly its size; null when absent
     caption *string  // a string at its used length
-    label   *wstring // the same, in UTF-16 code units
 }
 ```
 
@@ -3564,8 +3515,7 @@ Every scalar the type wire carries rides in a table: `fixed`/`ufixed`
 as their raw scaled integer under a fixed kind of their storage width, with
 the whole-unit bounds clamping on the raw scale and the text in whole units
 (`1.5`), `int128`/`uint128` under kinds of their own, sixteen bytes low
-half first, and `wstring(N)` under a wide-text kind of its own, its code units
-two bytes each little-endian (SPEC-TABLES.md §3, §16.2). What stays off the
+half first (SPEC-TABLES.md §3, §16.2). What stays off the
 table wire: `const`/`reserved`/`align` (bit-position constructs — the table
 wire has no bit positions). Extents have
 no wire ceiling: every length, count and index rides as a canonical
@@ -4576,9 +4526,7 @@ scan that is not whole, a damaged file trailer, and every damage the load
 meets inside a body (a count, reference or length that is not a minimal
 LEB128, an element or nested body that runs short or ends early, an id or
 variant reference outside the id table, a node index past the directory,
-ill-formed UTF-8 in a text field, element or string node, a wstring field or
-union arm that is not valid UTF-16 (an odd length, a NUL unit or an unpaired
-surrogate), a bool byte above 1, map keys out of
+ill-formed UTF-8 in a text field, element or string node, a bool byte above 1, map keys out of
 order or not whole, a union arm whose payload is not its kind's width) all
 return `TableRefuseWireDamaged` (`wire_damaged`) from `LoadMeasureReason`;
 this is distinct from a format refusal and from the accelerator-only

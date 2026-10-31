@@ -54,7 +54,6 @@
 (:id "dart/R18" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t05_test.go: TestFixedRoadmapDartT05Evolution/dart/R18") :tested-revision "b7fa9b06a")
 (:id "dart/C3" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t05_test.go: TestFixedRoadmapDartT05Evolution/dart/C3") :tested-revision "b7fa9b06a")
 (:id "dart/C4" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t05_test.go: TestFixedRoadmapDartT05Evolution/dart/C4") :tested-revision "b7fa9b06a")
-(:id "dart/C5" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t05_test.go: TestFixedRoadmapDartT05Evolution/dart/C5") :tested-revision "b7fa9b06a")
 (:id "dart/R24" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t05_test.go: TestFixedRoadmapDartT05Evolution/dart/R24") :tested-revision "b7fa9b06a")
 (:id "dart/R3" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t04_test.go: TestFixedRoadmapDartT04Versions/dart/R3") :tested-revision "f2da87e8488aef9f6b12b3fec204450a968e12ec")
 (:id "dart/R32" :state :done :evidence ("internal/codegen/darttable/fixedroadmap_t04_test.go: TestFixedRoadmapDartT04Versions/dart/R32") :tested-revision "f2da87e8488aef9f6b12b3fec204450a968e12ec")

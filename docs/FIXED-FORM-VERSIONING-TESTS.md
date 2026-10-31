@@ -41,9 +41,8 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `keyed_array_enum_append` | `[Tier]int32`, Tier 3 | Tier 4 | Tier reordered: "variant reordered" (the array follows) | 3 slots exact, slot 4 default | the hash |
 | `constant_grow` | `const N = 4; [..N]` | `N = 8` | `N = 2`: "bound narrowed (4 -> 2)" (the lock records the EVALUATED bound) | as `array_bounded_grow` | the hash |
 | `string_grow` | `string(8)` | `string(16)` | `string(4)`: "capacity narrowed" | length and bytes exact, slack zero | the hash |
-| `wstring_grow` | `wstring(8)` | `wstring(16)` | `wstring(4)` | as string, in code units | the hash |
 | `bytes_grow` | `bytes(8)` | `bytes(16)` | `bytes(4)` | as string | the hash |
-| `text_kind` | `string(8)` | — | `wstring(8)`: "kind changed"; `bytes(8)`: "kind changed" | — | — |
+| `text_kind` | `string(8)` | — | `bytes(8)`: "kind changed" | — | — |
 | `int_widen` | `int16` | `int32`, `int64` | `int8`: "narrowed"; `uint16`: "signedness"; `float32`: "ladder" | sign-extended exact (-1, MIN, MAX), `widened` += 1 | the hash |
 | `uint_widen` | `uint16` | `uint32` | `uint8`; `int16` | zero-extended | the hash |
 | `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the hash |

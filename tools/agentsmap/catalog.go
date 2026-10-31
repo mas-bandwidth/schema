@@ -39,7 +39,6 @@ var catalog = []Entry{
 	e("compiler", "public driver API", "go test ./compiler", "go test ./compiler"),
 	e("docs", "spec, tutorial, contributing", "go test ./compiler", "go test ./compiler"),
 	e("examples", "type-wire corpus", "go test ./internal/goldens", "make check"),
-	e("examples-wide", "wide-text corpus", "go test ./internal/goldens", "make check"),
 	e("examples128", "int128/fixed corpus", "go test ./internal/goldens", "make check"),
 	e("generated", "committed per-language output", "test/generated-tree/verify", "make generated-current"),
 	e("images", "README art", "none", "none"),
@@ -227,7 +226,6 @@ var catalog = []Entry{
 	e("test/packet-finite", "packet finite-float gates", "make test-go, make test-dart, make test-elixir, make test-lua, make test-luau", "make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau"),
 	e("test/packet-text", "packet UTF-8 gates", "make test", "make test"),
 	e("test/packet-void", "packet void-arm gates", "make test", "make test"),
-	e("test/packet-wide", "packet wide-text gates", "make test", "make test"),
 	e("test/py-packet", "python packet rows", "make tables-py-packet", "make tables-py-packet"),
 	e("test/rust", "Rust packet tests", "make test-rust", "make test-rust"),
 	e("test/rust-agree", "Rust accessor/descriptor agreement gate", "make tables-rust-accessor-descriptor-agreement", "make tables-rust-accessor-descriptor-agreement"),
@@ -241,5 +239,4 @@ var catalog = []Entry{
 	e("test/table-base64", "table base64 gates", "make test", "make test"),
 	e("test/tables", "C++ table tests", "make test", "./build/schema_test_tables"),
 	e("test/vocabgen", "wide-vocabulary generator", "make check", "go run ./test/vocabgen"),
-	e("test/wide", "wide-text C++ tests", "./build/schema_test_wide", "./build/schema_test_wide"),
 }

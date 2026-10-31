@@ -131,8 +131,6 @@
 (:id "rust/R27" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t12_test.go: TestFixedRoadmapRustT12FramingText/R27") :tested-revision "d54372b235141f5938d0353f00b686cd6f70d100")
 (:id "rust/P3" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t12_test.go: TestFixedRoadmapRustT12FramingText/P3") :tested-revision "d54372b235141f5938d0353f00b686cd6f70d100")
 (:id "rust/P4" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t12_test.go: TestFixedRoadmapRustT12FramingText/P4") :tested-revision "d54372b235141f5938d0353f00b686cd6f70d100")
-(:id "utf16-values/rust/valid-data" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t19_test.go: TestFixedRoadmapRustT19WideText/utf16-values/rust/valid-data") :tested-revision "82f16ee25dda212a5a5ee982e45d6b6743262247")
-(:id "rust/C5" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t19_test.go: TestFixedRoadmapRustT19WideText/rust/C5") :tested-revision "82f16ee25dda212a5a5ee982e45d6b6743262247")
 (:id "union-field-arms/rust/valid-data" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t18_test.go: TestFixedRoadmapRustT18UnionArms/union-field-arms/rust/valid-data") :tested-revision "c0561de31297c5796e24c994bea908d63fa637b5")
 (:id "payload-free-arms/rust/valid-data" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t18_test.go: TestFixedRoadmapRustT18UnionArms/payload-free-arms/rust/valid-data") :tested-revision "c0561de31297c5796e24c994bea908d63fa637b5")
 (:id "union-arrays/rust/valid-data" :state :done :evidence ("internal/codegen/rusttable/fixedroadmap_t10_test.go: TestFixedRoadmapRustT10CompositesOptionals/union-arrays/rust/valid-data") :tested-revision "100b72272dc376bc92d55b2d0c01fa16c111bc53")

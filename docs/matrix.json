@@ -676,21 +676,6 @@
       }
     },
     {
-      "title": "Bounded UTF-16 string fields",
-      "cells": {
-        "cpp": true,
-        "c": false,
-        "cs": false,
-        "go": false,
-        "rust": false,
-        "java": false,
-        "js": false,
-        "dart": true,
-        "elixir": false,
-        "lua": false
-      }
-    },
-    {
       "title": "Bounded byte buffers",
       "cells": {
         "cpp": true,

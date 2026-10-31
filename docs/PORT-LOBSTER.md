@@ -62,7 +62,6 @@ a type name where it is used.
 | a type `T` | the class `T` | `NewT()` |
 | a union `U` (§4.8) | a class `U` with `Type:UType` (an enum `UTypeNone`, arms from 1, `UTypeCount`, `UTypeMax`, `EnumNameUType`) and one slot per payload arm | `Type = UTypeNone`, every payload arm pre-allocated; a payload-free arm has no slot |
 | `string(N)`, `bytes(N)` | a `string` of N bytes used as a buffer, and `<Name>Length:int` beside it (SPEC §4.7) | `schema_rt.zeros(N)`; a default is written in with `schema_rt.put` and its length set |
-| `wstring(N)` (§4.12) | a `string` of 2N bytes holding UTF-16LE code units, and `<Name>Length` in code units | `schema_rt.zeros(2N)` |
 | `[N]uint8` | a `string` of N bytes, 0-based — the bulk path's own type | `schema_rt.zeros(N)` |
 | `[N]T`, `[E]T` (key k at index k), any other element | a vector `[T]` of exactly N elements, 0-based | `[]`, then N `push`es of the element's construction |
 | `[..N]T`, `[A..N]T` | the same vector of N, and `<Name>Count:int` beside it | the count born at A (SPEC §4.6) |
@@ -243,8 +242,7 @@ byte blob, an optional array, a map, an unbounded list), so the target applies
 none of them, and every unit of the tables manifest generates
 (`TestLobsterGeneratesEveryManifestUnit`, whose witness is that the shared
 refusals still refuse units of that manifest). A PACKET type's string, bytes
-or flags default and a packet `wstring(N)` are carried too: the type wire
-reads and writes both over serialize.lobster v2.1.1 (`write.go`, `read.go`;
+or flags default is carried too: the type wire reads and writes it over serialize.lobster v2.1.1 (`write.go`, `read.go`;
 the packet gates are `internal/codegen/lobster/packet_*_test.go`). The constructs of `compiler/carries.go` are held back
 centrally unless a `carries_lobster*.go` file registers them; lobster carries
 the timestamp, the one-sided range, text lists, their total, unbounded text
@@ -269,7 +267,7 @@ a `Record` into the class.
 |---|---|---|
 | `Record { d, fields }` | one table or packet type: its descriptor and one `Slot` per field, descriptor order | `Instance` |
 | `Slot { fd, present, count, cell, elems, entries }` | one field: its descriptor, the `?T` presence companion, the used extent (a counted array's count, a string's or bytes' used length), the value, the array slots (`len` is the bound; a list's is its length), the map entries (each a `Value` whose `tab` is a `{ key, value }` record, ascending) | `Field` |
-| `Value { b, i, w, f, s, units, tab, arm, node, blob }` | one cell; only the member the shape names is read: `i` every integer of 64 bits or fewer as its bit pattern, an enum value, a union tag; `w` the raw `Int128` of a wide kind (18–29, fixed point as units × 2^F); `f` a float (a float32 as its exact double); `s` string or bytes at the used extent; `units` wstring code units; `tab` a by-value body, a body arm, an element record, a map entry; `arm` a non-body arm's `Slot`; `node` a pointee; `blob` a blob's bytes | `Cell` |
+| `Value { b, i, w, f, s, tab, arm, node, blob }` | one cell; only the member the shape names is read: `i` every integer of 64 bits or fewer as its bit pattern, an enum value, a union tag; `w` the raw `Int128` of a wide kind (18–29, fixed point as units × 2^F); `f` a float (a float32 as its exact double); `s` string or bytes at the used extent; `tab` a by-value body, a body arm, an element record, a map entry; `arm` a non-body arm's `Slot`; `node` a pointee; `blob` a blob's bytes | `Cell` |
 
 **Absent, present-empty and present.** A pointer that is null holds `node = nil`, and a null `*bytes` or `*string` holds `blob = nil`; an EMPTY blob is
 the non-nil `""`, because null and empty are two values (§2.5). A `?T` field
@@ -438,7 +436,7 @@ as lines (lowercase hex for bytes).**
   (make/lobster-hostile.mk), each with its negative control.
 - **The strict gate** (`make tables-lobster-clean`,
   make/schema-lobster-generated-strict-gate.mk) compiles every generated unit
-  of examples/, examples128/, examples-wide/ and the conformance manifest under
+  of examples/, examples128/ and the conformance manifest under
   the pin and fails on any compiler output, because Lobster prints a warning
   and still exits 0.
 - **Every toolchain run is the slow half** (internal/slowtest): lobsterrun
@@ -472,8 +470,8 @@ reason, and `compiler/porting_test.go` holds it to the tree:
 **THE STRICT GATE** (`make/schema-lobster-generated-strict-gate.mk`, J4).
 Lobster has no separate linter: its compiler type-checks every function of
 every imported module and warns on stdout with exit status 0. So
-`make tables-lobster-clean` generates examples/, examples128/,
-examples-wide/ and every unit of the conformance manifest, compiles each unit
+`make tables-lobster-clean` generates examples/, examples128/
+and every unit of the conformance manifest, compiles each unit
 under the pin with `--pak` through a main that imports every module, and fails
 on ANY output. `schema-lobster-generated-strict-gate-negative-control` (in the
 `lobster` group of make/negative-controls.json) requires a clean baseline,
@@ -504,7 +502,7 @@ stands:
 | serialize.lobster vendored verbatim, pinned by SERIALIZE_PIN (v2.1.1) | `lobster/runtime/serialize*.lobster`, `make/lobster-serialize.mk` | landed |
 | the type wire's write, byte for byte against the C++ goldens; write misuse traps in the runtime, the schema's own contracts are `assert` | `lobster/write.go` | landed |
 | the type wire's read, every refusal latched by name, `serialize_end` | `lobster/read.go`, `lobster/runtime/schema_wire.lobster` | landed |
-| packet floats finite only; packet defaults; packet wstring | `lobster/` | landed |
+| packet floats finite only; packet defaults | `lobster/` | landed |
 | the variable table wire's load (strict, and `load_tolerant`) and save | `lobstertable/runtime/load.lobster`, `schema_save.lobster` | landed |
 | the fixed form and its evolution under the lock's lineage | `lobstertable/fixedform.go`, `fixedevolve.go` | landed |
 | table floats finite only in every form | `lobstertable/` | landed |
