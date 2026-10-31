@@ -220,3 +220,14 @@ list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/li
 # (corpus seed profile_elide), on tables-js-wire-fuzz-all; its emitter-lane
 # gate is internal/codegen/jstable's TestBoolByteAboveOneIsMalformedJavaScript.
 bool_byte_above_one tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin
+
+# AN ARM'S ARRAY HEADER IS READ INSIDE THE ARM'S L (§3, the arm payload table).
+# ToolMessage's body arrives as the spans arm with L = 4: element kind 2 (an i8,
+# which widens into the declared i32) and a count whose LEB128 runs past the
+# L. The oracle reads an arm out of a reader framed by its L, so the count is
+# truncated, the arm is that arm's own framing damage, the union reads None,
+# and only malformed counts. The Rust arm reader took the count from the whole
+# wire and counted a widen and a clamp first. Found by the random pass at
+# mutant 487423 of seed 68719476731 (corpus seed message_arms), on Certify run
+# 41188400968, tables-rust-release.
+arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/arm_array_count_past_arm_length.bin
