@@ -1232,6 +1232,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-discard",
+      "when": "pull-request",
+      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md \u00a74): the plain read's discard is removed from a copy of the emitter through go test -overlay, and TestDamageDiscardsTheWholeLoadElixir must go red with a framing vector handed back as a value. It generates and runs three units under the overlay, which is why it is a group of its own.",
+      "targets": [
+        "tables-elixir-discard-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-hostile",
       "when": "pull-request",
       "why": "the Elixir json-hostile rows' two controls (docs/SPEC-TABLES.md §16.2): an uncounted repeated enum-keyed slot and a float32 stored past its rounding midpoint, each required to red exactly its own rows of the json-hostile surface. Each is a sabotaged corpus compile, about 60 s on the studio.",

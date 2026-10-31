@@ -1356,7 +1356,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
             # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
             # that met damage anywhere returns no value, only its report
-            if report.malformed do
+            if Map.get(report, :malformed) do
               {:error, :malformed, reasoned(report, :malformed)}
             else
               {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}

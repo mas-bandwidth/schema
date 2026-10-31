@@ -1741,6 +1741,40 @@ tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/
 
 test-elixir: tables-elixir-wire-fuzz-all
 
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), Elixir side: every
+# framing vector the manifest answers `malformed`, through the plain and the
+# retaining read, and a damaged text through the text read, must hand back no
+# value (TestDamageDiscardsTheWholeLoadElixir). Its control removes the plain
+# read's discard from a COPY of the emitter, reached through `go test -overlay`,
+# and the gate must go red on a framing vector. Nothing tracked is written to.
+ELIXIR_DISCARD_NC := build/elixir-discard-nc
+
+.PHONY: tables-elixir-discard tables-elixir-discard-negative-control
+tables-elixir-discard:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s \
+		-run '^TestDamageDiscardsTheWholeLoadElixir$$'
+
+tables-elixir-discard-negative-control:
+	@rm -rf $(ELIXIR_DISCARD_NC) && mkdir -p $(ELIXIR_DISCARD_NC)
+	@sed -e 's|            if Map.get(report, :malformed) do|            if false do # NEGATIVE CONTROL: the discard is gone|' \
+		internal/codegen/elixirtable/variableform.go > $(ELIXIR_DISCARD_NC)/variableform.go.txt
+	@cmp -s internal/codegen/elixirtable/variableform.go $(ELIXIR_DISCARD_NC)/variableform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_DISCARD_NC)/variableform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ELIXIR_DISCARD_NC)/overlay.json
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) go test -count=1 -overlay $(ELIXIR_DISCARD_NC)/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadElixir$$' ./internal/codegen/elixirtable > $(ELIXIR_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Elixir discard is gone and the gate stayed green"; \
+		cat $(ELIXIR_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "the plain read handed back {:ok" $(ELIXIR_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(ELIXIR_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "the plain read handed back" $(ELIXIR_DISCARD_NC)/log
+	@echo "negative control: removing the Elixir discard turns the whole-load gate RED"
+
+test-elixir: tables-elixir-discard tables-elixir-discard-negative-control
+
 # THE WIRE-FUZZ DRIVER's REFUSAL ANSWERS (docs/PORTING.md I15, the discard rule
 # of #2447): a load that meets damage refuses and its report says malformed, and
 # a form this reader does not know is refused by name. The gate replays an empty
