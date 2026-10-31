@@ -643,7 +643,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	// OWN (docs/SPEC-TABLES.md §6.5). Both decodes run under the tolerant
 	// names, unchanged; the plain names are thin wrappers emitted after them.
 	// The retain family is outside the rule (§6.6) and returned above.
-	g.pf("/* %s is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */\n", g.api(n, "load_tolerant"))
+	g.pf("/* %s is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */\n", g.api(n, "load_tolerant"))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load_tolerant"))
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return NULL; }\n")
 	g.pf("    total=%s(&reader,&data,&records);\n", g.sym(n, "load_layout"))
@@ -654,7 +654,10 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 		blobNamedAlloc = " if((nodes.blob_named=(uint8_t *)table_allocate(table_default_allocator(),(int64_t)records+1))==NULL) { report->malformed=1; return NULL; }"
 	}
 	g.pf("    nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;%s\n    place.base=region; place.capacity=data; place.used=%s(&reader); sink.region=&place; sink.worker=NULL;\n", blobNamedAlloc, g.sym(n, "wire_storage"))
-	g.pf("    if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } table_release(table_default_allocator(),nodes.blob_named); return NULL; }\n    table_release(table_default_allocator(),nodes.blob_named); return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_graph"), n, n)
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a refusal, or
+	// damage the walk stepped over, hands back no root and leaves no node in
+	// the caller's region.
+	g.pf("    if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); table_release(table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */\n    table_release(table_default_allocator(),nodes.blob_named); return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_graph"), n, n)
 	g.pf("/* %s is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */\n", g.api(n, "load_builder_tolerant"))
 	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", g.api(n, "load_builder_tolerant"), n)
 	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; %s * root; int ok;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; }\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { return 0; }\n", n)
@@ -665,7 +668,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if len(ir.BlobPointerFields(g.unit)) > 0 {
 		blobNamedAllocBuilder = " if((nodes.blob_named=(uint8_t *)table_allocate(builder->arena.allocator,(int64_t)records+1))==NULL) { report->malformed=1; table_release(builder->arena.allocator,directory); return 0; }"
 	}
-	g.pf("    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;%s\n    sink.region=NULL; sink.worker=&builder->main;\n    ok=%s(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named); return ok;\n}\n", blobNamedAllocBuilder, g.sym(n, "load_graph"))
+	g.pf("    nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;%s\n    sink.region=NULL; sink.worker=&builder->main;\n    ok=%s(&reader,root,&nodes,directory,&sink); table_release(builder->arena.allocator,directory); table_release(builder->arena.allocator,nodes.blob_named);\n    if(!ok || report->malformed) { %s(root); return 0; } /* damage discards the whole load (§4) */\n    return 1;\n}\n", blobNamedAllocBuilder, g.sym(n, "load_graph"), g.api(n, "reset"))
 	g.emitGraphLoadStrict(st)
 }
 
