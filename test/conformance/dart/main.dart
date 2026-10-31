@@ -990,6 +990,14 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'graphdemo ListNode':
+      return graphdemo.listNodeToJson(graphdemo.listNodeWireLoad(wire));
+    case 'listdemo Bounded':
+      return listdemo.boundedToJson(listdemo.boundedWireLoad(wire));
+    case 'listdemo Ints':
+      return listdemo.intsToJson(listdemo.intsWireLoad(wire));
+    case 'listdemo Squad':
+      return listdemo.squadToJson(listdemo.squadWireLoad(wire));
     case 'tblw1 Fleet':
       return tblw1.fleetToJson(tblw1.fleetWireLoad(wire));
     case 'tblw2 Fleet':
@@ -1094,6 +1102,26 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
 
 String? loadReport(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'graphdemo ListNode':
+      final r = graphdemo.TableWireReport();
+      graphdemo.listNodeWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Army':
+      final r = listdemo.TableWireReport();
+      listdemo.armyWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Bounded':
+      final r = listdemo.TableWireReport();
+      listdemo.boundedWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Ints':
+      final r = listdemo.TableWireReport();
+      listdemo.intsWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
+    case 'listdemo Squad':
+      final r = listdemo.TableWireReport();
+      listdemo.squadWireLoad(wire, r);
+      return _reportLine(r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, r.malformed, r.refused);
     case 'tblv1 Cfg':
       final r = tblv1.TableWireReport();
       tblv1.cfgWireLoad(wire, r);
@@ -1659,6 +1687,33 @@ bool _sameBytes(List<int> a, List<int> b) {
   return true;
 }
 
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+// `report` surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read was refused. A derived line is
+// `framing <case> <unit> <root> <wire> [no-value]`.
+int surfaceFraming(String outDir) {
+  for (final f in kind('framing')) {
+    final wire = File(f[4]).readAsBytesSync();
+    final line = loadReport(f[2], f[3], wire);
+    if (line == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    final noValue = f.length > 5 && f[5] == 'no-value';
+    if (line.trimRight().endsWith(',refused') || noValue) {
+      File('$outDir/${f[1]}').writeAsStringSync(line);
+      continue;
+    }
+    final text = jsonWriteText(f[2], f[3], wire);
+    if (text == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync(line + text);
+  }
+  return 0;
+}
+
 int surfaceReport(String outDir) {
   for (final f in kind('report')) {
     final line = loadReport(f[2], f[3], File(f[4]).readAsBytesSync());
@@ -1945,7 +2000,7 @@ const String surfaces =
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\n'
+    'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
 
@@ -2437,6 +2492,8 @@ int run(List<String> args) {
       return surfaceJsonHostile(out);
     case 'report':
       return surfaceReport(out);
+    case 'framing':
+      return surfaceFraming(out);
     case 'cook':
       return surfaceCook(out);
     case 'cook-write':
