@@ -412,7 +412,7 @@ TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
 # all fixed-size the generated output carries no builder, no arena, no reference
 # type, no lifecycle surface" (docs/SPEC-TABLES.md §2.2) — and under the KEYWORD
 # `tables/examples` is no longer such a unit: `Guarded.schema`'s `Patrol` is a
-# plain `table`, because a guarded branch is exactly the construct that keeps it
+# variable table, because a guarded branch is exactly the construct that keeps it
 # one, so the whole unit is a variable unit and carries the machinery by right.
 # Scanning it would be this gate asserting something the declaration has made
 # false, which is worse than not scanning it.
@@ -499,7 +499,7 @@ tables-json-walk: build/tables-generated/.stamp
 # The variable class stores through the arena and the region whether or not it
 # has a pointer in it, so a variable table's own `FromJson` names the graph
 # half's entry points — which is why `tables/examples` moved from the second
-# list to the first here: `Guarded.schema`'s `Patrol` is a plain `table`, and a
+# list to the first here: `Guarded.schema`'s `Patrol` is a variable table, and a
 # guarded branch is exactly the construct that keeps it one. The gate is
 # UNCHANGED in strength: every unit is still on one list or the other, and the
 # byte comparison across the first list now spans one unit more.

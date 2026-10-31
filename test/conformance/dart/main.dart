@@ -2373,7 +2373,7 @@ Future<void> wireFuzz() async {
     final bound = form == 1 ? fuzzRoot(unit, root) : null;
     final run = bound == null ? null : (retain == 1 ? bound.retain : bound.plain);
     // a form-2 root rides the message arm (§3.3), as findMessageCodec binds
-    // it in test/conformance/go/wire_fuzz.go; a plain `table` carries no
+    // it in test/conformance/go/wire_fuzz.go; a variable table carries no
     // message verbs and so answers absent, as the Go leg's does
     final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
     runs.add(run);

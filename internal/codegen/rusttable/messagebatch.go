@@ -47,8 +47,8 @@ const msgBad = "{ report.malformed = true; return false; }"
 
 // messageModule is <base>_message.rs: the body walkers of every type this
 // file declares that a fixed root reaches, and the three batch verbs of every
-// fixed root it declares. "`fixed table T` may ride here, a plain `table T`
-// may not" (§3.3), so a plain table grows no verb.
+// fixed root it declares. "`fixed table T` may ride here and a variable table
+// may not" (§3.3), so a variable table grows no verb.
 func (g *gen) messageModule() []byte {
 	reach, _ := unitFixedClosure(g.unit, g.closure)
 	var members []*ir.Struct

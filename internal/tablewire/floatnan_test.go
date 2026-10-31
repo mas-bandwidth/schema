@@ -334,7 +334,7 @@ func TestOracleRetainedFloatIsTested(t *testing.T) {
 		if ok || !errors.As(err, &refusal) {
 			t.Errorf("the retaining read answered %v %v, want the non_finite_float refusal", ok, err)
 		}
-		var plain tabletext.Report
+		var variable tabletext.Report
 		if ok, err := tablewire.Decode(reader, reader.New(reader.Lookup("T")), bad, &plain); !ok || err != nil || plain.Unknown != 2 {
 			t.Errorf("the plain read of the same wire answered %v %v %+v, want two unknowns stepped over", ok, err, plain)
 		}

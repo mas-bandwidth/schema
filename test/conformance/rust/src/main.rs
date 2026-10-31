@@ -1357,8 +1357,8 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
 // The one surface that reads two files: the CONNECTION's announcement into one
 // direction's vocabulary, then the message-form batch against it. The verbs are
 // PLURAL — LoadMessages, MeasureMessages and SaveMessages over the batch — and
-// the bytes written are SaveMessages' own. A row whose root is a plain `table`
-// carries no verbs ("`fixed table T` may ride here, a plain `table T` may
+// the bytes written are SaveMessages' own. A row whose root is a variable table
+// carries no verbs ("`fixed table T` may ride here and a variable table may
 // not", §3.3), so it is answered ABSENT with the reason, as the Go driver does.
 
 macro_rules! message_round_trip {
