@@ -119,8 +119,10 @@
     }
 
 
-/* Variable batch_roots are loaded into driver-owned regions. The generated load
-   itself neither allocates nor follows a reference. */
+/* Variable roots are loaded into driver-owned regions. The generated load
+   itself neither allocates nor follows a reference. A variable table has no
+   message form (docs/SPEC-TABLES.md §3.3), so its row carries no message
+   codec. */
 #define SCHEMA_CONFORMANCE_GRAPH_CODEC( TYPE, FN ) \
     static int64_t schema_conformance_retain_fuzz_##TYPE(const uint8_t * wire,int64_t bytes,uint8_t ** saved,ConformanceReport * report,int * loaded,int64_t * extent) \
     { \
@@ -128,31 +130,6 @@
      retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=(1<<20)/8;*extent=SCHEMA_CONFORMANCE_Q(FN##_load_measure)(wire,bytes);region=(uint8_t *)malloc((size_t)(*extent>0?*extent:1));if(!region)return -1; \
      root=SCHEMA_CONFORMANCE_Q(FN##_load_retain)(region,*extent,wire,bytes,&retain,&inner);*loaded=root!=NULL;if(root)size=SCHEMA_CONFORMANCE_Q(FN##_measure_retain)(root,&retain); \
      if(size>=0){*saved=(uint8_t *)malloc((size_t)(size?size:1));if(!*saved)size=-1;else size=SCHEMA_CONFORMANCE_Q(FN##_save_retain)(root,&retain,*saved,size,&inner);}free(region);SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);report->retained=inner.retained;report->retain_lost=inner.retain_lost;return size; \
-    } \
-    static int64_t schema_conformance_message_fuzz_##TYPE(const uint8_t * wire,int64_t bytes,uint8_t ** saved,ConformanceReport * report,int * loaded,int64_t * extent) \
-    { \
-     static SCHEMA_CONFORMANCE_Q(table_message_entry_t) entries[SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE)];static SCHEMA_CONFORMANCE_Q(table_vocabulary_t) vocabulary; \
-     SCHEMA_CONFORMANCE_Q(table_report_t) inner={0},ignored={0};int64_t count=256,size=-1;int ok; \
-     if(!vocabulary.announced){vocabulary=SCHEMA_CONFORMANCE_Q(table_vocabulary)(entries,SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE));if(!SCHEMA_CONFORMANCE_Q(announce_read)(&vocabulary,SCHEMA_CONFORMANCE_QU(K_TABLE_ANNOUNCE),SCHEMA_CONFORMANCE_QU(K_TABLE_ANNOUNCE_BYTES),&inner))return -1;} \
-    const SCHEMA_CONFORMANCE_Q(FN##_t) * batch_roots[256]={NULL};uint8_t * region; \
-     *extent=SCHEMA_CONFORMANCE_Q(FN##_load_measure_messages)(&vocabulary,wire,bytes);region=(uint8_t *)malloc((size_t)(*extent>0?*extent:1));if(!region)return -1; \
-     ok=SCHEMA_CONFORMANCE_Q(SCHEMA_CONFORMANCE_READ(FN##_load_messages))(batch_roots,&count,region,*extent,&vocabulary,wire,bytes,&inner);(void)ok;*loaded=batch_roots[0]!=NULL; \
-     if(*loaded)size=SCHEMA_CONFORMANCE_Q(FN##_measure_messages)(batch_roots,1,&ignored); \
-     if(size>=0){*saved=(uint8_t *)malloc((size_t)size);if(!*saved)size=-1;else size=SCHEMA_CONFORMANCE_Q(FN##_save_messages)(batch_roots,1,*saved,size,&ignored);} \
-     free(region); \
-    SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);return size; \
-    } \
-    static int schema_conformance_message_##TYPE(const uint8_t * a,int64_t an,const uint8_t * b,int64_t n,uint8_t ** out,int64_t * size,ConformanceReport * report) \
-    { \
-     SCHEMA_CONFORMANCE_Q(table_message_entry_t) entries[SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE)];SCHEMA_CONFORMANCE_Q(table_vocabulary_t) v=SCHEMA_CONFORMANCE_Q(table_vocabulary)(entries,SCHEMA_CONFORMANCE_QU(K_TABLE_MESSAGE_ENTRIES_HERE)); \
-     SCHEMA_CONFORMANCE_Q(table_report_t) inner={0};int64_t count=1;int ok=0;const SCHEMA_CONFORMANCE_Q(FN##_t) * batch_roots[1]={NULL};uint8_t * region=NULL;int64_t need; \
-     if(!SCHEMA_CONFORMANCE_Q(announce_read)(&v,a,an,&inner))goto done; \
-     need=SCHEMA_CONFORMANCE_Q(FN##_load_measure_messages)(&v,b,n);if(need<0)goto done;region=(uint8_t *)malloc((size_t)need);if(!region)goto done; \
-     if(!SCHEMA_CONFORMANCE_Q(SCHEMA_CONFORMANCE_READ(FN##_load_messages))(batch_roots,&count,region,need,&v,b,n,&inner))goto done; \
-     *size=SCHEMA_CONFORMANCE_Q(FN##_measure_messages)(batch_roots,count,&inner);if(*size<0)goto done; \
-     *out=(uint8_t *)malloc((size_t)*size);if(!*out)goto done; \
-     ok=SCHEMA_CONFORMANCE_Q(FN##_save_messages)(batch_roots,count,*out,*size,&inner)==*size; \
-     done:free(region);SCHEMA_CONFORMANCE_COPY_REPORT(inner,report);return ok; \
     } \
     typedef struct { SCHEMA_CONFORMANCE_Q(FN##_t) empty; const SCHEMA_CONFORMANCE_Q(FN##_t) * root; uint8_t * region; } schema_conformance_holder_##TYPE; \
     static schema_conformance_holder_##TYPE schema_conformance_storage_##TYPE; \
@@ -197,7 +174,7 @@
     { return SCHEMA_CONFORMANCE_Q(FN##_to_json)(((const schema_conformance_holder_##TYPE *)value)->root,buffer,capacity); }
 
 #define SCHEMA_CONFORMANCE_GRAPH_ROW( UNIT, TYPE ) \
-    { #UNIT, #TYPE, schema_conformance_message_fuzz_##TYPE, schema_conformance_message_##TYPE, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
+    { #UNIT, #TYPE, NULL, NULL, schema_conformance_load_##TYPE, schema_conformance_measure_##TYPE, \
       schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, schema_conformance_load_measure_##TYPE, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, schema_conformance_retain_fuzz_##TYPE }
 
 #define SCHEMA_CONFORMANCE_ROW( UNIT, TYPE ) \

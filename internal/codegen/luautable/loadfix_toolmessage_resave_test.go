@@ -236,6 +236,14 @@ func loadFixGEngineFor(m *tabletext.Model, def *ir.Struct, data []byte) (loadFix
 // loadFixGVerdict compares the two legs and names the first disagreement, or
 // "" when they agree.
 func loadFixGVerdict(a, o loadFixGAnswer) string {
+	if o.counts.malformed && !o.refused {
+		// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4, §3.3): the
+		// leg owes the refusal, and no counter or saved byte is compared
+		if !a.counts.malformed {
+			return fmt.Sprintf("the engine discards a damaged batch; Luau says malformed=%t", a.counts.malformed)
+		}
+		return ""
+	}
 	if a.loaded != o.loaded {
 		return fmt.Sprintf("the load differs: Luau loaded=%t, the engine loaded=%t", a.loaded, o.loaded)
 	}

@@ -62,7 +62,7 @@ func manifestMessageData(t *testing.T, path string) (map[string][]string, map[st
 				conns[f[1]] = manifestConn{key: f[1], unit: f[2], ann: f[4]}
 			}
 		case "message":
-			if len(f) >= 6 {
+			if len(f) >= 6 && f[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				msgs = append(msgs, manifestMsg{name: f[1], conn: f[2], root: f[3], wire: f[5]})
 			}
 		}
@@ -92,7 +92,7 @@ print("message-ok")
 // TestLuaMessageFormMatchesTheGoldens drives the conformance message corpus:
 // for every message row it reads the connection's announcement, loads the
 // batch against it, saves, and byte-compares. The count of rows compared is
-// printed (13 in the manifest).
+// printed.
 func TestLuaMessageFormMatchesTheGoldens(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -113,6 +113,9 @@ func TestLuaMessageFormMatchesTheGoldens(t *testing.T) {
 			schemaPaths[i] = filepath.Join(repo, p)
 		}
 		unit := luarun.LoadUnit(t, schemaPaths...)
+		if ir.VariableTables(unit)[msg.root] {
+			continue // a variable table carries no message form (§3.3)
+		}
 		files, err := Generate(unit)
 		if err != nil {
 			t.Fatal(err)
@@ -133,10 +136,8 @@ func TestLuaMessageFormMatchesTheGoldens(t *testing.T) {
 	assertDamagedBatch(t, repo, units, conns)
 }
 
-// assertDamagedBatch holds the batch's damage rule (§3.3): "DAMAGE INSIDE BODY
-// k DELIVERS BODIES 1 to k - 1", one `malformed`, and nothing at or after body
-// k. The pinned three-body batch has body 2's field reference planted at 63,
-// thirty past E, so body 1 stands and the batch is refused.
+// assertDamagedBatch holds §4: damage in body 2 discards the whole batch.
+// The pinned input retains its original mutation; no partial body is usable.
 func assertDamagedBatch(t *testing.T, repo string, units map[string][]string, conns map[string]manifestConn) {
 	t.Helper()
 	conn, ok := conns["backend_conn"]
@@ -168,10 +169,9 @@ local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
 local values = T.LoadMessages("LoginRequest", vocab, inputs.batch, report)
-assert(values ~= nil, "a damaged batch was refused rather than read")
-assert(#values == 1, "damage in body 2 delivered " .. #values .. " bodies, not one")
+assert(values ~= nil, "a damaged batch should return an empty result")
+assert(#values == 0, "damage in body 2 delivered partial bodies")
 assert(report.malformed == true, "damage in body 2 did not report malformed")
-assert(report.refused == 0, "damage in body 2 was reported as a refusal")
 print("damage-ok")
 `)
 	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce, "batch": batch})
@@ -297,4 +297,76 @@ assert(rx.reason == "vocabulary_too_large", "entry bound reason: " .. tostring(r
 print("announce-ok")
 `, ModuleName(unit), entries, vocabBytes, vocabBytes-1, entries, entries-1))
 	luarun.Run(t, dir, "main.lua", map[string][]byte{"announce": announce})
+}
+
+// varMessageSchema is one unit holding both classes: a fixed root, a variable
+// table with no pointer, and a variable table pointing at another.
+const varMessageSchema = `package probe
+
+fixed table Fixedroot
+{
+    x int32
+}
+
+table Varplain
+{
+    x int32
+}
+
+table Varleaf
+{
+    x int32
+}
+
+table Varroot
+{
+    leaf *Varleaf
+}
+`
+
+// TestLuaMessageFormIsFixedTablesOnly holds §3.3's class rule on the Lua leg:
+// MessageRoots lists the fixed root and no variable table, and the three batch
+// verbs refuse a variable root by name before reading or writing a byte, while
+// the fixed root's batch still measures.
+func TestLuaMessageFormIsFixedTablesOnly(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Probe.schema")
+	if err := os.WriteFile(path, []byte(varMessageSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := luarun.LoadUnit(t, path)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := string(files[ModuleName(u)+".lua"])
+	if !strings.Contains(module, `_M.MessageRoots["Fixedroot"] = true`) {
+		t.Error("MessageRoots does not list the fixed root Fixedroot")
+	}
+	for _, name := range []string{"Varplain", "Varleaf", "Varroot"} {
+		if strings.Contains(module, `_M.MessageRoots["`+name+`"]`) {
+			t.Errorf("MessageRoots lists the variable table %s", name)
+		}
+	}
+	luarun.WriteFiles(t, dir, files)
+	writeFile(t, filepath.Join(dir, "main.lua"), `
+local T = require("`+ModuleName(u)+`")
+local vocab = {}
+for i = 1, T.MessageEntries do vocab[i] = {} end
+local function refused(name, f)
+  local ok, err = pcall(f)
+  assert(not ok, name .. " was not refused")
+  assert(tostring(err):find("Varplain", 1, true), name .. " was refused without naming the table: " .. tostring(err))
+end
+refused("LoadMessages", function() return T.LoadMessages("Varplain", vocab, "\2\0", {}) end)
+refused("LoadMessagesTolerant", function() return T.LoadMessagesTolerant("Varplain", vocab, "\2\0", {}) end)
+refused("MeasureMessages", function() return T.MeasureMessages("Varplain", vocab, { T.NewVarplain() }) end)
+refused("SaveMessages", function() return T.SaveMessages("Varplain", vocab, { T.NewVarplain() }) end)
+assert(T.MeasureMessages("Fixedroot", vocab, { T.NewFixedroot() }) > 0, "the fixed root's batch did not measure")
+print("fixed-only-ok")
+`)
+	if out := string(luarun.Run(t, dir, "main.lua", nil)); !strings.Contains(out, "fixed-only-ok") {
+		t.Fatalf("the probe did not finish: %q", out)
+	}
 }

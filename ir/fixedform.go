@@ -1359,7 +1359,7 @@ func tableFixedRuns(op int) bool {
 //
 // THIS IS THE SELECTION POINT FOR FORM 3, AND IT READS THE KEYWORD. §3.4
 // selects the form BY THE DECLARATION: a `fixed table` encodes as form 3, a
-// plain `table` encodes as form 1, and nothing is derived in either direction.
+// variable table encodes as form 1, and nothing is derived in either direction.
 // [VariableTables] is [Struct.FixedDeclared]'s complement, so the keyword is
 // what this function asks, by construction.
 //

@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x91fcccabacf566d0)
-const _ = uint64(0x91fcccabacf566d0 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xbe8efa752a9b8817)
+const _ = uint64(0xbe8efa752a9b8817 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -134,6 +134,8 @@ type TableMessageShape = goruntime.TableMessageShape
 type TableMessageEntry = goruntime.TableMessageEntry
 
 type TableVocabulary = goruntime.TableVocabulary
+
+type TableMessageReader = goruntime.TableMessageReader
 
 const TableFixedForm = goruntime.TableFixedForm
 
@@ -332,6 +334,12 @@ func tableMessageReadScalar(a0 *TableBitReader, a1 TableMessageShape, a2 *[16]by
 func tableMessageWriteScalar(a0 *TableBitWriter, a1 *int32, a2 TableMessageShape, a3, a4 uint64) {
 	goruntime.TableMessageWriteScalar(a0, a1, a2, a3, a4)
 }
+
+func tableMessageBatchOpen(a0 *TableVocabulary, a1 []byte, a2 *TableReport) (TableMessageReader, int64) {
+	return goruntime.TableMessageBatchOpen(a0, a1, a2)
+}
+
+func tableMessageBatchClose(a0 *TableMessageReader) bool { return goruntime.TableMessageBatchClose(a0) }
 
 // GlobalSettingsRow — a block row, or a record one nests by value. `Row` is a CLAIMED
 // suffix (mas-bandwidth/schema docs/SPEC-TABLES.md §11), so no declaration in the unit can take it.
@@ -759,21 +767,20 @@ type TableUnionInfo struct {
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
-	SaveBodyRetain        func(*TableRetainWriter, unsafe.Pointer) bool
-	LoadBodyRetain        func(TableRetainReader, unsafe.Pointer) bool
-	LoadMessageBodyRetain func(TableRetainMessageReader, unsafe.Pointer) (TableRetainMessageReader, bool)
-	CookSize, CookAlign   uint32
-	Name                  string // schema type name
-	Size                  uint32 // unsafe.Sizeof the storage struct
-	ID                    uint64
-	Variable              bool
-	NodeType              func(uint64) *TableTypeInfo
-	SaveBody              func(*TableWriter, unsafe.Pointer) bool
-	LoadBody              func(TableReader, unsafe.Pointer) bool
-	SaveMessageBody       func(*TableMessageWriter, unsafe.Pointer) bool
-	LoadMessageBody       func(TableMessageReader, unsafe.Pointer) (TableMessageReader, bool)
-	NumFields             int32
-	Fields                []TableFieldInfo
+	SaveBodyRetain      func(*TableRetainWriter, unsafe.Pointer) bool
+	LoadBodyRetain      func(TableRetainReader, unsafe.Pointer) bool
+	CookSize, CookAlign uint32
+	Name                string // schema type name
+	Size                uint32 // unsafe.Sizeof the storage struct
+	ID                  uint64
+	Variable            bool
+	NodeType            func(uint64) *TableTypeInfo
+	SaveBody            func(*TableWriter, unsafe.Pointer) bool
+	LoadBody            func(TableReader, unsafe.Pointer) bool
+	SaveMessageBody     func(*TableMessageWriter, unsafe.Pointer) bool
+	LoadMessageBody     func(TableMessageReader, unsafe.Pointer) (TableMessageReader, bool)
+	NumFields           int32
+	Fields              []TableFieldInfo
 	// Reset puts one instance back at its declared defaults, in place. A
 	// generic walker that fills a value has to be able to establish the
 	// defaults an absent field takes, and it holds no type to spell — this is
@@ -1420,20 +1427,10 @@ func (r *TableReader) Signed(kind uint8) int64 {
 	}
 }
 
-type TableMessageReader struct {
-	Nodes      TableNodeMap
-	Bits       TableBitReader
-	Vocabulary *TableVocabulary
-	Report     TableReport
-	IndexBits  int64
-}
-
 type TableMessageWriter struct {
 	TableBitWriter
 	IndexBits int64
 	Clamped   int32
-	Numbering *TableNumbering
-	numbering TableNumbering
 }
 
 // THE FIXED LOAD'S REFUSAL NAMES ARE THE ONE ENUM (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -4099,12 +4096,6 @@ func tableRetainTail(w *TableRetainWriter) bool {
 	return !w.Overflow && !ids.Overflow
 }
 
-type tableMessagePlainReader = TableMessageReader
-type TableRetainMessageReader struct {
-	tableMessagePlainReader
-	Retain *TableRetain
-	Path   tableRetainPath
-}
 type TableRetainWriter struct {
 	Buffer    []byte
 	Offset    int64

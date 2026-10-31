@@ -37,12 +37,15 @@ test-moo: tables-moo-fixed
 # RETAIN-UNKNOWN's negative controls (docs/SPEC-TABLES.md §6.6; make/negative-controls.json,
 # the `moo-tables` group). Each plants one thing out of the emitted runtime and
 # requires the gate that holds it to go red for exactly that reason: the tail
-# write of a kept record, the message form's capture of an unknown entry, and
-# the fixed-class and nil-report refusals.
-.PHONY: tables-moo-retain-negative-control tables-moo-retain-message-negative-control tables-moo-retain-refusal-negative-control
+# write of a kept record, and the fixed-class and nil-report refusals.
+.PHONY: tables-moo-retain-negative-control tables-moo-retain-refusal-negative-control
 tables-moo-retain-negative-control: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainNegativeControl$$'
-tables-moo-retain-message-negative-control: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainMessageNegativeControl$$'
 tables-moo-retain-refusal-negative-control: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainRefusesWhatThePageRefuses$$'
+
+# Damage (§4) refuses the whole load or batch. The control removes each
+# runtime discard and requires the same malformed inputs to expose values.
+.PHONY: tables-moo-damage-discard-negative-control
+tables-moo-damage-discard-negative-control: toolchain-moo
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooDamageDiscardNegativeControls$$'

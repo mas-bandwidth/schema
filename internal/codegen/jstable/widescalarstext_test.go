@@ -183,7 +183,11 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 		Root   string `json:"root"`
 		Wire   string `json:"wire"`
 		Want   string `json:"want"` // the Go leg's report, then its save, hex
-		bytes  []byte
+		// Damaged is the oracle's malformed: DAMAGE DISCARDS THE WHOLE LOAD
+		// (docs/SPEC-TABLES.md §4), so the leg owes the refusal and Want is
+		// not compared
+		Damaged bool `json:"damaged"`
+		bytes   []byte
 	}
 	damages := []*damage{
 		// over-long: clamped at N units, a pair never split (§3)
@@ -192,7 +196,7 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 		{Name: "clamp_arm", bytes: encodeTag(`{"pick": {"wide": "ABCDE"}}`)},
 		{Name: "clamp_map_value", bytes: encodeTag(`{"names": {"1": "ABC"}}`)},
 		{Name: "clamp_nested", bytes: encodeTag(`{"inner": {"w": "xyzw"}}`)},
-		// unpaired surrogates and a zero unit: malformed, the default (§3, §4)
+		// unpaired surrogates and a zero unit: damage, the load refused (§3, §4)
 		{Name: "lone_high", bytes: patch(encodeTag(`{"label": "AB", "seq": 7}`), "41004200", "410000d8")},
 		{Name: "lone_low", bytes: patch(encodeTag(`{"label": "AB", "seq": 7}`), "41004200", "00dc4200")},
 		{Name: "zero_unit", bytes: patch(encodeTag(`{"label": "AB", "seq": 7}`), "41004200", "41000000")},
@@ -204,10 +208,10 @@ func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
 	for _, d := range damages {
 		inst := rm.New(rm.Lookup("Tag"))
 		var rep tabletext.Report
-		ok, err := tablewire.Decode(rm, inst, d.bytes, &rep)
-		if !ok || err != nil {
+		if _, err := tablewire.Decode(rm, inst, d.bytes, &rep); err != nil {
 			t.Fatalf("%s: the oracle refused the forged wire: %v", d.Name, err)
 		}
+		d.Damaged = rep.Malformed
 		save, err := tablewire.Encode(rm, inst)
 		if err != nil {
 			t.Fatalf("%s: the oracle did not re-encode: %v", d.Name, err)
@@ -443,6 +447,7 @@ for (const d of spec.damages ?? []) {
   const m = await import(pathToFileURL(d.module).href);
   const rep = new m.TableVariableReport();
   const v = m[d.root + "Load"](new Uint8Array(readFileSync(d.wire)), rep);
+  if (d.damaged) { console.log("DAMAGE " + d.name + (rep.malformed ? " OK" : " DIFF the damaged load was not refused " + JSON.stringify(rep))); continue; }
   if (v === null) { console.log("DAMAGE " + d.name + " REFUSED " + JSON.stringify(rep)); continue; }
   const s = m[d.root + "Save"](v);
   const got = [rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed].join(",") + " " + (s === null ? "null" : hexOf(s));

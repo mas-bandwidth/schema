@@ -95,14 +95,25 @@ func unionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 }
 
 // recordBytes is one node's RECORD half: its `sizeof` for a record with no
-// extent, and that rounded to the region's alignment floor for one with an
-// extent, which is where the extent begins (§7.2).
+// extent, and for one with an extent that rounded to the greater of the
+// region's alignment floor and the greatest alignment any array its extent
+// can hold asks for, which is where the extent begins (§2.8, §7.2).
 func recordBytes(u *ir.Unit, st *ir.Struct) int64 {
-	ml := ir.RecordLayout(u, st)
 	if !recordHasExtent(u, st) {
-		return ml.Size
+		return ir.RecordLayout(u, st).Size
 	}
-	return alignUp(ml.Size, ir.RegionAlignFloor)
+	return ir.CookExtentStart(u, st)
+}
+
+// nodeAlign is one node's alignment in the region: its record's, and for a
+// record with an extent the greatest alignment any array that extent can hold
+// asks for too, so an array aligned relative to the extent is aligned in the
+// region (§2.8, §7.2).
+func nodeAlign(u *ir.Unit, st *ir.Struct) int64 {
+	if !recordHasExtent(u, st) {
+		return ir.RecordLayout(u, st).Align
+	}
+	return ir.CookNodeAlign(u, st)
 }
 
 // carver is the one extent walk, in both its halves. With `w` nil it MEASURES

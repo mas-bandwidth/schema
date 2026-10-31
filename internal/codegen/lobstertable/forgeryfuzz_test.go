@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -555,6 +556,7 @@ func forgeryFNV64(s string) uint64 {
 
 func TestLobsterForgeryFuzz(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Lobster toolchain (it runs the forgery fuzz over the generated Lobster)")
 	seed, n := lobsterForgeryKnobs(t)
 	t.Logf("Lobster forgery fuzz: SEED=%#x N=%d per image", seed, n)
 	res := runLobsterForgeryFuzz(t, seed, n, "", nil)
@@ -596,6 +598,7 @@ func lobsterForgeryEdit(t *testing.T, src, old, repl string) string {
 // what the tool refuses.
 func TestLobsterForgeryFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Lobster toolchain (it runs the forgery fuzz over the generated Lobster)")
 	seed, n := lobsterForgeryKnobs(t)
 	t.Run("block extent bounds removed", func(t *testing.T) {
 		t.Parallel()

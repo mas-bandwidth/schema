@@ -53,6 +53,7 @@ var conformanceSurface = map[string]bool{
 	"wire":          true,
 	"message":       true,
 	"report":        true,
+	"framing":       true,
 	"retain":        true,
 	"retain-save":   true,
 	"json-read":     true,

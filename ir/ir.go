@@ -233,7 +233,7 @@ type Struct struct {
 	Name    string
 	IsTable bool // declared with `table`: a table-wire root
 	// FixedDeclared is the DECLARED class of a table (docs/SPEC-TABLES.md
-	// §2.2): set by the `fixed table` spelling, and false on a plain `table`,
+	// §2.2): set by the `fixed table` spelling, and false on a variable table,
 	// which is the VARIABLE wire whatever its fields happen to be. Nothing
 	// infers it — the compiler instead REFUSES a fixed table whose by-value
 	// closure holds a construct that makes a body variable size, so a feature
@@ -279,7 +279,7 @@ type Struct struct {
 	// Integrity is a TABLE's `integrity = "crc32c"` declaration
 	// (docs/SPEC-TABLES.md §2.14): the check the variable-form file whose
 	// root is this table carries as its trailer. "" when undeclared; when set,
-	// a member of [TableIntegrityChecks]. Plain tables only: the checker
+	// a member of [TableIntegrityChecks]. Variable tables only: the checker
 	// refuses it on a `fixed table` until the fixed and message forms carry it.
 	Integrity string
 	// TextElem marks a text list's GENERATED element record

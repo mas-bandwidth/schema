@@ -1630,3 +1630,32 @@ tables-rust-cook-map-negative-control: bin/schema
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control align
 
 test-rust: tables-rust-cook-map tables-rust-cook-map-negative-control
+
+# THE FRAMING SURFACE, its Rust leg (docs/LAYERS/1-framing.md): the Rust
+# driver answers every framing row and passes it, none absent
+# (test/conformance/framing/gate). Its negative control rebuilds the driver
+# over a copy of the tblr1 crate whose load takes the id table's 4096-entry cap
+# out (§3, THE DISTINCTNESS CHECK; rule F6), and requires the framing surface
+# to go RED on frame_entries_4097.
+RUST_FRAMING_CONTROL := build/rust-framing-control
+.PHONY: conformance-rust-framing conformance-negative-control-rust-framing
+conformance-rust-framing: build/conformance-harness build/conformance-rust
+	sh test/conformance/framing/gate rust test/conformance/rust/driver build/conformance-rust-framing
+conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
+	@rm -rf $(RUST_FRAMING_CONTROL) && mkdir -p $(RUST_FRAMING_CONTROL)/driver
+	@cp -R build/tables-generated-rust/tblr1 $(RUST_FRAMING_CONTROL)/tblr1
+	@grep -rl 'if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }' $(RUST_FRAMING_CONTROL)/tblr1 | \
+		xargs sed -i.orig 's|if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; }|if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; } // SABOTAGED|'
+	@[ "$$(grep -rc 'SABOTAGED' $(RUST_FRAMING_CONTROL)/tblr1 --include='*.rs' | awk -F: '{s+=$$2} END {print s}')" -ge 1 ] || \
+		{ echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
+	@find $(RUST_FRAMING_CONTROL)/tblr1 -name '*.orig' -delete
+	@cp -R test/conformance/rust/src $(RUST_FRAMING_CONTROL)/driver/src
+	@sed 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
+		test/conformance/rust/Cargo.toml > $(RUST_FRAMING_CONTROL)/driver/Cargo.toml
+	@! cmp -s test/conformance/rust/Cargo.toml $(RUST_FRAMING_CONTROL)/driver/Cargo.toml || \
+		{ echo "NEGATIVE CONTROL: the tblr1 path did not move"; exit 1; }
+	cd $(RUST_FRAMING_CONTROL)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_FRAMING_CONTROL)/target cargo build --quiet
+	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/target/debug/conformance-rust \
+		$(RUST_FRAMING_CONTROL)/run frame_entries_4097
+test-rust: conformance-rust-framing conformance-negative-control-rust-framing

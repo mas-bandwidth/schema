@@ -1,6 +1,7 @@
 package luautable_test
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,9 +151,7 @@ func TestLuauMapWriterSortNegativeControl(t *testing.T) {
 		t.Fatalf("schema_save.luau carries the sort line %d times, want 1: the control would be vacuous", strings.Count(src, sortLine))
 	}
 	planted := &generatedUnit{files: map[string][]byte{}, loaded: true}
-	for k, v := range g.files {
-		planted.files[k] = v
-	}
+	maps.Copy(planted.files, g.files)
 	planted.files["schema_save.luau"] = []byte(strings.Replace(src, sortLine, "", 1))
 	got, _ := luauMapSortRows(t, planted, rows, inputs)
 	turned := 0

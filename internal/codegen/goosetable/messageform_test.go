@@ -25,6 +25,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -254,6 +255,8 @@ type gooseMsgResult struct {
 	loadWidened     int64
 	announced       string
 	got, want       []string
+	slots           []string // every storage slot after the load, in order
+	fresh           string   // a root at its declared defaults
 	resaved         string
 	raw             string
 }
@@ -268,13 +271,11 @@ func gooseMsgProbe(t *testing.T, c gooseMsgCase) gooseMsgResult {
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
@@ -322,6 +323,8 @@ func gooseMsgProbe(t *testing.T, c gooseMsgCase) gooseMsgResult {
 		fmt.Fprintf(&b, "    let n = %s::%sLoadMessages(back[0..%d], voc, data, lrep);\n", ns, c.root, c.capacity)
 		b.WriteString("    print(\"load \", n, \" \", schema_rt::msg_reason_name(lrep.reason), \" \", (if lrep.malformed { 1 } else { 0 }), \" \", lrep.clamped, \" \", lrep.count, \" \", lrep.unknown, \" \", lrep.kind_mismatch, \" \", lrep.widened);\n")
 		b.WriteString("    var k: i64 = 0;\n    while k < n {\n        print(\"got\");\n        image(back[k]);\n        print(\"want\");\n        image(vals[k]);\n        k += 1;\n    }\n")
+		fmt.Fprintf(&b, "    var slotk: i64 = 0;\n    while slotk < %d {\n        print(\"slot\");\n        image(back[slotk]);\n        slotk += 1;\n    }\n", c.capacity)
+		fmt.Fprintf(&b, "    let freshv: %s = %s { .. };\n    print(\"fresh\");\n    image(freshv);\n", root, root)
 		b.WriteString("    if n > 0 {\n        var again: u8[>..] = [];\n        var arep = schema_rt::MsgReport { .. };\n")
 		fmt.Fprintf(&b, "        let a = %s::%sSaveMessages(back[0..n], again, arep);\n", ns, c.root)
 		b.WriteString("        print(\"resave \", a);\n        hex(again);\n    }\n")
@@ -386,6 +389,12 @@ func gooseMsgParse(t *testing.T, out string) gooseMsgResult {
 			i++
 		case l == "want":
 			r.want = append(r.want, next(i))
+			i++
+		case l == "slot":
+			r.slots = append(r.slots, next(i))
+			i++
+		case l == "fresh":
+			r.fresh = next(i)
 			i++
 		case strings.HasPrefix(l, "resave "):
 			r.resaved = next(i)
@@ -483,7 +492,6 @@ func TestGooseMessageFormMatchesTheGoldens(t *testing.T) {
 	t.Parallel()
 	carried := 0
 	for _, row := range gooseMsgRows(t) {
-		row := row
 		u := gooseMsgUnitDir(t, row.unitDir)
 		if !isFixedRoot(u, row.root) {
 			// a VARIABLE root (graph_tree's Scene): the variable class is
@@ -534,13 +542,11 @@ func gooseMsgFromFixed(t *testing.T, u *ir.Unit, root string, file []byte, recor
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
@@ -616,7 +622,6 @@ func TestGooseMessageFormAgreesWithTheReference(t *testing.T) {
 	records := fixedManifestRecords(t, corpus)
 	manifest := gooseVersionManifest(t, corpus)
 	for _, v := range fixedVectors {
-		v := v
 		t.Run(strings.TrimSuffix(v.file, ".bin"), func(t *testing.T) {
 			t.Parallel()
 			u := fixedUnit(t, v.schema)
@@ -767,8 +772,8 @@ func TestGooseMessageFormCarriesEveryShape(t *testing.T) {
 // (docs/SPEC-TABLES.md §3.3, THE BATCH SURFACE'S FIVE ANSWERS) to the Go
 // engine's names: M above 256 on the write, M above the caller's capacity on
 // the read (nothing decoded, the wire's count reported), a form byte this
-// reader does not carry, bytes after the pad, and damage inside a body
-// delivering the bodies before it.
+// reader does not carry, bytes after the pad, and damage inside a body, each
+// of the last two discarding the whole batch (§4).
 func TestGooseMessageFormRefusesByName(t *testing.T) {
 	t.Parallel()
 	var row gooseMsgRow
@@ -808,13 +813,12 @@ func TestGooseMessageFormRefusesByName(t *testing.T) {
 		{"read_capacity_short", batch3, 2, -1, "batch_too_large", false, 3},
 		{"read_three", batch3, 3, 3, "ok", false, 0},
 		{"newer_form", append([]byte{1}, golden[1:]...), 1, -1, "newer_form", false, 0},
-		{"bytes_after_the_pad", append(append([]byte(nil), golden...), 0), 1, 1, "ok", true, 0},
+		{"bytes_after_the_pad", append(append([]byte(nil), golden...), 0), 1, 0, "ok", true, 0},
 		{"damage_in_body_one", golden[:len(golden)-2], 1, 0, "ok", true, 0},
-		{"damage_in_body_three", batch3[:len(batch3)-2], 3, 2, "ok", true, 0},
+		{"damage_in_body_three", batch3[:len(batch3)-2], 3, 0, "ok", true, 0},
 		{"empty", []byte{}, 1, -1, "ok", true, 0},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: row.root, values: [][]string{one, one, one}, data: c.data, capacity: c.capacity})
@@ -825,6 +829,18 @@ func TestGooseMessageFormRefusesByName(t *testing.T) {
 			for k := range r.got {
 				if r.got[k] != r.want[k] {
 					t.Fatalf("body %d of the bodies delivered is not the value\n got  %s\n want %s", k, r.got[k], r.want[k])
+				}
+			}
+			// DAMAGE DISCARDS THE WHOLE BATCH (§3.3, §4): every slot of the
+			// caller's storage is at its declared defaults afterward
+			if c.malformed && c.n == 0 {
+				if len(r.slots) != c.capacity || r.fresh == "" {
+					t.Fatalf("the probe printed %d slots and fresh %q:\n%s", len(r.slots), r.fresh, r.raw)
+				}
+				for k, slot := range r.slots {
+					if slot != r.fresh {
+						t.Fatalf("slot %d holds a value from a damaged batch\n slot  %s\n fresh %s", k, slot, r.fresh)
+					}
 				}
 			}
 		})

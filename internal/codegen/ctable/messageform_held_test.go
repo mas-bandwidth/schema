@@ -266,9 +266,9 @@ int main(void)
 }
 `
 
-// "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
-// states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3).
+// "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (docs/SPEC-TABLES.md
+// §3.3, §4): no body is delivered, the returned count is 0, every body's
+// storage is at its declared defaults, and the report says malformed.
 const cMsgDamageInsideBodyProbe = cMsgShared + `
 int main(void)
 {
@@ -284,11 +284,12 @@ int main(void)
        nibble and body 2's high nibble. */
     uint8_t wire[] = { 2, 2, 0xF0 };
     Root storage[3]; int i;
-    for(i = 0; i < 3; i++) root_reset(storage + i);
+    for(i = 0; i < 3; i++) { root_reset(storage + i); storage[i].a = 7; }
     int64_t count = 3;
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 1);
+    CHECK(count == 0);
+    for(i = 0; i < 3; i++) CHECK(storage[i].a == 0);
     CHECK(report.malformed && !report.refused);
     return 0;
 }
@@ -307,11 +308,11 @@ int main(void)
     TableReport ar; memset(&ar, 0, sizeof(ar));
     CHECK(announce_read(&v, ann, (int64_t)sizeof(ann), &ar));
     uint8_t wire[] = { 2, 0, 0, 0 }; /* a valid one-body batch, one byte over */
-    Root storage[1]; root_reset(storage);
+    Root storage[1]; root_reset(storage); storage[0].a = 7;
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 1 && report.malformed && !report.refused);
+    CHECK(count == 0 && storage[0].a == 0 && report.malformed && !report.refused);
     return 0;
 }
 `
@@ -565,6 +566,14 @@ func cMessageManifestRows(t *testing.T) {
 			if row[0] == "connection" {
 				// "The announcement is a compile-time constant byte array with a length." (§3.3)
 				source += "int main(void){uint8_t out[sizeof(expected)];return announce(out,sizeof(out))!=sizeof(expected)||memcmp(out,expected,sizeof(out));}\n"
+			} else if row[5] == "-" {
+				// a NAMED REFUSAL row: its root must be a variable table, which
+				// carries no message form (docs/SPEC-TABLES.md §3.3); that no
+				// backend emits one is compiler/messageformlock_test.go's
+				if st := unit.Tables[row[3]]; st == nil || st.FixedDeclared {
+					t.Fatalf("message row %s is a refusal row over %s, which is not a variable table", row[1], row[3])
+				}
+				return
 			} else {
 				wire, err := os.ReadFile(filepath.Join(root, row[5]))
 				if err != nil {
@@ -583,11 +592,12 @@ func cMessageManifestRows(t *testing.T) {
 					}
 				}
 				source += "int main(void){TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};int64_t count=1;uint8_t out[sizeof(wire)];if(!announce_read(&v,expected,sizeof(expected),&report))return 1;"
-				if row[1] == "graph_tree" {
-					source += fmt.Sprintf("const %s * values[1]={0};int64_t need=%s_load_measure_messages(&v,wire,sizeof(wire));if(need<0)return 2;uint8_t * region=malloc((size_t)need);if(!region)return 3;if(!%s_load_messages_tolerant(values,&count,region,need,&v,wire,sizeof(wire),&report))return 4;", row[3], fn, fn)
-				} else {
-					source += fmt.Sprintf("%s values[1];if(!%s_load_messages_tolerant(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
+				// Only a fixed table rides the message form (§3.3): a row whose
+				// root is a variable table names a codec C does not emit.
+				if st := unit.Tables[row[3]]; st == nil || !st.FixedDeclared {
+					t.Fatalf("message row %s: %s is not a fixed table, and the message form is fixed tables only", row[1], row[3])
 				}
+				source += fmt.Sprintf("%s values[1];if(!%s_load_messages_tolerant(values,&count,&v,wire,sizeof(wire),&report))return 4;", row[3], fn)
 				// "A batch of bodies is the unit this form reads and writes." (§3.3)
 				source += fmt.Sprintf("if(count!=1||%s_measure_messages(values,count,&report)!=sizeof(wire)||%s_save_messages(values,count,out,sizeof(out),&report)!=sizeof(wire))return 5;return memcmp(out,wire,sizeof(wire));}\n", fn, fn)
 			}

@@ -277,6 +277,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local store = {};
   foreach (k, _ in COUNTERS) store[k] <- report[k];
   store.missingRequired <- false;
+  store.walkDamaged <- false;
   local first = {};
   // the trailer was opened above (§2.14), so the load must not strip it again
   local v = _load.loadTolerant(T, root, bytes, witness(store, first), null, true);
@@ -308,10 +309,10 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   }
   // damage first, then the counters in Err()'s order, so one wire always
   // answers one name (§6.5, §11); unknown, widened and duplicate alone read
-  // the load answers null only for the file's own framing (too short for
-  // the id table, the id table itself, the root body's early end): that is
-  // wire_damaged, as Go's tableOpen answers it; damage it read past is malformed
-  if (v == null && store.malformed) {
+  // Both paths discard the value. The witness records whether the file was
+  // opened and its body walked: failure before that is wire_damaged, while
+  // damage in the body is malformed, matching Go's strict error names.
+  if (v == null && store.malformed && !store.walkDamaged) {
     report.reason = "wire_damaged";
     return null;
   }

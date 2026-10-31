@@ -37,7 +37,7 @@ func readMessageRows(t *testing.T, root string) (map[string]squirrelMessageConne
 				connections[f[1]] = squirrelMessageConnection{unit: f[2], file: f[4]}
 			}
 		case "message":
-			if len(f) >= 6 {
+			if len(f) >= 6 && f[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, squirrelMessageRow{name: f[1], connection: f[2], root: f[3], file: f[4], batch: f[5]})
 			}
 		}
@@ -291,6 +291,20 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 	script.WriteString("local I=dofile(\"inputs.nut\",true);\n")
 	script.WriteString("local same=function(a,b){if(a.len()!=b.len())return false;for(local i=0;i<a.len();i++)if(a[i]!=b[i])return false;return true;};\n")
 	generated := map[string]bool{}
+	// Announcements remain meaningful for units whose variable roots have no
+	// message rows. Emit all declared connection units before probing them.
+	for key, u := range units {
+		sub := filepath.Join(dir, key)
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, b := range squirrelMessageFiles(t, u, patch) {
+			if !strings.Contains(name, "/") {
+				writeFile(t, filepath.Join(sub, name), b)
+			}
+		}
+		generated[key] = true
+	}
 	for _, row := range rows {
 		conn, ok := connections[row.connection]
 		if !ok {
@@ -318,18 +332,19 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		module := squirreltable.ModuleName(u)
 		fmt.Fprintf(&script, "{ local T=dofile(%q,true).require(%q); local v={}; local ar={};\n", conn.unit+"/schema_module.nut", module)
 		fmt.Fprintf(&script, " if(!T.AnnounceRead(v,I[%q],ar)){print(%q+\":announce:\"+ar.reason+\"\\n\");} else {\n", row.name+"_ann", row.name)
+		if st := u.Tables[row.root]; st == nil || !st.FixedDeclared {
+			// a variable table carries no message verbs at all (§3.3)
+			fmt.Fprintf(&script, " print(%q+((%q in T || %q in T || %q in T) ? \":present\\n\" : \":absent\\n\")); } }\n", row.name, row.root+"LoadMessages", row.root+"SaveMessages", row.root+"MeasureMessages")
+			continue
+		}
 		batch := inputs[row.name+"_batch"]
 		count := int(batch[1]) + 1
 		constructors := make([]string, count)
 		for i := range constructors {
 			constructors[i] = "T." + row.root + "()"
 		}
-		guard, closing := "if(n>=0){\n", " } } }"
-		if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
-			guard, closing = "", " } }"
-		}
-		fmt.Fprintf(&script, " local out=[%s]; local rr={}; local n=T.%sLoadMessages(out,v,I[%q],rr); if(n!=%d) print(%q+\":load:\"+n+\":\"+rr.reason+\":\"+rr.malformed+\"\\n\"); %s\n", strings.Join(constructors, ","), row.root, row.name+"_batch", count, row.name, guard)
-		fmt.Fprintf(&script, " local mr={}; local size=T.%sMeasureMessages(out,mr); local b=blob(size); local sr={}; local got=T.%sSaveMessages(out,b,sr); if(got!=size || !same(b,I[%q])) print(%q+\":save:\"+got+\":\"+size+\"\\n\"); else print(%q+\":ok\\n\");%s\n", row.root, row.root, row.name+"_batch", row.name, row.name, closing)
+		fmt.Fprintf(&script, " local out=[%s]; local rr={}; local n=T.%sLoadMessages(out,v,I[%q],rr); if(n!=%d) print(%q+\":load:\"+n+\":\"+rr.reason+\":\"+rr.malformed+\"\\n\");\n", strings.Join(constructors, ","), row.root, row.name+"_batch", count, row.name)
+		fmt.Fprintf(&script, " local mr={}; local size=T.%sMeasureMessages(out,mr); local b=blob(size); local sr={}; local got=T.%sSaveMessages(out,b,sr); if(got!=size || !same(b,I[%q])) print(%q+\":save:\"+got+\":\"+size+\"\\n\"); else print(%q+\":ok\\n\"); } }\n", row.root, row.root, row.name+"_batch", row.name, row.name)
 	}
 	for _, key := range []string{"backend_conn", "vocab_conn", "vocab9_conn", "graph_conn"} {
 		conn, ok := connections[key]
@@ -439,7 +454,7 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==1 && rr.clamped==1 && !rr.malformed) print("wide_string_clamp:ok\n"); else print("wide_string_clamp:fail:"+n+":"+rr.clamped+":"+rr.malformed+"\n"); }
 `)
 		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && rr.kindMismatch==0 && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.kindMismatch+\":\"+rr.malformed+\"\\n\"); } }\n")
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==1 && rr.malformed) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==0 && rr.malformed && storage[0].Payload.Type==0 && storage[1].Payload.Type==0) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
 `)
 	}
 	script.WriteString("print(\"done\\n\");\n")
@@ -469,14 +484,21 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 		t.Fatal(err)
 	}
 	connections, rows := readMessageRows(t, root)
-	if len(rows) != 13 {
-		t.Fatalf("manifest has %d message rows, want 13", len(rows))
-	}
-	out := string(runSquirrelMessages(t, root, loadMessageUnits(t, root, connections), connections, rows, false))
+	units := loadMessageUnits(t, root, connections)
+	fixed := 0
 	for _, row := range rows {
-		if row.root == "Scene" {
-			if !strings.Contains(out, row.name+":load:-1:message_form_plain_table:Scene:false") {
-				t.Errorf("%s plain table refusal missing: %s", row.name, out)
+		if st := units[connections[row.connection].unit].Tables[row.root]; st != nil && st.FixedDeclared {
+			fixed++
+		}
+	}
+	if fixed != 12 {
+		t.Fatalf("manifest has %d message rows over a fixed root, want 12", fixed)
+	}
+	out := string(runSquirrelMessages(t, root, units, connections, rows, false))
+	for _, row := range rows {
+		if st := units[connections[row.connection].unit].Tables[row.root]; st == nil || !st.FixedDeclared {
+			if !strings.Contains(out, row.name+":absent") {
+				t.Errorf("%s: the variable table %s carries message verbs: %s", row.name, row.root, out)
 			}
 			continue
 		}
@@ -525,7 +547,7 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 	if !strings.Contains(out, "done") {
 		t.Fatal("probe did not finish")
 	}
-	t.Logf("%d manifest message rows inspected: 12 fixed-root byte comparisons, 1 named plain-table refusal", len(rows))
+	t.Logf("%d manifest message rows inspected: %d fixed-root byte comparisons", len(rows), fixed)
 }
 
 func TestSquirrelMessageFormNegativeControl(t *testing.T) {
@@ -538,7 +560,7 @@ func TestSquirrelMessageFormNegativeControl(t *testing.T) {
 	units := loadMessageUnits(t, root, connections)
 	rows := []squirrelMessageRow{{name: "login_full", connection: "backend_conn", root: "LoginRequest", batch: "testdata/wire/tables/login_full_message.bin"}}
 	out := string(runSquirrelMessages(t, root, units, connections, rows, true))
-	if !strings.Contains(out, "login_full:load:-1:") || !strings.Contains(out, "login_full:save:") {
+	if !strings.Contains(out, "login_full:load:0:") || !strings.Contains(out, "login_full:save:") {
 		t.Fatalf("one-short batch-count negative control did not make load fail and byte comparison red: %s", out)
 	}
 }

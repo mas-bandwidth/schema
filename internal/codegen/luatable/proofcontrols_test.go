@@ -215,7 +215,7 @@ func TestLuaForeignOrderNegativeControl(t *testing.T) {
 // purpose: they read the producer's own order and refuse the other by its
 // order word (§19.1, I7). A format that is not a literal is refused too, since
 // it cannot be checked.
-var wireOrderFiles = []string{"load.lua", "save.lua", "message.lua", "fixed.lua", "retain.lua", "retainmessage.lua"}
+var wireOrderFiles = []string{"load.lua", "save.lua", "message.lua", "fixed.lua", "retain.lua"}
 
 var packCall = regexp.MustCompile(`string\.(?:un)?pack(?:size)?\(\s*([^,)]*)`)
 
@@ -277,11 +277,11 @@ func TestLuaWireByteOrderNegativeControl(t *testing.T) {
 	t.Parallel()
 	files := wireOrderUnitFiles(t)
 	src := string(files["load.lua"])
-	i := strings.Index(src, `string.unpack("<`)
-	if i < 0 {
+	before, after, ok := strings.Cut(src, `string.unpack("<`)
+	if !ok {
 		t.Fatal("load.lua has no little-endian unpack to sabotage")
 	}
-	files["load.lua"] = []byte(src[:i] + `string.unpack("=` + src[i+len(`string.unpack("<`):])
+	files["load.lua"] = []byte(before + `string.unpack("=` + after)
 	if len(wireOrderViolations(files)) == 0 {
 		t.Fatal("a host-order read in load.lua passed the byte-order scan")
 	}

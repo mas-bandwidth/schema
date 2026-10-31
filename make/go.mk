@@ -383,8 +383,8 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
 # ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
-# cards-conformance-go and every cards-<lang>-conformance target across all nine
-# languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
+# cards-conformance-go and every cards-<lang>-conformance target across all eleven
+# carded languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
 # parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
 # the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
 # absent) line per leg and surface, and exits nonzero if any leg fails, answers
@@ -394,7 +394,7 @@ CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
 cards-conformance-all:
 	@mkdir -p build/cards-conformance-all
 	@fail=0; \
-	for leg in go c cpp cs rust java js dart elixir lua; do \
+	for leg in go c cpp cs rust java js dart elixir lua lobster; do \
 		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
 		log=build/cards-conformance-all/$$leg.log; \
 		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
@@ -708,6 +708,13 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
+# THE FRAMING SURFACE's own control (docs/LAYERS/1-framing.md): the generated
+# Go reader's 4096 id-table entry cap is removed, and the framing row
+# frame_entries_4097 must go red while the wire surface stays green.
+.PHONY: conformance-negative-control-go-framing
+conformance-negative-control-go-framing: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control frame-cap
+
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and the soak's
@@ -717,6 +724,7 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
+	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
@@ -860,7 +868,7 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 .PHONY: tables-go-retain
 tables-go-retain:
 	sh test/slowgate/proof tables-go-retain \
-		'TestRetainMatchesIndependentRewrite TestRetainMessageBoundsBeforeExpansion TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
+		'TestRetainMatchesIndependentRewrite TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
 		./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
 
@@ -890,7 +898,7 @@ tables-go-allocator-negative-controls:
 tables-go-allocator-runtime-negative-control:
 	sh test/conformance/go/ownership-negative-control runtime
 tables-go-retain-negative-controls:
-	@set -e; for mode in file-count-floor message-depth unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
+	@set -e; for mode in file-count-floor unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
 
 test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 

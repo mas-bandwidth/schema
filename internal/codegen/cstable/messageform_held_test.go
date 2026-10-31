@@ -95,22 +95,6 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 			csHeldAssert(t, out, err, "row/"+msg.name)
 		})
 	}
-	for _, row := range csHeldNotRun {
-		t.Run(row.name, func(t *testing.T) {
-			t.Parallel()
-			t.Skip("not run: " + row.why)
-		})
-	}
-}
-
-// csHeldNotRun names the manifest `connection`/`message` rows this leg cannot
-// answer, so every row of testdata/conformance/tables/MANIFEST.txt is spoken by
-// this test and none is silently omitted. `message_graph_tree`'s root `Scene`
-// is a plain `table`, and §3.3 is a fixed table's: the row is answered ABSENT
-// by the form's own declaration, exactly as the Go leg's goldens test answers
-// it.
-var csHeldNotRun = []struct{ name, why string }{
-	{"message_graph_tree", "§3.3 is a fixed table's; Scene is a plain table"},
 }
 
 const csHeldSchema = `package probe
@@ -738,7 +722,7 @@ var csHeldUnits = []csHeldUnit{
 	{"tables/vocab9", "vocab9demo", "Vocab9demo", "N"},
 }
 
-// csHeldRuntimeUnits are the two manifest units whose connection rows the Go
+// csHeldRuntimeUnits are the manifest units whose connection rows the Go
 // leg answers and this leg's own build does not carry: their packet emitter
 // names the sibling `../serialize.cs` runtime this checkout does not stage, and
 // this card's rule that such a target is NAMED AS NOT RUN and never faked
@@ -746,7 +730,6 @@ var csHeldUnits = []csHeldUnit{
 // refusal, so the not-run status is evidenced rather than assumed.
 var csHeldRuntimeUnits = []csHeldUnit{
 	{"tables/pointers", "graphdemo", "Graphdemo", "G"},
-	{"test/tables/R2.schema", "tblr2", "Tblr2", "T"},
 }
 
 // csHeldConn is one MANIFEST `connection` row: the unit whose whole vocabulary
@@ -759,12 +742,11 @@ var csHeldConns = []csHeldConn{
 	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x3a923c7d0da66dd8"},
 }
 
-// csHeldRuntimeConns are the two `connection` rows of MANIFEST.txt the main
+// csHeldRuntimeConns are the `connection` rows of MANIFEST.txt the main
 // build cannot carry (csHeldRuntimeUnits), each with its announcement wire and
 // the build version the row pins.
 var csHeldRuntimeConns = []csHeldConn{
 	{"graph_conn", "graphdemo", "graph_conn.bin", "0xfdaabe4726d81d5c"},
-	{"retain_conn", "tblr2", "retain_conn.bin", "0x59185ac86252d03a"},
 }
 
 // csHeldMsg is one MANIFEST `message` row: one value in BOTH forms, the file

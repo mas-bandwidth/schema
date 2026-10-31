@@ -31,7 +31,15 @@ func TestSkippedMapRepeatPreservesEarlierValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	trailer := len(wire) - 8 - int(binary.LittleEndian.Uint64(wire[len(wire)-8:]))*8
-	for _, repeat := range [][]byte{{1, 14, 2, 5, 0}, {1, 14, 0}, {1, 14, 2, 13, 128}} {
+	for _, tc := range []struct {
+		repeat  []byte
+		damaged bool
+	}{
+		{[]byte{1, 14, 2, 5, 0}, false},   // a foreign element kind: kind_mismatch, skipped
+		{[]byte{1, 14, 0}, false},         // a body too short for a header: inert
+		{[]byte{1, 14, 2, 13, 128}, true}, // a count that cannot complete: damage
+	} {
+		repeat := tc.repeat
 		damaged := append([]byte(nil), wire[:trailer-1]...)
 		damaged = append(damaged, repeat...)
 		damaged = append(damaged, wire[trailer-1:]...)
@@ -41,9 +49,20 @@ func TestSkippedMapRepeatPreservesEarlierValue(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if report.Malformed != tc.damaged {
+			t.Fatalf("repeat %x: malformed %v, want %v", repeat, report.Malformed, tc.damaged)
+		}
+		want := wire
+		if tc.damaged {
+			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+			// root is handed back at its declared defaults
+			if want, err = tablewire.Encode(m, m.New(m.Lookup("Root"))); err != nil {
+				t.Fatal(err)
+			}
+		}
 		encoded, err := tablewire.Encode(m, value)
-		if err != nil || !bytes.Equal(encoded, wire) {
-			t.Fatalf("skipped repeat %x destroyed earlier value: %x %+v %v", repeat, encoded, report, err)
+		if err != nil || !bytes.Equal(encoded, want) {
+			t.Fatalf("repeat %x: the value is %x, want %x (%+v %v)", repeat, encoded, want, report, err)
 		}
 	}
 }

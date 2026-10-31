@@ -159,7 +159,7 @@ func TestLobsterVariableClass(t *testing.T) {
 				t.Errorf("%s %s: the report is not the reference's:\nlobster: %s\ngo:      %s", row.kind, row.name, line, res.goLine[i])
 				continue
 			}
-			if dump != res.goDump[i] {
+			if !damaged(line) && dump != res.goDump[i] {
 				t.Errorf("%s %s: the loaded value is not the reference's at byte %s", row.kind, row.name, divergence(dump, res.goDump[i]))
 				continue
 			}

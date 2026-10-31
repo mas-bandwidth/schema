@@ -58,9 +58,9 @@ tables-lobster-order-negative-control: lobster-dist-present
 # a registered name nothing defines. Pure Go.
 .PHONY: tables-lobster-names tables-lobster-names-negative-control
 tables-lobster-names:
-	go test ./compiler -run '^(TestLobsterTableRuntimeNamesAreClaimed|TestLobsterRuntimeFileNamesAreClaimed)$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./compiler -run '^(TestLobsterTableRuntimeNamesAreClaimed|TestLobsterRuntimeFileNamesAreClaimed)$$' -count=1 -timeout 600s
 tables-lobster-names-negative-control:
-	go test ./compiler -run '^TestLobsterRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./compiler -run '^TestLobsterRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
 
 # I13: the random text differential against the Go engine
 # (textdifferential_test.go); the control caps a float32 at six digits.
@@ -174,3 +174,10 @@ tables-lobster-usage-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the walks-nothing copy failed, but not on slot_named's refusal"; cat build/lobster-usage-negative/walks-nothing.log; exit 1; }
 
 test-lobster: tables-lobster-usage tables-lobster-usage-negative-control
+
+# The returned API values must not expose any part of a damaged read.
+.PHONY: tables-lobster-damage-discard tables-lobster-damage-discard-negative-control
+tables-lobster-damage-discard: lobster-dist-present
+	sh test/slowgate/proof $@ 'TestLobsterDamageDiscardsValues' ./internal/codegen/lobstertable -run '^TestLobsterDamageDiscardsValues$$' -count=1
+tables-lobster-damage-discard-negative-control: lobster-dist-present
+	sh test/slowgate/proof $@ 'TestLobsterDamageDiscardNegativeControl' ./internal/codegen/lobstertable -run '^TestLobsterDamageDiscardNegativeControl$$' -count=1
