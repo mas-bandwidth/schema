@@ -584,10 +584,8 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			return false
 		}
 		sub := r.sub(int(n))
-		// THE BODY IS THE SAME STORAGE across occurrences: it is a member of
-		// its parent in every generated target, so it is RESET rather than
-		// replaced and an address names one body for the life of a load. The
-		// records the earlier occurrence held went at the field id above.
+		// THE BODY IS A MEMBER of its parent in every generated target, so
+		// storage already standing is reset rather than replaced.
 		if fv.Cell.Tab == nil {
 			fv.Cell.Tab = r.m.New(tabletext.StructOf(f))
 		} else {
@@ -661,9 +659,8 @@ func (r *wireReader) enumCell(cell *tabletext.Cell, f *ir.Field, element bool) b
 
 // mapField decodes one map (docs/SPEC-TABLES.md §2.8), and it is where every
 // reader rule the section states lands: the key BEFORE the slot is chosen,
-// ascending against the key of the last entry that LANDED, a repeated key
-// last-wins and counted `duplicate`, a descending key stopping the map with
-// what it has and flagging `malformed`, a key past the reader's bound dropping
+// ascending against the key of the last entry that LANDED, a repeated or a
+// descending key flagging `malformed` (damage, §4), a key past the reader's bound dropping
 // its entry and counting `clamped`, and a key KIND the reader does not declare
 // emptying the map for one `kind_mismatch`.
 func (r *wireReader) mapField(fv *tabletext.Field) bool {
@@ -744,10 +741,10 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			if landed {
 				order = tabletext.MapKeyOrder(f, last, key)
 			}
-			if order > 0 {
-				// DESCENDING: not a body any conforming writer produced. The
-				// map keeps the ascending prefix it has, the rest skips by the
-				// map's L, and the PARENT reads on past the field's length.
+			if order >= 0 {
+				// DESCENDING or EQUAL: not a body any conforming writer
+				// produced, so it is damage (§2.8, §4). A repeated key is the
+				// EQUAL case: a writer puts each key down once.
 				r.report.Malformed = true
 				break
 			}
@@ -759,15 +756,6 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			whole.bodyAt(decoded, true)
 			if r.countRefused() {
 				return false
-			}
-			if order == 0 {
-				// EQUAL: a DUPLICATE. Last wins WHOLE — the slot the earlier
-				// entry took is replaced by this one's decode, so a field the
-				// repeat elides reads its default. The map's count excludes it.
-				r.rt.forget(fv.Entries[len(fv.Entries)-1].Tab)
-				fv.Entries[len(fv.Entries)-1] = tabletext.Cell{Tab: decoded}
-				r.report.Duplicate++
-				continue
 			}
 			fv.Entries = append(fv.Entries, tabletext.Cell{Tab: decoded})
 			last = tabletext.MapKeyOf(f, decoded)
@@ -803,6 +791,7 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 	want := ir.TableWireScalarKind(keyField)
 	key := tabletext.MapKeyOf(f, entry)
 	scan := &wireReader{buf: r.buf, report: &tabletext.Report{}, m: r.m, ids: r.ids, st: r.st}
+	keySeen := false
 	for {
 		ref, ok := scan.leb()
 		if !ok {
@@ -817,6 +806,11 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 		}
 		kind := scan.u8()
 		if id == ir.MapKeyWireId {
+			if keySeen {
+				// the key's id twice in one entry body: damage (§3, §4)
+				return key, false
+			}
+			keySeen = true
 			cell := &entry.Fields[0].Cell
 			if int(kind) != want && ir.TableKindWidens(int(kind), want) {
 				*widened = true

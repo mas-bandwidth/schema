@@ -658,25 +658,26 @@ json-hostile comment-slash-star-slash     tabledemo RootConfig  testdata/conform
 # and reading a shared graph as a tree with an empty object at every reference.
 json-hostile reserved-ampersand-key       tabledemo RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key       refused
 json-hostile reserved-ampersand-in-skipped-value tabledemo RootConfig testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value 1,0,0,0,0,false,read
-json-hostile dup-key                      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key                      0,0,0,0,1,false,read
-json-hostile dup-key-array                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-array                0,0,0,0,1,false,read
-json-hostile dup-key-placeable            tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable            0,0,0,0,1,false,read
-json-hostile dup-key-rejected-element     tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-element     0,1,0,0,1,false,read
-json-hostile dup-key-rejected-float       tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-float       0,1,0,0,1,false,read
-json-hostile dup-key-rejected-keyed       tabledemo PackConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-keyed       0,1,0,0,1,false,read
-json-hostile dup-key-rejected-nested      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-nested      0,1,0,0,1,false,read
-json-hostile dup-key-rejected-scalar      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-scalar      0,1,0,0,1,false,read
-json-hostile dup-key-table                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-table                0,0,0,0,1,false,read
-json-hostile dup-key-union                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-union                0,0,0,0,1,false,read
-json-hostile dup-key-wrong-shape          tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-wrong-shape          0,1,0,0,1,false,read
+json-hostile dup-key                      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key                      refused
+json-hostile dup-key-array                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-array                refused
+json-hostile dup-key-placeable            tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable            refused
+json-hostile dup-key-rejected-element     tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-element     refused
+json-hostile dup-key-rejected-float       tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-float       refused
+json-hostile dup-key-rejected-keyed       tabledemo PackConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-keyed       refused
+json-hostile dup-key-rejected-nested      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-nested      refused
+json-hostile dup-key-rejected-scalar      tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-rejected-scalar      refused
+json-hostile dup-key-table                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-table                refused
+json-hostile dup-key-union                tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-union                refused
+json-hostile dup-key-wrong-shape          tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-wrong-shape          refused
+json-hostile dup-key-unknown              tabledemo RootConfig  testdata/conformance/tables/json-hostile/dup-key-unknown              refused
 json-hostile enum-unknown-name            tabledemo RootConfig  testdata/conformance/tables/json-hostile/enum-unknown-name            1,0,0,0,0,false,read
 json-hostile flags-unknown-name           tabledemo RootConfig  testdata/conformance/tables/json-hostile/flags-unknown-name           1,0,0,0,0,false,read
 json-hostile guard-key-after-fields       tabledemo RootConfig  testdata/conformance/tables/json-hostile/guard-key-after-fields       0,0,0,0,0,false,read
 json-hostile json-key-declared-name       tabledemo PackConfig  testdata/conformance/tables/json-hostile/json-key-declared-name       1,0,0,0,0,false,read
-json-hostile keyed-duplicate-mixed        tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed        2,0,0,0,1,false,read
-json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         2,0,0,0,0,false,read
-json-hostile keyed-duplicate-slot         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot         0,0,0,0,1,false,read
-json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      2,0,0,0,0,false,read
+json-hostile keyed-duplicate-mixed        tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed        refused
+json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         refused
+json-hostile keyed-duplicate-slot         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot         refused
+json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      refused
 json-hostile keyed-none-key               tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-none-key               1,0,0,0,0,false,read
 json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,0,false,read
 json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,0,false,read
@@ -729,9 +730,9 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # tabledemo's RootConfig has no string-keyed map.
 json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
 json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
-# A duplicate KEY in a map is last-wins and counted (§2.8): listdemo's Army
-# root carries a roster map, so this row exercises the readMap duplicate counter.
-json-hostile list-map-dup-key              listdemo Army          testdata/conformance/tables/json-hostile/list-map-dup-key             0,0,0,0,1,false,read
+# A duplicate KEY in a map is damage (§2.8, §16.2): listdemo's Army root
+# carries a roster map, so this row exercises the map reader's refusal.
+json-hostile list-map-dup-key              listdemo Army          testdata/conformance/tables/json-hostile/list-map-dup-key             refused
 json-hostile str-zero-escape-unknown-key  tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key   1,0,0,0,0,false,read
 json-hostile union-table-arm-unknown        messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown        1,0,0,0,0,false,read
 json-hostile union-table-arm-two-keys       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys       refused
@@ -1110,7 +1111,8 @@ framing frame_unknown_id_union                tblr1 Cfg testdata/wire/tables/fra
 framing frame_unknown_id_union_empty          tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union_empty.bin          1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
 framing frame_unknown_id_reference            tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_reference.bin            1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
 framing frame_kind_mismatch_skips_by_wire_kind tblr1 Cfg testdata/wire/tables/framing/frame_kind_mismatch_skips_by_wire_kind.bin 0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_multiplier.json
-framing frame_repeat_last_wins                tblr1 Cfg testdata/wire/tables/framing/frame_repeat_last_wins.bin                0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_gold.json
+framing frame_repeat_id                       tblr1 Cfg testdata/wire/tables/framing/frame_repeat_id.bin                 malformed            -
+framing frame_repeat_unknown_id               tblr1 Cfg testdata/wire/tables/framing/frame_repeat_unknown_id.bin         malformed            -
 framing frame_reserved_build_version_id       tblr1 Cfg testdata/wire/tables/framing/frame_reserved_build_version_id.bin       malformed            -
 framing nested_terminator_early               tblr1 Cfg testdata/wire/tables/framing/nested_terminator_early.bin               malformed            -
 framing nested_L_exact                        tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver_multiplier.json
@@ -1119,36 +1121,40 @@ framing nested_L_past_body                    tblr1 Cfg testdata/wire/tables/fra
 framing nested_repeat_id                      tblr1 Cfg testdata/wire/tables/framing/nested_repeat_id.bin                malformed            -
 framing nested_unknown_id_inside              tblr1 Cfg testdata/wire/tables/framing/nested_unknown_id_inside.bin              1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver_multiplier.json
 framing nested_ref_above_count_inside         tblr1 Cfg testdata/wire/tables/framing/nested_ref_above_count_inside.bin         malformed            -
-framing array_L0_inert                        tblr1 Cfg testdata/wire/tables/framing/array_L0_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
-framing array_L1_inert                        tblr1 Cfg testdata/wire/tables/framing/array_L1_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing array_L0_short                        tblr1 Cfg testdata/wire/tables/framing/array_L0_short.bin                  malformed            -
+framing array_L1_short                        tblr1 Cfg testdata/wire/tables/framing/array_L1_short.bin                  malformed            -
 framing array_L2_empty                        tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
 framing array_count_at_bound                  tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin                  0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_grades_four.json
 framing array_count_bound_plus_one            tblr1 Cfg testdata/wire/tables/framing/array_count_bound_plus_one.bin            0,0,0,1,0,false,read testdata/conformance/tables/framing/cfg_grades_four.json
 framing array_count_over_length               tblr1 Cfg testdata/wire/tables/framing/array_count_over_length.bin               malformed            -
 framing array_header_crosses_L_unbounded      listdemo Ints testdata/wire/tables/framing/array_header_crosses_L_unbounded.bin  malformed            -
 framing array_header_crosses_L_bounded        tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_bounded.bin        malformed            -
-framing array_header_crosses_L_kind_mismatch  tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_kind_mismatch.bin  0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing array_header_crosses_L_foreign_kind   tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_foreign_kind.bin malformed            -
 framing array_elem_kind_mismatch              tblr1 Cfg testdata/wire/tables/framing/array_elem_kind_mismatch.bin              0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
 framing array_count_non_canonical             tblr1 Cfg testdata/wire/tables/framing/array_count_non_canonical.bin             malformed            -
 framing array_header_incomplete_at_end        tblr1 Cfg testdata/wire/tables/framing/array_header_incomplete_at_end.bin        malformed            -
 framing array_elem_terminator_early           listdemo Bounded testdata/wire/tables/framing/array_elem_terminator_early.bin    malformed            -
 framing array_elem_L_past_body                listdemo Bounded testdata/wire/tables/framing/array_elem_L_past_body.bin         malformed            -
-framing map_header_crosses_L_kind_mismatch    listdemo Squad testdata/wire/tables/framing/map_header_crosses_L_kind_mismatch.bin 0,1,0,0,0,false,read testdata/conformance/tables/framing/squad_empty_50.json
+framing map_header_crosses_L_foreign_kind     listdemo Squad testdata/wire/tables/framing/map_header_crosses_L_foreign_kind.bin malformed            -
 framing map_header_crosses_L                  listdemo Squad testdata/wire/tables/framing/map_header_crosses_L.bin             malformed            -
 framing map_entry_terminator_early            listdemo Squad testdata/wire/tables/framing/map_entry_terminator_early.bin       malformed            -
 framing map_entry_L_past_map                  listdemo Squad testdata/wire/tables/framing/map_entry_L_past_map.bin             malformed            -
 framing map_descending                        listdemo Squad testdata/wire/tables/framing/map_descending.bin                   malformed            -
+framing map_repeat_key                        listdemo Squad testdata/wire/tables/framing/map_repeat_key.bin                  malformed            -
+framing map_entry_key_twice                   listdemo Squad testdata/wire/tables/framing/map_entry_key_twice.bin             malformed            -
 framing map_count_over_length                 listdemo Squad testdata/wire/tables/framing/map_count_over_length.bin            malformed            -
-framing map_L1_inert                          listdemo Squad testdata/wire/tables/framing/map_L1_inert.bin                     0,0,0,0,0,false,read testdata/conformance/tables/framing/squad_empty_50.json
+framing map_L1_short                          listdemo Squad testdata/wire/tables/framing/map_L1_short.bin                    malformed            -
 framing map_header_crosses_L_dart_mutant      listdemo Army testdata/wire/tables/framing/map_header_crosses_L_dart_mutant.bin  malformed            -
 framing keyed_header_crosses_L                tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L.bin                malformed            -
-framing keyed_header_crosses_L_kind_mismatch  tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L_kind_mismatch.bin  0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing keyed_header_crosses_L_foreign_kind   tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L_foreign_kind.bin malformed            -
 framing keyed_key_zero                        tblr1 Cfg testdata/wire/tables/framing/keyed_key_zero.bin                        malformed            -
 framing keyed_unknown_key                     tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin                     1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_tally_gold_3.json
 framing keyed_triple_L_past_body              tblr1 Cfg testdata/wire/tables/framing/keyed_triple_L_past_body.bin              malformed            -
 framing keyed_count_over_length               tblr1 Cfg testdata/wire/tables/framing/keyed_count_over_length.bin               malformed            -
 framing keyed_elem_kind_mismatch              tblr1 Cfg testdata/wire/tables/framing/keyed_elem_kind_mismatch.bin              0,1,0,0,0,false,read testdata/conformance/tables/framing/cfg_default.json
-framing keyed_L1_inert                        tblr1 Cfg testdata/wire/tables/framing/keyed_L1_inert.bin                        0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing keyed_repeat_slot                     tblr1 Cfg testdata/wire/tables/framing/keyed_repeat_slot.bin               malformed            -
+framing keyed_repeat_unknown_slot             tblr1 Cfg testdata/wire/tables/framing/keyed_repeat_unknown_slot.bin       malformed            -
+framing keyed_L1_short                        tblr1 Cfg testdata/wire/tables/framing/keyed_L1_short.bin                  malformed            -
 framing union_arm_L_not_width                 tblr1 Cfg testdata/wire/tables/framing/union_arm_L_not_width.bin                 malformed            -
 framing union_arm_width_exact                 tblr1 Cfg testdata/wire/tables/framing/union_arm_width_exact.bin                 0,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_amount_42.json
 framing union_arm_L_past_body                 tblr1 Cfg testdata/wire/tables/framing/union_arm_L_past_body.bin                 malformed            -
@@ -1174,7 +1180,7 @@ framing frame_empty_buffer                    tblr1 Cfg testdata/wire/tables/fra
 framing frame_kind_unknown_37_named           tblr1 Cfg testdata/wire/tables/framing/frame_kind_unknown_37_named.bin           malformed            -
 framing frame_kind_reserved_34_named          tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34_named.bin          malformed            -
 framing frame_kind_zero_named                 tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero_named.bin                 malformed            -
-framing node_table_twice                      graphdemo ListNode testdata/wire/tables/framing/node_table_twice.bin             0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_3.json
+framing node_table_twice                      graphdemo ListNode testdata/wire/tables/framing/node_table_twice.bin                malformed            -
 # Finding N1, ruled (Glenn, 2026-10-31): damage discards the whole load, so
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing             tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin             malformed            -

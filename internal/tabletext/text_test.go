@@ -61,14 +61,29 @@ func TestUnknownKeyIsCounted(t *testing.T) {
 	}
 }
 
-// §16.2: a duplicate key is last-wins, counted.
-func TestDuplicateKeyIsLastWins(t *testing.T) {
-	_, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90, "tick_rate": 120 }`)
-	if r.Duplicate != 1 {
-		t.Fatalf("expected one duplicate, got %+v", r)
+// §16.2: ONE NAME, ONCE PER OBJECT. No writer puts a member name down twice
+// in one object, so a repeat is damage and the whole read is refused: a known
+// field, an unknown name, a keyed slot (by name or by two names for one slot)
+// and a map key (by spelling or by two spellings of one key) alike.
+func TestRepeatedKeyIsDamage(t *testing.T) {
+	for _, tc := range []struct{ table, text string }{
+		{"GlobalSettings", `{ "tick_rate": 90, "tick_rate": 120 }`},
+		{"GlobalSettings", `{ "mystery": 1, "tick_rate": 90, "mystery": 2 }`},
+		{"ShipEntry", `{ "gunner": { "tracking": true }, "gunner": null }`},
+		{"ProfileConfig", `{ "tilt": 100, "tilt": 5e-324 }`},
+		{"PackConfig", `{ "thresholds": { "Hard": 1, "Hard": 2 } }`},
+		{"PackConfig", `{ "ships": { "Frigate": {}, "Frigate": {} } }`},
+		{"PackConfig", `{ "ships": { "None": {}, "None": {} } }`},
+	} {
+		_, _, r := read(t, tc.table, tc.text)
+		if !r.Malformed {
+			t.Fatalf("%s: a repeated key must refuse the read, got %+v", tc.text, r)
+		}
 	}
-	if field(t, inst, "tick_rate").Cell.U != 120 {
-		t.Fatal("the last occurrence did not win")
+	// the control: the same names once each read clean
+	_, _, r := read(t, "GlobalSettings", `{ "mystery": 1, "tick_rate": 90 }`)
+	if r.Malformed || r.Unknown != 1 {
+		t.Fatalf("distinct names are not a repeat: %+v", r)
 	}
 }
 
@@ -559,11 +574,6 @@ func TestNullPerKind(t *testing.T) {
 	if field(t, inst, "gunner").Present {
 		t.Fatal("null on a ?T left the field present")
 	}
-	// and it beats an earlier occurrence, because last wins as a whole value
-	_, inst, r = read(t, "ShipEntry", `{ "gunner": { "tracking": true }, "gunner": null }`)
-	if r.Duplicate != 1 || field(t, inst, "gunner").Present {
-		t.Fatalf("a repeated key ending in null must leave the field absent: %+v", r)
-	}
 	for _, key := range []string{"name", "health", "hardpoints"} {
 		_, _, r := read(t, "ShipEntry", `{ "`+key+`": null }`)
 		if r.KindMismatch != 1 {
@@ -624,51 +634,6 @@ func TestIllFormedByteIsReplacedOnRead(t *testing.T) {
 	}
 }
 
-// §16.2: RE-ESTABLISHMENT HAPPENS ON PLACEMENT. A repeated key whose repeat the
-// walk refuses at the VALUE level — a fraction in an integer field, a magnitude
-// no float of that width holds, a token that is not JSON at all — leaves the
-// first occurrence's value standing. Only a value actually placed replaces one.
-func TestRejectedRepeatKeepsTheFirstValue(t *testing.T) {
-	cases := []struct {
-		table, text, key string
-		want             uint64
-	}{
-		{"ProfileConfig", `{ "tilt": 100, "tilt": 5e-324 }`, "tilt", 100},
-		{"ProfileConfig", `{ "experience": 5, "experience": 2.5 }`, "experience", 5},
-		{"ProfileConfig", `{ "badge": 9, "badge": 1e309 }`, "badge", 9},
-		{"WeaponConfig", `{ "penetration": 3, "penetration": 1.5 }`, "penetration", 3},
-	}
-	for _, tc := range cases {
-		t.Run(tc.text, func(t *testing.T) {
-			_, inst, r := read(t, tc.table, tc.text)
-			if r.KindMismatch != 1 || r.Duplicate != 1 {
-				t.Fatalf("expected one kind_mismatch and one duplicate, got %+v", r)
-			}
-			if got := field(t, inst, tc.key).Cell.U; got != tc.want {
-				t.Fatalf("the refused repeat wiped the first value: got %d, want %d", got, tc.want)
-			}
-		})
-	}
-	// a keyed SLOT is the same rule one level down
-	_, inst, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 64, "Hard": 0.1 } }`)
-	if r.KindMismatch != 1 || r.Duplicate != 1 {
-		t.Fatalf("expected one kind_mismatch and one duplicate, got %+v", r)
-	}
-	fv := field(t, inst, "thresholds")
-	hard := KeyedSlot(t, fv, "Hard")
-	if fv.Elems[hard].U != 64 {
-		t.Fatalf("the refused repeat wiped the slot: got %d", fv.Elems[hard].U)
-	}
-	// and a repeat that IS placeable replaces, as last-wins requires
-	_, inst, r = read(t, "ProfileConfig", `{ "tilt": 100, "tilt": 7 }`)
-	if r.Duplicate != 1 || r.KindMismatch != 0 {
-		t.Fatalf("expected one duplicate and no mismatch, got %+v", r)
-	}
-	if got := field(t, inst, "tilt").Cell.U; got != 7 {
-		t.Fatalf("last-wins did not: got %d", got)
-	}
-}
-
 // A FIELD READS ITS TOKEN THROUGH THE FLOAT64 AND A MAP KEY READS IT EXACTLY,
 // and this row is the field half. The exact reader lives on the key path alone
 // (§16.2's map row, and the key rows in test/conformance/harness/maps_test.go),
@@ -714,39 +679,6 @@ func TestAnIntegerFieldReadsItsTokenThroughTheFloat(t *testing.T) {
 	}
 	if got := field(t, inst, "epoch").Cell.U; got != math.MaxUint64 {
 		t.Fatalf("the field holds the edge: got %d, want %d", got, uint64(math.MaxUint64))
-	}
-}
-
-// KeyedSlot resolves a variant name to its slot for a keyed field.
-func KeyedSlot(t *testing.T, fv *tabletext.Field, name string) int {
-	t.Helper()
-	slot := tabletext.KeyedValueSlot(fv.Def, tabletext.EnumValue(fv.Def.KeyEnumRef, name))
-	if slot < 0 {
-		t.Fatalf("%s names no slot of %s", name, fv.Def.KeyEnum)
-	}
-	return slot
-}
-
-// §16.2 with #282: a KEYED OBJECT'S KEYS ARE KEYS. A variant named twice is a
-// duplicate, counted on the RESOLVED slot and before the shape check — so a
-// repeat the walk then refuses is still a repeat. A key that names NO slot (an
-// unknown variant, or `"None"`) is `unknown` each time and never a duplicate.
-func TestKeyedObjectDuplicateRule(t *testing.T) {
-	_, _, r := read(t, "PackConfig", `{ "thresholds": { "Hard": 1, "Hard": 2 } }`)
-	if r.Duplicate != 1 || r.Unknown != 0 {
-		t.Fatalf("a repeated slot is one duplicate, got %+v", r)
-	}
-	_, _, r = read(t, "PackConfig", `{ "ships": { "Frigate": {}, "Frigate": {} } }`)
-	if r.Unknown != 2 || r.Duplicate != 0 {
-		t.Fatalf("a repeated key naming no slot is unknown each time, got %+v", r)
-	}
-	_, _, r = read(t, "PackConfig", `{ "ships": { "None": {}, "None": {} } }`)
-	if r.Unknown != 2 || r.Duplicate != 0 {
-		t.Fatalf("None names no slot, so it is unknown each time, got %+v", r)
-	}
-	_, _, r = read(t, "PackConfig", `{ "ships": { "Scout": {}, "Frigate": {}, "Scout": {}, "Frigate": {} } }`)
-	if r.Unknown != 2 || r.Duplicate != 1 {
-		t.Fatalf("mixed: two unknown, one duplicate, got %+v", r)
 	}
 }
 

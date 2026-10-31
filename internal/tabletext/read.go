@@ -1,7 +1,7 @@
 // The text form's READ half (docs/SPEC-TABLES.md §16.2): one JSON text into one
 // instance, over the IR. Every rule here is §16's and mirrors the generated
-// C++ walk — unknown keys skipped and counted, duplicates last-wins and
-// counted, a wrong JSON type skipped rather than coerced, numbers clamped at
+// C++ walk — unknown keys skipped and counted, a repeated key refused as
+// damage, a wrong JSON type skipped rather than coerced, numbers clamped at
 // the declared bounds and then at the storage width, strings clamped at a code
 // point boundary, trailing commas and comments accepted on read and never written.
 package tabletext
@@ -669,7 +669,7 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 }
 
 // readTable places ONE table object: keys are field keys, unknown ones are
-// skipped and counted, a repeated key is last-wins and counted. The instance
+// skipped and counted, a repeated key is damage (§16.2). The instance
 // is already at its declared defaults, so a key the text never mentions keeps
 // the default an absent field takes on the wire (§4).
 func (in *reader) readTable(inst *Instance, depth int) bool {
@@ -712,7 +712,10 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 // so it hands the key it scanned in as firstKey, with the colon consumed, and
 // this places it before scanning the rest.
 func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool {
-	seen := make(map[int]bool, len(inst.Fields))
+	// ONE NAME, ONCE PER OBJECT (docs/SPEC-TABLES.md §16.2): no writer puts a
+	// member name down twice in one object, so a repeat is damage, whether or
+	// not this reader can name the member.
+	seen := make(map[string]bool, len(inst.Fields))
 	for {
 		var key []byte
 		var c byte
@@ -729,7 +732,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				return false
 			}
 			var ok bool
-			key, _, ok = in.scanString(maxJsonKey)
+			key, _, ok = in.scanString(-1) // whole, so two names compare exactly
 			if !ok {
 				return false
 			}
@@ -750,6 +753,11 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			in.bad = true
 			return false
 		}
+		if seen[string(key)] {
+			in.bad = true
+			return false
+		}
+		seen[string(key)] = true
 		index, known := inst.FieldIndexByKey(string(key))
 		if !known {
 			in.report.Unknown++
@@ -757,18 +765,11 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				return false
 			}
 		} else {
-			if seen[index] {
-				in.report.Duplicate++
-			}
-			seen[index] = true
 			fv := &inst.Fields[index]
 			switch shape := in.valueShape(); {
 			case shape == 'z' && TakesNull(fv.Def):
 				// `null` is the absence, not a value: a `?T` reads it as
-				// ABSENT and a pointer as null (docs/SPEC-TABLES.md §16.2). It is
-				// the ONE key that puts a field back at its defaults, so a
-				// repeated key whose last occurrence is null cannot leave an
-				// earlier value standing.
+				// ABSENT and a pointer as null (docs/SPEC-TABLES.md §16.2).
 				if !in.literal("null") {
 					return false
 				}
@@ -882,11 +883,8 @@ func (in *reader) readField(fv *Field, depth int) bool {
 		}
 		return in.readArray(fv, depth)
 	}
-	// a SCALAR is not re-established: it is written only when a value is
-	// actually placed, so a repeated key whose repeat the walk refuses leaves
-	// the first occurrence's value standing (docs/SPEC-TABLES.md §16.2 — a value
-	// with the wrong shape is skipped, never coerced, and re-establishment is
-	// tied to placing)
+	// a SCALAR is written only when a value is actually placed: a value with
+	// the wrong shape is skipped, never coerced (docs/SPEC-TABLES.md §16.2)
 	return in.readScalar(&fv.Cell, f, depth)
 }
 
@@ -1097,8 +1095,7 @@ func (in *reader) readBase64(fv *Field) bool {
 	if !ok {
 		return false
 	}
-	// bytes RE-ESTABLISH before decoding: a repeated key places a whole value,
-	// and six-bits-at-a-time decoding cannot overlay one
+	// the text's value replaces the declared default whole
 	fv.Cell.Str = nil
 	fv.Count = 0
 	bound := int(fv.Def.Type.Size)
@@ -1186,10 +1183,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
-	// an ARRAY re-establishes before placing: a fixed array writes every slot,
-	// so a second, shorter occurrence overlaying a prefix would leave the
-	// first occurrence's tail standing (docs/SPEC-TABLES.md §16.2, last-wins as a
-	// WHOLE value)
+	// the text's elements replace the declared default whole
 	for i := range fv.Elems {
 		fv.Elems[i] = in.m.elementZero(f)
 	}
@@ -1360,12 +1354,9 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 // unknown key is skipped and counted, and `"None"` is such a key because None
 // keys no slot (§2.4).
 //
-// A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate key
-// like any other, last-wins and counted (§16.2). The count is taken on the
-// RESOLVED SLOT and before the shape check, so a repeat the walk then refuses
-// is still a repeat; a key that names no slot — an unknown variant, or `"None"`
-// — is `unknown` EACH TIME and is never a duplicate, because there is no slot
-// for it to be a repeat of.
+// A KEYED OBJECT'S KEYS ARE KEYS: a name given twice, or two names that
+// resolve to one slot, is damage like any repeated key (§16.2), judged before
+// the shape check.
 func (in *reader) readKeyed(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '{' {
@@ -1374,15 +1365,13 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 	}
 	in.pos++
 	// every slot back to its declared defaults ONCE, so a key the text omits
-	// keeps them and a repeated field key cannot leave an earlier occurrence's
-	// slots standing. Per-KEY the slot is not re-established: a repeated slot
-	// key whose repeat the walk refuses leaves the first value, exactly as a
-	// repeated scalar field key does.
+	// keeps them
 	for i := range fv.Elems {
 		fv.Elems[i] = in.m.elementZero(f)
 	}
 	shape := ElementShape(f)
-	seen := map[int]bool{}
+	seen := map[string]bool{} // one name, once per object (§16.2)
+	slots := map[int]bool{}
 	for {
 		c := in.peek()
 		if c == '}' {
@@ -1393,7 +1382,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, _, ok := in.scanString(maxJsonKey)
+		key, _, ok := in.scanString(-1)
 		if !ok {
 			return false
 		}
@@ -1402,12 +1391,18 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			return false
 		}
 		in.pos++
+		if seen[string(key)] {
+			in.bad = true
+			return false
+		}
+		seen[string(key)] = true
 		slot := KeyedValueSlot(f, EnumValue(f.KeyEnumRef, string(key)))
 		if slot >= 0 {
-			if seen[slot] {
-				in.report.Duplicate++
+			if slots[slot] {
+				in.bad = true // two names for one slot are one key twice
+				return false
 			}
-			seen[slot] = true
+			slots[slot] = true
 		}
 		switch {
 		case slot < 0:
@@ -2183,7 +2178,8 @@ func (in *reader) placeWide(cell *Cell, f *ir.Field, token string, kind int) boo
 //
 // KEYS NEVER CLAMP: a key past the declaration's capacity drops its whole
 // entry and counts `clamped`, because a clamped key would merge two identities
-// into one. A repeated key is `duplicate` and the LAST occurrence wins whole.
+// into one. A key given twice, in one spelling or in two that read as one key,
+// is damage (§16.2).
 func (in *reader) readMap(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '{' {
@@ -2193,6 +2189,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	in.pos++
 	fv.Entries = nil
 	keyField := ir.MapKeyField(f)
+	names := map[string]bool{}
 	for {
 		c := in.peek()
 		if c == '}' {
@@ -2203,10 +2200,16 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, over, ok := in.scanStored(maxJsonKey)
+		key, _, ok := in.scanStored(-1) // whole, so two names compare exactly
 		if !ok {
 			return false
 		}
+		if names[string(key)] {
+			in.bad = true // one name twice in one object (§16.2)
+			return false
+		}
+		names[string(key)] = true
+		over := len(key) > maxJsonKey
 		if in.peek() != ':' {
 			in.bad = true
 			return false
@@ -2256,19 +2259,13 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		case !in.readMapValue(&entry.Fields[1], depth):
 			return false
 		default:
-			at := -1
 			for i := range fv.Entries {
 				if MapKeyOrder(f, MapKeyOf(f, fv.Entries[i].Tab), MapKeyOf(f, entry)) == 0 {
-					at = i
-					break
+					in.bad = true // one key twice (§16.2)
+					return false
 				}
 			}
-			if at >= 0 {
-				in.report.Duplicate++
-				fv.Entries[at] = Cell{Tab: entry}
-			} else {
-				fv.Entries = append(fv.Entries, Cell{Tab: entry})
-			}
+			fv.Entries = append(fv.Entries, Cell{Tab: entry})
 		}
 		c = in.peek()
 		if c == ',' {

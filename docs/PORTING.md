@@ -792,8 +792,7 @@ and nothing passes between them, so `measure == save` over a map is a real
 check on two sorts agreeing. The READER trusts nothing and spends one compare
 per entry: the key is read by a SCAN of the entry's field headers before the
 slot is chosen, ascending against the key of the last entry that LANDED, a
-duplicate resets the slot it took so last wins WHOLE, a descending key stops
-the map and lets the PARENT read on, a key past the bound is skipped by its `L`
+repeated or a descending key is damage and discards the whole load, a key past the bound is skipped by its `L`
 and counted `clamped`, and a key kind the reader does not declare empties the
 map for ONE `kind_mismatch`. The shape to refuse is closed addressing: a node
 per entry is an allocation per entry on the authoring side, a directory entry
@@ -827,7 +826,7 @@ for the unspent kind, which is what keeps the `[..N]Pair` migration.
 **Negative control.** Ten, through I2's overlay sabotage, each turning
 `test/tables/maps_main.cpp` red on a CHECK: the writer emitting insertion
 order, `Save` emitting a dead entry, the ascending check dropped, the duplicate
-rule dropped, the key-kind rule decoding anyway, the reader clamping a key
+refusal dropped, the key-kind rule decoding anyway, the reader clamping a key
 instead of dropping its entry, the `N`-against-`L` fit check dropped,
 `LoadMeasure` summing the extent at one depth only, `ToJson` writing the
 entries in any order but ascending, and `Lock` writing an UNREACHED non-empty

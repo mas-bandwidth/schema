@@ -367,10 +367,9 @@ section.
 
 A load fills the report and returns; nothing on the table wire is fatal on
 data from another build. `unknown` is the ordinary sound of evolution and
-fires on every cross-version load by design. `duplicate` counts a REPEATED
-KEY, and it has one source on each side: a repeated JSON key in the text
-form, and a MAP's repeated key on the wire, which is the one wire event that
-raises it (SPEC-TABLES.md §2.8, §4). `widened` is the one counter that names
+fires on every cross-version load by design. `duplicate` is retired and
+always zero: a repeated key, in the text or in a map on the wire, is input no
+writer produces and so damage (SPEC-TABLES.md §2.8, §4). `widened` is the one counter that names
 NO LOSS: an integer kind read into a wider one of the same signedness, or an
 `f32` into an `f64`, decodes exactly, and the count says the bytes were not
 the shape this reader declares rather than that anything was dropped. It fires

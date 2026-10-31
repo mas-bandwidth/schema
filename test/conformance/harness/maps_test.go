@@ -254,42 +254,24 @@ func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 // THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (docs/SPEC-TABLES.md §16.2):
 // `2` and `2.0` are the integer 2 wherever an integer is read, and that holds at
 // the top of the uint64 domain as well as at the bottom. Read through a double,
-// 18446744073709551615.0 rounds UP to 2^64 and is dropped as outside the kind,
-// where the digits alone are exactly the key the kind holds.
+// 18446744073709551615.0 rounds UP to 2^64 and would be dropped as outside the
+// kind; read by its digits it is exactly the key the first spelling names, so
+// the object names one key twice, which is damage.
 func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
 	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615.0":{"count":2}}}`
-	if !m.Read(inst, []byte(text), &r) || r.Malformed {
-		t.Fatalf("the text is well formed: %+v", r)
+	if m.Read(inst, []byte(text), &r) || !r.Malformed {
+		t.Fatalf("the two spellings are one key, so the read is refused: %+v", r)
 	}
-	if r.KindMismatch != 0 || r.Clamped != 0 {
-		t.Errorf("the decimal spelling of UINT64_MAX is a key the kind holds: %+v", r)
-	}
-	if r.Duplicate != 1 {
-		t.Errorf("the two spellings are one key, so the second is a duplicate: %+v", r)
-	}
-	fv, ok := inst.FieldByKey("ids")
-	if !ok {
-		t.Fatal("no ids field")
-	}
-	if len(fv.Entries) != 1 {
-		t.Fatalf("expected one entry, got %d", len(fv.Entries))
-	}
-	if got := fv.Entries[0].Tab.Fields[0].Cell.U; got != 18446744073709551615 {
-		t.Errorf("key %d, want 18446744073709551615", got)
-	}
-	item := fv.Entries[0].Tab.Fields[1].Cell.Tab
-	if item == nil {
-		t.Fatal("the entry carries no value")
-	}
-	count, ok := item.FieldByKey("count")
-	if !ok {
-		t.Fatal("no count field")
-	}
-	if count.Cell.I != 2 {
-		t.Errorf("last wins: count %d, want 2", count.Cell.I)
+	// the control: either spelling alone is the one key the kind holds
+	for _, key := range []string{"18446744073709551615", "18446744073709551615.0"} {
+		inst := m.New(m.Lookup("EdgeRow"))
+		var r tabletext.Report
+		if !m.Read(inst, []byte(`{"ids":{"`+key+`":{"count":1}}}`), &r) || !r.Silent() {
+			t.Fatalf("%s alone reads clean: %+v", key, r)
+		}
 	}
 }
 

@@ -2467,9 +2467,9 @@ shape an enum-keyed array already takes:
   clamped.
 - **`ToJson` writes entries in ASCENDING KEY ORDER**, so `unpack` then `pack`
   is byte-stable (§17.2) and a diff of two texts is a diff of two maps.
-- **`FromJson` reads keys in whatever order the text gives them.** A repeated
-  key is last-wins and counted `duplicate`, the object rule (§16.2) applied
-  inside the map. An empty object is an empty map, and `null` is
+- **`FromJson` reads keys in whatever order the text gives them.** A key the
+  object gives twice, in one spelling or in two that read as one key, is
+  damage, the object rule (§16.2) applied inside the map. An empty object is an empty map, and `null` is
   `kind_mismatch`.
 
 **THE COOK, and the generated `Find`.** A cook is a region written verbatim
@@ -2637,10 +2637,9 @@ red:
   sabotage is the sort and not the arithmetic.
 - **The reader's ascending check is dropped.** A `report` row whose body is a
   SHUFFLED map is what meets it, and the row's `malformed` flag goes red.
-- **The duplicate rule is dropped**, first wins or both kept. A `report` row
-  whose DUPLICATE entry ELIDES a field the first occurrence set is what meets
-  it, and the decoded value goes red, because a reader that overlays instead
-  of resetting agrees with the rule on every other body.
+- **The duplicate refusal is dropped**, a repeated key read as an ascending
+  one. The `framing` row `map_repeat_key` is what meets it, and its
+  `malformed` verdict goes red.
 - **The parent stops at a descending key** instead of reading on. A `report`
   row whose map has a descending key and whose HOLDER carries a field after
   the map is what meets it, and that field's decoded value goes red.
@@ -2818,7 +2817,7 @@ binary-searching it. Row by row, with the section that holds each:
 | byte-stable sorted output | `measure == save`, sorted by the writer, the same bytes from any insertion order (§9, §2.8) | order undefined; two serializations of one map may differ | the builder sorts when asked; nothing holds it to a byte |
 | the text form a plain object | `{ "key": value }`, integer keys quoted, ascending, `&node` for sharing (§16) | a JSON object, order unspecified | a JSON array of objects |
 | a fixed-table user pays nothing | a map-free unit carries no map machinery, held by the zero-cost gate's header scan (§2.2, §2.8) | every runtime carries the map codec | every runtime carries the vector and the search |
-| duplicates counted | `duplicate` on the wire and in the text, last wins (§4) | last wins, silently | undefined; the search returns one of them |
+| duplicates refused | a repeated key is damage on the wire and in the text (§4) | last wins, silently | undefined; the search returns one of them |
 | the optional index at load | linear probing over the sorted array, caller-owned, never stored (§2.8) | the parsed map IS a hash map, always, allocated | none; binary search only |
 
 Where a row is not achievable it says so in the row: zero allocation is a
@@ -2988,8 +2987,8 @@ the wire, in a region and in a cook, and it is identity the way POSITION is
 identity in a fixed array. Three of the map's rules therefore have no
 counterpart here, and their absence is the design rather than an omission: no
 ascending check, so a `malformed` a map raises on a descending key cannot fire.
-No key equality, so `duplicate` cannot fire, and two equal elements are two
-elements. And no sort in the four writing walks, so `measure == save` over a
+No key equality, so a repeated key cannot arise, and two equal elements are
+two elements. And no sort in the four writing walks, so `measure == save` over a
 list is a check on the arithmetic alone, which is one fewer thing the pair
 proves and one fewer thing it can get wrong.
 
@@ -4330,7 +4329,7 @@ record's u32 length.
 **THE TEXT FORM (§16.2)** is the plain shape: an array of strings (with `null`
 for an absent `?` element) and an object with plain keys. An unbounded element
 is never clamped and an unbounded key never dropped for its length; a repeated
-key is last-wins and counted `duplicate`, as for every map. The text form reads
+key is damage, as for every map. The text form reads
 and writes these elements and keys as §16.9.2 states. An element or key
 whose string decodes to `U+0000` refuses the read (§16.3).
 
@@ -5259,8 +5258,8 @@ twenty unnameable entries counts nothing at all if no body references them.
   that declares the same name as a bounded array of a two-field table decodes
   it as that array. **Its entries are written in ASCENDING KEY ORDER with no
   key twice**, and that is a WRITER's rule the reader verifies with one
-  compare an entry: a repeated key is last-wins and counted `duplicate`, a
-  descending one is damage and discards the whole load (§2.8, §4).
+  compare an entry: a repeated or a descending key is damage and discards the
+  whole load (§2.8, §4).
   Byte-identical output against this implementation requires the order, as it
   requires declaration order.
 - **An UNBOUNDED ARRAY moves no byte on this wire either, and spends no kind**
@@ -5966,8 +5965,9 @@ element carries:
   length and counted `unknown`; a slot the writer never sent keeps its
   declared default. Insert a variant, remove one, reorder them — every
   surviving slot still finds its home, in both directions.
-- **A repeated key is legal input and the last occurrence wins**, the
-  field-level rule (§3) applied inside the body.
+- **A key rides ONCE per body**: a keyed body carrying one key reference
+  twice, whether or not this reader can name the variant, is input no writer
+  produces, and it is damage (§3's one-id rule applied inside the body; §4).
 - **A key with no name on the WRITING side is a save error**, not a silent
   `None`: measure and save return failure, exactly as they refuse an
   unnameable enum value or an out-of-range union tag (§5).
@@ -6962,8 +6962,8 @@ the DAMAGE row**: damage discards the whole load on both forms. The shapes in th
 announcement are what keep the evolution rows standing: a range, a capacity and
 an array bound are WIDTH facts on this wire, and a reader that meets a width it
 did not expect reads the sender's and applies its own bound rather than losing
-the field, so unknown, absent, `kind_mismatch`, `widened`, `clamped`,
-`duplicate` and every guard and bound row read exactly as they read on a file.
+the field, so unknown, absent, `kind_mismatch`, `widened`, `clamped` and
+every guard and bound row read exactly as they read on a file.
 **A WIDENING IS THEREFORE FOUND IN THE ANNOUNCEMENT** rather than in a kind
 byte: an announced kind below this reader's on the same ladder decodes at the
 width the announcement states, the value lands, and one `widened` counts, at a
@@ -8749,8 +8749,8 @@ tolerance is the versioning model:
   the value reads its default and the entry stays. A map changed to or from
   `[..N]Pair` reads the same bytes in both directions, and the map direction
   gains the order check. To or from `[E]T` it is a kind mismatch (`14` against
-  `16`). A repeated key is `duplicate` and last wins whole. A descending key is
-  `malformed`, which is damage (below). A key that does not fit
+  `16`). A repeated or a descending key is `malformed`, which is damage
+  (below). A key that does not fit
   the reader's bound drops its entry and counts `clamped`, one per entry.
 - **An UNBOUNDED ARRAY** (§2.9) takes the array rules above and no rule of its
   own. `[]T` and `[..N]T` are the same bytes, so an edit between them is silent
@@ -8842,9 +8842,8 @@ tolerance is the versioning model:
   `framing` rows owe the verdict `malformed` and no value, and the wire
   fuzzer compares only that both sides say `malformed`. **EVOLUTION IS NOT
   DAMAGE** and every other row of this section stands: an unknown field,
-  variant, arm or slot skipped and counted, a kind mismatch, a widening, a
-  clamp, a duplicate key, an inert short array body; the load succeeds and
-  the report counts them. Array elements decode **inside their field's body
+  variant, arm or slot skipped and counted, a kind mismatch, a widening and a
+  clamp; the load succeeds and the report counts them. Array elements decode **inside their field's body
   bounds**, so no value is ever read from a neighbor's bytes.
   After an accepted counted array, slots beyond its live count hold the
   value-initialized element (§7.2).
@@ -8854,8 +8853,8 @@ tolerance is the versioning model:
   THE HEADER LIES INSIDE THE BODY).
 
 Every event lands in the **read report**. The wire-tolerance counters are
-`unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
-`malformed` flag; the report also carries `missing_required` (§2.3) and
+`unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` (retired:
+always zero, below) and the `malformed` flag; the report also carries `missing_required` (§2.3) and
 `blob_shared` (§2.5), and its `Reason` names the strict read's typed refusal (§6.5), and every
 read's `non_finite_float` refusal (§3.3).
 `unknown` counts every id this reader cannot name: a field id, an enum
@@ -8902,14 +8901,11 @@ declaration and read under another, pinning the six counters and the value:
   a reader that has it decodes anything at all, or if a reader that declares
   the arm with a payload reports anything but one `kind_mismatch`.
 
-**`duplicate` is the TEXT FORM's counter, and the wire raises it in ONE
-place** (§16.2). It rides on the same report struct because a caller has one
-report type, not two — so every backend carries the counter — and a wire read
-leaves it zero for every field id: a body carrying an id twice is legal input
-whose last occurrence wins, silently, by §3. The one wire event that counts it
-is a MAP's repeated key (§2.8): there the repeat is a fact about the DATA — two
-entries claimed one identity — rather than about the framing, last wins as it
-does in a text, and the count is what a tool rewriting the file needs.
+**`duplicate` IS RETIRED, AND NO READ RAISES IT.** Every repeat it once
+counted, a map's repeated key on the wire and a repeated member in the text,
+is input no writer produces and so damage (above). The member stays zero in
+every backend's report struct and in the conformance report line until one
+cross-leg change removes both.
 
 Fields may be added anywhere, removed freely, and reordered freely —
 identity is the name, not the position. **So may an enum's variants and a
@@ -10427,34 +10423,12 @@ number and never has to reason about the list.
 field's id is by definition one this reader cannot name in the body it came
 from, and a writer writes only ids it CAN name, so no retained field can land
 in a body under an id the reader also wrote. A body carrying one id twice is
-legal input whose last occurrence wins (§3), which is exactly the shape a
-retained field must never take, and the definition of the class is what rules
-it out.
+damage (§3, §4), so no load that retained anything ever met one.
 
-**A RETAINED RECORD BELONGS TO THE BODY OCCURRENCE THAT CARRIED IT, AND DIES
-WITH IT.** Legal input can carry a known child body twice, `child { future = 7
-}` and then `child { known = 2 }`, and the later occurrence resets the child
-and wins whole (§3, §4). The records retained under the earlier occurrence go
-with the values it held: **when a known ancestor body is reset or replaced by
-a later legal occurrence on the same wire, every record retained under the
-earlier occurrence is discarded before the later one is read, and only the
-winning occurrence's records survive to the save.** The occurrences are five,
-and each is a body the wire lets a writer put down again: a repeated TABLE
-field, by value or under `?`, a UNION whose arm is written again, the same arm
-or another, a repeated MAP field, a MAP's duplicate key (§2.8), and a
-KEYED-ARRAY slot written again (§3.2). The path is the reader's own address
-for the body (below), so both
-occurrences of `child` name one path, and a record that outlived its occurrence
-would be appended into the winner's body at save as if the winner had carried
-it. It did not, and a save that resurrected `future = 7` beside `known = 2`
-would be writing a field no occurrence of that body ever held whole. **The
-discard moves neither `retain_lost` nor `retained`.** The writer's own later
-occurrence superseded the data, so nothing was lost that the load could have
-kept, and `retained` counted the record when its bytes were kept and does not
-fall when they are let go: both counters stay monotonic, and a reset is the
-writer's act and not a loss (THE REPORT, below). The caller's own edits
-between load and save are a different hazard and are stated on their own
-(WHAT INVALIDATES A PATH, below).
+**EVERY BODY IS READ ONCE, so a retained record belongs to the one body that
+carried it.** A body carrying one id twice is damage (§3, §4), so no load
+that hands anything back ever met a second occurrence of a body, and no
+record outlives the body it came from.
 
 **RETENTION FORM: the field with every reference resolved.** A reference names
 a slot of the FILE's id table (§3), so a verbatim copy re-emitted into a file
@@ -10645,8 +10619,8 @@ Two consequences follow, and each is a rule:
   save, a retained record whose path no longer names a body.
 
 Both are monotonic, both are zero in every read that did not opt in, and they
-ride the same report struct for the reason `duplicate` does, which is that a
-caller has one report type and not two (§4). Retention moves no existing
+ride the same report struct as §4's counters, because a caller has one report
+type and not two. Retention moves no existing
 counter: a retained field still counts `unknown`, because `unknown` says what a
 READER could not name and that stays true.
 
@@ -15423,7 +15397,7 @@ inspects everything in the schema built:
   C++ reference carries the whole construct: the builder surface
   (insert, erase,
   find, iterate), the sort in the four walks, the region load's ascending check
-  with its `duplicate` and `malformed` events, the const `Find`, the text
+  with its `malformed` event, the const `Find`, the text
   form's object and `schema cook-check`'s map-slot clause with its order check
   (§7.4). C carries the file wire, region and text forms, including the optional
   runtime index. The tool's COOK and UNCOOK halves are the one piece still owed for
@@ -15744,7 +15718,7 @@ scavenges; the same instrument prints the JIT counts and the variable-class
 `Card` wire row's count beside them, priced rather than gated.
 
 **The JavaScript walk is NOT `JSON.parse`/`JSON.stringify`, and could not be.**
-This section's clamping, counting, duplicate-key and trailing-comma rules ARE
+This section's clamping, counting, repeated-key and trailing-comma rules ARE
 the form, and the output must be byte-identical to the goldens down to a float's
 `%.*g` spelling — so the port spells the C conversion out, as the Rust one does.
 **Both ends of that conversion bit in JavaScript, and both are worth recording,
@@ -15857,7 +15831,7 @@ Per kind:
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted; a flags element that is not a string is `kind_mismatch`, skipped and counted |
 | `[N]T` fixed array | array | fewer elements pad with defaults; more are dropped, counted |
 | `[..N]T` bounded array | array | count = length; more than N are dropped, counted |
-| `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key is last-wins and counted**, as any duplicate key is; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
+| `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key is damage**, as any repeated key is, and so are two names for one slot; an unknown key is skipped and counted, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
 | `?T` optional | the value, the key absent, or `null` | **presence of the KEY is presence, with `null` the one exception**: a key present sets the field present whatever its value, EXCEPT `null`, which is the absence itself and puts the field back at its declared default (below); an absent key leaves it absent. `ToJson` writes present optionals only. An optional ARRAY (§2.3) is this row over the array's: the key present with `[]` is present-and-empty, and `ToJson` writes a present empty array as `[]` |
 | union | object with ONE key, the arm name | `{ "buff": { "multiplier": 2.0 } }`; `None` writes as `{}`; `{}` or absent reads as None; two keys is malformed. An arm name the union's tag does not name, or `None` as the key, is skipped and counted `unknown`, and the union reads `None`. A `table` arm (§2.6) is the same object form. **The arm's VALUE takes the arm's own row of this table**, because an arm is a field line: a scalar arm is a number (`{ "count": 7 }`), a string arm a string, an enum arm its variant name, a `flags` arm its name array, an array arm an array, a pointer arm the pointee's object or `null`, and a PAYLOAD-FREE arm `null` (`{ "ping": null }`), which selects that arm and holds nothing. An arm value of the wrong shape is `kind_mismatch`, the counter a key of the wrong JSON type raises anywhere in this form (below): the union reads `None` and the enclosing object reads on. An ARRAY of unions (§2.6) is an array of this row, a `None` element as `{}` in its place |
@@ -15865,11 +15839,11 @@ Per kind:
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO bound to clamp against; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 is `kind_mismatch`, the reference left null |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
 | `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no bound to clamp against, and the same two values at the empty end |
-| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a repeated key is last-wins and counted; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
+| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` drops its entry and counts `clamped`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` makes the key malformed and one with a fractional value or out of the key kind's range drops its entry as `kind_mismatch`; written in ASCENDING key order; a key given twice, in one spelling or in two that read as one key, is damage; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
 | text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, is `kind_mismatch`; an element longer than `M` clamps as `string(N)`'s row does, and an element past a `[..N]` bound is dropped, counted, as the bounded array's row says |
 | unbounded text list `[]string`, `[..N]string` | array of strings | `["a","b"]` as above, with NO element bound: no element is clamped and `clamped` never fires for a length; a `[..N]` count past `N` is dropped, counted (§2.13.1) |
 | unbounded text list `[]?string`, `[..N]?string` | array of strings and `null` | as the `?string(M)` row, with no element bound |
-| `map[string]V` unbounded key | object keyed by the KEY | the map row with NO key bound: no key is dropped for its length; a repeated key is last-wins and counted (§2.13.1) |
+| `map[string]V` unbounded key | object keyed by the KEY | the map row with NO key bound: no key is dropped for its length; a repeated key is damage (§2.13.1) |
 | text list `[..N]?string(M)`, `[]?string(M)` | array of strings and `null` | `["a",null,"b"]`: a present element is its string, `""` included, and an absent element is `null`; any other JSON type is `kind_mismatch`; the bounds as above |
 | a table declared `json = "array"` | array | the table's text IS its one field's array, wherever the table appears (§16.10) |
 | a table declared `json = "value"` | any JSON value | the table's text IS the raw value its tape holds, wherever the table appears; zero nodes is `null` (§16.13) |
@@ -16003,11 +15977,9 @@ that must preserve a person's comments does not rewrite the file in place.
 
 **The report** (§4): `unknown`, `kind_mismatch` (a key present with the
 wrong JSON type — a string where a number was declared — is skipped, never
-coerced), `clamped`, `duplicate`, `malformed`. **`widened` STAYS ZERO in this
-form**, and it is the counter's mirror of `duplicate`: `duplicate` is the
-text's own event that the wire raises in one place, and `widened` is the
-wire's own event that a text cannot raise at all, because a JSON number
-carries no kind for a reader to find narrower than its own. Silence means the
+coerced), `clamped`, `malformed`. **`widened` STAYS ZERO in this form**,
+because it is the wire's own event and a text cannot raise it at all: a JSON
+number carries no kind for a reader to find narrower than its own. Silence means the
 text matched the schema exactly, and it means it honestly: no value a read
 calls clean can be one the writer would refuse.
 
@@ -16224,7 +16196,7 @@ without touching a stored file.
   enums, flags, union arms and `None`.
 - A hostile battery: wrong JSON types at every kind, malformed number
   tokens, overflow at every integer width and float width, nesting past the
-  depth cap, unknown keys, duplicate keys at every kind including arrays,
+  depth cap, unknown keys, repeated keys refused at every kind including arrays,
   clamped strings at a multi-byte boundary, a union with two keys, an
   enum-keyed object keyed `"None"`, a lone surrogate.
 - **THE COMMENT ROWS** (§16.2), each red for one reason: a `//` before the
@@ -17114,7 +17086,7 @@ The layer is a leading byte-order mark if there is one, then ONE whole value
 under RFC 8259's grammar, then whitespace, then the end of the input, under the
 three caps both walks carry: depth 128, a key of 255 bytes, a number token of
 511 bytes. **The table walk above it is not ruled here**: clamps,
-`kind_mismatch` and duplicate counts (§16.2) decide what an accepted value
+`kind_mismatch` and the repeated-key refusal (§16.2) decide what an accepted value
 means for a field, and they never turn a refusal into an acceptance.
 
 **The rule under every row: write strictly; read forgivingly only where that
@@ -17306,8 +17278,8 @@ refusal is removed for that target alone.
 **EXACTNESS: what is kept, and what EQUAL means.** The tape keeps every
 number's TOKEN, byte for byte as the text spelled it, and nothing else about
 it. Object members keep their order, and a repeated key keeps every one of
-its members, in order. Last-wins is §16.2's table-walk rule, and no table
-walk runs here. A string and a key keep their DECODED UTF-8 bytes: escapes
+its members, in order. The repeated-key refusal is §16.2's table-walk rule,
+and no table walk runs here. A string and a key keep their DECODED UTF-8 bytes: escapes
 are resolved on read and chosen again on write (§16.3's writer).
 Whitespace, a leading byte-order mark, comments and trailing commas are not
 data, and none is kept (§16.2, §16.12). **No step expands a number's
@@ -17604,7 +17576,7 @@ refused or counted per §16's rules.
 
 **And a HOSTILE-VALUE corpus beside the hostile tree**: one tree per rule §16
 states — every row of the number grammar, a value past a `bits(N)` width, a
-lone surrogate, a `null` at every kind, a `"None"` key, a duplicate key, a
+lone surrogate, a `null` at every kind, a `"None"` key, a repeated key, a
 union with two keys — each carrying the outcome the rule requires. It is a
 TWO-SIDED differential: the same text goes through the packer and through the
 backend's `FromJson`, and their REPORTS must agree counter for counter and

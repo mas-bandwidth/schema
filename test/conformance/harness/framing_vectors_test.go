@@ -288,6 +288,10 @@ var framingVectors = []framingVector{
 	{name: "map_entry_L_past_map", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 2), squadEntry(2, 20), b(20, 2, 6, 9, 3, 13, 7, 4, 4), i32(90), b(0, 0), name50, b(0))},
 	// H8: a descending key.
 	{name: "map_descending", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 2), squadEntry(9, 90), squadEntry(2, 20), name50, b(0))},
+	// H8: one key twice, which no writer produces.
+	{name: "map_repeat_key", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 2), squadEntry(2, 20), squadEntry(2, 30), name50, b(0))},
+	// R5 inside an entry: the key's id twice in one entry body.
+	{name: "map_entry_key_twice", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 20, 13, 1, 17, 2, 6, 2, 2, 6, 2, 3, 13, 7, 4, 4), i32(20), b(0, 0), name50, b(0))},
 	// H5 at a map: a count of two over one entry.
 	{name: "map_count_over_length", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 17, 13, 2), squadEntry(2, 20), name50, b(0))},
 	// H2 at a map.

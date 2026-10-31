@@ -27,7 +27,7 @@ func TestUncoveredPaths(t *testing.T) {
 			fn   func(*testing.T)
 		}{
 			{"unknown key", TestUnknownKeyIsCounted},
-			{"duplicate key", TestDuplicateKeyIsLastWins},
+			{"repeated key", TestRepeatedKeyIsDamage},
 			{"wrong type", TestWrongTypeIsSkippedNotCoerced},
 			{"fraction", TestFractionWhereIntegerDeclared},
 			{"out of range", TestOutOfRangeIsClamped},
@@ -50,9 +50,7 @@ func TestUncoveredPaths(t *testing.T) {
 			{"utf8 writer", TestWriterEmitsValidUTF8},
 			{"bits", TestBitsImpliedBound},
 			{"ill formed", TestIllFormedByteIsReplacedOnRead},
-			{"repeat", TestRejectedRepeatKeepsTheFirstValue},
 			{"integer token", TestAnIntegerFieldReadsItsTokenThroughTheFloat},
-			{"keyed duplicate", TestKeyedObjectDuplicateRule},
 			{"optional present", TestOptionalPresentWhateverTheValue},
 			{"float32", TestFloat32SingleRounding},
 			{"shared node", TestSharedNodeIsOneNode},

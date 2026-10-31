@@ -170,10 +170,14 @@ instead.** §4: "Kind mismatch (a field changed type between builds): skipped,
 never misdecoded, counted." The widening family is layer 2's; framing's share
 is that the skip uses the WIRE kind's rule.
 
-**R5. Field order is not contractual, and a repeated id is legal with the
-last occurrence winning.** §3: "every field is found by its id, so any order
-decodes the same value, and a body carrying an id more than once is legal
-input, the last occurrence winning."
+**R5. Field order is not contractual, and one id rides once per body; a body
+carrying one id twice is damage (D3).** §3: "every field is found by its id,
+so any order decodes the same value. ONE ID RIDES ONCE PER BODY: a writer puts
+each field down once, so a body carrying one id twice, whether or not the
+reader can name it, is input no writer produces, and it is damage." The root,
+a nested table, a node record, a map entry, an arm's body and an element alike
+(`frame_repeat_id`, `frame_repeat_unknown_id`, `nested_repeat_id`,
+`map_entry_key_twice`, `node_table_twice`).
 
 **R6. A reserved id in a body that is not its transport is damage (D1).**
 §3.1: "A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -272,10 +276,9 @@ cannot name "is skipped by its length and counted `unknown`" and "a slot the
 writer never sent keeps its declared default", which are evolution (D2).
 
 **H8. Malformed entry framing in a map, and a descending key, are damage
-(D1).** §3 (L3) and §2.8: "DESCENDING: the body is not a map any conforming
-writer produced. It is damage: `malformed` is set and the whole load is
-discarded (§4, DAMAGE DISCARDS THE WHOLE LOAD)." A repeated key is evolution:
-`duplicate`, last wins whole (D2).
+(D1).** §3 (L3) and §2.8: "EQUAL or DESCENDING: the body is not a map any
+conforming writer produced ... It is damage: `malformed` is set and the whole
+load is discarded." A repeated key is the EQUAL case (D3; `map_repeat_key`).
 
 **H9. A union arm is framed as a field: arm id reference, kind, `L`, `L`
 bytes; a fixed-width arm whose `L` is not its width, and a length-shaped arm
@@ -354,7 +357,8 @@ stored, never followed."
 
 **C1. `malformed` is a flag beside five counters, and a refusal moves none of
 them.** §4: "The wire-tolerance counters are `unknown`, `kind_mismatch`,
-`widened`, `clamped`, `duplicate` and the `malformed` flag." §3: "A refusal is
+`widened`, `clamped`, `duplicate` (retired: always zero, below) and the
+`malformed` flag." §3: "A refusal is
 not damage and moves none of §4's six counters." On a damaged read the flag is
 the whole observable answer (D1).
 
