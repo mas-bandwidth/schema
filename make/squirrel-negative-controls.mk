@@ -64,3 +64,12 @@ tables-squirrel-count-stop-negative-control: $(SQUIRREL_NC_DEPS)
 .PHONY: tables-squirrel-block-order-word-negative-control
 tables-squirrel-block-order-word-negative-control: $(SQUIRREL_NC_DEPS)
 	$(call squirrel_nc,$@,TestSquirrelBlockOrderWordNegativeControl,internal/codegen/squirreltable)
+
+# I13, THE TEXT DIFFERENTIAL (docs/PORTING.md): the emitted save and ToJson
+# against the compiler's own engine over 200 random float instances, both
+# directions; its control writes a float32 at six significant digits.
+.PHONY: tables-squirrel-text-differential tables-squirrel-text-differential-negative-control
+tables-squirrel-text-differential: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelTextDifferentialAgainstTheGoEngine,internal/codegen/squirreltable)
+tables-squirrel-text-differential-negative-control: $(SQUIRREL_NC_DEPS)
+	$(call squirrel_nc,$@,TestSquirrelTextDifferentialNegativeControl,internal/codegen/squirreltable)

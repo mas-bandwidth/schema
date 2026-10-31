@@ -1153,7 +1153,8 @@
         "tables-squirrel-json-label-negative-control",
         "tables-squirrel-map-sort-negative-control",
         "tables-squirrel-count-stop-negative-control",
-        "tables-squirrel-block-order-word-negative-control"
+        "tables-squirrel-block-order-word-negative-control",
+        "tables-squirrel-text-differential-negative-control"
       ],
       "squirrel": "3.2"
     },
