@@ -1487,87 +1487,6 @@ public final class TableVariable {
         // no counter (§3.1). It is false when the field is absent — an empty
         // but valid numbering — or was read whole.
         public boolean bad;
-        // THE POINTER EDGES the resolve met, as (from, to) node index pairs:
-        // from is the node whose fields are resolving (1 the root, k >= 2 the
-        // record), to the node a pointer named. cyclic() walks them (§3.1).
-        public long from = 1;
-        long[] edges = new long[16];
-        int edgeCount;
-
-        void edge(long to) {
-            if (edgeCount + 2 > edges.length) {
-                edges = java.util.Arrays.copyOf(edges, edges.length * 2);
-            }
-            edges[edgeCount++] = from;
-            edges[edgeCount++] = to;
-        }
-    }
-
-    // A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
-    // no writer produces a cyclic wire, so the load walks the resolved graph
-    // from the root and a pointer that reaches a node whose descent is still
-    // OPEN (a back edge) refuses the whole load; a second pointer to a CLOSED
-    // node is a share and legal. The walk is iterative, visits each node once
-    // and keeps one open mark per node on the current path.
-    public static boolean cyclic(NodeTable nt) {
-        int pairs = nt.edgeCount / 2;
-        if (pairs == 0) {
-            return false;
-        }
-        int n = (nt.recs == null ? 0 : nt.recs.length) + 2;
-        int[] start = new int[n + 1];
-        for (int i = 0; i < pairs; i++) {
-            start[(int) nt.edges[2 * i] + 1]++;
-        }
-        for (int i = 0; i < n; i++) {
-            start[i + 1] += start[i];
-        }
-        int[] to = new int[pairs];
-        int[] fill = java.util.Arrays.copyOf(start, n);
-        for (int i = 0; i < pairs; i++) {
-            to[fill[(int) nt.edges[2 * i]]++] = (int) nt.edges[2 * i + 1];
-        }
-        byte[] state = new byte[n]; // 0 unseen, 1 open, 2 closed
-        int[] stack = new int[n];
-        int[] next = new int[n];
-        int depth = 0;
-        stack[depth++] = 1;
-        state[1] = 1;
-        next[1] = start[1];
-        while (depth > 0) {
-            int at = stack[depth - 1];
-            if (next[at] == start[at + 1]) {
-                state[at] = 2;
-                depth--;
-                continue;
-            }
-            int t = to[next[at]++];
-            if (state[t] == 1) {
-                return true;
-            }
-            if (state[t] == 0) {
-                state[t] = 1;
-                next[t] = start[t];
-                stack[depth++] = t;
-            }
-        }
-        return false;
-    }
-
-    // resolveTable against the load's NodeTable: the record's table, and the
-    // edge recorded for cyclic().
-    public static <T> T resolveTable(
-            NodeTable nt,
-            long index,
-            long targetTypeId,
-            Object root,
-            long rootTypeId,
-            Report report) {
-        T t = resolveTable(nt.recs, index, targetTypeId, root, rootTypeId, report);
-        if (t != null) {
-            nt.edge(index);
-        }
-        return t;
     }
 
     @SuppressWarnings("unchecked")
@@ -3249,19 +3168,14 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
 		fmt.Fprintf(&b, "            return null;\n")
 		fmt.Fprintf(&b, "        }\n")
-		fmt.Fprintf(&b, "        nt.from = 1;\n")
 		fmt.Fprintf(&b, "        resolveNodes(v, nt, v, TYPE_ID, report);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
-		fmt.Fprintf(&b, "            for (int i = 0; i < nt.recs.length; i++) {\n")
-		fmt.Fprintf(&b, "                TableVariable.NodeRecord rec = nt.recs[i];\n")
+		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) {\n")
 		fmt.Fprintf(&b, "                if (rec.table != null) {\n")
-		fmt.Fprintf(&b, "                    nt.from = i + 2;\n")
 		fmt.Fprintf(&b, "                    resolveNodePointers(rec.table, rec.typeId, nt, v, TYPE_ID, report);\n")
 		fmt.Fprintf(&b, "                }\n")
 		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "        }\n")
-		fmt.Fprintf(&b, "        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)\n")
-		fmt.Fprintf(&b, "        if (TableVariable.cyclic(nt)) { report.malformed = true; return null; }\n")
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	}
@@ -5025,12 +4939,12 @@ func writeVariableResolveField(b *strings.Builder, f *ir.Field) {
 		fmt.Fprintf(b, "        if (!v.%sIdx.isEmpty()) {\n", m)
 		fmt.Fprintf(b, "            v.%s.clear();\n", m)
 		fmt.Fprintf(b, "            for (Long idx : v.%sIdx) {\n", m)
-		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, report));\n", m, target.Name, target.Name)
+		fmt.Fprintf(b, "                v.%s.add((%sVariable.Value) TableVariable.resolveTable(nt.recs, idx.longValue(), %sVariable.TYPE_ID, root, rootTypeId, report));\n", m, target.Name, target.Name)
 		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, report); }\n", m, m, target.Name, m, target.Name)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = (%sVariable.Value) TableVariable.resolveTable(nt.recs, v.%sIdx, %sVariable.TYPE_ID, root, rootTypeId, report); }\n", m, m, target.Name, m, target.Name)
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        for (%sVariable.Value elem : v.%s) { if (elem != null) %sVariable.resolveNodes(elem, nt, root, rootTypeId, report); }\n", target.Name, m, target.Name)

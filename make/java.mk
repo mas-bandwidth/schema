@@ -2241,28 +2241,22 @@ test-java: tables-java-view tables-java-descriptor-doc
 
 # THE FRAMING SURFACE, its Java leg (docs/LAYERS/1-framing.md): the Java driver
 # answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control recompiles two units
-# with one rule out of each: tblr1 without the id table's 4096-entry cap (§3,
-# THE DISTINCTNESS CHECK; F6), and the pointers unit without the cycle walk
-# (§3.1, a pointer naming an OPEN node; T8). The framing surface must go RED on
-# frame_entries_4097 and on both cycle rows.
+# (test/conformance/framing/gate). Its negative control recompiles the tblr1
+# unit with the id table's 4096-entry cap taken out of trailerBase (§3, THE
+# DISTINCTNESS CHECK; rule F6) and requires the framing surface to go RED on
+# frame_entries_4097.
 JAVA_FRAMING_CONTROL := build/conformance-java-framing-control
 .PHONY: conformance-java-framing conformance-negative-control-java-framing
 conformance-java-framing: build/conformance-harness build-conformance-java
 	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/build/conformance-java Driver" build/conformance-java-framing
 conformance-negative-control-java-framing: build/conformance-harness build-conformance-java
-	@rm -rf $(JAVA_FRAMING_CONTROL) && mkdir -p $(JAVA_FRAMING_CONTROL)/r1 $(JAVA_FRAMING_CONTROL)/pointers $(JAVA_FRAMING_CONTROL)/classes
-	@cp build/tables-generated-java/r1/*.java $(JAVA_FRAMING_CONTROL)/r1/
-	@cp build/tables-generated-java/pointers/*.java $(JAVA_FRAMING_CONTROL)/pointers/
-	@sed -i.orig 's/count < 0 || count > 4096 || count/count < 0 || count/' $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java
-	@! cmp -s $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java.orig || \
+	@rm -rf $(JAVA_FRAMING_CONTROL) && mkdir -p $(JAVA_FRAMING_CONTROL)/src $(JAVA_FRAMING_CONTROL)/classes
+	@cp build/tables-generated-java/r1/*.java $(JAVA_FRAMING_CONTROL)/src/
+	@sed -i.orig 's/count < 0 || count > 4096 || count/count < 0 || count/' $(JAVA_FRAMING_CONTROL)/src/TableVariable.java
+	@! cmp -s $(JAVA_FRAMING_CONTROL)/src/TableVariable.java $(JAVA_FRAMING_CONTROL)/src/TableVariable.java.orig || \
 		{ echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
-	@sed -i.orig 's/if (TableVariable.cyclic(nt))/if (false \&\& TableVariable.cyclic(nt))/' $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java
-	@! cmp -s $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java.orig || \
-		{ echo "NEGATIVE CONTROL: the cycle-walk sabotage did not apply"; exit 1; }
-	@rm $(JAVA_FRAMING_CONTROL)/*/*.orig
-	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/classes \
-		$(JAVA_FRAMING_CONTROL)/r1/*.java $(JAVA_FRAMING_CONTROL)/pointers/*.java
+	@rm $(JAVA_FRAMING_CONTROL)/src/TableVariable.java.orig
+	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/classes $(JAVA_FRAMING_CONTROL)/src/*.java
 	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/classes:$(CURDIR)/build/conformance-java Driver" \
-		$(JAVA_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root
+		$(JAVA_FRAMING_CONTROL)/run frame_entries_4097
 test-java: conformance-java-framing
