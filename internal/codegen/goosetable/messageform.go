@@ -299,7 +299,7 @@ func enumOf(f *ir.Field) *ir.Enum {
 // refuses invalid_value.
 func (e *msgEmit) putEnum(ind int, en *ir.Enum, expr string) {
 	e.p(ind, "if %s == 0 {", expr)
-	e.ref(ind+1, 0)
+	e.ref(ind+1, "0")
 	for i := range en.Variants {
 		e.p(ind, "} else if %s == %d {", expr, i+1)
 		e.ref(ind+1, e.nameSlot(ir.TableWireId(en.VariantWireName(i))))
@@ -821,7 +821,7 @@ func (e *msgEmit) emitStruct(st *ir.Struct) {
 		e.p(1, "// %s", f.Name)
 		e.putField(1, f)
 	}
-	e.ref(1, 0)
+	e.ref(1, "0")
 	e.p(1, "return w.ok;")
 	e.p(0, "}\n")
 
@@ -879,7 +879,7 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 		}
 	}
 	e.p(1, "if v.Type == 0 {")
-	e.ref(2, 0)
+	e.ref(2, "0")
 	for i, v := range un.Variants {
 		e.p(1, "} else if v.Type == %d {", i+1)
 		entry := ir.TableArmEntry(v)
