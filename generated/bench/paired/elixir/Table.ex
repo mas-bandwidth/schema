@@ -2723,8 +2723,9 @@ defmodule Bench.Table do
                       end
 
                     reader = %{f | elem_kind: elem_kind}
+                    {n, report} = clamp_count(n, f, report)
                     {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
-                    {:cont, value, report} |> clamp_count(f)
+                    {:cont, value, report}
 
                   :error ->
                     {:cont, [], %{report | malformed: true}}
@@ -2868,13 +2869,13 @@ defmodule Bench.Table do
     end
   end
 
-  # a count past a bounded array's declared bound keeps the first bound
-  # elements and counts one clamped (docs/SPEC-TABLES.md §4)
-  defp clamp_count({:cont, value, report}, %{max_count: max})
-       when is_list(value) and length(value) > max,
-       do: {:cont, Enum.take(value, max), %{report | clamped: report.clamped + 1}}
+  # a count past a bounded array's declared bound reads the first bound
+  # elements and counts one clamped, before any element is read, so the
+  # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{max_count: max}, report) when n > max,
+    do: {max, %{report | clamped: report.clamped + 1}}
 
-  defp clamp_count(result, _f), do: result
+  defp clamp_count(n, _f, report), do: {n, report}
 
   # widens? reports whether a wire kind decodes EXACTLY into this field
   # (docs/SPEC-TABLES.md §4): a smaller integer into a wider one of the same
@@ -5013,9 +5014,12 @@ defmodule Bench.Table do
     end
   end
 
+  # a header whose element kind is not the declared one is a kind mismatch the
+  # read answers as an empty list, so it places nothing (internal/tablewire
+  # extent.go): only a list DECLARED of tables descends into table elements.
   defp list_extent(field, arr, ids, at) do
     case arr do
-      <<13, count_rest::binary>> ->
+      <<13, count_rest::binary>> when field.elem_kind == 13 ->
         case leb(count_rest) do
           :error ->
             :error
