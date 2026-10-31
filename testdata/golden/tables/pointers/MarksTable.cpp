@@ -4244,7 +4244,14 @@ namespace graphdemo {
 
 bool TallyFromJsonTolerant( Tally & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TallyTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, TallyTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; TallyTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool TallyFromJson( Tally & value, const char * text, int64_t bytes, TableReport * report )
@@ -4279,7 +4286,14 @@ bool MarkerFromJsonTolerant( MarkerBuilder & builder, const char * text, int64_t
 {
     Marker * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, MarkerTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, MarkerTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; MarkerTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool MarkerFromJson( MarkerBuilder & builder, const char * text, int64_t bytes, TableReport * report )

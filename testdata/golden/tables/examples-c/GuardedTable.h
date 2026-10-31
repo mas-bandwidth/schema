@@ -6368,9 +6368,15 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_messages_tolerant(const tabledemo
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0, no root and the region zeroed (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN patrol_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
+/* The PLAIN patrol_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and no root is handed back (§3.3, §4). */
 static SCHEMA_UNUSED int tabledemo_patrol_load_messages( const tabledemo_patrol_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const tabledemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored;
@@ -6664,6 +6670,13 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_retain_messages(const tabledemo_p
  /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
  if(tabledemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
  *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ /* damage anywhere in the batch discards the whole batch: count 0, no root, the region zeroed and every body's retention emptied (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++){roots[i]=NULL;
+ if(retains)tabledemo_table_retain_reset(retains+i,NULL,NULL);
+ }*count=0;
  memset(region,0,(size_t)region_bytes);
  return 0;
  }
