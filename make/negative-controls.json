@@ -1193,6 +1193,14 @@
       ]
     },
     {
+      "name": "release-differential",
+      "when": "pull-request",
+      "why": "the previous-release differential's control (docs/VERSIONING.md, #463): cmd/schema built three times from this tree, clean, with every union arm's packet tag moved by one in the C++ writer, and with a true bool written as 2 in the Go engine's variable form, and tools/releasediff run clean against clean (must pass, having compared the packet wire and both table forms) and clean against each sabotage (each must refuse on its own wire alone, naming the unit, the instance and the byte). Go, the host C++ compiler and the serialize sibling; three compiler builds, the three packet drivers built six times each and the conformance instances packed four times.",
+      "targets": [
+        "release-differential-negative-control"
+      ]
+    },
+    {
       "name": "release-form-gate",
       "when": "pull-request",
       "why": "the build version's form gate's control (docs/VERSIONING.md, \"The release policy\"): tools/releasetag's FormGate is handed the tag's form twice through a go test overlay and TestReleaseFormGate must go red on the patch release that moves the form, and on it alone. One small go test build, Go only, a few seconds.",
