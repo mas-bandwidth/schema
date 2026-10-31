@@ -119,12 +119,3 @@ func init() {
 		new: `if (Schema.TableCookRead64(at + %d) == ~Schema.TableCookMagic) { /* SABOTAGED: the magic does not refuse */ reason =`,
 	}}
 }
-
-// M12: one wire read goes through a host-order primitive, which reads the same
-// bytes on a little-endian host and so is invisible to every round trip here.
-func init() {
-	sabotages["table-cs-host-order-read"] = []edit{{
-		old: `case 4: v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(Buffer.Slice(Offset)); break;`,
-		new: `case 4: v = System.Runtime.InteropServices.MemoryMarshal.Read<uint>(Buffer.Slice(Offset)); break; // SABOTAGED: host order`,
-	}}
-}

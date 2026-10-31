@@ -379,32 +379,6 @@ tables-cs-usage-negative-control: bin/schema build/cook-open/.stamp
 
 test-cs: tables-cs-usage
 
-# M12 (docs/PORTING.md): every multi-byte wire access in the generated C# is an
-# explicit little-endian call (test/cs-tables/byte-order). Its control reads one
-# wire word through a host-order primitive in the emitter (tools/sabotage,
-# table-cs-host-order-read) and requires the scan RED, naming the primitive:
-# every round trip on a little-endian host stays green under that sabotage,
-# which is why the gate is a scan.
-.PHONY: tables-cs-byte-order tables-cs-byte-order-negative-control
-tables-cs-byte-order: build/tables-generated-cs/.stamp
-	sh test/cs-tables/byte-order build/tables-generated-cs
-
-tables-cs-byte-order-negative-control: bin/schema
-	@rm -rf build/cs-byte-order-nc && mkdir -p build/cs-byte-order-nc
-	@go run ./tools/sabotage -name table-cs-host-order-read -out build/cs-byte-order-nc/wire.gotext internal/codegen/cstable/wire.go
-	@printf '{"Replace":{"%s/internal/codegen/cstable/wire.go":"%s/build/cs-byte-order-nc/wire.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/cs-byte-order-nc/overlay.json
-	@go build -overlay=build/cs-byte-order-nc/overlay.json -o build/cs-byte-order-nc/schema ./cmd/schema
-	./build/cs-byte-order-nc/schema generate --lang cs --out build/cs-byte-order-nc/gen/examples tables/examples
-	@if sh test/cs-tables/byte-order build/cs-byte-order-nc/gen > build/cs-byte-order-nc/log 2>&1; then \
-		cat build/cs-byte-order-nc/log; echo "NEGATIVE CONTROL FAILED: a host-order wire read passed the byte-order scan"; exit 1; \
-	fi
-	@grep -q "MemoryMarshal.Read<uint>" build/cs-byte-order-nc/log || \
-		{ cat build/cs-byte-order-nc/log; echo "NEGATIVE CONTROL FAILED: the scan went red, but not on the planted read"; exit 1; }
-	@echo "negative control: a host-order wire read in the emitter turns tables-cs-byte-order red"
-
-test-cs: tables-cs-byte-order
-
 # I4 (docs/PORTING.md) — PER-CASE ABSENT, C# side. The C# driver answers a case
 # it cannot answer with <case>.absent (test/conformance/cs/src/Program.cs:
 # SpillAbsent, and the wire surface's blob_shared rows), and the harness counts

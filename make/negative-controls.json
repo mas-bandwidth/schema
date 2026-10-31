@@ -647,13 +647,15 @@
     {
       "name": "cs-cook",
       "when": "pull-request",
-      "why": "the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner.",
+      "why": "the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner. With them, the cross-endian refusal's control (the magic made not to refuse, so the refuse verb sees a later guard's reason instead of foreign_order) and the I12 usage control (SceneCook.Open moved out from under docs/USAGE.md's C# example), 3 s and 2 s on amd-1.",
       "targets": [
         "tables-block-home-negative-control",
         "tables-block-inline-array-negative-control",
         "tables-cook-open-cs-lengths-negative-control",
         "tables-cook-open-cs-root-negative-control",
-        "tables-cook-open-cs-walk-negative-control"
+        "tables-cook-open-cs-walk-negative-control",
+        "tables-cook-open-cs-order-negative-control",
+        "tables-cs-usage-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -673,6 +675,54 @@
       "targets": [
         "tables-block-padding-negative-control",
         "tables-block-pitch-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-1",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M5's None-only guard planted back (the past-Max key reaches the slot array) and M6's identity map made to forget a closed node (list_shared writes a node twice). Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-keyed-negative-control",
+        "tables-cs-leg-identity-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-2",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M10's caller free dropped (the hook pair no longer balances) and M14's &node label never written (list_shared's text reads back as two nodes). Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-allocator-negative-control",
+        "tables-cs-leg-label-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-3",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M17's span test made never to fire (a 100,000-byte blob is bump-allocated in a slab and the nodes after it overwrite it) and M19's builder map appending instead of inserting at its key. Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-blob-span-negative-control",
+        "tables-cs-leg-map-order-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-4",
+      "when": "pull-request",
+      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. The native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots name. Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "targets": [
+        "tables-cs-leg-region-blob-shared-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-absent",
+      "when": "pull-request",
+      "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case absent answers (SpillAbsent and the wire surface's blob_shared rows) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",
+      "targets": [
+        "conformance-cs-absent-negative-control"
       ],
       "dotnet": "pin"
     },
