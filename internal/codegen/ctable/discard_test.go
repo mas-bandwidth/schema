@@ -251,7 +251,15 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 				}
 			}
 			if !patched {
-				t.Fatalf("the %s sabotage patches nothing: no emitted file carries %q", sabotage.name, pair[0])
+				var near []string
+				for _, data := range files {
+					for line := range strings.SplitSeq(string(data), "\n") {
+						if strings.Contains(line, "discards the whole load") {
+							near = append(near, strings.TrimSpace(line))
+						}
+					}
+				}
+				t.Fatalf("the %s sabotage patches nothing: no emitted file carries %q; the discards emitted:\n%s", sabotage.name, pair[0], strings.Join(near, "\n"))
 			}
 		}
 	}
