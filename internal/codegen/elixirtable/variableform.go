@@ -1350,7 +1350,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:ok, fields, nodes} ->
             {{value, report}, shared} =
               with_open_marks(table, fn ->
-                blob_namings(fn -> decode(desc, fields, nodes, ids) end)
+                blob_namings(fn ->
+                  {value, report} = decode(desc, fields, nodes, ids)
+                  walk_unreached(nodes, ids, report)
+                  {value, report}
+                end)
               end)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
@@ -1730,15 +1734,31 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # root, CLOSED (with its value) once that descent is done. A pointer to an
   # open node refuses the whole load; a pointer to a closed node is a share and
   # takes the one value, so each node is entered once and the walk is linear.
-  # The root is open for the whole read (root_named!/1).
+  # The root (index 1) is open while its body decodes (root_named!/1); then
+  # every record the root did not reach is walked the same way
+  # (walk_unreached/3), so a cycle anywhere refuses the load.
   defp with_open_marks(root, fun) do
-    Process.put(:elixir_node_marks, {root, %{}})
+    Process.put(:elixir_node_marks, {root, %{1 => :open}})
 
     try do
       fun.()
     after
       Process.delete(:elixir_node_marks)
     end
+  end
+
+  defp walk_unreached(nodes, ids, _report) do
+    set_mark(1, :closed)
+
+    nodes
+    |> Enum.with_index(2)
+    |> Enum.each(fn
+      {{:table, name, body}, idx} ->
+        if node_mark(idx) == :unvisited, do: decode_node_table(nodes, name, body, ids, idx)
+
+      _ ->
+        :ok
+    end)
   end
 
   defp node_mark(idx) do
@@ -1757,8 +1777,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp root_named!(f) do
     case Process.get(:elixir_node_marks) do
-      {root, _marks} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)
-      nil -> :ok
+      {root, marks} ->
+        if Map.get(f, :elem) == root and Map.get(marks, 1) == :open, do: throw(:wire_damaged)
+
+      nil ->
+        :ok
     end
   end
 

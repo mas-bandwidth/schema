@@ -1908,18 +1908,25 @@ test-elixir: tables-elixir-view
 # driver answers every framing row and passes it, none absent
 # (test/conformance/framing/gate). Its negative control takes two rules out of
 # the emitter: the id table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6)
-# and the refusal of a pointer naming an OPEN node (§3.1; T8). It rebuilds the
-# corpus and requires framing RED on frame_entries_4097 and both cycle rows,
-# while report stays green.
+# and the cycle refusal (§3.1, §4; T8). It rebuilds the corpus and requires
+# framing RED on frame_entries_4097 and the three cycle rows, while report
+# stays green. A second build takes a CLOSED node for an open one, so a share
+# reads as a cycle, and requires framing RED on node_diamond_chain. The
+# diamond-chain row (2^40 paths over 82 shared nodes) passing in the gate is
+# the linear-time check: a walk that re-entered a closed node would not finish.
 ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|' \
 	-e 's|      :open -> throw(:wire_damaged)|      :open -> :null|' \
-	-e 's|      {root, _marks} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)|      {root, _marks} -> if false and Map.get(f, :elem) == root, do: throw(:wire_damaged)|'
+	-e 's|        if Map.get(f, :elem) == root and|        if false and Map.get(f, :elem) == root and|'
+ELIXIR_CONFORMANCE_FRAMING_SHARE_SED := -e 's|      {:closed, value} -> {:value, value}|      {:closed, _value} -> throw(:wire_damaged)|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
 conformance-negative-control-elixir-framing: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries and a cyclic wire read as legal)
-	@for c in frame_entries_4097 node_cycle_self node_cycle_to_root; do \
+	@for c in frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid; do \
 		grep -q "elixir / framing: $$c:" build/elixir-conformance-negative-framing/log || \
 			{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on $$c"; exit 1; }; done
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing-share,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SHARE_SED,framing,report,a closed node taken for an open one)
+	@grep -q "elixir / framing: node_diamond_chain:" build/elixir-conformance-negative-framing-share/log || \
+		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on node_diamond_chain"; exit 1; }
 test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing
