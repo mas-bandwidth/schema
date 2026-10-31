@@ -183,12 +183,14 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 
 // variableFieldConstruct returns the construct's name on a field the variable
 // class this leg carries does not reach, and "" on every field it does: a
-// scalar of any int/uint/float/bits width (128-bit included), a string(N), a
+// scalar of any int/uint/float/bits width (128-bit included), a fixed(I, F) or
+// ufixed(I, F) as its raw storage integer (§3, kinds 20–29), a string(N), a
 // bytes(N), a wstring(N) field, arm or map value (§3, kind 33), a *string or
 // *bytes blob (§2.5), an enum, a table nested by value
 // or pointed at (§2.1, §3.1), an optional ?T (§2.3), an enum-keyed array [E]T
-// (§2.4), a map[K]V (§2.8), a union or array of unions (§2.6), and an unbounded
-// []T or bounded [..N]T array (§2.9). Whether a referenced TABLE is itself
+// (§2.4), a map[K]V (§2.8), a union or array of unions (§2.6), an unbounded
+// []T or bounded [..N]T array (§2.9), and any of these inside an `if` group,
+// which the walks gate on its branch condition (variableguard.go, §3.1, §4). Whether a referenced TABLE is itself
 // carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {
 	switch {
@@ -208,10 +210,6 @@ func variableFieldConstruct(f *ir.Field) string {
 		inner.Array = ir.ArrayNone
 		inner.ArrayBound = 0
 		return variableFieldConstruct(&inner)
-	case f.Type.Kind == ir.TFixed:
-		return "the fixed-point kind is outside the variable class this leg carries (§15)"
-	case f.Guard != "":
-		return "a guarded field (an if group) is outside the variable class this leg carries (§16.2)"
 	case f.HasFloatRange:
 		return "the compressed float is outside the variable class this leg carries (§3)"
 	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:

@@ -337,7 +337,7 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"#define SHAPE_MAX_BITS 18", 1})
 	cppFiles, cppErr := cpp.Generate(u)
 	addTarget("C++", cppFiles, cppErr,
-		expectation{"enum class ShapeType : uint8_t {", 1},
+		expectation{"enum class ShapeType : uint8_t\n{", 1},
 		expectation{"struct Shape\n{", 1},
 		expectation{"SCHEMA_WRITE_INLINE bool WriteShape( serialize::WriteStream & stream, const Shape & value )", 1},
 		expectation{"SCHEMA_READ_INLINE bool ReadShape( serialize::ReadStream & stream, Shape & value )", 1},

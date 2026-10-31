@@ -90,7 +90,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 		g.pf("            {\n")
 		g.pf("                const int64_t unknown_at = r.offset;\n")
 		g.pf("                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }\n")
-		g.pf("                TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at );\n")
+		g.pf("                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)\n")
 		g.pf("            }\n")
 		g.pf("                break;\n")
 		g.pf("        }\n    }\n}\n\n")
@@ -671,9 +671,11 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s    else\n%s    {\n", ind, ind)
 		g.pf("%s        uint64_t raw%s = 0;\n", ind, sfx)
 		g.pf("%s        if ( !r.get( raw%s, 32 ) ) { report->malformed = true; return false; }\n", ind, sfx)
-		// a NaN's PAYLOAD IS DATA and rides on the bits: the hardware
-		// float32 to float64 conversion would set the quiet bit (§4)
-		g.pf("%s        %s = TableWidenF32( (uint32_t) raw%s );\n%s    }\n", ind, lvalue, sfx, ind)
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (§3.3), and the
+		// batch with it: every finite float32 is exactly a float64, so the
+		// ordinary conversion is the widening
+		g.pf("%s        if ( !TableBitsFinite32( (uint32_t) raw%s ) ) { TableNonFiniteFloat( report ); return false; }\n", ind, sfx)
+		g.pf("%s        %s = (double) table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, lvalue, sfx, ind)
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -682,7 +684,7 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s{ uint64_t raw%s = 0; if ( !r.get( raw%s, 1 ) ) { report->malformed = true; return false; } %s = raw%s != 0; }\n", ind, sfx, sfx, lvalue, sfx)
 		return
 	case tkF64:
-		g.pf("%s{ uint64_t raw%s = 0; if ( !r.get( raw%s, 64 ) ) { report->malformed = true; return false; } %s = table_bits_to_double( raw%s ); }\n", ind, sfx, sfx, lvalue, sfx)
+		g.pf("%s{ uint64_t raw%s = 0; if ( !r.get( raw%s, 64 ) ) { report->malformed = true; return false; } if ( !TableBitsFinite64( raw%s ) ) { TableNonFiniteFloat( report ); return false; } %s = table_bits_to_double( raw%s ); }\n", ind, sfx, sfx, sfx, lvalue, sfx)
 		return
 	case tkF32:
 		g.pf("%s{\n%s    float decoded_f%s = 0.0f;\n", ind, ind, sfx)
@@ -698,6 +700,9 @@ func (g *tableGen) emitMessageReadScalarFromEntry(f *ir.Field, lvalue, ind, from
 		g.pf("%s    else\n%s    {\n", ind, ind)
 		g.pf("%s        uint64_t raw%s = 0;\n", ind, sfx)
 		g.pf("%s        if ( !r.get( raw%s, 32 ) ) { report->malformed = true; return false; }\n", ind, sfx)
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bounds
+		// and before the field is written, and the batch with it (§3.3)
+		g.pf("%s        if ( !TableBitsFinite32( (uint32_t) raw%s ) ) { TableNonFiniteFloat( report ); return false; }\n", ind, sfx)
 		g.pf("%s        decoded_f%s = table_bits_to_float( (uint32_t) raw%s );\n%s    }\n", ind, sfx, sfx, ind)
 		if f.HasFloatRange {
 			g.pf("%s    if ( decoded_f%s < %s ) { decoded_f%s = %s; report->clamped++; }\n", ind, sfx, formatFloat(f.FMin, true), sfx, formatFloat(f.FMin, true))
@@ -902,12 +907,13 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    if ( values == NULL || count == NULL ) { to->malformed = true; return false; }\n")
 	g.pf("    const int64_t capacity = *count;\n")
 	g.pf("    *count = 0;\n")
+	g.pf("    const int32_t non_finite_before = to->non_finite_floats;\n")
 	g.pf("    TableMessageBatchReader br;\n")
 	g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );\n")
 	g.pf("    if ( bodies < 0 ) { return false; }\n")
 	g.pf("    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }\n")
 	g.pf("    for ( int64_t i = 0; i < bodies; i++ )\n    {\n")
-	g.pf("        if ( !%sLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = i; return false; } // a fixed root numbers no node: no index width\n", n)
+	g.pf("        if ( !%sLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)\n", n)
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    *count = bodies;\n")
 	g.pf("    return TableMessageBatchClose( br );\n}\n\n")

@@ -212,3 +212,11 @@ region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/regio
 # at mutant 237037 of seed 24845619678 (corpus seed list_scalar_widen,
 # listdemo.Save), on the Certify wire fuzz.
 list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
+
+# A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
+# and one malformed counts, naming the field. profile_elide with has_loadout's
+# byte set to 0x11. The JavaScript variable reader read it true and counted
+# nothing. Found by the random pass at mutant 18630 of seed 24845619678
+# (corpus seed profile_elide), on tables-js-wire-fuzz-all; its emitter-lane
+# gate is internal/codegen/jstable's TestBoolByteAboveOneIsMalformedJavaScript.
+bool_byte_above_one tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin

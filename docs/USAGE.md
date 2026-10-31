@@ -1439,33 +1439,45 @@ lambda, and a named function per enum would claim a name per enum, so the
 same facts ride as constant data — every question the descriptors answer
 elsewhere has an answer here, asked of an array instead of a call.
 
-The Rust surface is the same three functions, name first, as free functions in
-the generated crate, over slices the caller owns. Storage is a `#[repr(C)]`
-struct of public fields — every buffer fixed at its declared capacity, so
-`load` allocates nothing and overlays in place after restoring the declared
-defaults:
+The Rust surface is the same three questions, name first, as free functions
+in the generated crate. On the table wire a value is an owned storage struct
+(`String`, `Vec`, `Option`, an `Rc` for each pointer) whose `Default` is the
+DECLARED defaults: `<t>_save` returns the bytes, `<t>_load` reads them back with
+the report as a parameter, and `<t>_to_json_checked` / `<t>_from_json` are the
+text form. A fixed table also has a `#[repr(C)]` `<T>Row` for the fixed form and
+the block, which `<t>_fixed_save` and `<t>_fixed_load` write and read. This
+complete example uses the `tables/examples` crate, and `make tables-rust-usage`
+runs it directly from this page:
 
+<!-- rust-table-usage -->
 ```rust
-use example::*;
+use tabledemo::*;
 
-let mut ship = ShipConfig::default();   // the DECLARED defaults, not zeros
-ship.health = 250.0;
-ship.settings_present = true;           // ?T: presence decides whether it rides
+fn main() {
+    let mut config = RootConfig::default();   // the DECLARED defaults, not zeros
+    config.version_note = "v7".to_string();
+    config.weapons.push(WeaponConfig::default());
+    config.weapons[0].damage = 30.0;
 
-let size = ship_config_measure(&ship);  // exact, writes nothing
-let mut buffer = vec![0u8; size as usize];
-ship_config_save(&ship, &mut buffer);   // returns size, or -1
+    let wire = root_config_save(&config);     // form 1: the id-table wire
 
-let mut report = TableReport::default();
-let mut loaded = ShipConfig::default();
-if !ship_config_load(&mut loaded, &buffer, &mut report) {
-    // framing damage: report.malformed is set, the good prefix is kept
-}
-if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
-    // the data came from a different schema generation — loaded is still
-    // fully usable; log the counts so drift is visible
+    let mut report = TableReport::default();
+    let Some(loaded) = root_config_load(&wire, &mut report) else {
+        panic!("framing damage: report.malformed is set");
+    };
+    if report.unknown != 0 || report.kind_mismatch != 0 || report.clamped != 0 {
+        // the data came from a different schema generation: loaded is still
+        // fully usable; log the counts so drift is visible
+    }
+    assert_eq!(loaded.weapons[0].damage, 30.0);
+    assert_eq!(loaded.weapons[0].speed, 500.0); // the declared default rode back
+
+    let text = root_config_to_json_checked(&loaded).expect("a finite value has a text");
+    let again = root_config_from_json(&text, &mut report).expect("the text reads back");
+    assert_eq!(root_config_save(&again), wire);
 }
 ```
+<!-- /rust-table-usage -->
 
 **The Go surface is the same three functions again**, name first at package
 scope over a `*T` the caller owns. Storage is a plain struct — the Go packet
