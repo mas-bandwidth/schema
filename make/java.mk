@@ -1690,13 +1690,13 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # ruling, and it stops the pass before it reaches the mutants behind it.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
@@ -1887,6 +1887,37 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@echo 'Java node-index control: an index past the numbering, unjudged, reads a damaged load clean in both arms'
 
 test-java: tables-java-node-index-negative-control
+
+# THE MAP KEY DAMAGE CONTROL (docs/SPEC-TABLES.md §2.8, §4): a scratch copy of
+# the generated units whose key scan reads on past a key its read judged
+# malformed. A later occurrence of the key then turns the damaged map into a
+# kind mismatch, and the replay of map_key_past_entry_body (mapdemo.Cells: a
+# key string whose length runs into the entry's value, a length past its body)
+# must go red in both arms.
+JAVA_MAP_KEY_SABOTAGE := build/java-map-key-sabotage
+.PHONY: tables-java-map-key-damage-negative-control
+tables-java-map-key-damage-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_MAP_KEY_SABOTAGE) && mkdir -p $(JAVA_MAP_KEY_SABOTAGE)/generated $(JAVA_MAP_KEY_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_KEY_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/*Variable.java; do \
+		sed 's/if (r\.fail || report\.malformed) {/if (r.fail) { \/\/ SABOTAGED map key damage/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED map key damage' $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/CellsVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java map-key sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_MAP_KEY_SABOTAGE)/classes \
+		$(JAVA_MAP_KEY_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@for arm in "" --retain; do \
+		if ./build/conformance-harness wire-fuzz $$arm \
+				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_KEY_SABOTAGE)/classes TablesWireFuzz" \
+				--replay testdata/wire/tables/fuzz-vectors/map_key_past_entry_body.bin --unit mapdemo --root Cells \
+				--failed $(JAVA_MAP_KEY_SABOTAGE)/failed.bin > $(JAVA_MAP_KEY_SABOTAGE)/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: a key scan that reads on past a damaged key left the $$arm replay green"; exit 1; \
+		fi; \
+		grep -q 'damaged load' $(JAVA_MAP_KEY_SABOTAGE)/log || { cat $(JAVA_MAP_KEY_SABOTAGE)/log; exit 1; }; \
+	done
+	@echo 'Java map-key control: a key scan that reads on past a damaged key reads a damaged load as a kind mismatch in both arms'
+
+test-java: tables-java-map-key-damage-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
