@@ -867,7 +867,8 @@
       "targets": [
         "tables-java-wire-fuzz-negative-control",
         "tables-java-retain-fuzz-negative-control",
-        "tables-java-map-count-negative-control"
+        "tables-java-map-count-negative-control",
+        "tables-java-keyed-count-negative-control"
       ],
       "java": "21"
     },

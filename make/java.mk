@@ -1649,11 +1649,22 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
 JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene
+# THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header whose foreign element kind
+# carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
+# the oracle reads the count against the parent and counts one kind_mismatch,
+# no damage. It joins INDEX.txt, which every leg replays, when every leg reads a
+# keyed header against the parent.
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
+	@set -e; for v in $(JAVA_PLAIN_VECTORS); do \
+		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
+		./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
+			--replay testdata/wire/tables/fuzz-vectors/$$name.bin --unit $$unit --root $$root; \
+	done
 	@set -e; for v in $(JAVA_RETAIN_VECTORS); do \
 		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
 		./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
@@ -1741,6 +1752,31 @@ tables-java-map-count-negative-control: tables-java-wire-fuzz
 	@echo 'Java map-count negative control: reading a foreign kind'"'"'s count inside L loses the kind mismatch'
 
 test-java: tables-java-map-count-negative-control
+
+# THE KEYED-COUNT CONTROL: a scratch copy of the generated units whose keyed
+# reader reads the count inside the field's own L again. The replay of
+# keyed_header_count_past_length must go red on the read report.
+JAVA_KEYED_COUNT_SABOTAGE := build/java-keyed-count-sabotage
+.PHONY: tables-java-keyed-count-negative-control
+tables-java-keyed-count-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_KEYED_COUNT_SABOTAGE) && mkdir -p $(JAVA_KEYED_COUNT_SABOTAGE)/generated $(JAVA_KEYED_COUNT_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_KEYED_COUNT_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_KEYED_COUNT_SABOTAGE)/generated/*/*Variable.java; do \
+		sed 's/long count = ar\.count(r\.limit);/long count = ar.leb(); \/\/ SABOTAGED keyed count/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED keyed count' $(JAVA_KEYED_COUNT_SABOTAGE)/generated/examples/KeyedConfigVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java keyed-count sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_KEYED_COUNT_SABOTAGE)/classes \
+		$(JAVA_KEYED_COUNT_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@if ./build/conformance-harness wire-fuzz --driver "$(JAVA) -cp $(CURDIR)/$(JAVA_KEYED_COUNT_SABOTAGE)/classes TablesWireFuzz" \
+			--replay testdata/wire/tables/fuzz-vectors/keyed_header_count_past_length.bin --unit tabledemo --root KeyedConfig \
+			--failed $(JAVA_KEYED_COUNT_SABOTAGE)/failed.bin > $(JAVA_KEYED_COUNT_SABOTAGE)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a keyed reader that reads the count inside L left the replay green'; exit 1; \
+	fi
+	@grep -q 'oracle: report=0,1,' $(JAVA_KEYED_COUNT_SABOTAGE)/log || { cat $(JAVA_KEYED_COUNT_SABOTAGE)/log; exit 1; }
+	@echo 'Java keyed-count negative control: reading the count inside L loses the kind mismatch'
+
+test-java: tables-java-keyed-count-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
