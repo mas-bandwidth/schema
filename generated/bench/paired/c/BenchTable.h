@@ -80,7 +80,7 @@ typedef struct bench_table_report_t
        the tolerant read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported form byte, not framing damage */
+    int refused;           /* a refusal by name (reason), not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
@@ -88,6 +88,13 @@ typedef struct bench_table_report_t
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+       an infinity is refused on its raw bits by every read, the tolerant one
+       included, so a read that moves this answers refused, reason
+       SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
+       a read can tell its own refusal from a caller's report that already
+       held one. */
+    int32_t non_finite_floats;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -96,7 +103,11 @@ typedef struct bench_table_report_t
     uint64_t layout_hash;
 } bench_table_report_t;
 
-enum SCHEMA_BENCH_TABLE_REFUSAL_REASON { SCHEMA_BENCH_TABLE_NO_REFUSAL, SCHEMA_BENCH_TABLE_NEWER_FORM, SCHEMA_BENCH_TABLE_MESSAGE_FORM_AS_FILE };
+/* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
+   bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
+   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   names it whichever form a unit carries. */
+enum SCHEMA_BENCH_TABLE_REFUSAL_REASON { SCHEMA_BENCH_TABLE_NO_REFUSAL, SCHEMA_BENCH_TABLE_NEWER_FORM, SCHEMA_BENCH_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_BENCH_TABLE_NON_FINITE_FLOAT = 21 };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -514,15 +525,6 @@ static SCHEMA_UNUSED int bench_table_kind_widens( uint8_t kind, uint8_t declared
     if ( declared == 18 ) { return kind >= 2 && kind <= 5; }
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
-}
-static SCHEMA_UNUSED double bench_table_wire_widen_f32( uint32_t bits )
-{
-    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
-    {
-        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
-        double d; memcpy( &d, &wide, 8 ); return d;
-    }
-    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
 }
 static SCHEMA_UNUSED int bench_table_wire_open( bench_table_reader_t * r, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
@@ -2354,6 +2356,37 @@ static SCHEMA_UNUSED uint32_t bench_table_float_to_bits( float f ) { uint32_t b;
 static SCHEMA_UNUSED double bench_table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 static SCHEMA_UNUSED uint64_t bench_table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+/* A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's own rule): a
+   NaN or an infinity, whatever its sign or payload, has an all-ones exponent,
+   and that is the whole test. Every read runs it on the RAW BITS, before they
+   become a float and before the field is written; every writer runs it on the
+   bits of the value it was handed. -0 and the subnormals are finite and ride
+   bit-exact. */
+static SCHEMA_UNUSED int bench_table_bits_finite32( uint32_t bits ) { return ( bits & 0x7f800000u ) != 0x7f800000u; }
+static SCHEMA_UNUSED int bench_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
+static SCHEMA_UNUSED int bench_table_float_finite( float f ) { return bench_table_bits_finite32( bench_table_float_to_bits( f ) ); }
+static SCHEMA_UNUSED int bench_table_double_finite( double d ) { return bench_table_bits_finite64( bench_table_double_to_bits( d ) ); }
+/* table_non_finite_float is a read meeting one: the read is REFUSED by name,
+   non_finite_float, and the walk goes on so the framing verdict is the one a
+   finite wire gets; the load that started it answers the refusal at its end
+   (table_non_finite_refused) and lands nothing. */
+static SCHEMA_UNUSED void bench_table_non_finite_float( bench_table_report_t * report )
+{
+    report->refused = 1;
+    report->reason = SCHEMA_BENCH_TABLE_NON_FINITE_FLOAT;
+    report->non_finite_floats++;
+}
+/* table_non_finite_refused is that load's end: 1 when the walk met a
+   non-finite float since before, the refusal stamped again over whatever the
+   walk met after it, because it outranks any damage (§3.3). */
+static SCHEMA_UNUSED int bench_table_non_finite_refused( bench_table_report_t * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return 0; }
+    report->refused = 1;
+    report->reason = SCHEMA_BENCH_TABLE_NON_FINITE_FLOAT;
+    return 1;
+}
+
 #endif /* SCHEMA_BENCH_TABLE_PRIMITIVES */
 
 #ifndef SCHEMA_BENCH_TABLE_REFUSE_RUNTIME
@@ -2392,13 +2425,15 @@ static SCHEMA_UNUSED const uint8_t * bench_table_cook_refuse(bench_table_refuse_
    what the strict read refuses -- an unknown form, wire damage, a blob named
    from two slots, a clamp or a kind mismatch -- and unknown, widened and
    retained alone never refuse. decoded is the tolerant read's own answer.
-   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   It sets the report's ONE TYPED REASON, a non-finite float first (it
+   outranks any damage, §3.3), then damage before blob_shared before
    clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
    them, and answers 1 when the plain name must refuse. */
 static SCHEMA_UNUSED int bench_table_report_strict_refuses( bench_table_report_t * report, int decoded )
 {
     bench_table_refuse_reason_t reason = SCHEMA_BENCH_TABLE_REFUSE_OK;
-    if ( report->refused ) { reason = SCHEMA_BENCH_TABLE_REFUSE_UNKNOWN_FORM; }
+    if ( report->refused && report->reason == SCHEMA_BENCH_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_BENCH_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused ) { reason = SCHEMA_BENCH_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_BENCH_TABLE_REFUSE_BLOB_SHARED; }
     else if ( report->clamped > 0 ) { reason = SCHEMA_BENCH_TABLE_REFUSE_CLAMPED; }
@@ -3136,6 +3171,10 @@ static SCHEMA_UNUSED int bench_table_message_number(bench_table_message_reader_t
  if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
  return 1;
 }
+/* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
+   infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
+   bits become a value, *value untouched, and the walk goes on. A quantized
+   index names a finite value and is never tested. */
 static SCHEMA_UNUSED int bench_table_message_float(bench_table_message_reader_t * r,const bench_table_message_entry_t * e,float * value)
 {
  uint64_t raw;
@@ -3143,7 +3182,10 @@ static SCHEMA_UNUSED int bench_table_message_float(bench_table_message_reader_t 
  if(e->packing==2) {
   if(raw>e->qcount)return 0;
   *value=bench_table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
- }else *value=bench_table_bits_to_float((uint32_t)raw);
+ }else if(!bench_table_bits_finite32((uint32_t)raw)){bench_table_non_finite_float(r->report);
+ return 2;
+ }
+ else *value=bench_table_bits_to_float((uint32_t)raw);
  return 1;
 }
 static SCHEMA_UNUSED int64_t bench_table_message_open(bench_table_message_reader_t * r,const bench_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,bench_table_report_t * report)
@@ -4331,7 +4373,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->moving = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->moving = bool_byte != 0;
+                }
                 break;
             }
             case 0x7674cfd19b9031caull: /* firing */
@@ -4343,7 +4389,11 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->firing = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->firing = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -4359,12 +4409,15 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_body( bench_table_reader_t * r,
    body the walk could not finish. */
 static SCHEMA_UNUSED int bench_mixed_entity_load_tolerant( bench_mixed_entity_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r;
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     bench_mixed_entity_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return bench_mixed_entity_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = bench_mixed_entity_load_body( &r, value );
+    if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_entity_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN mixed_entity_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -4838,6 +4891,8 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_messages_tolerant(bench_mixed_e
  bench_table_report_t ignored={0};
  bench_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -4850,9 +4905,16 @@ static SCHEMA_UNUSED int bench_mixed_entity_load_messages_tolerant(bench_mixed_e
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!bench_mixed_entity_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!bench_mixed_entity_load_message_body(&r,values+i))break;
  (*count)++;
- }return bench_table_message_close(&r);
+ }ok=i==bodies&&bench_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(bench_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)bench_mixed_entity_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN mixed_entity_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int bench_mixed_entity_load_messages( bench_mixed_entity_t * values, int64_t * count, const bench_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
@@ -5039,12 +5101,15 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_body( bench_table_reader_t * r, b
    body the walk could not finish. */
 static SCHEMA_UNUSED int bench_mixed_stat_load_tolerant( bench_mixed_stat_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r;
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     bench_mixed_stat_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return bench_mixed_stat_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = bench_mixed_stat_load_body( &r, value );
+    if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_stat_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN mixed_stat_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5174,6 +5239,8 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_messages_tolerant(bench_mixed_sta
  bench_table_report_t ignored={0};
  bench_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5186,9 +5253,16 @@ static SCHEMA_UNUSED int bench_mixed_stat_load_messages_tolerant(bench_mixed_sta
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!bench_mixed_stat_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!bench_mixed_stat_load_message_body(&r,values+i))break;
  (*count)++;
- }return bench_table_message_close(&r);
+ }ok=i==bodies&&bench_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(bench_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)bench_mixed_stat_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN mixed_stat_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int bench_mixed_stat_load_messages( bench_mixed_stat_t * values, int64_t * count, const bench_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
@@ -5478,7 +5552,11 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->crit = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->crit = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -5494,12 +5572,15 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_body( bench_table_reader_t *
    body the walk could not finish. */
 static SCHEMA_UNUSED int bench_mixed_hit_event_load_tolerant( bench_mixed_hit_event_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r;
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     bench_mixed_hit_event_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return bench_mixed_hit_event_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = bench_mixed_hit_event_load_body( &r, value );
+    if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_hit_event_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN mixed_hit_event_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5673,6 +5754,8 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_messages_tolerant(bench_mixe
  bench_table_report_t ignored={0};
  bench_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5685,9 +5768,16 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_load_messages_tolerant(bench_mixe
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!bench_mixed_hit_event_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!bench_mixed_hit_event_load_message_body(&r,values+i))break;
  (*count)++;
- }return bench_table_message_close(&r);
+ }ok=i==bodies&&bench_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(bench_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)bench_mixed_hit_event_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN mixed_hit_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int bench_mixed_hit_event_load_messages( bench_mixed_hit_event_t * values, int64_t * count, const bench_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
@@ -5902,12 +5992,15 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_body( bench_table_reader_t 
    body the walk could not finish. */
 static SCHEMA_UNUSED int bench_mixed_chat_event_load_tolerant( bench_mixed_chat_event_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r;
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     bench_mixed_chat_event_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return bench_mixed_chat_event_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = bench_mixed_chat_event_load_body( &r, value );
+    if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_chat_event_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN mixed_chat_event_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -6037,6 +6130,8 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_messages_tolerant(bench_mix
  bench_table_report_t ignored={0};
  bench_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -6049,9 +6144,16 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_load_messages_tolerant(bench_mix
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!bench_mixed_chat_event_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!bench_mixed_chat_event_load_message_body(&r,values+i))break;
  (*count)++;
- }return bench_table_message_close(&r);
+ }ok=i==bodies&&bench_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(bench_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)bench_mixed_chat_event_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN mixed_chat_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int bench_mixed_chat_event_load_messages( bench_mixed_chat_event_t * values, int64_t * count, const bench_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
@@ -6266,12 +6368,15 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_body( bench_table_reader_
    body the walk could not finish. */
 static SCHEMA_UNUSED int bench_mixed_pickup_event_load_tolerant( bench_mixed_pickup_event_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r;
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     bench_mixed_pickup_event_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return bench_mixed_pickup_event_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = bench_mixed_pickup_event_load_body( &r, value );
+    if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_mixed_pickup_event_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN mixed_pickup_event_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -6401,6 +6506,8 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_messages_tolerant(bench_m
  bench_table_report_t ignored={0};
  bench_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -6413,9 +6520,16 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_messages_tolerant(bench_m
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!bench_mixed_pickup_event_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!bench_mixed_pickup_event_load_message_body(&r,values+i))break;
  (*count)++;
- }return bench_table_message_close(&r);
+ }ok=i==bodies&&bench_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(bench_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)bench_mixed_pickup_event_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN mixed_pickup_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int bench_mixed_pickup_event_load_messages( bench_mixed_pickup_event_t * values, int64_t * count, const bench_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
@@ -6755,6 +6869,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 72, 0xdbaf7be5e24296c9ull, 10 );
+            if ( !bench_table_float_finite( value->aim_x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_x ) );
         }
     }
@@ -6763,6 +6878,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 71, 0xdbaf7ae5e2429516ull, 10 );
+            if ( !bench_table_float_finite( value->aim_y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_y ) );
         }
     }
@@ -6771,22 +6887,25 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 70, 0xdbaf79e5e2429363ull, 10 );
+            if ( !bench_table_float_finite( value->aim_z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             bench_table_writer_put32( w, bench_table_float_to_bits( value->aim_z ) );
         }
     }
     { /* recoil */
-        if ( !( value->recoil == 0.0f ) )
+        if ( !( bench_table_float_to_bits( value->recoil ) == bench_table_float_to_bits( 0.0f ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 47, 0x9cef31fff7e2e457ull, 10 );
+            if ( !bench_table_float_finite( value->recoil ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             bench_table_writer_put32( w, bench_table_float_to_bits( value->recoil ) );
         }
     }
     { /* drift */
-        if ( !( value->drift == 0.0 ) )
+        if ( !( bench_table_double_to_bits( value->drift ) == bench_table_double_to_bits( 0.0 ) ) )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             bench_table_writer_header_at( w, 25, 0x5ab3f9c9341f6c04ull, 11 );
+            if ( !bench_table_double_finite( value->drift ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             bench_table_writer_put64( w, bench_table_double_to_bits( value->drift ) );
         }
     }
@@ -7530,10 +7649,15 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                 }
                 if ( !bench_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    float decoded_f = bench_table_bits_to_float( bench_table_reader_get32( &(*r) ) );
-                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->clamped++; }
-                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->clamped++; }
-                    value->aim_x = decoded_f;
+                    uint32_t decoded_bits = bench_table_reader_get32( &(*r) );
+                    if ( !bench_table_bits_finite32( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
+                    else
+                    {
+                        float decoded_f = bench_table_bits_to_float( decoded_bits );
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->clamped++; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->clamped++; }
+                        value->aim_x = decoded_f;
+                    }
                 }
                 break;
             }
@@ -7547,10 +7671,15 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                 }
                 if ( !bench_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    float decoded_f = bench_table_bits_to_float( bench_table_reader_get32( &(*r) ) );
-                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->clamped++; }
-                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->clamped++; }
-                    value->aim_y = decoded_f;
+                    uint32_t decoded_bits = bench_table_reader_get32( &(*r) );
+                    if ( !bench_table_bits_finite32( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
+                    else
+                    {
+                        float decoded_f = bench_table_bits_to_float( decoded_bits );
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->clamped++; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->clamped++; }
+                        value->aim_y = decoded_f;
+                    }
                 }
                 break;
             }
@@ -7564,10 +7693,15 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                 }
                 if ( !bench_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
                 {
-                    float decoded_f = bench_table_bits_to_float( bench_table_reader_get32( &(*r) ) );
-                    if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->clamped++; }
-                    else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->clamped++; }
-                    value->aim_z = decoded_f;
+                    uint32_t decoded_bits = bench_table_reader_get32( &(*r) );
+                    if ( !bench_table_bits_finite32( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
+                    else
+                    {
+                        float decoded_f = bench_table_bits_to_float( decoded_bits );
+                        if ( decoded_f < -1.0f ) { decoded_f = -1.0f; r->report->clamped++; }
+                        else if ( decoded_f > 1.0f ) { decoded_f = 1.0f; r->report->clamped++; }
+                        value->aim_z = decoded_f;
+                    }
                 }
                 break;
             }
@@ -7580,7 +7714,11 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                value->recoil = bench_table_bits_to_float( bench_table_reader_get32( &(*r) ) );
+                {
+                    uint32_t decoded_bits = bench_table_reader_get32( &(*r) );
+                    if ( !bench_table_bits_finite32( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
+                    else { value->recoil = bench_table_bits_to_float( decoded_bits ); }
+                }
                 break;
             }
             case 0x5ab3f9c9341f6c04ull: /* drift */
@@ -7594,14 +7732,20 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                             case 10:
                             {
                                 if ( !bench_table_reader_has( &(*r), 4 ) ) { r->report->malformed = 1; return 0; }
-                                double decoded_wide = bench_table_wire_widen_f32( bench_table_reader_get32( &(*r) ) );
+                                uint32_t widened_bits = bench_table_reader_get32( &(*r) );
+                                if ( !bench_table_bits_finite32( widened_bits ) ) { bench_table_non_finite_float( r->report ); break; }
+                                double decoded_wide = (double) bench_table_bits_to_float( widened_bits );
                                 value->drift = decoded_wide;
                                 break;
                             }
                             case 11:
                             {
                                 if ( !bench_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                                value->drift = bench_table_bits_to_double( bench_table_reader_get64( &(*r) ) );
+                                {
+                                    uint64_t decoded_bits = bench_table_reader_get64( &(*r) );
+                                    if ( !bench_table_bits_finite64( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
+                                    else { value->drift = bench_table_bits_to_double( decoded_bits ); }
+                                }
                                 break;
                             }
                             default: r->report->malformed = 1; return 0;
@@ -7614,7 +7758,11 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 8 ) ) { r->report->malformed = 1; return 0; }
-                value->drift = bench_table_bits_to_double( bench_table_reader_get64( &(*r) ) );
+                {
+                    uint64_t decoded_bits = bench_table_reader_get64( &(*r) );
+                    if ( !bench_table_bits_finite64( decoded_bits ) ) { bench_table_non_finite_float( r->report ); }
+                    else { value->drift = bench_table_bits_to_double( decoded_bits ); }
+                }
                 break;
             }
             case 0xa3348580461faf16ull: /* wide_key */
@@ -7871,7 +8019,11 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                     break;
                 }
                 if ( !bench_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_extra = bench_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = bench_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->has_extra = bool_byte != 0;
+                }
                 break;
             }
             case 0xfd29ee12a979cb69ull: /* extra */
@@ -7997,12 +8149,15 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
    body the walk could not finish. */
 static SCHEMA_UNUSED int bench_bench_mixed_load_tolerant( bench_bench_mixed_t * value, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
 {
-    bench_table_report_t ignored; bench_table_reader_t r;
+    bench_table_report_t ignored; bench_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     bench_bench_mixed_reset( value );
     if ( !bench_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return bench_bench_mixed_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = bench_bench_mixed_load_body( &r, value );
+    if ( bench_table_non_finite_refused( report, non_finite_before ) ) { bench_bench_mixed_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN bench_mixed_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -8200,6 +8355,8 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
   return 1;
   }
   bench_table_bit_put(w,16,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!bench_table_float_finite(value->aim_x)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   bench_table_bit_put(w,bench_table_message_quantize(value->aim_x,-1.0f,2.0f,200u),8);
  }
  }
@@ -8209,6 +8366,8 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
   return 1;
   }
   bench_table_bit_put(w,17,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!bench_table_float_finite(value->aim_y)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   bench_table_bit_put(w,bench_table_message_quantize(value->aim_y,-1.0f,2.0f,200u),8);
  }
  }
@@ -8218,24 +8377,30 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
   return 1;
   }
   bench_table_bit_put(w,18,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!bench_table_float_finite(value->aim_z)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   bench_table_bit_put(w,bench_table_message_quantize(value->aim_z,-1.0f,2.0f,200u),8);
  }
  }
  { /* recoil */
- if(!(value->recoil == 0.0f)) {
+ if(!(bench_table_float_to_bits( value->recoil ) == bench_table_float_to_bits( 0.0f ))) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   bench_table_bit_put(w,19,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!bench_table_float_finite(value->recoil)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   bench_table_bit_put(w,bench_table_float_to_bits(value->recoil),32);
  }
  }
  { /* drift */
- if(!(value->drift == 0.0)) {
+ if(!(bench_table_double_to_bits( value->drift ) == bench_table_double_to_bits( 0.0 ))) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   bench_table_bit_put(w,20,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
+  if(!bench_table_double_finite(value->drift)) return 0;
+  /* a NaN or an infinity is refused (§3.3) */
   bench_table_bit_put(w,bench_table_double_to_bits(value->drift),64);
  }
  }
@@ -8635,21 +8800,25 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  if(!bench_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { float decoded;
- if(entry->kind==10) {float narrow;
- if(!bench_table_message_float(r,entry,&narrow))goto malformed;
+ { float decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=bench_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
  if(!bench_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(float)bench_table_bits_to_double(raw);
+ finite=bench_table_bits_finite64(raw);
+ if(finite)decoded=(float)bench_table_bits_to_double(raw);
+ else bench_table_non_finite_float(r->report);
  }
-  if(decoded<-1.0f){decoded=-1.0f;
+  if(finite){if(decoded<-1.0f){decoded=-1.0f;
   r->report->clamped++;
   }else if(decoded>1.0f){decoded=1.0f;
   r->report->clamped++;
-  }
-  value->aim_x=decoded;
-  }
+  }value->aim_x=decoded;
+  } }
  break;
  }
  case UINT64_C(0xdbaf7ae5e2429516): {
@@ -8658,21 +8827,25 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  if(!bench_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { float decoded;
- if(entry->kind==10) {float narrow;
- if(!bench_table_message_float(r,entry,&narrow))goto malformed;
+ { float decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=bench_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
  if(!bench_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(float)bench_table_bits_to_double(raw);
+ finite=bench_table_bits_finite64(raw);
+ if(finite)decoded=(float)bench_table_bits_to_double(raw);
+ else bench_table_non_finite_float(r->report);
  }
-  if(decoded<-1.0f){decoded=-1.0f;
+  if(finite){if(decoded<-1.0f){decoded=-1.0f;
   r->report->clamped++;
   }else if(decoded>1.0f){decoded=1.0f;
   r->report->clamped++;
-  }
-  value->aim_y=decoded;
-  }
+  }value->aim_y=decoded;
+  } }
  break;
  }
  case UINT64_C(0xdbaf79e5e2429363): {
@@ -8681,21 +8854,25 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  if(!bench_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { float decoded;
- if(entry->kind==10) {float narrow;
- if(!bench_table_message_float(r,entry,&narrow))goto malformed;
+ { float decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=bench_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
  if(!bench_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(float)bench_table_bits_to_double(raw);
+ finite=bench_table_bits_finite64(raw);
+ if(finite)decoded=(float)bench_table_bits_to_double(raw);
+ else bench_table_non_finite_float(r->report);
  }
-  if(decoded<-1.0f){decoded=-1.0f;
+  if(finite){if(decoded<-1.0f){decoded=-1.0f;
   r->report->clamped++;
   }else if(decoded>1.0f){decoded=1.0f;
   r->report->clamped++;
-  }
-  value->aim_z=decoded;
-  }
+  }value->aim_z=decoded;
+  } }
  break;
  }
  case UINT64_C(0x9cef31fff7e2e457): {
@@ -8704,16 +8881,21 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  if(!bench_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { float decoded;
- if(entry->kind==10) {float narrow;
- if(!bench_table_message_float(r,entry,&narrow))goto malformed;
+ { float decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=bench_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
  decoded=narrow;
  } else {uint64_t raw;
  if(!bench_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(float)bench_table_bits_to_double(raw);
+ finite=bench_table_bits_finite64(raw);
+ if(finite)decoded=(float)bench_table_bits_to_double(raw);
+ else bench_table_non_finite_float(r->report);
  }
-  value->recoil=decoded;
-  }
+  if(finite){value->recoil=decoded;
+  } }
  break;
  }
  case UINT64_C(0x5ab3f9c9341f6c04): {
@@ -8722,16 +8904,21 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
  if(!bench_table_message_skip(r,entry))goto malformed;
  break;
  }}
- { double decoded;
- if(entry->kind==10) {float narrow;
- if(!bench_table_message_float(r,entry,&narrow))goto malformed;
- decoded=bench_table_wire_widen_f32(bench_table_float_to_bits(narrow));
+ { double decoded=0;
+ int finite=1;
+ if(entry->kind==10) {float narrow=0;
+ int got=bench_table_message_float(r,entry,&narrow);
+ if(!got)goto malformed;
+ finite=got==1;
+ decoded=(double)narrow;
  } else {uint64_t raw;
  if(!bench_table_bit_get(&r->bits,&raw,64))goto malformed;
- decoded=(double)bench_table_bits_to_double(raw);
+ finite=bench_table_bits_finite64(raw);
+ if(finite)decoded=(double)bench_table_bits_to_double(raw);
+ else bench_table_non_finite_float(r->report);
  }
-  value->drift=decoded;
-  }
+  if(finite){value->drift=decoded;
+  } }
  break;
  }
  case UINT64_C(0xa3348580461faf16): {
@@ -8871,6 +9058,8 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_messages_tolerant(bench_bench_mi
  bench_table_report_t ignored={0};
  bench_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -8883,9 +9072,16 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_messages_tolerant(bench_bench_mi
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!bench_bench_mixed_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!bench_bench_mixed_load_message_body(&r,values+i))break;
  (*count)++;
- }return bench_table_message_close(&r);
+ }ok=i==bodies&&bench_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(bench_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)bench_bench_mixed_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN bench_mixed_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int bench_bench_mixed_load_messages( bench_bench_mixed_t * values, int64_t * count, const bench_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, bench_table_report_t * report )
@@ -9139,6 +9335,17 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     bench_table_fixed_put8( b + 1227, value->has_extra ? 1 : 0 );
     bench_table_fixed_put32( b + 1228, (uint32_t) value->extra );
     bench_table_fixed_put32( b + 1232, (uint32_t) value->idle_ticks );
+}
+
+/* BenchMixed's finite pass (docs/SPEC-TABLES.md §3.3): 0 at the first NaN or infinity. */
+static SCHEMA_UNUSED int schema_bench_bench_mixed_fixed_finite_body_( const bench_bench_mixed_t * value )
+{
+    if ( !bench_table_float_finite( value->aim_x ) ) { return 0; }
+    if ( !bench_table_float_finite( value->aim_y ) ) { return 0; }
+    if ( !bench_table_float_finite( value->aim_z ) ) { return 0; }
+    if ( !bench_table_float_finite( value->recoil ) ) { return 0; }
+    if ( !bench_table_double_finite( value->drift ) ) { return 0; }
+    return 1;
 }
 
 /* MixedEntity's read-side bounds. */
@@ -9445,11 +9652,11 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_cook_body_(struct bench_table_
     bench_table_cook_put(at+1248+16,(uint32_t)value->player_name_length,4,order);
     bench_table_cook_bytes(at+1268,value->payload,value->payload_length,16);
     bench_table_cook_put(at+1268+16,(uint32_t)value->payload_length,4,order);
-    { uint32_t bits; memcpy(&bits,&value->aim_x,4); bench_table_cook_put(at+1288,bits,4,order); }
-    { uint32_t bits; memcpy(&bits,&value->aim_y,4); bench_table_cook_put(at+1292,bits,4,order); }
-    { uint32_t bits; memcpy(&bits,&value->aim_z,4); bench_table_cook_put(at+1296,bits,4,order); }
-    { uint32_t bits; memcpy(&bits,&value->recoil,4); bench_table_cook_put(at+1300,bits,4,order); }
-    { uint64_t bits; memcpy(&bits,&value->drift,8); bench_table_cook_put(at+1304,bits,8,order); }
+    { uint32_t bits; memcpy(&bits,&value->aim_x,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1288,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->aim_y,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1292,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->aim_z,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1296,bits,4,order); }
+    { uint32_t bits; memcpy(&bits,&value->recoil,4); if(!bench_table_bits_finite32(bits)) { return 0; } bench_table_cook_put(at+1300,bits,4,order); }
+    { uint64_t bits; memcpy(&bits,&value->drift,8); if(!bench_table_bits_finite64(bits)) { return 0; } bench_table_cook_put(at+1304,bits,8,order); }
     bench_table_cook_put128(at+1312,value->wide_key.lo,value->wide_key.hi,order);
     bench_table_cook_put128(at+1328,value->flux.lo,value->flux.hi,order);
     bench_table_cook_put(at+1344,(uint64_t)value->ping,2,order);

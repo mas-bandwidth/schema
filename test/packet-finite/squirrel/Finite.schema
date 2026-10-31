@@ -1,0 +1,15 @@
+// Packet floats are finite (SPEC §4.3, serialize format 2.0), the Squirrel
+// leg: one of each float shape a packet carries — bare float32 and float64
+// scalars, a fixed float32 array, a counted float64 array, and a compressed
+// float32. test/packet-finite/squirrel/main.nut writes and reads them;
+// internal/codegen/squirrel/finite_test.go runs it under the pinned sq.
+package packetfinite
+
+type Floats
+{
+    narrow float32
+    wide float64
+    narrows [3]float32
+    wides [..4]float64
+    quantized float32 | min = -10, max = 10, resolution = 0.01
+}

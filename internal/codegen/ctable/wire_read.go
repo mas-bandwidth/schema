@@ -75,7 +75,13 @@ func (g *tableGen) wireWidenedScalar(f *ir.Field, source int, dst, rdr, ind, onB
 	width := tableKindWidth(source)
 	g.pf("%sif ( !table_reader_has( &%s, %d ) ) { %s }\n", ind, rdr, width, onBad)
 	if source == tkF32 {
-		g.pf("%sdouble decoded_wide = table_wire_widen_f32( table_reader_get32( &%s ) );\n", ind, rdr)
+		// THE FLOAT RUNG: every finite float32 is exactly a float64, so the
+		// ordinary conversion is the widening, and a NaN or an infinity never
+		// reaches it: it is refused on its raw bits first, the field left as
+		// it was (docs/SPEC-TABLES.md §3.3, §4)
+		g.pf("%suint32_t widened_bits = table_reader_get32( &%s );\n", ind, rdr)
+		g.pf("%sif ( !table_bits_finite32( widened_bits ) ) { table_non_finite_float( r->report ); break; }\n", ind)
+		g.pf("%sdouble decoded_wide = (double) table_bits_to_float( widened_bits );\n", ind)
 		if f.HasFloatRange {
 			g.pf("%sif ( decoded_wide < %s ) { decoded_wide = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMin, false), formatFloat(f.FMin, false))
 			g.pf("%selse if ( decoded_wide > %s ) { decoded_wide = %s; r->report->clamped++; }\n", ind, formatFloat(f.FMax, false), formatFloat(f.FMax, false))
@@ -180,9 +186,14 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	g.pf("   recovered value and its report, and answers 0 only for a refusal or a\n")
 	g.pf("   body the walk could not finish. */\n")
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_tolerant"), st.Name)
-	g.pf("    TableReport ignored; TableReader r;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n")
+	g.pf("    TableReport ignored; TableReader r; int32_t non_finite_before; int whole;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n")
 	g.pf("    %s( value );\n    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n", g.api(st.Name, "reset"))
-	g.pf("    return %s( &r, value );\n}\n\n", g.api(st.Name, "load_body"))
+	g.pf("    non_finite_before = report->non_finite_floats;\n")
+	g.pf("    whole = %s( &r, value );\n", g.api(st.Name, "load_body"))
+	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
+	// any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing lands.
+	g.pf("    if ( table_non_finite_refused( report, non_finite_before ) ) { %s( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */\n", g.api(st.Name, "reset"))
+	g.pf("    return whole;\n}\n\n")
 	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses\n", g.api(st.Name, "load"))
 	g.pf("   whatever the strict read refuses -- an unknown form, wire damage, a clamp\n")
 	g.pf("   or a kind mismatch -- answering 0 with the value reset to its declared\n")

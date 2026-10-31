@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var packetWidePorts = []string{"c", "rust", "go", "cs", "java", "js", "dart", "elixir"}
+var packetWidePorts = []string{"c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lobster"}
 
 func TestPacketWideTextBesideUnrelatedTable(t *testing.T) {
 	u := unitFromSource(t, "package wide\ntype Text { name wstring(4) }\ntable Counter { number int32 }\n")
@@ -33,9 +33,10 @@ func TestPacketWideTextRefusesTableClosure(t *testing.T) {
 			// go and cs carry table wide text on the id-table wire; dart,
 			// rust, java, js and elixir carry it on §3.4's fixed form. The
 			// refusal under test is the one a port without a table codec
-			// gives, and every registered target has one today.
+			// gives, and every registered target has one today. lobster
+			// carries it on its variable form (carries_lobster_wide_kinds.go).
 			if target == "go" || target == "cs" || target == "dart" ||
-				target == "rust" || target == "java" || target == "js" || target == "elixir" {
+				target == "rust" || target == "java" || target == "js" || target == "elixir" || target == "lobster" {
 				continue
 			}
 			_, err := New().Generate(u, target, nil)

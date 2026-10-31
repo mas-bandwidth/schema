@@ -18,6 +18,7 @@ package javatable
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -69,6 +70,24 @@ type rowGen struct {
 	unit *ir.Unit
 	set  *records
 	b    strings.Builder
+	// record is the declared name of the record being emitted, the <Record>
+	// of a float accessor's non_finite_float refusal (docs/SPEC-TABLES.md §3.3)
+	record string
+}
+
+// fieldName names one of the record's fields for a float accessor's refusal.
+func (g *rowGen) fieldName(f *ir.Field) string { return g.record + "." + f.Name }
+
+// declaredRecordName is a record's schema spelling (ir.Struct.DeclaredName),
+// found by its generated name among the unit's tables and types.
+func declaredRecordName(u *ir.Unit, name string) string {
+	if st := u.Tables[name]; st != nil {
+		return st.DeclaredName()
+	}
+	if st := u.Structs[name]; st != nil {
+		return st.DeclaredName()
+	}
+	return name
 }
 
 func (g *rowGen) f(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -87,7 +106,8 @@ func javaRecordType(t ir.FieldType) string {
 		return "float"
 	case ir.TFloat64:
 		return "double"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		// a fixed is its RAW integer at its storage width (§7.2)
 		return intJavaType(t.Width)
 	case ir.TBits:
 		if t.Width <= 32 {
@@ -105,8 +125,10 @@ func javaRecordType(t ir.FieldType) string {
 	return "byte"
 }
 
-// readCall is the TableBytes read one Java type takes.
-func readCall(typ, at string) string {
+// readCall is the TableBytes read one Java type takes. A float's read names
+// its field, <Record>.<field>, because it refuses a NaN or an infinity by
+// that name (docs/SPEC-TABLES.md §3.3, ruling 2).
+func readCall(typ, at, field string) string {
 	switch typ {
 	case "boolean":
 		return "TableBytes.bool(data, " + at + ")"
@@ -119,14 +141,15 @@ func readCall(typ, at string) string {
 	case "long":
 		return "TableBytes.i64(data, " + at + ")"
 	case "float":
-		return "TableBytes.f32(data, " + at + ")"
+		return "TableBytes.f32(data, " + at + ", " + strconv.Quote(field) + ")"
 	case "double":
-		return "TableBytes.f64(data, " + at + ")"
+		return "TableBytes.f64(data, " + at + ", " + strconv.Quote(field) + ")"
 	}
 	return "TableBytes.i8(data, " + at + ")"
 }
 
-// emitRowFiles emits one <Name>Row.java per record either accelerator reaches.
+// emitRowFiles emits one <Name>Row.java per record either accelerator reaches,
+// and one per UNION the cook closure reaches.
 func emitRowFiles(u *ir.Unit, set *records, blocks *ir.BlockUnit, ck *cookUnit) map[string][]byte {
 	out := map[string][]byte{}
 	for _, name := range set.order {
@@ -134,10 +157,110 @@ func emitRowFiles(u *ir.Unit, set *records, blocks *ir.BlockUnit, ck *cookUnit) 
 		g.emitRow(name, set.layout[name], blocks, ck)
 		out[name+"Row.java"] = javaFile(u, "one record of the two accelerators, read where it lies (docs/SPEC-TABLES.md §7, §19).", g.b.String())
 	}
+	if ck != nil {
+		for _, un := range ck.unions {
+			g := &rowGen{unit: u, set: set}
+			g.emitUnionRow(un)
+			out[un.Name+"Row.java"] = javaFile(u, "one cooked union, read where it lies (docs/SPEC-TABLES.md §7.2).", g.b.String())
+		}
+	}
 	return out
 }
 
+// emitUnionRow is a cooked UNION (docs/SPEC-TABLES.md §7.2): the TAG at the
+// union's own base at its storage width, the arms overlaid at align_up(tag
+// width, greatest arm alignment), the whole rounded to the union's alignment.
+// Only the SET arm's bytes are meaningful; every other byte is zero. Each arm
+// is a field line, so its accessors are a record field's, at the arm offset.
+func (g *rowGen) emitUnionRow(un *ir.Union) {
+	size, align, tag, armAt := ir.UnionLayout(g.unit, un)
+	// an arm is named as the variable form's Value names it (unionMembers):
+	// the writer reads the set arm off that Value, and an arm whose own name
+	// is the reserved "tag" is spelled tagArm there and here alike
+	mem := unionMembers(un)
+	var arms []ir.FieldLayout
+	var tags []int
+	for i, v := range un.Variants {
+		if v.Void() {
+			continue
+		}
+		armSize, armAlign := ir.ArmLayout(g.unit, v)
+		one := *v.F
+		one.Name = mem[i]
+		arms = append(arms, ir.FieldLayout{Field: &one, Offset: armAt, Size: armSize, Align: armAlign})
+		tags = append(tags, i+1)
+	}
+	name := un.Name
+	g.f("// %s — a cooked UNION: a tag beside its overlaid arms (docs/SPEC-TABLES.md\n", name)
+	g.f("// §7.2). `Row` is a CLAIMED suffix (§11), so no declaration can take it.\n")
+	g.f("//\n")
+	g.f("// The accessors are STATIC over (byte[] data, int at), `at` being where the\n")
+	g.f("// union starts; an arm's accessors read the arm in place, and only the arm\n")
+	g.f("// the tag names holds anything but zeros.\n")
+	g.f("public final class %sRow {\n", name)
+	g.f("    private %sRow() {}\n\n", name)
+	g.f("    /** the union's own size and alignment, from the ONE layout model (§19.3). */\n")
+	g.f("    public static final int size = %d;\n", size)
+	g.f("    public static final int align = %d;\n", align)
+	g.f("    /** the tag's width in bytes; the arms start at armOffset. */\n")
+	g.f("    public static final int tagWidth = %d;\n", tag)
+	g.f("    public static final int armOffset = %d;\n\n", armAt)
+	g.f("    /** where each ARM starts, in declaration order — checked by\n")
+	g.f("     *  TableCookLayout against the descriptors below (§19.3). */\n")
+	g.f("    static final int[] offsets = {")
+	for i, fl := range arms {
+		if i > 0 {
+			g.f(",")
+		}
+		g.f(" %d", fl.Offset)
+	}
+	g.f(" };\n\n")
+	g.f("    /** the TAG: 0 is None, k is the k-th declared arm. */\n")
+	g.f("    public static long tag(byte[] data, int at) { return %s; }\n\n", unsignedReadCall(tag, "at"))
+	for _, fl := range arms {
+		g.emitRowField(fl)
+	}
+	g.f("    // this union's COOK descriptor (docs/SPEC-TABLES.md §7.2): its fields are\n")
+	g.f("    // its ARMS, each carrying the tag that selects it, at the arm offset.\n")
+	g.f("    // published by CLASS INITIALIZATION, for the reason a record's states.\n")
+	g.f("    private static final class CookInfoHolder {\n")
+	g.f("        static final TableCookInfo INFO = build();\n\n")
+	g.f("        private static TableCookInfo build() {\n")
+	g.f("            TableCookInfo info = new TableCookInfo();\n")
+	g.f("            info.name = %q; info.size = %d; info.align = %d; info.numFields = %d;\n",
+		name, size, align, len(arms))
+	g.f("            info.tagWidth = %d; info.armCount = %d;\n", tag, un.Max)
+	g.f("            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(arms))
+	for i, fl := range arms {
+		g.f("            fields[%d] = %s.arm(%d);\n", i, g.cookFieldInfo(fl), tags[i])
+	}
+	g.f("            info.fields = fields;\n")
+	g.f("            return info;\n        }\n    }\n\n")
+	g.f("    public static TableCookInfo cookInfo() { return CookInfoHolder.INFO; }\n")
+	g.f("}\n")
+}
+
+// isWide answers whether a scalar is 128 bits: an int128, a uint128, or a
+// fixed or ufixed whose storage is 128 bits (§7.2).
+func isWide(t ir.FieldType) bool {
+	return !t.Pointer && (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128
+}
+
+// unsignedReadCall reads an unsigned integer of `width` bytes, widened to long.
+func unsignedReadCall(width int64, at string) string {
+	switch width {
+	case 1:
+		return "TableBytes.u8(data, " + at + ")"
+	case 2:
+		return "TableBytes.u16(data, " + at + ")"
+	case 4:
+		return "TableBytes.u32(data, " + at + ")"
+	}
+	return "TableBytes.i64(data, " + at + ")"
+}
+
 func (g *rowGen) emitRow(name string, ml *ir.MemberLayout, blocks *ir.BlockUnit, ck *cookUnit) {
+	g.record = declaredRecordName(g.unit, name)
 	g.f("// %s — a block row, a cooked record, or a record one of them nests by\n", name)
 	g.f("// value. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no declaration\n")
 	g.f("// in the unit can take it.\n")
@@ -206,13 +329,20 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		elem := javaRecordType(f.Type)
 		elemSize := pieces[0].Size / f.ArrayBound
-		if isClassRef(f.Type) {
+		switch {
+		case isClassRef(f.Type):
 			g.f("    /** [%d]%s: the element's own offset — read it with %sRow's accessors. */\n",
 				f.ArrayBound, f.Type.Name, f.Type.Name)
 			g.f("    public static int %sAt(int at, int i) { return at + %d + i * %d; }\n\n", name, pieces[0].Offset, elemSize)
-		} else {
+		case isWide(f.Type):
+			g.f("    /** element i's low and high 64-bit halves (§7.2). */\n")
+			g.f("    public static long %sLo(byte[] data, int at, int i) { return TableBytes.i64(data, at + %d + i * %d); }\n",
+				name, pieces[0].Offset, elemSize)
+			g.f("    public static long %sHi(byte[] data, int at, int i) { return TableBytes.i64(data, at + %d + i * %d); }\n",
+				name, pieces[0].Offset+8, elemSize)
+		default:
 			g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n",
-				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
+				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize), g.fieldName(f)))
 		}
 		if f.KeyEnum != "" {
 			g.emitRowKeyForm(f, name, elem, pieces[0].Offset, elemSize)
@@ -228,10 +358,16 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 	case isClassRef(f.Type):
 		g.f("    /** %s by value: its own offset — read it with %sRow's accessors. */\n", f.Type.Name, f.Type.Name)
 		g.f("    public static int %sAt(int at) { return at + %d; }\n\n", name, pieces[0].Offset)
+	case isWide(f.Type):
+		// SIXTEEN BYTES AT SIXTEEN (§7.2): the low half first in this reader's
+		// little-endian order, each half one eight-byte lane
+		g.f("    /** a 128-bit slot's low and high 64-bit halves (§7.2). */\n")
+		g.f("    public static long %sLo(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n", name, pieces[0].Offset)
+		g.f("    public static long %sHi(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n\n", name, pieces[0].Offset+8)
 	default:
 		typ := javaRecordType(f.Type)
 		g.f("    public static %s %s(byte[] data, int at) { return %s; }\n\n",
-			typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset)))
+			typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset), g.fieldName(f)))
 	}
 	if f.Type.Optional {
 		g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, at + %d); }\n\n",
@@ -263,7 +399,7 @@ func (g *rowGen) emitRowKeyForm(f *ir.Field, name, elem string, base, elemSize i
 		ir.FieldTypeSpelling(f), keyedFormMarker)
 	g.f("    public static %s %sByKey(byte[] data, int at, int key) {\n", elem, name)
 	g.f("%s", javaKeyRefusal("        ", "key", f))
-	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize)))
+	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize), g.fieldName(f)))
 	g.f("    }\n")
 }
 
@@ -336,6 +472,7 @@ func (g *rowGen) emitCookRecordInfo(name string, ml *ir.MemberLayout) {
 	if st := g.unit.Tables[name]; st != nil {
 		g.f("            info.typeId = 0x%016xL;\n", ir.TableWireId(st.WireName()))
 	}
+	g.f("            info.defaults = %sVariable.Value::new;\n", name)
 	g.f("            TableCookFieldInfo[] fields = new TableCookFieldInfo[%d];\n", len(ml.Fields))
 	for i, fl := range ml.Fields {
 		g.f("            fields[%d] = %s;\n", i, g.cookFieldInfo(fl))
@@ -349,7 +486,10 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	f := fl.Field
 	names := "null"
 	if f.Type.Kind == ir.TNamed {
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			names = fmt.Sprintf("() -> %sRow.cookInfo()", ref.Name)
+		case *ir.Union:
 			names = fmt.Sprintf("() -> %sRow.cookInfo()", ref.Name)
 		}
 	}
@@ -371,7 +511,10 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	}
 	isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
 	bound := int64(1)
-	elemSize := fl.Size
+	// one slot's width is the VALUE piece's: an optional's presence bool is
+	// its own piece after it (§7.2), and a store at the field's whole size
+	// would overwrite it
+	elemSize := pieces[0].Size
 	if isArray {
 		bound = f.ArrayBound
 		elemSize = pieces[0].Size / bound
@@ -387,7 +530,7 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 		presentOffset = pieces[len(pieces)-1].Offset
 	}
 	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)",
-		f.Name, member(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
+		f.Name, varMember(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
 		cookStorageKind(f), names)
 }
 
@@ -409,7 +552,10 @@ func cookStorageKind(f *ir.Field) string {
 		return "BYTES"
 	case ir.TBits:
 		return "UNSIGNED"
-	case ir.TInt:
+	case ir.TInt, ir.TFixed:
+		if isWide(f.Type) {
+			return "WIDE"
+		}
 		if f.Type.Signed {
 			return "SIGNED"
 		}
@@ -420,6 +566,8 @@ func cookStorageKind(f *ir.Field) string {
 			return "UNSIGNED"
 		case *ir.Struct:
 			return "RECORD"
+		case *ir.Union:
+			return "UNION"
 		}
 	}
 	return "RECORD"
