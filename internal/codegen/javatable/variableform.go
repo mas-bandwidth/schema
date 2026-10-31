@@ -1399,7 +1399,7 @@ public final class TableVariable {
             return;
         }
         NodeRecord[] recs = report.nodeRecs;
-        if (index - 2 >= (recs == null ? 0 : recs.length)) {
+        if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) { // a reference is unsigned
             report.malformed = true;
             return;
         }
