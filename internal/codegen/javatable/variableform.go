@@ -15,7 +15,7 @@ import (
 // (§3), and the flat node table of §3.1 for the `*string` blob pointers the
 // card's `done_when`, `source`, `body` and `extra[].value` carry. This file
 // emits the Java runtime and the per-table load/save for exactly the card's
-// constructs: plain `table` roots and tables as list elements, bool/int32/
+// constructs: variable table roots and tables as list elements, bool/int32/
 // int64/enum fields, string(N), the *string byte buffer (§2.5) and unbounded
 // lists of tables ([]T, §2.9). Every other variable-class construct is refused
 // by name before this emitter runs (refuseVariableForm, javatable.go).
@@ -746,7 +746,9 @@ public final class TableVariable {
             return -1;
         }
         long count = u64(data, data.length - 8);
-        if (count < 0 || count > (data.length - 9) / 8) {
+        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+        // whatever the buffer would hold
+        if (count < 0 || count > 4096 || count > (data.length - 9) / 8) {
             report.malformed = true;
             return -1;
         }

@@ -1,7 +1,9 @@
 #!/bin/sh
 # Prove the restored Go gates detect a changed wire, a changed message batch,
 # a missing text event, a noncanonical integer accepted by the generated
-# wire reader, and an absent case that writes no `.absent` answer.
+# wire reader, an absent case that writes no `.absent` answer, and the 4096
+# id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
+# reader (frame-cap).
 set -eu
 
 mode=$1
@@ -27,6 +29,10 @@ walk)
 leb|leb-driver)
     source=$(grep -l 'if i > 0 && b == 0' build/tables-generated-go/examples/*Table.go)
     sed 's/if i > 0 \&\& b == 0/if false/' "$source" > "$out/source.gotext"
+    ;;
+frame-cap)
+    source=$(grep -l 'if n > 4096 {' build/tables-generated-go/r1/*Table.go)
+    sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
     ;;
 absent)
     # both writers of the marker: the bare one and the one carrying a reason
@@ -77,6 +83,9 @@ else
         grep -q 'json-read     pass' "$out/log"
     elif [ "$mode" = message ]; then
         grep -q 'go / message: login_full' "$out/log"
+        grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = frame-cap ]; then
+        grep -q 'go / framing: frame_entries_4097: damaged input owes the refusal' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = absent ]; then
         grep -q 'go / wire: blob_shared: .*driver wrote nothing' "$out/log"

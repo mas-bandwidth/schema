@@ -1250,11 +1250,11 @@ test-dart: tables-dart-identity tables-dart-identity-negative-control
 # requires the scan to name exactly that call.
 .PHONY: tables-dart-byte-order tables-dart-byte-order-negative-control
 tables-dart-byte-order:
-	go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicit$$'
+	SCHEMA_SLOW=1 go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicit$$'
 	@echo 'tables Dart byte order: every multi-byte ByteData call names its byte order'
 
 tables-dart-byte-order-negative-control:
-	go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicitNegativeControl$$'
+	SCHEMA_SLOW=1 go test ./internal/codegen/darttable/ -count=1 -run '^TestDartByteOrderIsExplicitNegativeControl$$'
 	@echo 'negative control: one generated call stripped of Endian.little, and the scan names it'
 
 test-dart: tables-dart-byte-order tables-dart-byte-order-negative-control

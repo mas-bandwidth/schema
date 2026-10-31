@@ -2,6 +2,7 @@ package luautable_test
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"testing"
@@ -202,16 +203,14 @@ func TestLuauLayoutAgreementNegativeControl(t *testing.T) {
 			t.Fatalf("%s: schema_cookread.luau carries the pointer slot %d times, want 1: the control would be vacuous", lu.key, strings.Count(src, from))
 		}
 		planted := &generatedUnit{files: map[string][]byte{}, loaded: true}
-		for k, v := range lu.g.files {
-			planted.files[k] = v
-		}
+		maps.Copy(planted.files, lu.g.files)
 		planted.files["schema_cookread.luau"] = []byte(strings.Replace(src, from, to, 1))
 		bad, _ := layoutDisagreements(t, lu, luauLayoutLines(t, planted, lu.names))
 		turned += len(bad)
 		for _, b := range bad {
 			// every turned line is a record that holds a pointer-shaped slot
 			name := ""
-			for _, part := range strings.Split(b, "\"") {
+			for part := range strings.SplitSeq(b, "\"") {
 				if f := strings.Fields(part); len(f) >= 2 && (f[0] == "rec" || f[0] == "fld") {
 					name = f[1]
 					break

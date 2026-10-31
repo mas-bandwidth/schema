@@ -1122,7 +1122,7 @@ func (c *checker) resolveBodies() {
 				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
 				// THE CLASS IS DECLARED, never inferred (docs/SPEC-TABLES.md
-				// §2.2): `fixed table` is the fixed wire and a plain `table`
+				// §2.2): `fixed table` is the fixed wire and a variable table
 				// is the variable one, and checkFixedTableClosures below
 				// refuses a fixed table whose closure cannot hold the class.
 				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
@@ -2164,7 +2164,7 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 			// a text list's total (docs/SPEC-TABLES.md §2.13): read and placed
 			// by resolveTextListField, and refused by name on every other field
 			if out.TextTotal == 0 {
-				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a plain table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
+				c.errf(a.Pos, "field %s: total applies only to a text list — | total = N bounds the sum of a [..N]string(M) or []string(M) list's element bytes in a variable table; drop the attribute (docs/SPEC-TABLES.md §2.13, §11)", f.Name)
 				return
 			}
 		case "was":
