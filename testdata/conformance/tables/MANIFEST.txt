@@ -1075,6 +1075,35 @@ instance map_spans mapdemo Spans testdata/wire/tables/map_spans.bin
 instance map_text mapdemo Text testdata/wire/tables/map_text.bin
 instance map_trails mapdemo Trails testdata/wire/tables/map_trails.bin
 instance map_runs mapdemo Runs testdata/wire/tables/map_runs.bin
+
+# THE COOK WRITE SIDE OVER MAPS AND LISTS (docs/SPEC-TABLES.md §2.8, §2.9,
+# §7.6): a map's generated `{ key, value }` entries and a list's elements ride
+# in the HOLDER'S node extent after the record's storage, PRE-ORDER, a map's
+# entries in ascending key order. `schema cook` writes these and every leg's
+# writer is held to them, byte for byte, in both byte orders.
+cook-write map_cells            testdata/conformance/tables/cook-write/map_cells.cook testdata/conformance/tables/cook-write/map_cells-be.cook
+cook-write map_chunks           testdata/conformance/tables/cook-write/map_chunks.cook testdata/conformance/tables/cook-write/map_chunks-be.cook
+cook-write map_crews            testdata/conformance/tables/cook-write/map_crews.cook testdata/conformance/tables/cook-write/map_crews-be.cook
+cook-write map_depth            testdata/conformance/tables/cook-write/map_depth.cook testdata/conformance/tables/cook-write/map_depth-be.cook
+cook-write map_docs             testdata/conformance/tables/cook-write/map_docs.cook testdata/conformance/tables/cook-write/map_docs-be.cook
+cook-write map_empty            testdata/conformance/tables/cook-write/map_empty.cook testdata/conformance/tables/cook-write/map_empty-be.cook
+cook-write map_full             testdata/conformance/tables/cook-write/map_full.cook testdata/conformance/tables/cook-write/map_full-be.cook
+cook-write map_pairs            testdata/conformance/tables/cook-write/map_pairs.cook testdata/conformance/tables/cook-write/map_pairs-be.cook
+cook-write map_slots            testdata/conformance/tables/cook-write/map_slots.cook testdata/conformance/tables/cook-write/map_slots-be.cook
+cook-write map_spans            testdata/conformance/tables/cook-write/map_spans.cook testdata/conformance/tables/cook-write/map_spans-be.cook
+cook-write map_text             testdata/conformance/tables/cook-write/map_text.cook testdata/conformance/tables/cook-write/map_text-be.cook
+cook-write map_trails           testdata/conformance/tables/cook-write/map_trails.cook testdata/conformance/tables/cook-write/map_trails-be.cook
+cook-write map_runs             testdata/conformance/tables/cook-write/map_runs.cook testdata/conformance/tables/cook-write/map_runs-be.cook
+cook-write list_tables          testdata/conformance/tables/cook-write/list_tables.cook testdata/conformance/tables/cook-write/list_tables-be.cook
+cook-write list_scalars         testdata/conformance/tables/cook-write/list_scalars.cook testdata/conformance/tables/cook-write/list_scalars-be.cook
+cook-write list_empty           testdata/conformance/tables/cook-write/list_empty.cook testdata/conformance/tables/cook-write/list_empty-be.cook
+cook-write list_erased          testdata/conformance/tables/cook-write/list_erased.cook testdata/conformance/tables/cook-write/list_erased-be.cook
+cook-write list_mixed           testdata/conformance/tables/cook-write/list_mixed.cook testdata/conformance/tables/cook-write/list_mixed-be.cook
+cook-write list_shared          testdata/conformance/tables/cook-write/list_shared.cook testdata/conformance/tables/cook-write/list_shared-be.cook
+cook-write list_before_pointer  testdata/conformance/tables/cook-write/list_before_pointer.cook testdata/conformance/tables/cook-write/list_before_pointer-be.cook
+cook-write list_nested          testdata/conformance/tables/cook-write/list_nested.cook testdata/conformance/tables/cook-write/list_nested-be.cook
+cook-write list_of_maps         testdata/conformance/tables/cook-write/list_of_maps.cook testdata/conformance/tables/cook-write/list_of_maps-be.cook
+cook-write list_migrates        testdata/conformance/tables/cook-write/list_migrates.cook testdata/conformance/tables/cook-write/list_migrates-be.cook
 report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
 # the C collections differential's mutant 235: map_depth with its root's first
 # field header bumped to another kind. A known id under a changed kind is
