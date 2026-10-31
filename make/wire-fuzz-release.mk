@@ -71,8 +71,9 @@ WFR_DEPS_luau    = toolchain-luau build/conformance-luau build/luau-driver/units
 WFR_DRIVER_luau  = test/conformance/luau/wirefuzz-driver
 WFR_ENV_luau     = LUAUFUZZ_NOTE=/dev/null
 
-# moo has the wire surfaces but no wire-fuzz driver on a pipe yet: no driver
-WFR_DRIVER_moo   =
+WFR_DEPS_moo     = toolchain-moo build/conformance-moo $(MOOFUZZHOST)
+WFR_DRIVER_moo   = test/conformance/moo/wirefuzz-driver
+WFR_ENV_moo      = MOOFUZZ_NOTE=/dev/null
 
 WFR_DEPS_rust    = build/conformance-rust-all
 WFR_DRIVER_rust  = build/conformance-rust-all

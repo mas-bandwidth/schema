@@ -20,7 +20,9 @@ MOO_CONFORMANCE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
 MOO_CONFORMANCE_UNIT_PATHS := $(shell [ -f $(MOO_CONFORMANCE_MANIFEST) ] && awk '/^unit[ \t]/ { for (i = 3; i <= NF; i++) print $$i }' $(MOO_CONFORMANCE_MANIFEST))
 MOO_CONFORMANCE_SCHEMAS := $(foreach p,$(MOO_CONFORMANCE_UNIT_PATHS),$(if $(filter %.schema,$(p)),$(p),$(wildcard $(p)/*.schema)))
 
-build/schema-moo: $(GO_SOURCES)
+# the moo runtimes are //go:embed'ded into the binary, which GO_SOURCES (*.go
+# only) does not see: a changed runtime file rebuilds it
+build/schema-moo: $(GO_SOURCES) $(wildcard internal/codegen/moo*/runtime/*)
 	@mkdir -p build
 	go build -tags schema_leg_moo -o $@ ./cmd/schema
 
@@ -38,3 +40,26 @@ build/conformance-moo: build/schema-moo $(MOO_CONFORMANCE_MANIFEST) make/moo-con
 			fi; \
 		done; \
 		echo "conformance-moo: $$carried units generated, $$refused refused (each recorded as $@/<unit>.refused)"; }
+
+# THE LEG'S CONFORMANCE NEGATIVE CONTROLS (docs/PORTING.md I2 and I11). Both
+# sabotage the EMITTER: a sed over a copy of one runtime file the table emitter
+# embeds, checked to have matched, `go build -overlay` into a private compiler,
+# the units regenerated, and the harness required red on exactly the named
+# surfaces with the neighbours green. test/conformance/moo/negative-control
+# holds both and says what each one requires.
+#
+# conformance-negative-control-moo       the load report's unknown counter
+#                                        (report and retain red, wire green)
+# conformance-negative-control-moo-walk  the text walk's field-key index
+#                                        (I11: json-read and json-hostile red,
+#                                        json-write and wire green)
+.PHONY: conformance-negative-control-moo conformance-negative-control-moo-walk
+conformance-negative-control-moo: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control report
+
+conformance-negative-control-moo-walk: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control walk
+
+# both ride test-moo (make/moo.mk), as every leg's conformance controls ride its
+# own test target
+test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk
