@@ -116,6 +116,7 @@
       "targets": [
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
+        "conformance-negative-control-go-framing",
         "tables-go-wire-fuzz-negative-control",
         "conformance-go-rows-negative-control",
         "proof-negative-control"
