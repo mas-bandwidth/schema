@@ -226,10 +226,8 @@ beside `ReadStrict` and `SaveMessages`, taking the root by name:
   the end of their own body. The report accumulates across the pair
   (`report.retained`, `report.retainLost`), `SaveRetain` refuses a nil report
   (`retain_needs_report`), and all three refuse a fixed-class root by name
-  (`fixed_class_root`).
-- `R.LoadRetainMessages(vocabulary, root, data, capacity, stores, report)` is a
-  form-2 batch with a store a body; each body is saved as a FILE, the one
-  direction retention crosses the forms.
+  (`fixed_class_root`). Retention on the message form exists for no table: the
+  message form is fixed tables only (docs/SPEC-TABLES.md §3.3).
 
 A retained record is reader-private: the field's id and kind and its payload
 with every reference resolved, lengths at eight bytes written after their
@@ -243,7 +241,5 @@ module (`retainform.go`), and decide which store an id takes at save.
 
 Held by `retain_test.go` (the manifest's `retain` rows, the evolved pairs read
 through the variable class, the pair's promises), `retain_occurrence_test.go`
-(the occurrence rules against hand-built wires), `retain_message_test.go` (the
-`retain-message` rows and every construct as sender, read by a reader that
-names none of its fields), each against the Go engine's store bytes, counters
+(the occurrence rules against hand-built wires), each against the Go engine's store bytes, counters
 and saved bytes; each gate has a negative control.
