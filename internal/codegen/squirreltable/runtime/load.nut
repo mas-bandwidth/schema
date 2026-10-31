@@ -25,6 +25,8 @@ local MAP_KEY_ID = 0x3dc94a19365b10ec;
 local MAP_VALUE_ID = 0x7ce4fd9430e80cea;
 
 local FORM_VARIABLE = 1;
+// the id table's maximum entry count (docs/SPEC-TABLES.md §3; ir.TableWireIdTableBound)
+local ID_TABLE_BOUND = 4096;
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
 // 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14), the trailer an integrity root appends
@@ -1431,8 +1433,11 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   if (bytes.len() < 9) { report.malformed = true; return null; }
   local count = u64At(bytes, bytes.len() - 8);
   // the count is bounded by division, never by count * 8, which wraps for a
-  // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file)
-  if (count < 0 || count > (bytes.len() - 9) / 8) { report.malformed = true; return null; }
+  // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file),
+  // and THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK;
+  // ir.TableWireIdTableBound): a table above it is malformed on the
+  // whole-wire rule, whatever the buffer would hold
+  if (count < 0 || count > (bytes.len() - 9) / 8 || count > ID_TABLE_BOUND) { report.malformed = true; return null; }
   local end = bytes.len() - 8 - count * 8;
   local table = [];
   local seen = {};
