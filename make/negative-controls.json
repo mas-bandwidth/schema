@@ -1327,7 +1327,8 @@
       "targets": [
         "conformance-negative-control-lobster",
         "conformance-negative-control-lobster-walk",
-        "conformance-negative-control-lobster-framing"
+        "conformance-negative-control-lobster-framing",
+        "tables-lobster-damage-discard-negative-control"
       ],
       "lobster": "v2026.8"
     },

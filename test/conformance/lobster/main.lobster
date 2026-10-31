@@ -115,8 +115,8 @@ def surface_report(text:string):
     for(rows(text, "report")) f:
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
-        // a load answers no record only when it refused the wire
-        assert rec or rep.refused
+        // A damaged read discards the record; only its verdict is usable.
+        assert rec or rep.refused or rep.malformed
         let verdict = if rep.refused: "refused" else: "read"
         say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed},{verdict}\n")
 

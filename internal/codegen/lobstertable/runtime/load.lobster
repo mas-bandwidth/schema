@@ -1971,13 +1971,16 @@ def decode_variable(st:LoadState, root:Record, hi:int):
 // §6.5): it reads a form-1 wire at the root table named root into a fresh
 // Record, filling report (§3, §4). A form byte this reader does not carry is
 // REFUSED and nothing is decoded: it returns nil with report.refused set.
-// Damage is reported, never fatal, and the record keeps what it decoded. A
+// Damage is reported, never fatal, and the entire read is discarded. A
 // missing required field and a non-finite float refuse even here (§2.3,
 // §3.3): nil, with the field named in report.reason.
 def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
     let rec = load_walk(root, data, report)
     if report.non_finite_float != "":
         report.reason = "non_finite_float: " + report.non_finite_float
+        release(rec)
+        return nil
+    if report.malformed:
         release(rec)
         return nil
     return rec
