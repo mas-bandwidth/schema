@@ -349,6 +349,10 @@ rides_table = function(T, name, v)
   return false
 end
 
+local function f32(x)
+  return string.unpack("<f", string.pack("<f", x))
+end
+
 -- ---- the read side ----
 local read_value, load_body, variant_index
 
@@ -359,13 +363,14 @@ local function read_scalar(R, d)
     return v ~= 0, ok
   elseif s == "int" or s == "flags" then
     local width, base = int_bits(d)
+    if d.packing == 1 then width, base = d.bits, d.base end
     if s == "flags" then
       width, base = d.bits, 0
     end
     local v, ok = R:get(width)
     if not ok then return 0, false end
     if base ~= 0 then v = v + base end
-    if base == 0 and d.signed and width < 64 then
+    if d.packing ~= 1 and base == 0 and d.signed and width > 0 and width < 64 then
       local sign = 1 << (width - 1)
       if v & sign ~= 0 then v = v - (1 << width) end
     end
@@ -375,6 +380,7 @@ local function read_scalar(R, d)
     if d.lo ~= nil and d.hi ~= nil then
       bits, base = wide_bits(d.lo, d.hi), d.lo
     end
+    if d.packing == 1 then bits, base = d.bits, d.base end
     local lo, ok = R:get(bits < 64 and bits or 64)
     if not ok then return 0, false end
     local hi = 0
@@ -391,6 +397,11 @@ local function read_scalar(R, d)
     -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
     -- §3.3), before they become a number: the third answer says so, and the
     -- batch refuses as non_finite_float and lands nothing.
+    if d.packing == 2 then
+      local index, ok = R:get(d.bits)
+      if not ok or index > d.count then return 0.0, false end
+      return f32(d.qmin + f32(f32(index / d.count) * d.delta)), true
+    end
     local width = d.f32 and 32 or 64
     local v, ok = R:get(width)
     if not ok then return 0.0, false end
@@ -405,19 +416,141 @@ local function read_scalar(R, d)
   return 0, false
 end
 
-read_value = function(R, T, f, holder, key, ctx)
+local function count(ctx, name)
+  ctx.report[name] = (ctx.report[name] or 0) + 1
+end
+
+local function widens(kind, declared)
+  if declared == 3 or declared == 4 or declared == 5 then return kind >= 2 and kind < declared end
+  if declared == 7 or declared == 8 or declared == 9 then return kind >= 6 and kind < declared end
+  if declared == 18 then return kind >= 2 and kind <= 5 end
+  if declared == 19 then return kind >= 6 and kind <= 9 end
+  return declared == 11 and kind == 10
+end
+
+local function less(d, a, b)
+  if type(a) == "table" then
+    if a.hi ~= b.hi then
+      if d.signed then return a.hi < b.hi end
+      return math.ult(a.hi, b.hi)
+    end
+    return math.ult(a.lo, b.lo)
+  end
+  if d.signed then return a < b end
+  return math.ult(a, b)
+end
+
+local function clamp_scalar(d, v, ctx)
+  if d.shape == "wide" and type(v) ~= "table" then
+    v = { lo = v, hi = d.signed and v < 0 and -1 or 0 }
+  end
+  local bound
+  if d.lo ~= nil and d.hi ~= nil then
+    if less(d, v, d.lo) then bound = d.lo
+    elseif less(d, d.hi, v) then bound = d.hi end
+  elseif d.shape == "int" and d.bits ~= nil and d.bits > 0 and d.bits < d.width * 8 then
+    local max = (1 << d.bits) - 1
+    if math.ult(max, v) then bound = max end
+  end
+  if bound ~= nil then
+    count(ctx, "clamped")
+    if type(bound) == "table" then return { lo = bound.lo, hi = bound.hi } end
+    return bound
+  end
+  return v
+end
+
+local function skip_bits(R, n)
+  if n < 0 or n > R.nbits - R.off then return false end
+  R.off = R.off + n
+  return true
+end
+
+local skip_value
+skip_value = function(R, e, ctx, depth)
+  if depth > 128 then return false end
+  local k = e.kind
+  if k == 0 or k == 32 then return true end
+  if k == 17 then return false end
+  if k == 30 or k == 15 then
+    local ref, ok = R:get(ctx.refBits)
+    if not ok then return false end
+    if ref == 0 then return true end
+    local target = ctx.vocab[ref]
+    if target == nil then return false end
+    if k == 30 then return target.kind == 0 end
+    return target.kind ~= 0 and skip_value(R, target, ctx, depth + 1)
+  elseif k == 13 then
+    while true do
+      local ref, ok = R:get(ctx.refBits)
+      if not ok then return false end
+      if ref == 0 then return true end
+      local f = ctx.vocab[ref]
+      if f == nil or f.kind == 0 or f.id == NODE_ID or f.id == -2 or f.id == -3 then return false end
+      if not skip_value(R, f, ctx, depth + 1) then return false end
+    end
+  elseif k == 12 or k == 33 then
+    local n, ok = R:get(bits_max(e.max))
+    if not ok then return false end
+    if k == 12 and not R:align() then return false end
+    return skip_bits(R, n * (k == 12 and 8 or 16))
+  elseif k == 31 then
+    if not R:align() then return false end
+    local n, ok = R:get(32)
+    return ok and skip_bits(R, n * 8)
+  elseif k == 14 or k == 16 then
+    local n, ok = R:get(bits_range(e.min, e.max))
+    if not ok then return false end
+    n = n + e.min
+    if e.elem == 6 and not R:align() then return false end
+    if k == 14 and e.inner.bits ~= nil then return skip_bits(R, n * e.inner.bits) end
+    for i = 1, n do
+      local before = R.off
+      if k == 16 then
+        local key, good = R:get(ctx.refBits)
+        if not good or key == 0 or ctx.vocab[key] == nil or ctx.vocab[key].kind ~= 0 then return false end
+      end
+      if not skip_value(R, e.inner, ctx, depth + 1) then return false end
+      if R.off == before then return n - i <= R.nbits - R.off end
+    end
+    return true
+  end
+  return e.bits ~= nil and skip_bits(R, e.bits)
+end
+
+local function compatible(e, f, declared)
+  local wire, mine = e.kind, declared or f.kind
+  if wire == mine and (wire == 14 or wire == 16) then wire, mine = e.elem, f.elem_kind end
+  return wire == mine, widens(wire, mine)
+end
+
+read_value = function(R, T, f, holder, key, ctx, e, declared)
+  local same, wider = compatible(e, f, declared)
+  if not same then
+    if wider then count(ctx, "widened")
+    else count(ctx, "kindMismatch"); return skip_value(R, e, ctx, 0) end
+  end
   local s = f.shape
   if s == "string" or s == "bytes" then
-    local w = bits_range(0, f.bound)
+    local w = s == "bytes" and bits_range(e.min, e.max) or bits_max(e.max)
     local n, ok = R:get(w)
     if not ok or not R:align() then return false end
+    if s == "bytes" then n = n + e.min end
     local raw = R:raw(n)
     if raw == nil then return false end
-    if n > f.bound then raw = raw:sub(1, f.bound) end
+    if s == "string" and (raw:find("\0", 1, true) or utf8.len(raw) == nil) then return false end
+    if n > f.bound then
+      local keep = f.bound
+      if s == "string" then
+        while keep > 0 and raw:byte(keep + 1) >= 0x80 and raw:byte(keep + 1) <= 0xbf do keep = keep - 1 end
+      end
+      raw = raw:sub(1, keep)
+      count(ctx, "clamped")
+    end
     holder[key] = raw
     return true
   elseif s == "wstring" then
-    local w = bits_range(0, f.bound)
+    local w = bits_max(e.max)
     local n, ok = R:get(w)
     if not ok then return false end
     local out = {}
@@ -425,6 +558,20 @@ read_value = function(R, T, f, holder, key, ctx)
       local u, ok2 = R:get(16)
       if not ok2 then return false end
       out[i] = u
+    end
+    local high = false
+    for _, u in ipairs(out) do
+      if u == 0 then return false end
+      if high then if u < 0xdc00 or u > 0xdfff then return false end; high = false
+      elseif u >= 0xd800 and u <= 0xdbff then high = true
+      elseif u >= 0xdc00 and u <= 0xdfff then return false end
+    end
+    if high then return false end
+    if n > f.bound then
+      for i = n, f.bound + 1, -1 do out[i] = nil end
+      local last = out[#out]
+      if last and last >= 0xd800 and last <= 0xdbff then out[#out] = nil end
+      count(ctx, "clamped")
     end
     holder[key] = out
     return true
@@ -436,7 +583,10 @@ read_value = function(R, T, f, holder, key, ctx)
       return true
     end
     local e = ctx.vocab[ref]
-    if e == nil then return false end
+    if e == nil or e.kind ~= 0 then return false end
+    local named = false
+    for _, v in ipairs(f.variants) do if v[2] == e.id then named = true; break end end
+    if not named then count(ctx, "unknown") end
     holder[key] = variant_name(T, f, e.id)
     return true
   elseif s == "union" then
@@ -447,16 +597,22 @@ read_value = function(R, T, f, holder, key, ctx)
       return true
     end
     local e = ctx.vocab[ref]
-    if e == nil then return false end
+    if e == nil or e.kind == 0 then return false end
     local un = T.Unions[f.target]
     if un == nil then return false end
     for i, arm in ipairs(un.arms) do
       if arm.id == e.id then
         local uv = { tag = i }
         if arm.field ~= nil then
+          local same, wider = compatible(e, arm.field)
+          if not same and not wider then
+            count(ctx, "kindMismatch")
+            holder[key] = { tag = 0 }
+            return skip_value(R, e, ctx, 0)
+          end
           local owner, field = ctx.owner, ctx.field
           ctx.owner, ctx.field = un.name, arm.name
-          local aok = read_value(R, T, arm.field, uv, arm.slot, ctx)
+          local aok = read_value(R, T, arm.field, uv, arm.slot, ctx, e)
           ctx.owner, ctx.field = owner, field
           if not aok then return false end
         end
@@ -464,7 +620,9 @@ read_value = function(R, T, f, holder, key, ctx)
         return true
       end
     end
-    return false
+    count(ctx, "unknown")
+    holder[key] = { tag = 0 }
+    return skip_value(R, e, ctx, 0)
   elseif s == "table" then
     local nv = holder[key]
     if nv == nil then nv = T["New" .. f.target]() end
@@ -473,52 +631,62 @@ read_value = function(R, T, f, holder, key, ctx)
     return ok
   elseif s == "array" then
     local d = f
-    local n, ok
-    if d.fixed then
-      n, ok = d.bound, true
-    else
-      n, ok = R:get(bits_range(d.min or 0, d.bound))
-      if ok then n = n + (d.min or 0) end
-    end
+    local n, ok = R:get(bits_range(e.min, e.max))
+    if ok then n = n + e.min end
     if not ok then return false end
-    if d.elem_kind == 6 and d.elem.shape ~= "bytes" then
+    if e.elem == 6 and not R:align() then return false end
+    if e.elem == 6 and e.inner.packing == 0 and d.elem_kind == 6 and d.elem.shape ~= "bytes" then
       if not R:align() then return false end
       local raw = R:raw(n)
       if raw == nil then return false end
       local out = {}
-      for i = 1, #raw do
-        out[i] = string.byte(raw, i)
-      end
+      for i = 1, math.min(#raw, d.bound) do out[i] = string.byte(raw, i) end
+      if n > d.bound then count(ctx, "clamped") end
       holder[key] = out
       return true
     end
-    local out = {}
+    local out = d.fixed and holder[key] or {}
+    if out == nil then out = {} end
+    if not d.keyed and n > d.bound then count(ctx, "clamped") end
     if d.keyed then
       for _ = 1, n do
         local kref, kok = R:get(ctx.refBits)
         if not kok then return false end
         local ke = ctx.vocab[kref]
-        if ke == nil then return false end
+        if ke == nil or ke.kind ~= 0 then return false end
         local kidx = variant_index(d.keyed, ke.id)
         local ev = {}
-        if not read_value(R, T, d.elem, ev, "v", ctx) then return false end
-        if kidx ~= nil then out[kidx] = ev.v end
+        if not read_value(R, T, d.elem, ev, "v", ctx, e.inner, e.elem) then return false end
+        if kidx ~= nil then out[kidx] = ev.v else count(ctx, "unknown") end
       end
     else
-      for i = 1, n do
+      local keep = math.min(n, d.bound)
+      for i = 1, keep do
         local ev = {}
-        if not read_value(R, T, d.elem, ev, "v", ctx) then return false end
+        if not read_value(R, T, d.elem, ev, "v", ctx, e.inner, e.elem) then return false end
         out[i] = ev.v
+      end
+      if e.inner.bits ~= nil then
+        if not skip_bits(R, (n - keep) * e.inner.bits) then return false end
+      else
+        for i = keep + 1, n do
+          local before = R.off
+          if not skip_value(R, e.inner, ctx, 0) then return false end
+          if R.off == before then
+            if n - i > R.nbits - R.off then return false end
+            break
+          end
+        end
       end
     end
     holder[key] = out
     return true
   else
-    local v, ok, nonfinite = read_scalar(R, f)
+    local v, ok, nonfinite = read_scalar(R, e)
     if nonfinite and ctx.nonFinite == nil then
       ctx.nonFinite = (ctx.owner or "?") .. "." .. tostring(ctx.field or f.name)
     end
-    if ok then holder[key] = v end
+    if ok then holder[key] = clamp_scalar(f, v, ctx) end
     return ok
   end
 end
@@ -545,9 +713,14 @@ load_fields = function(R, T, name, value, ctx)
     local e = ctx.vocab[ref]
     if e == nil or e.id == NODE_ID or e.id == 0xfffffffffffffffe or e.id == 0xfffffffffffffffd then return false end
     local f = field_by_id(T, desc, e.id)
-    if f == nil then return false end
-    ctx.field = f.name
-    if not read_value(R, T, f, value, f.name, ctx) then return false end
+    if f == nil then
+      count(ctx, "unknown")
+      if not skip_value(R, e, ctx, 0) then return false end
+    else
+      ctx.field = f.name
+      if not read_value(R, T, f, value, f.name, ctx, e) then return false end
+      if f.optional and compatible(e, f) then value[f.name .. "_present"] = true end
+    end
   end
 end
 
@@ -676,9 +849,9 @@ write_body = function(W, T, name, value, ctx)
   return true
 end
 
-local function load_one(R, T, root, vocab)
+local function load_one(R, T, root, vocab, report)
   local rootval = T["New" .. root]()
-  local ctx = { vocab = vocab, refBits = vocab.refBits }
+  local ctx = { vocab = vocab, refBits = vocab.refBits, report = report }
   if not load_body(R, T, root, rootval, ctx) then return nil, ctx.nonFinite end
   return rootval
 end
@@ -717,80 +890,72 @@ end
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
 -- not an entry's to give (§3.3).
 local function known_kind(kind)
-  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29) or (kind >= 30 and kind <= 33)
+  return kind == 0 or (kind >= 1 and kind <= 17) or (kind >= 18 and kind <= 29) or (kind >= 30 and kind <= 33) or kind == 36
 end
 
--- skip_shape steps over one announced shape, which is what makes the entry
--- count readable before an entry is resolved (docs/SPEC-TABLES.md §3.3).
-local function skip_shape(kind, s, at)
-  local function leb(from)
-    local _, nextAt = read_leb(s, from)
-    return nextAt
+-- Resolve the sender's payload widths and bases once per announcement. Bodies
+-- consume these facts by slot; they never parse a shape or consult local bounds
+-- to locate the next field (SPEC-TABLES §3.3).
+local function read_shape(kind, s, at, depth)
+  if depth > 128 or not known_kind(kind) then return nil end
+  local e = { kind = kind }
+  local function leb()
+    local v, nextAt = read_leb(s, at)
+    if v ~= nil then at = nextAt end
+    return v
   end
-  if
-    kind == 0
-    or kind == 1
-    or kind == 11
-    or kind == 13
-    or kind == 15
-    or kind == 17
-    or kind == 30
-    or kind == 31
-    or kind == 32
-  then
-    return at
-  elseif (kind >= 2 and kind <= 9) or kind == 18 or kind == 19 then
-    if at > #s then return nil end
-    local packing = string.byte(s, at)
-    at = at + 1
-    if packing == 0 then return at end
-    if packing ~= 1 then return nil end
-    at = leb(at)
-    if at == nil then return nil end
-    if kind == 18 or kind == 19 then
+  local width
+  if kind >= 2 and kind <= 5 then width = 8 << (kind - 2); e.signed = true
+  elseif kind >= 6 and kind <= 9 then width = 8 << (kind - 6)
+  elseif kind == 18 or kind == 19 then width = 128; e.signed = kind == 18
+  elseif kind >= 20 and kind <= 24 then width = 8 << (kind - 20); e.signed = true
+  elseif kind >= 25 and kind <= 29 then width = 8 << (kind - 25)
+  elseif kind == 36 then width = 64; e.signed = true end
+  if width ~= nil then
+    e.shape, e.width, e.bits = width == 128 and "wide" or "int", width // 8, width
+    if kind == 36 then return e, at end
+    e.packing = s:byte(at); at = at + 1
+    if e.packing == 0 then return e, at end
+    if e.packing ~= 1 then return nil end
+    e.bits = leb()
+    if e.bits == nil or e.bits < 0 or e.bits > width then return nil end
+    if width == 128 or (kind >= 20 and kind <= 29) then
       if at + 15 > #s then return nil end
-      return at + 16
+      local lo, hi = string.unpack("<I8I8", s, at); at = at + 16
+      e.base = width == 128 and { lo = lo, hi = hi } or lo
+    else
+      e.base = leb()
+      if e.base == nil then return nil end
+      if e.signed then e.base = (e.base >> 1) ~ -(e.base & 1) end
     end
-    return leb(at)
   elseif kind == 10 then
-    if at > #s then return nil end
-    local packing = string.byte(s, at)
-    at = at + 1
-    if packing == 0 then return at end
-    if packing ~= 2 or at + 11 > #s then return nil end
-    return at + 12
-  elseif kind >= 20 and kind <= 29 then
-    if at > #s then return nil end
-    local packing = string.byte(s, at)
-    at = at + 1
-    if packing == 0 then return at end
-    if packing ~= 1 then return nil end
-    at = leb(at)
-    if at == nil then return nil end
-    if at + 15 > #s then return nil end
-    return at + 16
+    e.shape, e.f32, e.bits = "float", true, 32
+    e.packing = s:byte(at); at = at + 1
+    if e.packing == 0 then return e, at end
+    if e.packing ~= 2 or at + 11 > #s then return nil end
+    e.qmin, e.qmax, e.qres = string.unpack("<fff", s, at); at = at + 12
+    e.delta = f32(e.qmax - e.qmin)
+    local ratio = f32(e.delta / e.qres)
+    if not (e.qmin < e.qmax and e.qres > 0 and e.delta < math.huge and ratio < math.huge) then return nil end
+    e.count = math.ceil(math.max(1, math.min(4294967040, ratio)))
+    e.bits = bits_max(e.count)
+  elseif kind == 11 then e.shape, e.bits = "float", 64
+  elseif kind == 1 then e.shape, e.bits = "bool", 1
   elseif kind == 12 or kind == 33 then
-    return leb(at)
-  elseif kind == 14 then
-    at = leb(at)
-    if at == nil then return nil end
-    at = leb(at)
-    if at == nil then return nil end
-    if at > #s then return nil end
-    local elem = string.byte(s, at)
-    at = at + 1
-    if elem == 12 or elem == 33 then return nil end
-    return skip_shape(elem, s, at)
-  elseif kind == 16 then
-    at = leb(at)
-    if at == nil then return nil end
-    if at > #s then return nil end
-    local elem = string.byte(s, at)
-    at = at + 1
-    if elem == 12 or elem == 33 then return nil end
-    return skip_shape(elem, s, at)
+    e.shape = kind == 12 and "string" or "wstring"
+    e.max = leb()
+    if e.max == nil or e.max < 0 or e.max > 0x7fffffff then return nil end
+  elseif kind == 14 or kind == 16 then
+    e.shape, e.min = "array", 0
+    if kind == 14 then e.min = leb() end
+    e.max = leb()
+    if e.min == nil or e.max == nil or e.min < 0 or e.max < e.min or e.max > 0xffffffff then return nil end
+    e.elem = s:byte(at); at = at + 1
+    if e.elem == nil then return nil end
+    e.inner, at = read_shape(e.elem, s, at, depth + 1)
+    if e.inner == nil then return nil end
   end
-  return nil
+  return e, at
 end
 
 -- vocabulary_entries retains the sender's slots in announcement order.
@@ -807,14 +972,16 @@ local function vocabulary_entries(s, maxEntries)
     if id == ANNOUNCE_BUILD_VERSION_ID or id == ANNOUNCE_VOCABULARY_ID then return nil, false end
     if not known_kind(kind) then return nil, false end
     local start = at - 9
-    at = skip_shape(kind, s, at)
-    if at == nil then return nil, false end
+    local e
+    e, at = read_shape(kind, s, at, 0)
+    if e == nil then return nil, false end
     local triple = s:sub(start, at - 1)
     if seen[triple] then return nil, false end
     seen[triple] = true
     count = count + 1
     if count > maxEntries then return nil, true end
-    entries[count] = { id = id, kind = kind }
+    e.id = id
+    entries[count] = e
   end
   return entries, false
 end
@@ -1008,7 +1175,7 @@ function M.loadMessages(T, root, vocab, data, report, strict)
   local R = new_reader(data, 16)
   local values = {}
   for i = 1, count do
-    local v, nonfinite = load_one(R, T, root, vocab)
+    local v, nonfinite = load_one(R, T, root, vocab, report)
     if nonfinite ~= nil then
       -- A NON-FINITE FLOAT REFUSES THE BATCH, the tolerant read too
       -- (docs/SPEC-TABLES.md §3.3): no record lands, and Reason names it.

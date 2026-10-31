@@ -83,6 +83,7 @@ const fixedMessageStrictGoProbe = `package probe
 
 import (
 	"fmt"
+	"math/bits"
 	"strings"
 	"testing"
 )
@@ -123,7 +124,9 @@ func TestFixedMessageStrictOracle(t *testing.T) {
 	msg := make([]byte, FixMeasureMessages([]*Fix{&zero}, nil))
 	if FixSaveMessages([]*Fix{&zero}, msg, nil) != int64(len(msg)) { t.Fatal("message save") }
 	forged := append([]byte(nil), msg...)
-	forged[2] = forged[2]&^0x78 | 0x78
+	for bit := 16 + bits.Len(uint(TableMessageEntriesHere)); bit < 20 + bits.Len(uint(TableMessageEntriesHere)); bit++ {
+        forged[bit/8] |= 1 << uint(bit%8)
+    }
 	message := func(data []byte) string {
 		got := []Fix{{N: 9, M: 9}}
 		var r TableReport
@@ -136,6 +139,11 @@ func TestFixedMessageStrictOracle(t *testing.T) {
 	fmt.Printf("ORACLE\tmessage_clean\t%s\n", message(msg))
 	fmt.Printf("ORACLE\tmessage_clamped\t%s\n", message(forged))
 	fmt.Printf("ORACLE\tmessage_truncated\t%s\n", message(msg[:1]))
+    tolerant := []Fix{{}}
+    var tr TableReport
+    n, ok := FixLoadMessagesTolerant(tolerant, &vocab, forged, &tr)
+    if !ok { t.Fatalf("tolerant message: %+v", tr) }
+    fmt.Printf("ORACLE\ttolerant_message_clamped\t%d:%d\n", n, tolerant[0].N)
 }
 `
 
@@ -182,7 +190,12 @@ local report = {}
 assert(T.AnnounceRead(vocab, T.Announcement, report))
 local zero = T.NewFix(); zero.n = 0; zero.m = 4
 local msg = assert(T.SaveMessages("Fix", vocab, { zero }))
-local forged = msg:sub(1, 2) .. string.char((msg:byte(3) & ~0x78) | 0x78) .. msg:sub(4)
+local parts = { msg:byte(1, #msg) }
+for bit = 16 + T.MessageRefBits, 19 + T.MessageRefBits do
+  local at = (bit // 8) + 1
+  parts[at] = parts[at] | (1 << (bit % 8))
+end
+local forged = string.char(table.unpack(parts))
 local function message(reader, data)
   local r = {}
   local values = reader("Fix", vocab, data, r)
@@ -241,15 +254,15 @@ func TestLuaFixedAndMessageReadsAreStrict(t *testing.T) {
 		t.Errorf("fixed_truncated: Lua says %q, the generated Go strict read says %q; both must refuse",
 			lua["fixed_truncated"], oracle["fixed_truncated"])
 	}
-	// THE TOLERANT TWINS KEEP BASE'S ANSWERS (docs/SPEC-TABLES.md §6.5): the
-	// fixed read never clamped and the message read never clamped either, so
-	// the forged rows keep the value they stated. A strict refusal writes no
-	// record.
+	// The fixed tolerant read keeps its unchecked value. A message ranged
+	// offset reconstructs from the sender's base, then clamps to the receiver's
+	// bounds (§3.3); compare that value with the generated Go reader too.
+	// A strict refusal writes no record.
 	if lua["tolerant_fixed_clamped"] != "100" {
 		t.Errorf("ReadFixedTolerant answered n=%s for the clamped record, want BASE's 100", lua["tolerant_fixed_clamped"])
 	}
-	if lua["tolerant_message_clamped"] != "1:-1" {
-		t.Errorf("LoadMessagesTolerant answered %q for the clamped batch, want BASE's 1:-1", lua["tolerant_message_clamped"])
+	if lua["tolerant_message_clamped"] != oracle["tolerant_message_clamped"] {
+		t.Errorf("LoadMessagesTolerant answered %q, want Go %q", lua["tolerant_message_clamped"], oracle["tolerant_message_clamped"])
 	}
 	if lua["strict_message_refused_count"] != "0" {
 		t.Errorf("a refused LoadMessages left %s record(s) written, want 0", lua["strict_message_refused_count"])
