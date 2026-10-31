@@ -26,6 +26,70 @@ pub enum MixedWeapon {
     Repair,
 }
 
+// ---- keyed arrays index by KEY, refused at both ends (docs/SPEC-TABLES.md §2.3) ----
+
+/// The slot a key owns in a keyed array of that many slots: key 1 in slot 0, E.Max
+/// in the last. None (key 0) and every key past E.Max are refused in every
+/// build: one unsigned compare covers both ends.
+#[inline(always)]
+pub fn table_key_slot(key: usize, slots: usize) -> usize {
+    let slot = key.wrapping_sub(1);
+    if slot >= slots {
+        table_key_refused(key, slots);
+    }
+    slot
+}
+
+/// The refusal: a panic naming the key, never an index.
+#[cold]
+#[inline(never)]
+#[track_caller]
+pub fn table_key_refused(key: usize, slots: usize) -> ! {
+    panic!("keyed array: key {key} names no slot (keys are 1 to {slots}; None is 0) (docs/SPEC-TABLES.md §2.3)")
+}
+
+/// The slot the key owns.
+#[inline(always)]
+#[track_caller]
+pub fn table_keyed<T>(slots: &[T], key: usize) -> &T {
+    &slots[table_key_slot(key, slots.len())]
+}
+
+/// The slot the key owns, to write.
+#[inline(always)]
+#[track_caller]
+pub fn table_keyed_mut<T>(slots: &mut [T], key: usize) -> &mut T {
+    let slot = table_key_slot(key, slots.len());
+    &mut slots[slot]
+}
+
+/// Every slot beside the key that owns it, in key order.
+pub fn table_keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (usize, &T)> {
+    slots.iter().enumerate().map(|(i, x)| (i + 1, x))
+}
+
+impl MixedWeapon {
+    /// The slot of a `[MixedWeapon]T` keyed array this key owns; None is refused.
+    #[inline(always)]
+    #[track_caller]
+    pub fn keyed<T>(self, slots: &[T]) -> &T {
+        table_keyed(slots, self as usize)
+    }
+
+    /// The slot of a `[MixedWeapon]T` keyed array this key owns, to write; None is refused.
+    #[inline(always)]
+    #[track_caller]
+    pub fn keyed_mut<T>(self, slots: &mut [T]) -> &mut T {
+        table_keyed_mut(slots, self as usize)
+    }
+
+    /// Every slot of a `[MixedWeapon]T` keyed array beside the key that owns it.
+    pub fn keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (MixedWeapon, &T)> {
+        const KEYS: [MixedWeapon; 15] = [MixedWeapon::Fists, MixedWeapon::Pistol, MixedWeapon::Shotgun, MixedWeapon::Rifle, MixedWeapon::Sniper, MixedWeapon::Smg, MixedWeapon::Rocket, MixedWeapon::Grenade, MixedWeapon::Plasma, MixedWeapon::Railgun, MixedWeapon::Flamer, MixedWeapon::Mine, MixedWeapon::Turret, MixedWeapon::Drone, MixedWeapon::Repair];
+        KEYS.iter().copied().zip(slots.iter())
+    }
+}
+
 // ---- the JSON text form's names (docs/SPEC-TABLES.md §16.2) ----
 
 #[allow(dead_code)]
