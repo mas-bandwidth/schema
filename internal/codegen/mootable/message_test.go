@@ -122,7 +122,7 @@ func tableModuleOf(g *generatedUnit, rootName string) string {
 
 func parseProbe(out string) map[string]string {
 	m := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		k, v, _ := strings.Cut(line, " ")
 		m[k] = v
 	}

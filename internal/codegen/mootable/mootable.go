@@ -17,7 +17,6 @@ package mootable
 import (
 	"embed"
 	"fmt"
-	"maps"
 	"path"
 	"sort"
 	"strings"
@@ -321,13 +320,4 @@ func emitFile(g *Gen, reach map[string]bool) {
 			}
 		}
 	}
-}
-
-func sortedKeys[V any](m map[string]V) []string {
-	out := make([]string, 0, len(m))
-	for k := range maps.Keys(m) {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
