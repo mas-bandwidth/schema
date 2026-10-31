@@ -731,34 +731,34 @@ func TestDamageIsTerminal(t *testing.T) {
 // if a leg reads either clean.
 func TestThePadAndWhatFollowsIt(t *testing.T) {
 	_, model, vocabulary := backend(t)
-	message := wireBytes(t, "testdata/wire/tables/store_full_message.bin")
-	if len(message) != 43 {
-		t.Fatalf("store_full is %d bytes, not 43", len(message))
+	message := wireBytes(t, "testdata/wire/tables/login_full_message.bin")
+	if len(message) != 51 {
+		t.Fatalf("login_full is %d bytes, not 51", len(message))
 	}
-	// 341 bits: the last byte carries five bits of body and three of pad
+	// 404 bits: the last byte carries four bits of body and four of pad
 	badPad := append([]byte(nil), message...)
 	badPad[len(badPad)-1] |= 0x80
-	if pinned := wireBytes(t, "testdata/wire/tables/store_full_bad_pad_message.bin"); string(pinned) != string(badPad) {
+	if pinned := wireBytes(t, "testdata/wire/tables/login_full_bad_pad_message.bin"); string(pinned) != string(badPad) {
 		t.Errorf("the bad-pad wire differs from the pinned one at byte %d", firstDifference(pinned, badPad))
 	}
 	{
-		inst := model.New(model.Lookup("StorePurchase"))
+		inst := model.New(model.Lookup("LoginRequest"))
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, badPad, vocabulary, &report)
 		if derr != nil || ok || !report.Malformed || report.Refused {
 			t.Errorf("a pad bit that is not zero read clean: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
 		// the body before the pad stands, and the count says so
-		if count != 1 || instU64(t, inst, "quantity") != 7 {
+		if count != 1 || instU64(t, inst, "client_build") != 140233 {
 			t.Errorf("the body before the bad pad did not stand: count=%d", count)
 		}
 	}
 	trailing := append(append([]byte(nil), message...), 0)
-	if pinned := wireBytes(t, "testdata/wire/tables/store_full_trailing_byte_message.bin"); string(pinned) != string(trailing) {
+	if pinned := wireBytes(t, "testdata/wire/tables/login_full_trailing_byte_message.bin"); string(pinned) != string(trailing) {
 		t.Errorf("the trailing-byte wire differs from the pinned one at byte %d", firstDifference(pinned, trailing))
 	}
 	{
-		inst := model.New(model.Lookup("StorePurchase"))
+		inst := model.New(model.Lookup("LoginRequest"))
 		var report tabletext.Report
 		_, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, trailing, vocabulary, &report)
 		if derr != nil || ok || !report.Malformed || report.Refused {

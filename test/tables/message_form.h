@@ -222,7 +222,7 @@ static void test_message_form_goldens()
 // A batch is of ONE root, so the three messages ride as three bodies of one
 // root holding a union of them: the ENVELOPE. One form byte, one count of
 // three, and the three envelopes back to back with no alignment between them,
-// which is 244 bytes against 249 for the three envelopes sent alone and 243
+// which is 237 bytes against 242 for the three envelopes sent alone and 234
 // for the three messages sent BARE as three batches of one. Red if a leg
 // aligns between bodies, writes a terminator the batch does not carry, sizes
 // a batch as the sum of its bodies alone, or accepts a count of zero.
@@ -254,28 +254,26 @@ static void test_message_form_batch()
                        + backenddemo::StorePurchaseMeasureMessages( &store, 1, &report );
     CHECK( bare == 234 );
 
-    // the three ENVELOPED, as three batches of one: 54 + 150 + 45, eighteen
-    // bits an envelope over the bare message and the align moved
+    // the three ENVELOPED, as three batches of one: 54 + 144 + 44, three
+    // references an envelope over the bare message, and the pad moved
     static backenddemo::Envelope three[3];
     build_backend_envelopes( three );
-    printf( "PROBE env %lld %lld %lld\n", (long long) backenddemo::EnvelopeMeasureMessages( &three[0], 1, &report ), (long long) backenddemo::EnvelopeMeasureMessages( &three[1], 1, &report ), (long long) backenddemo::EnvelopeMeasureMessages( &three[2], 1, &report ) );
-    { int64_t pb = 8; pb += backenddemo::EnvelopeMeasureMessageBody( pb, three[0] ); printf( "PROBE bits1 %lld\n", (long long) pb ); pb += backenddemo::EnvelopeMeasureMessageBody( pb, three[1] ); printf( "PROBE bits2 %lld\n", (long long) pb ); pb += backenddemo::EnvelopeMeasureMessageBody( pb, three[2] ); printf( "PROBE bits3 %lld batch %lld\n", (long long) pb, (long long) backenddemo::TableMessageBatchBytes( pb - 8 ) ); }
     CHECK( backenddemo::EnvelopeMeasureMessages( &three[0], 1, &report ) == 54 );
-    CHECK( backenddemo::EnvelopeMeasureMessages( &three[1], 1, &report ) == 150 );
-    CHECK( backenddemo::EnvelopeMeasureMessages( &three[2], 1, &report ) == 45 );
+    CHECK( backenddemo::EnvelopeMeasureMessages( &three[1], 1, &report ) == 144 );
+    CHECK( backenddemo::EnvelopeMeasureMessages( &three[2], 1, &report ) == 44 );
 
     // and as ONE BATCH: measured as one bit stream, then written as one
     int64_t bits = 8;
     bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[0] );
-    CHECK( bits == 422 ); // the login envelope ends at bit 430 of the batch, the form byte's eight aside
+    CHECK( bits == 417 ); // the login envelope ends at bit 425 of the batch, the form byte's eight aside
     bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[1] );
-    CHECK( bits == 1602 ); // the match envelope ends at 1610
+    CHECK( bits == 1552 ); // the match envelope ends at 1560
     bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[2] );
-    CHECK( bits == 1939 ); // 1947 bits whole, the form byte counted as eight of them, and five bits of pad
-    CHECK( backenddemo::TableMessageBatchBytes( bits - 8 ) == 244 );
+    CHECK( bits == 1885 ); // 1893 bits whole, the form byte counted as eight of them, and three bits of pad
+    CHECK( backenddemo::TableMessageBatchBytes( bits - 8 ) == 237 );
     static uint8_t batch[1024];
     const int64_t wrote = backenddemo::EnvelopeSaveMessages( three, 3, batch, sizeof( batch ), &report );
-    CHECK( wrote == 244 && wrote == backenddemo::EnvelopeMeasureMessages( three, 3, &report ) );
+    CHECK( wrote == 237 && wrote == backenddemo::EnvelopeMeasureMessages( three, 3, &report ) );
     CHECK( batch[0] == 2 && batch[1] == 2 ); // the form byte, and a count of three carried as M - 1
     pin_table_golden( "backend_round_message", batch, wrote );
 
@@ -884,26 +882,24 @@ static void test_message_form_damage_terminal()
 static void test_message_form_pad()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
-    static backenddemo::StorePurchase value;
-    build_backend_store( value );
+    static backenddemo::LoginRequest value;
+    build_backend_login( value );
     static uint8_t message[256];
     backenddemo::TableReport report;
-    const int64_t bytes = backenddemo::StorePurchaseSaveMessages( &value, 1, message, sizeof( message ), &report );
-    CHECK( bytes == 41 );
-    { static backenddemo::LoginRequest l; build_backend_login( l ); static backenddemo::MatchResult m; build_backend_match( m ); static backenddemo::MatchResult md; static backenddemo::LoginRequest ld;
-      printf( "PROBE login %lld match %lld matchdef %lld logindef %lld\n", (long long) backenddemo::LoginRequestMeasureMessageBody( 8, l ), (long long) backenddemo::MatchResultMeasureMessageBody( 8, m ), (long long) backenddemo::MatchResultMeasureMessageBody( 8, md ), (long long) backenddemo::LoginRequestMeasureMessageBody( 8, ld ) ); }
+    const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
+    CHECK( bytes == 51 ); // 404 bits: the last byte carries four bits of body and four of pad
     // a pad bit that is not zero
     {
         static uint8_t bad_pad[256];
         memcpy( bad_pad, message, (size_t) bytes );
         bad_pad[bytes - 1] = (uint8_t) ( bad_pad[bytes - 1] | 0x80 );
-        pin_table_golden( "store_full_bad_pad_message", bad_pad, bytes );
-        backenddemo::StorePurchase out;
+        pin_table_golden( "login_full_bad_pad_message", bad_pad, bytes );
+        backenddemo::LoginRequest out;
         int64_t count = 1;
         backenddemo::TableReport pad;
-        CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
+        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
         CHECK( pad.malformed && !pad.refused );
-        CHECK( out.quantity == 7 ); // the body decoded before the pad stands, and the count says so
+        CHECK( out.client_build == 140233 ); // the body decoded before the pad stands, and the count says so
         CHECK( count == 1 );
     }
     // a byte after the pad
@@ -911,11 +907,11 @@ static void test_message_form_pad()
         static uint8_t trailing[256];
         memcpy( trailing, message, (size_t) bytes );
         trailing[bytes] = 0;
-        pin_table_golden( "store_full_trailing_byte_message", trailing, bytes + 1 );
-        backenddemo::StorePurchase out;
+        pin_table_golden( "login_full_trailing_byte_message", trailing, bytes + 1 );
+        backenddemo::LoginRequest out;
         int64_t count = 1;
         backenddemo::TableReport extra;
-        CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, trailing, bytes + 1, &extra ) );
+        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, trailing, bytes + 1, &extra ) );
         CHECK( extra.malformed && !extra.refused );
     }
 }
@@ -1143,7 +1139,7 @@ static void test_message_form_announcement_check()
         CHECK( backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( vocabulary.announced );
         CHECK( vocabulary.build_version == 0x8877665544332211ull );
-        CHECK( vocabulary.count == 33 );
+        CHECK( vocabulary.count == 24 );
         CHECK( report.unknown == 1 );
         CHECK( !report.refused && !report.malformed );
         pin_table_golden( "announce_unknown_field", forged, bytes );
