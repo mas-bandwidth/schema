@@ -51,8 +51,8 @@ tables-goose-message-form-negative-control:
 # announced kind below this reader's on the same ladder is a kind mismatch.
 # The control requires the versioning gate (messageform_versioning_test.go,
 # the Go reference over VOLD/VNEW in both directions) to go red on EXACTLY the
-# four rows whose newer reader widens — array_elem_widen, bits_grow,
-# int_widen, uint_widen — and on no other row.
+# five rows whose newer reader widens — array_elem_widen, bits_grow,
+# float_widen, int_widen, uint_widen — and on no other row.
 GOOSE_MESSAGE_PEER_NC := build/goose-message-peer-nc
 .PHONY: tables-goose-message-peer-negative-control
 tables-goose-message-peer-negative-control: build/fixedform-corpus/.stamp
@@ -71,8 +71,8 @@ tables-goose-message-peer-negative-control: build/fixedform-corpus/.stamp
 	fi
 	@grep -E -- '--- FAIL: TestGooseMessageFormVersioning/' $(GOOSE_MESSAGE_PEER_NC)/log | awk '{print $$3}' | sort > $(GOOSE_MESSAGE_PEER_NC)/failed
 	@printf '%s\n' TestGooseMessageFormVersioning/new_reads_old/array_elem_widen TestGooseMessageFormVersioning/new_reads_old/bits_grow \
-		TestGooseMessageFormVersioning/new_reads_old/int_widen TestGooseMessageFormVersioning/new_reads_old/uint_widen > $(GOOSE_MESSAGE_PEER_NC)/expected
+		TestGooseMessageFormVersioning/new_reads_old/float_widen TestGooseMessageFormVersioning/new_reads_old/int_widen TestGooseMessageFormVersioning/new_reads_old/uint_widen > $(GOOSE_MESSAGE_PEER_NC)/expected
 	@cmp -s $(GOOSE_MESSAGE_PEER_NC)/failed $(GOOSE_MESSAGE_PEER_NC)/expected || \
-		{ echo "NEGATIVE CONTROL FAILED: the dropped widening rule reddened other rows than the four widening rows:"; \
+		{ echo "NEGATIVE CONTROL FAILED: the dropped widening rule reddened other rows than the five widening rows:"; \
 		  cat $(GOOSE_MESSAGE_PEER_NC)/failed; exit 1; }
-	@echo 'negative control: a dropped widening rule reds exactly the four widening rows of the Goose message versioning gate'
+	@echo 'negative control: a dropped widening rule reds exactly the five widening rows of the Goose message versioning gate'
