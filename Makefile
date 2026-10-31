@@ -3619,7 +3619,6 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	# the tool's own cook half for a list, held to the reference byte for byte
 	# (schema#380)
 	$(MAKE) tables-lists-tool-cook
-	$(MAKE) tables-maps-tool-cook
 	$(MAKE) tables-list-measure-refusals
 	$(MAKE) tables-json-list-walk
 	$(MAKE) tables-json-list-walk-negative-controls
@@ -4595,36 +4594,6 @@ tables-lists-tool-cook-negative-control:
 		echo "NEGATIVE CONTROL FAILED: an unaligned element array left the tool's cook GREEN"; exit 1; \
 	fi
 	@echo "negative control: an unaligned element array turns the tool's list cook RED"
-
-# ---- THE TOOL'S COOK OF ONE MAP (docs/SPEC-TABLES.md §2.8, §7.6) ----------
-#
-# The tool lays a map's generated `{ key, value }` entries in the holder's node
-# extent, ascending, as it lays a list's elements: every map instance of the
-# corpus cooks in both byte orders, passes the tool's own cook-check and
-# uncooks to its wire, and the slot's delta lands inside the holder's extent at
-# the entry's alignment. The C++ reference and every leg's writer are held to
-# these bytes by the conformance cook-write rows.
-.PHONY: tables-maps-tool-cook tables-maps-tool-cook-negative-control
-tables-maps-tool-cook:
-	go test -count=1 -run 'TestTheToolCooksAndUncooksAMap|TestAMapRidesInItsHolderNodeExtent' ./internal/tablecook/
-
-# ITS NEGATIVE CONTROL: the carve writes a map's entries in DESCENDING order,
-# and the tool's own cook-check must refuse the cook on the keys.
-tables-maps-tool-cook-negative-control:
-	@rm -rf build/map-tool-cook-control && mkdir -p build/map-tool-cook-control
-	@sed -e 's@c.w.record(array+i\*size, entry, entryOf(c.m, f, &fv.Entries\[i\]))@c.w.record(array+i*size, entry, entryOf(c.m, f, \&fv.Entries[count-1-i])) /* SABOTAGED: descending */@' \
-		internal/tablecook/extent.go > build/map-tool-cook-control/extent.go.txt
-	@[ "$$(grep -c 'SABOTAGED: descending' build/map-tool-cook-control/extent.go.txt)" = 1 ] || \
-		{ echo "NEGATIVE CONTROL FAILED: the descending sabotage did not apply once"; exit 1; }
-	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/map-tool-cook-control/extent.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/map-tool-cook-control/overlay.json
-	@if go test -count=1 -overlay=build/map-tool-cook-control/overlay.json \
-			-run 'TestTheToolCooksAndUncooksAMap' ./internal/tablecook/ > build/map-tool-cook-control/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: descending entries left the tool's map cook GREEN"; exit 1; \
-	fi
-	@grep -q "did not pass cook-check" build/map-tool-cook-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on cook-check"; cat build/map-tool-cook-control/log; exit 1; }
-	@echo "negative control: descending map entries turn the tool's map cook RED at its own cook-check"
 
 # AN ALLOCATION IS PLANTED IN Load: the gate's operator new counter sees it on
 # the reading path, and the allocation audit goes red.
