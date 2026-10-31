@@ -48,9 +48,10 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `js-ludicrous/` | JS int128 tests | `make test-js` | `make test-js` |
 | `js-tables/` | JS table tests | `make test-js` | `make test-js` |
 | `js-view/` | JS view listing program | `make tables-js-view` | `make tables-js-view` |
+| `lua/` | Lua interpreter harness | `make test-lua` | `make test-lua` |
 | `luau-ludicrous/` | Luau int128 tests | `make test-luau` | `make test-luau` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
-| `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-luau` |
+| `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
 | `packet-wide/` | packet wide-text gates | `make test` | `make test` |

@@ -170,6 +170,23 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "lua" {
+			// a table's constructor is internal/codegen/luatable's own, and
+			// it lays every declared default into the fresh value
+			if err != nil {
+				t.Fatalf("lua refused supported table defaults: %v", err)
+			}
+			code := string(out["VdefTables.lua"])
+			for _, want := range []string{
+				"function _M.NewShip()\n  return {\n    name = \"untitled\",\n    tag = \"ab\",\n    caps = 3,\n",
+				"function _M.NewBadge()\n  return {\n    label = \"new\",\n    caps = 1,\n",
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("lua default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "elixir" {
 			// THE PREFILL IS WHERE A TABLE DEFAULT LIVES IN THIS PORT
 			// (internal/codegen/elixirtable/fixeddefaults.go): the fixed form's

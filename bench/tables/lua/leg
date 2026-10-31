@@ -1,0 +1,37 @@
+#!/bin/sh
+# THE LUA LEG of the tables bench (bench/tables/README.md). Run from the
+# repository root.
+#
+#   leg build        generate bench/corpus/BenchTable.schema for Lua
+#   leg run [args]   run bench/tables/lua/table_main.lua under the pinned Lua
+#
+# Lua is a builtin target of bin/schema, so the build is one generate into
+# $LUA_BENCH_GEN, build/tables-bench-lua by default (the committed tree carries no copy of it: the unit
+# is the runtime modules plus one table module, regenerated in a second). The
+# interpreter is $LUA, else dist/lua-5.4.8 (`make dist-lua`); a leg whose
+# toolchain is absent answers 2 and the pass skips it when it was not asked
+# for by name.
+set -e
+
+# LUA_BENCH_GEN lets a control build its own copy beside a running gate
+: "${LUA_BENCH_GEN:=build/tables-bench-lua}"
+GEN=$LUA_BENCH_GEN
+: "${LUA:=dist/lua-5.4.8/src/lua}"
+
+case "$1" in
+build)
+    [ -x "$LUA" ] || command -v "$LUA" > /dev/null 2>&1 || { echo "no Lua interpreter at $LUA -- run make dist-lua" >&2; exit 2; }
+    [ -x bin/schema ] || { echo "missing bin/schema -- run make" >&2; exit 2; }
+    rm -rf "$GEN"
+    mkdir -p "$GEN"
+    ./bin/schema generate --lang lua --out "$GEN" bench/corpus/BenchTable.schema
+    ;;
+run)
+    shift
+    exec "$LUA" bench/tables/lua/table_main.lua "$GEN" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac

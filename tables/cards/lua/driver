@@ -1,0 +1,9 @@
+#!/bin/sh
+# THE LUA CARD DRIVER (tables/cards/conformance/FORMAT.md).
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so this driver never resolves one.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+exec "${LUA:-dist/lua-5.4.8/src/lua}" tables/cards/lua/driver.lua "$@"
