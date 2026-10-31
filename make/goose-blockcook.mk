@@ -72,3 +72,15 @@ tables-goose-fuzz-negative-control: build/conformance-harness build/conformance-
 	sh test/conformance/goose/negative-control-fuzz cook-extent $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
 
 test-goose: tables-goose-block-lead tables-goose-fuzz tables-goose-fuzz-negative-control
+
+# THE ORDER WORD (docs/PORTING.md I7): the half no foreign surface forges, a
+# block or a cook whose magic is intact and whose byte-order word says the
+# other order. The forgery corpus carries it (block_byte_order,
+# cook_byte_order_0/2/3); this control takes each Open's order-word clause out
+# of a copy of the generated units and requires exactly those surfaces red,
+# with block-foreign and cook-foreign, which reverse the magic, still green.
+.PHONY: tables-goose-order-negative-control
+tables-goose-order-negative-control: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control-accel block-order
+	sh test/conformance/goose/negative-control-accel cook-order-word

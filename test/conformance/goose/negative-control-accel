@@ -17,6 +17,14 @@
 #   cook-order   the writer ignores the byte order it is handed (§7.6: the
 #                order is the target's, a parameter of the write): cook-write
 #                goes red; every read surface stays green
+#   block-order  Open stops reading the prologue's byte-order word (§19.2;
+#                docs/PORTING.md I7: a block whose magic is intact and whose
+#                order word says the other order): forgery and block-reason go
+#                red (block_byte_order); block-foreign, which reverses the
+#                magic, stays green with every other surface
+#   cook-order-word  the same for the cook's header word (§7): cook-forgery and
+#                cook-reason go red (cook_byte_order_*); cook-foreign stays
+#                green with every other surface
 #
 # usage: test/conformance/goose/negative-control-accel <mode>
 # The working directory is the repository root.
@@ -43,8 +51,22 @@ cook-order)
 	red="cook-write"
 	green="cook cook-foreign cook-forgery cook-reason block block-foreign block-dump forgery block-reason"
 	;;
+block-order)
+	file=block_form.goose
+	from='    if accel_u64(b, 16) != TableBlockByteOrder { return TableRefuseNotACook; }'
+	to=''
+	red="forgery block-reason"
+	green="block block-foreign block-dump cook cook-foreign cook-forgery cook-reason cook-write"
+	;;
+cook-order-word)
+	file=cook_form.goose
+	from='    if accel_u64(b, 16) != TableCookByteOrder { return TableRefuseNotACook; }'
+	to=''
+	red="cook-forgery cook-reason"
+	green="cook cook-foreign cook-write block block-foreign block-dump forgery block-reason"
+	;;
 *)
-	echo "usage: $0 cook-open|block-pitch|cook-order" >&2
+	echo "usage: $0 cook-open|block-pitch|cook-order|block-order|cook-order-word" >&2
 	exit 2
 	;;
 esac
