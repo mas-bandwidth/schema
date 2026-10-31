@@ -1260,6 +1260,8 @@ fn load_map(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
         let kd = c.unit.tables[et].fields[0];
         let room = (sub.end - sub.off) as! u64;
         let cap = (if count < room { count } else { room }) as! i64;
+        // Replacing the map retires the earlier entries' retained bodies.
+        if c.retaining && c.vals[slot].made { forget_rec(c, slot); }
         let first = reserve(c, cap);
         for k in cap { c.vals[first + k].shape = ShapeTab; }
         c.vals[slot].made = true;

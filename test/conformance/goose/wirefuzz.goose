@@ -17,9 +17,8 @@
 // names the unit's registry, and runs the harness once per unit. The roster
 // entries of every other unit are a `0` and are never sent a mutant.
 // Variable roots also accept the retaining roster flag and use the existing
-// retaining pair with the harness's roomy capacities. The shared harness must
-// support builder + retain before that differential can run: this leg has no
-// caller-region measurement. Direct protocol tests cover this path meanwhile.
+// retaining pair with the harness's roomy capacities. The --builder --retain
+// differential compares this path without inventing a caller-region measure.
 //
 // The stream is little-endian throughout. In: the roster, then per mutant a
 // u32 roster index, a u32 length and the bytes, until end of input. Out: one

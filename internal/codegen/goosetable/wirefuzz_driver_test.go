@@ -92,8 +92,17 @@ func checkGooseRetainingReplies(t *testing.T, out []byte, retained uint32) {
 
 func gooseRetainingFuzzProbe(t *testing.T, override map[string][]byte) []byte {
 	t.Helper()
+	clean, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt2.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gooseRetainingDriverFrames(t, "tblrt1", "Node", [][]byte{{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}, clean, {1}, {0}}, override)
+}
+
+func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]byte, override map[string][]byte) []byte {
+	t.Helper()
 	c := readWireCorpus(t)
-	files := wireUnitFiles(t, "tblrt1", c.units["tblrt1"], override)
+	files := wireUnitFiles(t, key, c.units[key], override)
 	delete(files, "main.goose")
 	for _, name := range []string{"wirefuzz.goose", "wirefuzz.build", "wirefuzz_io.c"} {
 		b, err := os.ReadFile(filepath.Join(root, "test/conformance/goose", name))
@@ -119,21 +128,17 @@ func gooseRetainingFuzzProbe(t *testing.T, override map[string][]byte) []byte {
 	}
 	var input bytes.Buffer
 	binary.Write(&input, binary.LittleEndian, uint32(1))
-	for _, name := range []string{"tblrt1", "Node"} {
+	for _, name := range []string{key, rootName} {
 		binary.Write(&input, binary.LittleEndian, uint16(len(name)))
 		input.WriteString(name)
 	}
 	input.Write([]byte{1, 1}) // file form, retaining roster entry
-	clean, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt2.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, b := range [][]byte{{1, 0, 0, 0, 0, 0, 0, 0, 0, 0}, clean, {1}, {0}} {
+	for _, b := range frames {
 		binary.Write(&input, binary.LittleEndian, uint32(0))
 		binary.Write(&input, binary.LittleEndian, uint32(len(b)))
 		input.Write(b)
 	}
-	cmd := exec.Command(filepath.Join(dir, "wirefuzz"), "tblrt1", "builder")
+	cmd := exec.Command(filepath.Join(dir, "wirefuzz"), key, "builder")
 	cmd.Dir = dir
 	cmd.Stdin = &input
 	var stdout, stderr bytes.Buffer
@@ -143,4 +148,47 @@ func gooseRetainingFuzzProbe(t *testing.T, override map[string][]byte) []byte {
 		t.Fatalf("run driver: %v\n%s", err, stderr.Bytes())
 	}
 	return stdout.Bytes()
+}
+
+// This committed legacy vector contains a repeated names field. The current
+// oracle replaces that map (retainmaprepeat_test.go); the upcoming duplicate
+// field damage contract must revise this success expectation explicitly.
+func TestGooseRetainingMapReplacement(t *testing.T) {
+	gooseRetainingMapReplay(t, nil, 0)
+}
+
+func TestGooseRetainingMapReplacementNegativeControl(t *testing.T) {
+	baseline := gooseRetainingMapReplay(t, nil, 0)
+	src := string(goosetable.Runtime()["wire_load.goose"])
+	const anchor = "        if c.retaining && c.vals[slot].made { forget_rec(c, slot); }\n"
+	if strings.Count(src, anchor) != 1 {
+		t.Fatal("map retirement anchor must occur once")
+	}
+	src = strings.Replace(src, anchor, "", 1)
+	mutant := gooseRetainingMapReplay(t, map[string][]byte{"wire_load.goose": []byte(src)}, 1)
+	// Only retain_lost may change. The loaded value and saved bytes agree.
+	binary.LittleEndian.PutUint32(baseline[36:], 1)
+	if !bytes.Equal(baseline, mutant) {
+		t.Fatal("map retirement sabotage changed more than retain_lost")
+	}
+}
+
+func gooseRetainingMapReplay(t *testing.T, override map[string][]byte, lost uint32) []byte {
+	t.Helper()
+	wire, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := gooseRetainingDriverFrames(t, "mapdemo", "Text", [][]byte{wire}, override)
+	if len(out) < 48 || out[0] != 1 {
+		t.Fatalf("map retaining protocol: %x", out)
+	}
+	h := out[1:48]
+	if h[0] != 1 || h[21] != 0 || h[22] != 0 || binary.LittleEndian.Uint32(h[31:]) != 2 || binary.LittleEndian.Uint32(h[35:]) != lost {
+		t.Fatalf("map replacement: incorrect loaded/retention reply, want retained=2 lost=%d: %x", lost, h)
+	}
+	if n := int64(binary.LittleEndian.Uint64(h[39:])); n != int64(len(out)-48) || n != 72 {
+		t.Fatalf("map replacement saved length %d", n)
+	}
+	return out
 }
