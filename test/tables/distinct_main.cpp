@@ -176,8 +176,7 @@ static std::vector<uint64_t> all_colliding( int n, uint32_t slot )
     for ( int i = 0; i < n; i++ )
     {
         // id * k == ( slot << shift ) | i, so the probe's top bits are slot for all of them
-        const uint64_t target = ( (uint64_t) slot << slot_shift() ) | (uint64_t) i;| i, so the top eight bits are slot for all of them
-        const uint64_t target = ( (uint64_t) slot << 56 ) | (uint64_t) i;
+        const uint64_t target = ( (uint64_t) slot << slot_shift() ) | (uint64_t) i;
         ids.push_back( inv * target );
     }
     return ids;
