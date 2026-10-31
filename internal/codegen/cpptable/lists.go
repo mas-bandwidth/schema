@@ -723,26 +723,26 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	g.pf("%suint64_t body_len = 0;\n", ind)
 	g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
-	g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER is INERT (§4): the field keeps\n", ind)
-	g.pf("%s// the value it has, no counter is raised, and the walk continues past L.\n", ind)
-	g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
+	g.pf("%s// THE HEADER LIES INSIDE L (§3): a body too short for it, and a count\n", ind)
+	g.pf("%s// spelled past L, are damage, because no writer produces either (§4)\n", ind)
+	g.pf("%sif ( body_len < 2 ) { r.report->malformed = true; return false; }\n", ind)
+	g.pf("%s{\n", ind)
 	g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 	g.pf("%s    uint64_t count = 0;\n", ind)
-	g.pf("%s    const bool counted_ok = r.getleb( count );\n", ind)
-	g.pf("%s    if ( !counted_ok ) { r.report->malformed = true; }\n", ind)
+	g.pf("%s    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }\n", ind)
 	g.pf("%s    // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's\n", ind)
 	g.pf("%s    // element-kind rule: the field reads EMPTY and one kind_mismatch counts\n", ind)
 	if widenableElement(f) {
 		// THE WIDENING BRANCH at a list's element kind (§4), inside the
 		// mismatch branch with a fill of its own: ONE count for the field,
 		// every element decoded at the wire kind's width
-		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
+		g.pf("%s    if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
 		g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
 		g.pf("%s        r.report->widened++;\n", ind)
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
 	} else {
-		g.pf("%s    else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
+		g.pf("%s    if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
 	}
 	g.pf("%s    else\n%s    {\n", ind, ind)
 	g.emitListFill(f, elemKind, ind, false)

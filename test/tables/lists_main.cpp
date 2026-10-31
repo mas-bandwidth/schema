@@ -661,14 +661,12 @@ static void test_reader()
         CHECK_EQ( into.GetRoot()->past, 777 );
     }
     {
-        // A BODY TOO SHORT TO CARRY ITS OWN HEADER IS INERT (§4): no element,
-        // no counter, the field keeps the value it has
+        // A BODY TOO SHORT TO CARRY ITS OWN HEADER is input no writer
+        // produces, so it is damage and the whole load is refused (§3, §4)
         IntsSpec spec = ints_spec();
         spec.body_len = 1;
         const Verdict v = read_ints( build_ints( spec ) );
-        CHECK_EQ( v.count, 0 );
-        report_silent( v.report, "an inert list body" );
-        CHECK_EQ( v.past, 777 );
+        CHECK( v.report.malformed );
     }
     {
         // an EMPTY list on the wire: a header and a zero count

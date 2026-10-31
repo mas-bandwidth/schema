@@ -327,10 +327,10 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		ek, n, keep := "arm_elem_kind"+sfx, "arm_count"+sfx, "arm_keep"+sfx
 		i, decoded := "arm_i"+sfx, "arm_decoded"+sfx
 		sub, elems, left := "arm_sub"+sfx, "arm_elems"+sfx, "arm_left"+sfx
-		// A BODY TOO SHORT FOR ITS OWN HEADER IS INERT (§3, §4): no element is
-		// decoded and no counter fires, so the union selects the arm at its
-		// declared defaults
-		g.pf("%sif ( !%s.has( 2 ) ) { break; }\n", ind, rdr)
+		// THE HEADER LIES INSIDE THE ARM'S L (§3): an arm too short to carry
+		// the element kind and the count is damage, because no writer
+		// produces one (§4)
+		g.pf("%sif ( !%s.has( 2 ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, tag, none)
 		g.pf("%s{\n%s    uint8_t %s = %s.get8();\n", ind, ind, ek, rdr)
 		g.pf("%s    uint64_t %s = 0;\n", ind, n)
 		g.pf("%s    if ( !%s.getleb( %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, n, tag, none)

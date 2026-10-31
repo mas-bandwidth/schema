@@ -2100,10 +2100,13 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t body_len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
-		g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
+		g.pf("%s// THE HEADER LIES INSIDE L (§3): a body too short for it, and a count\n", ind)
+		g.pf("%s// spelled past L, are damage, because no writer produces either (§4)\n", ind)
+		g.pf("%sif ( body_len < 2 ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%s{\n", ind)
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 		g.pf("%s    uint64_t count = 0;\n", ind)
-		g.pf("%s    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }\n", ind)
+		g.pf("%s    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }\n", ind)
 		if widenableElement(f) {
 			// THE WIDENING BRANCH at a keyed body's element kind (§4), inside
 			// the mismatch branch and with a loop of its own, so the matching
@@ -2166,27 +2169,23 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t body_len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
-		g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the\n", ind)
-		g.pf("%s// count, so fewer than two bytes — is INERT (§4): the field keeps the\n", ind)
-		g.pf("%s// value it has, no counter is raised, and the walk continues past L.\n", ind)
-		g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
+		g.pf("%s// THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A\n", ind)
+		g.pf("%s// body too short to carry them, and a count spelled past L or unable to\n", ind)
+		g.pf("%s// complete, are damage, because no writer produces either (§4).\n", ind)
+		g.pf("%sif ( body_len < 2 ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%s{\n", ind)
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s    const int32_t previous_count = value.%s_count;\n", ind, f.Name)
 		}
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
 		g.pf("%s    uint64_t count = 0;\n", ind)
-		g.pf("%s    const bool counted_ok = r.getleb( count );\n", ind)
-		g.pf("%s    // A DAMAGED COUNT stops the elements and nothing else: the field\n", ind)
-		g.pf("%s    // RODE, so an optional is still PRESENT (§2.3) — only a foreign\n", ind)
-		g.pf("%s    // ELEMENT KIND says the payload is not this array's at all.\n", ind)
-		g.pf("%s    if ( !counted_ok ) { r.report->malformed = true; }\n", ind)
+		g.pf("%s    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }\n", ind)
 		if widenableElement(f) {
 			// THE WIDENING BRANCH at an element kind (docs/SPEC-TABLES.md
 			// §4), inside the mismatch branch: ONE count for the field,
 			// every element decoded at the wire kind's width
-			g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, ir.TableWireElemKind(f), ind)
+			g.pf("%s    if ( elem_kind != %d )\n%s    {\n", ind, ir.TableWireElemKind(f), ind)
 			g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
-			g.emitRetainReplaced(f, ind+"        ")
 			g.pf("%s        uint64_t widened_keep = count;\n", ind)
 			g.pf("%s        if ( widened_keep > %d ) { widened_keep = %d; r.report->clamped++; }\n", ind, bound, bound)
 			g.pf("%s        TableReader widened_sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
@@ -2200,10 +2199,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			}
 			g.pf("%s    }\n", ind)
 		} else {
-			g.pf("%s    else if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
+			g.pf("%s    if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
 		}
 		g.pf("%s    else\n%s    {\n", ind, ind)
-		g.emitRetainReplaced(f, ind+"    ")
 		g.pf("%s    uint64_t keep = count;\n", ind)
 		g.pf("%s    if ( keep > %d ) { keep = %d; r.report->clamped++; }\n", ind, bound, bound)
 		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)
