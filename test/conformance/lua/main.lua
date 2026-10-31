@@ -33,7 +33,7 @@ local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-l
 
 -- every surface test/conformance/README.md names, in its table's order
 local SURFACE_ORDER = {
-  "wire", "message", "report", "retain", "retain-save", "json-read",
+  "wire", "message", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
   "block-reason",
@@ -182,6 +182,35 @@ local function surfaceReport(all, outdir)
       local r = newReport()
       u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), r)
       writeBytes(outdir .. "/" .. f[2], reportLine(r))
+    end
+  end
+end
+
+-- THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+-- report surface prints it, then the §16 text of the value the read left,
+-- unless the row says `no-value` or the read refused or met damage. DAMAGE
+-- DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a damaged read owes the
+-- report line saying malformed and nothing after it.
+local function surfaceFraming(all, outdir)
+  for _, f in ipairs(kind(all, "framing")) do
+    local u = unit(f[3])
+    if not u then
+      absent(outdir, f[2], NOT_GENERATED)
+    else
+      local r = newReport()
+      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), r)
+      local text = reportLine(r)
+      local refused = r.refused > 0 or r.nonFiniteFloat ~= nil
+      if v == nil and not refused then
+        r.malformed = true
+        text = reportLine(r)
+      end
+      if f[6] ~= "no-value" and not refused and not r.malformed then
+        local json, why = u.json.ToJson(u.T, f[4], v)
+        if json == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
+        text = text .. json
+      end
+      writeBytes(outdir .. "/" .. f[2], text)
     end
   end
 end
@@ -794,6 +823,7 @@ local identity = function(s) return s end
 
 if surface == "wire" then surfaceWire(all, outdir)
 elseif surface == "report" then surfaceReport(all, outdir)
+elseif surface == "framing" then surfaceFraming(all, outdir)
 elseif surface == "json-read" then surfaceJsonRead(all, outdir)
 elseif surface == "json-write" then surfaceJsonWrite(all, outdir)
 elseif surface == "json-hostile" then surfaceJsonHostile(all, outdir)
