@@ -142,7 +142,7 @@ local function skip(r: any, kind: number): boolean
 		if r.at + 8 > r.e then return false end; r.at = r.at + 8; return true
 	elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then
 		if r.at + 16 > r.e then return false end; r.at = r.at + 16; return true
-	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r); if r.bad then return false end
 		if r.at + n > r.e then return false end; r.at = r.at + n; return true
 	elseif kind == 15 then
@@ -213,33 +213,6 @@ local function utf8_ok(b: buffer, at: number, n: number): boolean
 	end
 	return true
 end
-
--- UTF-16 code units, exact and validating (docs/SPEC-TABLES.md §3, §4): a zero
--- code unit, a high surrogate not followed by a low one, and a low surrogate
--- with no high before it are not text, checked as the payload arrives and
--- before the reader's own bound, exactly as kind 12's utf8_ok.
-local function wide_ok(b: buffer, at: number, n: number): boolean
-	local units = n / 2
-	local i = 0
-	while i < units do
-		local u = buffer.readu16(b, at + i * 2)
-		if u == 0 then return false end
-		if u >= 0xD800 and u <= 0xDBFF then
-			if i + 1 >= units then return false end
-			local low = buffer.readu16(b, at + (i + 1) * 2)
-			if low < 0xDC00 or low > 0xDFFF then return false end
-			i = i + 2
-		elseif u >= 0xDC00 and u <= 0xDFFF then
-			return false
-		else
-			i = i + 1
-		end
-	end
-	return true
-end
-
--- ir.TableWireIdTableBound: the most entries an id table may hold (§3)
-local ID_TABLE_BOUND = 4096
 
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed.
@@ -542,9 +515,8 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 	return 0, true
 end
 
--- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12 / 33): a
--- string past its bound keeps the last whole UTF-8 code point within it, and
--- a wide string its first N code units less an orphan high surrogate.
+-- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12): a string
+-- past its bound keeps the last whole UTF-8 code point within it.
 local function clamp_utf8(b: buffer, at: number, keep: number): number
 	while keep > 0 do
 		local x = buffer.readu8(b, at + keep)
@@ -554,15 +526,7 @@ local function clamp_utf8(b: buffer, at: number, keep: number): number
 	return keep
 end
 
-local function clamp_wide(b: buffer, at: number, units: number): number
-	if units > 0 then
-		local last = buffer.readu16(b, at + (units - 1) * 2)
-		if last >= 0xD800 and last <= 0xDBFF then units = units - 1 end
-	end
-	return units
-end
-
--- a string(N), wstring(N) or bytes(N) value lands in its buffer with its used
+-- a string(N) or bytes(N) value lands in its buffer with its used
 -- length beside it (docs/PORT-LUAU.md, THE TYPE MAPPING; SPEC §4.7)
 local function store_bytes(v: any, slot: string, src: buffer, at: number, nbytes: number, length: number)
 	local dst = v[slot]
@@ -1066,20 +1030,6 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then report.malformed = true; return false end
-		if e.wide then
-			-- a wstring element: L is a byte length, twice the code units (§3)
-			if n % 2 ~= 0 then report.malformed = true; r.at = r.at + n; return true end
-			if not wide_ok(r.b, r.at, n) then report.malformed = true; r.at = r.at + n; return true end
-			local units = n / 2
-			if e.bound ~= nil and units > e.bound then units = clamp_wide(r.b, r.at, e.bound); report.clamped = report.clamped + 1 end
-			local b = dst[i]
-			if typeof(b) ~= "buffer" or buffer.len(b) < units * 2 then b = buffer.create(units * 2); dst[i] = b end
-			buffer.fill(b, 0, 0)
-			buffer.copy(b, 0, r.b, r.at, units * 2)
-			if lens ~= nil then lens[i] = units end
-			r.at = r.at + n
-			return true
-		end
 		if not utf8_ok(r.b, r.at, n) then
 			-- ill-formed UTF-8 or a zero byte in an element is malformed, and
 			-- the element does not land: the list keeps the prefix the body
@@ -1228,7 +1178,7 @@ end
 
 -- ONE FIELD (docs/SPEC-TABLES.md §3): every value read is stored in its slot
 -- in the shape docs/PORT-LUAU.md THE TYPE MAPPING names; a string clamps at a
--- whole code point and a wide string at a whole code unit (§3, KIND 12 / 33).
+-- whole code point (§3, KIND 12).
 -- It answers (ok, selected, intact): ok false stops the body; selected false
 -- is an array of a FOREIGN ELEMENT KIND (§3); intact false is a payload
 -- damaged inside its own L, which a field answers with its declared default
@@ -1243,15 +1193,6 @@ read_field = function(fd: any, r: any, v: any): any
 	elseif s == "str" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
-		if fd.wide then
-			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true, nil, false end
-			if not wide_ok(r.b, r.at, n) then _report.malformed = true; r.at = r.at + n; return true, nil, false end
-			local units = n / 2
-			if fd.bound ~= nil and units > fd.bound then units = clamp_wide(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
-			if fd.slot ~= nil and v ~= nil then store_bytes(v, fd.slot, r.b, r.at, units * 2, units) end
-			r.at = r.at + n
-			return true
-		end
 		if not utf8_ok(r.b, r.at, n) then
 			-- ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): the field
 			-- reads its DECLARED DEFAULT, one malformed counts, and the parent
@@ -1670,7 +1611,7 @@ local function stepOver(b: buffer, at: number, e: number, kind: number): number?
 		if at + fixedWidth > e then return nil end
 		return at + fixedWidth
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n, p = leb(b, at, e)
 		if n == nil or p + n > e then return nil end
 		return p + n
