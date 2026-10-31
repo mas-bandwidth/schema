@@ -1654,12 +1654,12 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
 JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army
-# THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header whose foreign element kind
-# carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
+# THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
+# element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
-# no damage. It joins INDEX.txt, which every leg replays, when every leg reads a
-# keyed header against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig
+# no damage. They join INDEX.txt, which every leg replays, when every leg reads
+# these headers against the parent.
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
@@ -1703,7 +1703,7 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
 	fi
-	@grep -q 'the report differs' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
+	@grep -qE 'the report differs|the oracle discards a damaged load' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
 	@echo 'Java wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-java: tables-java-wire-fuzz-negative-control
@@ -1764,26 +1764,30 @@ test-java: tables-java-retain-fuzz-negative-control
 
 # THE FOREIGN-KIND MAP COUNT'S CONTROL (docs/SPEC-TABLES.md §2.8, §4): a scratch
 # copy whose map reader reads a foreign element kind's count inside the map's
-# own L again, the fault the pinned vector map_foreign_kind_count_past_body was
-# found on. The plain arm must go red on listdemo.Army.
+# own L again. Its replay is map_header_count_past_length (mapdemo.Slots): the
+# oracle reads that map as one kind_mismatch with NO damage, so the counters are
+# compared. (map_foreign_kind_count_past_body, the vector the fault was found
+# on, is damaged elsewhere, and under the discard-on-damage ruling the harness
+# no longer compares a damaged load's counters, so it cannot see this fault.)
 JAVA_MAP_COUNT_SABOTAGE := build/java-map-count-sabotage
 .PHONY: tables-java-map-count-negative-control
 tables-java-map-count-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_MAP_COUNT_SABOTAGE) && mkdir -p $(JAVA_MAP_COUNT_SABOTAGE)/generated $(JAVA_MAP_COUNT_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_COUNT_SABOTAGE)/generated/$$u || exit 1; done
-	@for f in $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/*Variable.java; do \
+	@for f in $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/*Variable.java $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/*Variable.java; do \
 		sed 's/long n = ek != 13 ? ar\.count(r\.limit) : ar\.leb();/long n = ar.leb(); \/\/ SABOTAGED map count/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
-	@grep -q 'SABOTAGED map count' $(JAVA_MAP_COUNT_SABOTAGE)/generated/lists/SquadVariable.java || \
+	@grep -q 'SABOTAGED map count' $(JAVA_MAP_COUNT_SABOTAGE)/generated/maps/SlotsVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java map-count sabotage did not apply'; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_MAP_COUNT_SABOTAGE)/classes \
 		$(JAVA_MAP_COUNT_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
-			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_COUNT_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
+	@if ./build/conformance-harness wire-fuzz \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_MAP_COUNT_SABOTAGE)/classes TablesWireFuzz" \
+			--replay testdata/wire/tables/fuzz-vectors/map_header_count_past_length.bin --unit mapdemo --root Slots \
 			--failed $(JAVA_MAP_COUNT_SABOTAGE)/failed.bin > $(JAVA_MAP_COUNT_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a map reader that reads a foreign kind'"'"'s count inside L left the differential green'; exit 1; \
 	fi
-	@grep -q 'listdemo.Army' $(JAVA_MAP_COUNT_SABOTAGE)/log || { cat $(JAVA_MAP_COUNT_SABOTAGE)/log; exit 1; }
+	@grep -q 'the report differs' $(JAVA_MAP_COUNT_SABOTAGE)/log || { cat $(JAVA_MAP_COUNT_SABOTAGE)/log; exit 1; }
 	@echo 'Java map-count negative control: reading a foreign kind'"'"'s count inside L loses the kind mismatch'
 
 test-java: tables-java-map-count-negative-control
