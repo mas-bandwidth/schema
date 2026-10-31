@@ -4927,9 +4927,14 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_messages_tolerant(benchtab
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)benchtable_table_entity_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN table_entity_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN table_entity_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int benchtable_table_entity_load_messages( benchtable_table_entity_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored;
@@ -5275,9 +5280,14 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_messages_tolerant(benchtable
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)benchtable_table_stat_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN table_stat_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN table_stat_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int benchtable_table_stat_load_messages( benchtable_table_stat_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored;
@@ -7767,9 +7777,14 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_messages_tolerant(benchtabl
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)benchtable_table_mixed_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN table_mixed_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN table_mixed_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int benchtable_table_mixed_load_messages( benchtable_table_mixed_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored;
@@ -8282,9 +8297,14 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages_tolerant(bench
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)benchtable_table_hit_event_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN table_hit_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN table_hit_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages( benchtable_table_hit_event_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored;
@@ -8658,9 +8678,14 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages_tolerant(benc
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)benchtable_table_chat_event_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN table_chat_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN table_chat_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages( benchtable_table_chat_event_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored;
@@ -9034,9 +9059,14 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages_tolerant(be
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)benchtable_table_pickup_event_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN table_pickup_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN table_pickup_event_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages( benchtable_table_pickup_event_t * values, int64_t * count, const benchtable_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, benchtable_table_report_t * report )
 {
     benchtable_table_report_t ignored;

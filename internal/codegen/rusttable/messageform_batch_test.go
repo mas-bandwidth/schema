@@ -681,10 +681,10 @@ const messageBatchRefusalsMain = `
         say("newer_form", all, "a foreign form byte was not refused as newer_form".to_string());
     }
     {
-        // "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1. The returned count
-        // states k - 1, ONE malformed counts, and nothing at or after body k is
-        // read." Body 1 is the empty body; body 2 opens with the all-ones
-        // reference, which names no slot of this vocabulary.
+        // DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
+        // the count is zero, malformed is set, and every body's storage is at
+        // its declared defaults. Body 1 is the empty body; body 2 opens with
+        // the all-ones reference, which names no slot of this vocabulary.
         let bits = vocab.ref_bits;
         let mut forged = vec![2u8, 2u8, 0, 0, 0, 0];
         let ones = (1u64 << bits) - 1;
@@ -693,9 +693,13 @@ const messageBatchRefusalsMain = `
             forged[2 + i] = (v >> (8 * i)) as u8;
         }
         let mut values = vec![RootRow::default(); 3];
+        for value in values.iter_mut() {
+            value.a = 7;
+        }
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &forged, &mut rep);
-        say("damage_in_body_two", !ok && count == 1 && rep.malformed && !rep.refused, format!("count={count} report={rep:?}"));
+        let reset = values.iter().all(|v| v.a == 0);
+        say("damage_in_body_two", !ok && count == 0 && reset && rep.malformed && !rep.refused, format!("count={count} reset={reset} report={rep:?}"));
     }
     {
         // "BYTES AFTER THE PAD ARE MALFORMED ... a buffer with bytes left over
@@ -703,9 +707,11 @@ const messageBatchRefusalsMain = `
         let mut padded = wire.clone();
         padded.push(0);
         let mut values = vec![RootRow::default(); 1];
+        values[0].a = 7;
         let mut rep = TableReport::default();
         let (count, ok) = root_load_messages(&mut values, &vocab, &padded, &mut rep);
-        say("bytes_after_pad", !ok && count == 1 && rep.malformed && !rep.refused, format!("count={count} report={rep:?}"));
+        let reset = values[0].a == 0;
+        say("bytes_after_pad", !ok && count == 0 && reset && rep.malformed && !rep.refused, format!("count={count} reset={reset} report={rep:?}"));
     }
     {
         // A buffer too short for the batch is a -1 and never a partial write.

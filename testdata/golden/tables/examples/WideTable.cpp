@@ -4244,7 +4244,14 @@ namespace tabledemo {
 
 bool WideBlobFromJsonTolerant( WideBlob & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, WideBlobTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, WideBlobTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; WideBlobTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool WideBlobFromJson( WideBlob & value, const char * text, int64_t bytes, TableReport * report )

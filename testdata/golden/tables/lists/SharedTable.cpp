@@ -4571,7 +4571,14 @@ namespace listdemo {
 
 bool PhotoFromJsonTolerant( Photo & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PhotoTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PhotoTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PhotoTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PhotoFromJson( Photo & value, const char * text, int64_t bytes, TableReport * report )
@@ -4606,7 +4613,14 @@ bool AlbumFromJsonTolerant( AlbumBuilder & builder, const char * text, int64_t b
 {
     Album * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, AlbumTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, AlbumTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; AlbumTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool AlbumFromJson( AlbumBuilder & builder, const char * text, int64_t bytes, TableReport * report )

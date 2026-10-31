@@ -77,8 +77,10 @@ func cppBytes(b []byte) string {
 // TestDamageDiscardsTheWholeLoadCPP is the C++ reference's gate for DAMAGE
 // DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): damage inside a nested
 // body, with a whole field before it and after it, makes LoadTolerant answer
-// false with the value at its declared defaults, and makes the region Load
-// hand back no root. Red if either read hands back a field it decoded.
+// false with the value at its declared defaults, the strict Load refuse, the
+// region Load and the retaining Load hand back no root (the retention store
+// empty), and the builder load answer false. Red if any read hands back what
+// it decoded.
 func TestDamageDiscardsTheWholeLoadCPP(t *testing.T) {
 	t.Parallel()
 	u := loadUnitFromSource(t, discardUnit)
@@ -104,6 +106,22 @@ func TestDamageDiscardsTheWholeLoadCPP(t *testing.T) {
     const Graph * root = GraphLoadTolerant( aligned, need > 0 ? need : 4096, variable, (int64_t) sizeof( variable ), &g );
     if ( root != NULL ) { printf( "variable: LoadTolerant handed back a root on damage: a=%%d b=%%d\n", (int) root->a, (int) root->b ); return 1; }
     if ( need >= 0 && !g.malformed ) { printf( "variable: the report does not say malformed\n" ); return 1; }
+
+    alignas( 64 ) static uint8_t retain_region[ 1 << 16 ];
+    uint8_t store[ 1 << 12 ];
+    TableRetain retain;
+    TableRetain::Id ids[16];
+    retain.bytes = store; retain.capacity = (int64_t) sizeof( store );
+    retain.ids = ids; retain.id_capacity = 16;
+    TableReport rr; memset( &rr, 0, sizeof( rr ) );
+    if ( GraphLoadRetain( retain_region, (int64_t) sizeof( retain_region ), variable, (int64_t) sizeof( variable ), &retain, &rr ) != NULL )
+        { printf( "retain: LoadRetain handed back a root on damage\n" ); return 1; }
+    if ( !rr.malformed || retain.used != 0 || retain.count != 0 ) { printf( "retain: malformed=%%d used=%%lld count=%%lld\n", (int) rr.malformed, (long long) retain.used, (long long) retain.count ); return 1; }
+
+    GraphBuilder builder;
+    TableReport br; memset( &br, 0, sizeof( br ) );
+    if ( GraphLoadBuilderTolerant( builder, variable, (int64_t) sizeof( variable ), &br ) ) { printf( "builder: LoadBuilderTolerant answered true on damage\n" ); return 1; }
+    if ( !br.malformed ) { printf( "builder: the report does not say malformed\n" ); return 1; }
 `, cppBytes(fixed), cppBytes(variable))
 	out, err := cppHeldRun(t, u, body)
 	if err != nil {

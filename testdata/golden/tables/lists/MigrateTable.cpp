@@ -4571,7 +4571,14 @@ namespace listdemo {
 
 bool UnitFromJsonTolerant( Unit & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, UnitTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, UnitTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; UnitTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool UnitFromJson( Unit & value, const char * text, int64_t bytes, TableReport * report )
@@ -4604,7 +4611,14 @@ int64_t UnitToJson( const Unit & value, char * buffer, int64_t capacity )
 
 bool BoundedFromJsonTolerant( Bounded & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, BoundedTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, BoundedTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; BoundedTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool BoundedFromJson( Bounded & value, const char * text, int64_t bytes, TableReport * report )
@@ -4639,7 +4653,14 @@ bool UnboundedFromJsonTolerant( UnboundedBuilder & builder, const char * text, i
 {
     Unbounded * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, UnboundedTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, UnboundedTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; UnboundedTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool UnboundedFromJson( UnboundedBuilder & builder, const char * text, int64_t bytes, TableReport * report )

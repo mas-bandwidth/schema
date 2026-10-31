@@ -334,8 +334,9 @@ count, presence bit, element, entry, arm and node, floats by their bits and
 a graph by first-visit labels. `TestLobsterTableLoadNegativeControl` patches
 the unknown-field count out of the emitted runtime and holds the comparison
 red. `TestLobsterTableLoadBytesCountPastItsBody` raises a bytes body's count
-past what its L frames (§4) and holds the report and the value to Go's: the
-prefix the body frames, malformed, and the next field read at its own header.
+past what its L frames (§4) and holds the leg to Go's refusal: damage
+discards the whole load, so the read says malformed and nothing of the value
+is compared.
 
 ## THE HARNESS
 
