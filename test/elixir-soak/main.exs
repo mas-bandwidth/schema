@@ -94,6 +94,7 @@ defmodule Soak do
     )
 
     parent = self()
+
     {pid, mon} =
       spawn_monitor(fn -> send(parent, {:soaked, self(), run(parent, cases, lead, samples)}) end)
 
