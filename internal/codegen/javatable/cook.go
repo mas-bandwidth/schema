@@ -703,8 +703,8 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
 // cookMapField names the first map a root's cook closure holds, by value or
 // behind a pointer, as Owner.field, or "" when it holds none. The Java cook
 // writer lays out no map entry array (docs/PORTING.md M19), so a root that
-// holds one REFUSES its cook by name rather than writing a region whose map
-// holders name no entries: the same refusal the tool's cook gives a
+// holds one REFUSES its cook by name, where the reflective plan failed on the
+// map slot and answered invalid_value: the same refusal the tool's cook gives a
 // map-bearing unit (compiler/tablesmaps.go refuseToolMaps, docs/SPEC-TABLES.md
 // §2.8).
 // cookMapFieldOf is the function the emitter asks; the refusal's negative

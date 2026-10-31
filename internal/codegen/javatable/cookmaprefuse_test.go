@@ -10,10 +10,10 @@ import (
 )
 
 // A MAP-BEARING COOK IS REFUSED BY NAME (docs/PORTING.md M19; docs/SPEC-TABLES.md
-// §2.8). The Java cook writer lays out no map entry array, so a root whose
-// closure holds a map would be written with its map holders naming no entries:
-// a cook that silently drops the map. Every write entry point of such a root
-// refuses instead, naming the field, as the tool's cook refuses a map-bearing
+// §2.8). The Java cook writer lays out no map entry array. Without this rule
+// the reflective plan failed on the map slot and answered `invalid_value`, a
+// refusal that blames the caller's value; every write entry point of such a
+// root now refuses naming the field, as the tool's cook refuses a map-bearing
 // unit (compiler/tablesmaps.go). tables/maps' Cells holds `rows`, a map.
 //
 // Neither test is parallel: the control swaps the emitter's map finder, which
@@ -56,8 +56,5 @@ func TestJavaCookMapRefusalNegativeControl(t *testing.T) {
 	out := runCookMapProbe(t)
 	if strings.Contains(out, cookMapRefused) {
 		t.Fatalf("with the refusal planted out of the emitter the probe still refuses: the gate cannot see the refusal\n%s", out)
-	}
-	if !strings.Contains(out, "wrote=true") {
-		t.Fatalf("with the refusal planted out the cook should write (dropping the map), got:\n%s", out)
 	}
 }
