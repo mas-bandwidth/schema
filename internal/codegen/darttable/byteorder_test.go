@@ -16,7 +16,8 @@ import (
 // which a test on one machine cannot tell from a correct read of a palindromic
 // value, so the rule is held on the emitted text: every
 // get/set{Int,Uint,Float}{16,32,64} call over every corpus unit's generated
-// files carries `Endian.` inside its argument list. The foreign-file half of
+// files carries `Endian.` inside its argument list, or, in the cook writer,
+// the `order` parameter the target's order arrives in. The foreign-file half of
 // M12 (the magic, then the order word) is `tables-dart-order` and the
 // `cook-foreign` and `block-foreign` conformance surfaces.
 //
@@ -87,7 +88,11 @@ func byteOrderScan(src string) (int, []string) {
 			}
 		}
 		args := src[loc[1]:end]
-		if !strings.Contains(args, "Endian.") {
+		// the cook writer takes the target's order as its `order` parameter
+		// (M12: "The cook writer takes the target's order as a parameter")
+		last := strings.TrimRight(strings.TrimSpace(args), ",")
+		last = strings.TrimSpace(last[strings.LastIndex(last, ",")+1:])
+		if !strings.Contains(args, "Endian.") && last != "order" {
 			line := strings.Count(src[:loc[0]], "\n") + 1
 			bad = append(bad, fmt.Sprintf("line %d: %s%s)", line, src[loc[0]:loc[1]], args))
 		}
