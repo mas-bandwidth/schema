@@ -901,7 +901,8 @@
         "tables-elixir-runtime-pin-negative-control",
         "tables-elixir-slot-negative-control",
         "tables-elixir-cook-blob-negative-control",
-        "tables-elixir-retain-negative-control"
+        "tables-elixir-retain-negative-control",
+        "tables-elixir-runtime-home-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -984,6 +985,76 @@
         "tables-elixir-fixed-form-negative-control",
         "tables-elixir-versioning-negative-control",
         "schema-elixir-runs-hostile-corpus-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-conformance-walk",
+      "when": "pull-request",
+      "why": "the Elixir leg's conformance negative control (docs/PORTING.md I11): the emitted text reader stores the negation of every bool, and the matrix must go red on json-read alone while json-write and wire stay green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
+      "targets": [
+        "conformance-negative-control-elixir-walk"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-conformance-shared",
+      "when": "pull-request",
+      "why": "the Elixir pack walk's identity control (docs/PORTING.md M6): a node two pointers name is written twice, and the matrix must go red on wire and json-read (whose answer is the saved wire) while json-write and report stay green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
+      "targets": [
+        "conformance-negative-control-elixir-shared"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-conformance-label",
+      "when": "pull-request",
+      "why": "the Elixir text writer's &node control (docs/PORTING.md M14): a shared node is written in full at every pointer and never labeled, and the matrix must go red on json-write while json-read and wire stay green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
+      "targets": [
+        "conformance-negative-control-elixir-label"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-conformance-ids",
+      "when": "pull-request",
+      "why": "the Elixir id-table control (docs/PORTING.md M20): the id table is written in reverse first-use order, and the matrix must go red on wire while json-write stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
+      "targets": [
+        "conformance-negative-control-elixir-ids"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-conformance-arm",
+      "when": "pull-request",
+      "why": "the Elixir arm-header control (docs/PORTING.md M18): an arm header under another kind reads as the declared arm instead of a counted kind mismatch, and the matrix must go red on report while json-write stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
+      "targets": [
+        "conformance-negative-control-elixir-arm"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-conformance-order",
+      "when": "pull-request",
+      "why": "the Elixir block reader's foreign-order control (docs/PORTING.md I7): a byte-swapped magic is no longer refused by name as a foreign order, and the matrix must go red on block-reason while block stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
+      "targets": [
+        "conformance-negative-control-elixir-order"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-usage",
+      "when": "pull-request",
+      "why": "the Elixir usage gate's control (docs/PORTING.md I12): the cook emitter renames the page's entry point, and docs/USAGE.md's Elixir example run against the corpus rebuilt through that compiler must go red naming cook_open_scene. It rebuilds the whole corpus through a sabotaged compiler, which is why it is a group of its own, as elixir-alloc is.",
+      "targets": [
+        "tables-elixir-usage-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
