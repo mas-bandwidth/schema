@@ -649,8 +649,8 @@ IO.puts("ok")
 // (docs/SPEC-TABLES.md §3, every number is one canonical LEB128); the leg's
 // pointer read had no answer for it and raised a CaseClauseError.
 //
-// THE REVERSED WITNESS takes the pointer read's damage answer out and the
-// probe must go red.
+// THE REVERSED WITNESS takes the pointer read's damage clause out (the read
+// raises again) and the probe must go red.
 func TestNonCanonicalNodeIndexIsDamageElixir(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
@@ -676,12 +676,12 @@ IO.puts("ok")
 	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
 		t.Fatalf("the Elixir reader does not answer a non-canonical node index as damage: %v\n%s", err, out)
 	}
-	const answer = "        # a node index that is not one canonical LEB128 is framing damage (§3)\n        {:cont, nil, %{report | malformed: true}}\n"
+	const answer = "      :error ->\n        # a node index that is not one canonical LEB128 is framing damage (§3)\n        {:cont, nil, %{report | malformed: true}}\n\n"
 	planted := map[string][]byte{}
 	k := 0
 	for name, data := range files {
 		k += strings.Count(string(data), answer)
-		planted[name] = []byte(strings.ReplaceAll(string(data), answer, "        {:cont, nil, report}\n"))
+		planted[name] = []byte(strings.ReplaceAll(string(data), answer, ""))
 	}
 	if k == 0 {
 		t.Fatal("the witness found no damage answer in the generated pointer read")
