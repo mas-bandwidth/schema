@@ -31,7 +31,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -50,10 +49,6 @@ var fuzzMutantsPerInstance = envInt("SCHEMA_SQUIRREL_FUZZ_MUTANTS", 200)
 // target makes it an argument too, so a night's search is replayable by one
 // command.
 var fuzzSeed = envSeed("SCHEMA_SQUIRREL_FUZZ_SEED", 0x5351554952524c46) // "SQUIRRLF"
-
-// fuzzDeadline, when non-zero, is the instant a nightly campaign must stop by;
-// the pull request's target leaves it zero (a fixed mutant count).
-var fuzzDeadline time.Time
 
 func envInt(name string, def int) int {
 	if v := os.Getenv(name); v != "" {
@@ -465,9 +460,6 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 				return mutants, fmt.Errorf("the driver carried %s.%s (variable=%t) in the builder=%t arm", r.unit, r.root, variable, builder)
 			}
 			for j := range fuzzMutantsPerInstance {
-				if !fuzzDeadline.IsZero() && time.Now().After(fuzzDeadline) {
-					return mutants, fmt.Errorf("the nightly budget expired after %d agreeing mutants; raise SCHEMA_SQUIRREL_FUZZ_SECONDS", mutants)
-				}
 				rng := &splitmix64{state: fuzzSeed ^ uint64(si)<<32 ^ uint64(j)}
 				data := fuzzMutant(s.wire, rng)
 				where := fmt.Sprintf("seed %#x, instance %d (%s), mutant %d, unit %s, root %s, builder arm %t\n  mutant (%d bytes): %x",

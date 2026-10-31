@@ -5,14 +5,15 @@ package squirreltable_test
 // wire of the tables conformance corpus, mutated with splitmix64, read through
 // the Squirrel leg's generated load and through the compiler's own engine, and
 // required to agree. What the nightly adds is an argument: the corpus file the
-// harness reads, the seed and the mutation count, and a wall budget the search
-// stops at. No finding is invented here and no second fuzzer is forked.
+// harness reads, the seed and the mutation count. The search is a pure function
+// of those arguments and reads no clock; its wall budget is go test's -timeout,
+// which the Makefile sets from SQUIRREL_FUZZ_SECONDS. No finding is invented
+// here and no second fuzzer is forked.
 
 import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
@@ -58,19 +59,15 @@ func nightlyCampaign(t *testing.T) string {
 }
 
 // TestSquirrelNightlyFuzz is the target's test: the corpus the Makefile
-// selected, then the differential within the budget. A campaign that cannot
-// finish in the budget fails by name (SCHEMA_SQUIRREL_FUZZ_SECONDS) rather than
-// being silently truncated.
+// selected, then the differential over every seed's full mutant count. A
+// campaign that cannot finish in the budget is killed by go test's -timeout,
+// which names the test, rather than being silently truncated.
 func TestSquirrelNightlyFuzz(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 
 	corpus := nightlyCampaign(t)
 	paths := nightlyFuzzCorpus(t, corpus)
-
-	seconds := envInt("SCHEMA_SQUIRREL_FUZZ_SECONDS", 540)
-	start := time.Now()
-	fuzzDeadline = start.Add(time.Duration(seconds) * time.Second)
 
 	n, err := runWireFuzzDifferential(t, nil)
 	if err != nil {
@@ -79,9 +76,6 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 	if n == 0 {
 		t.Fatal("the campaign compared no mutants")
 	}
-	if elapsed := time.Since(start); elapsed > time.Duration(seconds)*time.Second {
-		t.Fatalf("the campaign took %s, past its %ds budget", elapsed, seconds)
-	}
-	t.Logf("nightly fuzz: %d mutants over %d corpus schemas, 0 divergences (seed %#x, budget %ds, %s)",
-		n, len(paths), fuzzSeed, seconds, time.Since(start).Round(time.Millisecond))
+	t.Logf("nightly fuzz: %d mutants over %d corpus schemas, 0 divergences (seed %#x, %d per instance)",
+		n, len(paths), fuzzSeed, fuzzMutantsPerInstance)
 }

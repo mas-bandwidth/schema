@@ -9,7 +9,7 @@ name: Schema squirrel nightly fuzz
 # docs/SPEC-TABLES.md §4.2). The campaign itself is
 # `make schema-squirrel-nightly-fuzz` (make/schema-squirrel-nightly-fuzz.mk):
 # the port's seeded mutation differential over the tables conformance corpus,
-# bounded by SCHEMA_SQUIRREL_FUZZ_SECONDS (ten minutes a night).
+# bounded by SQUIRREL_FUZZ_SECONDS, go test's -timeout (inside ten minutes a night).
 #
 # IT IS NIGHTLY, NEVER PER PUSH. Nothing about a search that runs for minutes
 # belongs on the iteration path (owner's rule: CI that runs per commit finishes

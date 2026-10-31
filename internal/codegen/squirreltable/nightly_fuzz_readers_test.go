@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
@@ -126,28 +125,18 @@ func fuzzReaderSeeds(t *testing.T) (string, map[string]string, []fuzzReaderSeed)
 	return dir, mods, seeds
 }
 
-func nightlyReaderBudget(t *testing.T, what string) (time.Time, int) {
-	t.Helper()
-	seconds := envInt("SCHEMA_SQUIRREL_FUZZ_SECONDS", 540)
-	mutants := envInt("SCHEMA_SQUIRREL_FUZZ_MUTANTS", 200)
-	return time.Now().Add(time.Duration(seconds) * time.Second), mutants
-}
-
 func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 	nightlyCampaign(t)
 	dir, mods, seeds := fuzzReaderSeeds(t)
-	deadline, mutantsPer := nightlyReaderBudget(t, "strict")
+	mutantsPer := fuzzMutantsPerInstance
 	var p strings.Builder
 	p.WriteString(strictFuzzPrelude)
 	inputs := map[string][]byte{}
 	n := 0
 	for si, s := range seeds {
 		for j := range mutantsPer {
-			if time.Now().After(deadline) {
-				t.Fatalf("the strict-read budget expired after %d mutants; raise SCHEMA_SQUIRREL_FUZZ_SECONDS", n)
-			}
 			rng := &splitmix64{state: fuzzSeed ^ uint64(si)<<32 ^ uint64(j) ^ 0x535452494354}
 			data := fuzzMutant(s.wire, rng)
 			key := fmt.Sprintf("strict_%d_%d", si, j)
@@ -167,7 +156,7 @@ func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 			t.Fatalf("the strict probe answered %q, not key|reason", line)
 		}
 	}
-	t.Logf("strict fuzz: %d mutants over %d conformance seeds, every refusal named (budget %ds)", n, len(seeds), int(time.Until(deadline).Seconds()))
+	t.Logf("strict fuzz: %d mutants over %d conformance seeds, every refusal named", n, len(seeds))
 }
 
 func TestSquirrelNightlyFuzzTextJSON(t *testing.T) {
@@ -175,16 +164,13 @@ func TestSquirrelNightlyFuzzTextJSON(t *testing.T) {
 	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 	nightlyCampaign(t)
 	dir, mods, seeds := fuzzReaderSeeds(t)
-	deadline, mutantsPer := nightlyReaderBudget(t, "text/json")
+	mutantsPer := fuzzMutantsPerInstance
 	var p strings.Builder
 	p.WriteString(textJSONFuzzPrelude)
 	inputs := map[string][]byte{}
 	n, textSeeds, jsonSeeds := 0, 0, 0
 	for si, s := range seeds {
 		for j := range mutantsPer {
-			if time.Now().After(deadline) {
-				t.Fatalf("the text/json budget expired after %d mutants; raise SCHEMA_SQUIRREL_FUZZ_SECONDS", n)
-			}
 			rng := &splitmix64{state: fuzzSeed ^ uint64(si)<<32 ^ uint64(j) ^ 0x54455854534f4e}
 			key := fmt.Sprintf("text_%d_%d", si, j)
 			inputs[key] = fuzzMutant(s.text, rng)
