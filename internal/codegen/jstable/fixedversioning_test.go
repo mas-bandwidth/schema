@@ -43,6 +43,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -170,6 +171,7 @@ var jsVersionRows = []jsVersionRow{
 func TestJSFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := jsFixedCorpus(t)
 	node := jsNode(t)
+	nonFinite := jsManifestNonFinite(t, filepath.Join(corpus, "manifest.txt"))
 	for _, r := range jsVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -187,6 +189,27 @@ func TestJSFixedVersioningNewReadsOld(t *testing.T) {
 				counters = fmt.Sprintf(`if (r.widened !== %d) {
   fail("this row owes EXACTLY %d widen entries per record (§5.9 #33: no fold across a widen), not " + r.widened);
 }`, r.widenedExact, r.widenedExact)
+			}
+			if nonFinite["old_"+r.row+".bin"] {
+				// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung),
+				// and under the finite rule of 2026-10-27 the newer reader
+				// refuses it on its raw bits before any record lands
+				// (docs/SPEC-TABLES.md §3.3): a must-refuse vector until the
+				// finite-tables plan's C++ card regenerates the corpus
+				// (tables-finite/cpp), and an ordinary row after.
+				src := fmt.Sprintf(`
+const data = readFileSync(%q);
+const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
+const report = new TableFixedReport();
+const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
+if (n !== -1 || report.refused !== TableFixedRefusal.NonFiniteFloat) {
+  fail("the non-finite float the older writer wrote was not refused as non_finite_float: n=" + n + " " + reason(report));
+}
+`, filepath.Join(corpus, "old_"+r.row+".bin"))
+				if out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src); err != nil {
+					t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
+				}
+				return
 			}
 			// THE VALUE ORACLE IS THE CORPUS MANIFEST (§5.9 #37), for EVERY row
 			// and not the two a hand-written check covered.
@@ -730,6 +753,52 @@ func jsManifestPath(key string, renamed map[string]string) (string, bool) {
 		path += fmt.Sprintf("[%d]", i)
 	}
 	return path, true
+}
+
+// jsManifestNonFiniteValue is one manifest value spelled `<decimal>|0x<bits>`,
+// the bits eight hex digits for a float32 and sixteen for a float64.
+var jsManifestNonFiniteValue = regexp.MustCompile(`^[A-Za-z0-9_.\[\]]+=[^|]*\|0x([0-9A-Fa-f]{16}|[0-9A-Fa-f]{8})$`)
+
+// jsManifestNonFinite answers the corpus files whose manifest values spell a
+// NaN or an infinity (docs/SPEC-TABLES.md §3.3): every read refuses such a
+// file as non_finite_float, so its row is a must-refuse vector and not a value
+// comparison. No manifest answers none.
+func jsManifestNonFinite(t *testing.T, path string) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return out
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, ok := strings.Cut(line, " values=")
+		if !ok {
+			continue
+		}
+		file := ""
+		for field := range strings.FieldsSeq(head) {
+			if v, ok := strings.CutPrefix(field, "file="); ok {
+				file = v
+			}
+		}
+		for value := range strings.SplitSeq(values, ",") {
+			m := jsManifestNonFiniteValue.FindStringSubmatch(value)
+			if m == nil {
+				continue
+			}
+			bits, err := strconv.ParseUint(m[1], 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(m[1]) == 8 && bits&0x7F800000 == 0x7F800000 || len(m[1]) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000 {
+				out[file] = true
+			}
+		}
+	}
+	return out
 }
 
 // jsManifestCompare is ONE assertion for one manifest value, or nothing where

@@ -189,13 +189,15 @@ and a generated codec must not depend on the compiler's inlining budget.
 
 A port may take a per-language allowance from this where performance needs it
 in an extreme case (Glenn, 2026-10-15), and JavaScript takes one: the block
-form's and the record objects' float32 accessors read the 32 bits in place as
-an integer and hand them to the unit's ONE module-level conversion
-(`TableBlockReadF32`, `internal/codegen/jstable/record.go` jsF32ReaderSource),
-whose double comes back out of the call. The allowance is held by its
-instruments, not by trust: `make tables-js-alloc` reads the block walk at zero
-bytes per iteration, and `test/js-tables/main.mjs`'s float32 oracle check
-proves the conversion moved no bit (M21).
+form's and the record objects' float accessors hand the view and the offset
+to the unit's ONE module-level reader per width (`TableBlockReadF32`,
+`TableBlockReadF64`, `internal/codegen/jstable/record.go` jsF32ReaderSource),
+which tests the raw bits (a NaN or an infinity is refused and latched on the
+view, docs/SPEC-TABLES.md §3.3) and whose double comes back out of the call.
+The allowance is held by its instruments, not by trust: `make tables-js-alloc`
+reads the block walk at zero bytes per iteration, and `test/js-tables/main.mjs`'s
+float32 oracle check proves the read moved no finite bit and refused every
+non-finite pattern.
 
 **Reference.** `internal/codegen/cpptable/cpptable.go:572-573`
 (`table_bits_to_float` and its three siblings, `inline` free functions over

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -240,6 +241,9 @@ export class TableVariableReport {
     this.duplicate = 0;
     this.retained = 0;
     this.retainLost = 0;
+    // the first float a read found to be a NaN or an infinity, <Table>.<field>
+    // (docs/SPEC-TABLES.md §3.3): the read refuses, reason non_finite_float
+    this.nonFiniteFloat = "";
   }
 }
 
@@ -286,6 +290,11 @@ class TableVariableWriter {
   i32(v) { this.u32(v | 0); }
   u64(v) { for (let i = 0; i < 8; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
   u128(v) { for (let i = 0; i < 16; i++) { this.b.push(Number(v & 0xffn)); v = v >> 8n; } }
+  f32(v) {
+    const d = TableVariableScratch;
+    d.setFloat32(0, v, true);
+    this.u32(d.getUint32(0, true));
+  }
   f64(v) {
     const d = TableVariableScratch;
     d.setFloat64(0, v, true);
@@ -786,12 +795,41 @@ func floatDefault(f *ir.Field) string {
 	return jsFloat(f.DefFloat)
 }
 
-func floatProps(f *ir.Field) string {
+// floatProps renders what a float needs: its width, the compressed range a
+// read clamps to, and nf, the <Owner>.<field> name a non-finite read refuses
+// as (docs/SPEC-TABLES.md §3.3).
+func (g *variableGen) floatProps(f *ir.Field) string {
 	lo, hi := "null", "null"
 	if f.HasFloatRange {
 		lo, hi = jsFloat(f.FMin), jsFloat(f.FMax)
 	}
-	return fmt.Sprintf("f32: %v, lo: %s, hi: %s", f.Type.Kind == ir.TFloat32, lo, hi)
+	return fmt.Sprintf("f32: %v, lo: %s, hi: %s, nf: %s", f.Type.Kind == ir.TFloat32, lo, hi, jsStr(g.floatOwner(f)))
+}
+
+// floatOwner names a float field <Owner>.<field> for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3), the owner being the table, type or union
+// that declares it, as the Go leg's floatOwner names it.
+func (g *variableGen) floatOwner(f *ir.Field) string { return jsFloatOwner(g.unit, f) }
+
+// jsFloatOwner is floatOwner over a unit, for every form that names one.
+func jsFloatOwner(u *ir.Unit, f *ir.Field) string {
+	for _, m := range []map[string]*ir.Struct{u.Tables, u.Structs} {
+		for _, st := range m {
+			if slices.Contains(st.Fields, f) {
+				return st.DeclaredName() + "." + f.Name
+			}
+		}
+	}
+	for _, m := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range m {
+			for i := range un.Variants {
+				if un.Variants[i].F == f {
+					return un.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	return f.Name
 }
 
 func jsFloat(v float64) string {
@@ -956,7 +994,7 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		}
 		fmt.Fprintf(&b, "s: \"bool\", js: \"b\", def: %s }", def)
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		fmt.Fprintf(&b, "s: \"float\", js: \"n\", %s, def: %s }", floatProps(f), floatDefault(f))
+		fmt.Fprintf(&b, "s: \"float\", js: \"n\", %s, def: %s }", g.floatProps(f), floatDefault(f))
 	default:
 		fmt.Fprintf(&b, "s: \"int\", js: \"n\", %s, def: %s }", intProps(f), intDefault(f))
 	}
@@ -982,7 +1020,7 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 	case f.Type.Kind == ir.TBool:
 		return "{ s: \"bool\", js: \"b\" }"
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
-		return fmt.Sprintf("{ s: \"float\", js: \"n\", %s }", floatProps(f))
+		return fmt.Sprintf("{ s: \"float\", js: \"n\", %s }", g.floatProps(f))
 	}
 	return fmt.Sprintf("{ s: \"int\", js: \"n\", %s }", intProps(f))
 }

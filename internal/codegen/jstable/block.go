@@ -176,10 +176,14 @@ func (g *blockGen) emit() {
 		g.pf("// Its wire (§3) is unaffected — only this projection is absent, and it is\n")
 		g.pf("// absent by construction rather than by refusal.\n\n")
 	}
-	// a float32 accessor of this module calls the unit's one conversion,
-	// defined in the home (jsF32ReaderSource) and imported here
-	if !g.home && strings.Contains(g.body.String(), jsF32Reader+"(") {
-		g.needHome(jsF32Reader)
+	// a float accessor of this module calls the unit's one reader for its
+	// width, defined in the home (jsF32ReaderSource) and imported here
+	if !g.home {
+		for _, reader := range jsFloatReaders {
+			if strings.Contains(g.body.String(), reader+"(") {
+				g.needHome(reader)
+			}
+		}
 	}
 }
 
@@ -250,7 +254,7 @@ func (g *blockGen) assemble() []byte {
 // blockHomeSurface is every name the unit's block home exports: the shared
 // runtime, and one accessor object per record the block form lays out.
 func blockHomeSurface(blocks *ir.BlockUnit) []string {
-	names := []string{"BuildVersion", "TableBlockByteOrder", "TableBlockLayout", "TableBlockMagic"}
+	names := []string{"BuildVersion", "TableBlockByteOrder", "TableBlockLayout", "TableBlockMagic", jsNonFiniteFloat}
 	for _, name := range blocks.Order {
 		if blocks.Layout(name) != nil {
 			names = append(names, recordName(name))
@@ -565,7 +569,7 @@ func (g *blockGen) emitBlockAccessors(bl *ir.BlockLayout) {
 				elem = fl.Size
 			}
 			g.pf("  function %s(block, index = 0) { const view = block.View; return %s; }\n", member,
-				jsScalarRead(kind, elem, fmt.Sprintf("%d + index * %d", fl.Offset, elem)))
+				jsScalarRead(kind, elem, fmt.Sprintf("%d + index * %d", fl.Offset, elem), bl.Table.DeclaredName()+"."+f.Name))
 			if isFlagsField(f) {
 				g.pf("  function %sHas(block, bit, index = 0) { const view = block.View; return %s; }\n", member,
 					jsFlagBitRead(fmt.Sprintf("%d + index * %d", fl.Offset, elem)))
