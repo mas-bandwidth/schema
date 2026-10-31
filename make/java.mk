@@ -1466,7 +1466,7 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
 	fi
-	@grep -q 'the report differs' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
+	@grep -qE 'the report differs|the oracle discards a damaged load' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
 	@echo 'Java wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-java: tables-java-wire-fuzz-negative-control

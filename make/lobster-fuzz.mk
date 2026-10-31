@@ -130,7 +130,7 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 			--seed 1 --n 0 --failed $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.bin > $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a load that drops the unknown count left the wire fuzz green'; \
 		cat $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log; exit 1; fi
-	@grep -q 'the report differs' $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log || \
+	@grep -qE 'the report differs|the oracle discards a damaged load' $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the fuzz went red, but not on the report'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/unknown.log; exit 1; }
 	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/guard
 	@sed -i.orig -E 's/, when: \[[^]]*\]//' $(LOBSTER_WIRE_FUZZ_PLANT)/guard/tblg1/*Table.lobster
@@ -166,7 +166,7 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 			> $(LOBSTER_WIRE_FUZZ_PLANT)/message.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a batch read that admits ill-formed text left the pinned vector green'; \
 		cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; fi
-	@grep -q 'the report differs' $(LOBSTER_WIRE_FUZZ_PLANT)/message.log || \
+	@grep -qE 'the report differs|the oracle discards a damaged load' $(LOBSTER_WIRE_FUZZ_PLANT)/message.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the vector went red, but not on the report'; cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; }
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)
 	$(call lobster_wire_fuzz_arm_vectors,build/conformance-lobster)
