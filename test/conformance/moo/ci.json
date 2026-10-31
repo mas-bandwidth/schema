@@ -1,1 +1,2 @@
-{"targets": "build/conformance-harness build/conformance-moo"}
+{"targets": "build/conformance-harness build/conformance-moo",
+ "moo": "v1.3.0"}
