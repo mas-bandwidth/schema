@@ -212,3 +212,38 @@ stacked on layer 1, landed one at a time against current main.
 Each layer flips its cells in the register (docs/PORTING.md, the `moo` column)
 and the roadmap (`port/moo/*`). A runtime gap found on the way is fixed in
 serialize.moo, never worked around here.
+
+## RETAIN-UNKNOWN (layer 3, docs/SPEC-TABLES.md §6.6)
+
+`runtime/table_retain.moo` carries the opt-in. The surface is the runtime's,
+beside `ReadStrict` and `SaveMessages`, taking the root by name:
+
+- `R.newStore(capacity, idCapacity)` is the caller's two stores, by capacity;
+  `R.used(store)` and `R.ids(store)` read them back.
+- `R.LoadRetain(root, bytes, report, store)` is the tolerant load into a
+  region with the store on, `R.MeasureRetain(root, value, store)` and
+  `R.SaveRetain(root, value, store, report)` write the retained fields back at
+  the end of their own body. The report accumulates across the pair
+  (`report.retained`, `report.retainLost`), `SaveRetain` refuses a nil report
+  (`retain_needs_report`), and all three refuse a fixed-class root by name
+  (`fixed_class_root`).
+- `R.LoadRetainMessages(vocabulary, root, data, capacity, stores, report)` is a
+  form-2 batch with a store a body; each body is saved as a FILE, the one
+  direction retention crosses the forms.
+
+A retained record is reader-private: the field's id and kind and its payload
+with every reference resolved, lengths at eight bytes written after their
+content, cost nine bytes plus the payload (the Go engine's own layout, so the
+`short` capacity rows drop the same record). It belongs to the table instance
+the load filled, so the walks that build a body also say what a later legal
+occurrence supersedes: `table_load.moo`, `table_save.moo` and
+`table_message.moo` carry hooks that are nil on every plain read and save. The
+ids the unit can spell (`ir.TableWireIds`) are registered by every table
+module (`retainform.go`), and decide which store an id takes at save.
+
+Held by `retain_test.go` (the manifest's `retain` rows, the evolved pairs read
+through the variable class, the pair's promises), `retain_occurrence_test.go`
+(the occurrence rules against hand-built wires), `retain_message_test.go` (the
+`retain-message` rows and every construct as sender, read by a reader that
+names none of its fields), each against the Go engine's store bytes, counters
+and saved bytes; each gate has a negative control.
