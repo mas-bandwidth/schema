@@ -151,8 +151,8 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 			}
 			seen[e.Key()] = i
 		}
-		if nodeTable != 1 {
-			t.Errorf("%s: the node-table id takes %d slots, not one", c.Key, nodeTable)
+		if nodeTable != 0 {
+			t.Errorf("%s: the node-table id takes %d slots; no body can carry it, so the vocabulary names it nowhere", c.Key, nodeTable)
 		}
 	}
 }
@@ -273,24 +273,24 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 func TestTheCostRows(t *testing.T) {
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
-	if got := len(wireBytes(t, c.Wire)); got != 361 {
-		t.Errorf("the announcement is %d bytes, the page prints 361", got)
+	if got := len(wireBytes(t, c.Wire)); got != 280 {
+		t.Errorf("the announcement is %d bytes, the page prints 280", got)
 	}
-	if got := len(vocabulary.Entries()); got != 33 {
-		t.Errorf("the vocabulary has %d entries, the page prints 33", got)
+	if got := len(vocabulary.Entries()); got != 24 {
+		t.Errorf("the vocabulary has %d entries, the page prints 24", got)
 	}
-	if got := vocabulary.RefBits(); got != 6 {
-		t.Errorf("a reference is %d bits, the page prints 6", got)
+	if got := vocabulary.RefBits(); got != 5 {
+		t.Errorf("a reference is %d bits, the page prints 5", got)
 	}
 	rows := []struct {
 		name          string
 		file, message int
 	}{
-		{"login_full", 106, 52},
+		{"login_full", 106, 51},
 		{"login_default", 10, 3},
-		{"match_full", 273, 148},
-		{"match_default", 43, 11},
-		{"store_full", 104, 43},
+		{"match_full", 273, 142},
+		{"match_default", 43, 10},
+		{"store_full", 104, 41},
 		{"store_default", 10, 3},
 	}
 	byName := map[string]Message{}

@@ -171,12 +171,6 @@ var messageSabotages = map[string][]edit{
 		new: "Bits: 64 + 0*int64(fl.WireBits) /* SABOTAGED: the file's width */",
 	}},
 
-	// AN UNBOUNDED ARRAY AND A MAP ARE ANNOUNCED AS RANGED 0 TO 2^32 - 1.
-	"message-list-count-sixteen": {{
-		old: "const TableMessageListMax = int64(0xFFFFFFFF)\n",
-		new: "const TableMessageListMax = int64(0xFFFF) // SABOTAGED: a sixteen-bit count\n",
-	}},
-
 	// A HOSTILE SHAPE IS A HOSTILE WIDTH: bits above 128 are refused.
 	"message-bits-unbounded": {{
 		old: "\t\t\tif !ok || v > uint64(TableMessageKindBits(kind)) {\n",

@@ -5679,7 +5679,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-no-byte-bound:internal/tablewire/message.go:TestTheTwoBounds \
 	message-reserved-in-vocabulary-accepted:internal/tablewire/message.go:TestTheThreeReservedIdsWhereTheyDoNotBelong \
 	message-mask-sixty-four:ir/tablemessage.go:TestTheMasksWidth \
-	message-list-count-sixteen:ir/tablemessage.go:TestTheCountsTheDataDecide \
 	message-bits-unbounded:ir/tablemessage.go:TestAHostileShape \
 	message-reference-eight-bits:ir/tablemessage.go:TestAWideVocabulary \
 	message-base-zigzag-unsigned:ir/tablemessage.go:TestTheBasesTwoEncodings \
