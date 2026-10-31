@@ -19,12 +19,11 @@ import (
 // save the same bytes and write the same text, and both must read back
 // ascending, for a string key (UTF-8 byte order) and a signed integer key.
 //
-// The reversed witness makes the generated runtime's _stableSorted return its
-// input in stored order, and requires the probe red.
+// Its reversed witness is TestMapWriterSortDartNegativeControl.
 func TestMapWriterSortDart(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart")
-	u := buildUnit(t, "package book\n\ntable Book\n{\n    names map[string(8)]int32\n    ids map[int32]int32\n}\n")
+	u := buildUnit(t, mapSortProbeSchema)
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -33,6 +32,21 @@ func TestMapWriterSortDart(t *testing.T) {
 	if out, err := runMapSortProbe(t, dart, files, packetFiles(t, u), nil); err != nil {
 		t.Fatalf("the map writer does not hold the sort: %v\n%s", err, out)
 	}
+}
+
+// TestMapWriterSortDartNegativeControl is the gate's negative control
+// (tables-dart-map-sort-negative-control): the generated runtime's
+// _stableSorted returns its input in stored order, and the same probe must go
+// red on the saved bytes.
+func TestMapWriterSortDartNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "dart")
+	u := buildUnit(t, mapSortProbeSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dart := dartBinary(t)
 	unsorted := func(f map[string][]byte) {
 		for name, src := range f {
 			s := string(src)
@@ -50,6 +64,8 @@ func TestMapWriterSortDart(t *testing.T) {
 		t.Errorf("the reversed witness did not fail on the saved bytes:\n%s", out)
 	}
 }
+
+const mapSortProbeSchema = "package book\n\ntable Book\n{\n    names map[string(8)]int32\n    ids map[int32]int32\n}\n"
 
 func runMapSortProbe(t *testing.T, dart string, files, packet map[string][]byte, edit func(map[string][]byte)) ([]byte, error) {
 	t.Helper()

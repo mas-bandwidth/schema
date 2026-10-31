@@ -64,7 +64,7 @@ a type name where it is used.
 | `string(N)`, `bytes(N)` | a `string` of N bytes used as a buffer, and `<Name>Length:int` beside it (SPEC §4.7) | `schema_rt.zeros(N)`; a default is written in with `schema_rt.put` and its length set |
 | `wstring(N)` (§4.12) | a `string` of 2N bytes holding UTF-16LE code units, and `<Name>Length` in code units | `schema_rt.zeros(2N)` |
 | `[N]uint8` | a `string` of N bytes, 0-based — the bulk path's own type | `schema_rt.zeros(N)` |
-| `[N]T`, `[E]T` (key k at index k), any other element | a vector `[T]` of exactly N elements, 0-based | `[]`, then N `push`es of the element's construction |
+| `[N]T`, `[E]T` (key k at index k-1), any other element | a vector `[T]` of exactly N elements, 0-based | `[]`, then N `push`es of the element's construction |
 | `[..N]T`, `[A..N]T` | the same vector of N, and `<Name>Count:int` beside it | the count born at A (SPEC §4.6) |
 | `[N]string(M)` | `[string]` of N buffers, `<Name>Length:[int]` beside it | N fresh buffers, N zeros |
 | `const` | a top-level `let`: `int`, `float` or `Int128`, folded to its literal with the schema spelling as a trailing comment | — |
@@ -89,6 +89,7 @@ descriptor fact (`fixed`), not a storage difference.
 | `[..N]*T`, `[N]*T` | `[T?]`, nil-filled, and the count where counted | N `nil`s |
 | `map[K]V` (§2.8) | `[Entry]`, a vector of the generated `<Table><Field>Entry` class `{ Key, Value }`, which the save walk sorts by key | `[]` |
 | a union with table arms (§2.6) | as a packet union, in the table module | `Type = UTypeNone` |
+| `[E]T` in a table or a type a table reaches (§2.4) | the same vector, and three functions in the table module that take the key (docs/PORTING.md M5): `<Owner><Field>Slot(key)` is the slot key names, refused by name for None, a negative key and any key past `EMax` in every build (`schema_rt.keyed_slot`, a VM bounds error that names the array and the key, which `--runtime-no-asserts` keeps); `<Owner><Field>At(v, key)` reads it; `<Owner><Field>Each(v) key, e:` yields every key beside its element | — |
 | `\| required`, `\| deprecated`, `was`, `json = "…"`, `forms`, `integrity` | no storage: descriptor facts and generation facts | — |
 
 **The descriptor.** Beside every table's class and constructor,

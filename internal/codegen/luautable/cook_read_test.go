@@ -252,6 +252,9 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			}{
 				{"not_a_cook", mutate(cooked, func(b []byte) { b[0] ^= 1 }), false},
 				{"foreign_order", mutate(cooked, func(b []byte) { binary.BigEndian.PutUint64(b, cookMagic) }), false},
+				// THE HALF NO HARNESS SURFACE FORGES (docs/PORTING.md I7): the
+				// magic intact and the order word saying the other order
+				{"order_word", mutate(cooked, func(b []byte) { binary.LittleEndian.PutUint64(b[16:], 2) }), false},
 				{"wrong_build_version", mutate(cooked, func(b []byte) { b[8] ^= 1 }), false},
 				{"reserved_not_zero", mutate(cooked, func(b []byte) { b[48] = 1 }), false},
 				{"bad_alignment", mutate(cooked, func(b []byte) { b[40] = 3 }), false},

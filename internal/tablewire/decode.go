@@ -1095,7 +1095,7 @@ func (r *wireReader) textTotal(fv *tabletext.Field, decoded int) int {
 	}
 	var sum int64
 	keep := decoded
-	for i := 0; i < decoded; i++ {
+	for i := range decoded {
 		if rec := fv.Elems[i].Tab; rec != nil {
 			sum += int64(len(rec.Fields[0].Cell.Str))
 		}

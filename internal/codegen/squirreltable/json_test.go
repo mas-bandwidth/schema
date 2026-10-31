@@ -157,7 +157,9 @@ type jsonProbe struct {
 
 // runJsonProbe generates every manifest unit an instance or hostile row
 // names, writes the probe, and runs it under the pinned interpreter.
-func runJsonProbe(t *testing.T) *jsonProbe {
+// patch, when not nil, replaces emitted runtime files by name in every unit
+// the probe writes (a negative control's scratch copy).
+func runJsonProbe(t *testing.T, patch map[string]string) *jsonProbe {
 	t.Helper()
 	root, err := sqrun.RepoRoot()
 	if err != nil {
@@ -201,6 +203,9 @@ func runJsonProbe(t *testing.T) *jsonProbe {
 		}
 		for name, data := range tables {
 			writeFile(t, filepath.Join(out, name), data)
+		}
+		for name, data := range patch {
+			writeFile(t, filepath.Join(out, name), []byte(data))
 		}
 		mods[key] = squirreltable.ModuleName(u)
 		return true
@@ -299,7 +304,7 @@ func (pr *jsonProbe) jsonWriteRed(t *testing.T) map[string]string {
 // row is.
 func TestSquirrelJsonAgreesWithTheCorpus(t *testing.T) {
 	t.Parallel()
-	pr := runJsonProbe(t)
+	pr := runJsonProbe(t, nil)
 	if want := manifestInstanceLines(t, filepath.Join(pr.root, "testdata", "conformance", "tables", "MANIFEST.txt")); len(pr.rows.instances) != want {
 		t.Fatalf("read %d instance rows, the manifest has %d instance lines", len(pr.rows.instances), want)
 	}
@@ -607,4 +612,25 @@ func TestSquirrelJsonGuardedGroupsElide(t *testing.T) {
 		}
 	}
 	t.Logf("compared %d guarded Patrol texts against tabletext's write", len(cases))
+}
+
+// TestSquirrelJsonLabelNegativeControl is M14's control (docs/PORTING.md, the
+// `&node` label; docs/SPEC-TABLES.md §16.7). A scratch copy of the json runtime
+// writes a shared node in full at every appearance instead of defining it once
+// under "&node" and naming it by its label after (one anchor, matched exactly
+// once). The json-write comparison of TestSquirrelJsonAgreesWithTheCorpus must
+// then go red on graph_shared, the corpus row whose node two pointers share.
+func TestSquirrelJsonLabelNegativeControl(t *testing.T) {
+	t.Parallel()
+	const anchor = "  if (n <= 1) return writeValue(T, c, node, depth, g, out);\n"
+	runtime := string(squirreltable.Runtime()["schema_table_json.nut"])
+	if n := strings.Count(runtime, anchor); n != 1 {
+		t.Fatalf("the control's anchor appears %d times in the json runtime, want exactly once", n)
+	}
+	patched := strings.Replace(runtime, anchor, "  return writeValue(T, c, node, depth, g, out);\n", 1)
+	red := runJsonProbe(t, map[string]string{"schema_table_json.nut": patched}).jsonWriteRed(t)
+	if _, ok := red["graph_shared"]; !ok {
+		t.Fatalf("with the label removed, graph_shared's json-write stayed green (%d rows red): the gate cannot see the label", len(red))
+	}
+	t.Logf("with the label removed, %d json-write rows go red, graph_shared among them", len(red))
 }

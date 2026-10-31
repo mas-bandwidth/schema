@@ -235,7 +235,7 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/goose/goose.go` | the TYPE emitter (`Gen`, `Slots`, `TypeRef`, the literal renderers) and `Register`, the hook a later file joins from its own `init()` | this card only |
 | `internal/codegen/goose/read.go`, `write.go` | the type wire, joined through `goose.Register` | type-wire-read, type-wire-write |
 | `internal/codegen/goose/runtime/*.goose` | the type-wire runtime, `go:embed` by glob, emitted beside the modules: `schema_rt.goose` now (the `Int128` lanes), `serialize*.goose` and the float sidecar later | one file per card |
-| `internal/codegen/goosetable/goosetable.go` | the TABLE emitter: structs, constructors and one DESCRIPTOR per table as data, and `goosetable.Register` | this card only |
+| `internal/codegen/goosetable/goosetable.go` | the TABLE emitter: structs, constructors and one DESCRIPTOR per table as data, and `goosetable.Register`, and the unit's package modules: `<package>_<surface>.goose` (`PackageModule`, `goosetable.RegisterUnit`), one per surface, the one home of the data that spans every file (the table wire's registry `TableUnit` in `<package>_unit.goose`, the message form's vocabulary, the accelerators' record numbers). Each is named for the package, so a file that sorts earlier relocates nothing (docs/PORTING.md J2), and each file's modules name it rather than copy its numbers | this card only |
 | `internal/codegen/goosetable/<form>.go` | a form's emitted code (the per-table accessor), joined through `goosetable.Register` | fixedform.go, messageform.go, … — one per card |
 | `internal/codegen/goosetable/runtime/*.goose` | the table runtime by glob, one file per card: `schema_tables.goose` now (the descriptor types); `load.goose`, `save.goose`, `fixed.goose`, `message.goose`, … later | one file per card |
 | `internal/codegen/goosetable/runtime/registry/<construct>.goosereg` | THE REGISTRY's fragments: a card's dispatch registrations (an enum variant, a table row), assembled onto the end of `schema_tables.goose` when the target emits it (`goosetable/registry.go`) | one file per card; none edits another's, and none edits a registry's enum or array in a `.goose` file |
@@ -374,25 +374,36 @@ lowercase hex lines.**
   `$GOOSE build -O2 <file>.goose -o <exe>`: the bench machine's C compiler
   (gcc), never TinyCC.
 - **The conformance driver** (`test/conformance/goose/driver`) runs
-  `goose run main.goose -- <surface> <manifest>` (the program's arguments
-  follow `--`; without it `goose run` takes them as more input files and
-  refuses "multiple input files given"), passes the program's exit status
+  `goose run main.goose -- <surface> <manifest> <unit>` (the program's
+  arguments follow `--`; without it `goose run` takes them as more input files
+  and refuses "multiple input files given"), passes the program's exit status
   through (2 is ABSENT), and splits stdout — one line per case: the case
-  name, a space, the answer's bytes in hex, or the word `absent` — into one
-  file per case in `<outdir>` (`<case>.absent` for the absent word). The
-  leg's CI row (`ci.json`) installs the pin with `make dist-goose` before the
-  harness runs. **`main.goose` answers no surface yet**, and `list` is empty:
-  every harness surface reads a form the port does not carry (the id-table
-  wire, the message form, JSON, the cook, the block form), and the one codec
-  it does carry, the fixed form, is judged against the C++ reference's byte
-  oracle by `make test-goose`, which builds `build/fixedform-corpus` and runs
-  under `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to
-  `list` and answers it there; `compiler/carries_goose.go` claims no
-  construct, so the two agree.
+  name, a space, the answer's bytes in hex, or the word `absent` and an
+  optional reason — into one file per case in `<outdir>` (`<case>.absent`
+  holding the reason). The leg's CI row (`ci.json`) installs the pin with
+  `make dist-goose` before the harness runs. **A surface run is one program
+  per unit**: Goose compiles whole programs and each unit carries its own copy
+  of the runtime, so the driver copies `main.goose` beside that unit's
+  generated modules (`build/conformance-goose/<unit>`) with two glue modules:
+  `conformance_unit.goose`, generated, which imports the unit's modules and
+  names its registry, and `unit.goose`, the unit's text glue
+  (`units/<unit>.goose`, the roots that answer `json-hostile` through
+  `goosetable/json_form.go`, or the empty `test/conformance/goose/unit.goose`
+  for a unit that has none). The block and cook surfaces run `accel.goose` in
+  a copy of the unit's directory instead. A case of a unit the target
+  refused is written absent. `list` names the surfaces the leg answers, and
+  main.goose's and accel.goose's headers say what each reads. The fixed form
+  is judged against the C++ reference's byte oracle by `make test-goose`,
+  which builds `build/fixedform-corpus` and runs under
+  `SCHEMA_REQUIRE_CORPUS=1`. A card that carries a surface adds it to `list`
+  and answers it there.
 - **The wire-fuzz pipe** (one process, little-endian frames, a reply flushed
-  per mutant) is a `goose build -O2` executable reading stdin with
-  `read_stdin` and writing with `write_stdout` and `flush_stdout`: Goose
-  speaks it directly, with no host shim (schema-goose-fuzz-differential).
+  per mutant) is a `goose build -O2` executable per unit
+  (`test/conformance/goose/wirefuzz.goose`, make/goose-fuzz.mk) writing with
+  `write_stdout` and `flush_stdout`. It reads stdin through a ten-line C
+  sidecar (`wirefuzz_io.c`, named by `wirefuzz.build`), because the standard
+  library's `read_stdin` reads to end of input and `read_line` to a newline,
+  and the pipe is a conversation: neither returns at a frame boundary.
 
 ## THE PACKET WIRE
 
@@ -508,12 +519,12 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `goosetable/fixedform.go`, `goosetable/runtime/fixed.goose` |
 | schema-goose-fixed-form-evolution | fixed tables: versioning, widening and every refusal by Go's name | `goosetable/fixedevolve.go`, its runtime file |
 | schema-goose-message-form | the message form, form byte 2, against its goldens | `goosetable/messageform.go`, `goosetable/runtime/message.goose` |
-| schema-goose-block-form | the block form: builder and reflective read (M7, I5) | `goosetable/block_form.go`, its runtime file |
-| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook.go`, its runtime file |
+| schema-goose-block-form | the block form: builder and reflective read (M7, I5) | `goosetable/block_form.go`, `goosetable/accel.go` (shared with the cook), `goosetable/runtime/block_form.goose`, `test/conformance/goose/accel.goose`, `make/goose-blockcook.mk` |
+| schema-goose-cook | the cooked form: Cook, CookMeasure and Open (M8) | `goosetable/cook_form.go`, `goosetable/cook_write.go`, `goosetable/runtime/cook_form.goose` |
 | schema-goose-json-form | the JSON text form and base64 text (I13) | `goosetable/json_form.go`, its runtime file, `compiler/carries_goose_json_form.go` |
 | schema-goose-text-form | the hand-editable text form (M9, M14) | `goosetable/text_form.go`, its runtime file |
 | schema-goose-conformance-leg | `main.goose`, `make conformance` and the hostile corpus (M4b, I2, I11, J2) | `test/conformance/goose/main.goose`, `make/goose-conformance.mk` |
-| schema-goose-fuzz-differential | the wire fuzzer against the Go engine (I3, I15) | `test/conformance/goose/wirefuzz.goose`, `make/goose-fuzz.mk` |
+| schema-goose-fuzz-differential | the wire fuzzer against the Go engine (I15), and the accelerators' forgery fuzzer (I3) | `test/conformance/goose/wirefuzz.goose`, `make/goose-fuzz.mk`; `test/conformance/goose/accel.goose` (block-fuzz, cook-fuzz), `test/conformance/goose/negative-control-fuzz`, `make/goose-blockcook.mk` |
 | schema-goose-ci-on-fleet | CI on the fleet runners (J3) | `.github/workflows/schema-goose.yml` |
 | schema-goose-bench | the packet and table bench legs beside C++, Rust and Go (I8, J5) | `bench/goose/`, `bench/tables/goose/` |
 | schema-goose-bench-report | Goose vs C++ vs Rust (and Lobster) on one machine | `docs/BENCH-GOOSE-LOBSTER.md` |

@@ -230,6 +230,38 @@ local blobKey = function(kind, val) {
   return "b:" + hexBytes(val);
 };
 
+local mapKeyCmp = function(a, b) {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
+
+// THE ORDER A MAP'S ENTRIES RIDE (docs/SPEC-TABLES.md §2.8): ascending by key,
+// a key met twice keeping its LAST entry, whatever order the caller built
+// them in. The writer holds the sort, so the numbering walks this order and
+// the field writes it. The sort breaks a key tie on the entry's position, so
+// "last" is the caller's last however the sort is implemented.
+local mapWriteOrder = function(val, keyMember) {
+  local order = [];
+  for (local i = 0; i < val.len(); i++) order.append(i);
+  order.sort(function(x, y) {
+    local c = mapKeyCmp(val[x][keyMember], val[y][keyMember]);
+    return c != 0 ? c : (x < y ? -1 : (x > y ? 1 : 0));
+  });
+  local idx = [];
+  local haveLast = false;
+  local last = null;
+  foreach (e in order) {
+    local key = val[e][keyMember];
+    if (haveLast && mapKeyCmp(last, key) == 0) { idx[idx.len() - 1] = e; }
+    else { idx.append(e); haveLast = true; last = key; }
+  }
+  return idx;
+};
+
 // THE NUMBERING (docs/SPEC-TABLES.md §3.1): first-visit order of a depth-first
 // pre-order walk from the root over POINTER EDGES, descending through every
 // by-value edge. Node 1 is the root; record k is index k + 1.
@@ -255,12 +287,11 @@ shapeEdges = function(T, d, val, out) {
     return;
   }
   if (d.shape == "map") {
-    // a map reaches its entry values BY VALUE, in the order it writes them
-    // (docs/SPEC-TABLES.md §2.8, §3.1)
+    // a map reaches its entry values BY VALUE, in the order it writes them,
+    // ascending by key (docs/SPEC-TABLES.md §2.8, §3.1)
     local kd = d.mapkey;
     local vd = d.mapvalue;
-    local n = val.len();
-    for (local i = 0; i < n; i++) {
+    foreach (i in mapWriteOrder(val, kd.member)) {
       local ent = val[i];
       shapeEdges(T, kd, ent[kd.member], out);
       shapeEdges(T, vd, ent[vd.member], out);
@@ -606,15 +637,6 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
   return writePrim(w, d, val, ids);
 };
 
-local mapKeyCmp = function(a, b) {
-  if (a == null && b == null) return 0;
-  if (a == null) return -1;
-  if (b == null) return 1;
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-};
-
 // A MAP FIELD (docs/SPEC-TABLES.md §2.8): the entries ride in ASCENDING KEY
 // ORDER with no key twice — a writer's rule, byte-identical output requires
 // it — as kind 14 over element kind 13, each entry an L-framed `{ key, value }`
@@ -627,18 +649,7 @@ writeMapField = function(T, d, val, w, ids, nodes, root) {
   local n = val.len();
   // a present empty optional map writes its field header and `0d 00` (§2.8)
   if (n == 0 && !d.optional) return true;
-  local keyMember = d.mapkey.member;
-  local order = [];
-  for (local i = 0; i < n; i++) order.append(i);
-  order.sort(function(x, y) { return mapKeyCmp(val[x][keyMember], val[y][keyMember]); });
-  local idx = [];
-  local haveLast = false;
-  local last = null;
-  foreach (e in order) {
-    local key = val[e][keyMember];
-    if (haveLast && mapKeyCmp(last, key) == 0) { idx[idx.len() - 1] = e; }
-    else { idx.append(e); haveLast = true; last = key; }
-  }
+  local idx = mapWriteOrder(val, d.mapkey.member);
   local mark = idsMark(ids);
   local field = newWriter();
   wleb(field, idsRef(ids, d.id)); wu8(field, 14);
