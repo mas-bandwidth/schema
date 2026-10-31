@@ -794,7 +794,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 		t.Errorf("the tolerant wire differs from the pinned announce_unknown_field at byte %d", firstDifference(pinned, tolerant))
 	}
 	v, report, err := readAnnouncement(tolerant)
-	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 33 {
+	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 32 {
 		t.Errorf("the tolerant row did not set the vocabulary: err=%v announced=%v version=%016x entries=%d", err, v.Announced(), v.BuildVersion(), len(v.Entries()))
 	}
 	if report.Unknown != 1 || report.Malformed || report.Refused {
@@ -1485,8 +1485,8 @@ func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
 	}
 }
 
-// TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule: kinds `12` and
-// `33`'s content rule MET AT A NODE (docs/SPEC-TABLES.md §3.1) over a form-`2`
+// TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule: kind `12`'s
+// content rule MET AT A NODE (docs/SPEC-TABLES.md §3.1) over a form-`2`
 // body (§3.3). §3.1 refuses a text blob's CONTENT on the variable form's own
 // terms, and §3.3 says a form-`2` body's content rules are §3's, unchanged in
 // what they reject: a `*string` blob whose bytes are not well-formed UTF-8, or

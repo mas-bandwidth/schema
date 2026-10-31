@@ -6594,7 +6594,7 @@ well as about work, and this is where that memory lives.
   the announced bits, the range base, the array's own bounds, and the
   quantized facts SPEC.md §4.3's rule leaves behind rather than the two it
   consumes. It is **96 bytes** in the C++ reference, so the `backenddemo`
-  unit's 33 entries are **3,168 bytes** and the 4096-entry default is 393 KiB
+  unit's 32 entries are **3,072 bytes** and the 4096-entry default is 393 KiB
   for a receiver that asks for it.
 - **PER FIELD ON THE READ PATH THAT IS ONE ARRAY INDEX**: no parse, no LEB128,
   and no branch on the announcement's format. A reference resolves to an entry
@@ -7462,11 +7462,11 @@ embedded message, one byte under 128 and two above: 49, 189 and 40 become 51,
   the sign flips: `MatchResult` is 11 bytes against the packet wire's 115,
   because elision beats a positional wire outright whenever a message is sparse.
 
-**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 33 entries and
-318 bytes of entry records: 138 bytes for the thirteen field names with their
+**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 32 entries and
+309 bytes of entry records: 138 bytes for the thirteen field names with their
 kinds and shapes, 99 for the eight variant names at kind `0` and the three arm
-names at kind `13`, and 81 for the tail's nine. The announcement file is **361
-bytes**: one form byte, a body of 336 bytes carrying the build version and the
+names at kind `13`, and 72 for the tail's eight. The announcement file is **352
+bytes**: one form byte, a body of 327 bytes carrying the build version and the
 vocabulary array, and a trailer of two entries and its count. **An entry
 averages ten bytes rather than the eight a bare id would cost**, and those two
 bytes are what pay for there being no kind byte and no length on any body.
@@ -7732,7 +7732,7 @@ fixed table Envelope
 
 - **The unit is `backenddemo`, at `tables/backend`**, and the connection is
   `backend_conn`, whose announcement is `testdata/wire/tables/backend_conn.bin`,
-  **33 entries and 361 bytes**. The three messages are the measurement's,
+  **32 entries and 352 bytes**. The three messages are the measurement's,
   field for field, and `Payload` and `Envelope` are the unit's own addition
   beyond it, the one root the batch vector rides under.
 - **Six FILE-form vectors**, `login_full`, `login_default`, `match_full`,

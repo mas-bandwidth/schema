@@ -368,9 +368,7 @@ fixed table T
 	}
 	body := string(out["ProbeFixed.ex"])
 	t05Has(t, body, "R.clamps(c, n_label, 0, 8)", "R24 a byte string's length clamps to its unit bound")
-	t05Has(t, body, "R.clamps(c, n_wide, 0, 8)", "R24 a wide string's length clamps in code units")
 	t05Has(t, body, "binary_part(b_label, 0, min(max(n_label, 0), 8))", "R24 the used bytes are the length's own, never the slack")
-	t05Has(t, body, "binary_part(b_wide, 0, 2 * min(max(n_wide, 0), 8))", "R24 the wide used units ride two bytes each")
 }
 
 // ---- the card's test --------------------------------------------------------

@@ -608,8 +608,6 @@ func TestDocumentRules(t *testing.T) {
 		"(:enabled null)":                        "text_kind_mismatch",
 		"(:optional null)":                       "",
 		"(:optional (1 2 3 4 5))":                "text_bound",
-		"(:wide \"abcd\")":                     "",
-		"(:wide \"\\uD83D\\uDE00abc\")":    "text_bound",
 		"(:text ((:line \"a\" :line \"b\")))": "text_duplicate_key",
 		"(:time \"2026-10-15T08:34:05.123456789+05:30\")": "",
 		"(:time \"3000-01-01T00:00:00Z\")":     "text_timestamp",
@@ -688,8 +686,6 @@ func spell(rng *rand.Rand, path string) (string, bool) {
 			b[i] = byte(rng.Uint32())
 		}
 		return "\"" + base64.StdEncoding.EncodeToString(b) + "\"", true
-	case last == "wide":
-		return word(rng.IntN(5)), true
 	}
 	return "", false
 }

@@ -65,7 +65,6 @@ table Root
 		{"t", `{"t":"%s"}`, "Root.t", true, false},
 		{"s", `{"s":"%s"}`, "Root.s", true, false},
 		{"m", `{"m":{"ok":1,"%s":2}}`, "Root.m", true, false},
-		{"w", `{"w":"%s"}`, "Root.w", true, false},
 		{"i", `{"i":{"n":"%s"}}`, "Inner.n", true, false},
 		{"k", `{"k":{"7":1,"%s":2}}`, "Root.k", false, false},
 		{"l", `{"l":["ok","%s"]}`, "Root.l", false, true},

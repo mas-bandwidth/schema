@@ -271,11 +271,11 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 func TestTheCostRows(t *testing.T) {
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
-	if got := len(wireBytes(t, c.Wire)); got != 361 {
-		t.Errorf("the announcement is %d bytes, the page prints 361", got)
+	if got := len(wireBytes(t, c.Wire)); got != 352 {
+		t.Errorf("the announcement is %d bytes, the page prints 352", got)
 	}
-	if got := len(vocabulary.Entries()); got != 33 {
-		t.Errorf("the vocabulary has %d entries, the page prints 33", got)
+	if got := len(vocabulary.Entries()); got != 32 {
+		t.Errorf("the vocabulary has %d entries, the page prints 32", got)
 	}
 	if got := vocabulary.RefBits(); got != 6 {
 		t.Errorf("a reference is %d bits, the page prints 6", got)
@@ -525,25 +525,25 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 	// A VOCABULARY PAST A BOUND, refused before an entry is touched: the bound
 	// is two numbers
 	{
-		bounded := tablewire.Vocabulary{MaxEntries: 32}
+		bounded := tablewire.Vocabulary{MaxEntries: 31}
 		var report tabletext.Report
 		derr := bounded.AnnounceRead(announcement, &report)
 		refusal("vocabulary_too_large (entries)", derr, tablewire.ReasonVocabularyTooLarge, report)
 		if bounded.Announced() || len(bounded.Entries()) != 0 {
 			t.Error("vocabulary_too_large: an entry was touched")
 		}
-		exact := tablewire.Vocabulary{MaxEntries: 33}
+		exact := tablewire.Vocabulary{MaxEntries: 32}
 		if err := exact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !exact.Announced() {
 			t.Errorf("the entry bound's own value must be accepted: %v", err)
 		}
-		bytesBound := tablewire.Vocabulary{MaxBytes: 317}
+		bytesBound := tablewire.Vocabulary{MaxBytes: 308}
 		var bytesReport tabletext.Report
 		derr = bytesBound.AnnounceRead(announcement, &bytesReport)
 		refusal("vocabulary_too_large (bytes)", derr, tablewire.ReasonVocabularyTooLarge, bytesReport)
 		if bytesBound.Announced() {
 			t.Error("vocabulary_too_large: the byte bound set a vocabulary")
 		}
-		bytesExact := tablewire.Vocabulary{MaxBytes: 318}
+		bytesExact := tablewire.Vocabulary{MaxBytes: 309}
 		if err := bytesExact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !bytesExact.Announced() {
 			t.Errorf("the byte bound's own value must be accepted: %v", err)
 		}
@@ -887,8 +887,8 @@ func TestAWideVocabulary(t *testing.T) {
 		low, wide string
 		lowBytes  int
 	}{
-		{"vocab_conn", 144, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
-		{"vocab9_conn", 284, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
+		{"vocab_conn", 143, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
+		{"vocab9_conn", 283, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {

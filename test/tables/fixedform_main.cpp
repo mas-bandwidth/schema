@@ -948,7 +948,7 @@ static void union_text_case()
         full.head = 5;
         full.tail = 6;
         full.pick.type = tblut2::PickType::B;
-        std::memcpy( full.pick.b.label, "eighteen", 9 ); // eight characters: no slack to terminate it
+        std::memcpy( (void *) full.pick.b.label, "eighteen", 9 ); // eight characters: no slack to terminate it
         full.pick.b.label_length = 8;
         full.pick.b.m = 77;
         std::vector<uint8_t> w3( (size_t) tblut2::UtRootFixedMeasure( 1 ) );
@@ -967,7 +967,7 @@ static void union_text_case()
             if ( lanes == 1 ) { plan[text].meta = plan[text].arg; } // ONE LANE, as it was
             tblut2::UtRoot read;
             tblut2::UtRootReset( read );
-            std::memset( read.pick.b.label, 'X', sizeof( read.pick.b.label ) );
+            std::memset( (void *) read.pick.b.label, 'X', sizeof( read.pick.b.label ) );
             tblut2::TableReport r;
             // The copy keeps the identity plan's pooled guard chains, so it runs
             // against the identity plan's pool, exactly as UtRootFixedLoad does.
