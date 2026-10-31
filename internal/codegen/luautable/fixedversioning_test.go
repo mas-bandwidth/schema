@@ -606,9 +606,9 @@ func luauResolvePath(t *testing.T, root *ir.Struct, expr, path string) (string, 
 	for i, seg := range segs {
 		last := i == len(segs)-1
 		name, idx := seg, -1
-		if open := strings.IndexByte(seg, '['); open >= 0 {
-			name = seg[:open]
-			k, err := strconv.Atoi(strings.TrimSuffix(seg[open+1:], "]"))
+		if before, after, ok := strings.Cut(seg, "["); ok {
+			name = before
+			k, err := strconv.Atoi(strings.TrimSuffix(after, "]"))
 			if err != nil {
 				t.Fatalf("the manifest path %q has a bad index", path)
 			}

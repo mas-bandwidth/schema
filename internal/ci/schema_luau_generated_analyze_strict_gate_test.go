@@ -357,7 +357,7 @@ func luauManifestUnits(t *testing.T, root string) [][]string {
 		t.Fatal(err)
 	}
 	var units [][]string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) >= 3 && f[0] == "unit" {
 			units = append(units, f[2:])

@@ -24,7 +24,6 @@ func TestLuauCarriesTheTextListTotal(t *testing.T) {
 		t.Fatal("luau does not carry the text list total")
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			u := unitFromSource(t, tc.src)
 			files, err := c.Generate(u, "luau", Options{"runtime": "standalone"})

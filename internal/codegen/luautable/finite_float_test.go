@@ -445,7 +445,7 @@ func patchBits(t *testing.T, b []byte, old, new uint64, width int) []byte {
 		t.Fatalf("the twin's %d-bit pattern %x is absent from the batch", width, old)
 	}
 	out := slices.Clone(b)
-	for k := 0; k < width; k++ {
+	for k := range width {
 		i := at + k
 		out[i/8] = out[i/8]&^(1<<(i%8)) | byte((new>>k)&1)<<(i%8)
 	}
@@ -557,8 +557,7 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 	for _, w := range []string{"msgA", "msgYs"} {
 		var mrep tabletext.Report
 		_, _, derr := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Var"))}, in[w], &voc, &mrep)
-		var rf *tablewire.NonFiniteRefusal
-		if !errors.As(derr, &rf) {
+		if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](derr); !ok {
 			t.Fatalf("%s: the Go batch reader answered %v, want a NonFiniteRefusal", w, derr)
 		}
 		fx.want["msg/read/"+w] = mrep.Reason

@@ -1585,7 +1585,7 @@ the leg with its table wire (#515).
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | luau |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ✅ `bench-luau-gate` (both legs, no clock: `bench/luau/run --gate`, `bench/tables/luau/leg run --gate`) `bench-luau-gate-negative-control` |
+| ❌ #425 | ✅ `tables-c-bench-gate` | — no table-wire bench | ✅ `tables-go-bench-gate` | ✅ `tables-cs-bench-gate` | — no table-wire bench | — no table-wire bench | — no table-wire bench | — no table-wire bench | ✅ `bench-luau-gate` (both legs, no clock: `bench/luau/run` and `bench/tables/luau/leg`, each run with --gate) `bench-luau-gate-negative-control` |
 
 ### J6 — The card conformance check
 

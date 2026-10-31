@@ -1,6 +1,7 @@
 package luau
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -648,9 +649,7 @@ func TestLuauSelectedArmStartsAtItsDefaults(t *testing.T) {
 		t.Fatalf("negative-control anchor %q matched %d times", anchor, strings.Count(module, anchor))
 	}
 	sabotaged := map[string][]byte{}
-	for name, body := range files {
-		sabotaged[name] = body
-	}
+	maps.Copy(sabotaged, files)
 	sabotaged["ArmDefaults.luau"] = []byte(strings.Replace(module, anchor, "_M.ZeroDefaultArm(value.First) -- SABOTAGED: the selected arm", 1))
 	if out := run(sabotaged); !strings.Contains(out, failure) {
 		t.Errorf("negative control: an arm reset to zero instead of its defaults did not print %q; got %q", failure, out)

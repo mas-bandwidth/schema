@@ -30,11 +30,11 @@ var luauJSONWalkMarkers = []string{"local function scan_string(", "local functio
 
 // luauJSONWalk is the walk region of one schema_json.luau.
 func luauJSONWalk(src []byte) ([]byte, bool) {
-	i := bytes.Index(src, []byte(luauJSONWalkEnd))
-	if i < 0 {
+	before, _, ok := bytes.Cut(src, []byte(luauJSONWalkEnd))
+	if !ok {
 		return nil, false
 	}
-	return src[:i], true
+	return before, true
 }
 
 // luauJSONWalkFailures holds the gate over every unit's generated files and
