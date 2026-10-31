@@ -199,6 +199,10 @@ pub enum TableFixedReason {
     /// continue past. The reference zeroes the field and sets malformed
     /// instead, which §5.8 row 8 names as the thing this page overrules.
     TextIllFormed,
+    /// A FLOAT WHOSE BITS ARE A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3,
+    /// the same rule as the packet wire's, SPEC.md §4.3): the read's finite pass refuses the batch, the report naming the field
+    /// in non_finite_float, and nothing lands. The writer refuses one too.
+    NonFiniteFloat,
 }
 
 impl TableFixedReason {
@@ -223,6 +227,7 @@ impl TableFixedReason {
             Self::LayoutRecordTooLarge => "layout_record_too_large",
             Self::LayoutTooDeep => "layout_too_deep",
             Self::TextIllFormed => "text_ill_formed",
+            Self::NonFiniteFloat => "non_finite_float",
         }
     }
 }
@@ -239,6 +244,9 @@ pub struct TableFixedReport {
     pub malformed: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
+    /// THE FIELD A non_finite_float REFUSAL NAMES (docs/SPEC-TABLES.md §3.3),
+    /// <Owner>.<field>; "" on every other read.
+    pub non_finite_float: &'static str,
     /// THE FILE'S OWN HASH, on the two layout refusals that report it
     /// (§5.3's condition table, §5.9 #7): `layout_newer` carries it and
     /// nothing else, and `layout_unsupported` carries it too, because the
@@ -259,7 +267,16 @@ impl TableFixedReport {
         self.refused = true;
         self.reason = reason;
         self.layout_hash = 0;
+        self.non_finite_float = "";
         None
+    }
+
+    /// THE FINITE REFUSAL (docs/SPEC-TABLES.md §3.3), naming the first
+    /// non-finite float the read's finite pass met.
+    pub fn refuse_non_finite<T>(&mut self, field: &'static str) -> Option<T> {
+        let out = self.refuse(TableFixedReason::NonFiniteFloat);
+        self.non_finite_float = field;
+        out
     }
 
     /// A LAYOUT REFUSAL, which reports THE FILE'S HASH beside the name: the
@@ -566,23 +583,12 @@ pub fn table_fixed_run(
                     report.malformed = true;
                     return;
                 }
-                // f32 INTO f64, EXACT: A NaN'S PAYLOAD IS DATA AND RIDES ON THE
-                // BITS. The hardware conversion QUIETS a signalling NaN and can
-                // drop a payload bit, so the widened double is assembled by hand
-                // for every all-ones exponent: the sign is carried, the exponent
-                // becomes f64's all-ones, and the 23-bit mantissa shifts left by
-                // 29 to become the 52-bit one, which carries the quiet bit as
-                // the writer wrote it (§4, docs/PORTING.md's FU ruling). Every
-                // other exponent converts exactly, so the hardware path is the
-                // value and nothing else.
+                // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
+                // §3.3, §4): exact for every finite f32. A NaN stays a NaN and an
+                // infinity an infinity, and the read's FINITE PASS refuses either
+                // as non_finite_float once the record lands, before the bounds.
                 let bits = u32::from_le_bytes(src[s..s + 4].try_into().expect("four bytes"));
-                let wide: u64 = if bits & 0x7f80_0000 == 0x7f80_0000 && bits & 0x007f_ffff != 0 {
-                    (u64::from(bits >> 31) << 63)
-                        | 0x7ff0_0000_0000_0000
-                        | (u64::from(bits & 0x007f_ffff) << 29)
-                } else {
-                    f64::from(f32::from_bits(bits)).to_bits()
-                };
+                let wide = f64::from(f32::from_bits(bits)).to_bits();
                 image[d..d + 8].copy_from_slice(&wide.to_le_bytes());
                 report.widened += 1;
             }
