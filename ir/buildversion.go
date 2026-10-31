@@ -44,7 +44,14 @@ import (
 // a `was` rename moves nothing (§4.1, §5), and `elem=` is the element's own
 // storage size (PointeeWireName / elementPiece) rather than the field size
 // divided by the bound with its padding and count companion included (§20.2).
-const BuildVersionForm = 4
+//
+// FORM 5 (THE ELEMENT KIND): an unbounded array's line carries `elemkind=`,
+// the element's own wire kind, beside `elem=`, so a same-size retype
+// (`[]int32` to `[]float32`) and a move to or from `[]*T` move the id
+// (§4.1, §20.1, §20.2). A bounded and a fixed array already carry the
+// element's kind in `kind=`, and a map's element is its entry, whose `key`
+// and `value` lines carry their kinds.
+const BuildVersionForm = 5
 
 // blockPrologueFacts renders the block projection's generated prologue as the
 // digest sees it: each word in order, named, with its width in bytes.
@@ -202,8 +209,9 @@ func cookFieldLine(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[st
 	}
 	if f.IsList() {
 		// AN UNBOUNDED ARRAY FIELD IS AN ARRAY LINE (docs/SPEC-TABLES.md
-		// §20.2): `kind=14`, `array=unbounded` and the element's own storage
-		// size in `elem=`, plus the `size=` its sixteen-byte slot produces.
+		// §20.2): `kind=14`, `array=unbounded`, the element's own storage size
+		// in `elem=` and its kind in `elemkind=`, plus the `size=` its
+		// sixteen-byte slot produces.
 		kind = TableKindArray
 	}
 	var b strings.Builder
@@ -336,13 +344,18 @@ func cookFacts(u *Unit, fl FieldLayout, enums map[string]*Enum, flags map[string
 	case f.Array == ArrayCounted:
 		fmt.Fprintf(&b, " elem=%d array=bounded bound=%d", elementPiece(u, f).size, f.ArrayBound)
 	case f.Array == ArrayList:
-		// `array=unbounded` is the shape and `elem=` the ELEMENT'S OWN storage
+		// `array=unbounded` is the shape, `elem=` the ELEMENT'S OWN storage
 		// size, the pitch its elements lie at inside the holder's node extent,
-		// as on every other array line here (docs/SPEC-TABLES.md §2.9, §20.2).
+		// as on every other array line here (docs/SPEC-TABLES.md §2.9, §20.2),
+		// and `elemkind=` its kind.
 		// There is no `bound=`, for the map's reason: it declares no extent
 		// and its count is a wire fact. The sixteen-byte slot is what `size=`
 		// on this same line already says.
-		fmt.Fprintf(&b, " elem=%d array=unbounded", elementPiece(u, f).size)
+		// `elemkind=` is the ELEMENT'S wire kind: `kind=` on this line is the
+		// array's own 14, so without it a retype that keeps the element's
+		// size — `[]int32` to `[]float32` — would leave the id standing and a
+		// cooked list would read under the other kind (§4.1).
+		fmt.Fprintf(&b, " elem=%d elemkind=%d array=unbounded", elementPiece(u, f).size, TableWireElemKind(f))
 	case f.Type.Blob():
 		// a byte buffer has no capacity: its blob node is exactly its size
 	case f.Type.TextUnbounded():
