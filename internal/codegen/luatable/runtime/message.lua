@@ -8,15 +8,13 @@
 -- A body is a sequence of fields, each a REFERENCE at refBits followed by a
 -- payload at its declared width; reference 0 is the body terminator. Elision
 -- and the declared defaults are the variable form's (§3). Damage is terminal
--- for the batch. A pointered root carries the §3.3 node table as its first
--- field: the reserved node-table id, a 32-bit count and the records, then the
--- root body.
+-- for the batch. The form is fixed tables only (§3.3): a fixed root's closure
+-- holds no pointer, blob, map, unbounded array or guarded branch, so a body is
+-- its fields alone and no node table rides.
 local D = require("descriptor")
 local M = {}
 
 local NODE_ID = 0xffffffffffffffff
-local STRING_BLOB_ID = 0x704be0d8faaffc58
-local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 
 -- bits_required(0, n): the width of a count or reference whose largest value
 -- is n (§3.3, "a reference is bits_required(0, E) bits").
@@ -217,13 +215,6 @@ local function slot_field(T, f)
   return slot(T, f.id)
 end
 
-local function table_by_type(T, id)
-  for name, d in pairs(T.Tables) do
-    if d.type_id == id then return name, d end
-  end
-  return nil
-end
-
 local function field_by_id(_T, desc, id)
   for _, f in ipairs(desc.fields) do
     if f.id == id then return f end
@@ -265,7 +256,7 @@ local function elem_zero(d)
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "wstring" then return {} end
-  if s == "enum" or s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
+  if s == "enum" then return false end
   if s == "union" then return { tag = 0 } end
   return nil
 end
@@ -286,21 +277,6 @@ local function same_scalar(d, v)
   if d.shape == "wide" then return v.lo == def.lo and v.hi == def.hi end
   if d.shape == "float" then return same_float(d.f32, v, def) end
   return v == def
-end
-
--- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
--- field under a false guard is elided whatever its storage holds; §3.1: it is
--- not an edge, so its target takes no node). fd.guard is the conjunction of
--- the field's `if` branch conditions, each a bool field of the same body and
--- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
--- field with no guard always rides. A bool not set reads false.
-local function guard_holds(fd, v)
-  local g = fd.guard
-  if g == nil then return true end
-  for _, t in ipairs(g) do
-    if (v[t.field] == true) ~= t.want then return false end
-  end
-  return true
 end
 
 local rides, rides_table
@@ -329,8 +305,6 @@ local function elem_rides(T, d, v)
     return v.tag ~= nil and v.tag ~= 0
   elseif s == "enum" then
     return v ~= nil
-  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
-    return v ~= nil and v ~= false
   elseif s == "bool" or s == "int" or s == "flags" then
     return v ~= 0 and v ~= false
   elseif s == "float" then
@@ -360,7 +334,6 @@ rides = function(T, f, v)
     local def = f.default
     return (v or false) ~= (def or false)
   end
-  if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return v ~= nil and v ~= false end
   if s == "string" or s == "bytes" then return v ~= f.default end
   if s == "wstring" then return #v > 0 end
   return not same_scalar(f, v)
@@ -371,7 +344,7 @@ rides_table = function(T, name, v)
   local desc = T.Tables[name]
   if desc == nil then return false end
   for _, f in ipairs(desc.fields) do
-    if guard_holds(f, v) and rides(T, f, v[f.name]) then return true end
+    if rides(T, f, v[f.name]) then return true end
   end
   return false
 end
@@ -434,20 +407,7 @@ end
 
 read_value = function(R, T, f, holder, key, ctx)
   local s = f.shape
-  if s == "pointer" or s == "string_blob" or s == "bytes_blob" then
-    local index, ok = R:get(ctx.indexBits)
-    if not ok then return false end
-    if index ~= 0 then
-      local node = ctx.nodes[index]
-      if node == nil then return false end
-      if s == "pointer" then
-        holder[key] = node
-      else
-        holder[key] = node.blob
-      end
-    end
-    return true
-  elseif s == "string" or s == "bytes" then
+  if s == "string" or s == "bytes" then
     local w = bits_range(0, f.bound)
     local n, ok = R:get(w)
     if not ok or not R:align() then return false end
@@ -516,8 +476,6 @@ read_value = function(R, T, f, holder, key, ctx)
     local n, ok
     if d.fixed then
       n, ok = d.bound, true
-    elseif d.list then
-      n, ok = R:get(32)
     else
       n, ok = R:get(bits_range(d.min or 0, d.bound))
       if ok then n = n + (d.min or 0) end
@@ -601,7 +559,7 @@ variant_index = function(variants, id)
 end
 
 -- ---- the write side ----
-local write_value, write_body, build_numbering
+local write_value, write_body
 
 local function write_scalar(W, d, v)
   local s = d.shape
@@ -642,10 +600,7 @@ end
 write_value = function(W, T, f, holder, key, ctx)
   local s = f.shape
   local v = holder[key]
-  if s == "pointer" or s == "string_blob" or s == "bytes_blob" then
-    if v == nil then return false end
-    W:put(ctx.index[v] or 0, ctx.indexBits)
-  elseif s == "string" or s == "bytes" then
+  if s == "string" or s == "bytes" then
     W:put(#v, bits_range(0, f.bound))
     W:raw(v)
   elseif s == "wstring" then
@@ -676,9 +631,6 @@ write_value = function(W, T, f, holder, key, ctx)
     local n
     if d.fixed then
       n = d.bound
-    elseif d.list then
-      n = #v
-      W:put(n, 32)
     elseif d.keyed then
       n = 0
       for i = 1, #v do
@@ -715,7 +667,7 @@ write_body = function(W, T, name, value, ctx)
   local desc = T.Tables[name]
   if desc == nil then return false end
   for _, f in ipairs(desc.fields) do
-    if guard_holds(f, value) and rides(T, f, value[f.name]) then
+    if rides(T, f, value[f.name]) then
       W:put(slot_field(T, f), ctx.refBits)
       if not write_value(W, T, f, value, f.name, ctx) then return false end
     end
@@ -724,181 +676,15 @@ write_body = function(W, T, name, value, ctx)
   return true
 end
 
--- NUMBERING (docs/SPEC-TABLES.md §3.1, §3.3): the root is index 1, then every
--- pointer target in declaration order, depth first, as the reference's own
--- numbering does. Aliases share one index. A BLOB is a node too (§2.5), with
--- no descent; A BLOB IS OWNED BY ONE SLOT, so a second naming refuses the
--- message writer by name, blob_shared, exactly as the wire writers do.
-build_numbering = function(T, root, value)
-  local order = { value }
-  local names = { root }
-  local ids = { false }
-  local index = { [value] = 1 }
-  local function add_pointer(target, target_name)
-    local d = T.Tables[target_name]
-    if d == nil then return false end
-    index[target] = #order + 1
-    order[#order + 1] = target
-    names[#names + 1] = target_name
-    ids[#ids + 1] = d.type_id
-    return true
-  end
-  local function add_blob(f, target)
-    if index[target] ~= nil then return false end
-    index[target] = #order + 1
-    order[#order + 1] = target
-    names[#names + 1] = false
-    ids[#ids + 1] = f.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
-    return true
-  end
-  local scan
-  scan = function(name, val)
-    local desc = T.Tables[name]
-    if desc == nil then return false end
-    for _, f in ipairs(desc.fields) do
-      if guard_holds(f, val) and rides(T, f, val[f.name]) then
-        local s = f.shape
-        if s == "pointer" then
-          local target = val[f.name]
-          if target ~= nil then
-            if index[target] == nil then
-              if not add_pointer(target, f.target) then return false end
-              local ok, why = scan(f.target, target)
-              if not ok then return false, why end
-            end
-          end
-        elseif s == "string_blob" or s == "bytes_blob" then
-          if not add_blob(f, val[f.name]) then return false, "blob_shared" end
-        elseif s == "table" then
-          local ok, why = scan(f.target, val[f.name])
-          if not ok then return false, why end
-        elseif s == "array" then
-          local n = f.fixed and f.bound or #val[f.name]
-          for i = 1, n do
-            local ev = val[f.name][i]
-            if ev ~= nil then
-              if f.elem.shape == "table" then
-                local ok, why = scan(f.elem.target, ev)
-                if not ok then return false, why end
-              elseif f.elem.shape == "pointer" then
-                if index[ev] == nil then
-                  if not add_pointer(ev, f.elem.target) then return false end
-                  local ok, why = scan(f.elem.target, ev)
-                  if not ok then return false, why end
-                end
-              elseif f.elem.shape == "string_blob" or f.elem.shape == "bytes_blob" then
-                if not add_blob(f.elem, ev) then return false, "blob_shared" end
-              end
-            end
-          end
-        elseif s == "union" then
-          local tag = (val[f.name] and val[f.name].tag) or 0
-          if tag ~= 0 then
-            local arm = T.Unions[f.target].arms[tag]
-            if arm.field ~= nil then
-              local af = arm.field
-              if af.shape == "table" then
-                local ok, why = scan(af.target, val[f.name][arm.slot])
-                if not ok then return false, why end
-              elseif af.shape == "pointer" then
-                local target = val[f.name][arm.slot]
-                if target ~= nil and index[target] == nil then
-                  if not add_pointer(target, af.target) then return false end
-                  local ok, why = scan(af.target, target)
-                  if not ok then return false, why end
-                end
-              elseif af.shape == "string_blob" or af.shape == "bytes_blob" then
-                if not add_blob(af, val[f.name][arm.slot]) then return false, "blob_shared" end
-              end
-            end
-          end
-        end
-      end
-    end
-    return true
-  end
-  local ok, why = scan(root, value)
-  if not ok then return nil, why end
-  return { order = order, names = names, ids = ids, index = index }
-end
-
-local function max_index_bits(n)
-  return bits_max(n)
-end
-
 local function load_one(R, T, root, vocab)
   local rootval = T["New" .. root]()
-  local ctx = { vocab = vocab, refBits = T.MessageRefBits, nodes = { [1] = rootval }, indexBits = 1 }
-  local save = R.off
-  local ref, ok = R:get(ctx.refBits)
-  if not ok then return nil end
-  local e = ref ~= 0 and vocab[ref] or nil
-  if e ~= nil and e.id == NODE_ID then
-    local count, cok = R:get(32)
-    if not cok then return nil end
-    ctx.indexBits = max_index_bits(count + 1)
-    -- Every node index gets its value BEFORE a record is read, so a pointer in
-    -- record k may name record k+1 (a forward edge) and a cycle closes on the
-    -- same table the caller will hold.
-    for k = 1, count do
-      ctx.nodes[k + 1] = {}
-    end
-    for k = 1, count do
-      local tref, tok = R:get(ctx.refBits)
-      if not tok then return nil end
-      local te = vocab[tref]
-      if te == nil then return nil end
-      local node = ctx.nodes[k + 1]
-      if te.id == STRING_BLOB_ID or te.id == BYTES_BLOB_ID then
-        local n, nok = R:get(32)
-        if not nok then return nil end
-        local raw = R:raw(n)
-        if raw == nil then return nil end
-        node.blob = raw
-      else
-        local tname = table_by_type(T, te.id)
-        if tname == nil then return nil end
-        local def = T["New" .. tname]()
-        for key, v in pairs(def) do
-          node[key] = v
-        end
-        if not load_body(R, T, tname, node, ctx) then return nil, ctx.nonFinite end
-      end
-    end
-  else
-    R.off = save
-  end
+  local ctx = { vocab = vocab, refBits = T.MessageRefBits }
   if not load_body(R, T, root, rootval, ctx) then return nil, ctx.nonFinite end
   return rootval
 end
 
 local function save_one(W, T, root, value, vocab)
   local ctx = { vocab = vocab, refBits = T.MessageRefBits }
-  local num, why = build_numbering(T, root, value)
-  if num == nil then return false, why end
-  local count = #num.order - 1
-  ctx.index = num.index
-  if count > 0 then
-    ctx.indexBits = max_index_bits(count + 1)
-    W:put(slot(T, NODE_ID), ctx.refBits)
-    W:put(count, 32)
-    for k = 2, #num.order do
-      local name = num.names[k]
-      W:put(slot(T, num.ids[k]), ctx.refBits)
-      if name == false then
-        -- A BLOB RECORD carries its length at thirty-two raw bits, then its
-        -- bytes (§3.3; the wire's blob node, §3.1).
-        local body = num.order[k]
-        local raw = type(body) == "table" and body.value or body
-        W:put(#raw, 32)
-        W:raw(raw)
-      elseif not write_body(W, T, name, num.order[k], ctx) then
-        return false
-      end
-    end
-  else
-    ctx.indexBits = 1
-  end
   return write_body(W, T, root, value, ctx)
 end
 
@@ -1169,11 +955,21 @@ local function strict_count(T, d, v)
   return 0
 end
 
+-- THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): a root
+-- outside the unit's MessageRoots (a variable table, or no table at all) is
+-- refused by name before any byte is read or written.
+local function message_root(T, root)
+  if T.MessageRoots == nil or not T.MessageRoots[root] then
+    error("message: " .. tostring(root) .. " is not a fixed table: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)", 0)
+  end
+end
+
 -- loadMessages is the read behind both names (docs/SPEC-TABLES.md §6.5):
 -- `strict` is the plain name's read. A body the tolerant walk itself stopped
 -- on keeps the records ahead of it (BASE's answer); a read that completed but
 -- met the strict rule alone is refused with count 0 and every record reset.
 function M.loadMessages(T, root, vocab, data, report, strict)
+  message_root(T, root)
   report = report or {}
   -- THE PLAIN NAME'S REPORT IS THIS READ'S ALONE (docs/SPEC-TABLES.md §6.5):
   -- every counter is cleared before the walk, so a reused report cannot refuse
@@ -1253,6 +1049,7 @@ local function refuse_batch(T, root, values)
 end
 
 function M.measureMessages(T, root, vocab, values)
+  message_root(T, root)
   if values == nil or #values < 1 or #values > T.MessageBatchMax then return -1 end
   local refused = refuse_batch(T, root, values)
   if refused ~= nil then return -1, refused end
@@ -1268,6 +1065,7 @@ function M.measureMessages(T, root, vocab, values)
 end
 
 function M.saveMessages(T, root, vocab, values)
+  message_root(T, root)
   if values == nil or #values < 1 or #values > T.MessageBatchMax then return nil end
   if not vocab.announced then return nil end
   local refused = refuse_batch(T, root, values)

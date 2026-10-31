@@ -167,6 +167,10 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 		// (§3.3): neither is a roster entry this arm can hold.
 		return nil, fmt.Errorf("unit %s root %s: retention is the variable class's variable form and nothing else", unitKey, rootName)
 	}
+	if message && r.variable {
+		// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3)
+		return nil, fmt.Errorf("unit %s root %s: %s", unitKey, rootName, VariableMessageRefusal)
+	}
 	if message {
 		r.vocabulary = &tablewire.Vocabulary{}
 		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
@@ -361,10 +365,6 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		ans.encoded = encoded
 	}
 	if r.variable && !r.builder {
-		if r.message {
-			r.sizeBatch(&ans, data)
-			return ans, nil
-		}
 		measured, whole, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data)
 		if refused {
 			ans.bytes = -1
@@ -795,6 +795,9 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 		// AND THE REFERENCE BOUND UNDER A CONNECTION TABLE
 		// (docs/SPEC-TABLES.md §3.3).
 		for _, msg := range m.Messages {
+			if msg.Refused() {
+				continue // a variable table: no message form to fuzz (§3.3)
+			}
 			c, cerr := m.LookupConnection(msg.Connection)
 			if cerr != nil {
 				return nil, nil, nil, 0, cerr
@@ -1099,27 +1102,4 @@ func readWireVectors(path string) ([]wireVector, error) {
 		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: message})
 	}
 	return out, nil
-}
-
-// sizeBatch is the oracle's answer for a MESSAGE batch's one region (§3.3):
-// one directory a body, the root's storage, and each record's, a blob's being
-// its header and its bytes, a string's terminator included, rounded as every
-// node is. `exact` is whether the numbering was whole.
-func (r *wireRoot) sizeBatch(ans *oracleAnswer, data []byte) {
-	bodies, whole := tablewire.MessageNodeRecords(data, r.vocabulary)
-	ans.exact = whole
-	for _, records := range bodies {
-		ans.bytes += r.rootStorage + (int64(len(records))+1)*nodeDirEntryBytes
-		for _, rec := range records {
-			if rec.Blob {
-				terminator := int64(0)
-				if rec.TypeId == ir.StringWireTypeId {
-					terminator = 1
-				}
-				ans.bytes += r.roundStorage(8 + rec.Length + terminator)
-				continue
-			}
-			ans.bytes += r.storage[rec.TypeId] // a type id this build cannot name commands none
-		}
-	}
 }

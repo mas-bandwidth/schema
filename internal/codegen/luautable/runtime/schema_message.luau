@@ -6,6 +6,10 @@
 -- count, and one continuous bit stream. This file is the one walk both
 -- directions share; it reads the announced entries and the descriptors
 -- luautable.go emits as data (docs/PORT-LUAU.md, THE RUNTIME LAYOUT).
+--
+-- THE FORM IS FIXED TABLES ONLY (§3.3): a root that is not a fixed table is
+-- refused by name before a byte is read or written, and a fixed root's body
+-- carries no node table.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
@@ -18,8 +22,6 @@ local DEFAULT_MAX_ENTRIES = 4096
 local NODE_ID: integer = -1i          -- 0xffffffffffffffff
 local VERSION_ID: integer = -2i       -- 0xfffffffffffffffe
 local VOCAB_ID: integer = -3i         -- 0xfffffffffffffffd
-local BYTES_ID: integer = 0x2f2ec0474f1c4fe4i
-local STRING_ID: integer = 0x704be0d8faaffc58i
 
 -- CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
 -- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14). schema_refusal.luau keeps the same routine
@@ -493,8 +495,7 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 		end
 		return true
 	elseif k == 17 then
-		if st.indexBits <= 0 then return false end
-		return skip(r, st.indexBits)
+		return false -- a fixed root numbers no node, so no index can be read (§3.1, §3.3)
 	elseif k == 13 then
 		local sub = nil
 		if fd ~= nil and fd.s == "tab" then sub = S.lookup(fd.t) end
@@ -563,40 +564,14 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any): boolean
 	return skip(r, e.shape.bits)
 end
 
--- skipRoot reads a body, whose first field is the NODE TABLE when a variable
--- root reaches one (docs/SPEC-TABLES.md §3.3: "THE NODE TABLE, WHEN A MESSAGE
--- HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY").
-local function skipRoot(r: any, st: any, desc: any, dep: any): boolean
-	if desc.variable then
-		local at = r.off
-		local ref, ok = get(r, st.refBits)
-		if not ok then return false end
-		if ref ~= 0 then
-			local e = entryOf(st.v, ref)
-			if e == nil then return false end
-			if e.id == NODE_ID then
-				local nodes, nok = get(r, 32)
-				if not nok then return false end
-				st.indexBits = bitsReq(0, nodes + 1)
-				for _ = 1, nodes do
-					local tref, tok = get(r, st.refBits)
-					if not tok then return false end
-					local te = entryOf(st.v, tref)
-					if te == nil or reserved(te.id) or te.shape.kind ~= 0 then return false end
-					if te.id == BYTES_ID or te.id == STRING_ID then
-						local n, bok = get(r, 32)
-						if not bok or not align(r) or not skip(r, n * 8) then return false end
-					elseif not skipBody(r, st, nil, dep) then
-						return false
-					end
-				end
-				return skipBody(r, st, desc, dep)
-			end
-		end
-		r.off = at
+-- messageRoot is root's descriptor when root is a fixed table, and a refusal
+-- by name otherwise: the message form is fixed tables only (§3.3)
+local function messageRoot(root: string): any
+	local desc = S.lookup(root)
+	if not (desc.table and desc.fixed) then
+		error("schema: " .. root .. " is not a fixed table: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)")
 	end
-	st.indexBits = 0
-	return skipBody(r, st, desc, dep)
+	return desc
 end
 
 -- ---- the surface (docs/SPEC-TABLES.md §3.3, "THE BATCH SURFACE'S FIVE
@@ -620,14 +595,14 @@ end
 -- a copy, so a clean batch allocates nothing and the caller's buffer is never
 -- changed.
 local function walkBodies(v: any, data: buffer, desc: any, count: number, write: boolean): (number, any, boolean, any, string?)
-	local st: any = { v = v, refBits = v.refBits, indexBits = 0, owner = nil, nonFinite = nil }
+	local st: any = { v = v, refBits = v.refBits, owner = nil, nonFinite = nil }
 	local r = newReader(data, 16)
 	local dep = { write = write, found = false, field = nil, table = nil }
 	local bodies = {}
 	local at = 0
 	for i = 1, count do
 		local from = r.off
-		if not skipRoot(r, st, desc, dep) then
+		if not skipBody(r, st, desc, dep) then
 			return i - 1, bodies, true, dep, st.nonFinite
 		end
 		at = at + 1
@@ -651,6 +626,7 @@ end
 -- LoadMessagesTolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5,
 -- §3.3): every body it recovered, with the damage on the report.
 function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: number, report: any?): (number, any)
+	local desc = messageRoot(root)
 	if report == nil then report = {} end
 	reset(report)
 	local len = buffer.len(data)
@@ -661,7 +637,6 @@ function M.LoadMessagesTolerant(v: any, root: string, data: buffer, capacity: nu
 	-- declaring root's batch must end in the CRC-32C of the bytes before it,
 	-- and only then is the trailer removed and §3.3's batch read. A table
 	-- without the key reads the bytes it read before.
-	local desc = S.lookup(root)
 	if desc.integrity ~= nil and desc.integrity ~= "" then
 		local body = integrityOpen(data)
 		if body == nil then
@@ -736,11 +711,11 @@ end
 local function deprecatedField(v: any, root: string, bodies: any): (string?, string?)
 	local desc = S.lookup(root)
 	for _, b in bodies do
-		local st: any = { v = v, refBits = v.refBits, indexBits = 0, owner = nil, nonFinite = nil }
+		local st: any = { v = v, refBits = v.refBits, owner = nil, nonFinite = nil }
 		local r = newReader(b.buffer, b.from)
 		r.n = b.to
 		local dep = { write = false, found = false, field = nil, table = nil }
-		local walked = skipRoot(r, st, desc, dep)
+		local walked = skipBody(r, st, desc, dep)
 		-- EVERY WRITER REFUSES A NaN OR AN INFINITY (docs/SPEC-TABLES.md §3.3)
 		if st.nonFinite ~= nil then return nil, st.nonFinite end
 		if walked and dep.found then
@@ -758,6 +733,7 @@ local function refuseDeprecated(report: any, field: string): boolean
 end
 
 function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): number
+	local desc = messageRoot(root)
 	if report == nil then report = {} end
 	reset(report)
 	local n = #bodies
@@ -776,7 +752,6 @@ function M.MeasureMessages(v: any, root: string, bodies: any, report: any?): num
 	end
 	-- THE MEASURE COUNTS THE TRAILER when the root declares integrity
 	-- (docs/SPEC-TABLES.md §2.14, §3.3): four bytes more than the batch.
-	local desc = S.lookup(root)
 	local size = 2 + math.ceil(bodyBits(bodies) / 8)
 	if desc.integrity ~= nil and desc.integrity ~= "" then size = size + 4 end
 	return size
@@ -800,6 +775,7 @@ local function copyBits(dst: buffer, dstOff: number, src: buffer, srcOff: number
 end
 
 function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffer?, number)
+	local desc = messageRoot(root)
 	if report == nil then report = {} end
 	reset(report)
 	local n = #bodies
@@ -822,7 +798,6 @@ function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffe
 	-- that declares integrity (docs/SPEC-TABLES.md §2.14, §3.3): four bytes,
 	-- little-endian, the CRC-32C of the form byte, the count byte and the
 	-- padded bit stream. A table without the key writes its old bytes.
-	local desc = S.lookup(root)
 	local sealed = desc.integrity ~= nil and desc.integrity ~= ""
 	local size = batchBytes + (if sealed then 4 else 0)
 	local out = buffer.create(size)

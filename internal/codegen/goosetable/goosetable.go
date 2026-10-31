@@ -693,7 +693,7 @@ func valueFacts(g *goose.Gen, f *ir.Field, def bool) facts {
 // and names it: identity is the variant NAME's hash (docs/SPEC-TABLES.md §5).
 func enumVariants(g *goose.Gen, e *ir.Enum) string {
 	name := "_" + e.Name + "Variants"
-	if g.Declared(name) {
+	if g.DeclaredBySurface(name) {
 		return name
 	}
 	g.Declare(name)

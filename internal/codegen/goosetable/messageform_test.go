@@ -25,6 +25,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -270,13 +271,11 @@ func gooseMsgProbe(t *testing.T, c gooseMsgCase) gooseMsgResult {
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
@@ -493,7 +492,6 @@ func TestGooseMessageFormMatchesTheGoldens(t *testing.T) {
 	t.Parallel()
 	carried := 0
 	for _, row := range gooseMsgRows(t) {
-		row := row
 		u := gooseMsgUnitDir(t, row.unitDir)
 		if !isFixedRoot(u, row.root) {
 			// a VARIABLE root (graph_tree's Scene): the variable class is
@@ -544,13 +542,11 @@ func gooseMsgFromFixed(t *testing.T, u *ir.Unit, root string, file []byte, recor
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
@@ -626,7 +622,6 @@ func TestGooseMessageFormAgreesWithTheReference(t *testing.T) {
 	records := fixedManifestRecords(t, corpus)
 	manifest := gooseVersionManifest(t, corpus)
 	for _, v := range fixedVectors {
-		v := v
 		t.Run(strings.TrimSuffix(v.file, ".bin"), func(t *testing.T) {
 			t.Parallel()
 			u := fixedUnit(t, v.schema)
@@ -824,7 +819,6 @@ func TestGooseMessageFormRefusesByName(t *testing.T) {
 		{"empty", []byte{}, 1, -1, "ok", true, 0},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: row.root, values: [][]string{one, one, one}, data: c.data, capacity: c.capacity})

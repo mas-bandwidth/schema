@@ -28,6 +28,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `elixir-fixedform/` | Elixir fixed-form tests | `make test-elixir` | `make test-elixir` |
 | `elixir-hostile/` | Elixir hostile-corpus runner | `make schema-elixir-runs-hostile-corpus` | `make schema-elixir-runs-hostile-corpus` |
 | `elixir-ludicrous/` | Elixir int128 tests | `make test-elixir` | `make test-elixir` |
+| `elixir-soak/` | Elixir tables soak, allocation count | `make tables-elixir-soak` | `make tables-elixir-soak` |
 | `elixir-tables/` | Elixir table tests | `make test-elixir` | `make test-elixir` |
 | `elixir-view/` | Elixir view tests | `make test-elixir` | `make test-elixir` |
 | `elixir-warning-control/` | Elixir warning-control tests | `make test-elixir` | `make test-elixir` |
@@ -49,8 +50,11 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `js-ludicrous/` | JS int128 tests | `make test-js` | `make test-js` |
 | `js-tables/` | JS table tests | `make test-js` | `make test-js` |
 | `js-view/` | JS view listing program | `make tables-js-view` | `make tables-js-view` |
+| `lobster-runtime-home/` | Lobster runtime-home check | `make tables-lobster-runtime-home` | `make tables-lobster-runtime-home` |
 | `lua/` | Lua interpreter harness | `make test-lua` | `make test-lua` |
 | `luau-ludicrous/` | Luau int128 tests | `make test-luau` | `make test-luau` |
+| `luau-runtime-home/` | Luau runtime-home check | `make tables-luau-runtime-home` | `make tables-luau-runtime-home` |
+| `moo-runtime-home/` | moo runtime-home check | `make tables-moo-runtime-home` | `make tables-moo-runtime-home` |
 | `packet-defaults/` | packet default-value gates | `make test` | `make test` |
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |

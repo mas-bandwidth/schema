@@ -16,6 +16,7 @@ package goosetable
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -179,7 +180,7 @@ func emitTableWireUnit(g *goose.Gen) error {
 	// retained id this build can name from the file's own table, and only
 	// the others from the caller's list (docs/SPEC-TABLES.md §6.6)
 	known := ir.TableWireIds(g.Unit)
-	sort.Slice(known, func(i, j int) bool { return known[i] < known[j] })
+	slices.Sort(known)
 	var knownLit []string
 	for _, id := range known {
 		knownLit = append(knownLit, fmt.Sprintf("0x%016x", id))
@@ -199,10 +200,5 @@ func emitTableWireUnit(g *goose.Gen) error {
 }
 
 func hasTag(tags []string, tag string) bool {
-	for _, t := range tags {
-		if t == tag {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(tags, tag)
 }

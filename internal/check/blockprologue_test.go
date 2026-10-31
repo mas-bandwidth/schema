@@ -13,7 +13,7 @@ import (
 // TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused pins row T2.7-2:
 // each of the three prologue names, declared as a field of a fixed table, is
 // refused, and the refusal names the table, the field and the prologue. The
-// same names on a plain table are refused too, and a fixed table whose fields
+// same names on a variable table are refused too, and a fixed table whose fields
 // only resemble the names is accepted, so the refusal is the names and not
 // the shape of the declaration.
 func TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused(t *testing.T) {
