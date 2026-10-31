@@ -27,7 +27,7 @@
 #                 whose toolchain is missing prints as an ABSENT row with
 #                 the reason (#175).
 #                 Scaling constants are PROPOSED in BENCH-STANDARD.md terms.
-#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir).
+#   --only LANG   run a single language leg (c|cpp|go|rust|cs|js|java|dart|elixir|lobster).
 #                 An --only run whose leg is skipped (missing toolchain)
 #                 exits non-zero with the reason — zero rows is a refusal,
 #                 never a quietly green empty CSV (#175). For shared boxes
@@ -143,8 +143,8 @@ if [ "$QUICK" = 1 ]; then
     RUNNER_ARGS="$RUNNER_ARGS --quick"
 fi
 case "$ONLY" in
-    ""|c|cpp|go|rust|cs|js|java|dart|elixir) ;;
-    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir)" >&2; exit 1 ;;
+    ""|c|cpp|go|rust|cs|js|java|dart|elixir|lobster) ;;
+    *) echo "unknown --only language: $ONLY (c|cpp|go|rust|cs|js|java|dart|elixir|lobster)" >&2; exit 1 ;;
 esac
 
 # §3.5 provenance mechanics: sets the SERIALIZE* defaults, materializes the
@@ -237,6 +237,14 @@ beam_pinned() {
     done
     return 1
 }
+# The Lobster leg (bench/lobster/run): the pinned toolchain, LOBSTER overriding,
+# exactly as make/lobster.mk pins it. The generated unit carries its vendored
+# serialize.lobster beside it, so there is no runtime checkout to verify.
+LOBSTER_BIN="${LOBSTER:-$PWD/dist/lobster-v2026.8/bin/lobster}"
+LOBSTER_VERSION=""
+if [ -x "$LOBSTER_BIN" ]; then
+    LOBSTER_VERSION="$LOBSTER_BIN (pin v2026.8)"
+fi
 # the version line records the pin, or "not present" — never a system elixir
 # the leg would refuse to run on
 ELIXIR_VERSION=""
@@ -343,6 +351,7 @@ emit_preamble() {
         echo "# java: ${JAVA_VERSION:-not present} (generated codecs, zero runtime dependency; default JVM flags, no -ea)"
         echo "# dart: ${DART_VERSION:-not present} (generated codecs, zero runtime dependency; AOT executable)"
         echo "# elixir: ${ELIXIR_VERSION:-not present} (generated codecs, zero runtime dependency; pinned BEAM toolchain)"
+        echo "# lobster: ${LOBSTER_VERSION:-not present} (generated codec + vendored serialize.lobster; default JIT, --runtime-no-asserts; the --cpp row is owed, schema-lobster-bench-cpp)"
         echo "# pinning: $PIN_DESC"
         echo "# noise: ${BENCH_NOISE:-unlabelled}"
         # the schema commit carries its BRANCH, exactly as every runtime line
@@ -653,6 +662,20 @@ if [ -z "$ONLY" ] || [ "$ONLY" = elixir ]; then
     fi
 fi
 
+# ---- Lobster (generated codec + its vendored serialize.lobster; pinned toolchain, JIT) ----
+if [ -z "$ONLY" ] || [ "$ONLY" = lobster ]; then
+    if [ -f bench/lobster/main.lobster ]; then
+        if [ -x "$LOBSTER_BIN" ]; then
+            echo "== lobster: run ==" >&2
+            $PIN env LOBSTER="$LOBSTER_BIN" bench/lobster/run $RUNNER_ARGS >> "$OUT"
+        else
+            skip_leg lobster "runner present but no lobster at $LOBSTER_BIN (make dist-lobster, or set LOBSTER)"
+        fi
+    else
+        skip_leg lobster "runner not landed yet (bench/lobster/main.lobster)"
+    fi
+fi
+
 # ---- inline verdict pass (§4.1/§4.2): backfill the inline column ----
 # js is absent from this list DELIBERATELY: the verdict is a per-compiled-
 # language disassembly pass and a JIT leg has no AOT artifact to walk —
@@ -705,7 +728,7 @@ fi
 
 # ---- #175: an --only run that produced zero data rows is a failure, not a
 # quietly green empty CSV — the leg was skipped, not measured. Refuse. ----
-DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir),' "$OUT" 2>/dev/null || true)"
+DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|lobster),' "$OUT" 2>/dev/null || true)"
 if [ -n "$ONLY" ] && [ "${DATA_ROWS:-0}" -eq 0 ]; then
     echo "REFUSED (#175): --only $ONLY produced ZERO rows — see the SKIP reason above; nothing was measured" >&2
     echo "results: $OUT (EMPTY — refused)" >&2

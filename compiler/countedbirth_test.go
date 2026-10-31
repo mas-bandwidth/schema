@@ -42,15 +42,16 @@ type T
 // countName is the count's spelling in each target's storage. It is the
 // identifier every claim below is made about.
 var countName = map[string]string{
-	"c":      "window_count",
-	"cpp":    "window_count",
-	"cs":     "WindowCount",
-	"dart":   "windowCount",
-	"elixir": "window", // the list IS the count: length(value.window)
-	"go":     "WindowCount",
-	"java":   "windowCount",
-	"js":     "windowCount",
-	"rust":   "window_count",
+	"c":       "window_count",
+	"cpp":     "window_count",
+	"cs":      "WindowCount",
+	"dart":    "windowCount",
+	"elixir":  "window", // the list IS the count: length(value.window)
+	"go":      "WindowCount",
+	"java":    "windowCount",
+	"js":      "windowCount",
+	"lobster": "WindowCount",
+	"rust":    "window_count",
 }
 
 // bornAtMinimum is the text each target's CONSTRUCTED form carries when the
@@ -58,15 +59,16 @@ var countName = map[string]string{
 // here: it is all-zero by rule in every target, and a specified default does
 // not reach it either.
 var bornAtMinimum = map[string]string{
-	"c":      "value.window_count = 2;",
-	"cpp":    "int32_t window_count = 2;",
-	"cs":     "value.WindowCount = 2;", // a struct: Init, run by its constructor, births the count
-	"dart":   "int windowCount = 2;",
-	"elixir": "defstruct window: List.duplicate(0, 2)",
-	"go":     "value.WindowCount = 2",
-	"java":   "public int windowCount = 2;",
-	"js":     "this.windowCount = 2;",
-	"rust":   "window_count: 2,",
+	"c":       "value.window_count = 2;",
+	"cpp":     "int32_t window_count = 2;",
+	"cs":      "value.WindowCount = 2;", // a struct: Init, run by its constructor, births the count
+	"dart":    "int windowCount = 2;",
+	"elixir":  "defstruct window: List.duplicate(0, 2)",
+	"go":      "value.WindowCount = 2",
+	"java":    "public int windowCount = 2;",
+	"js":      "this.windowCount = 2;",
+	"lobster": "WindowCount: 2",
+	"rust":    "window_count: 2,",
 }
 
 // refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the
@@ -89,6 +91,8 @@ var assertsInDebug = map[string][]string{
 	"cs":   {`Debug.Assert(value.WindowCount >= 2 && value.WindowCount <= 8, "value.WindowCount out of range [2, 8]");`},
 	"dart": {"assert(value.windowCount >= 2);", "assert(value.windowCount <= 8);"},
 	"java": {"assert value.windowCount >= 2;", "assert value.windowCount <= 8;"},
+	// --runtime-no-asserts removes a Lobster assert from the build
+	"lobster": {"assert v.WindowCount >= 2 and v.WindowCount <= 8"},
 	// js is not here: its debug-only idiom is not an assert statement but the
 	// PRODUCTION/checked fork of the flat writer, checked separately below.
 	"rust": {`debug_assert!(value.window_count >= 2 && value.window_count <= 8, "window_count out of range [2, 8]");`},
@@ -101,10 +105,11 @@ var goneFromRelease = map[string][]string{
 	"cpp": {
 		"if ( int32_t( value.window_count ) < int32_t( 2 ) || int32_t( value.window_count ) > int32_t( 8 ) )",
 	},
-	"cs":   {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
-	"dart": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"java": {"if (value.windowCount < 2 || value.windowCount > 8) {"},
-	"rust": {"if value.window_count < 2 || value.window_count > 8 {"},
+	"cs":      {"if (value.WindowCount < 2 || value.WindowCount > 8)"},
+	"dart":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"java":    {"if (value.windowCount < 2 || value.windowCount > 8) {"},
+	"lobster": {"if v.WindowCount < 2 or v.WindowCount > 8: return false"},
+	"rust":    {"if value.window_count < 2 || value.window_count > 8 {"},
 }
 
 // assertToken is the build-removable predicate each target spells its writer

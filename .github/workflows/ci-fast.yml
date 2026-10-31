@@ -243,11 +243,14 @@ jobs:
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk) add_leg elixir ;;
             esac
+            case "$f" in
+              internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
+            esac
           done <<EOF
           $files
           EOF
           if [ "$broad" = yes ]; then
-            legs="cpp go c rust js cs java dart elixir"
+            legs="cpp go c rust js cs java dart elixir lobster"
           fi
 
           # THE PACKAGES. Every directory holding a changed .go file, as the
@@ -276,11 +279,16 @@ jobs:
             done
             for leg in $legs; do
               case "$leg" in
-                cpp) p=./internal/codegen/cpptable ;;
-                *)   p=./internal/codegen/${leg}table ;;
+                cpp)     ps=./internal/codegen/cpptable ;;
+                # the Lobster leg is two packages: the type surface and the
+                # table surface, both run under the pinned toolchain
+                lobster) ps="./internal/codegen/lobster ./internal/codegen/lobstertable" ;;
+                *)       ps=./internal/codegen/${leg}table ;;
               esac
-              [ -d "${p#./}" ] || continue
-              case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+              for p in $ps; do
+                [ -d "${p#./}" ] || continue
+                case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
+              done
             done
             packages=$(echo "$packages" | xargs || true)
           fi
@@ -494,6 +502,29 @@ jobs:
             exit 1
           fi
 
+      # THE LOBSTER PIN, when the packages include a Lobster one (or are
+      # broad): internal/codegen/lobster and internal/codegen/lobstertable run
+      # generated Lobster under the pinned compiler and fail, never skip,
+      # without it (internal/codegen/lobster/lobsterrun). make/lobster.mk's
+      # dist-lobster installs it at the sha256 it names, into the dist/ path
+      # lobsterrun's default names. The release binary links libOpenGL and
+      # libGLX, which the fleet hosts carry and the hosted ubuntu image does
+      # not, so a hosted fallback installs those two first.
+      - name: install the Lobster pin
+        env:
+          PACKAGES: ${{ needs.plan.outputs.packages }}
+        run: |
+          set -euo pipefail
+          case " $PACKAGES " in
+            *" ./internal/codegen/lobster "*|*" ./internal/codegen/lobstertable "*|*" ./... "*)
+              if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+                sudo apt-get update
+                sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+              fi
+              make dist-lobster
+              ;;
+          esac
+
       - name: go test the touched packages
         env:
           PACKAGES: ${{ needs.plan.outputs.packages }}
@@ -623,6 +654,19 @@ jobs:
           otp-version: '27'
           elixir-version: '1.18'
 
+      # THE LOBSTER PIN (make/lobster.mk's dist-lobster: the release archive,
+      # its sha256 refused before it is unpacked, into dist/lobster-<version>/).
+      # A hosted fallback adds the two GL libraries the release binary links.
+      - name: the pinned Lobster (Lobster leg)
+        if: matrix.leg == 'lobster'
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+
       # THE C FORMAT GATE's formatter, pinned: clang-format from PyPI at the
       # version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
       # runner's temp so a self-hosted runner keeps nothing between runs.
@@ -655,5 +699,10 @@ jobs:
             dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
             elixir) make tables-elixir-fixed-form tables-elixir-versioning \
                       ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            # test-lobster holds the fixed form to the reference's byte oracle
+            # (SCHEMA_REQUIRE_CORPUS=1) beside both packages' suites; the strict
+            # gate compiles every generated unit with zero warnings; the bench
+            # legs' gate runs both runners over their corpus, no clock
+            lobster) make test-lobster tables-lobster-clean bench-lobster-gate ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac

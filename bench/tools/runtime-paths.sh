@@ -190,7 +190,7 @@ EOF
     fi
 }
 
-# verify_runtime <cpp|c|go|rust|cs|js|java|dart|elixir> — the §3.5
+# verify_runtime <cpp|c|go|rust|cs|js|java|dart|elixir|lobster> — the §3.5
 # fail-closed check.
 #   stdout: the toolchain-resolved absolute runtime path (verified)
 #   return: 0 verified; 2 nothing to verify in this invocation — the leg
@@ -326,8 +326,9 @@ EOF
         echo "$got"
         ;;
 
-    java|dart|elixir)
-        # The codegen-only legs. schema's backends for these languages emit
+    java|dart|elixir|lobster)
+        # The codegen-only legs (lobster: the generated unit carries its
+        # vendored serialize.lobster beside it, pinned by SERIALIZE_PIN). schema's backends for these languages emit
         # self-contained code with no runtime library, so the legs build from
         # the repo's own generated sources with no runtime checkout — there
         # is nothing for the §3.5 guard to verify or misrecord, and no
