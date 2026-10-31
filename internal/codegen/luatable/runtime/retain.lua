@@ -1036,7 +1036,7 @@ local function wire_open(bytes)
   if #bytes < 1 or bytes:byte(1) ~= 1 then return nil end
   if #bytes < 9 then return nil end
   local count = string.unpack("<i8", bytes, #bytes - 7)
-  if count < 0 or count > (#bytes - 9) // 8 then return nil end
+  if count < 0 or count > (#bytes - 9) // 8 or count > D.ID_TABLE_BOUND then return nil end
   local endpos = #bytes - 8 - count * 8
   local ids = {}
   local seen = {}

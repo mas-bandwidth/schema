@@ -305,7 +305,7 @@ local function open(bytes, blen, report, st)
     return nil
   end
   local count = string.unpack("<i8", bytes, blen - 7)
-  if count < 0 or count > (blen - 9) // 8 then
+  if count < 0 or count > (blen - 9) // 8 or count > D.ID_TABLE_BOUND then
     report.malformed = true
     report.wireDamaged = true
     return nil
@@ -2141,7 +2141,7 @@ end
 local function measure_trailer(bytes)
   if type(bytes) ~= "string" or #bytes < 9 or bytes:byte(1) ~= 1 then return nil end
   local count = string.unpack("<i8", bytes, #bytes - 7)
-  if count < 0 or count > (#bytes - 9) // 8 then return nil end
+  if count < 0 or count > (#bytes - 9) // 8 or count > D.ID_TABLE_BOUND then return nil end
   local endpos = #bytes - 8 - count * 8
   local table_ids = {}
   local seen = {}
