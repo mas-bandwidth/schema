@@ -784,7 +784,13 @@ EXTENT, laid after the record's own storage, PRE-ORDER: a map's whole entry
 array first, then, entry by entry in key order, the arrays of any map an
 entry's value holds by value. `LoadMeasure`'s term is `N x sizeof( Entry )` at
 `alignof( Entry )` AT EVERY DEPTH, summed from the FRAMING alone, because `N`
-is framing and not a value. An UNREACHED non-empty map slot — a counted
+is framing and not a value. IN A COOK, a node whose type can hold an extent
+aligns to the greater of its record's alignment and the greatest alignment any
+element or entry its extent can hold asks for, at any depth, computed from the
+types; its extent begins at `sizeof` rounded up to the greater of eight and
+that alignment (`ir.CookNodeAlign`, `ir.CookExtentStart`; docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT RULES). Without both, a
+sixteen-aligned element in a holder aligned eight lands at eight modulo sixteen
+(the `widelist_wide` cook-write row). An UNREACHED non-empty map slot — a counted
 array's slot past its live count — is refused by `Cook` and by `Lock`, the same
 refusal §7.6 gives a pointer there. The WRITER holds the sort — `Measure`, `Save`,
 `Lock` and `Cook` each derive the ascending order from the builder's entries
@@ -792,8 +798,9 @@ and nothing passes between them, so `measure == save` over a map is a real
 check on two sorts agreeing. The READER trusts nothing and spends one compare
 per entry: the key is read by a SCAN of the entry's field headers before the
 slot is chosen, ascending against the key of the last entry that LANDED, a
-duplicate resets the slot it took so last wins WHOLE, a descending key stops
-the map and lets the PARENT read on, a key past the bound is skipped by its `L`
+duplicate resets the slot it took so last wins WHOLE, a descending key is
+damage, `malformed` set and the whole load discarded (docs/SPEC-TABLES.md §2.8,
+§4, DAMAGE DISCARDS THE WHOLE LOAD), a key past the bound is skipped by its `L`
 and counted `clamped`, and a key kind the reader does not declare empties the
 map for ONE `kind_mismatch`. The shape to refuse is closed addressing: a node
 per entry is an allocation per entry on the authoring side, a directory entry
@@ -816,8 +823,16 @@ list's slot takes, against `alignof( Entry )` and `count × sizeof( Entry )`,
 plus the fifth a list has no analogue for — the KEYS read ascending with no
 repeat, because a cook a `Find` cannot search is a forgery. The tool's COOK
 and UNCOOK halves carry the entry arrays in the holder's node extent
-(`internal/tablecook`), and the conformance `cook-write` rows that carry a map
-hold every leg's writer to the tool's bytes.
+(`internal/tablecook`), held to the C++ reference's bytes with nothing pinned
+between by `make tables-tool-cook-differential` (every cook-write row, both
+byte orders; its control leaves slack after a map's entry array and reds the
+map-bearing rows and no other), and the node alignment rule by
+`tables-tool-cook-node-align-negative-control` over `widelist_wide`; the
+conformance `cook-write` rows that carry a map (`map_cells` `map_chunks`
+`map_crews` `map_depth` `map_docs` `map_empty` `map_full` `map_pairs`
+`map_slots` `map_spans` `map_text` `map_trails` `map_runs` `list_of_maps`)
+hold every leg's writer to the tool's bytes. The layout is modelled in
+`tla/NodeExtent.tla` with five reversed witnesses.
 
 **Measured effect.** Zero bytes past the entries themselves in a region and a
 cook, `Open` still O(1), `Find` in place at `floor( log2 n ) + 1` key compares

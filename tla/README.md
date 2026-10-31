@@ -300,16 +300,20 @@ A LAYOUT model of the node extent (docs/SPEC-TABLES.md §2.8, §2.9, §7.2,
 arithmetic the writers carry — `internal/tablecook/extent.go`, the C++
 reference's `ExtentAt` and `ExtentPack`, the Rust carve in
 `internal/codegen/rusttable/cookcarve.go` — and an abstract "the entries are
-somewhere in the node" cannot see: the node's base, the record rounded to the
-region's floor of eight, the running offset, each array rounded to its
+somewhere in the node" cannot see: the node's base at its node alignment, the
+record rounded to where the extent begins, the running offset, each array rounded to its
 element's alignment, `count × size`, and the PRE-ORDER rule (a container's whole
 array first, then each element's own arrays).
 
 One node holds two containers in field order, A then B, and each element of A
-may hold one child container. Every shape is chosen at Init: the node's
+may hold one child container. Every shape is chosen at Init: the record's
 alignment (eight or sixteen, because a holder holds a sixteen-byte slot at
-eight) and base, the record's size, each element's size and alignment (at most
-eight), every count and every child count. A map's entries are a list's
+eight), the node's base, the record's size, each element's size and alignment
+(up to sixteen, a 128-bit kind's), every count and every child count. The node
+aligns to the greater of its record's alignment and every element alignment
+its three shapes ask for, and the extent begins at the record's size rounded
+to the greater of eight and that (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
+RULES; `ir.CookNodeAlign`, `ir.CookExtentStart`). A map's entries are a list's
 elements with the generated `{ key, value }` table as the element; the key order
 is not index arithmetic and is not modelled.
 
@@ -329,6 +333,8 @@ is not index arithmetic and is not modelled.
 | `MCNodeExtentSkipAlign.cfg` | `SkipAlign` | `AlignedInRegion` | an array laid at the running offset unaligned (the Rust carve's control `test/rust-cookmap/control align`, and the tool's `tables-lists-tool-cook-negative-control`) |
 | `MCNodeExtentChildrenFirst.cfg` | `ChildrenFirst` | `NoOverlap` | an element's child array laid before the parent's whole array is reserved |
 | `MCNodeExtentExtentOverRecord.cfg` | `ExtentOverRecord` | `OutsideRecord` | the extent begun at the node's base instead of after the record |
+| `MCNodeExtentFloorOnlyStart.cfg` | `FloorOnlyStart` | `AlignedInRegion` | the extent begun at the record's size rounded to eight alone, so a sixteen-aligned array lands at eight modulo sixteen when the size is (the tool's `tables-tool-cook-node-align-negative-control`, its `start` half) |
+| `MCNodeExtentRecordAlignedNode.cfg` | `RecordAlignedNode` | `AlignedInRegion` | the node aligned to its record alone, so a sixteen-aligned array lands at eight modulo sixteen when the node does (the same control, its `node` half) |
 
 ## Running
 
@@ -339,12 +345,9 @@ nice -n 19 timeout 300s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
   -workers 1 -config MCNodeExtent.cfg -metadir "$JOB/tlc-MCNodeExtent" MCNodeExtent
 ```
 
-Repeat for each of the four cfgs. The runs are recorded in `tla/RUNS.tsv`.
+Repeat for each of the six cfgs. The runs are recorded in `tla/RUNS.tsv`.
 
 ## What this does not prove
 
-An element aligned sixteen (a 128-bit list element) inside a node aligned eight
-sits at eight modulo sixteen whenever the node does: the layout aligns a node
-to its record and an array to its element relative to the extent, so nothing
-puts such an array on a sixteen-byte boundary. The model holds element
-alignments at eight or less and names this rather than ruling on it.
+The key order of a map's entries, which is not index arithmetic, and nesting
+deeper than one level below the node's own containers.

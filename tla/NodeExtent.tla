@@ -5,7 +5,7 @@
 \* reference's ExtentAt and ExtentPack, the Rust carve in
 \* internal/codegen/rusttable/cookcarve.go) and that an abstract model of "the
 \* entries are somewhere in the node" cannot see: the node's base, the record's
-\* storage rounded to the region's alignment floor, the running offset, each
+\* storage rounded to where the extent begins, the running offset, each
 \* array's start rounded to its element's alignment, `count x size`, and the
 \* PRE-ORDER rule — a container's WHOLE array first, then, element by element,
 \* the arrays its elements hold.
@@ -27,28 +27,34 @@ CONSTANTS MaxCount,   \* the largest count a container may hold
           MaxRecUnits,\* a record's size is k x its alignment, k in 1..MaxRecUnits
           Floor       \* the region's alignment floor: eight
 
-\* The three fault switches, each a reversed witness of one rule. The positive
-\* cfg holds all three FALSE; each reversed cfg turns exactly one TRUE.
-CONSTANTS SkipAlign,       \* an array is laid at the running offset, unaligned
-          ChildrenFirst,   \* an element's child array is laid before the
-                           \* parent's whole array is reserved
-          ExtentOverRecord \* the extent begins at the node's base, over the
-                           \* record's own storage
+\* The five fault switches, each a reversed witness of one rule. The positive
+\* cfg holds all five FALSE; each reversed cfg turns exactly one TRUE.
+CONSTANTS SkipAlign,         \* an array is laid at the running offset, unaligned
+          ChildrenFirst,     \* an element's child array is laid before the
+                             \* parent's whole array is reserved
+          ExtentOverRecord,  \* the extent begins at the node's base, over the
+                             \* record's own storage
+          FloorOnlyStart,    \* the extent begins at sizeof rounded to the
+                             \* floor of eight alone
+          RecordAlignedNode  \* the node aligns to its record alone
 ASSUME SkipAlign \in BOOLEAN /\ ChildrenFirst \in BOOLEAN /\ ExtentOverRecord \in BOOLEAN
+ASSUME FloorOnlyStart \in BOOLEAN /\ RecordAlignedNode \in BOOLEAN
 
 Up(x, a) == IF SkipAlign THEN x ELSE ((x + a - 1) \div a) * a
 
 VARIABLES shape, layout
 vars == <<shape, layout>>
 
-\* The node: its alignment is its record's, and its base is any multiple of
-\* that inside the region (the region's base is aligned to the greatest record
-\* alignment, which is at least the node's). A record that holds a container
-\* holds its sixteen-byte slot at eight (ir/blocklayout.go), so its alignment
-\* is at least eight: RecAligns is {8, 16}. Element alignments stop at the
-\* floor of eight: an element aligned sixteen in a node aligned eight would sit
-\* at eight modulo sixteen whenever the node does, which this layout does not
-\* prevent (reported, not modelled as a rule).
+\* The node: its alignment is the greater of its record's and the greatest
+\* alignment any array its extent CAN hold asks for, decided by the TYPES (the
+\* three element shapes) and not by which counts this value has
+\* (ir.CookNodeAlign); its base is any multiple of that inside the region (the
+\* region's base is aligned to the greatest node alignment, which is at least
+\* this node's). A record that holds a container holds its sixteen-byte slot at
+\* eight (ir/blocklayout.go), so its alignment is at least eight: RecAligns is
+\* {8, 16}. An element may ask for sixteen (a 128-bit kind) inside a record
+\* aligned eight whose size is eight modulo sixteen, which is the case the two
+\* last switches reverse.
 Shapes == [ recAlign : RecAligns,
             recUnits : 1..MaxRecUnits,
             baseUnits : 0..2,
@@ -87,9 +93,14 @@ Walk(s) ==
          IN  [a |-> Arr(aSt, s.na, s.a), kids |-> kids[1], b |-> Arr(bSt, s.nb, s.b),
               extent |-> bSt + s.nb * s.b.size]
 
+Max(x, y) == IF x > y THEN x ELSE y
+ExtAlign(s) == Max(Max(s.a.align, s.b.align), s.child.align)
+NodeAlign(s) == IF RecordAlignedNode THEN s.recAlign ELSE Max(s.recAlign, ExtAlign(s))
 RecSize(s)  == s.recAlign * s.recUnits
-Base(s)     == s.recAlign * s.baseUnits
-ExtentAt(s) == IF ExtentOverRecord THEN 0 ELSE Up(RecSize(s), Floor)
+Base(s)     == NodeAlign(s) * s.baseUnits
+ExtentAt(s) == IF ExtentOverRecord THEN 0
+               ELSE IF FloorOnlyStart THEN ((RecSize(s) + Floor - 1) \div Floor) * Floor
+               ELSE ((RecSize(s) + Max(Floor, ExtAlign(s)) - 1) \div Max(Floor, ExtAlign(s))) * Max(Floor, ExtAlign(s))
 
 Init == /\ shape \in Shapes
         /\ layout = Walk(shape)
@@ -107,8 +118,9 @@ TypeOK == /\ shape \in Shapes
           /\ layout.extent \in Nat
 
 \* EVERY ARRAY SITS AT ITS ELEMENT'S ALIGNMENT, in the region, where a reader
-\* points a typed pointer at it. Element alignments are at most the floor, which
-\* is what makes a node's base plus a floor-rounded record an aligned origin.
+\* points a typed pointer at it: the node's base and the extent's start are both
+\* multiples of every element alignment the extent can hold, which is what
+\* makes the extent an aligned origin.
 AlignedInRegion ==
     \A i \in NonEmpty : Abs(Arrays[i]) % Arrays[i].align = 0
 

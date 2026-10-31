@@ -296,9 +296,10 @@
     {
       "name": "base-tool-cook-differential",
       "when": "pull-request",
-      "why": "the tool's cook against the C++ reference's, nothing pinned between: the tool's map carve given slack after an entry array through go build -overlay, the harness rebuilt with it, and the differential required red on the map-bearing rows and on no other. Measured 1 s of control time on hetzner1 beyond the reference driver's build.",
+      "why": "the tool's cook against the C++ reference's, nothing pinned between: the tool's map carve given slack after an entry array through go build -overlay, the harness rebuilt with it, and the differential required red on the map-bearing rows and on no other (1 s on hetzner1 beyond the reference driver's build); and the node alignment rule's two halves taken out of ir in turn through go test -overlay, each required to red the tool's cook of widelist_wide and no other row.",
       "targets": [
-        "tables-tool-cook-differential-negative-control"
+        "tables-tool-cook-differential-negative-control",
+        "tables-tool-cook-node-align-negative-control"
       ]
     },
     {
