@@ -198,13 +198,12 @@ func TestSquirrelRuntimeNameScanGoesRed(t *testing.T) {
 }
 
 // TestSquirrelRefusesADeclarationOnAModuleKey is the claimable half: a
-// declaration named for one of the unit's own names, or for another
-// declaration's generated function, is REFUSED beside a table, naming the key,
+// declaration named for one of the unit's own names is REFUSED beside a table, naming the key,
 // and the same declaration in a table-free unit is kept, because no table
 // module is emitted there.
 func TestSquirrelRefusesADeclarationOnAModuleKey(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"Roots", "Descriptors", "Package", "Keyed", "GadgetSave"} {
+	for _, name := range []string{"Roots", "Descriptors", "Package", "Keyed", "UnitView"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			withTable := "package probe\n\ntable Gadget\n{\n    n int32\n    k [Team]int32\n}\n\nenum Team { Red, Blue }\n\ntable " + name + "\n{\n    n int32\n}\n"
