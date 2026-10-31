@@ -554,7 +554,9 @@ func main() {
 	jobs := flag.Int("j", runtime.NumCPU(), "generations at once")
 	flag.Parse()
 	if err := run(*prev, *rev, *oldBin, *newBin, *corpus, *work, *jobs); err != nil {
-		fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
+		if !errors.Is(err, errRefused) {
+			fmt.Fprintf(os.Stderr, "release-differential: %v\n", err)
+		}
 		os.Exit(1)
 	}
 }
@@ -588,6 +590,7 @@ func run(prev, rev, oldBin, newBin, corpus, work string, jobs int) error {
 		if err := extract(rev, src); err != nil {
 			return fmt.Errorf("extracting %s: %w", rev, err)
 		}
+		defer func() { _ = os.RemoveAll(src) }()
 		if corpus == "" {
 			corpus = src
 		}
@@ -606,6 +609,11 @@ func run(prev, rev, oldBin, newBin, corpus, work string, jobs int) error {
 		oldBin = filepath.Join(work, "schema-old")
 		if err := build(src, oldBin); err != nil {
 			return fmt.Errorf("building %s's compiler: %w", prev, err)
+		}
+		// the binary is what is kept: a whole second tree under build/ is a
+		// second repository to every walk of this one
+		if err := os.RemoveAll(src); err != nil {
+			return err
 		}
 	}
 	if corpus, err = filepath.Abs(corpus); err != nil {
@@ -633,7 +641,10 @@ func run(prev, rev, oldBin, newBin, corpus, work string, jobs int) error {
 	}
 	r.Print(os.Stdout, old.Name(), nw.Name())
 	if len(r.Differences) > 0 {
-		os.Exit(1)
+		return errRefused
 	}
 	return nil
 }
+
+// errRefused is the verdict's own exit: the report has already said why.
+var errRefused = errors.New("refused")
