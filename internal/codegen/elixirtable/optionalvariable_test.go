@@ -118,3 +118,77 @@ var optionalVariableProbeCases = []struct{ name, text, build string }{
 	{"empty", `{"inner":{"text":""},"tail":5}`, `%{"inner" => %{"text" => ""}, "tail" => 5}`},
 	{"row_absent", `{"inner":{"text":"x"},"tail":1}`, `%{"inner" => %{"text" => "x"}, "tail" => 1}`},
 }
+
+// TestScalarListUnderATableHeaderElixir pins a wire fuzzer escape (pass kind,
+// tabledemo.WideBlob): a SCALAR list whose element-kind byte reads 13, the
+// table kind, must not be measured as a list of tables. The region measure
+// (load_measure) descended into table elements by the wire's byte alone and
+// raised a KeyError on the scalar list's descriptor, which has no element
+// table; the engine (internal/tablewire extent.go) places nothing for a header
+// whose element kind is not the declared one, and the read answers it as a
+// kind mismatch. Both calls must return, never raise.
+//
+// THE REVERSED WITNESS takes the declared-kind guard back out and the probe
+// must go red.
+func TestScalarListUnderATableHeaderElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+
+	u := unitFrom(t, scalarListProbeSrc)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Holder"))
+	var rep tabletext.Report
+	if !m.Read(inst, []byte(`{"samples":[1,2,3],"tail":9}`), &rep) {
+		t.Fatal("the oracle did not read the probe text")
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the list payload is the element-kind byte (7, int16) then the count (3)
+	at := strings.Index(string(wire), "\x07\x03")
+	if at < 0 {
+		t.Fatalf("no int16 list header in the probe wire %x", wire)
+	}
+	mutant := append([]byte{}, wire...)
+	mutant[at] = 13
+	probe := fmt.Sprintf(`
+data = Base.decode16!(%q, case: :lower)
+measure = Slprobe.Table.load_measure("Holder", data)
+true = is_integer(measure)
+case Slprobe.Table.load("Holder", data) do
+  {:ok, _v, _r} -> :ok
+  {:error, _reason, _r} -> :ok
+end
+IO.puts("ok")
+`, hex.EncodeToString(mutant))
+
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("a scalar list under a table header escaped the Elixir reader: %v\n%s", err, out)
+	}
+
+	const guard = "<<13, count_rest::binary>> when field.elem_kind == 13 ->"
+	planted := map[string][]byte{}
+	n := 0
+	for name, data := range files {
+		n += strings.Count(string(data), guard)
+		planted[name] = []byte(strings.ReplaceAll(string(data), guard, "<<13, count_rest::binary>> ->"))
+	}
+	if n == 0 {
+		t.Fatal("the witness found no declared-kind guard in the generated measure")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the measure without its declared-kind guard still passed: the probe does not see the rule\n%s", out)
+	}
+}
+
+const scalarListProbeSrc = `package slprobe
+
+table Holder
+{
+    samples []int16
+    tail    int32
+}
+`
