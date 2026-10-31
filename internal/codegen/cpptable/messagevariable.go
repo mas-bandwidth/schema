@@ -339,7 +339,6 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	g.pf("    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }\n")
 	g.pf("    const int64_t capacity = *count;\n")
 	g.pf("    *count = 0;\n")
-	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
 	g.pf("    TableMessageBatchReader br;\n")
 	g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );\n")
 	g.pf("    if ( bodies < 0 ) { return false; }\n")
@@ -350,14 +349,15 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	g.pf("    for ( int64_t b = 0; b < bodies; b++ )\n    {\n")
 	g.pf("        roots[b] = NULL;\n")
 	if g.retain {
-		g.pf("        if ( !%s( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }\n",
-			g.verb(n, "LoadMessageBodyInto"))
+		g.pf("        if ( !%s( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) %s // damage or a non-finite float discards the whole batch (§3.3, §4)\n",
+			g.verb(n, "LoadMessageBodyInto"), g.messageBatchDiscard("b"))
 	} else {
-		g.pf("        if ( !%sLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { *count = out->non_finite_floats != non_finite_before ? 0 : b; return false; }\n", n)
+		g.pf("        if ( !%sLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) %s // damage or a non-finite float discards the whole batch (§3.3, §4)\n", n, g.messageBatchDiscard("b"))
 	}
 	g.pf("        br.remaining--;\n    }\n")
+	g.pf("    if ( !TableMessageBatchClose( br ) ) %s // damage after the last body discards the batch too (§4)\n", g.messageBatchDiscard("bodies"))
 	g.pf("    *count = bodies;\n")
-	g.pf("    return TableMessageBatchClose( br );\n}\n\n")
+	g.pf("    return true;\n}\n\n")
 
 }
 
@@ -549,4 +549,16 @@ func (g *tableGen) emitRootNodeMessageBodyDispatch(st *ir.Struct, reachable []*i
 	} else {
 		g.pf("    return ok;\n}\n\n")
 	}
+}
+
+// messageBatchDiscard is the batch read's answer to damage (docs/SPEC-TABLES.md
+// §4, §3.3): DAMAGE DISCARDS THE WHOLE BATCH, so the region is cleared, every
+// root up to and including body `last` is NULL, each body's retention store is
+// emptied, and the count stays 0.
+func (g *tableGen) messageBatchDiscard(last string) string {
+	retain := ""
+	if g.retain {
+		retain = " if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } }"
+	}
+	return fmt.Sprintf("{ memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= %s && k < bodies; k++ ) { roots[k] = NULL; }%s return false; }", last, retain)
 }

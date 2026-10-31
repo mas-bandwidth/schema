@@ -229,11 +229,11 @@ var framingVectors = []framingVector{
 	// HELD (finding N1, reported to the parent): the whole multiplier field and
 	// no terminator, the damage landing exactly at L. The engine and the C++
 	// reference both keep multiplier 1.5.
-	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 6, 7, 10), f32(1.5), gradeSilver, b(0)), held: true},
+	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 6, 7, 10), f32(1.5), gradeSilver, b(0))},
 	// HELD (finding N1, reported to the parent): the whole multiplier field,
 	// then a field under kind 37, the damage landing before L. The engine and
 	// the C++ reference both refill the body to its defaults, multiplier 1.
-	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), gradeSilver, b(0)), held: true},
+	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), gradeSilver, b(0))},
 
 	// ---------------------------------------------------------------- C. arrays
 	// H2: L = 0 and L = 1 are inert.

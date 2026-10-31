@@ -137,6 +137,10 @@ type FramingCase struct {
 	Root    string
 	Wire    string
 	Refused bool
+	// Damaged is the verdict `malformed`: DAMAGE DISCARDS THE WHOLE LOAD
+	// (docs/SPEC-TABLES.md §4), so the row owes the refusal and nothing else.
+	// No counter and no value is compared.
+	Damaged bool
 	Counts  Counts
 	Value   string
 }
@@ -147,6 +151,9 @@ type FramingCase struct {
 func (f FramingCase) Verdict() string {
 	if f.Refused {
 		return Counts{Refused: true}.String()
+	}
+	if f.Damaged {
+		return Counts{Malformed: true}.String()
 	}
 	return f.Counts.String()
 }
@@ -598,18 +605,26 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: framing takes case, unit, root, wire, verdict, value file or -", where)
 			}
 			fc := FramingCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]}
-			if f[5] == "refused" {
+			switch f[5] {
+			case "refused":
 				fc.Refused = true
-			} else {
+			case "malformed":
+				fc.Damaged = true
+			default:
 				c, err := ParseCounts(f[5])
 				if err != nil {
 					return nil, fmt.Errorf("%s: %w", where, err)
 				}
+				if c.Malformed {
+					// a damaged load is discarded whole (docs/SPEC-TABLES.md
+					// §4): its counters are not defined, so no row may owe them
+					return nil, fmt.Errorf("%s: a damaged read owes the verdict `malformed`, not counters", where)
+				}
 				fc.Counts = c
 			}
 			if f[6] != "-" {
-				if fc.Refused {
-					return nil, fmt.Errorf("%s: a refused read has no value to owe", where)
+				if fc.Refused || fc.Damaged {
+					return nil, fmt.Errorf("%s: a refused or damaged read has no value to owe", where)
 				}
 				fc.Value = f[6]
 			}

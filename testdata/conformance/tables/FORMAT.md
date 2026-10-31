@@ -112,10 +112,14 @@ refusal      <forgery> <reason>
 - **`framing`** is one hand-built wire per rule and bound of the FRAMING layer
   (docs/LAYERS/1-framing.md): the record scan, the `L` bounds, the header read
   against the parent, damage and where reading resumes, the node-table scan.
-  `<verdict>` is `refused` or the §4 report,
+  `<verdict>` is `refused`, `malformed`, or the §4 report of a clean read,
   `<unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>`,
   and `<value file>` is the §16 text the read must leave, under
-  `framing/<value>.json`, or `-` for a row that owes the report alone. Both
+  `framing/<value>.json`, or `-` for a row that owes the report alone.
+  **`malformed` is DAMAGED INPUT**: damage discards the whole load
+  (docs/SPEC-TABLES.md §4), so the row owes the refusal and no value, and the
+  harness scores only that the leg's report line says `malformed`. The same
+  holds for a `report` row whose verdict in `reports.txt` is malformed. Both
   are HAND-AUTHORED from the rule text, never pinned from a leg or the engine,
   which is what makes the row an expectation. The wire files under
   `testdata/wire/tables/framing/` are the bytes of the scripts in
