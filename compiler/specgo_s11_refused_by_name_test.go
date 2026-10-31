@@ -46,8 +46,8 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 		},
 		{
 			name:  "byte buffers",
-			want:  []string{"C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes`", "Dart and Java carry `*string` only", "refused by name under every\n  backend"},
-			stale: []string{"under every backend but C++"},
+			want:  []string{"C, C++, C#, Go, Elixir, JavaScript and Rust carry `*bytes`", "Dart and Java carry `*string` only"},
+			stale: []string{"under every backend but C++", "`*wstring` is the third spelling"},
 		},
 		{
 			name:  "optional fields",

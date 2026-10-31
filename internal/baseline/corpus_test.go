@@ -60,7 +60,7 @@ func TestCorpusBaselinesAreCurrent(t *testing.T) {
 // (docs/SPEC-TABLES.md §3.4), by table name. They are NOT baseline findings:
 // they say that a fixed table's record body is large, which is a design
 // remark about a declaration and not a lossy edit. The corpus carries two on
-// purpose — the wide-text table of §2.8 and the arms corpus's ToolMessage —
+// purpose — the wide-extents table of §3 and the arms corpus's ToolMessage —
 // and pinning them BY NAME rather than tolerating a count is what keeps a
 // THIRD one, or a baseline warning, from arriving unnoticed.
 var expectedFixedSizeNotes = map[string]string{

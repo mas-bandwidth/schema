@@ -13,7 +13,7 @@
 // conformance set is fixed roots only. Text arms of both flavours, in ordinal
 // order, so the ordinal and the flavour DISAGREE at the second arm:
 //
-//   1 short   string(4)       ordinal 1, flavour 1
+//   1 brief   string(4)       ordinal 1, flavour 1
 //   2 narrow  string(6)       ordinal 2, flavour 1
 //   3 raw     bytes(4)        ordinal 3, flavour 3
 //   4 list    a COUNTED ARRAY under an arm, and a scalar behind it
@@ -22,7 +22,7 @@
 // the two sides read each other through a COMPILED plan.
 package tblfm1
 
-type MarkShort
+type MarkBrief
 {
     w string(4)
     n int32 = 0 | min = 0, max = 1000
@@ -51,7 +51,7 @@ type MarkList
 
 union Mark
 {
-    short  MarkShort
+    brief  MarkBrief
     narrow MarkNarrow
     raw    MarkRaw
     list   MarkList

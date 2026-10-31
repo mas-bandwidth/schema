@@ -3,7 +3,7 @@
 // the other through a COMPILED plan (docs/SPEC-TABLES.md §3.4). See FM1.schema
 // for what the arms are for.
 //
-//   1 short   unmoved
+//   1 brief   unmoved
 //   2 skip    AN ARM FM1 HAS NO NAME FOR: an FM1 reader meets a tag it cannot
 //             resolve and the whole union takes its prefill, never another
 //             arm's bytes
@@ -12,7 +12,7 @@
 //   5 list    ordinal 4 -> 5
 package tblfm2
 
-type MarkShort
+type MarkBrief
 {
     w string(4)
     n int32 = 0 | min = 0, max = 1000
@@ -43,7 +43,7 @@ type MarkSkip
 
 union Mark
 {
-    short  MarkShort
+    brief  MarkBrief
     skip   MarkSkip
     narrow MarkNarrow
     raw    MarkRaw

@@ -24,11 +24,11 @@ var bannedTerm = regexp.MustCompile(`peer|PEER|Peer|(?i:\bpeer)`)
 // or temporary directory, or a Windows drive path.
 var absolutePath = regexp.MustCompile(`(?m:^|[^A-Za-z0-9_.])(/Users/|/home/|/Volumes/|/private/|/tmp/|/var/folders/|/root/|[A-Za-z]:\\{1,2}Users\\)`)
 
-// textUnits is every testdata schema unit: the three corpora and every unit
+// textUnits is every testdata schema unit: the two corpora and every unit
 // under tables/ that holds schema files.
 func textUnits(t *testing.T) []string {
 	t.Helper()
-	units := []string{corpusDir, corpus128Dir, corpusWideDir}
+	units := []string{corpusDir, corpus128Dir}
 	entries, err := os.ReadDir("../../tables")
 	if err != nil {
 		t.Fatal(err)
