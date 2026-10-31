@@ -642,3 +642,51 @@ IO.puts("ok")
 		t.Fatalf("the reader without its open-record check still passed: the probe does not see the rule\n%s", out)
 	}
 }
+
+// TestNonCanonicalNodeIndexIsDamageElixir pins a wire fuzzer crash (pass
+// canonical, graphdemo.Scene over graph_shared): a pointer's node index that is
+// not one canonical LEB128 (here 0x82 0x00) is framing damage the report names
+// (docs/SPEC-TABLES.md §3, every number is one canonical LEB128); the leg's
+// pointer read had no answer for it and raised a CaseClauseError.
+//
+// THE REVERSED WITNESS takes the pointer read's damage answer out and the
+// probe must go red.
+func TestNonCanonicalNodeIndexIsDamageElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "tables", "pointers")
+	u := loadUnit(t, filepath.Join(dir, "Graph.schema"), filepath.Join(dir, "Marks.schema"), filepath.Join(dir, "Parts.schema"))
+	const mutant = "01010c06736861726564021102031103041102050d0b0604010000000211820000070c2904080d090407000000010c036f6e65000a070b11040c1105000a040b1105000a080d0c046c6561660000861b638ebaadbcc4030c9a5fcc128f0a95b31e51efb8255bb746a665bb2092507e69be95239e8360ea96b20076e9d875ffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c1d434c78a3907eb9b01c04a2ad70b02405d8145753aaaa763d62cb8fecfcf7390d00000000000000"
+	probe := fmt.Sprintf(`
+case Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower)) do
+  {:ok, _v, %%{malformed: true}} -> :ok
+  {:error, :malformed, _r} -> :ok
+  other ->
+    IO.puts(:stderr, "FAIL: a non-canonical node index: " <> inspect(other))
+    System.halt(1)
+end
+IO.puts("ok")
+`, mutant)
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir reader does not answer a non-canonical node index as damage: %v\n%s", err, out)
+	}
+	const answer = "        # a node index that is not one canonical LEB128 is framing damage (§3)\n        {:cont, nil, %{report | malformed: true}}\n"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), answer)
+		planted[name] = []byte(strings.ReplaceAll(string(data), answer, "        {:cont, nil, report}\n"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no damage answer in the generated pointer read")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the pointer read without its damage answer still passed: the probe does not see the rule\n%s", out)
+	}
+}

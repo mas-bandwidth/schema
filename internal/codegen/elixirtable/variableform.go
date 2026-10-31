@@ -1874,6 +1874,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp read_payload(%{t: :blob} = _f, payload, nodes, ids, report) do
     case leb(payload) do
+      :error ->
+        # a node index that is not one canonical LEB128 is framing damage (§3)
+        {:cont, nil, %{report | malformed: true}}
+
       {0, _} ->
         {:cont, nil, report}
 
@@ -1905,6 +1909,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp read_payload(%{t: :pointer} = f, payload, nodes, ids, report) do
     case leb(payload) do
+      :error ->
+        # a node index that is not one canonical LEB128 is framing damage (§3)
+        {:cont, nil, %{report | malformed: true}}
+
       {0, _} ->
         {:cont, nil, report}
 
@@ -5161,6 +5169,10 @@ const variableRetainSource = `
 
   defp read_payload_retain(%{t: :pointer}, payload, nodes, ids, report, retain, _path) do
     case leb(payload) do
+      :error ->
+        # a node index that is not one canonical LEB128 is framing damage (§3)
+        {:cont, nil, %{report | malformed: true}, retain}
+
       {0, _} ->
         {:cont, nil, report, retain}
 
