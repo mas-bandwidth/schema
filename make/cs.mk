@@ -791,6 +791,10 @@ tables-cs-release:
 	$(MAKE) tables-cs-pack-negative-control
 	$(MAKE) tables-cs-message-blob-endian-negative-control
 	$(MAKE) conformance-negative-control-cs
+	$(MAKE) tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control
+	$(MAKE) tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control
+	$(MAKE) tables-cs-leg-region-blob-shared-negative-control conformance-cs-absent-negative-control
+	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control
 
 # J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
 # The C# table leg's `--gate` verb round-trips all 64 corpus variants and
