@@ -628,16 +628,30 @@ pub fn scalar_read_128(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> Opt
     Some(raw)
 }
 
-/// A float32 WIDENED into a float64 (§4): the value for a finite one, and for a
-/// NaN its payload in the top of the double's mantissa, by bit surgery, because
-/// the hardware conversion would set the quiet bit (SPEC.md §4.3).
-pub fn table_widen_f32(bits: u32) -> f64 {
-    if bits & 0x7F80_0000 == 0x7F80_0000 && bits & 0x007F_FFFF != 0 {
-        let sign = ((bits >> 31) as u64) << 63;
-        let payload = ((bits & 0x007F_FFFF) as u64) << 29;
-        return f64::from_bits(sign | 0x7FF0_0000_0000_0000 | payload);
+/// THE FINITE RULE ON A RETAINED UNKNOWN (docs/SPEC-TABLES.md §3.3, §6.6): a
+/// payload of a float kind is tested on its raw bits like a known field's, and
+/// a NaN or an infinity refuses the read. Every other kind, and a payload that
+/// is not its kind's width, is the walk's to judge.
+pub fn table_retained_float_finite(kind: u8, payload: &[u8]) -> bool {
+    match (kind, payload.len()) {
+        (10, 4) => table_finite_f32(u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]])),
+        (11, 8) => {
+            let mut b = [0u8; 8];
+            b.copy_from_slice(payload);
+            table_finite_f64(u64::from_le_bytes(b))
+        }
+        _ => true,
     }
-    f32::from_bits(bits) as f64
+}
+
+/// THE WRITER'S FINITE RULE (docs/SPEC-TABLES.md §3.3, the same rule as the
+/// packet wire's, SPEC.md §4.3): a NaN or an infinity is
+/// not a value of the type, so the save refuses it BY NAME (at is
+/// <owner>.<field>) for <root>_save_checked, as for a value over its bound.
+pub fn table_float_refuse(ids: &mut IdTable, at: &str) {
+    if ids.refused.is_none() {
+        ids.refused = Some(format!("non_finite_float: {at}"));
+    }
 }
 
 /// Walk past a payload the reader does not store, by kind (§4), bounded by the

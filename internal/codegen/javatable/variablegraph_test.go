@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE POINTER GRAPH'S IDENTITY ON THE JAVA LEG (docs/PORTING.md M6 and M14;
@@ -30,6 +32,7 @@ import (
 // name the property. A witness that stays green is a test that cannot see.
 func TestJavaPointerGraphSharesOnceRefusesCyclesAndLabelsNodes(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "javac and java (it builds and runs the pointer-graph driver)")
 	javac, javaBin, files, wire, golden := graphFixture(t)
 	if out, ok := runGraphDriver(t, javac, javaBin, files, wire, golden); !ok {
 		t.Fatalf("the Java pointer graph driver failed:\n%s", out)
@@ -41,6 +44,7 @@ func TestJavaPointerGraphSharesOnceRefusesCyclesAndLabelsNodes(t *testing.T) {
 // red on that property by name.
 func TestJavaPointerGraphNegativeControl(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "javac and java (it builds and runs the pointer-graph driver)")
 	javac, javaBin, files, wire, golden := graphFixture(t)
 	witnesses := []struct {
 		name, file, from, to, want string

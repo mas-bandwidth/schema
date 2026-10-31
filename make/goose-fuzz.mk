@@ -48,7 +48,9 @@ tables-goose-wire-fuzz: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
 # emits verbatim (go:embed, which `go build -overlay` does not reach), so each
 # control seds the GENERATED copy of wire_load.goose in one unit's leg (tblv1,
 # whose region arm is green at the pinned seed), checked to have matched,
-# rebuilds that leg and requires the harness red with "the report differs".
+# rebuilds that leg and requires the harness red on the report: "the report
+# differs", or, where the oracle reads the mutant as damaged, "the oracle
+# discards a damaged load" (the leg read on where the whole load is discarded).
 #   leb:  a non-minimal LEB128 accepted (the canonical-encoding check, §3)
 #   utf8: every text taken as well-formed UTF-8 (the text check, §3)
 GOOSE_FUZZ_SED_leb  := s|if i > 0 \&\& b == 0 { return 0, o, false; }|if false { return 0, o, false; } // SABOTAGED: a non-minimal LEB128 accepted|
@@ -70,7 +72,7 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 		>$(GOOSE_FUZZ_DIR)/control-$*/log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/control-$*/log; \
 		echo "NEGATIVE CONTROL FAILED: the $* sabotage left the differential green"; exit 1; fi
-	@grep -q 'harness: FAILED after .*the report differs' $(GOOSE_FUZZ_DIR)/control-$*/log || { \
+	@grep -Eq 'harness: FAILED after .*(the report differs|the oracle discards a damaged load)' $(GOOSE_FUZZ_DIR)/control-$*/log || { \
 		cat $(GOOSE_FUZZ_DIR)/control-$*/log; \
 		echo "NEGATIVE CONTROL FAILED: the differential went red, but not on the report"; exit 1; }
 	@echo "goose wire-fuzz $* negative control: $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-$*/log)"

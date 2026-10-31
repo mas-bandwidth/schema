@@ -277,11 +277,11 @@ func TestLuaWireByteOrderNegativeControl(t *testing.T) {
 	t.Parallel()
 	files := wireOrderUnitFiles(t)
 	src := string(files["load.lua"])
-	i := strings.Index(src, `string.unpack("<`)
-	if i < 0 {
+	before, after, ok := strings.Cut(src, `string.unpack("<`)
+	if !ok {
 		t.Fatal("load.lua has no little-endian unpack to sabotage")
 	}
-	files["load.lua"] = []byte(src[:i] + `string.unpack("=` + src[i+len(`string.unpack("<`):])
+	files["load.lua"] = []byte(before + `string.unpack("=` + after)
 	if len(wireOrderViolations(files)) == 0 {
 		t.Fatal("a host-order read in load.lua passed the byte-order scan")
 	}

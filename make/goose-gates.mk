@@ -203,8 +203,38 @@ tables-goose-release:
 		tables-goose-unit-home-negative-control
 	$(MAKE) conformance-negative-control-goose tables-goose-accel-negative-control \
 		tables-goose-order-negative-control tables-goose-fuzz-negative-control \
-		tables-goose-usage-negative-control
+		tables-goose-usage-negative-control tables-goose-names-negative-control \
+		tables-goose-accessor-negative-control
 
 # test-goose carries both gates (make/goose.mk); their controls run in the
 # goose-gates group of make/negative-controls.json.
 test-goose: tables-goose-strict tables-goose-runtime-home
+
+# THE CLAIMED NAMES (docs/PORTING.md I6), Goose's form: the runtime declares
+# into schema_rt, which no package can take, and every name the target writes
+# into the package's namespace is claimed through goose.Gen.Declare, which
+# refuses a second declaration by name. The gate declares each emitted
+# top-level name in turn as a schema type beside every manifest unit and
+# requires the unit refused. Its control lets every <T>CookOpen through
+# Declare unclaimed (go test -overlay of internal/codegen/goose/goose.go), and
+# the gate must name a CookOpen it writes without claiming.
+GOOSE_NAMES_DIR := build/goose-names-control
+.PHONY: tables-goose-names tables-goose-names-negative-control
+tables-goose-names:
+	go test -count=1 -timeout 600s -run '^(TestGooseEveryPackageNameIsClaimed|TestGooseNamesScanSeesTheRuntime)$$' ./internal/codegen/goosetable/
+tables-goose-names-negative-control:
+	@rm -rf $(GOOSE_NAMES_DIR) && mkdir -p $(GOOSE_NAMES_DIR)
+	@sed 's|^func (g \*Gen) Declare(name string) {$$|func (g *Gen) Declare(name string) { if strings.HasSuffix(name, "CookOpen") { return } // SABOTAGED: unclaimed|' \
+		internal/codegen/goose/goose.go > $(GOOSE_NAMES_DIR)/goose.go.txt
+	@grep -q SABOTAGED $(GOOSE_NAMES_DIR)/goose.go.txt || { echo "NEGATIVE CONTROL FAILED: the Declare sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/goose/goose.go":"%s/$(GOOSE_NAMES_DIR)/goose.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(GOOSE_NAMES_DIR)/overlay.json
+	@if go test -count=1 -timeout 600s -overlay=$(GOOSE_NAMES_DIR)/overlay.json -run '^TestGooseEveryPackageNameIsClaimed$$' \
+			./internal/codegen/goosetable/ > $(GOOSE_NAMES_DIR)/log 2>&1; then \
+		cat $(GOOSE_NAMES_DIR)/log; echo "NEGATIVE CONTROL FAILED: CookOpen names went unclaimed and the gate stayed green"; exit 1; fi
+	@grep -q 'CookOpen into namespace .* without claiming it' $(GOOSE_NAMES_DIR)/log || { \
+		cat $(GOOSE_NAMES_DIR)/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on an unclaimed CookOpen"; exit 1; }
+	@if grep 'without claiming it' $(GOOSE_NAMES_DIR)/log | grep -v 'CookOpen into namespace' | grep -q .; then \
+		cat $(GOOSE_NAMES_DIR)/log; echo "NEGATIVE CONTROL FAILED: the gate named a name the sabotage did not unclaim"; exit 1; fi
+	@echo "goose names negative control: $$(grep -c 'without claiming it' $(GOOSE_NAMES_DIR)/log) unclaimed CookOpen name(s) named, nothing else"
+
+test-goose: tables-goose-names
