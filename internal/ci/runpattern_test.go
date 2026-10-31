@@ -206,7 +206,7 @@ type runPatternException struct {
 
 // runPatternExceptions are the -run lines the gate cannot list: two run inside
 // build/tables-generated-go/cards, a generated module that does not exist
-// until `make cards-generate` builds it; six run inside test/go-tables, a
+// until `make cards-generate` builds it; seven run inside test/go-tables, a
 // separate Go module whose generated replacements do not exist until `make`
 // builds them; and one is a $(3) template with no value until the caller
 // expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
@@ -218,8 +218,9 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk:550", "same separate test/go-tables module, -run Fuzz"},
 	{"make/go.mk:551", "same separate test/go-tables module, -run Fuzz under -race"},
 	{"make/go.mk:588", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
-	{"make/go.mk:910", "same separate test/go-tables module, -run '^TestSoak$$'"},
-	{"make/go.mk:1023", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:949", "same separate test/go-tables module, -run '^TestSoak$$'"},
+	{"make/go.mk:1101", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:1119", "same separate test/go-tables module, -run '^TestKeyed'"},
 	{"make/go.mk:530", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone"},
 	{"make/go.mk:544", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone"},
 	{"make/moo-text.mk:28", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it"},
