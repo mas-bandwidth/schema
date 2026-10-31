@@ -607,11 +607,19 @@ function TableVariableLoad(c, bytes, report, retain) {
   if (report === undefined || report === null) { report = new TableVariableReport(); }
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
+  // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): this read judges
+  // its own damage, so a report a caller hands in already marked malformed
+  // stays marked and does not refuse a clean wire.
+  const carried = report.malformed;
+  report.malformed = false;
   const open = TableVariableOpen(bytes, report);
-  // A non-variable root starts at its declared defaults and keeps them when
-  // the file framing is damaged or refused before any field decodes
-  // (docs/SPEC-TABLES.md §3, §4).
-  if (open === null) { return c.variable ? null : c.make(); }
+  // A REFUSED form byte hands a non-variable root back at its declared
+  // defaults (§3); DAMAGE hands back nothing (§4).
+  if (open === null) {
+    const damaged = report.malformed;
+    report.malformed = carried || damaged;
+    return c.variable || damaged ? null : c.make();
+  }
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
@@ -657,6 +665,13 @@ function TableVariableLoad(c, bytes, report, retain) {
     return null;
   }
   TableVariableResolve(st, report);
+  // DAMAGE DISCARDS THE WHOLE LOAD (§4): a read that met damage anywhere hands
+  // back no root, and a retaining read keeps nothing it would save.
+  if (report.malformed) {
+    if (retain !== null) { retain.reset(); }
+    return null;
+  }
+  report.malformed = carried;
   return v;
 }
 
@@ -1769,6 +1784,8 @@ class TableVariableTextIn {
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is malformed.
 function TableVariableFromJson(c, text, report) {
+  const carried = report.malformed;
+  report.malformed = false;
   const inp = new TableVariableTextIn(text);
   const v = c.make();
   const ok = TableVariableReadTable(c, inp, v, 0, new Map(), report);
@@ -1776,7 +1793,10 @@ function TableVariableFromJson(c, text, report) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }
   }
-  if (inp.bad || !ok) { report.malformed = true; }
+  // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
+  // back no value
+  if (inp.bad || !ok || report.malformed) { report.malformed = true; return null; }
+  report.malformed = carried;
   return v;
 }
 

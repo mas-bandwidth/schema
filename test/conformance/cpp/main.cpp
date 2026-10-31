@@ -1203,6 +1203,52 @@ static int surface_json_write( const std::string & out )
     return 0;
 }
 
+// json-text: the nightly's CROSS-READ of a port's text (test/conformance/
+// README.md, "The nightly"; docs/SPEC-TABLES.md §16). The harness hands a
+// substituted manifest whose lines name a PORT's JSON text,
+//   json-text <case> <unit> <root> <text>
+// and the reference reads it, writes it back, and the text goes out as
+// <case>.json; the harness holds it to the port's bytes. It is not a matrix
+// surface and `list` does not name it: no leg but the reference answers it.
+static int surface_json_text( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "json-text" ) continue;
+        if ( f.size() < 5 ) { fprintf( stderr, "driver: a json-text line is <case> <unit> <root> <text>\n" ); return 1; }
+        std::vector<uint8_t> text;
+        if ( !slurp( f[4].c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            Report report;
+            std::vector<uint8_t> bytes;
+            if ( !variable->json_read( (const char *) text.data(), (int64_t) text.size(), &report, bytes ) ) return 1;
+            std::vector<uint8_t> region;
+            const void * root = variable->load( region, bytes.data(), (int64_t) bytes.size(), &report );
+            if ( root == NULL ) return 1;
+            std::vector<char> written;
+            if ( !variable->to_json( root, written ) ) return 1;
+            if ( !spill( out, f[1] + ".json", written.data(), written.size() ) ) return 1;
+            continue;
+        }
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+
+        void * value = codec->make();
+        codec->reset( value );
+        Report report;
+        if ( !codec->from_json( value, (const char *) text.data(), (int64_t) text.size(), &report ) ) return 1;
+        int64_t size = codec->to_json_measure( value );
+        if ( size < 0 ) return 1;
+        std::vector<char> written( (size_t) size + 1 );
+        if ( codec->to_json( value, written.data(), size ) != size ) return 1;
+        if ( !spill( out, f[1] + ".json", written.data(), (size_t) size ) ) return 1;
+    }
+    return 0;
+}
+
 // cook-write: the runtime WRITES a cooked file and the bytes are the tool's
 // (docs/SPEC-TABLES.md §7.6), in BOTH byte orders. The instance arrives as the
 // wire — the format of record — so what this proves is the pair a cooked
@@ -1612,6 +1658,7 @@ int main( int argc, char ** argv )
     if ( surface == "retain-save" ) return surface_retain_save( out );
     if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out );
+    if ( surface == "json-text" ) return surface_json_text( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );
     if ( surface == "cook-write" ) return surface_cook_write( out );
     if ( surface == "block" ) return surface_block( out );
