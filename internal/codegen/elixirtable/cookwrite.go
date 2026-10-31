@@ -204,7 +204,7 @@ const cookCarveDef = "  defp cook_carve(desc, value, node_off, index, order, buf
 
 var extentWalkFamilies = []string{
 	"cook_walk_record", "cook_walk_field", "cook_walk_union", "cook_walk_elem",
-	"cook_walk_holder", "cook_put_holder", "cook_put_member", "cook_walk_member",
+	"cook_walk_holder", "cook_put_holder", "cook_put_member", "cook_walk_member", "cook_list",
 }
 
 // withoutExtentWalks is the cook writer for a unit with no extent anywhere.
@@ -759,6 +759,17 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     cook_text(buf, base + off, base + len_at, v, bound, order)
   end
 
+  defp cook_value(
+         %{t: :wstring, cook_off: off, count_off: len_at, size: bound},
+         v,
+         base,
+         _index,
+         order,
+         buf
+       ) do
+    cook_units(buf, base + off, base + len_at, v, bound, order)
+  end
+
   defp cook_value(%{t: :enum, cook_off: off} = f, v, base, _index, order, buf) do
     ord = cook_ord(f, v)
     put_uint(buf, base + off, ord, f.enum_width, order)
@@ -923,6 +934,22 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     if not is_binary(v) or byte_size(v) > bound, do: throw(:invalid)
     buf = put_raw(buf, at, v)
     put_i32(buf, len_at, byte_size(v), order)
+  end
+
+  # wstring(N)'s pieces (§7.2): char16_t[N + 1], each UTF-16 code unit a
+  # two-byte scalar in the cook's byte order, then the int32 used length in
+  # code units
+  defp cook_units(buf, at, len_at, v, bound, order) do
+    if not is_binary(v), do: throw(:invalid)
+    units = for <<u::little-unsigned-16 <- utf16(v)>>, do: u
+    if length(units) > bound, do: throw(:invalid)
+
+    buf =
+      Enum.reduce(Enum.with_index(units), buf, fn {u, i}, buf ->
+        put_uint(buf, at + 2 * i, u, 2, order)
+      end)
+
+    put_i32(buf, len_at, length(units), order)
   end
 
   defp cook_align(v, a) when a <= 1, do: v

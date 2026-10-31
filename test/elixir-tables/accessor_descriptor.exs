@@ -100,6 +100,9 @@ defmodule AccessorDescriptor do
       f.storage == :record ->
         {:noth, "record"}
 
+      f.storage in [:list, :map] ->
+        {:noth, "holder"}
+
       f.is_array ->
         {:noth, "array"}
 
