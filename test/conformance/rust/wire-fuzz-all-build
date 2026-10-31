@@ -46,7 +46,8 @@ for unit in backenddemo:tables/backend \
 	tblw2:test/tables/W2.schema \
 	vocab9demo:tables/vocab9 \
 	vocabdemo:tables/vocab \
-	widedemo:examples-wide; do
+	widedemo:examples-wide \
+	widelist:tables/widelist; do
 	name=${unit%%:*}
 	path=${unit#*:}
 	$gen generate --lang rust --out "$dir/gen/$name" "$path" 2>"$dir/gen-$name.log" || {
