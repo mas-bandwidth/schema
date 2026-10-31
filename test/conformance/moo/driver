@@ -1,0 +1,20 @@
+#!/bin/sh
+# THE MOO LEG's driver (test/conformance/README.md).
+#
+# Scaffolded by `schema new-leg moo`. A driver is a command, not a
+# binary: list the surfaces this backend implements, one per line; a surface
+# this skeleton does not yet answer is exit 2 (ABSENT).
+#
+# The working directory is the repository root.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+case "$2" in
+list)
+	# no surfaces yet — the matrix stays empty until Generate answers one
+	exit 0
+	;;
+*)
+	exit 2
+	;;
+esac
