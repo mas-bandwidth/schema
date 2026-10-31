@@ -163,6 +163,62 @@ const cookModuleBanner = `//
 // build version (§20).
 const cookRuntime = `// ---- the cooked form's read runtime (docs/SPEC-TABLES.md §7) ----
 
+/// A MAP'S OR A LIST'S SIXTEEN-BYTE SLOT in a cooked record (docs/SPEC-TABLES.md
+/// §2.8, §2.9, §7.2): an int64 SELF-RELATIVE delta from the slot to its array,
+/// which rides in the holder's node extent, and the int32 count. An empty
+/// container is the null reference and a zero count.
+#[repr(C)]
+pub struct TableCookSpan<T> {
+    pub reference: i64,
+    pub count: i32,
+    pub padding: i32,
+    _element: core::marker::PhantomData<T>,
+}
+
+impl<T> Clone for TableCookSpan<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for TableCookSpan<T> {}
+
+impl<T> Default for TableCookSpan<T> {
+    fn default() -> Self {
+        TableCookSpan { reference: 0, count: 0, padding: 0, _element: core::marker::PhantomData }
+    }
+}
+
+impl<T> TableCookSpan<T> {
+    /// How many elements the container holds.
+    pub fn len(&self) -> usize {
+        self.count.max(0) as usize
+    }
+
+    /// Whether the container is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The array, in place: one add and no copy.
+    ///
+    /// # Safety
+    /// The slot must sit in a cook whose region holds the array its delta
+    /// names (a cook is trusted input, §7).
+    pub unsafe fn as_slice(&self) -> &[T] {
+        if self.reference == 0 || self.count <= 0 {
+            return &[];
+        }
+        unsafe {
+            let at = (self as *const Self as *const u8).offset(self.reference as isize) as *const T;
+            core::slice::from_raw_parts(at, self.count as usize)
+        }
+    }
+}
+
+const _: () = assert!(core::mem::size_of::<TableCookSpan<u64>>() == 16);
+const _: () = assert!(core::mem::align_of::<TableCookSpan<u8>>() == 8);
+
 // The cook's MAGIC (§7.1), read BYTEWISE before anything else: it is what
 // establishes the byte order every other header word is written in, and it is
 // also what separates a COOK from a BLOCK — the two accelerators carry the
@@ -754,6 +810,86 @@ func (g *gen) emitCookRow(st *ir.Struct) {
 		g.pf("        unsafe { core::mem::zeroed() }\n")
 	}
 	g.pf("    }\n}\n\n")
+	g.emitCookMapFinds(st)
+}
+
+// cookSpanElement is a list element's cooked slot type, or "" for an element
+// the span does not type (text, whose slot is a buffer and a length).
+func cookSpanElement(f *ir.Field) string {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes, ir.TWString:
+		if !f.Type.Pointer && !f.Type.Blob() {
+			return ""
+		}
+	}
+	if f.Type.Blob() {
+		return "i64"
+	}
+	e := *f
+	e.Array = ir.ArrayNone
+	e.ArrayBound = 0
+	return cookElemType(&e)
+}
+
+// emitCookMapFinds emits `<field>_find` for each map a cooked record holds:
+// the binary search over the ascending entry array, in place, with no
+// allocation and no pointer chase, at floor( log2 n ) + 1 key compares
+// (docs/SPEC-TABLES.md §2.8). The key order is the wire's: integers by value,
+// strings by their bytes, unsigned, a prefix first.
+func (g *gen) emitCookMapFinds(st *ir.Struct) {
+	var maps []*ir.Field
+	for _, f := range st.Fields {
+		if f.IsMap() {
+			maps = append(maps, f)
+		}
+	}
+	if len(maps) == 0 {
+		return
+	}
+	g.pf("impl %sRow {
+", st.Name)
+	for _, f := range maps {
+		key := ir.MapKeyField(f)
+		entry := f.MapEntry.Name + "Row"
+		k := ir.RustSnake(ir.MapKeyFieldName)
+		g.pf("    /// The entry of `%s` whose key is `key`, by binary search over the
+", f.Name)
+		g.pf("    /// ascending entry array (docs/SPEC-TABLES.md §2.8).
+")
+		g.pf("    ///
+    /// # Safety
+")
+		g.pf("    /// The row must sit in a cook whose region holds its entry array (a cook
+")
+		g.pf("    /// is trusted input, §7).
+")
+		if key.Type.Kind == ir.TString {
+			g.pf("    pub unsafe fn %s_find(&self, key: &[u8]) -> Option<&%s> {
+", f.Name, entry)
+			g.pf("        let entries = unsafe { self.%s.as_slice() };
+", f.Name)
+			g.pf("        entries
+            .binary_search_by(|e| e.%s[..e.%s_length.max(0) as usize].cmp(key))
+", k, k)
+			g.pf("            .ok()
+            .map(|i| &entries[i])
+    }
+
+")
+			continue
+		}
+		g.pf("    pub unsafe fn %s_find(&self, key: %s) -> Option<&%s> {
+", f.Name, cookElemType(key), entry)
+		g.pf("        let entries = unsafe { self.%s.as_slice() };
+", f.Name)
+		g.pf("        entries.binary_search_by(|e| e.%s.cmp(&key)).ok().map(|i| &entries[i])
+    }
+
+", k)
+	}
+	g.pf("}
+
+")
 }
 
 // cookNamedTextReachable reports whether constructed storage of st, or of a
@@ -833,7 +969,11 @@ func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
 
 func (g *gen) emitCookRowField(f *ir.Field) {
 	switch {
-	case f.IsMap(), f.IsList():
+	case f.IsMap():
+		g.pf("    pub %s: TableCookSpan<%sRow>, // map: the entries in the holder's node extent, ascending (§2.8)\n", f.Name, f.MapEntry.Name)
+	case f.IsList() && cookSpanElement(f) != "":
+		g.pf("    pub %s: TableCookSpan<%s>, // []T: the elements in the holder's node extent (§2.9)\n", f.Name, cookSpanElement(f))
+	case f.IsList():
 		g.pf("    pub %s: [u64; 2],\n", f.Name)
 	case f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "":
 		g.pf("    pub %s: i64, // *%s: signed self-relative delta, zero is null (§6.3)\n", f.Name, f.Type.Name)
