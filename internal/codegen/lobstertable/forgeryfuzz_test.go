@@ -165,7 +165,7 @@ func lobsterForgeryFile(ms []lobsterForgeryMutant) []byte {
 // "block" or "cook"; walk is the extra argument list the cook walk takes.
 const lobsterForgeryProbe = `let blob = read_file("mutants.bin")
 assert blob
-let from = string_to_int(command_line_arguments()[0])
+let start = string_to_int(command_line_arguments()[0])
 let kind = command_line_arguments()[1]
 let root = command_line_arguments()[2]
 let walk_all = command_line_arguments()[3]
@@ -176,7 +176,7 @@ while at < length(blob):
     let n = read_uint32_le(blob, at + 4)
     let bytes = substring(blob, at + 8, n)
     at += 8 + n
-    if i >= from:
+    if i >= start:
         print("B {i}")
         var ans = ""
         if kind == "block":
