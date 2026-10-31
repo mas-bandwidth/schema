@@ -1200,7 +1200,13 @@ func (g *fixedGen) emitTableClass(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.emitFieldStorage(f, "    ", "this")
 	}
-	g.pf("  }\n}\n\n")
+	g.pf("  }\n")
+	for _, f := range st.Fields {
+		if f.KeyEnum != "" {
+			emitKeyedStatics(g.pf, st.Name, js.MemberName(f.Name), f)
+		}
+	}
+	g.pf("}\n\n")
 	g.pf("// Init%s restores fresh construction values in place, preserving storage.\n", st.Name)
 	g.pf("export function Init%s(value) {\n", st.Name)
 	for _, f := range st.Fields {

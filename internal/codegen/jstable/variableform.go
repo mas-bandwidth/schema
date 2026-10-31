@@ -628,7 +628,13 @@ func (g *variableGen) emitTableClass(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.pf("    this.%s = %s;\n", f.Name, g.defaultExpr(f))
 	}
-	g.pf("  }\n}\n\n")
+	g.pf("  }\n")
+	for _, f := range st.Fields {
+		if f.KeyEnum != "" {
+			emitKeyedStatics(g.pf, st.Name, f.Name, f)
+		}
+	}
+	g.pf("}\n\n")
 }
 
 // defaultExpr is a field's declared default in JavaScript storage.

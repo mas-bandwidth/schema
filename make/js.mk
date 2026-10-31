@@ -1429,3 +1429,18 @@ tables-js-descriptors:
 	@echo 'tables JS descriptors: every variable descriptor is frozen after the link (M13)'
 
 test-js: tables-js-descriptors
+
+# M5 (docs/PORTING.md, "Keyed arrays index by key, refused at both ends"): a
+# keyed array [E]T takes the KEY on every JavaScript form that stores one — the
+# variable class's and the fixed class's static <field>At / set<Field>At /
+# <field>Entries, and the block row's <Field>ByKey / <Field>AtKey — and refuses
+# None and a key past E.Max in every build. TestKeyedArrayAccessorsJavaScript
+# holds all three forms and plants the None-only guard, the Max-only guard and
+# the missing shift back, each of which must turn it red.
+# SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE rather than a skip.
+.PHONY: tables-js-keyed
+tables-js-keyed:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestKeyedArrayAccessorsJavaScript$$'
+	@echo 'tables JS keyed: a keyed array indexes by key and refuses None and a key past Max on every form (M5)'
+
+test-js: tables-js-keyed
