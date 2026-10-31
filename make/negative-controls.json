@@ -449,6 +449,7 @@
       "when": "pull-request",
       "why": "the tolerant-wire oracle, nested-arm trailing and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
+        "tables-wire-fuzz-discard-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-node-type-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
@@ -1111,6 +1112,21 @@
       ]
     },
     {
+      "name": "go-proof",
+      "when": "pull-request",
+      "why": "the Go leg's proof-cell controls (docs/PORTING.md M5, M11, M14, I4, I12, J3, J4, J6): each sabotages the generated unit or the emitter its gate guards through a go build or go test overlay and requires that gate red on its own words. Go and the serialize.go sibling, nothing else. Measured 45 s of control time together on amd-1 and 78 s on hulk (2026-10-31; hulk: keyed 13 s, layout 5 s, graph label 5 s, usage 3 s, absent 11 s, cards 8 s, clean 11 s, release 22 s), inside the 120 s rule.",
+      "targets": [
+        "tables-go-keyed-negative-control",
+        "tables-go-layout-contract-negative-control",
+        "tables-go-graph-label-negative-control",
+        "tables-go-usage-negative-control",
+        "conformance-negative-control-go-absent",
+        "cards-conformance-go-negative-control",
+        "tables-go-clean-negative-control",
+        "tables-go-release-negative-control"
+      ]
+    },
+    {
       "name": "squirrel",
       "when": "pull-request",
       "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur neutralizes the emitted kind-mismatch counter, so report goes red and wire stays green; the walk saboteur breaks the text reader's bool arm, so json-read goes red and json-write and wire stay green; the block saboteur drops the Open's pitch check, so forgery goes red and block and block-dump stay green; the retain saboteur drops the retained-id capacity, so retain goes red and wire and report stay green. Each rebuilds the compiler under an overlay and regenerates the corpus, about 12 s on the studio. The packet wide-text control removes the generated reader's surrogate pairing and requires the harness's bit-flip agreement with C++ to fail. Beside them, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds. Beside them, the resource-bounds negative control (make/schema-squirrel-resource-bounds.mk) runs the planted-pattern gate over the port's allocation counter and depth cap: pure Go, no sq interpreter, so it is another pull-request blade for the Squirrel lens. The packet FINITE-FLOAT control (SPEC.md §4.3) drops the vendored serialize.nut's read test at both widths in memory (internal/codegen/squirrel/finite_test.go) and must red exactly the sixty-three non_finite_float read vectors of test/packet-finite/squirrel/main.nut while its write traps and bit-exact round trips stay green; one generate and one sq run, well under a second. The TABLE finite-float controls (docs/SPEC-TABLES.md §3.3) remove one check at a time in memory (internal/codegen/squirreltable/nonfinite_test.go and nonfinite_forms_test.go): the variable read, the retained unknown entry's test and the variable writer, then the message read and writer and the fixed read and writer; each must red exactly that check's rows while the rest stay green; seven sq runs, about two seconds. The FLOAT-PARITY controls (internal/codegen/squirreltable/floatparity_test.go) put the old behaviour back in memory and must red exactly the rows the Go engine says it gets wrong: the variable read's compressed-float clamp removed (the rows the engine clamps), the message quantizer at one rounding in double (the fuzz rows where it parts from ir.TableMessageQuantize), an over-count message index clamped rather than refused (the over-count rows), and CookMeasure without its walk (the non-finite rows); four sq runs, under a second. Beside them, the hostile-corpus runner's planted reader (2.6 s on the studio) must go red; the nightly fuzzer's control patches the emitted load's array-frame bound and requires the wire differential to go red (1.8 s on the studio: it is the differential under a plant, not the nightly campaign, which schema-squirrel-nightly-fuzz.yml runs on its own schedule); and the generated-code lint gate's three plants (a refused statement, a trailing space, a blank-line run, each named by file and rule) run in under a second. The row installs the pinned interpreter (make/squirrel.mk's dist-squirrel) through its squirrel field, which must match test/conformance/squirrel/ci.json.",
@@ -1239,6 +1255,10 @@
     }
   ],
   "excluded": [
+    {
+      "target": "conformance-big-endian-negative-control",
+      "reason": "the Go big-endian leg's control (docs/PORTING.md M12, I7): it runs the Go conformance driver cross-built for s390x under qemu-s390x, which the shared negative-control rows do not install. ci-full.yml's big-endian job runs it by name in its own row (go-control), beside the conformance-big-endian row it controls, with the pinned emulator, exactly as the C++ and C big-endian controls run there."
+    },
     {
       "target": "tables-moo-json-negative-controls",
       "reason": "the moo text forms' controls (make/moo-text.mk: the walk control, the float tie rule both ways, the I13 tie-break, the JSONTestSuite end-of-text rule, the carrier pad bits) are go tests of internal/codegen/mootable named *NegativeControl: every pull request already runs them in ci-full's unit-codegen row with the moo pin installed, and the target is a prerequisite of test-moo. A manifest group would run them a second time."
