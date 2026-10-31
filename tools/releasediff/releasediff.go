@@ -515,6 +515,10 @@ func firstLineOr(err error) string {
 	return firstLine(err)
 }
 
+// TableFormsNote says why the table side of a run against a 2.x release is
+// thin: the table wire's promises are made at 3.0.0.
+const TableFormsNote = "the table forms are compared from 3.0.0 on; before 3.0.0 the previous release cannot read most table units, so they are listed, not compared"
+
 // Print writes the report: what was compared, what was listed and why, and
 // every difference.
 func (r *Report) Print(w io.Writer, oldName, newName string) {
@@ -524,6 +528,7 @@ func (r *Report) Print(w io.Writer, oldName, newName string) {
 			_, _ = fmt.Fprintf(w, "  %-12s %s\n", title, l)
 		}
 	}
+	_, _ = fmt.Fprintf(w, "  %-12s %s\n", "note", TableFormsNote)
 	section("compared", r.Compared)
 	section("id moved", r.Moved)
 	section("unreadable", r.Unreadable)

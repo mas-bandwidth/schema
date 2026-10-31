@@ -1,10 +1,10 @@
-0xfc41a41cbeaf79db
-schema-build-version 4
+0x6a2184349da06ea2
+schema-build-version 5
 protocol 727cea182a6959a7
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record Chain sizeof=24 alignof=8
-    field 5cc201a9f1b8274e kind=14 offset=0 size=16 union=Carry elem=24 array=unbounded
+    field 5cc201a9f1b8274e kind=14 offset=0 size=16 union=Carry elem=24 elemkind=15 array=unbounded
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Gate sizeof=24 alignof=8
     field 891da1f305deb858 kind=15 offset=0 size=16 union=Reach
@@ -14,21 +14,21 @@ record Hand sizeof=56 alignof=8
     field bf82010f6f71eae9 kind=4 offset=52 size=4
 record Holder sizeof=40 alignof=8
     field afcd9a3b099f8ef0 kind=15 offset=0 size=24 union=Carry
-    field d94c56ef0798d723 kind=14 offset=24 size=16 elem=4 array=unbounded
+    field d94c56ef0798d723 kind=14 offset=24 size=16 elem=4 elemkind=4 array=unbounded
 record Leaf sizeof=16 alignof=8
-    field 3e7884bf4f412c6f kind=14 offset=0 size=16 elem=4 array=unbounded
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 elem=4 elemkind=4 array=unbounded
 record Nest sizeof=48 alignof=8
     field 30e6ed678f5e1bd4 kind=15 offset=0 size=32 union=Outer
-    field d94c56ef0798d723 kind=14 offset=32 size=16 elem=4 array=unbounded
+    field d94c56ef0798d723 kind=14 offset=32 size=16 elem=4 elemkind=4 array=unbounded
 record Node sizeof=4 alignof=4
     field af63eb4c86020609 kind=4 offset=0 size=4
 record Only sizeof=4 alignof=4
     field af63ea4c86020456 kind=4 offset=0 size=4
 record Rack sizeof=24 alignof=8
-    field 3e7884bf4f412c6f kind=14 offset=0 size=16 union=Slots elem=32 array=unbounded
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 union=Slots elem=32 elemkind=15 array=unbounded
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Ring sizeof=24 alignof=8
-    field 3e7884bf4f412c6f kind=14 offset=0 size=16 union=Slot elem=16 array=unbounded
+    field 3e7884bf4f412c6f kind=14 offset=0 size=16 union=Slot elem=16 elemkind=15 array=unbounded
     field bf82010f6f71eae9 kind=4 offset=16 size=4
 record Tray sizeof=72 alignof=8
     field c5b2a72c0845a253 kind=15 offset=0 size=68 union=Slots elem=32 array=bounded bound=2

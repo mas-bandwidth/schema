@@ -43,6 +43,7 @@ case "$mode" in
     walk) sabotage=table-dart-text-walk-bool; marker='SABOTAGED: the read stores the negation' ;;
     zero) sabotage=table-dart-text-zero; marker='SABOTAGED: text_holds_zero removed' ;;
     wire) sabotage=table-dart-wire-widen; marker='SABOTAGED: the widened count is gone' ;;
+    mapheader) sabotage=table-dart-map-header-bounded; marker='SABOTAGED: the map header is bounded by L' ;;
     block) sabotage=table-dart-block-pitch; marker='SABOTAGED: the pitch check is gone' ;;
     *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -54,6 +55,7 @@ mkdir -p "$out/build" "$out/test/conformance/dart"
 
 emitter=textform.go
 [ "$mode" = wire ] && emitter=wireform.go
+[ "$mode" = mapheader ] && emitter=wireunion.go
 [ "$mode" = block ] && emitter=block.go
 go run ./tools/sabotage -name "$sabotage" -out "$out/emitter.gotext" "internal/codegen/darttable/$emitter"
 printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/emitter.gotext"}}\n' "$root" "$emitter" "$root" "$out" > "$out/overlay.json"
@@ -90,6 +92,10 @@ fi
 cp test/conformance/dart/main.dart "$out/test/conformance/dart/main.dart"
 "$dart" compile exe -o "$out/conformance-dart" "$out/test/conformance/dart/main.dart" >/dev/null
 printf 'dart %s/%s/conformance-dart\n' "$root" "$out" > "$out/drivers.txt"
+
+# mapheader builds the sabotaged driver only: make/wire-fuzz-release.mk runs the
+# release gate's own runs over it (tables-wire-fuzz-release-negative-control)
+[ "$mode" = mapheader ] && exit 0
 
 if [ "$mode" = wire ]; then
     # the differential, not the matrix: seed 1, no random pass, the enumerated

@@ -635,6 +635,16 @@ struct TableIds
     // the reference an id takes: the file's own first-use entry, appended on
     // first use. The MESSAGE form names no id at all: its references are
     // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
+    //
+    // ids and chain are left unset by the constructor on purpose: a save
+    // builds one TableIds, and only the entries below count are ever read,
+    // because a bucket's chain links only entries this function appended.
+    // gcc cannot see that invariant through the chain and calls the reads
+    // maybe-uninitialized, so the warning is off for this function alone.
+#if defined( __GNUC__ ) && !defined( __clang__ )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
     STREAMDEMO_TABLE_INLINE uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
@@ -646,6 +656,9 @@ struct TableIds
         ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
+#if defined( __GNUC__ ) && !defined( __clang__ )
+#pragma GCC diagnostic pop
+#endif
 
     // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
     // header, union arm header or blob header names. A REPEAT answers from
@@ -1712,7 +1725,7 @@ static const int64_t kTableAnnounceBytes = 230;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xa5, 0x14, 0xe5, 0xf4, 0x2a, 0x4e, 0x09, 0x30, 0x02,
+    0x01, 0x01, 0x09, 0x9a, 0x78, 0xd4, 0xeb, 0x43, 0x1c, 0x88, 0x3f, 0x02,
     0x0e, 0xbe, 0x01, 0x06, 0xbb, 0x01, 0x05, 0x4a, 0xa3, 0x30, 0x67, 0x55,
     0x5b, 0x85, 0x0e, 0x00, 0x08, 0x06, 0x00, 0x28, 0xf0, 0x25, 0xa0, 0xba,
     0x6c, 0x31, 0xe5, 0x11, 0x4e, 0x27, 0xb8, 0xf1, 0xa9, 0x01, 0xc2, 0x5c,
@@ -4473,9 +4486,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -6642,7 +6661,7 @@ namespace streamdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x30094e2af4e514a5ull;
+static const uint64_t BuildVersion = 0x3f881c43ebd4789aull;
 
 } // namespace streamdemo
 
@@ -7085,11 +7104,11 @@ inline void TableReset( Feed & value ) { FeedReset( value ); }
 // Chunk is a pointer target.
 inline const Chunk * ChunkAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Chunk *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Chunk *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Chunk * ChunkAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Chunk *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Chunk *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Chunk * ChunkAt( const TableRegionCtx &, const TableRef & ref ) { return ChunkAt( ref ); }
 inline const Chunk * ChunkAt( const TableArenaCtx & ctx, const TableRef & ref )

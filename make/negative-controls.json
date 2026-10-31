@@ -40,6 +40,7 @@
       "when": "pull-request",
       "why": "the C two-units control and the generated C tree it builds (23 s), the doc/tags family (17 s), the projection's wire-law and variant-order controls, the C ref-ordinal rewind, and the small refusers: clamps, JSON, was, retention, runtime homes, zero-cost, block, python packet and toolchain: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
+        "build-version-elemkind-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
         "tables-block-const-negative-control",
@@ -62,6 +63,7 @@
         "tables-slot-negative-control",
         "tables-view-containment-negative-control",
         "tables-was-negative-control",
+        "tables-wire-text-total-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
         "toolchain-negative-control"
@@ -1037,6 +1039,15 @@
       "dart": "3.13.2"
     },
     {
+      "name": "wire-fuzz-release",
+      "when": "nightly",
+      "why": "the release wire-fuzz gate's control (make/wire-fuzz-release.mk): #2400's Dart map-header fix reverted in an emitter overlay, the Dart driver rebuilt on the regenerated units, and the gate's own plain-arm runs at its seeds and release count required to go red on the report. It runs at the release count, which is certification cost, so it is nightly.",
+      "targets": [
+        "tables-wire-fuzz-release-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
       "name": "lobster-fuzz",
       "when": "pull-request",
       "why": "the Lobster leg's hostile-corpus control (a load that calls a clean wire damaged reds the corpus) and its wire-fuzz control (a dropped unknown count reds the fuzz; descriptors without their guards red the pinned guard-false-pointer vector). Both run the pinned v2026.8 toolchain, which the row installs (with the two GL libraries its release binary links) through its lobster field. Measured on the studio off one warm build: 2.3 s and 4.4 s.",
@@ -1224,6 +1235,14 @@
       "why": "the build version's form gate's control (docs/VERSIONING.md, \"The release policy\"): tools/releasetag's FormGate is handed the tag's form twice through a go test overlay and TestReleaseFormGate must go red on the patch release that moves the form, and on it alone. One small go test build, Go only, a few seconds.",
       "targets": [
         "release-form-gate-negative-control"
+      ]
+    },
+    {
+      "name": "release-refuses-on-differential",
+      "when": "nightly",
+      "why": "the release path's own gate (docs/VERSIONING.md, #463): `make release` dry-run twice against a version past every tag, the clean compiler against itself (must reach its tag decision) and against one whose Go engine writes a true bool as 2 (must stop at the previous-release differential, tagging nothing), then the same test over a Makefile copy whose `release` no longer runs the differential, which must go red. Four full differential runs, each building the three C++ packet drivers twice: 1m33s at -j6 on the intel bench (measured 2026-10-31), so on a hosted runner past the pull-request rule, and it runs nightly. The differential itself keeps its pull-request control (release-differential).",
+      "targets": [
+        "release-refuses-on-differential-negative-control"
       ]
     }
   ],
