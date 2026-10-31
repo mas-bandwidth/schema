@@ -89,6 +89,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	} else {
+		fmt.Fprintf(&b, "        report.rootTypeId = %sVariable.TYPE_ID;\n", st.Name)
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);\n")
 		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
 		b.WriteString("            for (TableVariable.NodeRecord rec : nt.recs) {\n")
