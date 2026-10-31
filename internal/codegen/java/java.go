@@ -3059,6 +3059,9 @@ func chainSegments(rhs string) []string {
 
 var javaSimpleName = regexp.MustCompile(`^[a-z_]\w*$`)
 
+// javaTypeName is an UpperCamel name; an ALL_CAPS constant is not one.
+var javaTypeName = regexp.MustCompile(`^[A-Z]\w*[a-z]\w*$`)
+
 // chainReceiver is the receiver the formatter keeps on a chain's first line,
 // the index of the first segment behind it, and whether it ends in a call.
 func chainReceiver(segs []string) (string, int, bool) {
@@ -3088,6 +3091,11 @@ func chainReceiver(segs []string) (string, int, bool) {
 	}
 	if len(segs) > 2 && !strings.Contains(segs[1], "(") {
 		return segs[0] + "." + segs[1], 2, false
+	}
+	// a type with its static call (`T.of(..).arm(1)`): the formatter's type
+	// prefix runs through the first member after an UpperCamel type name
+	if javaTypeName.MatchString(segs[0]) && strings.Contains(segs[1], "(") {
+		return segs[0] + "." + segs[1], 2, true
 	}
 	if javaSimpleName.MatchString(segs[0]) && javaWidth(segs[0]) <= 8 && strings.Contains(segs[1], "(") {
 		return segs[0] + "." + segs[1], 2, true
