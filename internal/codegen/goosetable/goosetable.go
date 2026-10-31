@@ -91,6 +91,28 @@ type part struct {
 
 var parts []part
 
+// unitParts are the contributions to the unit's own module, UnitModule:
+// data that spans every file (the table wire's registry, the message form's
+// vocabulary, the accelerators' record numbers). It lives at a home named
+// for the package, so a file that sorts earlier relocates nothing
+// (docs/PORTING.md J2), and every file's modules name it rather than
+// copy its numbers.
+var unitParts []part
+
+// RegisterUnit joins a later form to the unit's own module; parts run in
+// name order.
+func RegisterUnit(name string, fn Part) {
+	unitParts = append(unitParts, part{name, fn})
+	sort.Slice(unitParts, func(i, j int) bool { return unitParts[i].name < unitParts[j].name })
+}
+
+// UnitModule is the base of the unit's own module, without .goose: the
+// package, capitalized, then "Unit" (tabledemo -> TabledemoUnit).
+func UnitModule(u *ir.Unit) string {
+	p := goose.Namespace(u)
+	return strings.ToUpper(p[:1]) + p[1:] + "Unit"
+}
+
 // Register joins a later form to every table module; parts run in name
 // order (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
 func Register(name string, fn Part) {
@@ -133,6 +155,21 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		}
 		out[f.Base+"Table.goose"] = g.Assemble()
 	}
+	if len(unitParts) > 0 {
+		g := goose.NewGen(u, &ir.File{Base: UnitModule(u)}, names)
+		g.Kind, g.ForPackage = "unit module", true
+		for _, p := range unitParts {
+			if err := p.fn(g); err != nil {
+				return nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
+			}
+		}
+		if err := g.Err(); err != nil {
+			return nil, err
+		}
+		if !g.Empty() {
+			out[g.Module()+".goose"] = g.Assemble()
+		}
+	}
 	maps.Copy(out, Runtime())
 	return out, nil
 }
@@ -147,6 +184,9 @@ func Refuse(u *ir.Unit) error {
 	bases := map[string]bool{}
 	for _, f := range u.Files {
 		bases[strings.ToLower(f.Base)] = true
+	}
+	if home := UnitModule(u); bases[strings.ToLower(home)] {
+		return fmt.Errorf("schema file %s collides with the unit module %s.goose, which the Goose table surface writes for package %s; rename the file", home, home, u.Package)
 	}
 	for _, f := range u.Files {
 		if bases[strings.ToLower(f.Base+"Table")] {

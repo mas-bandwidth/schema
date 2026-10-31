@@ -23,11 +23,11 @@ import (
 // emitRetainRuntime emits the shared retain runtime and the known-id set the
 // save-side interner uses to tell a nameable id from a retained one.
 func (g *variableGen) emitRetainRuntime() {
-	g.pf("export const TableRetainKnown = [")
+	g.pf("export const TableRetainKnown = Object.freeze([")
 	for _, id := range ir.TableWireIds(g.unit) {
 		g.pf("%s,", jsId(id))
 	}
-	g.pf("];\n\n")
+	g.pf("]);\n\n")
 	g.pf("%s", jsRetainRuntime)
 }
 

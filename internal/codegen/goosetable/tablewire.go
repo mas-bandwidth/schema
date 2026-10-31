@@ -7,9 +7,11 @@ package goosetable
 // and union descriptor of the unit, and the four facts a FieldDesc does not
 // carry — the key enum of an enum-keyed array, the variants retired in place,
 // and the if/else guards a writer evaluates. This part emits that registry
-// ONCE per unit, as `TableUnit`, in the first table module of the unit.
+// ONCE per unit, as `TableUnit`, in the unit's own module ([UnitModule]),
+// which is named for the package: an earlier-sorting file joining the unit
+// moves no byte of any file's module (docs/PORTING.md J2).
 //
-// It is a [Register] part, so it joins every module without editing
+// It is a [RegisterUnit] part, so it joins the unit module without editing
 // goosetable.go.
 
 import (
@@ -26,18 +28,7 @@ import (
 const UnitName = "TableUnit"
 
 func init() {
-	Register("tablewire", emitTableWireUnit)
-}
-
-// firstModule is the base of the unit's first table module, in file order.
-func firstModule(u *ir.Unit) string {
-	mods := moduleFiles(u, closure(u))
-	for _, f := range u.Files {
-		if mods[f.Base] {
-			return f.Base
-		}
-	}
-	return ""
+	RegisterUnit("tablewire", emitTableWireUnit)
 }
 
 // unitDecls is every struct and union the table walk can meet, by name:
@@ -109,9 +100,6 @@ func guardTerms(st *ir.Struct) [][3]int {
 }
 
 func emitTableWireUnit(g *goose.Gen) error {
-	if g.File.Base != firstModule(g.Unit) {
-		return nil
-	}
 	// KeyDesc, LoadUnit and the rest of the unit's types live in the load
 	// walk's module: import it, so this module checks on its own
 	g.Import("wire_load")

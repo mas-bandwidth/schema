@@ -253,7 +253,13 @@ func t05R30(t *testing.T) {
 		"Float.floatToRawIntBits(v.aim)",
 		"R30 the writer stores the raw float32 bits, never a quantized index (SPEC-TABLES §3.4)")
 	t05Has(t, files, "CfloatRangeWidenFixed.java",
-		"Float.intBitsToFloat(TableFixed.get32(b, at + 4))",
+		"final int fbits = TableFixed.get32(b, at + 4);",
+		"R30 the reader reads the float32's raw bits whole before its bounds pass")
+	t05Has(t, files, "CfloatRangeWidenFixed.java",
+		"r.refuseNonFinite(\"CfloatRangeWiden.aim\");",
+		"R30 a NaN or an infinity is refused by name before the bounds pass, never clamped (SPEC-TABLES §3.3)")
+	t05Has(t, files, "CfloatRangeWidenFixed.java",
+		"float q = Float.intBitsToFloat(fbits);",
 		"R30 the reader lands the float32 whole before its bounds pass")
 	// THE READER'S OWN BOUNDS, at the widened range's min and max.
 	t05Has(t, files, "CfloatRangeWidenFixed.java",

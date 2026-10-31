@@ -60,6 +60,14 @@ limits and checks immutable composition and branch zeroing. Its pairing
 control compiles without warnings and must fail mutation agreement. Both
 targets ride `test-elixir`.
 
+`make packet-wide-squirrel` runs one `sq` process per mode: `contracts`
+holds writer length refusals, read-side pairing, the untouched reused tail,
+an unaligned conditional and its zeroing, fixed/counted arrays, the born
+count and repeated union tags; `corpus` answers the harness against C++.
+Storage is an array of integer code units beside a used length. Its
+pairing-removal control regenerates under an overlay and must fail mutation
+agreement. Both targets ride `test-squirrel`.
+
 `make packet-wide-nine` runs every port and pairing control against C++.
 `make packet-wire-nine` joins that row with all nine packet-defaults and
 UTF-8 checks and their eight-port negative controls. The isolated packet

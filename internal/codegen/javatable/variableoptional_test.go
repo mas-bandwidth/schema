@@ -115,14 +115,14 @@ public final class Driver {
   for(int f=0;f<2;f++){
    w.putLeb(w.ref(f==0?RootVariable.F_ints:RootVariable.F_floats));w.put8(16);
    TableVariable.Writer body=w.sub(new byte[1024]);body.put8(f==0?4:10);body.putLeb(2);
-   for(int i=0;i<2;i++){body.putLeb(body.ref(i==0?AXIS_X:AXIS_Y));body.putLeb(4);body.put32(f==0?(i==0?-17:23):(i==0?0x3fc00000:0x7fa12345));}
+   for(int i=0;i<2;i++){body.putLeb(body.ref(i==0?AXIS_X:AXIS_Y));body.putLeb(4);body.put32(f==0?(i==0?-17:23):(i==0?0x3fc00000:0x807fffff));}
    w.putLeb(body.off);w.putBytes(body.buf,0,body.off);
   }
   w.put8(0);w.trailer();TableVariable.Report report=new TableVariable.Report();
   RootVariable.Value v=RootVariable.load(java.util.Arrays.copyOf(w.buf,w.off),report);
   check(v!=null&&!report.malformed&&!report.refused&&report.kindMismatch==0&&report.widened==2,"each keyed field widens once");
   check(v.ints.get(0)==-17L&&v.ints.get(1)==23L&&v.floats.get(0)==1.5,"writer-width slots");
-  check(Double.doubleToRawLongBits(v.floats.get(1))==0x7ff42468a0000000L,"float NaN payload/sign widening");
+  check(Double.doubleToRawLongBits(v.floats.get(1))==0xb80fffffc0000000L,"a negative float32 subnormal widens exactly, sign kept");
   System.out.println("keyed int32/int64 and float32/float64 writer-width widening passes");
  }
 }`

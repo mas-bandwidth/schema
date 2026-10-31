@@ -11,7 +11,7 @@
 set -eu
 dotnet=$1
 mode=$2
-control=build/cs-accessor-control
+control=build/cs-accessor-control-$mode
 mkdir -p "$control"
 
 cat > "$control/Case.schema" <<'SCHEMA'
