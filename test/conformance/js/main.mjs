@@ -897,6 +897,30 @@ async function surfaceReport(lines, outDir) {
   }
 }
 
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+// `report` surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read was refused or damaged (damaged
+// input is discarded whole and owes the refusal alone, docs/SPEC-TABLES.md §4).
+// A derived line is `framing <case> <unit> <root> <wire> [no-value]`.
+async function surfaceFraming(lines, outDir) {
+  for (const f of kind(lines, "framing")) {
+    const codec = await textCodec(f[2], f[3]);
+    if (codec === null) { wireAbsent(outDir, f[1]); continue; }
+    const noValue = f.length > 5 && f[5] === "no-value";
+    const r = codec.report();
+    const v = codec.load(new Uint8Array(readFileSync(f[4])), r);
+    const malformed = r.malformed || (v === null && !r.refused);
+    const verdict = r.refused ? "refused" : "read";
+    let answer = [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n";
+    if (v !== null && !r.refused && !malformed && !noValue) {
+      const text = codec.toJson(v);
+      if (text === null) { fail(f[1] + ": ToJson refused the value"); }
+      answer += text;
+    }
+    writeFileSync(join(outDir, f[1]), answer);
+  }
+}
+
 async function surfaceJsonRead(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
@@ -1211,7 +1235,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1226,6 +1250,7 @@ const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
+  case "framing": await surfaceFraming(lines, outDir); break;
   case "retain": await surfaceRetain(lines, outDir, false); break;
   case "retain-save": await surfaceRetain(lines, outDir, true); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;
