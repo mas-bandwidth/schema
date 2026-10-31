@@ -294,6 +294,75 @@ tables-elixir-json-hostile-f32-negative-control: build/conformance-harness
 
 test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
 
+# THE ELIXIR LEG's CONFORMANCE NEGATIVE CONTROLS (docs/PORTING.md I11): a
+# harness that has never gone red on a leg is not watching that leg. Each one
+# sabotages the table EMITTER through a Go overlay (ELIXIR_SABOTAGED_BUILD
+# below), regenerates and recompiles the whole corpus with that compiler, runs
+# the harness's Elixir leg against the sabotaged build in a work directory of
+# its own, and requires the matrix red on the surfaces that read the broken
+# code and green on the surfaces that do not, so the red is localized to the
+# defect and is never a build failure. Nothing tracked is written to.
+#   walk   (I11) the text reader stores the negation of every bool field:
+#          json-read red; json-write and wire green.
+#   shared (M6)  the pack walk's identity check is gone, so a node two
+#          pointers name is written twice: wire red; json-read green.
+#   label  (M14) the text writer never labels a shared node and writes it in
+#          full at every pointer: json-write red; json-read and wire green.
+#   ids    (M20) the id table is written in reverse first-use order while the
+#          body keeps its references: wire red; json-write green.
+#   arm    (M18) an arm header under another kind reads as the declared arm
+#          instead of a counted kind mismatch: report red; json-write green.
+#   order  (I7)  a byte-swapped block magic is no longer refused by name as a
+#          foreign order: block-reason red; block green.
+ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
+ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if false and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
+ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if n < 2 do$$|    if true or n < 2 do|'
+ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
+ELIXIR_CONFORMANCE_ARM_SED    := -e 's| when byte_size(content) >= l and k == a.arm_kind ->| when byte_size(content) >= l ->|'
+ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|false -> {:error, :foreign_order}|'
+
+# $(call ELIXIR_CONFORMANCE_CONTROL,dir,emitter,sedvar,red surfaces,green surfaces,what)
+define ELIXIR_CONFORMANCE_CONTROL
+	$(call ELIXIR_SABOTAGED_BUILD,$(1),$(2),$(3))
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir \
+			--work $(1)/work > $(1)/log 2>&1; then \
+		cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) left the Elixir leg green"; exit 1; \
+	fi
+	@for s in $(4); do \
+		grep -qE "^$$s +FAIL" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) did not red $$s"; exit 1; }; \
+	done
+	@for s in $(5); do \
+		grep -qE "^$$s +pass" $(1)/log || { cat $(1)/log; echo "NEGATIVE CONTROL FAILED: $(6) also broke $$s, which never runs the sabotaged code"; exit 1; }; \
+	done
+	@grep -E '^[a-z-]+ +(FAIL|pass)' $(1)/log
+	@echo "elixir conformance negative control: $(6) reds [$(4)] and leaves [$(5)] green"
+endef
+
+.PHONY: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
+	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
+	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order
+conformance-negative-control-elixir-walk: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-walk,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WALK_SED,json-read,json-write wire,a text reader that negates every bool)
+
+conformance-negative-control-elixir-shared: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-shared,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_SHARED_SED,wire,json-read,a pack walk that writes a shared node twice)
+
+conformance-negative-control-elixir-label: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-label,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_LABEL_SED,json-write,json-read wire,a text writer that never labels a shared node)
+
+conformance-negative-control-elixir-ids: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-ids,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_IDS_SED,wire,json-write,an id table written in reverse first-use order)
+
+conformance-negative-control-elixir-arm: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-arm,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_ARM_SED,report,json-write,an arm header under another kind read as the declared arm)
+
+conformance-negative-control-elixir-order: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-order,internal/codegen/elixirtable/block.go,ELIXIR_CONFORMANCE_ORDER_SED,block-reason,block,a block reader that no longer names a foreign byte order)
+
+test-elixir: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
+	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
+	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order
+
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
