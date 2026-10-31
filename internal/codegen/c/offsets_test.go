@@ -83,7 +83,7 @@ func TestRangedOffsetsSubtractUnsigned(t *testing.T) {
 // TestReadRefusalsLatchTheStream pins item 6: every read-side refusal the
 // GENERATED code makes (a value out of its declared range, an enum or union
 // tag past its max, a const or reserved mismatch, malformed UTF-8, an
-// interior null, an unpaired surrogate) fails the stream through
+// interior null) fails the stream through
 // serialize_read_fail, so the wire header's documented "a caller may check
 // once at the end of a message" holds. A bare `return 0` is legal only right
 // after a runtime or nested read call, which has already latched the stream.
@@ -146,7 +146,6 @@ type Refuse {
 		"return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); /* not a wire-legal tag */",
 		"return serialize_read_fail( stream, SERIALIZE_REFUSAL_INVALID_UTF8 ); /* malformed UTF-8 is content the read refuses (SPEC §4.7) */",
 		"return serialize_read_fail( stream, SERIALIZE_REFUSAL_EMBEDDED_NUL ); /* an interior null is content the read refuses (SPEC §4.7) */",
-		"if ( low != expect_low ) { return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE ); }",
 	} {
 		if !strings.Contains(wire, want) {
 			t.Errorf("want %q in:\n%s", want, wire)

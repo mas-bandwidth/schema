@@ -110,7 +110,6 @@ table Note
 `
 
 var (
-	// the three kind 33 helpers, by name.
 	// the byte buffer's own surface: the views, the reserved ids, the read
 	// accessors and the blob node type.
 	deadCBlobSymbols = []string{

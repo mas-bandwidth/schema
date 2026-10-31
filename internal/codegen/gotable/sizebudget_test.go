@@ -26,14 +26,16 @@ const (
 	// -13: the emitted loops range over their counts and the clamps call min/max (modernize-clean generated Go)
 	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	// +19: table floats are finite only (SPEC-TABLES §3.3, Glenn 2026-10-27): the NonFiniteFloat report slot, the refusal's two runtime helpers and Err() arm, the cook writer's and the retain capture's raw-bits tests (tables-finite/go)
-	goOneTableLineBudget = 9509
+	// -128: wide text is not part of schema (kind 33 retired), so its UTF-16 runtime is gone from every unit
+	goOneTableLineBudget = 9381
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
 	// -31: the emitted loops range over their counts and the clamps call min/max (modernize-clean generated Go)
 	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	// +821: table floats are finite only (SPEC-TABLES §3.3, Glenn 2026-10-27): every float read tests its raw bits, every tolerant load and message batch refuses a non-finite one, and every fixed type holding a float gains its finite pass and its writer clause (tables-finite/go)
-	goExamplesLineBudget = 66058
+	// -133: wide text is not part of schema (kind 33 retired), so its UTF-16 runtime is gone from every unit
+	goExamplesLineBudget = 65925
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

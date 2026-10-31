@@ -93,8 +93,7 @@ fixed table T { item Choice }
 		fields       []string
 	}{
 		{"word", `vals[0].item.type=1;vals[0].item.word[0]=65;vals[0].item.word[1]=66;vals[0].item.wordLength=2;`, []string{"item.type", "item.word", "item.wordLength"}},
-		{"wide", `vals[0].item.type=2;vals[0].item.wide[0]=0xd83d;vals[0].item.wide[1]=0xde00;vals[0].item.wideLength=2;`, []string{"item.type", "item.wide", "item.wideLength"}},
-		{"rows", `vals[0].item.type=3;vals[0].item.rows[0]=7;vals[0].item.rows[1]=9;vals[0].item.rowsCount=2;`, []string{"item.type", "item.rows", "item.rowsCount"}},
+		{"rows", `vals[0].item.type=2;vals[0].item.rows[0]=7;vals[0].item.rows[1]=9;vals[0].item.rowsCount=2;`, []string{"item.type", "item.rows", "item.rowsCount"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

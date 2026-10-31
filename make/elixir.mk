@@ -1460,7 +1460,7 @@ test-elixir: cards-elixir-retain-fuzz
 # ELIXIR_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved. The absent check
 # runs before the harness status is read, so a red run still names them. The
 # --retain arm of this roster is its own gate.
-ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 33
+ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 32
 ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
 .PHONY: tables-elixir-wire-fuzz-all
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
