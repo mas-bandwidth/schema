@@ -240,18 +240,18 @@ func forgeries(t *testing.T, kind string) []forgery {
 			continue
 		}
 		fg := forgery{name: f[1], kind: f[2], subject: f[3], base: f[4], pointer: f[5], verdict: f[10]}
-		for _, s := range strings.Split(f[6], ",") {
+		for s := range strings.SplitSeq(f[6], ",") {
 			v, err := strconv.ParseInt(s, 0, 64)
 			if err != nil {
 				t.Fatalf("%s: offset %q: %v", fg.name, s, err)
 			}
 			fg.offsets = append(fg.offsets, v)
 		}
-		for _, s := range strings.Split(f[7], ",") {
+		for s := range strings.SplitSeq(f[7], ",") {
 			v, _ := strconv.ParseInt(s, 0, 64)
 			fg.widths = append(fg.widths, v)
 		}
-		for _, s := range strings.Split(f[8], ",") {
+		for s := range strings.SplitSeq(f[8], ",") {
 			v, err := strconv.ParseUint(s, 0, 64)
 			if err != nil {
 				t.Fatalf("%s: value %q: %v", fg.name, s, err)
