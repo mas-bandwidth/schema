@@ -279,7 +279,7 @@ cards-generate: bin/schema
 cards-example: cards-generate
 	@rm -rf build/cards-example
 	@mkdir -p build/cards-example/testdata
-	cp tables/cards/example/go.mod build/cards-example/go.mod
+	sed "s|=> ../../..$$|=> $(CURDIR)|" tables/cards/example/go.mod > build/cards-example/go.mod
 	cp tables/cards/example/example_test.go build/cards-example/example_test.go
 	@printf '\nreplace cards => %s\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => %s\n' \
 		"$(CURDIR)/build/tables-generated-go/cards" "$(abspath $(SERIALIZE_GO))" >> build/cards-example/go.mod
