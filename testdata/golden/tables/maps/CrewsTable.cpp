@@ -4418,7 +4418,14 @@ bool CrewsFromJsonTolerant( CrewsBuilder & builder, const char * text, int64_t b
 {
     Crews * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, CrewsTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, CrewsTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; CrewsTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool CrewsFromJson( CrewsBuilder & builder, const char * text, int64_t bytes, TableReport * report )

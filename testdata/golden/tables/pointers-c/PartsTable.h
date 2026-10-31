@@ -513,7 +513,7 @@ static SCHEMA_UNUSED int graphdemo_table_reader_skip( graphdemo_table_reader_t *
             if ( !graphdemo_table_reader_has( r, 1 ) ) { return 0; }
             r->offset++;
             /* fall through */
-        case 12: case 13: case 14: case 16: case 31: case 32:
+        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
             if ( !graphdemo_table_reader_leb( r, &n ) || !graphdemo_table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n; return 1;
         default: return 0;
@@ -688,6 +688,7 @@ enum
 enum
 {
     GRAPHDEMO_K_TABLE_FIXED_TEXT_UTF8  = 1,
+    GRAPHDEMO_K_TABLE_FIXED_TEXT_WIDE  = 2,
     GRAPHDEMO_K_TABLE_FIXED_TEXT_BYTES = 3
 };
 
@@ -746,8 +747,9 @@ enum
     SCHEMA_GRAPHDEMO_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_GRAPHDEMO_TABLE_LAYOUT_UNSUPPORTED = 19,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-       string(N)'s used bytes that are not well-formed UTF-8 refuse the read
-       by name, the verdict the packet reader gives, this form having no L to
+       string(N)'s used bytes that are not well-formed UTF-8 — or a
+       wstring(N)'s used units that are not paired UTF-16 — refuse the read by
+       name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
     SCHEMA_GRAPHDEMO_TABLE_TEXT_ILL_FORMED = 20
 };
@@ -1072,17 +1074,21 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void graphdemo_table_fixed_ap
         }
         case GRAPHDEMO_K_TABLE_FIXED_TEXT:
         {
+            const uint32_t unit = ( p->meta == GRAPHDEMO_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
+            const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) graphdemo_table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
-            else if ( (uint32_t) v > p->size ) { v = (int32_t) p->size; (*clamped)++; }
+            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             graphdemo_table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
             if ( p->meta != GRAPHDEMO_K_TABLE_FIXED_TEXT_BYTES )
             {
                 /* the used length terminates the buffer, whose storage is one
-                   byte longer than the bound for exactly this. A store, not a
+                   unit longer than the bound for exactly this. A store, not a
                    call: memset of a runtime length is a call. */
-                dst[p->aux + (uint32_t) v] = 0;
+                uint8_t * end = dst + p->aux + (uint32_t) v * unit;
+                end[0] = 0;
+                if ( unit == 2 ) { end[1] = 0; }
             }
             break;
         }
@@ -1300,9 +1306,10 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_entry_lands( const graphdemo_tab
         case GRAPHDEMO_K_TABLE_FIXED_COUNT: lands[1] = e->dst + 4u; break;
         case GRAPHDEMO_K_TABLE_FIXED_TEXT:
         {
+            const uint32_t unit = ( e->meta == GRAPHDEMO_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
             lands[1] = e->dst + 4u;
             lands[2] = e->aux;
-            lands[3] = e->aux + e->size + ( e->meta == GRAPHDEMO_K_TABLE_FIXED_TEXT_BYTES ? 0u : 1u );
+            lands[3] = e->aux + e->size + ( e->meta == GRAPHDEMO_K_TABLE_FIXED_TEXT_BYTES ? 0u : unit );
             break;
         }
         case GRAPHDEMO_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
@@ -1539,14 +1546,14 @@ static SCHEMA_UNUSED int graphdemo_table_fixed_leaf_size( uint8_t kind, uint32_t
 static SCHEMA_UNUSED int graphdemo_table_fixed_ordinal_width( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 /* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-   the no-payload variant 32, and the ONE kind this form's layout adds, the
-   optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
-   reserved: none is a kind a declaration spells, so none is ever an entry's
-   kind. */
+   the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+   adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
+   reserved: neither is a kind a declaration spells, so neither is ever an
+   entry's kind. */
 static SCHEMA_UNUSED int graphdemo_table_fixed_known_kind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return 1; }
-    return kind == 32u || kind == 35u;
+    return kind == 32u || kind == 33u || kind == 35u;
 }
 
 /* table_fixed_check_entry validates the subtree rooted at i and answers how
@@ -1648,6 +1655,12 @@ static SCHEMA_UNUSED int32_t graphdemo_table_fixed_check_entry( graphdemo_table_
         {
             if ( e.children != 0u ) { graphdemo_table_fixed_fail( c, SCHEMA_GRAPHDEMO_TABLE_LAYOUT_KIND_INVALID ); return 0; }
             if ( e.size < 4u ) { graphdemo_table_fixed_fail( c, SCHEMA_GRAPHDEMO_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        case 33: /* wstring(N): the length in CODE UNITS, then 2N bytes */
+        {
+            if ( e.children != 0u ) { graphdemo_table_fixed_fail( c, SCHEMA_GRAPHDEMO_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { graphdemo_table_fixed_fail( c, SCHEMA_GRAPHDEMO_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
             break;
         }
         /* Every kind of the closed set is either a leaf above or a case here,
@@ -2120,7 +2133,7 @@ static SCHEMA_UNUSED void graphdemo_table_fixed_compile_entry( graphdemo_table_f
                 graphdemo_table_fixed_push( c, e );
                 break;
             }
-            case 12: /* text */
+            case 12: case 33: /* text */
             {
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 graphdemo_table_fixed_entry_t e = graphdemo_table_fixed_entry_zero();
@@ -3443,6 +3456,11 @@ static SCHEMA_UNUSED void graphdemo_table_cook_put128(uint8_t * at,uint64_t lo,u
 }
 static SCHEMA_UNUSED void graphdemo_table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
 { if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
+static SCHEMA_UNUSED void graphdemo_table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
+{
+    int64_t i, count=used<capacity ? used : capacity;
+    for(i=0;i<count;i++) { graphdemo_table_cook_put(at+i*2,source[i],2,order); }
+}
 static SCHEMA_UNUSED void graphdemo_table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
 {
     graphdemo_table_cook_put(raw,graphdemo_table_cook_magic,8,order); graphdemo_table_cook_put(raw+8,version,8,order);
@@ -3453,10 +3471,10 @@ static SCHEMA_UNUSED void graphdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #endif
 #ifndef SCHEMA_GRAPHDEMO_TABLE_MESSAGE
 #define SCHEMA_GRAPHDEMO_TABLE_MESSAGE
-enum { GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=6, GRAPHDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=50, GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES=527, GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
-static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0x5c,0x1d,0xd8,0x26,0x47,0xbe,0xaa,0xfd,0x02,0x0e,0xe7,0x03,0x06,0xe4,0x03,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x10,0x4c,0x8a,0x95,0x2e,0xef,0x84,0x49,0x1e,0x0d,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x0d,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x0d,0x54,0x0b,0x60,0x56,0x19,0x76,0xaf,0x77,0x11,0x03,0x0c,0x9a,0x5f,0xcc,0x12,0x8f,0x0a,0x11,0xd5,0x0c,0x02,0x86,0x4c,0xef,0x63,0xaf,0x06,0x00,0x26,0xe9,0x01,0x86,0x4c,0xda,0x63,0xaf,0x06,0x00,0xa5,0xf1,0x01,0x86,0x4c,0xdf,0x63,0xaf,0x06,0x00,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x0c,0x0c,0xe9,0x52,0xe1,0x81,0xb9,0x9e,0xdd,0x10,0x02,0x0d,0x80,0x83,0x1c,0xb2,0x8a,0xee,0x39,0x43,0x0d,0xea,0x96,0xb2,0x00,0x76,0xe9,0xd8,0x75,0x04,0x01,0x07,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x04,0x00,0x28,0xf0,0x25,0xa0,0xba,0x6c,0x31,0xe5,0x11,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x08,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x11,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x18,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x04,0x01,0x07,0x00,0x95,0xb3,0x1e,0x51,0xef,0xb8,0x25,0x5b,0x11,0xe8,0x4d,0xb4,0x48,0x7b,0x6d,0x5f,0xee,0x11,0xb7,0x46,0xa6,0x65,0xbb,0x20,0x92,0x50,0x11,0x7e,0x69,0xbe,0x95,0x23,0x9e,0x83,0x60,0x0d,0xdf,0x22,0x70,0x74,0x4a,0xe3,0x54,0x45,0x0e,0x00,0x04,0x0d,0x38,0xac,0x2e,0xe3,0xa2,0xe9,0x20,0x43,0x0d,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0c,0xb0,0x1c,0x04,0xa2,0xad,0x70,0xb0,0x24,0x11,0x05,0xd8,0x14,0x57,0x53,0xaa,0xaa,0x76,0x11,0xc1,0x52,0x85,0xb8,0x19,0xa3,0xf3,0x24,0x00,0x1d,0xa8,0xa8,0x9c,0xd8,0xef,0xee,0x9d,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xcc,0x14,0x15,0x7f,0xcb,0xc2,0x58,0xd8,0x00,0xfd,0x53,0x25,0x70,0xdc,0xe6,0x7f,0x32,0x00,0xb6,0x79,0xed,0x7a,0xf7,0x7e,0x16,0x9d,0x00,0xa9,0x9f,0xa6,0xa5,0x99,0xc8,0x0e,0xf6,0x00,0x57,0xd4,0x83,0xef,0x3e,0x8a,0x45,0xd6,0x00,0x18,0x6d,0x9d,0xe4,0xae,0xea,0xad,0x6d,0x00,0x13,0xf2,0xb5,0x3a,0x62,0x31,0x9a,0x4a,0x00,0xc8,0xc2,0x04,0xb4,0xa2,0x8a,0x8b,0x9d,0x00,0xa4,0x93,0xdb,0xb7,0x13,0x91,0x3b,0xae,0x00,0x3d,0xa7,0x42,0x42,0x90,0x34,0xff,0x69,0x00,0x1d,0x43,0x4c,0x78,0xa3,0x90,0x7e,0xb9,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+enum { GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=6, GRAPHDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=51, GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES=536, GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
+static const uint8_t GRAPHDEMO_K_TABLE_ANNOUNCE[GRAPHDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0x5c,0x1d,0xd8,0x26,0x47,0xbe,0xaa,0xfd,0x02,0x0e,0xf0,0x03,0x06,0xed,0x03,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x10,0x4c,0x8a,0x95,0x2e,0xef,0x84,0x49,0x1e,0x0d,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x0d,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x0d,0x54,0x0b,0x60,0x56,0x19,0x76,0xaf,0x77,0x11,0x03,0x0c,0x9a,0x5f,0xcc,0x12,0x8f,0x0a,0x11,0xd5,0x0c,0x02,0x86,0x4c,0xef,0x63,0xaf,0x06,0x00,0x26,0xe9,0x01,0x86,0x4c,0xda,0x63,0xaf,0x06,0x00,0xa5,0xf1,0x01,0x86,0x4c,0xdf,0x63,0xaf,0x06,0x00,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x0c,0x0c,0xe9,0x52,0xe1,0x81,0xb9,0x9e,0xdd,0x10,0x02,0x0d,0x80,0x83,0x1c,0xb2,0x8a,0xee,0x39,0x43,0x0d,0xea,0x96,0xb2,0x00,0x76,0xe9,0xd8,0x75,0x04,0x01,0x07,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x04,0x00,0x28,0xf0,0x25,0xa0,0xba,0x6c,0x31,0xe5,0x11,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x08,0xdd,0x7c,0x58,0xd1,0xba,0xfb,0xf8,0x3b,0x11,0x03,0x0b,0xc7,0x98,0xe2,0x17,0x25,0x80,0x04,0x01,0x0a,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x0c,0x08,0x86,0x1b,0x63,0x8e,0xba,0xad,0xbc,0xc4,0x0c,0x18,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x04,0x01,0x07,0x00,0x95,0xb3,0x1e,0x51,0xef,0xb8,0x25,0x5b,0x11,0xe8,0x4d,0xb4,0x48,0x7b,0x6d,0x5f,0xee,0x11,0xb7,0x46,0xa6,0x65,0xbb,0x20,0x92,0x50,0x11,0x7e,0x69,0xbe,0x95,0x23,0x9e,0x83,0x60,0x0d,0xdf,0x22,0x70,0x74,0x4a,0xe3,0x54,0x45,0x0e,0x00,0x04,0x0d,0x38,0xac,0x2e,0xe3,0xa2,0xe9,0x20,0x43,0x0d,0x66,0xfe,0x00,0x64,0x91,0x60,0x80,0x7a,0x04,0x01,0x03,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x10,0x3c,0x13,0xe2,0x5c,0x19,0x8a,0x3b,0x82,0x04,0x01,0x0a,0x00,0xbb,0xf0,0x0c,0x9b,0xcc,0xfb,0x2d,0x73,0x04,0x01,0x0e,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0c,0xb0,0x1c,0x04,0xa2,0xad,0x70,0xb0,0x24,0x11,0x05,0xd8,0x14,0x57,0x53,0xaa,0xaa,0x76,0x11,0xc1,0x52,0x85,0xb8,0x19,0xa3,0xf3,0x24,0x00,0x1d,0xa8,0xa8,0x9c,0xd8,0xef,0xee,0x9d,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xcc,0x14,0x15,0x7f,0xcb,0xc2,0x58,0xd8,0x00,0xfd,0x53,0x25,0x70,0xdc,0xe6,0x7f,0x32,0x00,0xb6,0x79,0xed,0x7a,0xf7,0x7e,0x16,0x9d,0x00,0xa9,0x9f,0xa6,0xa5,0x99,0xc8,0x0e,0xf6,0x00,0x57,0xd4,0x83,0xef,0x3e,0x8a,0x45,0xd6,0x00,0x18,0x6d,0x9d,0xe4,0xae,0xea,0xad,0x6d,0x00,0x13,0xf2,0xb5,0x3a,0x62,0x31,0x9a,0x4a,0x00,0xc8,0xc2,0x04,0xb4,0xa2,0x8a,0x8b,0x9d,0x00,0xa4,0x93,0xdb,0xb7,0x13,0x91,0x3b,0xae,0x00,0x3d,0xa7,0x42,0x42,0x90,0x34,0xff,0x69,0x00,0x1d,0x43,0x4c,0x78,0xa3,0x90,0x7e,0xb9,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 
-typedef struct graphdemo_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; graphdemo_table_numbering_t * nodes; int64_t index_bits; } graphdemo_table_bit_writer_t;
+typedef struct graphdemo_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; } graphdemo_table_bit_writer_t;
 typedef struct graphdemo_table_bit_reader_t { const uint8_t * buffer; int64_t bits,offset; } graphdemo_table_bit_reader_t;
 static SCHEMA_UNUSED graphdemo_table_bit_writer_t graphdemo_table_bit_writer(uint8_t * buffer,int64_t capacity)
 { graphdemo_table_bit_writer_t w;memset(&w,0,sizeof(w));w.buffer=buffer;w.capacity=capacity;return w; }
@@ -3618,7 +3636,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_fixed_kind( uint8_t kind ) { re
 
 static SCHEMA_UNUSED int graphdemo_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 );
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
 }
 
 
@@ -3696,7 +3714,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_shape_read(const uint8_t * in,i
    return graphdemo_table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12){if(!graphdemo_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ if(kind==12||kind==33){if(!graphdemo_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
  f->max=(int64_t)v;
  return 1;
  }
@@ -3708,7 +3726,7 @@ static SCHEMA_UNUSED int graphdemo_table_message_shape_read(const uint8_t * in,i
   f->max=(int64_t)v;
   if(*at>=size)return 0;
   f->elem_kind=in[(*at)++];
-  return graphdemo_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12;
+  return graphdemo_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
  }return 1;
 }
 static SCHEMA_UNUSED int graphdemo_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,graphdemo_table_message_entry_t * e)
@@ -3842,7 +3860,7 @@ static SCHEMA_UNUSED int graphdemo_announce_read(graphdemo_table_vocabulary_t * 
 
 typedef struct graphdemo_table_message_reader_t {
  graphdemo_table_bit_reader_t bits; const graphdemo_table_vocabulary_t * vocabulary; graphdemo_table_report_t * report;
- int64_t index_bits; int extent_refused; int skip_depth;graphdemo_table_node_map_t * nodes;
+ int skip_depth;
 } graphdemo_table_message_reader_t;
 /* Framing scans skip by announced shape, including a reserved transport id
    (kind 0, no extra bits). A NAME reference still refuses reserved ids.
@@ -3910,14 +3928,6 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip_deeper(graphdemo_table_mes
  r->skip_depth=saved;
  return ok;
 }
-static SCHEMA_UNUSED int graphdemo_table_message_skip_at(graphdemo_table_message_reader_t * r,const graphdemo_table_message_entry_t * e,int depth)
-{
- int saved=r->skip_depth,ok;
- r->skip_depth=depth;
- ok=graphdemo_table_message_skip(r,e);
- r->skip_depth=saved;
- return ok;
-}
 static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_reader_t * r,const graphdemo_table_message_entry_t * e)
 {
  uint64_t n,i;
@@ -3932,13 +3942,15 @@ static SCHEMA_UNUSED int graphdemo_table_message_skip(graphdemo_table_message_re
  ok=graphdemo_table_message_skip_body(r);
  r->skip_depth=saved;
  return ok;
- case 17:return r->index_bits>0 && graphdemo_table_bit_skip(&r->bits,r->index_bits);
+ case 17:return 0;
+ /* a node reference: no fixed body holds one */
  case 15:
   if(!graphdemo_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && graphdemo_table_message_skip_deeper(r,entry));
- case 12:
-  if(!graphdemo_table_bit_get(&r->bits,&n,graphdemo_table_bits_required(0,e->max))||!graphdemo_table_bit_align_read(&r->bits))return 0;
-  return graphdemo_table_message_skip_run(r,n,8);
+ case 12:case 33:
+  if(!graphdemo_table_bit_get(&r->bits,&n,graphdemo_table_bits_required(0,e->max)))return 0;
+  if(e->kind==12 && !graphdemo_table_bit_align_read(&r->bits))return 0;
+  return graphdemo_table_message_skip_run(r,n,e->kind==12?8:16);
  case 31:
   if(!graphdemo_table_bit_align_read(&r->bits)||!graphdemo_table_bit_get(&r->bits,&n,32))return 0;
   return graphdemo_table_message_skip_run(r,n,8);
@@ -4020,28 +4032,6 @@ static SCHEMA_UNUSED int graphdemo_table_message_close(graphdemo_table_message_r
  if(!graphdemo_table_bit_align_read(&r->bits)||r->bits.offset!=r->bits.bits){r->report->malformed=1;
  return 0;
  }return 1;
-}
-
-static SCHEMA_UNUSED int graphdemo_table_message_nodes_open(graphdemo_table_message_reader_t * r,uint64_t * count)
-{
- uint64_t ref;
- int64_t start=r->bits.offset;
- *count=0;
- if(!graphdemo_table_bit_get(&r->bits,&ref,r->vocabulary->ref_bits))return 0;
- if(ref>(uint64_t)r->vocabulary->count)return 0;
- if(ref==0 || r->vocabulary->entries[ref-1].id!=UINT64_MAX){r->bits.offset=start;
- r->index_bits=1;
- return 1;
- }
- if(!graphdemo_table_bit_get(&r->bits,count,32))return 0;
- r->index_bits=graphdemo_table_bits_required(0,(int64_t)*count+1);
- /* Every record spends at least its type reference. Bound the walk before
-    inspecting any record, even when its body holds no scalar bits. */
- return r->vocabulary->ref_bits>0 && *count<=(uint64_t)((r->bits.bits-r->bits.offset)/r->vocabulary->ref_bits);
-}
-static SCHEMA_UNUSED int graphdemo_table_message_blob_scan(graphdemo_table_message_reader_t * r,uint64_t * length)
-{
- return graphdemo_table_bit_get(&r->bits,length,32) && graphdemo_table_bit_align_read(&r->bits) && graphdemo_table_message_skip_run(r,*length,8);
 }
 
 #endif
@@ -4379,7 +4369,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_in_payload(graphdemo_table_retai
  return 1;
  }
  switch(kind){
- case 12:case 31:case 32:if(!graphdemo_table_reader_leb(r,&length)||!graphdemo_table_reader_room(r,length)||!graphdemo_table_retain_leb(s,length)||!graphdemo_table_retain_raw(s,r->buffer+r->offset,(int64_t)length))return 0;
+ case 12:case 31:case 32:case 33:if(!graphdemo_table_reader_leb(r,&length)||!graphdemo_table_reader_room(r,length)||!graphdemo_table_retain_leb(s,length)||!graphdemo_table_retain_raw(s,r->buffer+r->offset,(int64_t)length))return 0;
  r->offset+=(int64_t)length;
  return 1;
  case 13:case 14:case 16:if(!graphdemo_table_reader_leb(r,&length)||!graphdemo_table_reader_room(r,length))return 0;
@@ -4554,7 +4544,7 @@ static SCHEMA_UNUSED int graphdemo_table_retain_out_payload(graphdemo_table_reta
  return 1;
  }
  switch(kind){
- case 12:case 31:case 32:if(!graphdemo_table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!graphdemo_table_retain_out_leb(s,length)||!graphdemo_table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;
+ case 12:case 31:case 32:case 33:if(!graphdemo_table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!graphdemo_table_retain_out_leb(s,length)||!graphdemo_table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;
  s->at+=(int64_t)length;
  return 1;
  case 13:case 14:case 16:return graphdemo_table_retain_out_frame(s,kind,depth+1);
@@ -4637,116 +4627,6 @@ for(i=0;i<r->count;i++){if(!r->bytes[at+25])report->retain_lost++;
 at+=graphdemo_table_retain_u32(r->bytes+at);
 }}
 
-
-typedef struct graphdemo_table_retain_message_t {graphdemo_table_retain_in_t output;graphdemo_table_message_reader_t input;} graphdemo_table_retain_message_t;
-static SCHEMA_UNUSED int graphdemo_table_retain_message_payload(graphdemo_table_retain_message_t *,const graphdemo_table_message_entry_t *,int32_t);
-static SCHEMA_UNUSED int graphdemo_table_retain_message_content(graphdemo_table_retain_message_t *,const graphdemo_table_message_entry_t *,int32_t);
-static SCHEMA_UNUSED int graphdemo_table_retain_message_frame(graphdemo_table_retain_message_t * s,const graphdemo_table_message_entry_t * e,int32_t depth)
-{uint8_t zero[8]={0};
-int64_t mark=s->output.used;
-if(!graphdemo_table_retain_raw(&s->output,zero,8)||!graphdemo_table_retain_message_content(s,e,depth))return 0;
-if(s->output.used-mark-8>UINT32_MAX)return 0;
-graphdemo_table_retain_put32(s->output.out+mark,(uint32_t)(s->output.used-mark-8));
-return 1;
-}
-static SCHEMA_UNUSED int graphdemo_table_retain_message_scalar(graphdemo_table_retain_message_t * s,const graphdemo_table_message_entry_t * e)
-{
- uint64_t lo=0,hi=0;
- uint8_t bytes[16];
- int width=graphdemo_table_retain_width(e->kind);
- if(!width)return 0;
- if(e->kind==10&&e->packing==2){float value=0;
- if(!graphdemo_table_message_float(&s->input,e,&value))return 0;
- lo=graphdemo_table_float_to_bits(value);
- }
- else if(!graphdemo_table_message_number(&s->input,e,&lo,&hi))return 0;
- graphdemo_table_retain_put64(bytes,lo);
- graphdemo_table_retain_put64(bytes+8,hi);
- return graphdemo_table_retain_raw(&s->output,bytes,width);
-}
-static SCHEMA_UNUSED int graphdemo_table_retain_message_opaque(graphdemo_table_retain_message_t * s,const graphdemo_table_message_entry_t * e,int framed)
-{
- uint64_t n,i;
- graphdemo_table_message_reader_t * r=&s->input;
- if(e->kind==12){if(!graphdemo_table_bit_get(&r->bits,&n,graphdemo_table_bits_required(0,e->max))||!graphdemo_table_bit_align_read(&r->bits))return 0;
- }
- else if(!graphdemo_table_bit_align_read(&r->bits)||!graphdemo_table_bit_get(&r->bits,&n,32))return 0;
- if(n>INT64_MAX/8||!graphdemo_table_bit_has(&r->bits,(int64_t)n*8))return 0;
- if(framed&&!graphdemo_table_retain_leb(&s->output,n))return 0;
- if(n>(uint64_t)(s->output.capacity-s->output.used))return 0;
- for(i=0;i<n;i++){uint64_t v;
- uint8_t byte;
- if(!graphdemo_table_bit_get(&r->bits,&v,8))return 0;
- byte=(uint8_t)v;
- if(!graphdemo_table_retain_raw(&s->output,&byte,1))return 0;
- }return 1;
-}
-static SCHEMA_UNUSED int graphdemo_table_retain_message_content(graphdemo_table_retain_message_t * s,const graphdemo_table_message_entry_t * e,int32_t depth)
-{
- if(depth>SCHEMA_GRAPHDEMO_TABLE_RETAIN_WALK_MAX)return 0;
- switch(e->kind){
- case 13:for(;;){const graphdemo_table_message_entry_t * f;
- if(!graphdemo_table_message_ref(&s->input,&f,0))return 0;
- if(!f)return graphdemo_table_retain_id(&s->output,0);
- if(!f->id||!graphdemo_table_retain_id(&s->output,f->id)||!graphdemo_table_retain_raw(&s->output,&f->kind,1)||!graphdemo_table_retain_message_payload(s,f,depth))return 0;
- }
- case 14:case 16:{uint64_t n,i;
- graphdemo_table_message_entry_t elem=graphdemo_table_message_element(e);
- if(elem.kind==17||!graphdemo_table_message_count(&s->input,e,&n)||!graphdemo_table_retain_raw(&s->output,&elem.kind,1)||!graphdemo_table_retain_leb(&s->output,n))return 0;
- for(i=0;i<n;i++){if(e->kind==16){const graphdemo_table_message_entry_t * key;
- if(!graphdemo_table_message_ref(&s->input,&key,1)||!key||!key->id||!graphdemo_table_retain_id(&s->output,key->id)||!graphdemo_table_retain_message_frame(s,&elem,depth+1))return 0;
- }else if(!graphdemo_table_retain_message_payload(s,&elem,depth))return 0;
- }return 1;
- }
- case 15:case 30:return graphdemo_table_retain_message_payload(s,e,depth);
- case 32:return 1;
- case 12:case 31:return graphdemo_table_retain_message_opaque(s,e,0);
- case 0:case 17:return 0;
- default:return graphdemo_table_retain_message_scalar(s,e);
- }
-}
-static SCHEMA_UNUSED int graphdemo_table_retain_message_payload(graphdemo_table_retain_message_t * s,const graphdemo_table_message_entry_t * e,int32_t depth)
-{
- switch(e->kind){
- case 0:case 17:return 0;
- case 32:return graphdemo_table_retain_leb(&s->output,0);
- case 30:{const graphdemo_table_message_entry_t * entry;
- if(!graphdemo_table_message_ref(&s->input,&entry,1))return 0;
- return graphdemo_table_retain_id(&s->output,entry?entry->id:0);
- }
- case 15:{const graphdemo_table_message_entry_t * arm;
- if(!graphdemo_table_message_ref(&s->input,&arm,0))return 0;
- if(!arm)return graphdemo_table_retain_id(&s->output,0);
- return arm->id&&arm->kind&&graphdemo_table_retain_id(&s->output,arm->id)&&graphdemo_table_retain_raw(&s->output,&arm->kind,1)&&graphdemo_table_retain_message_frame(s,arm,depth+1);
- }
- case 13:case 14:case 16:return graphdemo_table_retain_message_frame(s,e,depth+1);
- case 12:case 31:return graphdemo_table_retain_message_opaque(s,e,1);
- default:return graphdemo_table_retain_message_scalar(s,e);
- }
-}
-/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
-   §3.3, §6.6): kind 10's or 11's raw bits, unless the float rides as a
-   quantized index, which names a finite value. A NaN or an infinity refuses
-   the read as non_finite_float, nothing is kept and the walk goes on. */
-static SCHEMA_UNUSED int graphdemo_table_retain_message_capture(graphdemo_table_message_reader_t * r,const graphdemo_table_message_entry_t * entry,graphdemo_table_retain_walk_t keep)
-{
- graphdemo_table_retain_message_t s;
- uint8_t * record;
- s.input=*r;
- if(!graphdemo_table_message_skip(r,entry))return 0;
- if(!keep.retain)return 1;
- if((entry->kind==10&&entry->packing!=2)||entry->kind==11){graphdemo_table_bit_reader_t bits=s.input.bits;
- uint64_t raw=0;
-  if(graphdemo_table_bit_get(&bits,&raw,entry->kind==10?32:64)&&(entry->kind==10?!graphdemo_table_bits_finite32((uint32_t)raw):!graphdemo_table_bits_finite64(raw))){graphdemo_table_non_finite_float(r->report);
-  return 1;
-  }}
- record=graphdemo_table_retain_begin(keep,entry->id,entry->kind,&s.output);
- if(!record||!graphdemo_table_retain_message_payload(&s,entry,0)||s.input.bits.offset!=r->bits.offset){r->report->retain_lost++;
- return 1;
- }
- graphdemo_table_retain_commit(keep,record,&s.output,r->report);
- return 1;
-}
 
 typedef int (*graphdemo_table_retain_save_node_t)(graphdemo_table_writer_t *,const void *,uint64_t,graphdemo_table_retain_walk_t);
 static SCHEMA_UNUSED int graphdemo_table_retain_records(graphdemo_table_writer_t * w,graphdemo_table_retain_walk_t retention,graphdemo_table_retain_save_node_t save)
@@ -4860,11 +4740,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int graphdemo_colour_load_bod
 static SCHEMA_UNUSED int schema_graphdemo_stamp_cook_body_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int schema_graphdemo_colour_cook_body_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int graphdemo_stamp_save_message_body(graphdemo_table_bit_writer_t *,const graphdemo_stamp_t *);
-static SCHEMA_UNUSED int graphdemo_colour_save_message_body(graphdemo_table_bit_writer_t *,const graphdemo_colour_t *);
 static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_message_reader_t *,graphdemo_stamp_t *);
-static SCHEMA_UNUSED int graphdemo_colour_load_message_body(graphdemo_table_message_reader_t *,graphdemo_colour_t *);
-static SCHEMA_UNUSED int schema_graphdemo_stamp_message_extent_(graphdemo_table_message_reader_t *,int64_t *,int);
-static SCHEMA_UNUSED int schema_graphdemo_colour_message_extent_(graphdemo_table_message_reader_t *,int64_t *,int);
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_stamp_t * value )
 {
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
@@ -5207,9 +5083,14 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_messages_tolerant(graphdemo_stamp_
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)graphdemo_stamp_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN stamp_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN stamp_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int graphdemo_stamp_load_messages( graphdemo_stamp_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored;
@@ -5228,18 +5109,6 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_messages( graphdemo_stamp_t * valu
     for ( i = 0; i < *count; i++ ) graphdemo_stamp_reset( values + i );
     *count = 0;
     return 0;
-}
-static SCHEMA_UNUSED int schema_graphdemo_stamp_message_extent_(graphdemo_table_message_reader_t * r,int64_t * at,int depth)
-{
- (void)at;
- if(depth>128)return 0;
- for(;;){const graphdemo_table_message_entry_t * entry;
- if(!graphdemo_table_message_ref(r,&entry,0))return 0;
- if(entry==NULL)return 1;
- switch(entry->id){
- default:break;
- }if(!graphdemo_table_message_skip_at(r,entry,depth))return 0;
- }
 }
 static SCHEMA_UNUSED int graphdemo_colour_save_body( graphdemo_table_writer_t * w, const graphdemo_colour_t * value )
 {
@@ -5419,199 +5288,6 @@ static SCHEMA_UNUSED int graphdemo_colour_load( graphdemo_colour_t * value, cons
     return 1;
 }
 
-static SCHEMA_UNUSED int graphdemo_colour_save_message_body(graphdemo_table_bit_writer_t * w,const graphdemo_colour_t * value)
-{
- (void)value;
- { /* r */
- if(!(value->r == 0)) {
-  if(w->check_default) {w->bits=GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
-  return 1;
-  }
-  graphdemo_table_bit_put(w,7,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  graphdemo_table_bit_put(w,(uint64_t)(value->r)-UINT64_C(0),8);
- }
- }
- { /* g */
- if(!(value->g == 0)) {
-  if(w->check_default) {w->bits=GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
-  return 1;
-  }
-  graphdemo_table_bit_put(w,8,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  graphdemo_table_bit_put(w,(uint64_t)(value->g)-UINT64_C(0),8);
- }
- }
- { /* b */
- if(!(value->b == 0)) {
-  if(w->check_default) {w->bits=GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
-  return 1;
-  }
-  graphdemo_table_bit_put(w,9,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  graphdemo_table_bit_put(w,(uint64_t)(value->b)-UINT64_C(0),8);
- }
- }
- graphdemo_table_bit_put(w,0,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
- return !w->overflow;
-}
-static SCHEMA_UNUSED int64_t graphdemo_colour_measure_messages(const graphdemo_colour_t * values,int64_t count,graphdemo_table_report_t * report)
-{
- graphdemo_table_bit_writer_t w=graphdemo_table_bit_writer(NULL,INT64_MAX);
- int64_t i;
- if(count<1 || values==NULL) return -1;
- if(count>GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
- report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
- }return -1;
- }
- graphdemo_table_bit_put(&w,2,8);
- graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_colour_save_message_body(&w,values+i)) return -1;
- graphdemo_table_bit_align_write(&w);
- return w.overflow ? -1 : w.bits/8;
-}
-static SCHEMA_UNUSED int64_t graphdemo_colour_save_messages(const graphdemo_colour_t * values,int64_t count,uint8_t * buffer,int64_t capacity,graphdemo_table_report_t * report)
-{
- graphdemo_table_bit_writer_t w=graphdemo_table_bit_writer(buffer,capacity);
- int64_t i;
- if(count<1 || values==NULL) return -1;
- if(count>GRAPHDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
- report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
- }return -1;
- }
- if(buffer==NULL || capacity<0) return -1;
- graphdemo_table_bit_put(&w,2,8);
- graphdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!graphdemo_colour_save_message_body(&w,values+i)) return -1;
- graphdemo_table_bit_align_write(&w);
- return w.overflow ? -1 : w.bits/8;
-}
-static SCHEMA_UNUSED int graphdemo_colour_load_message_body(graphdemo_table_message_reader_t * r,graphdemo_colour_t * value)
-{
- graphdemo_colour_reset(value);
- for(;;){const graphdemo_table_message_entry_t * entry;
- if(!graphdemo_table_message_ref(r,&entry,0))goto malformed;
- if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
- switch(entry->id){
- case UINT64_C(0xaf63ef4c86020cd5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- { uint64_t lo,hi;
- if(!graphdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;
-  (void)hi;
-  if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
-  }
-  value->r=(uint8_t)decoded;
-  }
- break;
- }
- case UINT64_C(0xaf63da4c8601e926): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- { uint64_t lo,hi;
- if(!graphdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;
-  (void)hi;
-  if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
-  }
-  value->g=(uint8_t)decoded;
-  }
- break;
- }
- case UINT64_C(0xaf63df4c8601f1a5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- { uint64_t lo,hi;
- if(!graphdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;
-  (void)hi;
-  if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
-  }
-  value->b=(uint8_t)decoded;
-  }
- break;
- }
- default:r->report->unknown++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- } }
- malformed:r->report->malformed=1;
- return 0;
-}
-/* colour_load_messages_tolerant is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
-static SCHEMA_UNUSED int graphdemo_colour_load_messages_tolerant(graphdemo_colour_t * values,int64_t * count,const graphdemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,graphdemo_table_report_t * report)
-{
- graphdemo_table_report_t ignored={0};
- graphdemo_table_message_reader_t r;
- int64_t capacity,bodies,i;
- int32_t non_finite_before;
- int ok;
- if(report==NULL)report=&ignored;
- if(values==NULL||count==NULL){report->malformed=1;
- return 0;
- }capacity=*count;
- *count=0;
- bodies=graphdemo_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- if(bodies>capacity){*count=bodies;
- report->refused=1;
- report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
- return 0;
- }
- non_finite_before=report->non_finite_floats;
- for(i=0;i<bodies;i++){if(!graphdemo_colour_load_message_body(&r,values+i))break;
- (*count)++;
- }ok=i==bodies&&graphdemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
- if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)graphdemo_colour_reset(values+i);
- *count=0;
- return 0;
- }
- return ok;
-}
-/* The PLAIN colour_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
-static SCHEMA_UNUSED int graphdemo_colour_load_messages( graphdemo_colour_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
-{
-    graphdemo_table_report_t ignored;
-    int64_t i;
-    int ok;
-    if ( report == NULL ) report = &ignored;
-    /* this read's report, not the caller's last one */
-    memset( report, 0, sizeof( *report ) );
-    ok = graphdemo_colour_load_messages_tolerant( values, count, vocabulary, buffer, bytes, report );
-    if ( !ok )
-    {
-        (void) graphdemo_table_report_strict_refuses( report, 0 );
-        return 0;
-    }
-    if ( !graphdemo_table_report_strict_refuses( report, 1 ) ) return 1;
-    for ( i = 0; i < *count; i++ ) graphdemo_colour_reset( values + i );
-    *count = 0;
-    return 0;
-}
-static SCHEMA_UNUSED int schema_graphdemo_colour_message_extent_(graphdemo_table_message_reader_t * r,int64_t * at,int depth)
-{
- (void)at;
- if(depth>128)return 0;
- for(;;){const graphdemo_table_message_entry_t * entry;
- if(!graphdemo_table_message_ref(r,&entry,0))return 0;
- if(entry==NULL)return 1;
- switch(entry->id){
- default:break;
- }if(!graphdemo_table_message_skip_at(r,entry,depth))return 0;
- }
-}
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 
    A record is an eight-byte hash of the writer's LAYOUT and then
@@ -5932,8 +5608,6 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body_retain(graphdemo_table_writer
 static SCHEMA_UNUSED int graphdemo_stamp_load_body_retain(graphdemo_table_reader_t *,graphdemo_stamp_t *, graphdemo_table_retain_walk_t retention);
 static SCHEMA_UNUSED int graphdemo_colour_save_body_retain(graphdemo_table_writer_t *,const graphdemo_colour_t *, graphdemo_table_retain_walk_t retention);
 static SCHEMA_UNUSED int graphdemo_colour_load_body_retain(graphdemo_table_reader_t *,graphdemo_colour_t *, graphdemo_table_retain_walk_t retention);
-static SCHEMA_UNUSED int graphdemo_stamp_load_message_body_retain(graphdemo_table_message_reader_t *,graphdemo_stamp_t *, graphdemo_table_retain_walk_t retention);
-static SCHEMA_UNUSED int graphdemo_colour_load_message_body_retain(graphdemo_table_message_reader_t *,graphdemo_colour_t *, graphdemo_table_retain_walk_t retention);
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag__retain( graphdemo_table_writer_t * w, const graphdemo_stamp_t * value , graphdemo_table_retain_walk_t retention)
 {
     (void)retention;
@@ -6156,69 +5830,6 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_body_retain( graphdemo_table_reade
     }
 }
 
-static SCHEMA_UNUSED int graphdemo_stamp_load_message_body_retain(graphdemo_table_message_reader_t * r,graphdemo_stamp_t * value, graphdemo_table_retain_walk_t retention)
-{
-    (void)retention;
-
- graphdemo_table_retain_walk_t body_keep=retention;
- graphdemo_table_retain_discard(retention,0,0);
- graphdemo_stamp_reset(value);
- for(;;){const graphdemo_table_message_entry_t * entry;
- if(!graphdemo_table_message_ref(r,&entry,0))goto malformed;
- if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
- switch(entry->id){
- case UINT64_C(0x56d7ab194448a4f3): {
- if(!(entry->kind==12 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,12)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- retention=graphdemo_table_retain_step(body_keep,0,0);
- {uint64_t n,kept;
- if(!graphdemo_table_bit_get(&r->bits,&n,graphdemo_table_bits_required(0,entry->max)))goto malformed;
-  if(!graphdemo_table_bit_align_read(&r->bits))goto malformed;
-  if(n>INT64_MAX/8 || !graphdemo_table_bit_has(&r->bits,(int64_t)n*8))goto malformed;
-  {const uint8_t * text=r->bits.buffer+(r->bits.offset>>3);
-  if(!graphdemo_table_wire_utf8(text,n))goto malformed;
-  kept=graphdemo_table_wire_utf8_clamp(text,n,8);
-  memcpy(value->tag,text,(size_t)kept);
-  value->tag[kept]=0;
-  }
-  r->bits.offset+=(int64_t)n*8;
-  if(kept<n)r->report->clamped++;
-  value->tag_length=(int32_t)kept;
-  }
- break;
- }
- case UINT64_C(0x823b8a195ce2133c): {
- if(!(entry->kind==4 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,4)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- retention=graphdemo_table_retain_step(body_keep,1,0);
- { uint64_t lo,hi;
- if(!graphdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
-  int64_t decoded=(int64_t)lo;
-  (void)hi;
-  if(decoded<0ll){decoded=0ll;
-  r->report->clamped++;
-  }
-  if(decoded>1000ll){decoded=1000ll;
-  r->report->clamped++;
-  }
-  value->seq=(int32_t)decoded;
-  }
- break;
- }
- default:r->report->unknown += 1;
- if(!graphdemo_table_retain_message_capture(r,entry,body_keep))goto malformed;
- break;
- } }
- malformed:r->report->malformed=1;
- return 0;
-}
 static SCHEMA_UNUSED int graphdemo_colour_save_body_retain( graphdemo_table_writer_t * w, const graphdemo_colour_t * value , graphdemo_table_retain_walk_t retention)
 {
     (void)retention;
@@ -6370,79 +5981,6 @@ static SCHEMA_UNUSED int graphdemo_colour_load_body_retain( graphdemo_table_read
     }
 }
 
-static SCHEMA_UNUSED int graphdemo_colour_load_message_body_retain(graphdemo_table_message_reader_t * r,graphdemo_colour_t * value, graphdemo_table_retain_walk_t retention)
-{
-    (void)retention;
-
- graphdemo_table_retain_walk_t body_keep=retention;
- graphdemo_table_retain_discard(retention,0,0);
- graphdemo_colour_reset(value);
- for(;;){const graphdemo_table_message_entry_t * entry;
- if(!graphdemo_table_message_ref(r,&entry,0))goto malformed;
- if(entry==NULL)return 1;
- if(entry->id>=UINT64_C(0xfffffffffffffffd))goto malformed;
- switch(entry->id){
- case UINT64_C(0xaf63ef4c86020cd5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- retention=graphdemo_table_retain_step(body_keep,0,0);
- { uint64_t lo,hi;
- if(!graphdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;
-  (void)hi;
-  if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
-  }
-  value->r=(uint8_t)decoded;
-  }
- break;
- }
- case UINT64_C(0xaf63da4c8601e926): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- retention=graphdemo_table_retain_step(body_keep,1,0);
- { uint64_t lo,hi;
- if(!graphdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;
-  (void)hi;
-  if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
-  }
-  value->g=(uint8_t)decoded;
-  }
- break;
- }
- case UINT64_C(0xaf63df4c8601f1a5): {
- if(!(entry->kind==6 && entry->elem_kind==0)){if(entry->elem_kind==0 && graphdemo_table_kind_widens(entry->kind,6)){r->report->widened++;
- }else{r->report->kind_mismatch++;
- if(!graphdemo_table_message_skip(r,entry))goto malformed;
- break;
- }}
- retention=graphdemo_table_retain_step(body_keep,2,0);
- { uint64_t lo,hi;
- if(!graphdemo_table_message_number(r,entry,&lo,&hi))goto malformed;
-  uint64_t decoded=(uint64_t)lo;
-  (void)hi;
-  if(decoded>255ull){decoded=255ull;
-  r->report->clamped++;
-  }
-  value->b=(uint8_t)decoded;
-  }
- break;
- }
- default:r->report->unknown += 1;
- if(!graphdemo_table_retain_message_capture(r,entry,body_keep))goto malformed;
- break;
- } }
- malformed:r->report->malformed=1;
- return 0;
-}
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define graphdemo_stamp_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */

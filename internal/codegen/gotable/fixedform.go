@@ -18,7 +18,7 @@
 // <T>Load is the VARIABLE form's entry point and READS form 1; <T>FixedLoad is
 // the form-3 reader and names a form-1 file `previous_form`. The `fixed table`
 // KEYWORD ([ir.Struct.FixedDeclared], #823) is the SELECTION POINT for what a
-// WRITER emits — a bounded body a plain `table` declares is the variable wire
+// WRITER emits — a bounded body a variable table declares is the variable wire
 // and gets no form-3 surface at all, nothing is derived in either direction
 // (§2.2, [ir.TableFixedRoots]) — and it does NOT move the refusal into <T>Load.
 // The shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a

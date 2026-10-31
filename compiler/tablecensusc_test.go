@@ -44,7 +44,7 @@ import (
 
 const deadCF64Src = `package probe
 
-table Note
+fixed table Note
 {
     ratio float64
     tally int32
@@ -55,7 +55,7 @@ table Note
 // so nothing on the float rung is declared and nothing widens into it.
 const deadCF32Src = `package probe
 
-table Note
+fixed table Note
 {
     ratio float32
     tally int32

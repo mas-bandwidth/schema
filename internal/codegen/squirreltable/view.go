@@ -36,8 +36,7 @@ func init() {
 func viewTable(m *Module, st *ir.Struct) {
 	// absence has a spelling (§8.1): one shared empty doc and one shared empty
 	// tag list, named here so every unannotated row refers to them
-	m.Printf("_M.TableDocNone <- \"\";\n")
-	m.Printf("_M.TableTagsNone <- [];\n")
+	emitViewNone(m)
 	m.Printf("_M.%sTableFields <- [\n", st.Name)
 	for _, f := range st.Fields {
 		m.Printf("  %s,\n", viewField(f))
@@ -242,8 +241,7 @@ func viewTags(tags []string) string {
 // it is not a registry row (§2.8, §8.3).
 func viewModule(m *Module) {
 	u := m.Unit
-	m.Printf("_M.TableDocNone <- \"\";\n")
-	m.Printf("_M.TableTagsNone <- [];\n")
+	emitViewNone(m)
 	file := func(name string) string {
 		if base, ok := u.DeclFile[name]; ok {
 			return base + ".schema"
@@ -348,4 +346,15 @@ func viewModule(m *Module) {
 	m.Printf("  constants = [%s],\n", strings.Join(constants, ", "))
 	m.Printf("};\n")
 	m.Printf("_M.UnitView <- function() { return _M.TableUnitView; };\n\n")
+}
+
+// emitViewNone writes the shared empty doc and tag list once per module, before
+// the first row that refers to them.
+func emitViewNone(m *Module) {
+	if m.viewNone {
+		return
+	}
+	m.viewNone = true
+	m.Printf("_M.TableDocNone <- \"\";\n")
+	m.Printf("_M.TableTagsNone <- [];\n")
 }

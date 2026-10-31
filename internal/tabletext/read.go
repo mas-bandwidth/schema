@@ -57,10 +57,24 @@ type labelEntry struct {
 	open bool // the definition has not closed yet: a reference here is a cycle
 }
 
-// Read fills one instance from one JSON text (docs/SPEC-TABLES.md §16.1). The
-// instance holds what was placed before any stop; false means the text is not
-// JSON or a value could not be placed at all, and report.Malformed says so.
+// Read fills one instance from one JSON text (docs/SPEC-TABLES.md §16.1).
+// DAMAGE DISCARDS THE WHOLE LOAD (§4): false with report.Malformed means the
+// text is not JSON or a value could not be placed, and the instance is back at
+// its declared defaults with nothing the read placed.
 func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
+	priorMalformed := report.Malformed
+	report.Malformed = false
+	ok := m.read(inst, text, report)
+	if !ok || report.Malformed {
+		report.Malformed = true
+		m.Clear(inst)
+		return false
+	}
+	report.Malformed = priorMalformed
+	return true
+}
+
+func (m *Model) read(inst *Instance, text []byte, report *Report) bool {
 	in := &reader{text: text, report: report, m: m}
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}

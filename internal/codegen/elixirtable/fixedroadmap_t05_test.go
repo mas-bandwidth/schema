@@ -168,7 +168,7 @@ fixed table T
 }
 `), "T")
 	if got, want := len(ir.TableFixedWalkRoot(dep)), len(ir.TableFixedWalkRoot(plain)); got != want {
-		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the plain table's %d", got, want)
+		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the variable table's %d", got, want)
 	}
 
 	// THE APPEND lands its declared default in the prefill, and a lawful

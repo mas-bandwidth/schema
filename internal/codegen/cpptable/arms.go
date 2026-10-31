@@ -252,8 +252,8 @@ func armWireLength(v ir.UnionVariant) int { return ir.ArmWireFixedWidth(v.F) }
 // emitArmLoad reads ONE ARM'S PAYLOAD out of `rdr`, a reader bounded to the
 // arm's `L`. The caller has already checked the arm's KIND BYTE; `tag` is the
 // union's tag lvalue and `none` the tag value to put back where the LENGTH
-// says the payload cannot be the arm's — that is framing damage, the union
-// reads None, `malformed` counts, and the parent reads on past `L` (§3, §4).
+// says the payload cannot be the arm's — that is framing damage: `malformed`
+// counts, and damage discards the whole load (§3, §4).
 func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx string) {
 	if v.Void() {
 		g.pf("%sif ( %s.size != 0 ) { %s = %s; r.report->malformed = true; break; } // a payload-free arm carries no payload (§2.6, §3)\n", ind, rdr, tag, none)

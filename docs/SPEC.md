@@ -1229,7 +1229,7 @@ it (§4.6).
   in a wider cell may use the ordinary conversion. **Backend status:** C++
   (serialize v2.1.3), C (serialize.c v2.0.2), Rust (serialize.rs v5.0.0),
   JavaScript (serialize.js v2.0.1), Go (serialize.go v2.1.1), C#
-  (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.1) enforce the rule
+  (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
   through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Lua
   (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:

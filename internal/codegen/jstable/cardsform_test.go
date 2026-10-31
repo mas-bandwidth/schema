@@ -58,7 +58,7 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		// THE BOUNDARY IS THE BACKEND'S, not only the helper's: the variable
 		// form's own generation entry point refuses the unit REGARDLESS of
 		// whether the fixed form could also serve the table (docs/SPEC-TABLES.md
-		// §11). A plain `table` is the VARIABLE wire by declaration (§2.2), so
+		// §11). A variable table is the VARIABLE wire by declaration (§2.2), so
 		// a hook gated on the fixed form's service (fixedRefusal == "") is a
 		// green helper over a backend that still silently drops the construct.
 		if _, err := generateVariableFiles(unitWith(st), nil); err == nil {

@@ -3,6 +3,7 @@
 package compiler
 
 import (
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -126,7 +127,39 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 		t.Fatal(err)
 	}
 	namespace := ir.GoExportName(u.Package)
+	emitted := elixirEmittedSegments(u, files)
 
+	if len(emitted) == 0 {
+		t.Fatal("the scan found no unit-level module segment in the emitted Elixir at all — the scan, not the registry, is what broke")
+	}
+
+	names := make([]string, 0, len(emitted))
+	for name := range emitted {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !tablenames.Registered(name) {
+			t.Errorf("the Elixir table emitter defines the unit-level module %s.%s and "+
+				"internal/tablenames does not register it — a schema declaring that name would "+
+				"generate Elixir that does not compile; register it (with the backends that "+
+				"define it) in internal/tablenames", namespace, name)
+		}
+	}
+	for _, name := range tablenames.DefinedBy(tablenames.Elixir) {
+		if !emitted[name] {
+			t.Errorf("internal/tablenames says the Elixir backend defines %s, but nothing in the "+
+				"emitted Elixir names it — drop the registration or fix the backend; a claim "+
+				"nothing needs takes a name away from every schema for free", name)
+		}
+	}
+}
+
+// elixirEmittedSegments is the scan TestElixirRuntimeNamesAreClaimed holds to
+// the registry: every unit-level module segment `<Namespace>.<Name>` the
+// emitted Elixir spells outside a comment, less the author's own segments.
+func elixirEmittedSegments(u *ir.Unit, files map[string][]byte) map[string]bool {
+	namespace := ir.GoExportName(u.Package)
 	// the author's own segments: every declaration, every union's generated
 	// tag module, and every module a schema FILE produces
 	mine := map[string]bool{}
@@ -166,29 +199,32 @@ func TestElixirRuntimeNamesAreClaimed(t *testing.T) {
 			}
 		}
 	}
-	if len(emitted) == 0 {
-		t.Fatal("the scan found no unit-level module segment in the emitted Elixir at all — the scan, not the registry, is what broke")
-	}
+	return emitted
+}
 
-	names := make([]string, 0, len(emitted))
-	for name := range emitted {
-		names = append(names, name)
+// TestElixirRuntimeNameScanGoesRed is the scan's negative control (docs/PORTING.md
+// I6): a module segment planted in a copy of the emitted files, one the registry
+// does not hold, must be SEEN by the scan, and one planted only in a comment must
+// not. A scan that saw neither would leave every green run above proving nothing.
+func TestElixirRuntimeNameScanGoesRed(t *testing.T) {
+	u := unitFromSource(t, runtimeSrc)
+	files, err := New().Generate(u, "elixir", Options{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	sort.Strings(names)
-	for _, name := range names {
-		if !tablenames.Registered(name) {
-			t.Errorf("the Elixir table emitter defines the unit-level module %s.%s and "+
-				"internal/tablenames does not register it — a schema declaring that name would "+
-				"generate Elixir that does not compile; register it (with the backends that "+
-				"define it) in internal/tablenames", namespace, name)
-		}
+	namespace := ir.GoExportName(u.Package)
+	sabotaged := map[string][]byte{}
+	maps.Copy(sabotaged, files)
+	sabotaged["ProbeRuntime.ex"] = []byte("defmodule " + namespace + ".PlantedRuntime do\n  # " + namespace + ".CommentOnly\nend\n")
+	emitted := elixirEmittedSegments(u, sabotaged)
+	if !emitted["PlantedRuntime"] {
+		t.Fatalf("the scan did not see the planted module %s.PlantedRuntime — it is blind, and every green run above proves nothing", namespace)
 	}
-	for _, name := range tablenames.DefinedBy(tablenames.Elixir) {
-		if !emitted[name] {
-			t.Errorf("internal/tablenames says the Elixir backend defines %s, but nothing in the "+
-				"emitted Elixir names it — drop the registration or fix the backend; a claim "+
-				"nothing needs takes a name away from every schema for free", name)
-		}
+	if emitted["CommentOnly"] {
+		t.Fatalf("the scan read a module segment out of a comment")
+	}
+	if tablenames.Registered("PlantedRuntime") {
+		t.Fatal("the planted probe is registered, so the control proves nothing — pick a name the registry does not hold")
 	}
 }
 
@@ -501,5 +537,96 @@ func TestElixirEmitsTheIdTableWireRuntime(t *testing.T) {
 	}
 	if _, ok := without["TableRuntime.ex"]; ok {
 		t.Error("--lang elixir emitted TableRuntime.ex for a table-free unit")
+	}
+}
+
+// THE BYTE ORDER IS THE READER'S, NOT THE HOST'S (docs/PORTING.md M12). On the
+// BEAM a binary segment's order is a modifier: `little` and `big` are fixed by
+// the language, and `native` is the ONE spelling that consults the host. So the
+// property is exact and checkable on the emitted text: no segment in any
+// generated table source spells `native`. The corpus units below are generated
+// afresh and every `::` segment in them is read; the scan must find the
+// explicit little-endian segments every wire read is made of, or it is blind.
+var elixirCorpusForOrder = []string{
+	"../tables/examples", "../tables/pointers", "../tables/blobs", "../tables/lists",
+	"../tables/maps", "../tables/messages", "../tables/scalars", "../tables/block",
+	"../tables/cards", "../test/tables/RT1.schema",
+}
+
+var elixirSegmentModifiers = regexp.MustCompile(`::\s*([A-Za-z0-9_()\-]+)`)
+
+// elixirHostOrderSegments returns every segment in files that spells `native`,
+// as "file: segment", and the count of `little` segments seen.
+func elixirHostOrderSegments(files map[string][]byte) (native []string, little int) {
+	for name, data := range files {
+		if !strings.HasSuffix(name, ".ex") {
+			continue
+		}
+		for line := range strings.SplitSeq(string(data), "\n") {
+			if i := strings.Index(line, "#"); i >= 0 {
+				line = line[:i]
+			}
+			for _, m := range elixirSegmentModifiers.FindAllStringSubmatch(line, -1) {
+				for mod := range strings.SplitSeq(m[1], "-") {
+					switch mod {
+					case "native":
+						native = append(native, name+": "+m[0])
+					case "little":
+						little++
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(native)
+	return native, little
+}
+
+func TestElixirSegmentsNeverConsultTheHost(t *testing.T) {
+	t.Parallel()
+	c := New()
+	total := 0
+	for _, dir := range elixirCorpusForOrder {
+		paths, err := GatherPaths([]string{dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := c.Load(paths)
+		if err != nil {
+			t.Fatalf("%s: %v", dir, err)
+		}
+		files, err := c.Generate(u, "elixir", Options{})
+		if err != nil {
+			t.Fatalf("%s: --lang elixir: %v", dir, err)
+		}
+		native, little := elixirHostOrderSegments(files)
+		for _, n := range native {
+			t.Errorf("%s: a generated segment reads or writes in the HOST's order: %s", dir, n)
+		}
+		total += little
+	}
+	if total < 100 {
+		t.Fatalf("the scan found %d little-endian segments over the corpus; the wire reads are made of them, so the scan, not the property, broke", total)
+	}
+}
+
+// TestElixirSegmentOrderScanGoesRed is that scan's negative control: a planted
+// `native` segment in a copy of the emitted files must be seen, in both the
+// leading and the trailing modifier position, and one in a comment must not.
+func TestElixirSegmentOrderScanGoesRed(t *testing.T) {
+	files := map[string][]byte{
+		"Planted.ex": []byte("defmodule Probe.Planted do\n" +
+			"  def a(<<v::native-unsigned-32, _::binary>>), do: v\n" +
+			"  def b(v), do: <<v::float-64-native>>\n" +
+			"  # <<v::native-16>> in prose is not a segment\n" +
+			"  def c(<<v::little-unsigned-32>>), do: v\n" +
+			"end\n"),
+	}
+	native, little := elixirHostOrderSegments(files)
+	if len(native) != 2 {
+		t.Fatalf("the scan saw %d of the 2 planted host-order segments (%v) — it is blind, and every green run of TestElixirSegmentsNeverConsultTheHost proves nothing", len(native), native)
+	}
+	if little != 1 {
+		t.Fatalf("the scan counted %d little segments, want 1", little)
 	}
 }

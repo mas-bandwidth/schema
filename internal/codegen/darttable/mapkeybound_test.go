@@ -9,11 +9,9 @@ package darttable
 //
 // Three cases:
 //
-//   - The Text wire-fuzz random pass #1222 mutant (seed 24845619678): the
-//     first `names` entry's key is 13 bytes ("alpha\x03\x04ufirst") against
-//     string(8), so Go drops it whole and saves one entry, while the pre-fix
-//     Dart decoded its body, clamped the key to 8 inside it, landed the entry
-//     and saved two.
+//   - The Text wire-fuzz random pass #1222 mutant (seed 24845619678), which
+//     the oracle reads as damaged: DAMAGE DISCARDS THE WHOLE LOAD (§4), so the
+//     Dart leg owes the refusal alone.
 //   - A constructed mutant whose dropped entry ALSO carries an over-bound
 //     string(16) VALUE: because the entry is dropped before the body decodes,
 //     that value's clamp is never counted, pinning the body-events rule and
@@ -122,6 +120,14 @@ func TestWireMapStringKeyOverBoundDart(t *testing.T) {
 			}
 
 			got := mapProbe(t, wire, "Text", c.hex)
+			if report.Malformed {
+				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+				// leg owes the refusal, and no counter or saved byte is compared
+				if !got.malformed {
+					t.Errorf("the Dart load did not refuse a damaged map on %s", c.name)
+				}
+				return
+			}
 			if got.unknown != report.Unknown || got.kindMismatch != report.KindMismatch ||
 				got.widened != report.Widened || got.clamped != report.Clamped ||
 				got.duplicate != report.Duplicate || got.malformed != report.Malformed ||

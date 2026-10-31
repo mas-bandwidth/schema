@@ -297,6 +297,7 @@ static const Codec codecs[] = {
     CODEC( "tblk1", tblk1, Root ),
     CODEC( "tblk2", tblk2, Root ),
     CODEC( "tblr1", tblr1, Cfg ),
+    CODEC( "listdemo", listdemo, Bounded ),
     CODEC( "tblr2", tblr2, Cfg ),
     CODEC( "scalars", scalardemo, SimState ),
     CODEC( "tblscalars2", scalardemo2, SimState ),
@@ -402,8 +403,11 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "listdemo", listdemo, Sheet ),
     VARCODEC( "listdemo", listdemo, Army ),
     VARCODEC( "listdemo", listdemo, Unbounded ),
+    VARCODEC( "listdemo", listdemo, Ints ),
+    VARCODEC( "listdemo", listdemo, Squad ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
+    VARCODEC( "graphdemo", graphdemo, ListNode ),
     VARCODEC( "tblp2", tblp2, Chain ),
     VARCODEC( "streamdemo", streamdemo, Feed ),
     VARCODEC( "blobdemo", blobdemo, Catalog ),
@@ -418,9 +422,9 @@ static const VarCodec var_codecs[] = {
 //
 // A message is one round trip against the CONNECTION's announced table: the
 // announcement is read first, into this direction's table, and the message
-// resolves against it. That is the whole surface, so one column carries it —
-// and a POINTERED root takes the same column, because its region is inside
-// the call exactly as the variable rows' is.
+// resolves against it. That is the whole surface, so one column carries it. The
+// message form is fixed tables only (§3.3), so every root here is a fixed
+// table.
 struct MsgCodec
 {
     const char * unit;
@@ -451,28 +455,6 @@ struct MsgCodec
         }                                                                                       \
     }
 
-#define MSGVARCODEC( unit_key, ns, type )                                                       \
-    {                                                                                           \
-        unit_key, #type,                                                                        \
-        []( const uint8_t * a, int64_t an, const uint8_t * b, int64_t n,                        \
-            std::vector<uint8_t> & out, Report * r ) {                                          \
-            std::vector<ns::TableMessageEntry> entries( (size_t) ns::kTableMessageEntriesHere ); \
-            ns::TableVocabulary vocabulary( entries.data(), ns::kTableMessageEntriesHere );     \
-            ns::TableReport inner;                                                              \
-            if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
-            int64_t need = ns::type##LoadMeasure( vocabulary, b, n );                            \
-            if ( need < 0 ) return false;                                                       \
-            std::vector<uint8_t> region( (size_t) need, 0 );                                    \
-            const ns::type * roots[1] = { NULL };                                               \
-            int64_t count = 1;                                                                  \
-            if ( !ns::type##LoadMessages( roots, &count, region.data(), need, vocabulary, b, n, &inner ) ) { copy_report( inner, r ); return false; } \
-            copy_report( inner, r );                                                            \
-            int64_t size = ns::type##MeasureMessages( roots, count, &inner );                   \
-            if ( size < 0 ) return false;                                                       \
-            out.assign( (size_t) size, 0 );                                                     \
-            return ns::type##SaveMessages( roots, count, out.data(), size, &inner ) == size;    \
-        }                                                                                       \
-    }
 
 static const MsgCodec msg_codecs[] = {
     MSGCODEC( "backenddemo", backenddemo, LoginRequest ),
@@ -482,7 +464,6 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "vocabdemo", vocabdemo, Wide09 ),
     MSGCODEC( "vocab9demo", vocab9demo, Wide00 ),
     MSGCODEC( "vocab9demo", vocab9demo, Wide19 ),
-    MSGVARCODEC( "graphdemo", graphdemo, Scene ),
 };
 
 // ---------------------------------------------------------------------------
@@ -494,41 +475,30 @@ static const MsgCodec msg_codecs[] = {
 // capacities are RULES rather than numbers, `short` is one byte under what
 // this port's own full load used, because a record's byte cost is the port's
 // own, so the codec below runs the load twice where the row asks for it.
-//
-// THE MESSAGE ROW IS THE SAME PAIR WITH A FORM-2 LOAD (§3.3): the batch takes
-// one region and one retention buffer a body, the announcement carries the id
-// table, and the SAVE is the VARIABLE form on every body, because retention writing
-// form 2 refuses by name.
 struct RetainAnswer
 {
     int32_t retained = 0;
     int32_t retain_lost = 0;
     int32_t unknown = 0;
     int32_t save_lost = 0;
-    std::vector<uint8_t> saved; // the bodies' saves, back to back in body order
+    std::vector<uint8_t> saved; // the save's bytes
 };
 
 struct RetainCodec
 {
     const char * unit;
     const char * root;
-    bool message;
-    bool ( *run )( const uint8_t * announcement, int64_t announcement_bytes,
-                   const uint8_t * wire, int64_t wire_bytes,
+    bool ( *run )( const uint8_t * wire, int64_t wire_bytes,
                    bool short_buffer, int64_t id_capacity, RetainAnswer & answer );
 };
 
-// the roomy capacity a `full` row takes, the page's own C/8 bound beside it, a
-// receiver's room for a LARGER unit's vocabulary (§3.3), and the form's own
-// batch bound
+// the roomy capacity a `full` row takes, the page's own C/8 bound beside it
 static const int64_t kRetainRoomy = 1 << 20;
-static const int64_t kRetainMessageEntries = 256;
-static const int64_t kRetainBatchCap = 256;
 
 #define RETAINCODEC( unit_key, ns, type )                                                       \
     {                                                                                           \
-        unit_key, #type, false,                                                                 \
-        []( const uint8_t *, int64_t, const uint8_t * wire, int64_t n,                          \
+        unit_key, #type,                                                                        \
+        []( const uint8_t * wire, int64_t n,                                                    \
             bool short_buffer, int64_t id_capacity, RetainAnswer & answer ) {                   \
             std::vector<uint8_t> bytes( (size_t) kRetainRoomy, 0 );                             \
             std::vector<ns::TableRetain::Id> ids(                                               \
@@ -572,70 +542,16 @@ static const int64_t kRetainBatchCap = 256;
         }                                                                                       \
     }
 
-#define RETAINMSGCODEC( unit_key, ns, type )                                                    \
-    {                                                                                           \
-        unit_key, #type, true,                                                                  \
-        []( const uint8_t * a, int64_t an, const uint8_t * wire, int64_t n,                     \
-            bool short_buffer, int64_t id_capacity, RetainAnswer & answer ) {                   \
-            std::vector<ns::TableMessageEntry> entries( (size_t) kRetainMessageEntries );        \
-            ns::TableVocabulary vocabulary( entries.data(), kRetainMessageEntries );            \
-            ns::TableReport open;                                                               \
-            if ( !ns::AnnounceRead( vocabulary, a, an, &open ) ) return false;                   \
-            int64_t need = ns::type##LoadMeasure( vocabulary, wire, n );                        \
-            if ( need < 0 ) return false;                                                       \
-            /* THE BATCH'S OWN COUNT sizes the caller's storage: one root, one   */              \
-            /* retention buffer and one id list a BODY (docs/SPEC-TABLES.md §3.3) */             \
-            ns::TableMessageBatchReader br;                                                      \
-            ns::TableReport counting;                                                            \
-            const int64_t bodies = ns::TableMessageBatchOpen( br, vocabulary, wire, n, &counting ); \
-            if ( bodies < 0 || bodies > kRetainBatchCap ) return false;                          \
-            std::vector<const ns::type *> roots( (size_t) bodies, NULL );                        \
-            std::vector<std::vector<uint8_t> > stores( (size_t) bodies );                        \
-            std::vector<std::vector<ns::TableRetain::Id> > lists( (size_t) bodies );             \
-            std::vector<ns::TableRetain> retains( (size_t) bodies );                             \
-            for ( size_t i = 0; i < retains.size(); i++ )                                        \
-            {                                                                                    \
-                stores[i].assign( (size_t) kRetainRoomy, 0 );                                    \
-                lists[i].resize( (size_t) ( id_capacity < 0 ? kRetainRoomy / 8 : id_capacity ) ); \
-                retains[i].bytes = stores[i].data();                                             \
-                retains[i].capacity = kRetainRoomy;                                              \
-                retains[i].ids = lists[i].data();                                                \
-                retains[i].id_capacity = (int32_t) lists[i].size();                              \
-            }                                                                                    \
-            (void) short_buffer; /* the loader refuses short on a message row (#681) */          \
-            std::vector<uint8_t> region( (size_t) need + 16, 0 );                                \
-            uint8_t * base = (uint8_t *) ( ( (uintptr_t) region.data() + 15 ) & ~(uintptr_t) 15 );\
-            int64_t count = (int64_t) roots.size();                                              \
-            ns::TableReport load;                                                                \
-            if ( !ns::type##LoadRetainMessages( roots.data(), &count, base, need, vocabulary,    \
-                                                wire, n, retains.data(), &load ) ) return false; \
-            answer.retained = load.retained;                                                     \
-            answer.retain_lost = load.retain_lost;                                               \
-            answer.unknown = load.unknown;                                                       \
-            ns::TableReport save;                                                                \
-            for ( int64_t b = 0; b < count; b++ )                                                \
-            {                                                                                    \
-                int64_t size = ns::type##MeasureRetain( roots[b], &retains[b] );                 \
-                if ( size < 0 ) return false;                                                    \
-                std::vector<uint8_t> one( (size_t) size, 0 );                                    \
-                if ( ns::type##SaveRetain( roots[b], &retains[b], one.data(), size, &save ) != size ) return false; \
-                answer.saved.insert( answer.saved.end(), one.begin(), one.end() );                \
-            }                                                                                    \
-            answer.save_lost = save.retain_lost;                                                 \
-            return true;                                                                         \
-        }                                                                                       \
-    }
 
 static const RetainCodec retain_codecs[] = {
     RETAINCODEC( "tblrt1", tblrt1, Node ),
-    RETAINMSGCODEC( "tblrt1", tblrt1, Node ),
 };
 
-static const RetainCodec * find_retain_codec( const std::string & unit, const std::string & root, bool message )
+static const RetainCodec * find_retain_codec( const std::string & unit, const std::string & root )
 {
     for ( size_t i = 0; i < sizeof( retain_codecs ) / sizeof( retain_codecs[0] ); i++ )
     {
-        if ( unit == retain_codecs[i].unit && root == retain_codecs[i].root && message == retain_codecs[i].message )
+        if ( unit == retain_codecs[i].unit && root == retain_codecs[i].root )
         {
             return &retain_codecs[i];
         }
@@ -1035,11 +951,20 @@ static int surface_message( const std::string & out )
             if ( c[0] == "connection" && c[1] == f[2] ) { unit = c[2]; announcement_path = c[4]; break; }
         }
         if ( unit.empty() ) { fprintf( stderr, "driver: no connection %s\n", f[2].c_str() ); return 1; }
+        const MsgCodec * codec = find_msg_codec( unit, f[3] );
+        if ( f[5] == "-" )
+        {
+            // a variable table: the message form is fixed tables only (§3.3),
+            // so no codec exists, and the row is answered by name
+            if ( codec != NULL ) { fprintf( stderr, "driver: %s.%s is a refusal row and carries a message codec\n", unit.c_str(), f[3].c_str() ); return 1; }
+            static const char reason[] = "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)";
+            if ( !spill( out, f[1] + ".absent", (const uint8_t *) reason, sizeof( reason ) - 1 ) ) return 1;
+            continue;
+        }
+        if ( codec == NULL ) { fprintf( stderr, "driver: no message codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> announcement, message;
         if ( !slurp( announcement_path.c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", announcement_path.c_str() ); return 1; }
         if ( !slurp( f[5].c_str(), message ) ) { fprintf( stderr, "driver: cannot read %s\n", f[5].c_str() ); return 1; }
-        const MsgCodec * codec = find_msg_codec( unit, f[3] );
-        if ( codec == NULL ) { fprintf( stderr, "driver: no message codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
         std::vector<uint8_t> answer;
         Report report;
         if ( !codec->round_trip( announcement.data(), (int64_t) announcement.size(),
@@ -1055,32 +980,16 @@ static int surface_message( const std::string & out )
 static bool retain_row( const std::vector<std::string> & f, RetainAnswer & answer )
 {
     // retain <case> <unit> <root> <wire> <capacity> <ids>
-    // retain-message <case> <connection> <unit> <root> <wire> <capacity> <ids>
-    const bool message = f[0] == "retain-message";
-    const size_t at = message ? 1 : 0;
-    const std::string unit = f[2 + at], root = f[3 + at], wire_path = f[4 + at];
-    const bool short_buffer = f[5 + at] == "short";
+    const std::string unit = f[2], root = f[3], wire_path = f[4];
+    const bool short_buffer = f[5] == "short";
     int64_t ids = -1;
-    if ( f[6 + at] != "full" ) { ids = (int64_t) strtoll( f[6 + at].c_str(), NULL, 10 ); }
+    if ( f[6] != "full" ) { ids = (int64_t) strtoll( f[6].c_str(), NULL, 10 ); }
 
-    std::vector<uint8_t> announcement;
-    if ( message )
-    {
-        std::string path;
-        for ( size_t j = 0; j < manifest_lines.size(); j++ )
-        {
-            const std::vector<std::string> & c = manifest_lines[j].field;
-            if ( c[0] == "connection" && c[1] == f[2] ) { path = c[4]; break; }
-        }
-        if ( path.empty() ) { fprintf( stderr, "driver: no connection %s\n", f[2].c_str() ); return false; }
-        if ( !slurp( path.c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return false; }
-    }
     std::vector<uint8_t> wire;
     if ( !slurp( wire_path.c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", wire_path.c_str() ); return false; }
-    const RetainCodec * codec = find_retain_codec( unit, root, message );
+    const RetainCodec * codec = find_retain_codec( unit, root );
     if ( codec == NULL ) { fprintf( stderr, "driver: no retain codec for %s.%s\n", unit.c_str(), root.c_str() ); return false; }
-    return codec->run( announcement.data(), (int64_t) announcement.size(),
-                       wire.data(), (int64_t) wire.size(), short_buffer, ids, answer );
+    return codec->run( wire.data(), (int64_t) wire.size(), short_buffer, ids, answer );
 }
 
 static int surface_retain( const std::string & out )
@@ -1088,7 +997,7 @@ static int surface_retain( const std::string & out )
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
-        if ( f[0] != "retain" && f[0] != "retain-message" ) continue;
+        if ( f[0] != "retain" ) continue;
         RetainAnswer answer;
         if ( !retain_row( f, answer ) ) return 1;
         char text[128];
@@ -1104,7 +1013,7 @@ static int surface_retain_save( const std::string & out )
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
-        if ( f[0] != "retain" && f[0] != "retain-message" ) continue;
+        if ( f[0] != "retain" ) continue;
         RetainAnswer answer;
         if ( !retain_row( f, answer ) ) return 1;
         if ( !spill( out, f[1], answer.saved.data(), answer.saved.size() ) ) return 1;

@@ -65,9 +65,6 @@ func (g *tableGen) emitMessageDescriptorInit(st *ir.Struct) {
 	n := st.Name
 	typ := g.storageName(st.Name)
 	g.pf("func init() {\n")
-	if g.regional {
-		g.pf("%sTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader,p unsafe.Pointer)(TableRetainMessageReader,bool){ok:=%sLoadMessageBodyRetain(&r,(*%s)(p));return r,ok}\n", n, n, typ)
-	}
 	g.pf("%sTableInfo.SaveMessageBody = func(w *TableMessageWriter,p unsafe.Pointer)bool{return %sSaveMessageBody(w,(*%s)(p))}\n", n, n, typ)
 	g.pf("%sTableInfo.LoadMessageBody = func(r TableMessageReader,p unsafe.Pointer)(TableMessageReader,bool){ok:=%sLoadMessageBody(&r,(*%s)(p));return r,ok}\n", n, n, typ)
 	g.pf("}\n\n")

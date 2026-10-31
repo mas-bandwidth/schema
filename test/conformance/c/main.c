@@ -622,6 +622,8 @@ static int surface_message(const char * out)
   if(strcmp(f->field[0],"message")!=0)continue;
   for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
   if(!connection){return 1;}codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
+  /* only a fixed table rides the message form: a variable root has no message codec */
+  if(codec->message==NULL){if(!spill_absent_reason(out,f->field[1],"variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"))return 1;continue;}
   announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
   if(!announcement||!message){free(announcement);free(message);return 1;}
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
@@ -634,16 +636,15 @@ static int surface_message(const char * out)
 
 static int surface_retain(const char * out,int saved)
 {
- int i,j;
+ int i;
  for(i=0;i<num_lines;i++){
-  const Line * f=lines+i;int message=!strcmp(f->field[0],"retain-message"),shift=message;uint8_t * a=NULL,*wire,*answer=NULL;size_t an=0,n;int counters[4]={0},ok;int64_t size=0,ids;char summary[128];
-  if(!message&&strcmp(f->field[0],"retain"))continue;
-  if(strcmp(f->field[2+shift],"tblrt1")||strcmp(f->field[3+shift],"Node"))return 1;
-  if(message){for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){a=slurp(lines[j].field[4],&an);break;}if(!a)return 1;}
-  wire=slurp(f->field[4+shift],&n);if(!wire){free(a);return 1;}ids=!strcmp(f->field[6+shift],"full")?-1:strtoll(f->field[6+shift],NULL,10);
-  ok=conformance_retain(message,a,(int64_t)an,wire,(int64_t)n,!strcmp(f->field[5+shift],"short"),ids,counters,&answer,&size);
+  const Line * f=lines+i;uint8_t * wire,*answer=NULL;size_t n;int counters[4]={0},ok;int64_t size=0,ids;char summary[128];
+  if(strcmp(f->field[0],"retain"))continue;
+  if(strcmp(f->field[2],"tblrt1")||strcmp(f->field[3],"Node"))return 1;
+  wire=slurp(f->field[4],&n);if(!wire)return 1;ids=!strcmp(f->field[6],"full")?-1:strtoll(f->field[6],NULL,10);
+  ok=conformance_retain(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size);
   if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{int length=snprintf(summary,sizeof(summary),"%d,%d,%d %d\n",counters[0],counters[1],counters[2],counters[3]);ok=spill(out,f->field[1],summary,(size_t)length);}}
-  free(answer);free(wire);free(a);if(!ok){fprintf(stderr,"retain %s failed\n",f->field[1]);return 1;}
+  free(answer);free(wire);if(!ok){fprintf(stderr,"retain %s failed\n",f->field[1]);return 1;}
  }
  return 0;
 }

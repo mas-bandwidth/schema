@@ -111,7 +111,7 @@ func TestMooRefusesTheConstructsItDoesNotCarryByName(t *testing.T) {
 	}
 	// the control: the same table without the construct generates
 	if _, err := New().Generate(unitFromSource(t, "package probe\ntable T\n{\n    a int32\n}\n"), "moo", Options{}); err != nil {
-		t.Errorf("the control, a plain table: %v", err)
+		t.Errorf("the control, a variable table: %v", err)
 	}
 }
 

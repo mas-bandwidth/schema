@@ -122,6 +122,8 @@ type tableGen struct {
 	schema    strings.Builder
 	indent    string // extra per-line indent while emitting inside a branch guard
 	loopDepth int    // fixed-form element loops open around the current emit (fixedLoopVar)
+	// messageS and messageU cache the unit's message closure (messageClosure).
+	messageS, messageU map[string]bool
 }
 
 // tf prints into the namespace-level region (storage classes).

@@ -926,14 +926,6 @@ pub fn table_message_widens(from: u8, to: u8) -> bool {
         || (from == 10 && to == 11)
 }
 
-/// A float32 widened into a float64 bit-exactly, NaN payload included (§4).
-pub fn table_message_widen_f32(b: u32) -> u64 {
-    if b & 0x7f80_0000 == 0x7f80_0000 {
-        return ((b >> 31) as u64) << 63 | 0x7ff0_0000_0000_0000 | ((b & 0x7f_ffff) as u64) << 29;
-    }
-    (f32::from_bits(b) as f64).to_bits()
-}
-
 /// §3's one content rule for a string: well-formed UTF-8 with no zero byte.
 pub fn table_message_utf8(text: &[u8]) -> bool {
     core::str::from_utf8(text).is_ok() && !text.contains(&0)
@@ -1016,7 +1008,9 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     if s.packing == 2 {
         let value = f32::from_bits(lo as u32);
         let mut ratio = (value - s.qmin) / s.qdelta;
-        // NaN clamps low, as the negated comparisons this replaces did
+        // a NaN never reaches here: the writer refuses one before the
+        // quantizer runs (§3.3); the test stays so no input moves the index
+        // outside [0, count]
         if ratio.is_nan() || ratio < 0.0 {
             ratio = 0.0;
         } else if ratio > 1.0 {

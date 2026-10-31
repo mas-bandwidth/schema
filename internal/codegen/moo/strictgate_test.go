@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,8 +28,7 @@ import (
 // strictGateDirs are the corpus directories the Makefile's generate targets
 // read whole (Makefile: SCHEMAS, SCHEMAS128 and the
 // SCHEMAS_TABLES* wildcards). A unit that declares tables is analyzed over
-// what the leg generates for it today, its packet half, until the moo table
-// backend lands and joins strictGateGenerate below.
+// both surfaces the leg generates for it (strictGateGenerate below).
 var strictGateDirs = []string{
 	"examples",
 	"examples128",
@@ -74,11 +74,48 @@ var strictGatePerFileGlobs = []string{
 // cannot rot.
 var strictGateKnownRefusals = map[string]string{}
 
-// strictGateGenerate is every surface the moo leg generates for one unit. The
-// table backend (layer 3, internal/codegen/mootable) adds its Generate here
-// when it lands, the way the Luau lens copies luautable's output beside luau's.
+// StrictGateTables and StrictGateTableRuntime are the table backend's
+// Generate and Runtime (internal/codegen/mootable), installed by
+// strictgate_tables_test.go: mootable imports this package, so this file
+// cannot import it, and the external test package hands it in.
+var (
+	StrictGateTables       func(u *ir.Unit) (map[string][]byte, error)
+	StrictGateTableRuntime func() map[string][]byte
+)
+
+// strictGateGenerate is every surface the moo leg generates for one unit: the
+// packet surface, and beside it the table surface (layer 3,
+// internal/codegen/mootable), the way the Luau lens copies luautable's output
+// beside luau's. A table unit the table backend refuses is the unit's refusal.
 func strictGateGenerate(u *ir.Unit) (map[string][]byte, error) {
-	return Generate(u)
+	out, err := Generate(u)
+	if err != nil {
+		return nil, err
+	}
+	if StrictGateTables == nil {
+		return nil, fmt.Errorf("the table backend is not installed (strictgate_tables_test.go)")
+	}
+	tables, err := StrictGateTables(u)
+	if err != nil {
+		return nil, fmt.Errorf("tables: %w", err)
+	}
+	for name, data := range tables {
+		if _, dup := out[name]; dup {
+			return nil, fmt.Errorf("generated file %s is claimed by both surfaces", name)
+		}
+		out[name] = data
+	}
+	return out, nil
+}
+
+// strictGateRuntime is every runtime module the two surfaces embed, by name:
+// each is analyzed once, not once per unit.
+func strictGateRuntime() map[string][]byte {
+	out := Runtime()
+	if StrictGateTableRuntime != nil {
+		maps.Copy(out, StrictGateTableRuntime())
+	}
+	return out
 }
 
 // strictGateUnits lists every unit as repository-relative paths.
@@ -191,7 +228,7 @@ func strictGateAnalyze(analyze, dir string, files []string) ([]byte, error) {
 func strictGateWrite(t *testing.T, generated []map[string][]byte) (string, []string, int) {
 	t.Helper()
 	root := t.TempDir()
-	runtime := Runtime()
+	runtime := strictGateRuntime()
 	seen := map[string]bool{}
 	var modules, runtimes []string
 	files := 0
@@ -254,8 +291,9 @@ func TestMooGeneratedAnalyzeStrictGate(t *testing.T) {
 		t.Fatal("no moo output was generated: the gate would pass over nothing")
 	}
 	root, files, written := strictGateWrite(t, generated)
-	// The runtime is in the analyzed set by name, every module of it.
-	for name := range Runtime() {
+	// The runtime is in the analyzed set by name, every module of both
+	// surfaces' runtimes.
+	for name := range strictGateRuntime() {
 		found := false
 		for _, f := range files {
 			if filepath.Base(f) == name {

@@ -17,6 +17,12 @@
 
 export const TableVariableForm = 1;
 
+// THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3, THE DISTINCTNESS CHECK;
+// docs/LAYERS/1-framing.md F6): an id table of more than 4096 entries is
+// malformed for the whole wire, whatever the buffer would hold, so the
+// distinctness proof never runs past it. kTableProbeBound in the C++ reference.
+export const TableVariableEntryBound = 4096n;
+
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 export const TableNodeTableId = 0xffffffffffffffffn;
 export const TableBuildVersionId = 0xfffffffffffffffen;
@@ -1248,7 +1254,7 @@ function TableVariableOpen(bytes, report) {
   if (bytes.length < 9) { report.malformed = true; return null; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.malformed = true; return null; }
+  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { report.malformed = true; return null; }
   const end = bytes.length - 8 - Number(count) * 8;
   const table = [];
   const seen = new Set();
@@ -4473,7 +4479,7 @@ export function FixedTableLoadMeasure(bytes) {
   if (bytes[0] !== TableVariableForm) { return 1392; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return 1392; }
+  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { return 1392; }
   const first = bytes.length - 8 - Number(count) * 8;
   const ids = [];
   const seen = new Set();

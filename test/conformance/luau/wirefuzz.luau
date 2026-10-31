@@ -133,11 +133,7 @@ function layout.field_pieces(fd: any): { any }
 	elseif s == "ptr" or s == "sblob" or s == "bblob" or s == "text" then
 		out[1] = { size = 8, align = 8 }
 	elseif s == "str" then
-		if fd.wide then
-			out[1] = { size = ((fd.bound or 0) + 1) * 2, align = 2 }
-		else
-			out[1] = { size = (fd.bound or 0) + 1, align = 1 }
-		end
+		out[1] = { size = (fd.bound or 0) + 1, align = 1 }
 		out[2] = { size = 4, align = 4 }
 	elseif s == "bytes" then
 		out[1] = { size = fd.bound or 0, align = 1 }
@@ -548,7 +544,8 @@ local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): bu
 	-- plain name (the STRICT read, §6.5) is the caller's and not this pipe's.
 	local v = nil
 	-- THE RETENTION ARM (--retain; docs/SPEC-TABLES.md §6.6) reads and writes
-	-- the same mutant through the retaining pair, LoadRetain then SaveRetain,
+	-- the same mutant through the retaining pair, LoadRetainTolerant then
+-- SaveRetain (the tolerant read, as the plain arm's loadTolerant),
 	-- with the harness's two stores (test/conformance/harness/wirefuzz.go,
 	-- retainFuzzCapacity and retainFuzzIdCapacity), and one report across the
 	-- pair: retain_lost at the end is what the load could not keep plus what
@@ -560,7 +557,7 @@ local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): bu
 	end
 	if not measureRefused then
 		if retain then
-			v, kept = (u.retain :: any).LoadRetain(root, wire, report, RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
+			v, kept = (u.retain :: any).LoadRetainTolerant(root, wire, report, RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
 		else
 			v = load.loadTolerant(root, wire, report)
 		end

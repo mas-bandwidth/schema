@@ -133,9 +133,6 @@ local function dumpCook(CR: any, S: any, root: string, data: buffer): string
 					node(at, fd.t, depth + 1)
 				end
 			elseif s == "str" or s == "bytes" then
-				if fd.wide then
-					fail(rname .. "." .. fd.name .. ": the dump does not spell a wide string")
-				end
 				out[#out + 1] = "  " .. name .. " = " .. cookText(b, base + l.p[1], used)
 			elseif s == "tab" then
 				storage(base + l.p[1], fd.t, name, depth)

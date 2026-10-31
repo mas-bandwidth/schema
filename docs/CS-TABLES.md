@@ -12,11 +12,11 @@ used by managed tables as well as native storage.
 ## Choosing storage
 
 Generated classes are convenient managed authoring values. They carry variable
-graphs, shared pointers, blobs, lists and maps, and support file, message, JSON
-and cook operations. Their variable read path allocates managed values.
+graphs, shared pointers, blobs, lists and maps, and support file, JSON and cook
+operations; the message form is a fixed table's alone (SPEC-TABLES §3.3). Their variable read path allocates managed values.
 
-Generated `<Table>Row` structs describe native storage. File and message
-`LoadMeasure` overloads size a caller-owned region; native loads fill it, and
+Generated `<Table>Row` structs describe native storage. The file form's
+`LoadMeasure` sizes a caller-owned region; native loads fill it, and
 native measure/save walk it directly. Data and node attribution can be supplied
 separately. Preserve attribution for retain-unknown; it is unnecessary for an
 ordinary relocated region's measure/save. A negative measure is a refusal and
@@ -76,7 +76,8 @@ union arms, wide scalars, bounded strings, maps and unbounded lists.
 Retain-unknown uses caller-owned byte and ID stores plus node attribution. Load
 reports capacity losses; save reports retained records whose paths or identities
 can no longer be placed. Retaining a fixed root and saving retained state as a
-message are refused explicitly. Save each retained message region as a file.
+message are refused explicitly; retention is a variable table's, and a variable
+table has no message form, so save retained state as a file.
 
 `make test-cs` runs the integration, listing, differential fuzz, allocation,
 negative-control and cook-open gates. The managed/native file and builder arms

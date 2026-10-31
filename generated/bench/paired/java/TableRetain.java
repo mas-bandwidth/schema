@@ -18,6 +18,12 @@ public final class TableRetain {
     public int idCapacity;
     public int used;
     public int idUsed;
+    // THE NODE RECORDS a retaining load read, by the record's index in the
+    // writer's node table: a node body's retained fields carry the path
+    // (-(index + 1), 0), and the save finds a node's index by its object, since
+    // the save renumbers the graph from its own edges (§3.1, §6.6). Reset by
+    // every retaining load.
+    final java.util.IdentityHashMap<Object, Integer> nodeKeys = new java.util.IdentityHashMap<>();
 
     // §6.6: an accepted replacement discards the old body's retained tail,
     // including descendants, without moving either cumulative report counter.

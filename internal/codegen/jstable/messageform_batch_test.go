@@ -45,10 +45,9 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 				}
 				u := loadUnitPaths(t, units[conn.unit])
 				if ir.VariableTables(u)[row.root] {
-					// §3.3: "a plain `table T` may not" ride the message form,
-					// so the JavaScript leg answers this message row ABSENT and
-					// asserts nothing (the manifest row and the C++ reference
-					// stay as they are).
+					// a variable table has no message form (§3.3), so the
+					// JavaScript leg answers this message row ABSENT and
+					// asserts nothing
 					return
 				}
 				st := findTable(t, u, row.root)
@@ -193,7 +192,7 @@ func parseMessageManifest(t *testing.T) (map[string][]string, map[string]message
 				connections[f[1]] = messageConn{unit: f[2], path: repoPath(f[4])}
 			}
 		case "message":
-			if len(f) >= 6 {
+			if len(f) >= 6 && f[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, messageRow{name: f[1], connection: f[2], root: f[3], file: repoPath(f[4]), batch: repoPath(f[5])})
 			}
 		}

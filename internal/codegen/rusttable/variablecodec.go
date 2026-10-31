@@ -12,6 +12,7 @@ package rusttable
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"regexp"
@@ -628,14 +629,15 @@ func emitTableBodyInto(b *strings.Builder, f *ir.Field, src, dst, pathExpr, ind 
 }
 
 // scalarWrite is the write of one scalar at its wire kind's width, little
-// endian (§3): a float as its IEEE-754 bit pattern with no canonicalisation.
-func scalarWrite(f *ir.Field, x, dst string) string {
+// endian (§3): a float as its IEEE-754 bit pattern with no canonicalisation,
+// and a NaN or an infinity the save's refusal by name (§3.3, the finite rule).
+func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	kind := scalarWireKind(f)
 	switch f.Type.Kind {
 	case ir.TBool:
 		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, x)
 	case ir.TFloat32, ir.TFloat64:
-		return fmt.Sprintf("%s.extend_from_slice(&%s.to_bits().to_le_bytes());", dst, x)
+		return fmt.Sprintf("if !%s.is_finite() { table_float_refuse(ids, %q); } %s.extend_from_slice(&%s.to_bits().to_le_bytes());", x, g.floatOwner(f), dst, x)
 	}
 	w := ir.TableKindWidth(kind) * 8
 	t := fmt.Sprintf("u%d", w)
@@ -734,7 +736,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, "e", "body", ordinal, ein) })
 		default:
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
-			fmt.Fprintf(b, "%s%s\n", ein, scalarWrite(f, "(*e)", "body"))
+			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "body"))
 		}
 		fmt.Fprintf(b, "%s}\n", inner)
 		fmt.Fprintf(b, "%sleb_write(out, r);\n", inner)
@@ -820,7 +822,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		g.emitUnionSave(b, f, ordinal, x, ind)
 	default:
 		// a field holding its declared default is not written at all (§3)
-		guard := x + " != " + scalarDefault(f)
+		guard := scalarDiffers(f, x, scalarDefault(f))
 		if f.Type.Kind == ir.TBool {
 			guard = x
 			if f.HasDefault && f.DefBool {
@@ -830,7 +832,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sif %s {\n", ind, guard)
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
-		fmt.Fprintf(b, "%s%s\n", inner, scalarWrite(f, x, "out"))
+		fmt.Fprintf(b, "%s%s\n", inner, g.scalarWrite(f, x, "out"))
 		fmt.Fprintf(b, "%s}\n", ind)
 	}
 }
@@ -889,7 +891,9 @@ func scalarReadFn(f *ir.Field) string {
 // emitScalarConvert emits the conversion of `raw` — read at the wire kind held
 // in `kvar` — into the destination expression `dst`, with §4's declared clamp
 // and bits(N)'s implied one, exactly as the oracle's scalarAt orders them.
-func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
+// owner is a float's <Owner>.<field>, the name its non_finite_float refusal
+// carries (§3.3).
+func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind string) {
 	switch f.Type.Kind {
 	case ir.TBool:
 		// a bool byte that is neither 0 nor 1 keeps true and is MALFORMED on
@@ -898,10 +902,16 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, dst, kvar, ind string) {
 		fmt.Fprintf(b, "%sif raw > 1 { report.malformed = true; }\n", ind)
 		return
 	case ir.TFloat32:
-		fmt.Fprintf(b, "%s%s = f32::from_bits(raw as u32);\n", ind, dst)
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value (docs/SPEC-TABLES.md §3.3): the read names the field
+		// and the load refuses as non_finite_float, the tolerant one included,
+		// so the 0.0 that stands in is never handed to a caller.
+		fmt.Fprintf(b, "%s%s = if table_finite_f32(raw as u32) { f32::from_bits(raw as u32) } else { report.non_finite(%q); 0.0 };\n", ind, dst, owner)
 		return
 	case ir.TFloat64:
-		fmt.Fprintf(b, "%s%s = if %s == %d { table_widen_f32(raw as u32) } else { f64::from_bits(raw) };\n", ind, dst, kvar, ir.TableKindF32)
+		// the float rung (kind 10 into a float64) is the ordinary conversion:
+		// every finite float32 widens exactly (§3.3, §4)
+		fmt.Fprintf(b, "%s%s = if %s == %d { if table_finite_f32(raw as u32) { f64::from(f32::from_bits(raw as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(raw) { f64::from_bits(raw) } else { report.non_finite(%q); 0.0 };\n", ind, dst, kvar, ir.TableKindF32, owner, owner)
 		return
 	}
 	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
@@ -982,6 +992,10 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                let start = *off;\n")
 	fmt.Fprintf(b, "                if !leb_skip(wire, off, end, kind) { report.malformed = true; return false; }\n")
 	fmt.Fprintf(b, "                if let Some(ret) = retain.as_deref_mut() {\n")
+	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+	// §3.3, §6.6, ruling 3 of 2026-10-27): a NaN or an infinity is not kept and
+	// refuses the read as non_finite_float, named <owner>.0x<id>.
+	fmt.Fprintf(b, "                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown(%q, id); continue; }\n", st.DeclaredName())
 	fmt.Fprintf(b, "                    match retain_capture(ids, kind, &wire[start..*off]) {\n")
 	fmt.Fprintf(b, "                        Some(resolved) => {\n")
 	fmt.Fprintf(b, "                            let need = 17 + 8 * path.depth as usize + resolved.len();\n")
@@ -1140,7 +1154,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
 			fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
 		}
-		emitScalarConvert(b, f, field, "kind", in+"    ")
+		emitScalarConvert(b, f, g.floatOwner(f), field, "kind", in+"    ")
 		fmt.Fprintf(b, "%s} else { %s }\n", in, kindSkip)
 	}
 	fmt.Fprintf(b, "%s}\n", ind)
@@ -1248,7 +1262,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	default:
 		fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, sub, ek) else { report.malformed = true; break; };\n", i5, scalarReadFn(f))
-		emitScalarConvert(b, f, "let e", "ek", i5)
+		emitScalarConvert(b, f, g.floatOwner(f), "let e", "ek", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	}
 	fmt.Fprintf(b, "%s}\n", i4)
@@ -1508,7 +1522,10 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s_load_inner — decodes one variable-form wire, enforcing the 4096-entry\n", fnName)
 	fmt.Fprintf(b, "/// id-table reader bound and 8192-slot open-addressing distinctness probe with\n")
 	fmt.Fprintf(b, "/// no heap allocation for the id table (docs/SPEC-TABLES.md §3).\n")
-	fmt.Fprintf(b, "pub fn %s_load_inner(wire: &[u8], mut retain: Option<&mut TableRetain>, report: &mut TableReport) -> Option<%s> {\n", fnName, st.Name)
+	fmt.Fprintf(b, "pub fn %s_load_inner(wire: &[u8], retain: Option<&mut TableRetain>, report: &mut TableReport) -> Option<%s> {\n", fnName, st.Name)
+	fmt.Fprintf(b, "    // this read's own non-finite float (docs/SPEC-TABLES.md §3.3)\n")
+	fmt.Fprintf(b, "    report.non_finite_float = \"\";\n")
+	fmt.Fprintf(b, "    report.non_finite_float_id = None;\n")
 	fmt.Fprintf(b, "    if wire.is_empty() { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { report.refused = true; report.reason = TableRefuseReason::UnknownForm; return None; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { report.malformed = true; return None; }\n")
@@ -1541,8 +1558,33 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
 	if !st.FixedDeclared {
-		fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 { return None; } // a framing the container cannot open (§3, §6.5)\n", fnName)
+		fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 {\n", fnName)
+		fmt.Fprintf(b, "        // A FRAMING THE CONTAINER CANNOT OPEN loads nothing (§3, §6.5). A\n")
+		fmt.Fprintf(b, "        // NON-FINITE FLOAT the walk meets before the damage still outranks it\n")
+		fmt.Fprintf(b, "        // (docs/SPEC-TABLES.md §3.3), as in the oracle, whose walk runs ahead\n")
+		fmt.Fprintf(b, "        // of any region measure: the walk runs over a scratch report and store\n")
+		fmt.Fprintf(b, "        // to ask that one question, and keeps nothing else.\n")
+		fmt.Fprintf(b, "        let mut scratch = *report;\n")
+		fmt.Fprintf(b, "        let mut store = TableRetain { bytes: Vec::new(), ids: Vec::new() };\n")
+		fmt.Fprintf(b, "        let _ = %s_load_walk(wire, end, ids, if retain.is_some() { Some(&mut store) } else { None }, &mut scratch, true);\n", fnName)
+		fmt.Fprintf(b, "        if !scratch.non_finite_float.is_empty() {\n")
+		fmt.Fprintf(b, "            report.refuse(TableReason::NonFiniteFloat);\n")
+		fmt.Fprintf(b, "            report.non_finite_float = scratch.non_finite_float;\n")
+		fmt.Fprintf(b, "            report.non_finite_float_id = scratch.non_finite_float_id;\n")
+		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "        return None;\n")
+		fmt.Fprintf(b, "    }\n")
 	}
+	fmt.Fprintf(b, "    %s_load_walk(wire, end, ids, retain, report, false)\n", fnName)
+	fmt.Fprintf(b, "}\n\n")
+	fmt.Fprintf(b, "/// %s_load_walk — the read past the id table: the body-extent pre-scan,\n", fnName)
+	fmt.Fprintf(b, "/// the node table, the root body and every placeable record, and the\n")
+	fmt.Fprintf(b, "/// non-finite refusal (docs/SPEC-TABLES.md §3, §3.1, §3.3). `probe` is the\n")
+	fmt.Fprintf(b, "/// scratch walk of a framing the container cannot open, which reads the root\n")
+	fmt.Fprintf(b, "/// body with null nodes where the node table cannot be scanned, as the\n")
+	fmt.Fprintf(b, "/// oracle's walk does, to find a non-finite float ahead of the damage.\n")
+	fmt.Fprintf(b, "#[allow(unused_variables)]\n")
+	fmt.Fprintf(b, "fn %s_load_walk(wire: &[u8], end: usize, ids: &[u64], mut retain: Option<&mut TableRetain>, report: &mut TableReport, probe: bool) -> Option<%s> {\n", fnName, st.Name)
 	// body-extent pre-scan (docs/SPEC-TABLES.md §3): a body whose zero reference
 	// lands before the id table is malformed, and nothing is decoded.
 	fmt.Fprintf(b, "    {\n")
@@ -1567,7 +1609,11 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
-		fmt.Fprintf(b, "    let mut nodes = TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report)?;\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
+		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
+		fmt.Fprintf(b, "        Some(nodes) => nodes,\n")
+		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new() },\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "        None => return None,\n")
+		fmt.Fprintf(b, "    };\n")
 	}
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    let mut off = 1usize;\n")
@@ -1579,6 +1625,10 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { let _ = variable_node_build(wire, ids, &mut nodes, k, report); }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    report.cycle_on_save = reachable_cycle;\n")
+	fmt.Fprintf(b, "    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks\n")
+	fmt.Fprintf(b, "    // any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing\n")
+	fmt.Fprintf(b, "    // lands and nothing retained is kept.\n")
+	fmt.Fprintf(b, "    if !report.non_finite_float.is_empty() { report.refuse(TableReason::NonFiniteFloat); return None; }\n")
 	fmt.Fprintf(b, "    if let Some(ret) = retain {\n")
 	fmt.Fprintf(b, "        let mut at = 0usize;\n")
 	fmt.Fprintf(b, "        while at + 4 <= nodes.retained.len() {\n")
@@ -1786,4 +1836,60 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    if root_at < 0 { return -1; }\n")
 	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + (records + 1) * 16\n", rootSize)
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// floatOwner names a float field <Owner>.<field> for the non_finite_float
+// refusal (docs/SPEC-TABLES.md §3.3), the owner being the table, type or union
+// that declares it, the name the Go reference's reads and writers record. A
+// field the emitter holds as a copy (an optional's or an element's inner
+// line) is found by its name, in a stable order, and named by itself last.
+func (g *gen) floatOwner(f *ir.Field) string { return floatOwnerIn(g.unit, f) }
+
+// floatOwnerIn is floatOwner over a unit, for the emitters that hold no gen.
+func floatOwnerIn(u *ir.Unit, f *ir.Field) string {
+	structs := func(yield func(*ir.Struct) bool) {
+		for _, m := range []map[string]*ir.Struct{u.Tables, u.Structs} {
+			for _, k := range slices.Sorted(maps.Keys(m)) {
+				if !yield(m[k]) {
+					return
+				}
+			}
+		}
+	}
+	unions := func(yield func(*ir.Union) bool) {
+		for _, m := range []map[string]*ir.Union{u.TableUnions, u.Unions} {
+			for _, k := range slices.Sorted(maps.Keys(m)) {
+				if !yield(m[k]) {
+					return
+				}
+			}
+		}
+	}
+	for _, byName := range []bool{false, true} {
+		same := func(x *ir.Field) bool { return x == f || byName && x != nil && x.Name == f.Name }
+		for st := range structs {
+			if slices.ContainsFunc(st.Fields, same) {
+				return st.DeclaredName() + "." + f.Name
+			}
+		}
+		for un := range unions {
+			for _, v := range un.Variants {
+				if same(v.F) {
+					return un.Name + "." + f.Name
+				}
+			}
+		}
+	}
+	return f.Name
+}
+
+// scalarDiffers is the default-elision test of one scalar: the field rides
+// when it differs from its default. A PLAIN float compares BIT PATTERNS, not
+// values (docs/SPEC-TABLES.md §3.3, "A PLAIN FLOAT'S SPECIAL VALUES"): under
+// !=, -0 equals +0 and would be elided and read back as +0.
+func scalarDiffers(f *ir.Field, x, def string) string {
+	if !f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
+		return x + ".to_bits() != " + def + ".to_bits()"
+	}
+	return x + " != " + def
 }

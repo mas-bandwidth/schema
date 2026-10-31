@@ -240,7 +240,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -865,7 +865,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
+            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -943,8 +943,8 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -1171,13 +1171,7 @@ static const int64_t kTableMessageRefBitsHere = 8;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 151;
-
-// The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
-// pointered body names the node table through it, and the node table is the
-// ROOT body's FIRST field because a pointer index's width is settled by the
-// node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = 130;
+static const int64_t kTableMessageEntriesHere = 152;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1497,7 +1491,7 @@ inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
     // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1630,13 +1624,13 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         return false; // a packing outside the closed set
     }
     // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
-    // is bounded by the int32 storage cap the checker
+    // and a wide string are bounded by the int32 storage cap the checker
     // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
     // the 32-bit count an unbounded array announces (§2.9), which is the
     // widest count this form spells. A larger bound is a shape no conforming
     // declaration can produce, and a reader that carried it would do its
     // length arithmetic in a range that overflows.
-    if ( kind == 12 )
+    if ( kind == 12 || kind == 33 )
     {
         if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
         f.max = (int64_t) v;
@@ -1655,11 +1649,12 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( at >= size ) { return false; }
         f.elem_kind = in[ at++ ];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
-        // AND AN ELEMENT KIND OF 12 IS REFUSED HERE, at the announcement,
-        // rather than at the skip that would meet it (§3.3): no declaration
-        // this language accepts is an array of string(N), so a shape
-        // announcing one is one rule's business and not two.
-        if ( f.elem_kind == 12 ) { return false; }
+        // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
+        // announcement, rather than at the skip that would meet it (§3.3): no
+        // declaration this language accepts is an array of string(N) or of
+        // wstring(N), so a shape announcing one is one rule's business and not
+        // two.
+        if ( f.elem_kind == 12 || f.elem_kind == 33 ) { return false; }
         return true;
     }
     return true;
@@ -1688,7 +1683,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 151 entries and 1718 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 152 entries and 1727 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1701,12 +1696,12 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // The order is the COOK PROJECTION's (§20.2): each record in the order the
 // projection renders it and each record's fields in the order the projection
 // renders them, then each enum's variants and each union's arms. Then comes
-// the tail the projection does not name: the reserved node-table id, the two
-// blob type ids as bytes and string, and every table's own name id in
+// the tail the projection does not name: the reserved node-table id, the three
+// blob type ids as bytes, string and wstring, and every table's own name id in
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 1718;
+static const int64_t kTableAnnounceBytes = 1727;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -1717,7 +1712,7 @@ static const int64_t kTableAnnounceBytes = 1718;
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x01, 0x01, 0x09, 0xd4, 0xb4, 0x1c, 0x11, 0xe3, 0x58, 0xff, 0x93, 0x02,
-    0x0e, 0x8e, 0x0d, 0x06, 0x8b, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
+    0x0e, 0x97, 0x0d, 0x06, 0x94, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
     0x54, 0xa3, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
     0x01, 0x07, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04,
     0x01, 0x03, 0x00, 0xe6, 0xb4, 0xe7, 0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a,
@@ -1842,24 +1837,24 @@ inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0xd7, 0x2f,
     0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f,
-    0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xc3,
-    0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x00, 0x5b, 0x21, 0xce, 0xf6, 0xb1,
-    0xdf, 0xb1, 0xff, 0x00, 0x64, 0x1b, 0x41, 0x15, 0x46, 0xe0, 0xcb, 0x5f,
-    0x00, 0xaf, 0x37, 0x33, 0x25, 0xb2, 0x42, 0x68, 0xb7, 0x00, 0x90, 0x78,
-    0xbd, 0xdf, 0x30, 0xb1, 0x66, 0x30, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4,
-    0x3a, 0x63, 0xd6, 0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6,
-    0x00, 0x6e, 0x33, 0x14, 0xb1, 0x5d, 0x82, 0x2d, 0xd0, 0x00, 0x7b, 0x02,
-    0x29, 0x25, 0x1c, 0x2e, 0x18, 0x1c, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7,
-    0xfc, 0xff, 0x19, 0x00, 0x2e, 0xbe, 0x28, 0xda, 0x1d, 0x75, 0x79, 0xec,
-    0x00, 0xf1, 0x8b, 0xd2, 0xb7, 0xc4, 0xc0, 0x1e, 0x03, 0x00, 0xd7, 0x5e,
-    0x4f, 0x9e, 0x4e, 0x69, 0x59, 0xbf, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6,
-    0x43, 0x48, 0x5f, 0x00, 0x29, 0x1a, 0x17, 0xda, 0x11, 0x99, 0x1a, 0x1d,
-    0x00, 0x3a, 0x11, 0xfb, 0x11, 0x5d, 0x55, 0xf8, 0x1c, 0x00, 0x15, 0xad,
-    0xb2, 0x16, 0x0c, 0xba, 0x9d, 0x46, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d,
-    0x78, 0x77, 0x05, 0x00, 0x51, 0x64, 0x36, 0xd3, 0x61, 0x69, 0x6a, 0xab,
-    0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00,
+    0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4,
+    0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf,
+    0x7b, 0x3e, 0x41, 0x00, 0x5b, 0x21, 0xce, 0xf6, 0xb1, 0xdf, 0xb1, 0xff,
+    0x00, 0x64, 0x1b, 0x41, 0x15, 0x46, 0xe0, 0xcb, 0x5f, 0x00, 0xaf, 0x37,
+    0x33, 0x25, 0xb2, 0x42, 0x68, 0xb7, 0x00, 0x90, 0x78, 0xbd, 0xdf, 0x30,
+    0xb1, 0x66, 0x30, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4, 0x3a, 0x63, 0xd6,
+    0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x00, 0x6e, 0x33,
+    0x14, 0xb1, 0x5d, 0x82, 0x2d, 0xd0, 0x00, 0x7b, 0x02, 0x29, 0x25, 0x1c,
+    0x2e, 0x18, 0x1c, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7, 0xfc, 0xff, 0x19,
+    0x00, 0x2e, 0xbe, 0x28, 0xda, 0x1d, 0x75, 0x79, 0xec, 0x00, 0xf1, 0x8b,
+    0xd2, 0xb7, 0xc4, 0xc0, 0x1e, 0x03, 0x00, 0xd7, 0x5e, 0x4f, 0x9e, 0x4e,
+    0x69, 0x59, 0xbf, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6, 0x43, 0x48, 0x5f,
+    0x00, 0x29, 0x1a, 0x17, 0xda, 0x11, 0x99, 0x1a, 0x1d, 0x00, 0x3a, 0x11,
+    0xfb, 0x11, 0x5d, 0x55, 0xf8, 0x1c, 0x00, 0x15, 0xad, 0xb2, 0x16, 0x0c,
+    0xba, 0x9d, 0x46, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05,
+    0x00, 0x51, 0x64, 0x36, 0xd3, 0x61, 0x69, 0x6a, 0xab, 0x00, 0x00, 0xfe,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
@@ -2215,6 +2210,13 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
+        case 33:
+        {
+            // the length, NO align, then SIXTEEN bits a code unit (§3.3)
+            uint64_t n = 0;
+            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
+            return r.skip( (int64_t) n * 16 );
+        }
         case 31:
         {
             // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
@@ -2264,25 +2266,6 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
     }
 }
 
-// TableMessageNodeTableOpen reads the node table's opening when a body has
-// one: the reserved id's reference and the count at thirty-two raw bits. A
-// body whose first reference is anything else has no node table, and the
-// reader is left where it was. False is damage: a reference past E, or bits
-// that run out.
-inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & count )
-{
-    count = 0;
-    const int64_t at = r.offset;
-    uint64_t ref = 0;
-    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-    if ( ref == 0 ) { r.offset = at; return true; }
-    if ( ref > (uint64_t) vocabulary.count ) { return false; }
-    if ( TableVocabularyEntryAt( vocabulary, ref ).id != kTableNodeTableFieldId ) { r.offset = at; return true; }
-    uint64_t n = 0;
-    if ( !r.get( n, 32 ) ) { return false; }
-    count = (int64_t) n;
-    return true;
-}
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
 inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
@@ -2570,6 +2553,7 @@ enum : uint8_t
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
+    kTableFixedTextWide  = 2,
     kTableFixedTextBytes = 3,
 };
 
@@ -2857,17 +2841,21 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > p.size ) { v = (int32_t) p.size; clamped++; }
+            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
-                // byte longer than the bound for exactly this. A store, not a
+                // unit longer than the bound for exactly this. A store, not a
                 // call: memset of a runtime length is a call.
-                dst[p.aux + (uint32_t) v] = 0;
+                uint8_t * end = dst + p.aux + (uint32_t) v * unit;
+                end[0] = 0;
+                if ( unit == 2 ) { end[1] = 0; }
             }
             break;
         }
@@ -3039,8 +3027,10 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else if ( p.op == kTableFixedText )
         {
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || (uint32_t) v > p.size ) { why = length_over_bound; return true; }
+            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
         }
     }
     return false;
@@ -3102,9 +3092,10 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedCount: lands[1] = e.dst + 4u; break;
         case kTableFixedText:
         {
+            const uint32_t unit = ( e.meta == kTableFixedTextWide ) ? 2u : 1u;
             lands[1] = e.dst + 4u;
             lands[2] = e.aux;
-            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : 1u );
+            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : unit );
             break;
         }
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
@@ -3318,15 +3309,15 @@ inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
 inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-// the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
-// reserved: none is a kind a declaration spells, so none is ever an entry's
-// kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
+// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
+// reserved: neither is a kind a declaration spells, so neither is ever an
+// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
 inline bool TableFixedKnownKind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return true; }
-    return kind == 32u || kind == 35u;
+    return kind == 32u || kind == 33u || kind == 35u;
 }
 
 // TableFixedCheckEntry validates the subtree rooted at i and answers how many
@@ -3423,6 +3414,12 @@ inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t dep
         {
             if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
             if ( e.size < 4u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
+        {
+            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
             break;
         }
         // Every kind of the closed set is either a leaf above or a case here,
@@ -3851,7 +3848,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             TableFixedPush( c, e );
             break;
         }
-        case 12: // text
+        case 12: case 33: // text
         {
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
@@ -4787,20 +4784,8 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
-    // the type id's MESSAGE-FORM SLOT (docs/SPEC-TABLES.md §3.3), stored where
-    // the numbering walk stores the id itself and for the same reason: the
-    // target's type is known STATICALLY at the site that numbers it, so a
-    // form 2 save reads the slot out of the entry instead of looking an id up.
-    // Every pointer target's type id is an entry of the announcement, which is
-    // what makes the slot a compile-time fact of a POINTERED message too.
-    uint64_t type_slot;
     int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
     bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
-    // the same two over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a bitpacked
-    // body at a bit position, its pointer indices at the width the node count
-    // settled
-    int64_t ( * message_measure )( const void * ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const void * node );
-    bool ( * message_save )( const void * ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const void * node );
 };
 
 struct TableNumbering
@@ -4888,18 +4873,6 @@ template <typename Ctx, typename T>
 inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node )
 {
     return TableNodeSave( *(const Ctx *) ctx, numbering, w, ids, *(const T *) node );
-}
-
-template <typename Ctx, typename T>
-inline int64_t TableNodeMessageMeasureThunk( const void * ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const void * node )
-{
-    return TableNodeMessageMeasure( *(const Ctx *) ctx, numbering, index_bits, at, *(const T *) node );
-}
-
-template <typename Ctx, typename T>
-inline bool TableNodeMessageSaveThunk( const void * ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const void * node )
-{
-    return TableNodeMessageSave( *(const Ctx *) ctx, numbering, index_bits, w, *(const T *) node );
 }
 // ---- a BYTE BUFFER's record (docs/SPEC-TABLES.md §2.5, §3.1) ----
 //
@@ -5153,56 +5126,6 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
 } // namespace tabledemo
 
 #endif // TABLEDEMO_SCHEMA_TABLE_ARENA
-
-#ifndef TABLEDEMO_SCHEMA_TABLE_MESSAGE_NODES
-#define TABLEDEMO_SCHEMA_TABLE_MESSAGE_NODES
-
-namespace tabledemo {
-
-// ---- the NODE TABLE on the message wire (docs/SPEC-TABLES.md §3.1, §3.3) ----
-//
-// THE NODE TABLE, WHEN A BODY HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY: the
-// reserved id as a reference, the node count at THIRTY-TWO RAW BITS, then the
-// records back to back, each a type id reference and a body: a table's fields
-// end at their own zero reference, and a blob's body is a length, an align and
-// its bytes. A root
-// that reaches no node elides the field, like every other empty thing.
-//
-// Measure derives the numbering from the graph and save derives the same one,
-// and the two thunks stored at numbering time are what let one loop write a
-// table of mixed types.
-template <typename Ctx>
-inline int64_t TableMessageNodeTableMeasure( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, int64_t at )
-{
-    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
-    int64_t bits = kTableMessageRefBitsHere + 32;
-    for ( int64_t k = 0; k < n.count; k++ )
-    {
-        bits += kTableMessageRefBitsHere;
-        const int64_t body = n.entries[k].message_measure( (const void *) &ctx, n, index_bits, at + bits, n.entries[k].node );
-        if ( body < 0 ) { return -1; }
-        bits += body;
-    }
-    return bits;
-}
-
-template <typename Ctx>
-inline bool TableMessageNodeTableSave( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, TableBitWriter & w )
-{
-    if ( n.count == 0 ) { return true; }
-    w.put( kTableNodeTableFieldSlot, kTableMessageRefBitsHere );
-    w.put( (uint64_t) n.count, 32 );
-    for ( int64_t k = 0; k < n.count; k++ )
-    {
-        w.put( n.entries[k].type_slot, kTableMessageRefBitsHere );
-        if ( !n.entries[k].message_save( (const void *) &ctx, n, index_bits, w, n.entries[k].node ) ) { return false; }
-    }
-    return !w.overflow;
-}
-
-} // namespace tabledemo
-
-#endif // TABLEDEMO_SCHEMA_TABLE_MESSAGE_NODES
 
 #ifndef TABLEDEMO_SCHEMA_TABLE_RETAIN
 #define TABLEDEMO_SCHEMA_TABLE_RETAIN
@@ -5758,7 +5681,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
         default:
-            // every other content is bytes: a string, an escape, a
+            // every other content is bytes: a string, wide text, an escape, a
             // payload-free kind, a scalar under a keyed slot's own length
             TableRetainInRaw( s, s.in + s.at, length );
             s.at += length;
@@ -5795,7 +5718,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: // L, then L bytes, nothing framed inside
+        case 12: case 31: case 32: case 33: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -6185,7 +6108,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             s.at += width;
             break;
         }
-        case 12: case 31: case 32:
+        case 12: case 31: case 32: case 33:
         {
             uint64_t length = 0;
             if ( !TableRetainOutLebRead( s, length ) ) { return false; }
@@ -6391,488 +6314,6 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
         w.putleb( (uint64_t) body );
         if ( !save( ctx, n, w, ids, n.entries[k].type_id, n.entries[k].node, retain ) ) { return false; }
     }
-    return true;
-}
-
-// ---- RETENTION ON THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3) ----
-//
-// LoadRetain reads a form 2 body as it reads a file's, the resolving walk
-// replacing every reference with the id it names AGAINST THE CONNECTION'S
-// VOCABULARY instead of a trailer, and SaveRetain writing form 2 refuses by
-// name. So retention crosses the forms in ONE DIRECTION, and the record a
-// message body produces is the VARIABLE FORM'S OWN, to the byte: a retained record
-// carries the field's bytes with every reference resolved so that re-emitting
-// it into any id table is correct, and the table it is re-emitted into is a
-// file's. The capture below is therefore a TRANSCODE as well as a resolve, a
-// bitpacked value is read at the width its announced shape states and written
-// at the width the variable form spells, and from there it is the same record,
-// laid down in the same slots and read back by the same emit walk.
-//
-// THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
-// read's verdict on an unknown entry is the SKIP's, whether or not this build
-// retains, and running the skip first is what keeps that verdict exactly what
-// it was with retention off. The capture re-reads the bits the skip delimited,
-// and a capture that lands anywhere but the skip's own end drops the record. It
-// is two flat passes over one record's bits and never a walk that doubles at
-// every level, which is what the cost rule forbids.
-
-struct TableMessageRetainIn
-{
-    TableRetainIn out;               // its in/size/at/ids are unused: the input is BITS
-    TableBitReader * r;
-    const TableVocabulary * vocabulary;
-    int64_t index_bits;
-    int64_t limit = 0;               // the record's remaining resolved bytes: the bound on the walk
-};
-
-// THE ELEMENT'S OWN ENTRY, which a resolved entry carries flattened beside its
-// own: an array's and a keyed body's elements are read through it.
-inline TableMessageEntry TableMessageRetainElement( const TableMessageEntry & entry )
-{
-    TableMessageEntry e;
-    e.kind = entry.elem_kind;
-    e.packing = entry.elem_packing;
-    e.value_bits = entry.elem_value_bits;
-    e.max = entry.elem_max;
-    e.base_lo = entry.elem_base_lo;
-    e.base_hi = entry.elem_base_hi;
-    e.qmin = entry.elem_qmin;
-    e.qdelta = entry.elem_qdelta;
-    e.qcount = entry.elem_qcount;
-    return e;
-}
-
-// the kinds whose file bytes are TWO'S COMPLEMENT, which is what decides
-// whether a narrow raw value sign-extends into its storage width
-inline bool TableMessageRetainSigned( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 2: case 3: case 4: case 5: case 18:
-        case 20: case 21: case 22: case 23: case 24: return true;
-        default: return false;
-    }
-}
-
-inline int64_t TableMessageRetainWidth( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp (§2.11)
-        case 18: case 19: case 24: case 29: return 16;
-        default: return -1;
-    }
-}
-
-// THE LEAST A RESOLVED ELEMENT CAN WEIGH, which is what bounds an announced
-// count against the caller's remaining record before one element is converted.
-// A scalar takes its storage width whatever its announced value bits, an opaque
-// takes at least its zero length, a body at least its terminator, and a union
-// or enum its id. The answer is a LOWER bound: a count that cannot fit this many
-// bytes per element cannot fit the record at all, and a zero-bit count is
-// refused here rather than walked (§6.6, THE SECURITY BOUND).
-inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
-{
-    const int64_t width = TableMessageRetainWidth( kind );
-    if ( width > 0 ) { return width; }
-    switch ( kind )
-    {
-        case 12: case 31: case 32: return 1;
-        case 13: case 14: case 16: case 15: case 30: return 8;
-        default: return 1;
-    }
-}
-
-// one integer at the FILE's own width for its kind, little endian
-inline void TableMessageRetainWord( TableMessageRetainIn & s, uint64_t value, int64_t width )
-{
-    uint8_t b[8];
-    for ( int64_t i = 0; i < width; i++ ) { b[i] = uint8_t( value >> ( 8 * i ) ); }
-    TableRetainInRaw( s.out, b, width );
-}
-
-inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth );
-inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth );
-
-// ONE REFERENCE resolved against the announced vocabulary. It is the file
-// walk's own verdict read against an announcement instead of a trailer: a
-// reference of zero where an entry is required, one above the entry count, and
-// one naming a RESERVED id, which would be re-emitted into a nested body where
-// it is malformed, all DROP THE RECORD.
-inline bool TableMessageRetainId( TableMessageRetainIn & s, uint64_t ref, uint64_t & id )
-{
-    if ( ref == 0 || ref > (uint64_t) s.vocabulary->count ) { return false; }
-    const TableMessageEntry & named = TableVocabularyEntryAt( *s.vocabulary, ref );
-    if ( named.id == 0 || TableRetainReservedId( named.id ) ) { return false; }
-    id = named.id;
-    return true;
-}
-
-inline bool TableMessageRetainRef( TableMessageRetainIn & s, uint64_t & id )
-{
-    uint64_t ref = 0;
-    if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return false; }
-    return TableMessageRetainId( s, ref, id );
-}
-
-// ONE OPAQUE PAYLOAD's bytes: a string or a byte buffer is a length at its own
-// width, the ALIGN that buys a memcpy and the bytes; and the ESCAPE aligns,
-// reads a thirty-two bit L and takes L bytes. On the file each
-// is the same bytes behind a canonical LEB128 length, so the framed flag says which of
-// the two spellings this position takes.
-inline bool TableMessageRetainOpaque( TableMessageRetainIn & s, const TableMessageEntry & entry, bool framed )
-{
-    uint64_t n = 0;
-    if ( entry.kind == 12 )
-    {
-        if ( !s.r->get( n, TableBitsRequired( 0, entry.max ) ) || !s.r->align() ) { return false; }
-    }
-    else
-    {
-        if ( !s.r->align() || !s.r->get( n, 32 ) ) { return false; }
-    }
-    if ( n > (uint64_t) INT32_MAX || !s.r->has( (int64_t) n * 8 ) ) { return false; }
-    if ( framed ) { TableRetainInLeb( s.out, n ); }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t by = 0;
-        if ( !s.r->get( by, 8 ) ) { return false; }
-        const uint8_t one = uint8_t( by );
-        TableRetainInRaw( s.out, &one, 1 );
-    }
-    return true;
-}
-
-// ONE ANNOUNCED VALUE, transcoded. NO CLAMP FIRES AND NO RANGE IS APPLIED: the
-// value is the SENDER's, under an id this reader cannot name, so there is no
-// declaration to bound it by, and the walk takes no branch on a payload byte
-// (§6.6, THE SECURITY BOUND).
-inline bool TableMessageRetainScalar( TableMessageRetainIn & s, const TableMessageEntry & entry )
-{
-    const int64_t width = TableMessageRetainWidth( entry.kind );
-    if ( width < 0 ) { return false; }
-    if ( entry.kind == 1 )
-    {
-        uint64_t v = 0;
-        if ( !s.r->get( v, 1 ) ) { return false; }
-        TableMessageRetainWord( s, v, 1 );
-        return true;
-    }
-    if ( entry.kind == 10 )
-    {
-        if ( entry.packing == 2 )
-        {
-            // THE PACKET WIRE'S RULE, IN FLOAT32: the float an index names is
-            // the float a packet's reader names for it, and an index above
-            // the announced count is rejected rather than reconstructed (SPEC.md §4.3)
-            uint64_t index = 0;
-            if ( !s.r->get( index, entry.value_bits ) ) { return false; }
-            if ( index > (uint64_t) entry.qcount ) { return false; }
-            const float v = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount );
-            TableMessageRetainWord( s, table_float_to_bits( v ), 4 );
-            return true;
-        }
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, 32 ) ) { return false; }
-        TableMessageRetainWord( s, raw, 4 );
-        return true;
-    }
-    if ( entry.kind == 11 )
-    {
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, 64 ) ) { return false; }
-        TableMessageRetainWord( s, raw, 8 );
-        return true;
-    }
-    const int64_t bits = entry.value_bits;
-    if ( bits < 0 ) { return false; }
-    if ( width == 16 )
-    {
-        // a 128-bit kind reads in TWO LIMBS, and a ranged one adds the base the
-        // announcement carries in halves
-        uint64_t lo = 0, hi = 0;
-        if ( bits <= 64 )
-        {
-            if ( !s.r->get( lo, bits ) ) { return false; }
-        }
-        else if ( !s.r->get( lo, 64 ) || !s.r->get( hi, bits - 64 ) ) { return false; }
-        if ( entry.packing == 1 )
-        {
-            const uint64_t sum = lo + (uint64_t) entry.base_lo;
-            hi += (uint64_t) entry.base_hi + ( sum < lo ? 1u : 0u );
-            lo = sum;
-        }
-        TableMessageRetainWord( s, lo, 8 );
-        TableMessageRetainWord( s, hi, 8 );
-        return true;
-    }
-    uint64_t raw = 0;
-    if ( !s.r->get( raw, bits ) ) { return false; }
-    uint64_t value = raw;
-    if ( entry.packing == 1 )
-    {
-        value = raw + (uint64_t) entry.base_lo; // the domain, whole: the sum wraps into the bits below
-    }
-    else if ( TableMessageRetainSigned( entry.kind ) && bits > 0 && bits < 64 )
-    {
-        const int64_t shift = 64 - bits;
-        value = (uint64_t) ( ( (int64_t) ( raw << shift ) ) >> shift );
-    }
-    TableMessageRetainWord( s, value, width );
-    return true;
-}
-
-// one framed CONTENT: the slot, the content, and the slot filled in behind it,
-// exactly as the file capture's own framed content is.
-inline int64_t TableMessageRetainFramed( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    const int64_t slot = TableRetainInSlot( s.out );
-    const int64_t resolved = TableMessageRetainContent( s, entry, depth );
-    if ( resolved < 0 || resolved > 0xFFFFFFFFll ) { return -1; }
-    TableRetainInPatch( s.out, slot, resolved );
-    return resolved;
-}
-
-// one nested BODY: its fields, each an entry reference and the payload that
-// entry's shape frames, ending at the body's own ZERO REFERENCE.
-inline int64_t TableMessageRetainBody( TableMessageRetainIn & s, int32_t depth )
-{
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-        if ( ref == 0 )
-        {
-            // THE TERMINATOR IS A REFERENCE, and a reference in the resolved
-            // form is a fixed eight-byte id
-            TableRetainInId( s.out, 0 );
-            return 0;
-        }
-        uint64_t id = 0;
-        if ( !TableMessageRetainId( s, ref, id ) ) { return -1; }
-        const TableMessageEntry & field = TableVocabularyEntryAt( *s.vocabulary, ref );
-        TableRetainInId( s.out, id );
-        TableRetainInRaw( s.out, &field.kind, 1 );
-        if ( TableMessageRetainPayload( s, field, depth ) < 0 ) { return -1; }
-    }
-}
-
-// one array's or one keyed body's content: the element kind, the count, and the
-// elements. A KEYED SLOT IS A TRIPLE, the key reference, the element's own
-// length, and the element, and its keys resolve at EVERY element kind.
-inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( entry.elem_kind == 17 )
-    {
-        // AN ARRAY WHOSE ELEMENT KIND IS 17 (§6.6): the excluded class, caught
-        // here for a keyed body exactly as for a positional one
-        return -1;
-    }
-    uint64_t n = (uint64_t) entry.min;
-    const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
-    if ( entry.kind == 16 ) { n = 0; }
-    if ( width > 0 )
-    {
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, width ) ) { return -1; }
-        n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
-    }
-    if ( entry.kind == 14 && entry.elem_kind == 6 && !s.r->align() ) { return -1; }
-    const TableMessageEntry element = TableMessageRetainElement( entry );
-    TableRetainInRaw( s.out, &entry.elem_kind, 1 );
-    TableRetainInLeb( s.out, n ); // the count rides as the file capture spells it, and the emit reads it back
-    // A ZERO-BIT ELEMENT STILL LAYS DOWN ITS STORAGE WIDTH, so the announced
-    // count is tested against the caller's remaining record BEFORE one element
-    // is converted: a count no record can hold refuses here rather than four
-    // billion times through the loop (§6.6, THE SECURITY BOUND).
-    int64_t minimum = TableMessageRetainElementMinimum( element.kind );
-    if ( entry.kind == 16 ) { minimum += 16; } // the key id and the framed slot
-    if ( minimum > 0 && ( s.out.out_at > s.limit || n > (uint64_t) ( ( s.limit - s.out.out_at ) / minimum ) ) )
-    {
-        return -1;
-    }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        if ( entry.kind == 16 )
-        {
-            uint64_t key = 0;
-            if ( !TableMessageRetainRef( s, key ) ) { return -1; }
-            TableRetainInId( s.out, key );
-            if ( TableMessageRetainFramed( s, element, depth + 1 ) < 0 ) { return -1; }
-            continue;
-        }
-        if ( TableMessageRetainPayload( s, element, depth ) < 0 ) { return -1; }
-    }
-    return 0;
-}
-
-inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( depth > kTableRetainWalkDepthMax || s.out.out_at > s.limit ) { return -1; }
-    const int64_t began = s.out.out_at;
-    switch ( entry.kind )
-    {
-        case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
-        case 13: if ( TableMessageRetainBody( s, depth ) < 0 ) { return -1; } break;
-        case 14: case 16: if ( TableMessageRetainElements( s, entry, depth ) < 0 ) { return -1; } break;
-        case 15: case 30: if ( TableMessageRetainPayload( s, entry, depth ) < 0 ) { return -1; } break;
-        case 32: break; // nothing rides, and the outer length is what says so
-        case 12: case 31:
-            // a content copied whole carries no inner length: the outer one
-            // frames it, which is what a keyed slot's element takes
-            if ( !TableMessageRetainOpaque( s, entry, false ) ) { return -1; }
-            break;
-        default:
-            if ( !TableMessageRetainScalar( s, entry ) ) { return -1; }
-            break;
-    }
-    return s.out.out_at - began;
-}
-
-inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( s.out.out_at > s.limit ) { return -1; }
-    const int64_t began = s.out.out_at;
-    switch ( entry.kind )
-    {
-        case 17: return -1; // THE NODE-INDEX CLASS, met inside a payload (§6.6)
-        case 0: return -1;  // a KIND-0 ENTRY names no payload the variable form has a kind for
-        case 32: TableRetainInLeb( s.out, 0 ); break;
-        case 30:
-        {
-            uint64_t ref = 0;
-            if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-            if ( ref == 0 )
-            {
-                // A VARIANT REFERENCE OF ZERO IS THE ENUM'S None (§3): a value,
-                // not a reference, and it rides back as one
-                TableRetainInId( s.out, 0 );
-                break;
-            }
-            uint64_t id = 0;
-            if ( !TableMessageRetainId( s, ref, id ) ) { return -1; }
-            TableRetainInId( s.out, id );
-            break;
-        }
-        case 15:
-        {
-            uint64_t ref = 0;
-            if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-            if ( ref == 0 ) { TableRetainInId( s.out, 0 ); break; }
-            TableMessageEntry arm;
-            if ( !TableMessageArmEntry( *s.vocabulary, ref, arm ) || TableRetainReservedId( arm.id ) ) { return -1; }
-            TableRetainInId( s.out, arm.id );
-            TableRetainInRaw( s.out, &arm.kind, 1 );
-            if ( TableMessageRetainFramed( s, arm, depth + 1 ) < 0 ) { return -1; }
-            break;
-        }
-        case 13: case 14: case 16:
-            if ( TableMessageRetainFramed( s, entry, depth + 1 ) < 0 ) { return -1; }
-            break;
-        case 12: case 31:
-            if ( !TableMessageRetainOpaque( s, entry, true ) ) { return -1; }
-            break;
-        default:
-            if ( !TableMessageRetainScalar( s, entry ) ) { return -1; }
-            break;
-    }
-    return s.out.out_at - began;
-}
-
-// CAPTURE, the message form's load side. The entry has already been SKIPPED and
-// counted unknown exactly as it always was, and the start offset is where its payload
-// began: this re-reads those bits, and a record it cannot make changes nothing
-// else about the read. False is a retained float that is not finite, and
-// nothing else: the read is refused (§3.3).
-inline bool TableMessageRetainCapture( TableRetain * retain, TableBitReader & r, const TableVocabulary & vocabulary,
-                                       int64_t index_bits, const TableMessageEntry & entry,
-                                       const TableRetainPath & path, TableReport * report, int64_t start )
-{
-    if ( retain == NULL ) { return true; }
-    // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
-    // §3.3, §6.6): kind 10's or 11's raw bits, unless the float rides as a
-    // quantized index, which names a finite value. A NaN or an infinity
-    // refuses the read as non_finite_float, and the caller stops.
-    if ( ( entry.kind == 10 && entry.packing != 2 ) || entry.kind == 11 )
-    {
-        TableBitReader bits = r;
-        bits.offset = start;
-        uint64_t raw = 0;
-        if ( bits.get( raw, entry.kind == 10 ? 32 : 64 ) &&
-             !( entry.kind == 10 ? TableBitsFinite32( (uint32_t) raw ) : TableBitsFinite64( raw ) ) )
-        {
-            TableNonFiniteFloat( report );
-            return false;
-        }
-    }
-    if ( entry.kind == 17 )
-    {
-        // A FIELD WHOSE PAYLOAD CARRIES A NODE INDEX: kind 17 itself, the
-        // excluded class at the outer kind (§6.6)
-        report->retain_lost++;
-        return true;
-    }
-    const int64_t end = r.offset;
-    TableBitReader walk = r;
-    walk.offset = start;
-
-    TableMessageRetainIn probe;
-    probe.out.in = NULL;
-    probe.out.size = 0;
-    probe.out.at = 0;
-    probe.out.ids = NULL;
-    probe.out.out = NULL;
-    probe.out.out_at = 0;
-    probe.r = &walk;
-    probe.vocabulary = &vocabulary;
-    probe.index_bits = index_bits;
-    // THE RECORD'S REMAINING PAYLOAD BUDGET: what the caller's capacity leaves
-    // after this record's header and path, which bounds the walk before it
-    // converts a count the record could never hold (§6.6).
-    probe.limit = retain->capacity - retain->used - kTableRetainRecordHeader - 8 * (int64_t) path.depth;
-    const int64_t payload = TableMessageRetainPayload( probe, entry, 0 );
-    if ( payload < 0 || walk.offset != end )
-    {
-        // THE WALK CAN MEET WHAT THE SKIP STEPPED OVER, and its verdict changes
-        // nothing else: the record is dropped, one retain_lost counts, and
-        // malformed DOES NOT MOVE (§6.6).
-        report->retain_lost++;
-        return true;
-    }
-
-    const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
-    if ( need > 0xFFFFFFFFll || retain->used + need > retain->capacity )
-    {
-        // REFUSAL IS PER RECORD AND NEVER PARTIAL (§6.6)
-        report->retain_lost++;
-        return true;
-    }
-    uint8_t * record = retain->bytes + retain->used;
-    TableRetainWrite32( record, (uint32_t) need );
-    TableRetainWrite32( record + 4, path.node );
-    TableRetainWrite32( record + 8, (uint32_t) path.depth );
-    TableRetainWrite32( record + 12, (uint32_t) payload );
-    TableRetainWrite64( record + 16, entry.id );
-    record[24] = entry.kind;
-    record[25] = 0;
-    for ( int32_t i = 0; i < path.depth; i++ )
-    {
-        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i, path.steps[i].ordinal );
-        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i + 4, path.steps[i].index );
-    }
-    TableBitReader again = r;
-    again.offset = start;
-    TableMessageRetainIn write = probe;
-    write.r = &again;
-    write.out.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
-    write.out.out_at = 0;
-    if ( TableMessageRetainPayload( write, entry, 0 ) < 0 ) { report->retain_lost++; return true; }
-    retain->used += need;
-    retain->count++;
-    report->retained++;
     return true;
 }
 } // namespace tabledemo
@@ -7133,6 +6574,18 @@ inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, i
     memcpy( at, source, (size_t) n );
 }
 
+// A WIDE TEXT buffer piece (docs/SPEC-TABLES.md §7.2): the USED code units,
+// each a TWO-BYTE SCALAR in the cook's byte order. A record is written piece
+// by piece and never memcpy'd, and a swap has to know where every scalar
+// begins — a char16_t is one, so the units go one store each rather than as
+// bytes. The tail is already zero, as the narrow twin's is, so the terminating
+// zero unit at index used costs nothing here.
+inline void table_cook_units( uint8_t * at, const char16_t * source, int64_t used, int64_t capacity, TableByteOrder order )
+{
+    if ( used <= 0 ) { return; }
+    const int64_t n = used < capacity ? used : capacity;
+    for ( int64_t i = 0; i < n; i++ ) { table_cook_put( at + i * 2, (uint64_t) (uint16_t) source[i], 2, order ); }
+}
 
 } // namespace tabledemo
 
@@ -7233,7 +6686,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
 inline int64_t ArchiveConfigMeasureBodyRetain( TableRetainIds & ids, const ArchiveConfig & value, TableRetain * retain, const TableRetainPath & path );
 TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ArchiveConfig & value, TableRetain * retain, const TableRetainPath & path );
 TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, ArchiveConfig & value, TableRetain * retain, const TableRetainPath & path );
-inline bool ArchiveConfigLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, ArchiveConfig & value, TableRetain * retain, const TableRetainPath & path );
 
 inline int64_t ArchiveConfigMeasureBody( TableIds & ids, const ArchiveConfig & value )
 {
@@ -7311,7 +6763,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7421,17 +6873,21 @@ inline TableOpenVerdict ArchiveConfigLoadVerdict( ArchiveConfig & value, const u
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = ArchiveConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { ArchiveConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; ArchiveConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { ArchiveConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { ArchiveConfigReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // ArchiveConfigLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool ArchiveConfigLoadTolerant( ArchiveConfig & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return ArchiveConfigLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -7660,9 +7116,9 @@ inline int64_t ArchiveConfigSaveMessages( const ArchiveConfig * values, int64_t 
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool ArchiveConfigLoadMessages( ArchiveConfig * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -7670,18 +7126,18 @@ inline bool ArchiveConfigLoadMessages( ArchiveConfig * values, int64_t * count, 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ArchiveConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !ArchiveConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ArchiveConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { ArchiveConfigReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
@@ -8645,7 +8101,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -8712,113 +8168,6 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBodyRetain( TableReader & r, Archiv
                 if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-// UNDER RETENTION the same body keeps the fields this build cannot name,
-// resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the
-// path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).
-// The reader's own data is exactly what it would have been with retention off.
-inline bool ArchiveConfigLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, ArchiveConfig & value, TableRetain * retain, const TableRetainPath & path )
-{
-    ArchiveConfigReset( value );
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever
-    // an earlier occurrence of it left is discarded before the winning one is
-    // read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0xa354fd1ff0c467c5ull: // root
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 13 || entry.elem_kind != 0 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                TableRetainDiscardField( retain, path, 0 );
-                if ( !RootConfigLoadMessageBodyRetain( r, vocabulary, report, index_bits, value.root, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
-                break;
-            }
-            case 0xb1e5e28e4479a274ull: // count
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 4 || entry.elem_kind != 0 )
-                {
-                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
-                    {
-                        {
-                            const int64_t width = entry.value_bits;
-                            uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            else if ( width > 0 && width < 64 )
-                            {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                            }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                            if ( decoded_wide > 100ll ) { decoded_wide = 100ll; report->clamped++; }
-                            int32_t decoded_v = (int32_t) decoded_wide;
-                            value.count = decoded_v;
-                        }
-                        report->widened++;
-                        break;
-                    }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    else if ( width > 0 && width < 64 )
-                    {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                    }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->clamped++; }
-                    if ( decoded_wide > 100ll ) { decoded_wide = 100ll; report->clamped++; }
-                    int32_t decoded_v = (int32_t) decoded_wide;
-                    value.count = decoded_v;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-            {
-                const int64_t unknown_at = r.offset;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)
-            }
-                break;
         }
     }
 }

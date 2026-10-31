@@ -1808,7 +1808,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("            // table's is the ROOT body's alone, on the numbering's own\n")
 	g.pf("            // rule — a second numbering cannot exist — and the BUILD\n")
 	g.pf("            // VERSION's rides in the announcement and nowhere else. That\n")
-	g.pf("            // body stops and the parent reads on past its L.\n")
+	g.pf("            // is damage, and damage discards the whole load (§4).\n")
 	g.pf("            r.report->malformed = true;\n")
 	g.pf("            return false;\n        }\n")
 	if len(st.Fields) > 0 {
@@ -1950,17 +1950,23 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("    TableReader r( buffer + 1, body_bytes, to, &table );\n")
 	g.pf("    r.nested = false; // the ROOT body, the one that may carry a node table\n")
 	g.pf("    const int32_t non_finite_before = to->non_finite_floats;\n")
+	g.pf("    const bool malformed_before = to->malformed;\n")
+	g.pf("    to->malformed = false;\n")
 	g.pf("    const bool whole = %sLoadBody( r, value );\n", st.Name)
 	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
 	// any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing lands.
-	g.pf("    if ( TableNonFiniteRefused( to, non_finite_before ) ) { %sReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)\n", st.Name)
-	g.pf("    if ( !whole ) { return TableOpenBodyStopped; }\n")
+	g.pf("    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; %sReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)\n", st.Name)
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
+	// walk decoded is handed back, and the verdict is the damage.
+	g.pf("    if ( to->malformed ) { %sReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)\n", st.Name)
+	g.pf("    to->malformed = malformed_before;\n")
+	g.pf("    if ( !whole ) { %sReset( value ); return TableOpenBodyStopped; }\n", st.Name)
 	g.pf("    return TableOpenOk;\n}\n\n")
 	g.pf("// %sLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps\n", st.Name)
-	g.pf("// the recovered value and its report, counting clamped, kind_mismatch and\n")
-	g.pf("// malformed, and answers the plain name's BASE behaviour — true when the\n")
-	g.pf("// body reached its own terminator, false for a refusal, an unreadable table\n")
-	g.pf("// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).\n")
+	g.pf("// the value and its report, counting clamped and kind_mismatch, and answers\n")
+	g.pf("// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or\n")
+	g.pf("// any damage answers false, malformed is set for damage, and the value is\n")
+	g.pf("// reset to its declared defaults.\n")
 	g.pf("inline bool %sLoadTolerant( %s & value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    return %sLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;\n}\n\n", st.Name)
 	g.pf("// The PLAIN %sLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it\n", st.Name)
@@ -2120,7 +2126,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	case f.Type.Kind == ir.TString:
 		g.pf("%suint64_t len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
-		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared\n%s// default, one malformed counts, and the parent reads on past L\n", ind, ind)
+		g.pf("%s// ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage\n%s// discards the whole load\n", ind, ind)
 		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, len ) )\n%s{\n", ind, ind)
 		g.pf("%s    r.report->malformed = true;\n", ind)
 		savedIndent := g.indent
@@ -2184,9 +2190,9 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    uint64_t keep = count;\n", ind)
 		g.pf("%s    if ( keep > %d ) { keep = %d; r.report->clamped++; }\n", ind, bound, bound)
 		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)
-		g.pf("%s    // cannot cover keeps the decoded prefix, flags malformed, and\n", ind)
-		g.pf("%s    // the parent continues at the next field — following fields'\n", ind)
-		g.pf("%s    // bytes are never fabricated into elements\n", ind)
+		g.pf("%s    // cannot cover is damage, which discards the whole load (§4), and\n", ind)
+		g.pf("%s    // the following fields' bytes are never fabricated into\n", ind)
+		g.pf("%s    // elements\n", ind)
 		g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 		if counted {
 			g.pf("%s    uint64_t decoded = 0;\n", ind)
@@ -2272,8 +2278,8 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 }
 
 // emitTableReadElement decodes one array element from the field-body
-// sub-reader; truncation keeps the decoded prefix and flags malformed
-// without stopping the parent decode.
+// sub-reader; truncation is damage, flags malformed, and the load that meets
+// it is discarded whole (docs/SPEC-TABLES.md §4).
 func (g *tableGen) emitTableReadElement(f *ir.Field, kind int, ind string) {
 	g.emitTableReadElementInto(f, kind, fmt.Sprintf("value.%s[(int32_t) i]", f.Name), ind, "sub", "")
 }

@@ -125,7 +125,8 @@ public final class TableCookWrite {
     // value-initialized record, every reference null.
     private static boolean absentRecord(Object value, TableCookFieldInfo f)
             throws ReflectiveOperationException {
-        return f.presentOffset >= 0 && f.storage == TableCookStorage.RECORD
+        return f.presentOffset >= 0
+                && f.storage == TableCookStorage.RECORD
                 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"));
     }
 

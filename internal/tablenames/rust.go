@@ -49,6 +49,13 @@ func init() {
 		Name{Name: "TableFixedHashAt", What: "the fixed form's pinned header: the layout hash at offset 8 (§3)", RustConst: true},
 		Name{Name: "TableFixedTag", What: "a union tag read at its OWN width, which is what keeps a foreign 0x0101 from firing arm 1", Scoped: true},
 		Name{Name: "TableUtf8Valid", What: "§3's one content rule for a string(N): well-formed UTF-8 with no zero among the used bytes", Scoped: true},
+		// THE KEYED ARRAY'S ACCESSOR (docs/PORTING.md M5, docs/SPEC-TABLES.md
+		// §2.3), in table_enums.rs beside the enums that key it.
+		Name{Name: "TableKeySlot", What: "the slot a key owns in a keyed array: key 1 in slot 0, E.Max in the last, None and past E.Max refused by one unsigned compare"},
+		Name{Name: "TableKeyRefused", What: "the keyed accessor's refusal, a panic naming the key"},
+		Name{Name: "TableKeyed", What: "a keyed array's slot by key, refused at both ends"},
+		Name{Name: "TableKeyedMut", What: "a keyed array's slot by key, to write, refused at both ends"},
+		Name{Name: "TableKeyedIter", What: "a keyed array's slots beside the keys that own them"},
 		Name{Name: "TableU128", What: "an unsigned 128-bit ROW SLOT, sixteen bytes aligned SIXTEEN on every target — Rust's own u128 takes the target's C alignment, which is eight on s390x"},
 		Name{Name: "TableI128", What: "a signed 128-bit ROW SLOT, sixteen bytes aligned SIXTEEN on every target"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
@@ -62,6 +69,8 @@ func init() {
 		Name{Name: "TableMessageVocabularyFieldId", What: "the reserved id the announcement's vocabulary field rides under (§3.3)", RustConst: true},
 		Name{Name: "TableMessageMaxBytes", What: "the announcement's conforming byte bound (§3.3)", RustConst: true},
 		Name{Name: "TableReason", What: "the message form's refusal reasons, each one by name"},
+		Name{Name: "TableFiniteF32", What: "the raw-bits test every read runs before a float32's bits become a value (§3.3)", Scoped: true},
+		Name{Name: "TableFiniteF64", What: "the raw-bits test every read runs before a float64's bits become a value (§3.3)", Scoped: true},
 		// THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3): the bit stream,
 		// the batch bound and the writer's reference width, and the shared
 		// walkers every <base>_message.rs body calls.
@@ -74,7 +83,6 @@ func init() {
 		Name{Name: "TableMessageValueBits", What: "the bits one value of an announced entry takes on a body (§3.3)", Scoped: true},
 		Name{Name: "TableMessageCount", What: "an array's or a text's count read at its announced range (§3.3)", Scoped: true},
 		Name{Name: "TableMessageWidens", What: "the widening ladder on a batch read (§4)", Scoped: true},
-		Name{Name: "TableMessageWidenF32", What: "a float32 widened into a float64 bit-exactly, NaN payload included (§4)", Scoped: true},
 		Name{Name: "TableMessageUtf8", What: "§3's content rule for a string on a body: well-formed UTF-8 with no zero", Scoped: true},
 		Name{Name: "TableMessageUtf8Clamp", What: "a UTF-8 clamp that never cuts a character (§4)", Scoped: true},
 		Name{Name: "TableMessageSigned", What: "an endpoint's value sign-extended from its announced kind (§3.3)", Scoped: true},
@@ -97,7 +105,8 @@ func init() {
 		Name{Name: "TableKindWidth", What: "a fixed-width kind's payload size (§3)", Scoped: true},
 		Name{Name: "TableKindWidens", What: "the widening ladder: a narrower kind decoded exactly into a wider declaration (§4)", Scoped: true},
 		Name{Name: "TableScalarRead", What: "one scalar read at its kind's own width (§3, §4)", Scoped: true},
-		Name{Name: "TableWidenF32", What: "a float32 widened into a float64 bit-exactly, NaN payload included (§4)", Scoped: true},
+		Name{Name: "TableRetainedFloatFinite", What: "the finite rule on a retained unknown of a float kind, tested on its raw bits like a known field (§3.3, §6.6)", Scoped: true},
+		Name{Name: "TableFloatRefuse", What: "the writer's finite rule: a NaN or an infinity is the save's refusal by name, non_finite_float (§3.3)", Scoped: true},
 		Name{Name: "TableRetainDepthCap", What: "the retain walk's nesting cap (§6.6)", RustConst: true},
 		Name{Name: "TableDesc", What: "one table's descriptor in the card descriptors (§8.1)"},
 		Name{Name: "TableFieldDesc", What: "one field's descriptor in the card descriptors (§8.1)"},

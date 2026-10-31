@@ -4089,7 +4089,14 @@ namespace tabledemo {
 
 bool WeaponConfigFromJsonTolerant( WeaponConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, WeaponConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, WeaponConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; WeaponConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool WeaponConfigFromJson( WeaponConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4122,7 +4129,14 @@ int64_t WeaponConfigToJson( const WeaponConfig & value, char * buffer, int64_t c
 
 bool LoadoutConfigFromJsonTolerant( LoadoutConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, LoadoutConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, LoadoutConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; LoadoutConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool LoadoutConfigFromJson( LoadoutConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4155,7 +4169,14 @@ int64_t LoadoutConfigToJson( const LoadoutConfig & value, char * buffer, int64_t
 
 bool ProfileConfigFromJsonTolerant( ProfileConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ProfileConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ProfileConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ProfileConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ProfileConfigFromJson( ProfileConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4188,7 +4209,14 @@ int64_t ProfileConfigToJson( const ProfileConfig & value, char * buffer, int64_t
 
 bool RootConfigFromJsonTolerant( RootConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RootConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RootConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RootConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RootConfigFromJson( RootConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4221,7 +4249,14 @@ int64_t RootConfigToJson( const RootConfig & value, char * buffer, int64_t capac
 
 bool AttachmentFromJsonTolerant( Attachment & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, AttachmentTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, AttachmentTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; AttachmentTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool AttachmentFromJson( Attachment & value, const char * text, int64_t bytes, TableReport * report )
@@ -4254,7 +4289,14 @@ int64_t AttachmentToJson( const Attachment & value, char * buffer, int64_t capac
 
 bool BuffFromJsonTolerant( Buff & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, BuffTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, BuffTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; BuffTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool BuffFromJson( Buff & value, const char * text, int64_t bytes, TableReport * report )
@@ -4287,7 +4329,14 @@ int64_t BuffToJson( const Buff & value, char * buffer, int64_t capacity )
 
 bool DebuffFromJsonTolerant( Debuff & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, DebuffTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, DebuffTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; DebuffTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool DebuffFromJson( Debuff & value, const char * text, int64_t bytes, TableReport * report )

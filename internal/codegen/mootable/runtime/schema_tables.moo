@@ -182,4 +182,67 @@ function S.find(name: string): any
 	return registry[name]
 end
 
+-- THE KEYED ACCESSOR (docs/PORTING.md M5; docs/SPEC-TABLES.md §2.4). An
+-- enum-keyed array is a plain 1-based array with key k at index k, so a bare
+-- `array[key]` answers nil at both ends; the refusal lives here, in one place.
+-- keyed(table, field) answers { max, get, set, each, key }: get and set take
+-- an integer check and ONE range check of key against 1..E.Max, so None, a
+-- negative or non-integer key and any key past Max are refused by name
+-- (keyed_refused) in every build; each yields the key beside the element;
+-- key(name) is the key of a variant name.
+function S.keyed(tableName: string, fieldName: string): any
+	local d = S.lookup(tableName)
+	local fd: any = nil
+	for _, f in d.fields do
+		if f.name == fieldName then
+			fd = f
+			break
+		end
+	end
+	if fd == nil or fd.array ~= "keyed" then
+		error("schema: keyed_refused: " .. tableName .. "." .. fieldName .. " is not an enum-keyed array", 2)
+	end
+	local n: number = fd.bound
+	local names: { [string]: number } = {}
+	for i, kv in fd.keyvs do
+		names[kv[1]] = i
+	end
+	local function refuse(key: any)
+		error("schema: keyed_refused: key " .. tostring(key) .. " of " .. tableName .. "." .. fieldName .. " is not in 1.." .. n, 3)
+	end
+	local function check(key: any)
+		if type(key) ~= "number" or key // 1 ~= key or not (key >= 1 and key <= n) then
+			refuse(key)
+		end
+	end
+	local acc: any = {}
+	acc.max = n
+	function acc.get(array: { any }, key: number): any
+		check(key)
+		return array[key]
+	end
+	function acc.set(array: { any }, key: number, value: any)
+		check(key)
+		array[key] = value
+	end
+	function acc.each(array: { any }): () -> (number?, any)
+		local key = 0
+		return function()
+			key += 1
+			if key > n then
+				return nil, nil
+			end
+			return key, array[key]
+		end
+	end
+	function acc.key(name: string): number
+		local key = names[name]
+		if key == nil then
+			refuse(name)
+		end
+		return key :: number
+	end
+	return table.freeze(acc)
+end
+
 return table.freeze(S)

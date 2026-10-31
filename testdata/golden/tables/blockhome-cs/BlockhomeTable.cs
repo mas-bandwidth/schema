@@ -3645,17 +3645,17 @@ namespace Blockhome
                 if (!f.Optional && f.Counted) { return f.GetCount(value) != 0; }
                 return Rides(value, f);
             }
-            static void MessageBody(ref BitWriter w, object value, TableTypeInfo type, Graph graph, int indexBits)
+            static void MessageBody(ref BitWriter w, object value, TableTypeInfo type)
             {
                 foreach (TableFieldInfo f in type.Fields)
                 {
                     if (!MessageRides(value, f)) { continue; }
                     w.Put((uint)f.MessageSlot, tableOwnVocabulary.RefBits);
-                    MessageField(ref w, value, f, tableOwnVocabulary.Entries[f.MessageSlot - 1].Shape, graph, indexBits);
+                    MessageField(ref w, value, f, tableOwnVocabulary.Entries[f.MessageSlot - 1].Shape);
                 }
                 w.Put(0, tableOwnVocabulary.RefBits);
             }
-            static void MessageField(ref BitWriter w, object value, TableFieldInfo f, TableMessageShape shape, Graph graph, int indexBits)
+            static void MessageField(ref BitWriter w, object value, TableFieldInfo f, TableMessageShape shape)
             {
                 if (f.IsArray)
                 {
@@ -3666,7 +3666,7 @@ namespace Blockhome
                     for (int i = 0; i < count; i++)
                     {
                         if (f.KeyId != null) { if (DefaultElement(value, f, i)) { continue; } w.Put(NameSlot(f.KeyId((ulong)i + 1)), tableOwnVocabulary.RefBits); }
-                        MessageElement(ref w, value, f, i, shape.Inner, graph, indexBits);
+                        MessageElement(ref w, value, f, i, shape.Inner);
                     }
                 }
                 else if (f.Kind == 12)
@@ -3674,19 +3674,18 @@ namespace Blockhome
                     int count = Count(value, f); w.Put((uint)count, BitCount(shape.Max));
                     w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count));
                 }
-                else { MessageElement(ref w, value, f, 0, shape, graph, indexBits); }
+                else { MessageElement(ref w, value, f, 0, shape); }
             }
-            static void MessageElement(ref BitWriter w, object value, TableFieldInfo f, int i, TableMessageShape shape, Graph graph, int indexBits)
+            static void MessageElement(ref BitWriter w, object value, TableFieldInfo f, int i, TableMessageShape shape)
             {
-                if (f.Kind == 13) { MessageBody(ref w, f.GetChild(value, i), f.Table, graph, indexBits); return; }
-                if (f.Kind == 17) { w.Put(graph.Index(f.GetChild(value, i)), indexBits); return; }
+                if (f.Kind == 13) { MessageBody(ref w, f.GetChild(value, i), f.Table); return; }
                 if (f.Kind == 30) { ulong raw = f.GetRaw(value, i); w.Put(raw == 0 ? 0 : NameSlot(f.VariantId(raw)), tableOwnVocabulary.RefBits); return; }
                 if (f.Kind == 15)
                 {
                     object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
                     if (tag == 0) { w.Put(0, tableOwnVocabulary.RefBits); return; }
                     var arm = f.Arms.Arms[(int)tag]; w.Put((uint)arm.MessageSlot, tableOwnVocabulary.RefBits);
-                    if (arm.Field != null) { MessageField(ref w, union, arm.Field, tableOwnVocabulary.Entries[arm.MessageSlot - 1].Shape, graph, indexBits); }
+                    if (arm.Field != null) { MessageField(ref w, union, arm.Field, tableOwnVocabulary.Entries[arm.MessageSlot - 1].Shape); }
                     return;
                 }
                 UInt128 bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
@@ -3702,43 +3701,28 @@ namespace Blockhome
             }
             public static long MessageSave(object[] values, TableTypeInfo type, Span<byte> bytes, bool measure)
             {
-                if (values.Length < 1 || values.Length > 256) { return -1; }
-                // Validate the graph and every enum/tag before touching the output.
-                Graph[] graphs = type.Variable ? new Graph[values.Length] : null;
+                // Only a fixed table rides the message form (docs/SPEC-TABLES.md §3.3).
+                if (values.Length < 1 || values.Length > 256 || type.Variable) { return -1; }
+                // Validate every enum and tag before touching the output.
                 Span<ulong> storage = stackalloc ulong[tableOwnVocabulary.Count];
                 for (int i = 0; i < values.Length; i++)
                 {
                     if (values[i] == null) { return -1; }
-                    if (type.Variable) { graphs[i] = Number(values[i], type); if (graphs[i] == null) { return -1; } }
-                    Ids ids = new Ids(storage) { Graph = graphs == null ? null : graphs[i] };
-                    if (!Collect(values[i], type, ref ids) || !CollectNodes(ref ids)) { return -1; }
+                    Ids ids = new Ids(storage);
+                    if (!Collect(values[i], type, ref ids)) { return -1; }
                 }
                 BitWriter probe = new BitWriter(Span<byte>.Empty, true);
-                MessageBatch(ref probe, values, type, graphs);
+                MessageBatch(ref probe, values, type);
                 long size = (probe.At + 7) / 8;
                 if (measure) { return size; }
                 if (size > bytes.Length) { return -1; }
                 bytes.Slice(0, (int)size).Clear(); BitWriter writer = new BitWriter(bytes, false);
-                MessageBatch(ref writer, values, type, graphs); return size;
+                MessageBatch(ref writer, values, type); return size;
             }
-            static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type, Graph[] graphs)
+            static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type)
             {
                 w.Put(2, 8); w.Put((uint)(values.Length - 1), 8);
-                for (int i = 0; i < values.Length; i++)
-                {
-                    Graph graph = graphs == null ? null : graphs[i]; int indices = BitCount((ulong)(graph == null ? 1 : graph.Nodes.Count + 1));
-                    if (graph != null && graph.Nodes.Count > 0)
-                    {
-                        w.Put(NameSlot(ulong.MaxValue), tableOwnVocabulary.RefBits); w.Put((uint)graph.Nodes.Count, 32);
-                        foreach (Node node in graph.Nodes)
-                        {
-                            w.Put(NameSlot(node.TypeId), tableOwnVocabulary.RefBits);
-                            if (node.BlobKind != 0) { byte[] data = ((TableBlob)node.Value).Data; w.Put((uint)data.Length, 32); w.Align(); w.Raw(data); }
-                            else { MessageBody(ref w, node.Value, node.Type, graph, indices); }
-                        }
-                    }
-                    MessageBody(ref w, values[i], type, graph, indices);
-                }
+                for (int i = 0; i < values.Length; i++) { MessageBody(ref w, values[i], type); }
                 w.Align();
             }
 
@@ -3746,8 +3730,6 @@ namespace Blockhome
             {
                 public TableVocabulary Vocabulary;
                 public TableReport Report;
-                public Graph Graph;
-                public int IndexBits;
             }
             static bool MessageReference(ref BitReader r, MessageRead d, out ulong reference, out TableMessageEntry entry)
             {
@@ -3785,7 +3767,7 @@ namespace Blockhome
                         if (!MessageReference(ref r, d, out ulong arm, out TableMessageEntry ae)) { return false; }
                         return arm == 0 || !Reserved(ae.Id) && ae.Kind != 0 && MessageSkip(ref r, d, ae.Kind, ae.Shape, depth + 1);
                     case 13: return MessageSkipBody(ref r, d, depth + 1);
-                    case 17: return d.IndexBits > 0 && r.Skip(d.IndexBits);
+                    case 17: return false; // a node reference: no fixed body holds one
                     case 12:
                         if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
                         return r.Skip((long)length * (kind == 12 ? 8 : 16));
@@ -3808,62 +3790,6 @@ namespace Blockhome
                         return true;
                     default: return MessageKind(kind) && r.Skip(ValueBits(kind, shape));
                 }
-            }
-            sealed class MessageRecord
-            {
-                public ulong Id;
-                public long Start, End;
-                public bool Blob;
-            }
-            static bool MessageNodes(ref BitReader r, ref MessageRead d, object value, TableTypeInfo type)
-            {
-                d.Graph = new Graph { Root = value, RootType = type }; d.IndexBits = 1;
-                long before = r.At;
-                if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
-                if (reference == 0 || entry.Id != ulong.MaxValue) { r.At = before; return true; }
-                if (!r.Get(32, out UInt128 rawCount)) { return false; }
-                ulong count = (ulong)rawCount; d.IndexBits = BitCount(count + 1);
-                var records = new System.Collections.Generic.List<MessageRecord>();
-                for (ulong i = 0; i < count; i++)
-                {
-                    if (!MessageName(ref r, d, out _, out TableMessageEntry named)) { return false; }
-                    var rec = new MessageRecord { Id = named.Id, Start = r.At, Blob = named.Id == BytesTypeId || named.Id == StringTypeId };
-                    if (rec.Blob)
-                    {
-                        if (!r.Get(32, out UInt128 length) || !r.Align()) { return false; }
-                        rec.Start = r.At;
-                        if (!r.Skip((long)length * 8)) { return false; }
-                    }
-                    else if (!MessageSkipBody(ref r, d)) { return false; }
-                    rec.End = r.At; records.Add(rec);
-                }
-                TableTypeInfo[] placeable = type.PointerTypes();
-                foreach (MessageRecord rec in records)
-                {
-                    Node node = new Node { TypeId = rec.Id }; d.Graph.Nodes.Add(node);
-                    if (rec.Blob)
-                    {
-                        if (rec.Id == BytesTypeId && type.BytesEdge || rec.Id == StringTypeId && type.StringEdge)
-                        {
-                            ReadOnlySpan<byte> text = r.Bytes.Slice((int)(rec.Start / 8), (int)((rec.End - rec.Start) / 8));
-                            if (rec.Id == StringTypeId && !TextValid(text)) { return false; }
-                            node.BlobKind = rec.Id == StringTypeId ? (byte)12 : (byte)14; node.Value = new TableBlob(text.ToArray());
-                        }
-                    }
-                    else
-                    {
-                        foreach (TableTypeInfo candidate in placeable)
-                        { if (candidate.Id == rec.Id) { node.Type = candidate; node.Value = candidate.Create(); break; } }
-                    }
-                    if (node.Value == null) { d.Report.Unknown++; }
-                }
-                for (int i = 0; i < records.Count; i++)
-                {
-                    Node node = d.Graph.Nodes[i]; if (node.Type == null) { continue; }
-                    BitReader body = r; body.At = records[i].Start; body.End = records[i].End;
-                    if (!MessageReadBody(ref body, d, node.Value, node.Type)) { return false; }
-                }
-                return true;
             }
             static bool MessageCompatible(TableMessageEntry entry, TableFieldInfo f, out bool widened)
             {
@@ -3892,7 +3818,6 @@ namespace Blockhome
             }
             static bool MessageReadField(ref BitReader r, MessageRead d, object value, TableFieldInfo f, byte kind, TableMessageShape shape, int depth = 0)
             {
-                if (f.Map) { return MessageReadMap(ref r, d, value, f, shape, depth); }
                 if (f.IsArray && f.GetBuffer != null)
                 {
                     if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || !r.Align()) { return false; }
@@ -3927,7 +3852,6 @@ namespace Blockhome
                         return true;
                     }
                     int run = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : -1;
-                    if (f.Dynamic && (n > int.MaxValue || run != 0 && n > (ulong)((r.End - r.At) / Math.Max(1, run)))) { return false; }
                     int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
                     if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
                     int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
@@ -3938,7 +3862,6 @@ namespace Blockhome
                     ulong walk = run >= 0 && !tested ? (ulong)kept : n;
                     for (ulong i = 0; i < walk; i++)
                     {
-                        if (f.Dynamic && value != null) { f.EnsureCount(value, (int)i + 1); }
                         if (!MessageReadElement(ref r, d, value, f, (int)i, shape.Elem, shape.Inner, i < (ulong)kept, depth)) { return false; }
                     }
                     if (walk < n && !r.Skip((long)(n - walk) * run)) { return false; }
@@ -3954,13 +3877,6 @@ namespace Blockhome
                 keep = keep && value != null;
                 if (kind == 13)
                 { return MessageReadBody(ref r, d, keep ? f.GetChild(value, index) : null, f.Table, depth + 1); }
-                if (kind == 17)
-                {
-                    if (d.IndexBits == 0 || !r.Get(d.IndexBits, out UInt128 raw)) { return false; }
-                    object node = d.Graph.Resolve((ulong)raw, f, d.Report);
-                    if (keep) { f.SetChild(value, index, node); }
-                    return true;
-                }
                 if (kind == 30)
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry) || reference != 0 && (entry.Kind != 0 || Reserved(entry.Id))) { return false; }
@@ -4047,66 +3963,6 @@ namespace Blockhome
                 }
                 return true;
             }
-            static bool MessageMapKey(ref BitReader r, MessageRead d, TableFieldInfo keyField, out MapKey key, out bool mismatch, out bool widened, int depth = 0)
-            {
-                if (depth > 128) { key = default; mismatch = false; widened = false; return false; }
-                key = new MapKey { Text = Array.Empty<byte>() }; mismatch = false; widened = false;
-                for (; ; )
-                {
-                    if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
-                    if (reference == 0) { return true; }
-                    if (Reserved(entry.Id)) { return false; }
-                    if (entry.Id != keyField.Id) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
-                    mismatch = entry.Kind != keyField.Kind && !Widen(entry.Kind, keyField.Kind);
-                    widened = keyField.Kind != 12 && entry.Kind != keyField.Kind;
-                    if (mismatch) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
-                    if (keyField.Kind == 12)
-                    {
-                        if (!r.Get(BitCount(entry.Shape.Max), out UInt128 n) || !r.Align() || n > (UInt128)((r.End - r.At) / 8)) { return false; }
-                        key.Text = r.Bytes.Slice((int)(r.At / 8), (int)n).ToArray(); r.At += (long)n * 8;
-                    }
-                    else
-                    {
-                        int width = ValueBits(entry.Kind, entry.Shape);
-                        if (!r.Get(width, out UInt128 raw)) { return false; }
-                        if (entry.Shape.Packing == 1) { raw = unchecked(raw + entry.Shape.Base); }
-                        else if (keyField.Kind >= 2 && keyField.Kind <= 5 && width > 0 && width < 128)
-                        { raw = unchecked((UInt128)((Int128)(raw << (128 - width)) >> (128 - width))); }
-                        int destination = Width(keyField.Kind) * 8;
-                        key.Raw = keyField.Kind >= 2 && keyField.Kind <= 5 ? unchecked((ulong)(long)((Int128)(raw << (128 - destination)) >> (128 - destination))) : (ulong)raw & (destination == 64 ? ulong.MaxValue : (1ul << destination) - 1);
-                    }
-                }
-            }
-            static bool MessageReadMap(ref BitReader r, MessageRead d, object value, TableFieldInfo f, TableMessageShape shape, int depth = 0)
-            {
-                if (depth + 1 > 128) { return false; }
-                if (!r.Get(BitCount(shape.Max - shape.Min), out UInt128 raw) || raw + shape.Min > int.MaxValue) { return false; }
-                ulong count = (ulong)raw + shape.Min; if (value != null) { f.ResetField(value); }
-                int landed = 0; bool widened = false; MapKey last = default; TableFieldInfo keyField = f.Table.Fields[0];
-                for (ulong i = 0; i < count; i++)
-                {
-                    BitReader scan = r;
-                    if (!MessageMapKey(ref scan, d, keyField, out MapKey key, out bool mismatch, out bool entryWidened, depth + 1)) { return false; }
-                    if (entryWidened && !widened) { widened = true; d.Report.Widened++; }
-                    if (mismatch)
-                    {
-                        d.Report.KindMismatch++; if (value != null) { f.ResetField(value); }
-                        r = scan;
-                        for (ulong j = i + 1; j < count; j++) { if (!MessageSkipBody(ref r, d, depth + 1)) { return false; } }
-                        return true;
-                    }
-                    if (keyField.Kind == 12 && key.Text.Length > keyField.ArrayBound) { d.Report.Clamped++; r = scan; continue; }
-                    int order = landed == 0 ? -1 : KeyOrder(last, key, keyField);
-                    if (order > 0) { return false; }
-                    int slot = order == 0 ? landed - 1 : landed;
-                    if (order == 0) { d.Report.Duplicate++; } else { landed++; }
-                    object entry = null;
-                    if (value != null) { f.EnsureCount(value, landed); f.SetCount(value, landed); entry = f.Table.Create(); f.SetChild(value, slot, entry); }
-                    if (!MessageReadBody(ref r, d, entry, f.Table, depth + 1) || r.At != scan.At) { return false; }
-                    last = key;
-                }
-                return true;
-            }
             public static int MessageCount(ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report)
             {
                 if (bytes.Length == 0) { Damage(report); return 0; }
@@ -4127,7 +3983,7 @@ namespace Blockhome
                 {
                     object value = values[count]; type.Reset(value);
                     var d = new MessageRead { Vocabulary = vocabulary, Report = report };
-                    bool good = !(type.Variable && !MessageNodes(ref r, ref d, value, type) || !MessageReadBody(ref r, d, value, type));
+                    bool good = MessageReadBody(ref r, d, value, type);
                     // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
                     // §3.3), outranking damage met after it: no body is delivered.
                     if (NonFiniteRefused(report))
@@ -4136,113 +3992,6 @@ namespace Blockhome
                 }
                 if (!r.Align() || r.At != r.End) { Damage(report); return Finish(report, Verdict.Damaged); }
                 return Finish(report, Verdict.Ok);
-            }
-
-            // depth is the same counter MessageSkip uses (docs/SPEC-TABLES.md
-            // message_skip_depth). Callers that omit it start at 0. An unknown field
-            // is skipped at this depth. A nested body, a union arm and a walked
-            // element go one deeper, so an array element that is itself a body is
-            // two deeper. The remaining-byte floor below is a count bound, not this
-            // counter. depth > 128 is malformed; 128 itself still measures.
-            static bool MessageExtentBody(ref BitReader r, MessageRead d, TableTypeInfo type, ref long extent, int depth = 0)
-            {
-                if (depth > 128) { return false; }
-                for (; ; )
-                {
-                    if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
-                    if (reference == 0) { return true; }
-                    TableFieldInfo field = null;
-                    if (type != null)
-                    { field = FindField(type, entry.Id); if (field != null && !MessageCompatible(entry, field, out _)) { field = null; } }
-                    if (field == null) { if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } }
-                    else if (!MessageExtentField(ref r, d, field, entry.Kind, entry.Shape, ref extent, depth)) { return false; }
-                }
-            }
-            static bool MessageExtentField(ref BitReader r, MessageRead d, TableFieldInfo field, byte kind, TableMessageShape shape, ref long extent, int depth = 0)
-            {
-                if (depth > 128) { return false; }
-                if (kind == 13) { return MessageExtentBody(ref r, d, field.Table, ref extent, depth + 1); }
-                if (kind == 15)
-                {
-                    if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
-                    if (reference == 0) { return true; }
-                    if (entry.Kind == 0 || Reserved(entry.Id)) { return false; }
-                    int tag = FindVariant(field, entry.Id, false);
-                    TableFieldInfo arm = tag == 0 ? null : field.Arms.Arms[tag].Field;
-                    if (arm == null || !MessageCompatible(entry, arm, out _)) { return MessageSkip(ref r, d, entry.Kind, entry.Shape, depth + 1); }
-                    return MessageExtentField(ref r, d, arm, entry.Kind, entry.Shape, ref extent, depth + 1);
-                }
-                if ((kind == 14 || kind == 16) && (shape.Elem == field.Kind || Widen(shape.Elem, field.Kind)))
-                {
-                    ulong min = kind == 16 ? 0 : shape.Min;
-                    if (!r.Get(BitCount(shape.Max - min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
-                    ulong n = (ulong)raw + min;
-                    if (field.Dynamic)
-                    {
-                        int floor = Width(shape.Elem) != 0 ? ValueBits(shape.Elem, shape.Inner) : 1;
-                        if (n > int.MaxValue || floor > 0 && n > (ulong)((r.End - r.At) / floor)) { return false; }
-                        extent = Align(extent, field.StorageAlign) + (long)n * field.StorageSize;
-                    }
-                    if (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32)
-                    { return r.Skip((long)n * (ValueBits(shape.Elem, shape.Inner) + (kind == 16 ? d.Vocabulary.RefBits : 0))); }
-                    for (ulong i = 0; i < n; i++)
-                    {
-                        if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
-                        if (shape.Elem == 13) { if (!MessageExtentBody(ref r, d, field.Table, ref extent, depth + 2)) { return false; } }
-                        else if (shape.Elem == 15) { if (!MessageExtentField(ref r, d, field, 15, shape.Inner, ref extent, depth + 1)) { return false; } }
-                        else if (shape.Elem == 17 || shape.Elem == 30) { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
-                        else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
-                    }
-                    return true;
-                }
-                return MessageSkip(ref r, d, kind, shape, depth);
-            }
-            // Frame one body without constructing its values. The root follows the
-            // node records on the wire but precedes them in the region.
-            static bool MessageFrame(ref BitReader r, ref MessageRead d, TableTypeInfo type, out long records, out long root, out int count, out long rootExtent, out long data, out bool complete)
-            {
-                records = root = 0; count = 0; rootExtent = data = 0; complete = false;
-                long before = r.At;
-                if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
-                if (reference != 0 && entry.Id == ulong.MaxValue)
-                { if (!r.Get(32, out UInt128 raw) || raw > int.MaxValue) { return false; } count = (int)raw; }
-                else { r.At = before; }
-                d.IndexBits = BitCount((ulong)count + 1); records = r.At;
-                for (int i = 0; i < count; i++)
-                {
-                    if (!MessageName(ref r, d, out _, out TableMessageEntry named)) { return false; }
-                    if (named.Id == BytesTypeId || named.Id == StringTypeId)
-                    {
-                        if (!r.Get(32, out UInt128 length) || !r.Align() || !r.Skip((long)length * 8)) { return false; }
-                        if (named.Id == BytesTypeId && type.BytesEdge || named.Id == StringTypeId && type.StringEdge)
-                        { data += Align(8 + (long)length + (named.Id == StringTypeId ? 1 : 0), type.RegionAlign); }
-                    }
-                    else
-                    {
-                        TableTypeInfo node = type.PointerType(named.Id); long extent = 0;
-                        if (!MessageExtentBody(ref r, d, node, ref extent)) { return false; }
-                        if (node != null) { data += Align(Align(node.StorageSize, type.RegionAlign) + extent, type.RegionAlign); }
-                    }
-                }
-                root = r.At; complete = MessageExtentBody(ref r, d, type, ref rootExtent);
-                data += Align(Align(type.StorageSize, type.RegionAlign) + rootExtent, type.RegionAlign);
-                return true;
-            }
-            public static long MessageLoadMeasure(TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary)
-            { return MessageLoadMeasureParts(type, bytes, vocabulary, out _, out _); }
-            public static long MessageLoadMeasureParts(TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, out long data, out long attribution)
-            {
-                data = attribution = 0;
-                if (vocabulary == null || !vocabulary.Announced || bytes.Length < 2 || bytes[0] != 2) { return -1; }
-                int bodies = bytes[1] + 1; BitReader r = new BitReader(bytes); r.At = 16;
-                var d = new MessageRead { Vocabulary = vocabulary };
-                for (int b = 0; b < bodies; b++)
-                {
-                    if (!MessageFrame(ref r, ref d, type, out _, out _, out int count, out _, out long size, out bool complete)) { return -1; }
-                    data += size; attribution += (count + 1L) * 16;
-                    if (!complete) { break; }
-                }
-                return data + attribution;
             }
 
             static bool NativeExtent(TableTypeInfo type)
@@ -5275,6 +5024,33 @@ namespace Blockhome
 
         public static class TableFixedWire
         {
+            // FLAT ELEMENT ARRAYS IN THE WIRE'S BYTE ORDER (docs/FIXED-FORM-ALGORITHM.md:
+            // every integer is little-endian; docs/PORTING.md M12). On a little-endian
+            // host the bulk copy IS the wire image, so it stays one copy; on a
+            // big-endian host every element's bytes are reversed after it. The two
+            // copies below are the only host-order reinterpretations of wire bytes in
+            // the fixed form, and each is followed by that swap.
+            public static void ReadLittle<T>(ReadOnlySpan<byte> src, Span<T> dst) where T : unmanaged
+            {
+                int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+                int n = Math.Min(src.Length / width, dst.Length);
+                MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+                if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
+            }
+            public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
+            {
+                int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+                MemoryMarshal.AsBytes(src).CopyTo(dst); /* byte order: swapped below on a big-endian host */
+                if (!BitConverter.IsLittleEndian) { ReverseEach(dst.Slice(0, src.Length * width), width); }
+            }
+            // Reverses each width-byte group of bytes in place: one element's host image
+            // to its little-endian image, and back.
+            public static void ReverseEach(Span<byte> bytes, int width)
+            {
+                if (width == 1) { return; }
+                for (int i = 0; i + width <= bytes.Length; i += width) { bytes.Slice(i, width).Reverse(); }
+            }
+
             public const byte Form = 3;
             public const int HeaderBytes = 16;
             public const int HashAt = 8;

@@ -20,7 +20,7 @@
 // run, and its nearest neighbour — the same pointered schema with the blob
 // pointer respelled a table pointer — must carry not one symbol of it. The two
 // RESERVED TYPE IDS are named on the absent side on purpose: they are compared against by the
-// retain and message paths in every pointered unit and stay whether or not the
+// retain path in every pointered unit and stay whether or not the
 // unit writes a blob, so a change that took them out with the thunks is red
 // here.
 package compiler
@@ -55,13 +55,11 @@ table Note
 }
 `
 
-// the three wide-text helpers and the four blob thunks, by name.
+// the three wide-text helpers and the two blob thunks, by name.
 var (
 	deadCppBlobSymbols = []string{
 		"TableBlobMeasureThunk",
 		"TableBlobSaveThunk",
-		"TableBlobMessageMeasureThunk",
-		"TableBlobMessageSaveThunk",
 	}
 )
 

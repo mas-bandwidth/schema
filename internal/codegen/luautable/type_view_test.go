@@ -157,7 +157,7 @@ table Root
 // §8.5). Moved when the table module began registering the unit's wire ids
 // (retainids.go, docs/SPEC-TABLES.md §6.6), a change to the module itself, and
 // when the announcement's tail lost its third blob id with wide text (§3.3).
-const wantTableDigest = "e17f3c62577c5165891b8479ad42633c2054d8f2e0cf082c26b0ecce3f3b3b20"
+const wantTableDigest = "41f89eb6bd8e2e89b396b4cee5d4391ac3f406c16b325f7193e587a53d3e68be"
 
 // declaredViewNames is every `type`, `union`, `enum` and `flags` the unit
 // declares, the set §8.2 says every one of has a view.

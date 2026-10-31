@@ -879,6 +879,10 @@ final class TableWireReader {
     if (data.length < 9) return 2;
     final count = readU64(data, data.length - 8);
     if (count < 0 || count > (data.length - 9) ~/ 8) return 2;
+    // THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+    // CHECK): a table above 4096 entries is malformed on the whole-wire rule,
+    // whatever the buffer would hold.
+    if (count > 4096) return 2;
     final start = data.length - 8 - count * 8;
     if (start < 1) return 2;
     final seen = <int>{};
@@ -4188,7 +4192,7 @@ int fixedTableWireMeasure(Uint8List data) {
   final r = TableWireReader(data, data.length);
   if (data.length < 9 || data[0] != 1) return 0;
   final idCount = readU64(data, data.length - 8);
-  if (idCount < 0 || idCount > (data.length - 9) ~/ 8) return 0;
+  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return 0;
   final idStart = data.length - 8 - idCount * 8;
   if (idStart < 1) return 0;
   final idSeen = <int>{};
@@ -4492,9 +4496,9 @@ String _jsonFloat(double v, bool single) {
 String _formatG(double value, int prec) {
   if (prec < 1) prec = 1;
   final bd = ByteData(8);
-  bd.setFloat64(0, value);
-  final hi = bd.getUint32(0);
-  final lo = bd.getUint32(4);
+  bd.setFloat64(0, value, Endian.big);
+  final hi = bd.getUint32(0, Endian.big);
+  final lo = bd.getUint32(4, Endian.big);
   final sign = (hi >> 31) != 0 ? '-' : '';
   final biased = (hi >> 20) & 0x7FF;
   var mant = (BigInt.from(hi & 0xFFFFF) << 32) | BigInt.from(lo);

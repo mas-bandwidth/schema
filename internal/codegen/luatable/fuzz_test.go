@@ -299,6 +299,14 @@ func luaFuzzVerdict(a luaFuzzAnswer, o luaFuzzOracle) string {
 	if o.noRoot {
 		return "the engine refused the root itself"
 	}
+	if o.counts.malformed && !a.refused {
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
+		// owes the refusal, and no counter or saved byte is compared
+		if !a.counts.malformed && a.loaded {
+			return fmt.Sprintf("the engine discards a damaged load: Lua says %+v, the engine says %+v", a.counts, o.counts)
+		}
+		return ""
+	}
 	if !a.loaded {
 		if !o.variable {
 			return "the Lua load returned no root for a FIXED root, which always loads"

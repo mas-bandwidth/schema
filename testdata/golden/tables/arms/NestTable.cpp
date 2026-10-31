@@ -4189,7 +4189,14 @@ bool TwigFromJsonTolerant( TwigBuilder & builder, const char * text, int64_t byt
 {
     Twig * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, TwigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, TwigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; TwigTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool TwigFromJson( TwigBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4226,7 +4233,14 @@ bool NestFromJsonTolerant( NestBuilder & builder, const char * text, int64_t byt
 {
     Nest * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, NestTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, NestTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; NestTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool NestFromJson( NestBuilder & builder, const char * text, int64_t bytes, TableReport * report )

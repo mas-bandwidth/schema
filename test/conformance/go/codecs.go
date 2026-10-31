@@ -381,6 +381,20 @@ var codecTable = []codec{
 	}, listdemo.ArmyToJSONMeasure, listdemo.ArmyToJSON, listdemo.ArmyCookMeasure, listdemo.ArmyCookFrom, func(r *listdemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
+	regionRow("listdemo", "Squad", listdemo.SquadLoadMeasure, listdemo.SquadLoadTolerant, listdemo.SquadMeasure, listdemo.SquadSave, func(text []byte, r *listdemo.TableReport) (*listdemo.Squad, []byte, bool) {
+		var b listdemo.SquadBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := listdemo.SquadFromJSONTolerant(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, listdemo.SquadToJSONMeasure, listdemo.SquadToJSON, listdemo.SquadCookMeasure, listdemo.SquadCookFrom, func(r *listdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
+	}),
 	regionRow("listdemo", "Save", listdemo.SaveLoadMeasure, listdemo.SaveLoadTolerant, listdemo.SaveMeasure, listdemo.SaveSave,
 		func(text []byte, r *listdemo.TableReport) (*listdemo.Save, []byte, bool) {
 			var b listdemo.SaveBuilder
@@ -688,6 +702,9 @@ var codecTable = []codec{
 	}),
 	row("tblk2", "Root", tblk2.RootReset, tblk2.RootLoadTolerant, tblk2.RootMeasure, tblk2.RootSave, tblk2.RootFromJSONTolerant, tblk2.RootToJSONMeasure, tblk2.RootToJSON, tblk2.RootCookMeasure, tblk2.RootCookFrom, func(r *tblk2.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblk2.TableOpenRefused || r.NonFiniteFloat != ""}
+	}),
+	row("listdemo", "Bounded", listdemo.BoundedReset, listdemo.BoundedLoadTolerant, listdemo.BoundedMeasure, listdemo.BoundedSave, listdemo.BoundedFromJSONTolerant, listdemo.BoundedToJSONMeasure, listdemo.BoundedToJSON, listdemo.BoundedCookMeasure, listdemo.BoundedCookFrom, func(r *listdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == listdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 	row("tblr1", "Cfg", tblr1.CfgReset, tblr1.CfgLoadTolerant, tblr1.CfgMeasure, tblr1.CfgSave, tblr1.CfgFromJSONTolerant, tblr1.CfgToJSONMeasure, tblr1.CfgToJSON, tblr1.CfgCookMeasure, tblr1.CfgCookFrom, func(r *tblr1.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == tblr1.TableOpenRefused || r.NonFiniteFloat != ""}

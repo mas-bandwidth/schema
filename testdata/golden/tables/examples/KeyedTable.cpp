@@ -4089,7 +4089,14 @@ namespace tabledemo {
 
 bool TeamConfigFromJsonTolerant( TeamConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TeamConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, TeamConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; TeamConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool TeamConfigFromJson( TeamConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4122,7 +4129,14 @@ int64_t TeamConfigToJson( const TeamConfig & value, char * buffer, int64_t capac
 
 bool GunnerConfigFromJsonTolerant( GunnerConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, GunnerConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, GunnerConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; GunnerConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool GunnerConfigFromJson( GunnerConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4155,7 +4169,14 @@ int64_t GunnerConfigToJson( const GunnerConfig & value, char * buffer, int64_t c
 
 bool TurretConfigFromJsonTolerant( TurretConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, TurretConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, TurretConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; TurretConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool TurretConfigFromJson( TurretConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4188,7 +4209,14 @@ int64_t TurretConfigToJson( const TurretConfig & value, char * buffer, int64_t c
 
 bool HullConfigFromJsonTolerant( HullConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, HullConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, HullConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; HullConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool HullConfigFromJson( HullConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4221,7 +4249,14 @@ int64_t HullConfigToJson( const HullConfig & value, char * buffer, int64_t capac
 
 bool KeyedConfigFromJsonTolerant( KeyedConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, KeyedConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, KeyedConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; KeyedConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool KeyedConfigFromJson( KeyedConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4254,7 +4289,14 @@ int64_t KeyedConfigToJson( const KeyedConfig & value, char * buffer, int64_t cap
 
 bool ScoreBoardFromJsonTolerant( ScoreBoard & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ScoreBoardTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ScoreBoardTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ScoreBoardTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ScoreBoardFromJson( ScoreBoard & value, const char * text, int64_t bytes, TableReport * report )

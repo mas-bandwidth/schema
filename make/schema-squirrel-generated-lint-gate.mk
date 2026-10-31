@@ -95,3 +95,9 @@ schema-squirrel-generated-lint-gate-negative-control: dist-squirrel generated/sq
 # The port's normal unit target includes the gate, as test-dart includes its
 # analyze and format pass.
 test-squirrel: schema-squirrel-generated-lint-gate
+
+# J4 (docs/PORTING.md) names each leg's clean gate tables-<lang>-clean: for
+# Squirrel it is this lint gate.
+.PHONY: tables-squirrel-clean
+tables-squirrel-clean: schema-squirrel-generated-lint-gate
+test-squirrel: tables-squirrel-clean

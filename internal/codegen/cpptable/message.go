@@ -23,7 +23,7 @@ import (
 // of it is settled by the compiler, so a walk would compute at run time what
 // the emitter already knows. Announce is a copy and AnnounceMeasure is a
 // constant.
-func tableMessageForm(u *ir.Unit, anyVariable bool) string {
+func tableMessageForm(u *ir.Unit) string {
 	announcement := ir.TableAnnouncement(u)
 	entries := ir.TableVocabulary(u)
 
@@ -71,21 +71,6 @@ static const int64_t kTableMessageEntriesHere = %d;
 
 `, ir.TableMessageRefBits(len(entries)), len(entries))
 
-	if anyVariable {
-		// THE NODE TABLE's OWN SLOT, in a unit that HAS a node table and in no
-		// other. The reserved node-table id rides in every unit's vocabulary,
-		// because every reader owes §3.1's refusal of it inside a nested body;
-		// the SLOT is the writer's half and only a pointered body ever names
-		// it, so a value-only unit carries none of it.
-		fmt.Fprintf(&b, `// The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
-// pointered body names the node table through it, and the node table is the
-// ROOT body's FIRST field because a pointer index's width is settled by the
-// node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = %d;
-
-`, slotOfName(entries, ir.TableNodeWireId))
-	}
-
 	b.WriteString(cppMessageRuntime)
 
 	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %d entries and %d bytes. It is an
@@ -131,17 +116,6 @@ inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
 	b.WriteString("};\n\n")
 	b.WriteString(cppMessageAnnounce)
 	return b.String()
-}
-
-// slotOfName is one kind-0 entry's slot, counted from 1.
-func slotOfName(entries []ir.TableVocabularyEntry, id uint64) uint64 {
-	want := ir.TableVocabularyEntry{Id: id}.Key()
-	for i, e := range entries {
-		if e.Key() == want {
-			return uint64(i + 1)
-		}
-	}
-	return 0
 }
 
 // cppMessageRuntime is the bit stream, the announced entry and the shape
@@ -1061,25 +1035,6 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
     }
 }
 
-// TableMessageNodeTableOpen reads the node table's opening when a body has
-// one: the reserved id's reference and the count at thirty-two raw bits. A
-// body whose first reference is anything else has no node table, and the
-// reader is left where it was. False is damage: a reference past E, or bits
-// that run out.
-inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & count )
-{
-    count = 0;
-    const int64_t at = r.offset;
-    uint64_t ref = 0;
-    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-    if ( ref == 0 ) { r.offset = at; return true; }
-    if ( ref > (uint64_t) vocabulary.count ) { return false; }
-    if ( TableVocabularyEntryAt( vocabulary, ref ).id != kTableNodeTableFieldId ) { r.offset = at; return true; }
-    uint64_t n = 0;
-    if ( !r.get( n, 32 ) ) { return false; }
-    count = (int64_t) n;
-    return true;
-}
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
 inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
@@ -1187,52 +1142,6 @@ inline bool TableMessageBatchClose( TableMessageBatchReader & br )
 {
     if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits ) { br.report->malformed = true; return false; }
     return true;
-}
-
-`
-
-// cppMessageNodeRuntime is the node table on the MESSAGE wire, over the
-// numbering the arena runtime declares: emitted after it, into a unit that has
-// pointers at all.
-const cppMessageNodeRuntime = `// ---- the NODE TABLE on the message wire (docs/SPEC-TABLES.md §3.1, §3.3) ----
-//
-// THE NODE TABLE, WHEN A BODY HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY: the
-// reserved id as a reference, the node count at THIRTY-TWO RAW BITS, then the
-// records back to back, each a type id reference and a body: a table's fields
-// end at their own zero reference, and a blob's body is a length, an align and
-// its bytes. A root
-// that reaches no node elides the field, like every other empty thing.
-//
-// Measure derives the numbering from the graph and save derives the same one,
-// and the two thunks stored at numbering time are what let one loop write a
-// table of mixed types.
-template <typename Ctx>
-inline int64_t TableMessageNodeTableMeasure( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, int64_t at )
-{
-    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
-    int64_t bits = kTableMessageRefBitsHere + 32;
-    for ( int64_t k = 0; k < n.count; k++ )
-    {
-        bits += kTableMessageRefBitsHere;
-        const int64_t body = n.entries[k].message_measure( (const void *) &ctx, n, index_bits, at + bits, n.entries[k].node );
-        if ( body < 0 ) { return -1; }
-        bits += body;
-    }
-    return bits;
-}
-
-template <typename Ctx>
-inline bool TableMessageNodeTableSave( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, TableBitWriter & w )
-{
-    if ( n.count == 0 ) { return true; }
-    w.put( kTableNodeTableFieldSlot, kTableMessageRefBitsHere );
-    w.put( (uint64_t) n.count, 32 );
-    for ( int64_t k = 0; k < n.count; k++ )
-    {
-        w.put( n.entries[k].type_slot, kTableMessageRefBitsHere );
-        if ( !n.entries[k].message_save( (const void *) &ctx, n, index_bits, w, n.entries[k].node ) ) { return false; }
-    }
-    return !w.overflow;
 }
 
 `

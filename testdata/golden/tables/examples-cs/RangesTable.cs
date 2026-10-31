@@ -871,7 +871,7 @@ namespace Tabledemo
             int count_edges = value.EdgesCount;
             System.Diagnostics.Debug.Assert(count_edges >= 0 && count_edges <= 4); // the declared count is the bound (§3.4)
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(60), count_edges);
-            if (value.Edges != null) { MemoryMarshal.AsBytes(value.Edges.AsSpan(0, Math.Min(value.Edges.Length, count_edges))).CopyTo(b.Slice(64)); }
+            if (value.Edges != null) { TableFixedWire.WriteLittle<short>(value.Edges.AsSpan(0, Math.Min(value.Edges.Length, count_edges)), b.Slice(64)); }
         }
 
         // RangedUnsigned's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -898,7 +898,7 @@ namespace Tabledemo
             int count_counts = value.CountsCount;
             System.Diagnostics.Debug.Assert(count_counts >= 0 && count_counts <= 4); // the declared count is the bound (§3.4)
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(60), count_counts);
-            if (value.Counts != null) { MemoryMarshal.AsBytes(value.Counts.AsSpan(0, Math.Min(value.Counts.Length, count_counts))).CopyTo(b.Slice(64)); }
+            if (value.Counts != null) { TableFixedWire.WriteLittle<ulong>(value.Counts.AsSpan(0, Math.Min(value.Counts.Length, count_counts)), b.Slice(64)); }
         }
 
         // RangedWidths's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -1067,7 +1067,7 @@ namespace Tabledemo
             new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64High = unchecked((long)v), reset: (t) => { t.I64High = 0; }),
             new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64Inside = unchecked((long)v), reset: (t) => { t.I64Inside = 0; }),
             new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.EdgesCount = (int)v, reset: (t) => { t.EdgesCount = 0; }),
-            new TableFixedSlot<RangedSigned>(setBytes: (t, b, l) => { if (t.Edges != null) MemoryMarshal.Cast<byte, short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2))).CopyTo(t.Edges); }, reset: (t) => { if (t.Edges != null) Array.Clear(t.Edges, 0, t.Edges.Length); }),
+            new TableFixedSlot<RangedSigned>(setBytes: (t, b, l) => { if (t.Edges != null) TableFixedWire.ReadLittle<short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2)), t.Edges); }, reset: (t) => { if (t.Edges != null) Array.Clear(t.Edges, 0, t.Edges.Length); }),
         };
 
         private static void RangedSignedFixedSetRaw(RangedSigned t, uint slot, ulong v, TableReport rep)
@@ -1115,7 +1115,7 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 17: { if (t.Edges != null) MemoryMarshal.Cast<byte, short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2))).CopyTo(t.Edges); } break;
+                case 17: { if (t.Edges != null) TableFixedWire.ReadLittle<short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2)), t.Edges); } break;
                 default: break;
             }
         }
@@ -1696,7 +1696,7 @@ namespace Tabledemo
             new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64High = unchecked((ulong)v), reset: (t) => { t.U64High = 1ul; }),
             new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64Inside = unchecked((ulong)v), reset: (t) => { t.U64Inside = 1ul; }),
             new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.CountsCount = (int)v, reset: (t) => { t.CountsCount = 0; }),
-            new TableFixedSlot<RangedUnsigned>(setBytes: (t, b, l) => { if (t.Counts != null) MemoryMarshal.Cast<byte, ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8))).CopyTo(t.Counts); }, reset: (t) => { if (t.Counts != null) Array.Clear(t.Counts, 0, t.Counts.Length); }),
+            new TableFixedSlot<RangedUnsigned>(setBytes: (t, b, l) => { if (t.Counts != null) TableFixedWire.ReadLittle<ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8)), t.Counts); }, reset: (t) => { if (t.Counts != null) Array.Clear(t.Counts, 0, t.Counts.Length); }),
         };
 
         private static void RangedUnsignedFixedSetRaw(RangedUnsigned t, uint slot, ulong v, TableReport rep)
@@ -1744,7 +1744,7 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 17: { if (t.Counts != null) MemoryMarshal.Cast<byte, ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8))).CopyTo(t.Counts); } break;
+                case 17: { if (t.Counts != null) TableFixedWire.ReadLittle<ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8)), t.Counts); } break;
                 default: break;
             }
         }

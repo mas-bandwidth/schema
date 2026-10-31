@@ -3632,7 +3632,14 @@ namespace bench {
 
 bool MixedEntityFromJsonTolerant( MixedEntity & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, MixedEntityTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, MixedEntityTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; MixedEntityTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool MixedEntityFromJson( MixedEntity & value, const char * text, int64_t bytes, TableReport * report )
@@ -3665,7 +3672,14 @@ int64_t MixedEntityToJson( const MixedEntity & value, char * buffer, int64_t cap
 
 bool MixedStatFromJsonTolerant( MixedStat & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, MixedStatTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, MixedStatTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; MixedStatTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool MixedStatFromJson( MixedStat & value, const char * text, int64_t bytes, TableReport * report )
@@ -3698,7 +3712,14 @@ int64_t MixedStatToJson( const MixedStat & value, char * buffer, int64_t capacit
 
 bool MixedHitEventFromJsonTolerant( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, MixedHitEventTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, MixedHitEventTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; MixedHitEventTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool MixedHitEventFromJson( MixedHitEvent & value, const char * text, int64_t bytes, TableReport * report )
@@ -3731,7 +3752,14 @@ int64_t MixedHitEventToJson( const MixedHitEvent & value, char * buffer, int64_t
 
 bool MixedChatEventFromJsonTolerant( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, MixedChatEventTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, MixedChatEventTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; MixedChatEventTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool MixedChatEventFromJson( MixedChatEvent & value, const char * text, int64_t bytes, TableReport * report )
@@ -3764,7 +3792,14 @@ int64_t MixedChatEventToJson( const MixedChatEvent & value, char * buffer, int64
 
 bool MixedPickupEventFromJsonTolerant( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, MixedPickupEventTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, MixedPickupEventTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; MixedPickupEventTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool MixedPickupEventFromJson( MixedPickupEvent & value, const char * text, int64_t bytes, TableReport * report )
@@ -3797,7 +3832,14 @@ int64_t MixedPickupEventToJson( const MixedPickupEvent & value, char * buffer, i
 
 bool BenchMixedFromJsonTolerant( BenchMixed & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, BenchMixedTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, BenchMixedTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; BenchMixedTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool BenchMixedFromJson( BenchMixed & value, const char * text, int64_t bytes, TableReport * report )

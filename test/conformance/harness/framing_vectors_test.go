@@ -74,7 +74,8 @@ func u64(v uint64) []byte {
 
 // leb, one canonical LEB128, is messagerules_test.go's helper.
 
-func ptr(v uint64) *uint64 { return &v }
+//go:fix inline
+func ptr(v uint64) *uint64 { return new(v) }
 
 func mustHex(s string) []byte {
 	out, err := hex.DecodeString(s)
@@ -146,6 +147,9 @@ var framingVectors = []framingVector{
 	{name: "frame_form_two_as_file", unit: "tblr1", root: "Cfg", raw: cat(b(2, 0), u64(0))},
 	// F1: form 4 is a planned row of the registry and no reader carries it.
 	{name: "frame_form_four_planned", unit: "tblr1", root: "Cfg", raw: cat(b(4, 0), u64(0))},
+	// F5 (finding N6, settled): a buffer of no bytes has no form byte to read
+	// and fewer than eight bytes for a table, and is malformed, not refused.
+	{name: "frame_empty_buffer", unit: "tblr1", root: "Cfg", raw: []byte{}},
 	// F2–F4: the ten-byte empty table reads clean.
 	{name: "frame_empty_table", unit: "tblr1", root: "Cfg", ids: nil, body: b(0)},
 	// F5: fewer than eight bytes in the file.
@@ -187,12 +191,12 @@ var framingVectors = []framingVector{
 	{name: "frame_kind_unknown_37", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(16, 37, 2, 0)},
 	{name: "frame_kind_reserved_34", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(16, 34, 2, 0)},
 	{name: "frame_kind_zero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(16, 0, 2, 0)},
-	// HELD (finding N9): the same three kinds at a position the reader NAMES.
-	// §3 says framing damage; whether `kind_mismatch` also counts is unstated,
-	// and the engine counts it.
-	{name: "frame_kind_unknown_37_named", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(1, 37, 2, 0), held: true},
-	{name: "frame_kind_reserved_34_named", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(1, 34, 2, 0), held: true},
-	{name: "frame_kind_zero_named", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(1, 0, 2, 0), held: true},
+	// R3, R4 (finding N9, settled): the same three kinds at a position the
+	// reader NAMES: the kind is judged against the declaration first, so
+	// `kind_mismatch` counts, and the skip that follows is the damage.
+	{name: "frame_kind_unknown_37_named", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(1, 37, 2, 0)},
+	{name: "frame_kind_reserved_34_named", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(1, 34, 2, 0)},
+	{name: "frame_kind_zero_named", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(1, 0, 2, 0)},
 	// R2, R3: an unknown id skips by each of the four rules and counts once.
 	{name: "frame_unknown_id_fixed_width", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 4), i32(42), gradeSilver, b(0))},
 	{name: "frame_unknown_id_length", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 13, 3, 0xAA, 0xBB, 0xCC), gradeSilver, b(0))},
@@ -223,12 +227,14 @@ var framingVectors = []framingVector{
 	// F9 inside a nested body: the body stops before decoding anything, and
 	// the root reads on past L.
 	{name: "nested_ref_above_count_inside", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 3, 99, 4, 0xFF), gradeSilver, b(0))},
-	// HELD (finding N1): the whole multiplier field and no terminator, the
-	// damage landing exactly at L.
-	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 6, 7, 10), f32(1.5), gradeSilver, b(0)), held: true},
-	// HELD (finding N1): the whole multiplier field, then a field under kind
-	// 37, the damage landing before L.
-	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), gradeSilver, b(0)), held: true},
+	// HELD (finding N1, reported to the parent): the whole multiplier field and
+	// no terminator, the damage landing exactly at L. The engine and the C++
+	// reference both keep multiplier 1.5.
+	{name: "nested_terminator_missing", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 6, 7, 10), f32(1.5), gradeSilver, b(0))},
+	// HELD (finding N1, reported to the parent): the whole multiplier field,
+	// then a field under kind 37, the damage landing before L. The engine and
+	// the C++ reference both refill the body to its defaults, multiplier 1.
+	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), gradeSilver, b(0))},
 
 	// ---------------------------------------------------------------- C. arrays
 	// H2: L = 0 and L = 1 are inert.
@@ -349,6 +355,10 @@ var framingVectors = []framingVector{
 	{name: "node_index_null", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, b(3, 17, 0), nodeTable(1, listNodeRecord(2)), b(0))},
 	// R6, T5: the reserved id inside a record body stops that body.
 	{name: "node_reserved_id_in_record", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, b(5, 4, 4, 12, 0, 0)), b(0))},
+	// T1 (finding N7, settled): the node table riding twice; the LAST
+	// occurrence is the numbering, on R5's last-wins rule, and the earlier one
+	// is stepped over like any repeated field.
+	{name: "node_table_twice", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), nodeTable(1, listNodeRecord(3)), b(0))},
 	// T6: a reader that cannot name the reserved id counts one unknown.
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
 	// L4 at the node-table field: its L past the root body.

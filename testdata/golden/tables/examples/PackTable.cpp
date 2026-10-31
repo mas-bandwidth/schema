@@ -4089,7 +4089,14 @@ namespace tabledemo {
 
 bool GunnerSettingsFromJsonTolerant( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, GunnerSettingsTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, GunnerSettingsTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; GunnerSettingsTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool GunnerSettingsFromJson( GunnerSettings & value, const char * text, int64_t bytes, TableReport * report )
@@ -4122,7 +4129,14 @@ int64_t GunnerSettingsToJson( const GunnerSettings & value, char * buffer, int64
 
 bool ShipEntryFromJsonTolerant( ShipEntry & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ShipEntryTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ShipEntryTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ShipEntryTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ShipEntryFromJson( ShipEntry & value, const char * text, int64_t bytes, TableReport * report )
@@ -4155,7 +4169,14 @@ int64_t ShipEntryToJson( const ShipEntry & value, char * buffer, int64_t capacit
 
 bool GlobalSettingsFromJsonTolerant( GlobalSettings & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, GlobalSettingsTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, GlobalSettingsTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; GlobalSettingsTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool GlobalSettingsFromJson( GlobalSettings & value, const char * text, int64_t bytes, TableReport * report )
@@ -4188,7 +4209,14 @@ int64_t GlobalSettingsToJson( const GlobalSettings & value, char * buffer, int64
 
 bool PackConfigFromJsonTolerant( PackConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PackConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PackConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PackConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PackConfigFromJson( PackConfig & value, const char * text, int64_t bytes, TableReport * report )

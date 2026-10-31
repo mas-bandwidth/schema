@@ -248,7 +248,7 @@ func tableFieldTypeName(f *ir.Field) string {
 // part of the card record's closure (docs/SPEC-TABLES.md §2.1, §2.3, §2.4,
 // §2.5, §2.6, §2.8, §11): every construct the card does not use is refused
 // by name — the table, the field and the construct — so it is never mis-
-// encoded and never silently dropped. The card's own closure — a plain table,
+// encoded and never silently dropped. The card's own closure — a variable table,
 // bool/int32/int64/enum fields, string(N), *string (the string kind of §2.5)
 // and unbounded []T of table elements (§2.9) — passes, and so do a map, an
 // enum-keyed array and a union whose every part form 1 carries (§2.4, §2.6,
@@ -270,7 +270,7 @@ func checkUnsupportedConstructs(u *ir.Unit) error {
 					name, f.Name)
 			}
 			// The three refusals below are SCOPED to the variable form: the
-			// card's form-1 wire carries none of them, so a plain `table` that
+			// card's form-1 wire carries none of them, so a variable table that
 			// reaches form 1 must refuse them by name rather than mis-encode or
 			// silently drop them. A `fixed table` is untouched — the fixed form
 			// (form 3) and its block/cook/message forms carry optional ?T,

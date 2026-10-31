@@ -265,7 +265,7 @@ union Body
     tally int32 | min = 0, max = 100
 }
 
-table Root
+fixed table Root
 {
     kind   Kind
     plain  float32
@@ -274,15 +274,15 @@ table Root
     nums   [4]int32
     list   [..4]int32
     body   Body
-    head   *Child
 }
 `
 
-const covMessageText = `{"kind":"B","plain":1.5,"ranged":0.25,"s":"yo","nums":[1,2,3,4],"list":[5,6],"body":{"tally":42},"head":{"n":7}}`
+const covMessageText = `{"kind":"B","plain":1.5,"ranged":0.25,"s":"yo","nums":[1,2,3,4],"list":[5,6],"body":{"tally":42}}`
 
-// The message form writes and reads every kind it names: an enum's variant
-// reference, a plain and a quantized f32, a string, a fixed and a counted array, a union arm and a node index; the
-// scans then read the same batch without placing a value (§3.3, §4.3, §6.5).
+// The message form writes and reads every kind a fixed root names: an enum's
+// variant reference, a plain and a quantized f32, a string, a fixed and a
+// counted array and a union arm; the scan then reads the same batch without
+// placing a value (§3.3, §4.3, §6.5).
 func TestMessageFormCoverage(t *testing.T) {
 	t.Parallel()
 	m := covModel(t, covMessageUnit)
@@ -321,23 +321,6 @@ func TestMessageFormCoverage(t *testing.T) {
 	}
 	if spots := MessageSpots(m, root, []byte{ir.TableWireForm}, &vocabulary); spots != nil {
 		t.Fatalf("MessageSpots on a file form = %v, want nil", spots)
-	}
-	bodies, whole := MessageNodeRecords(batch, &vocabulary)
-	if !whole || len(bodies) != 1 || len(bodies[0]) != 1 || bodies[0][0].TypeId != ir.TableWireId("Child") {
-		t.Fatalf("MessageNodeRecords = %+v, %v", bodies, whole)
-	}
-	if _, whole := MessageNodeRecords([]byte{ir.TableWireForm}, &vocabulary); whole {
-		t.Fatal("MessageNodeRecords on a file form must not be whole")
-	}
-	store := &Retain{Capacity: 4096, IdCapacity: 64}
-	var kept tabletext.Report
-	held := m.New(root)
-	if n, ok, err := DecodeRetainMessages(m, []*tabletext.Instance{held}, batch, &vocabulary, []*Retain{store}, &kept); n != 1 || !ok || err != nil || kept.Malformed {
-		t.Fatalf("DecodeRetainMessages: %d %v %v %+v", n, ok, err, kept)
-	}
-	var saved tabletext.Report
-	if out, err := EncodeRetain(m, held, store, &saved); err != nil || len(out) == 0 {
-		t.Fatalf("EncodeRetain: %v %+v", err, saved)
 	}
 }
 
@@ -394,18 +377,12 @@ func covFileModel(t *testing.T, path string) *tabletext.Model {
 	return tabletext.NewModel(u)
 }
 
-// Every arm class the corpus declares reads and writes the same way on both
-// forms: a body arm, a scalar arm, a string arm, a bytes arm, an array arm, an
+// Every arm class the corpus declares reads and writes on the file form: a body arm, a scalar arm, a string arm, a bytes arm, an array arm, an
 // enum arm, a flags arm, a nested union arm and a payload-free arm (§2.6, §3).
 func TestCorpusArmCoverage(t *testing.T) {
 	t.Parallel()
 	m := covFileModel(t, "../../tables/messages/Messages.schema")
 	root := m.Lookup("ToolMessage")
-	var vocabulary Vocabulary
-	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(Announce(m.Unit), &announced); err != nil {
-		t.Fatal(err)
-	}
 	cases := []string{
 		`{"sequence":1,"body":{"open":{"path":"a","cursor":{"line":1,"column":2}}}}`,
 		`{"sequence":2,"body":{"save":{"path":"b","force":true}}}`,
@@ -431,21 +408,6 @@ func TestCorpusArmCoverage(t *testing.T) {
 		var fileReport tabletext.Report
 		if ok, err := Decode(m, fileBack, wire, &fileReport); !ok || err != nil || !fileReport.Silent() {
 			t.Fatalf("%s: file decode: %v %v %+v", text, ok, err, fileReport)
-		}
-		batch, err := EncodeMessage(m, src)
-		if err != nil {
-			t.Fatalf("%s: message encode: %v", text, err)
-		}
-		back := m.New(root)
-		var report tabletext.Report
-		if ok, err := DecodeMessage(m, back, batch, &vocabulary, &report); !ok || err != nil || !report.Silent() {
-			t.Fatalf("%s: message decode: %v %v %+v", text, ok, err, report)
-		}
-		if spots := MessageSpots(m, root, batch, &vocabulary); len(spots) == 0 {
-			t.Fatalf("%s: no spots", text)
-		}
-		if _, whole := MessageNodeRecords(batch, &vocabulary); !whole {
-			t.Fatalf("%s: node scan not whole", text)
 		}
 	}
 }
@@ -513,42 +475,6 @@ fixed table Root
     keep int32
 }
 `
-
-// RETENTION RESOLVES EVERY KIND A NEWER ENDPOINT SENDS and writes it back under
-// the reader's field order (§6.6): text, a plain and a quantized
-// f32, bytes, a counted array, an enum and a union arm all survive a reader
-// that declares only the field beside them.
-func TestRetainMessageAllKinds(t *testing.T) {
-	t.Parallel()
-	sender := covModel(t, covRetainSender)
-	reader := covModel(t, covRetainReader)
-	src := covPlace(t, sender, "Root", `{"keep":1,"s":"ab","f":1.5,"freq":0.25,"b":"YWJj","arr":[1,2,3],"kind":"B","pick":{"note":"n"},"d":-4,"h":9000000000,"yes":true,"f64":2.5,"wide":-12345678901234567890,"uwide":12345678901234567890,"bitsv":5,"names":{"ab":"x"},"keyed":{"A":{"n":1}}}`)
-	batch, err := EncodeMessage(sender, src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var vocabulary Vocabulary
-	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(Announce(sender.Unit), &announced); err != nil {
-		t.Fatal(err)
-	}
-	root := reader.Lookup("Root")
-	value := reader.New(root)
-	store := &Retain{Capacity: 8192, IdCapacity: 128}
-	var read tabletext.Report
-	if n, ok, err := DecodeRetainMessages(reader, []*tabletext.Instance{value}, batch, &vocabulary, []*Retain{store}, &read); n != 1 || !ok || err != nil || read.Malformed || read.Retained == 0 {
-		t.Fatalf("load: %d %v %v %+v", n, ok, err, read)
-	}
-	var save tabletext.Report
-	out, err := EncodeRetain(reader, value, store, &save)
-	if err != nil || len(out) == 0 || save.RetainLost != 0 {
-		t.Fatalf("save: %v %+v", err, save)
-	}
-	want, err := Encode(sender, src)
-	if err != nil || string(out) != string(want) {
-		t.Fatalf("the retained save was not the sender's file value: %v", err)
-	}
-}
 
 const covRetainFileSender = `package retainfile
 
@@ -620,7 +546,7 @@ enum Kind { A, B }
 
 flags Cap { Trace, Verbose }
 
-table Scalars
+fixed table Scalars
 {
     a    int8
     b    int16
@@ -726,30 +652,17 @@ func TestMapAndKeyedCoverage(t *testing.T) {
 	if ok, err := Decode(m, back, wire, &report); !ok || err != nil || !report.Silent() {
 		t.Fatalf("decode: %v %v %+v", ok, err, report)
 	}
-	var vocabulary Vocabulary
-	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(Announce(m.Unit), &announced); err != nil {
-		t.Fatal(err)
-	}
-	batch, err := EncodeMessage(m, src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var msgReport tabletext.Report
-	if ok, err := DecodeMessage(m, m.New(root), batch, &vocabulary, &msgReport); !ok || err != nil || !msgReport.Silent() {
-		t.Fatalf("message decode: %v %v %+v", ok, err, msgReport)
-	}
 }
 
 // A BATCH OF TWO MESSAGES with a shared node reads each body in turn and the
 // node table once: both values come back and the scan reports each body's
 // records in order (§3.3, §6.5).
-func TestMessageBatchAndNodeTable(t *testing.T) {
+func TestMessageBatch(t *testing.T) {
 	t.Parallel()
 	m := covModel(t, covMessageUnit)
 	root := m.Lookup("Root")
 	first := covPlace(t, m, "Root", covMessageText)
-	second := covPlace(t, m, "Root", `{"kind":"C","plain":2.5,"ranged":-0.5,"s":"ok","nums":[4,3,2,1],"list":[7],"body":{"child":{"n":8}},"head":{"n":9}}`)
+	second := covPlace(t, m, "Root", `{"kind":"C","plain":2.5,"ranged":-0.5,"s":"ok","nums":[4,3,2,1],"list":[7],"body":{"child":{"n":8}}}`)
 	batch, err := EncodeMessages(m, []*tabletext.Instance{first, second})
 	if err != nil {
 		t.Fatal(err)
@@ -764,10 +677,6 @@ func TestMessageBatchAndNodeTable(t *testing.T) {
 	if n, ok, err := DecodeMessages(m, values, batch, &vocabulary, &report); n != 2 || !ok || err != nil || report.Malformed {
 		t.Fatalf("batch read: %d %v %v %+v", n, ok, err, report)
 	}
-	bodies, whole := MessageNodeRecords(batch, &vocabulary)
-	if !whole || len(bodies) != 2 || len(bodies[0]) != 1 || len(bodies[1]) != 1 {
-		t.Fatalf("node records = %+v, %v", bodies, whole)
-	}
 	if n, err := MessageCount(batch, &vocabulary); err != nil || n != 2 {
 		t.Fatalf("MessageCount = %d, %v", n, err)
 	}
@@ -775,15 +684,9 @@ func TestMessageBatchAndNodeTable(t *testing.T) {
 		if spots := MessageSpots(m, root, bad, &vocabulary); spots != nil {
 			t.Fatalf("MessageSpots on %v = %v", bad, spots)
 		}
-		if _, whole := MessageNodeRecords(bad, &vocabulary); whole {
-			t.Fatalf("MessageNodeRecords on %v was whole", bad)
-		}
 	}
 	if spots := MessageSpots(m, root, batch, nil); spots != nil {
 		t.Fatalf("MessageSpots without a vocabulary = %v", spots)
-	}
-	if _, whole := MessageNodeRecords(batch, nil); whole {
-		t.Fatal("MessageNodeRecords without a vocabulary was whole")
 	}
 }
 
@@ -840,7 +743,7 @@ func TestAnnouncementRefusals(t *testing.T) {
 
 const covRangeSender = `package coverrange
 
-table Root
+fixed table Root
 {
     si int32
     ui uint32
@@ -852,7 +755,7 @@ table Root
 
 const covRangeReader = `package coverrange
 
-table Root
+fixed table Root
 {
     si int32 | min = 0, max = 10
     ui uint32 | min = 0, max = 10
@@ -946,7 +849,6 @@ func TestDamagedWiresDoNotPanic(t *testing.T) {
 		var report tabletext.Report
 		DecodeMessage(message, message.New(messageRoot), data, &vocabulary, &report)
 		MessageSpots(message, messageRoot, data, &vocabulary)
-		MessageNodeRecords(data, &vocabulary)
 	})
 }
 
@@ -966,11 +868,10 @@ func TestUncoveredPaths(t *testing.T) {
 	t.Run("float refusals", TestMessageFloatRefusalsAndClamps)
 	t.Run("corpus arms", TestCorpusArmCoverage)
 	t.Run("stream pointer arm", TestStreamPointerArmRegion)
-	t.Run("retain message kinds", TestRetainMessageAllKinds)
 	t.Run("retain file kinds", TestRetainFileAllKinds)
 	t.Run("scalar kinds", TestScalarKindsBothForms)
 	t.Run("map and keyed", TestMapAndKeyedCoverage)
-	t.Run("batch and node table", TestMessageBatchAndNodeTable)
+	t.Run("batch", TestMessageBatch)
 	t.Run("announcement refusals", TestAnnouncementRefusals)
 	t.Run("range clamps", TestRangeClampsBothForms)
 	t.Run("damaged wires", TestDamagedWiresDoNotPanic)

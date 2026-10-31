@@ -4089,7 +4089,14 @@ namespace tabledemo {
 
 bool RangedSignedFromJsonTolerant( RangedSigned & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RangedSignedTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RangedSignedTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RangedSignedTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RangedSignedFromJson( RangedSigned & value, const char * text, int64_t bytes, TableReport * report )
@@ -4122,7 +4129,14 @@ int64_t RangedSignedToJson( const RangedSigned & value, char * buffer, int64_t c
 
 bool RangedUnsignedFromJsonTolerant( RangedUnsigned & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RangedUnsignedTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RangedUnsignedTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RangedUnsignedTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RangedUnsignedFromJson( RangedUnsigned & value, const char * text, int64_t bytes, TableReport * report )
@@ -4155,7 +4169,14 @@ int64_t RangedUnsignedToJson( const RangedUnsigned & value, char * buffer, int64
 
 bool RangedWidthsFromJsonTolerant( RangedWidths & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RangedWidthsTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RangedWidthsTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RangedWidthsTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RangedWidthsFromJson( RangedWidths & value, const char * text, int64_t bytes, TableReport * report )

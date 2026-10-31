@@ -4416,7 +4416,14 @@ namespace mapdemo {
 
 bool ShipConfigFromJsonTolerant( ShipConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ShipConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ShipConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ShipConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ShipConfigFromJson( ShipConfig & value, const char * text, int64_t bytes, TableReport * report )
@@ -4449,7 +4456,14 @@ int64_t ShipConfigToJson( const ShipConfig & value, char * buffer, int64_t capac
 
 bool ItemFromJsonTolerant( Item & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ItemTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ItemTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ItemTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ItemFromJson( Item & value, const char * text, int64_t bytes, TableReport * report )
@@ -4484,7 +4498,14 @@ bool FleetFromJsonTolerant( FleetBuilder & builder, const char * text, int64_t b
 {
     Fleet * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, FleetTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, FleetTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; FleetTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool FleetFromJson( FleetBuilder & builder, const char * text, int64_t bytes, TableReport * report )

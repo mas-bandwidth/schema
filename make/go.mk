@@ -381,8 +381,8 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
 # ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
-# cards-conformance-go and every cards-<lang>-conformance target across all nine
-# languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
+# cards-conformance-go and every cards-<lang>-conformance target across all eleven
+# carded languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
 # parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
 # the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
 # absent) line per leg and surface, and exits nonzero if any leg fails, answers
@@ -392,7 +392,7 @@ CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
 cards-conformance-all:
 	@mkdir -p build/cards-conformance-all
 	@fail=0; \
-	for leg in go c cpp cs rust java js dart elixir lua; do \
+	for leg in go c cpp cs rust java js dart elixir lua lobster; do \
 		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
 		log=build/cards-conformance-all/$$leg.log; \
 		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
@@ -650,9 +650,48 @@ build/conformance-go-be: build/tables-generated-go/.stamp cards-generate $(wildc
 
 .PHONY: conformance-big-endian
 conformance-big-endian: build/conformance-harness build/conformance-go-be
-	@printf 'go-be test/conformance/go/driver-be\n' > build/conformance-be-drivers.txt
+	@printf 'go test/conformance/go/driver-be\n' > build/conformance-be-drivers.txt
 	./build/conformance-harness run --drivers build/conformance-be-drivers.txt --work build/conformance-be-work
 	@echo "big-endian leg: the Go table wire, the read report and the text form cross the byte order"
+
+# ITS NEGATIVE CONTROL (docs/PORTING.md M12, I7), on the C++ big-endian
+# control's rule: one byte-order-neutral read is put back to HOST order and the
+# leg must go RED on the target while the same sabotaged driver stays GREEN on
+# this little-endian host — which is the whole argument for running the leg.
+# Every generated unit carries its own wire reader, and each one's 32-bit read
+# becomes binary.NativeEndian through `go build -overlay`, so no file under
+# build/ or the tree is written to. The leg is named `go` because it IS the Go
+# port: the corpus's carried-by rows name ports, not drivers. It runs in
+# ci-full.yml's big-endian job (row go-control), which installs the emulator;
+# the shared negative-control rows do not, so it is in the manifest's exclusion
+# list with that reason.
+GO_BE_NC := build/go-be-negative-control
+.PHONY: conformance-big-endian-negative-control
+conformance-big-endian-negative-control: build/conformance-harness build/conformance-go-be build/conformance-go
+	@rm -rf $(GO_BE_NC) && mkdir -p $(GO_BE_NC)
+	@entries=""; n=0; for f in $$(grep -l 'v := binary.LittleEndian.Uint32(r.Buffer\[r.Offset:\])' build/tables-generated-go/*/*.go); do \
+		copy=$(GO_BE_NC)/$$(echo $$f | tr '/' '_').gotext; \
+		sed 's/v := binary.LittleEndian.Uint32(r.Buffer\[r.Offset:\])/v := binary.NativeEndian.Uint32(r.Buffer[r.Offset:]) \/\/ SABOTAGED: host order/' $$f > $$copy; \
+		entry="\"$(CURDIR)/$$f\":\"$(CURDIR)/$$copy\""; \
+		if [ -z "$$entries" ]; then entries=$$entry; else entries="$$entries,$$entry"; fi; n=$$((n+1)); \
+	done; \
+	[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }; \
+	printf '{"Replace":{%s}}\n' "$$entries" > $(GO_BE_NC)/overlay.json; \
+	echo "host-order 32-bit read in $$n generated units"
+	cd test/conformance/go && GOOS=linux GOARCH=s390x go build -overlay $(CURDIR)/$(GO_BE_NC)/overlay.json -o $(CURDIR)/$(GO_BE_NC)/driver-be-bin .
+	cd test/conformance/go && go build -overlay $(CURDIR)/$(GO_BE_NC)/overlay.json -o $(CURDIR)/$(GO_BE_NC)/driver-host-bin .
+	@sed 's|build/conformance-go-be|$(GO_BE_NC)/driver-be-bin|' test/conformance/go/driver-be > $(GO_BE_NC)/driver-be && chmod +x $(GO_BE_NC)/driver-be
+	@grep -q '$(GO_BE_NC)/driver-be-bin' $(GO_BE_NC)/driver-be || { echo "NEGATIVE CONTROL FAILED: the target driver was not substituted"; exit 1; }
+	@printf '#!/bin/sh\nexec $(GO_BE_NC)/driver-host-bin "$$@"\n' > $(GO_BE_NC)/driver-host && chmod +x $(GO_BE_NC)/driver-host
+	@printf 'go $(GO_BE_NC)/driver-host\n' > $(GO_BE_NC)/host.txt
+	@printf 'go $(GO_BE_NC)/driver-be\n' > $(GO_BE_NC)/be.txt
+	@./build/conformance-harness run --drivers $(GO_BE_NC)/host.txt --work $(GO_BE_NC)/host-work > $(GO_BE_NC)/host.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the host-order read is red on the little-endian HOST too, so the target run would prove nothing about byte order"; cat $(GO_BE_NC)/host.log; exit 1; }
+	@if ./build/conformance-harness run --drivers $(GO_BE_NC)/be.txt --work $(GO_BE_NC)/be-work > $(GO_BE_NC)/be.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a host-order read left the big-endian leg GREEN"; cat $(GO_BE_NC)/be.log; exit 1; \
+	fi
+	@grep -q 'go / wire:' $(GO_BE_NC)/be.log || { echo "NEGATIVE CONTROL FAILED: the big-endian leg went red, but not on the wire"; cat $(GO_BE_NC)/be.log; exit 1; }
+	@echo "big-endian negative control (Go): a host-order read is green on the host and red on the target"
 
 # THE GO LEG's NEGATIVE CONTROL, on the same rule as the C++ one: a harness
 # that has never gone red on a leg is watching that leg. One byte of ONE wire
@@ -667,6 +706,13 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
+# THE FRAMING SURFACE's own control (docs/LAYERS/1-framing.md): the generated
+# Go reader's 4096 id-table entry cap is removed, and the framing row
+# frame_entries_4097 must go red while the wire surface stays green.
+.PHONY: conformance-negative-control-go-framing
+conformance-negative-control-go-framing: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control frame-cap
+
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and the soak's
@@ -676,6 +722,7 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
+	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz
@@ -793,7 +840,7 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 .PHONY: tables-go-retain
 tables-go-retain:
 	sh test/slowgate/proof tables-go-retain \
-		'TestRetainMatchesIndependentRewrite TestRetainMessageBoundsBeforeExpansion TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
+		'TestRetainMatchesIndependentRewrite TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
 		./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
 
@@ -823,7 +870,7 @@ tables-go-allocator-negative-controls:
 tables-go-allocator-runtime-negative-control:
 	sh test/conformance/go/ownership-negative-control runtime
 tables-go-retain-negative-controls:
-	@set -e; for mode in file-count-floor message-depth unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
+	@set -e; for mode in file-count-floor unknown-node; do sh test/conformance/go/ownership-negative-control $$mode; done
 
 test-go: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 
@@ -877,14 +924,20 @@ TABLES_GO_RELEASE_SOAK_ITERATIONS ?= 300000
 GO_RELEASE_SEED ?= 68719476731
 .PHONY: tables-go-release tables-go-clean tables-go-bench-gate
 tables-go-release: build/conformance-harness build/conformance-go tables-go-bench-gate tables-go-clean
-	$(MAKE) tables-go-wire-fuzz tables-go-retain-wire-fuzz tables-go-builders N=100000 SEED=$(GO_RELEASE_SEED)
+	$(MAKE) tables-go-release-fuzz
 	$(MAKE) tables-go-wire-fuzz-negative-control
 	cd test/go-tables && GOTOOLCHAIN=go1.26.0 go test -run '^TestSoak$$' -count=1 -timeout 2h -soak-iterations $(TABLES_GO_RELEASE_SOAK_ITERATIONS)
 	SCHEMA_GO_ALLOC_RUNS=200 GOTOOLCHAIN=go1.26.0 sh test/slowgate/proof tables-go-release-allocator \
 		'TestAllocatorOwnershipAndStandaloneWriters' \
 		./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
 tables-go-clean: build/tables-generated-go/.stamp
-	@set -e; for d in build/tables-generated-go/*; do \
+	@$(MAKE) --no-print-directory tables-go-clean-units
+# the gate's body, over GO_CLEAN_UNITS (every generated unit by default), so its
+# negative control runs this same recipe over a unit a sabotaged emitter wrote
+GO_CLEAN_UNITS ?= build/tables-generated-go/*
+.PHONY: tables-go-clean-units
+tables-go-clean-units:
+	@set -e; for d in $(GO_CLEAN_UNITS); do \
 		[ -f "$$d/go.mod" ] || continue; \
 		bad=$$(gofmt -l "$$d"/*.go); [ -z "$$bad" ] || { echo "noncanonical generated Go: $$bad"; exit 1; }; \
 		(cd "$$d" && go vet ./...); \
@@ -893,6 +946,39 @@ tables-go-bench-gate: generated/bench/tables/go/.stamp
 	bench/tables/go/leg build
 	bench/tables/go/leg run --gate
 test-go: tables-go-clean tables-go-bench-gate
+
+# THE RELEASE TIER's fuzz half (docs/PORTING.md J3): the PR tier's wire, retain
+# and builder fuzzers at the release count on the release seed, over
+# GO_FUZZ_DRIVER. Its negative control hands it a driver whose generated
+# readers accept a noncanonical LEB128 (test/conformance/go/negative-control
+# leb's sabotage) and requires the release tier RED on the oracle's verdict.
+GO_FUZZ_DRIVER ?= build/conformance-go
+GO_RELEASE_N ?= 100000
+.PHONY: tables-go-release-fuzz tables-go-release-negative-control
+tables-go-release-fuzz: build/conformance-harness build/conformance-go
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
+	./build/conformance-harness wire-fuzz --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
+	./build/conformance-harness wire-fuzz --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
+	$(MAKE) tables-go-builders N=$(GO_RELEASE_N) SEED=$(GO_RELEASE_SEED)
+tables-go-release-negative-control: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control leb-driver
+	@if $(MAKE) --no-print-directory tables-go-release-fuzz GO_FUZZ_DRIVER=build/go-table-control-leb-driver/driver-bin > build/go-table-control-leb-driver/release.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release tier stayed green over a reader that accepts noncanonical LEB128"; exit 1; \
+	fi
+	@grep -q 'harness: FAILED after' build/go-table-control-leb-driver/release.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the release tier went red, but not on the fuzzer's verdict"; cat build/go-table-control-leb-driver/release.log; exit 1; }
+	@echo "Go release negative control: a reader accepting noncanonical LEB128 turns the release tier red"
+
+# THE CLEAN GATE's negative control (docs/PORTING.md J4): the emitter is
+# sabotaged twice through `go build -overlay` and one unit regenerated from it
+# each time, and the gate's own recipe must go red on each half -- gofmt, when
+# the emitter skips go/format; go vet, when a printf call loses an argument.
+.PHONY: tables-go-clean-negative-control
+tables-go-clean-negative-control: build/tables-generated-go/.stamp
+	sh test/go-tables/negative-control clean-format
+	sh test/go-tables/negative-control clean-vet
+
+test-go: tables-go-release-negative-control tables-go-clean-negative-control
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) — THE GO LEG
@@ -994,6 +1080,73 @@ tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
 tables-go-usage: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run '^TestUsage$$' -count=1
 test-go: tables-go-usage
+
+# ITS NEGATIVE CONTROL (docs/PORTING.md I12): the unit the page's example
+# imports spells its strict read differently, through an overlay the gate's own
+# go vet and go run inherit, and the gate must go red naming the page.
+.PHONY: tables-go-usage-negative-control
+tables-go-usage-negative-control: build/tables-generated-go/.stamp
+	sh test/go-tables/negative-control usage
+test-go: tables-go-usage-negative-control
+
+# THE ENUM-KEYED ARRAY's guard (docs/PORTING.md M5): TestKeyedRefusesNone,
+# TestKeyedRefusesPastMax and TestKeyedPlacesByKey over the generated
+# TableKeyed. Its negative control removes the None compare, the past-E.Max
+# compare and the k-1 shift from the generated unit in turn, each through an
+# overlay, and each must turn exactly its own test red.
+.PHONY: tables-go-keyed tables-go-keyed-negative-control
+tables-go-keyed: build/tables-generated-go/.stamp
+	cd test/go-tables && go test -run '^TestKeyed' -count=1
+tables-go-keyed-negative-control: build/tables-generated-go/.stamp
+	sh test/go-tables/negative-control keyed-none
+	sh test/go-tables/negative-control keyed-max
+	sh test/go-tables/negative-control keyed-shift
+test-go: tables-go-keyed tables-go-keyed-negative-control
+
+# THE LAYOUT CONTRACT IN GENERATED CODE (docs/PORTING.md M11): the block
+# init refuses a runtime whose struct disagrees with the compiler's model.
+# Its negative control makes the emitted init's two refusing helpers stop
+# panicking, and the gate must go red on the disagreeing runtime it now loads.
+.PHONY: tables-go-layout-contract tables-go-layout-contract-negative-control
+tables-go-layout-contract:
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$$'
+tables-go-layout-contract-negative-control:
+	sh test/go-tables/negative-control layout
+test-go: tables-go-layout-contract tables-go-layout-contract-negative-control
+
+# THE `&node` LABEL (docs/PORTING.md M14): TestRegionGraphs writes a graph
+# whose node two pointers share as text and requires the read to share it
+# again. Its negative control makes the emitter's text writer write a shared
+# node as plain copies, with no label, and the gate must go red on the sharing.
+.PHONY: tables-go-graph-label-negative-control
+tables-go-graph-label-negative-control:
+	sh test/go-tables/negative-control graph-label
+test-go: tables-go-graph-label-negative-control
+
+# PER-CASE ABSENT (docs/PORTING.md I4): the Go leg alone, under a substituted
+# registry, answers the cases it cannot carry ABSENT one by one and passes,
+# and the matrix shows it did (`+Na`). Its negative control makes the driver
+# write nothing for such a case, and the harness must go red on the missing
+# answer.
+.PHONY: conformance-go-absent conformance-negative-control-go-absent
+conformance-go-absent: build/conformance-harness build/conformance-go
+	@mkdir -p build/conformance-go-absent
+	@printf 'go test/conformance/go/driver\n' > build/conformance-go-absent/drivers.txt
+	./build/conformance-harness run --drivers build/conformance-go-absent/drivers.txt --work build/conformance-go-absent/work | tee build/conformance-go-absent/log
+	@for s in wire framing; do grep -Eq "^$$s +pass [0-9]+/[0-9]+ \+[1-9][0-9]*a" build/conformance-go-absent/log || \
+		{ echo "PER-CASE ABSENT GATE FAILED: the Go leg's $$s surface answered no case absent, so the grain is not exercised"; exit 1; }; done
+conformance-negative-control-go-absent: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control absent
+test-go: conformance-go-absent conformance-negative-control-go-absent
+
+# THE CARD CHECK, its Go leg (docs/PORTING.md J6): the Go card renderer
+# writes a header line's separator one space wider, through an overlay of the
+# copy the driver builds from, and the check must go red on render and stay
+# green on load.
+.PHONY: cards-conformance-go-negative-control
+cards-conformance-go-negative-control: build/conformance-harness cards-driver-go
+	CARDS_REQUIRE=$(CARDS_REQUIRE) sh test/go-tables/negative-control cards
+test-go: cards-conformance-go-negative-control
 
 # The Go table output compiles with any subset of its optional forms {json,
 # cook, block, message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every corpus unit,

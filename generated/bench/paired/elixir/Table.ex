@@ -1563,7 +1563,12 @@ defmodule Bench.Table do
           end
 
         :table ->
-          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc)
+          # an absent optional (nil) owns no edge (§2.3), and a by-value
+          # table left nil holds its defaults, which name no node
+          case Map.get(value, f.name) do
+            nil -> acc
+            v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
+          end
 
         :list ->
           collect_list_nodes(f, Map.get(value, f.name) || [], acc)
@@ -2080,6 +2085,9 @@ defmodule Bench.Table do
     # it: nothing lands, and the reason names the first such field.
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
+
+    :wire_damaged ->
+      {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
 
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
@@ -2116,7 +2124,9 @@ defmodule Bench.Table do
     size = byte_size(data)
     count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
 
-    if count > div(size - 9, 8) do
+    # §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+    # whatever the buffer would hold
+    if count > 4096 or count > div(size - 9, 8) do
       {:error, :malformed}
     else
       start = size - 8 - count * 8
@@ -2176,10 +2186,12 @@ defmodule Bench.Table do
 
   # entries walks the body once into {id, kind, payload} triples, splitting the
   # node table out into its records (docs/SPEC-TABLES.md §3.1). transport is
-  # true only for a variable root: that body carries the reserved node id as
-  # its own numbering and does not count it unknown. A fixed root, and every
-  # nested body, cannot name the id, so it joins the field list and counts
-  # once as unknown (§4).
+  # true for a variable root: that body carries the reserved node id as its own
+  # numbering and does not count it unknown. It is false for a fixed root, which
+  # cannot name the id, so the id joins the field list and counts once as
+  # unknown (§4). It is :nested for every other body (a by-value table, an
+  # element, an entry, a node record), where the id is malformed: a second
+  # numbering cannot exist.
   defp entries(bin, ids, string_blob, transport),
     do: entries(bin, ids, string_blob, transport, [], [])
 
@@ -2203,16 +2215,17 @@ defmodule Bench.Table do
           id ->
             case rest do
               <<kind, rest2::binary>> ->
-                if id == @build_version_id or id == @message_vocab_id do
+                if id == @build_version_id or id == @message_vocab_id or
+                     (id == @node_id and transport == :nested) do
                   # the two reserved ids ride in the ANNOUNCEMENT and nowhere
-                  # else (§3.3): one in any body but the announcement's own is
-                  # malformed, the walk stops there and no field after it is
-                  # read (§3.1)
+                  # else (§3.3), and the node id is a root's alone (§3.1): one
+                  # in a body that is not its transport is malformed, the walk
+                  # stops there and no field after it is read
                   {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                 else
                   case slice(rest2, kind) do
                     {:ok, payload, rest3} ->
-                      if id == @node_id and transport do
+                      if id == @node_id and transport == true do
                         # the reserved node id is a variable root's own transport
                         # (§3.1): the body reads it as the node table, and a body
                         # that carries it under another kind steps over it, never
@@ -2220,7 +2233,9 @@ defmodule Bench.Table do
                         if kind == 12 do
                           case node_table(payload, ids, string_blob) do
                             {:ok, ns} ->
-                              entries(rest3, ids, string_blob, transport, acc, nodes ++ ns)
+                              # a node table riding twice: the LAST is the
+                              # numbering (§3 last-wins; framing N7)
+                              entries(rest3, ids, string_blob, transport, acc, ns)
 
                             :error ->
                               {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
@@ -2244,7 +2259,7 @@ defmodule Bench.Table do
                       # cannot hold: the field still counts — unknown when the id
                       # is not this body's, a kind mismatch when it is — and the
                       # walk stops (§3, §4)
-                      if id == @node_id and transport do
+                      if id == @node_id and transport == true do
                         {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                       else
                         {:stop, Enum.reverse([{id, kind, <<>>} | acc]), nodes, byte_size(rest2)}
@@ -2406,13 +2421,16 @@ defmodule Bench.Table do
   defp decode_node_table(nodes, name, body, ids, idx) do
     desc = Map.fetch!(@tables, name)
 
-    case entries(body, ids, desc.string_blob, false) do
+    # DAMAGE DISCARDS THE WHOLE LOAD (§4): a pointee record whose body cannot
+    # be framed, or that is damaged inside, refuses the load
+    case entries(body, ids, desc.string_blob, :nested) do
       {:ok, fields, []} ->
-        {value, _report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
+        {value, report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
+        if report.malformed, do: throw(:wire_damaged)
         {:value, value}
 
       _ ->
-        :null
+        throw(:wire_damaged)
     end
   end
 
@@ -2433,6 +2451,7 @@ defmodule Bench.Table do
           cond do
             kind == f.kind ->
               case read_payload(f, payload, nodes, ids, report) do
+                {:cont, :inert, report} -> {:cont, {inert_field(f, value), report}}
                 {:cont, v, report} -> {:cont, {Map.put(value, f.name, v), report}}
                 {:halt, v, report} -> {:halt, {Map.put(value, f.name, v), report}}
               end
@@ -2449,6 +2468,20 @@ defmodule Bench.Table do
       end
     end)
   end
+
+  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
+  # array, map or keyed body too short to carry its own header, fewer than two
+  # bytes, decodes nothing, counts nothing, and the field keeps the value it
+  # has. The field rode, so an optional one is present: empty, when no earlier
+  # occurrence set it.
+  defp inert_field(f, value) do
+    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
+      do: Map.put(value, f.name, inert_empty(f)),
+      else: value
+  end
+
+  defp inert_empty(%{t: :list}), do: []
+  defp inert_empty(_f), do: %{}
 
   defp find_field(desc, id) do
     Enum.find(desc.fields, fn f -> f.id == id end)
@@ -2571,18 +2604,11 @@ defmodule Bench.Table do
   defp read_payload(%{t: :table} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, body} ->
-        elem_desc = Map.fetch!(@tables, f.elem)
-
-        case entries(body, ids, elem_desc.string_blob, false) do
-          {:ok, fields, []} ->
-            # the nested body's events FOLD into the holder's (§4): a fresh
-            # report here would drop every event the holder counted before it
-            {value, nested} = decode(elem_desc, fields, nodes, ids)
-            {:cont, value, merge_report(report, nested)}
-
-          _ ->
-            {:cont, %{}, %{report | malformed: true}}
-        end
+        # a nested body reads as an element does (§3, §4), and its events FOLD
+        # into the holder's: a fresh report here would drop every event the
+        # holder counted before it
+        {value, nested} = read_element(Map.fetch!(@tables, f.elem), body, nodes, ids)
+        {:cont, value, merge_report(report, nested)}
 
       :error ->
         {:cont, %{}, %{report | malformed: true}}
@@ -2625,18 +2651,20 @@ defmodule Bench.Table do
     # SPEC-TABLES §2.8, §3: kind 14 contains framed entry tables. A map's
     # public keys use their JSON spelling; its wire keys remain typed.
     case read_payload(%{f | t: :list}, payload, nodes, ids, report) do
+      {:cont, :inert, report} ->
+        {:cont, :inert, report}
+
       {:cont, entries, report} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
+        keys = Enum.map(entries, &Map.get(&1, "key", kf.default))
 
-        values =
-          Map.new(entries, fn entry ->
-            key = Map.get(entry, "key", kf.default)
-
-            {if(is_binary(key), do: key, else: Integer.to_string(key)),
-             Map.get(entry, "value", vf.default)}
-          end)
-
-        {:cont, values, report}
+        if descending?(keys) do
+          # DESCENDING keys are not a map any conforming writer produced: damage,
+          # and the whole load is discarded (§2.8, §4)
+          {:cont, %{}, %{report | malformed: true}}
+        else
+          map_values(entries, kf, vf, report)
+        end
 
       other ->
         other
@@ -2650,18 +2678,35 @@ defmodule Bench.Table do
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2): the element kind, the
   # pair count, then (key reference, L, element) pairs. A key this reader cannot
   # name counts unknown and its element is skipped by its L.
+  # A body of fewer than two bytes is inert (§4); a foreign element kind is
+  # a kind mismatch, judged before the count; a count that does not complete
+  # inside the body is damage (§3, THE HEADER AGAINST THE PARENT: completed in
+  # the parent, it is a count the body cannot cover).
   defp read_payload(%{t: :keyed} = f, payload, nodes, ids, report) do
-    with {_len, <<ek, rest::binary>>} <- leb(payload),
-         true <- ek == f.elem_kind,
-         {n, pairs} <- leb(rest) do
-      read_keyed_pairs(f, pairs, n, nodes, ids, %{}, report)
-    else
-      _ -> {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    case leb(payload) do
+      {_len, body} when byte_size(body) < 2 ->
+        {:cont, :inert, report}
+
+      {_len, <<ek, _::binary>>} when ek != f.elem_kind ->
+        {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+      {_len, <<_ek, rest::binary>>} ->
+        case leb(rest) do
+          {n, pairs} -> read_keyed_pairs(f, pairs, n, nodes, ids, %{}, report)
+          :error -> {:cont, %{}, %{report | malformed: true}}
+        end
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}}
     end
   end
 
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
+      {_len, arr} when byte_size(arr) < 2 ->
+        # a body too short to carry its header is inert (§4, H2)
+        {:cont, :inert, report}
+
       {_len, arr} ->
         case arr do
           <<elem_kind, count_rest::binary>> ->
@@ -2680,8 +2725,9 @@ defmodule Bench.Table do
                       end
 
                     reader = %{f | elem_kind: elem_kind}
+                    {n, report} = clamp_count(n, f, report)
                     {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
-                    {:cont, value, report} |> clamp_count(f)
+                    {:cont, value, report}
 
                   :error ->
                     {:cont, [], %{report | malformed: true}}
@@ -2698,6 +2744,23 @@ defmodule Bench.Table do
       :error ->
         {:cont, [], %{report | malformed: true}}
     end
+  end
+
+  # a map's wire keys ascend; a key below the one before it is DESCENDING
+  # (§2.8), and an equal key is a duplicate, last wins
+  defp descending?([a, b | rest]), do: b < a or descending?([b | rest])
+  defp descending?(_keys), do: false
+
+  defp map_values(entries, kf, vf, report) do
+    values =
+      Map.new(entries, fn entry ->
+        key = Map.get(entry, "key", kf.default)
+
+        {if(is_binary(key), do: key, else: Integer.to_string(key)),
+         Map.get(entry, "value", vf.default)}
+      end)
+
+    {:cont, values, report}
   end
 
   # read_arm reads one arm header (docs/SPEC-TABLES.md §2.6, §3): the zero
@@ -2760,6 +2823,7 @@ defmodule Bench.Table do
     payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
     case read_payload(a, payload, nodes, ids, report) do
+      {:cont, :inert, report} -> {:cont, {name, inert_empty(a)}, report}
       {:cont, v, report} -> {:cont, {name, v}, report}
       {:halt, v, report} -> {:halt, {name, v}, report}
     end
@@ -2825,13 +2889,13 @@ defmodule Bench.Table do
     end
   end
 
-  # a count past a bounded array's declared bound keeps the first bound
-  # elements and counts one clamped (docs/SPEC-TABLES.md §4)
-  defp clamp_count({:cont, value, report}, %{max_count: max})
-       when is_list(value) and length(value) > max,
-       do: {:cont, Enum.take(value, max), %{report | clamped: report.clamped + 1}}
+  # a count past a bounded array's declared bound reads the first bound
+  # elements and counts one clamped, before any element is read, so the
+  # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{max_count: max}, report) when n > max,
+    do: {max, %{report | clamped: report.clamped + 1}}
 
-  defp clamp_count(result, _f), do: result
+  defp clamp_count(n, _f, report), do: {n, report}
 
   # widens? reports whether a wire kind decodes EXACTLY into this field
   # (docs/SPEC-TABLES.md §4): a smaller integer into a wider one of the same
@@ -3050,32 +3114,35 @@ defmodule Bench.Table do
   # DEFAULTS and one malformed counts, and the list reads on past it. A clean
   # body reads its value, and an event inside it folds into the list's report.
   defp read_element(desc, sub, nodes, ids) do
-    if ends_early?(sub, ids) do
-      {%{}, malformed_report()}
-    else
-      case entries(sub, ids, false, false) do
-        {:ok, fields, []} ->
-          # a list element's report FOLDS into the enclosing one (§4): the
-          # counters sum and malformed sticks, so an event inside an element
-          # is never lost when the element's own walk returns.
-          decode(desc, fields, nodes, ids)
+    case entries(sub, ids, false, :nested) do
+      {:ok, fields, []} ->
+        # a list element's report FOLDS into the enclosing one (§4): the
+        # counters sum and malformed sticks, so an event inside an element
+        # is never lost when the element's own walk returns. A body whose
+        # terminator is not the last byte of its L is framing damage (§3):
+        # the events its fields earned count, the element reads its
+        # declared defaults, and one malformed counts.
+        {value, report} = decode(desc, fields, nodes, ids)
 
-        {:stop, fields, [], 0} ->
-          # the element's body ran off its own end with no terminator: the
-          # prefix decoded stands, and one malformed counts (§3)
-          {value, report} = decode(desc, fields, nodes, ids)
-          {value, %{report | malformed: true}}
+        if ends_early?(sub, ids),
+          do: {%{}, %{report | malformed: true}},
+          else: {value, report}
 
-        {:stop, fields, [], _remaining} ->
-          # the element's body is damaged mid-walk: the events its prefix
-          # already earned count, the element reads its declared defaults, and
-          # one malformed counts (§3, §4)
-          {_value, report} = decode(desc, fields, nodes, ids)
-          {%{}, %{report | malformed: true}}
+      {:stop, fields, [], 0} ->
+        # the element's body ran off its own end with no terminator: the
+        # prefix decoded stands, and one malformed counts (§3)
+        {value, report} = decode(desc, fields, nodes, ids)
+        {value, %{report | malformed: true}}
 
-        _ ->
-          {%{}, malformed_report()}
-      end
+      {:stop, fields, [], _remaining} ->
+        # the element's body is damaged mid-walk: the events its prefix
+        # already earned count, the element reads its declared defaults, and
+        # one malformed counts (§3, §4)
+        {_value, report} = decode(desc, fields, nodes, ids)
+        {%{}, %{report | malformed: true}}
+
+      _ ->
+        {%{}, malformed_report()}
     end
   end
 
@@ -4948,9 +5015,12 @@ defmodule Bench.Table do
     end
   end
 
+  # a header whose element kind is not the declared one is a kind mismatch the
+  # read answers as an empty list, so it places nothing (internal/tablewire
+  # extent.go): only a list DECLARED of tables descends into table elements.
   defp list_extent(field, arr, ids, at) do
     case arr do
-      <<13, count_rest::binary>> ->
+      <<13, count_rest::binary>> when field.elem_kind == 13 ->
         case leb(count_rest) do
           :error ->
             :error
@@ -5759,6 +5829,8 @@ defmodule Bench.Table do
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
        %{retain | records: [], used: 0, ids: []}}
+    :wire_damaged ->
+      {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
   end
 
   def measure_retain(table, value, retain) when is_map(value) do
@@ -6343,7 +6415,7 @@ defmodule Bench.Table do
   # one nested body read under its path: the entries failing to frame leave the
   # table's declared defaults and one malformed.
   defp read_body_retain(desc, body, nodes, ids, report, retain, path) do
-    case entries(body, ids, desc.string_blob, false) do
+    case entries(body, ids, desc.string_blob, :nested) do
       {:ok, fields, []} -> decode_retain(desc, fields, nodes, ids, retain, report, path)
       _ -> {%{}, %{report | malformed: true}, retain}
     end
@@ -6556,7 +6628,7 @@ defmodule Bench.Table do
       memo ->
         desc = Map.fetch!(@tables, name)
 
-        case entries(body, ids, desc.string_blob, false) do
+        case entries(body, ids, desc.string_blob, :nested) do
           {:ok, fields, []} ->
             retain = %{retain | memo: Map.put(memo, idx, :pending)}
 
@@ -6610,7 +6682,7 @@ defmodule Bench.Table do
     if ends_early?(sub, ids) do
       {%{}, %{report | malformed: true}, retain}
     else
-      case entries(sub, ids, false, false) do
+      case entries(sub, ids, false, :nested) do
         {:ok, fields, []} ->
           decode_retain(desc, fields, nodes, ids, retain, report, elem_path)
 

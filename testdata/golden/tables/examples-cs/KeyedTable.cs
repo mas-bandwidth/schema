@@ -1158,7 +1158,7 @@ namespace Tabledemo
         public static void ScoreBoardFixedWriteBody(Span<byte> b, ScoreBoard value)
         {
             if (value == null) return;
-            if (value.PerTeam != null) { MemoryMarshal.AsBytes(value.PerTeam.AsSpan(0, Math.Min(value.PerTeam.Length, 3))).CopyTo(b); }
+            if (value.PerTeam != null) { TableFixedWire.WriteLittle<int>(value.PerTeam.AsSpan(0, Math.Min(value.PerTeam.Length, 3)), b); }
         }
 
         // KeyedConfig's stores. The template — the hash, then zeros — is memcpy'd first,

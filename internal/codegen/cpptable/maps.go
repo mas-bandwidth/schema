@@ -1269,9 +1269,8 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 		g.pf("%s        const int order = landed ? TableKeyOrder( (%s) last_key, (%s) read.key ) : -1;\n", ind, ord, ord)
 	}
 	g.pf("%s        if ( order > 0 )\n%s        {\n", ind, ind)
-	g.pf("%s            // DESCENDING: not a body any conforming writer produced. The map\n", ind)
-	g.pf("%s            // keeps the ascending prefix it has, the rest skips by the map's\n", ind)
-	g.pf("%s            // L, and the PARENT reads on past the field's length (§4).\n", ind)
+	g.pf("%s            // DESCENDING: not a body any conforming writer produced. It is\n", ind)
+	g.pf("%s            // damage, and damage discards the whole load (§4).\n", ind)
 	g.pf("%s            r.report->malformed = true;\n", ind)
 	g.pf("%s            break;\n", ind)
 	g.pf("%s        }\n", ind)

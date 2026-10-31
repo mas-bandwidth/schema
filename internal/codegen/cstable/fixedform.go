@@ -426,7 +426,7 @@ func (b *fixedRootBuild) flatSpanSetter(fieldExpr, elemType string, elemBytes in
 	if elemType == "byte" {
 		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
 	}
-	return fmt.Sprintf("(t, b, l) => { if (%s != null) MemoryMarshal.Cast<byte, %s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d))).CopyTo(%s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
+	return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
 }
 
 func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
@@ -1581,7 +1581,7 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 		if elemType == "byte" {
 			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
 		} else {
-			g.pf("%sif (%s != null) { MemoryMarshal.AsBytes(%s.AsSpan(0, Math.Min(%s.Length, %d))).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
+			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, Math.Min(%s.Length, %d)), %s); }\n", ind, slotsExpr, elemType, slotsExpr, slotsExpr, count, slice)
 		}
 		return
 	}
@@ -1609,7 +1609,7 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf,
 		if elemType == "byte" {
 			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %s)).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
 		} else {
-			g.pf("%sif (%s != null) { MemoryMarshal.AsBytes(%s.AsSpan(0, Math.Min(%s.Length, %s))).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
+			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, Math.Min(%s.Length, %s)), %s); }\n", ind, expr, elemType, expr, expr, nExpr, slice)
 		}
 		return
 	}

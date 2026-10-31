@@ -2012,9 +2012,9 @@ public final class TableFixed {
     }
 
     /**
-     * compile a plan from the writer's layout onto this reader's own, ONCE per endpoint. Answers the
-     * entry count, or -1 when the plan does not fit the storage the caller declared — which is a
-     * refusal by name, because this codec never allocates. dest is MY side of the layout, five
+     * compile a plan from the writer's layout onto this reader's own, ONCE per endpoint. Answers
+     * the entry count, or -1 when the plan does not fit the storage the caller declared — which is
+     * a refusal by name, because this codec never allocates. dest is MY side of the layout, five
      * lanes per entry: dest, stride, aux, counted, arg. A bytes(N) row is an ARRAY's.
      *
      * <p>TWO REFUSALS AND NOT ONE (5.3's joint table, 5.9 #45): a plan that does not fit the

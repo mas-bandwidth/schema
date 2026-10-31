@@ -23,8 +23,8 @@ const tableTextRuntime = `
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read

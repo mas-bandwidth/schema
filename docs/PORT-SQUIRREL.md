@@ -223,7 +223,7 @@ beside the modules under their own names, where schema's loader resolves them, a
 design allows. `SERIALIZE_PIN` and `make vendor-serialize-squirrel` (make/squirrel-serialize.mk) pin
 the vendored commit and re-copy the files on a bump.
 
-**The pinned runtime is serialize.nut v2.1.1** (commit d5fc46fe2, format 2.0, standard 2.1),
+**The pinned runtime is serialize.nut v2.1.2** (commit 2f0775f3a, format 2.0, standard 2.1),
 as the main ports pin their serialize release by tag. What it asks of the generated code:
 a write or a measure TRAPS on misuse (a value outside its range or bit width, a non-finite
 float, a bad declaration, an operation past the buffer) by throwing

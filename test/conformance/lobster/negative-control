@@ -1,0 +1,97 @@
+#!/bin/sh
+# THE LOBSTER LEG's conformance negative controls (test/conformance/README.md;
+# docs/PORTING.md I2 and I11). Each one sabotages the EMITTER, never a
+# generated file and never the driver: a sed over a copy of one runtime file
+# the table emitter embeds (internal/codegen/lobstertable/runtime/*.lobster,
+# the //go:embed glob), checked to have matched, `go build -overlay` into a
+# private compiler, the conformance units regenerated from it, and the harness
+# required red on the named surfaces with their neighbours green. No tracked
+# file is written, so an interrupt leaves no sabotaged tree.
+#
+#   report  load.lobster counts every unknown field twice: the surfaces that
+#           print the load's report red (`lobster / report`,
+#           `lobster / framing`, whose answer opens with the same line, and
+#           `lobster / retain`, whose answer carries the same counters) and
+#           nothing else; `wire`, `json-read` and `retain-save` green (the
+#           sabotage moves no byte).
+#   walk    json.lobster's field-key match never matches the first declared
+#           field: the text READER's two surfaces red (`lobster / json-read`,
+#           and `lobster / json-hostile`, which reads through the same match)
+#           and nothing else; `json-write`, `wire` and `cook-write` green, so
+#           the break is the text walk's and the matrix localizes it (I11).
+#   framing load.lobster's id table takes any entry count the buffer holds,
+#           dropping the 4096 bound (docs/LAYERS/1-framing.md F6): exactly
+#           `lobster / framing` red, on its frame_entries_4097 row; `wire`,
+#           `report` and `retain` green.
+#
+# usage: test/conformance/lobster/negative-control <report|walk|framing>
+set -eu
+
+mode=$1
+root=$(pwd)
+out=build/lobster-table-control-$mode
+rm -rf "$out"
+mkdir -p "$out"
+case "$mode" in
+report)
+    source=internal/codegen/lobstertable/runtime/load.lobster
+    sed 's/^\( *\)rep\.unknown++$/\1rep.unknown += 2/' "$source" > "$out/runtime.lobster"
+    ;;
+framing)
+    source=internal/codegen/lobstertable/runtime/load.lobster
+    sed 's/^    if count < 0 or count > 4096 or count > size \/ 8:$/    if count < 0 or count > size \/ 8:/' "$source" > "$out/runtime.lobster"
+    ;;
+walk)
+    source=internal/codegen/lobstertable/runtime/json.lobster
+    sed 's/^        if sl\.fd\.json == key:$/        if sl.fd.json == key and i != 0:/' "$source" > "$out/runtime.lobster"
+    ;;
+*) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
+if cmp -s "$source" "$out/runtime.lobster"; then
+    echo "NEGATIVE CONTROL: the $mode sabotage patched nothing in $source" >&2
+    exit 1
+fi
+printf '{"Replace":{"%s/%s":"%s/%s/runtime.lobster"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+go build -overlay "$root/$out/overlay.json" -o "$out/schema-lobster" ./cmd/schema
+
+# the units exactly as make/lobster.mk's build/conformance-lobster generates them
+mkdir -p "$out/generated"
+grep '^unit ' testdata/conformance/tables/MANIFEST.txt |
+while read -r _ key paths; do
+    # shellcheck disable=SC2086
+    if ! "$out/schema-lobster" generate --lang lobster --out "$out/generated/$key" $paths > "$out/generated/$key.log" 2>&1; then
+        rm -rf "$out/generated/$key"
+        mv "$out/generated/$key.log" "$out/generated/$key.refused"
+    else
+        rm -f "$out/generated/$key.log"
+    fi
+done
+
+lobster="${LOBSTER:-$root/dist/lobster-v2026.8/bin/lobster}"
+printf '#!/bin/sh\nexec env LOBSTER_CONFORMANCE_UNITS=%s/%s/generated LOBSTER=%s %s/test/conformance/lobster/driver "$@"\n' \
+    "$root" "$out" "$lobster" "$root" > "$out/driver"
+chmod +x "$out/driver"
+printf 'lobster %s/driver\n' "$out" > "$out/drivers.txt"
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    echo "NEGATIVE CONTROL FAILED: the lobster $mode sabotage left conformance green" >&2
+    exit 1
+fi
+red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | sort -u | tr '\n' ' ')
+case "$mode" in
+report) want="framing report retain " ; green="wire json-read retain-save" ;;
+framing) want="framing " ; green="wire report retain" ;;
+walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+esac
+if [ "$red" != "$want" ]; then
+    echo "NEGATIVE CONTROL FAILED: the lobster $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
+    cat "$out/log" >&2
+    exit 1
+fi
+for surface in $green; do
+    if ! grep -qE "^$surface +pass" "$out/log"; then
+        echo "NEGATIVE CONTROL FAILED: the lobster $mode sabotage did not leave $surface green" >&2
+        cat "$out/log" >&2
+        exit 1
+    fi
+done
+echo "Lobster table negative control: the $mode sabotage of the emitter turns exactly [${want% }] red and leaves $green green"

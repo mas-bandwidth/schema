@@ -206,9 +206,9 @@ type runPatternException struct {
 
 // runPatternExceptions are the -run lines the gate cannot list: two run inside
 // build/tables-generated-go/cards, a generated module that does not exist
-// until `make cards-generate` builds it; six run inside test/go-tables, a
+// until `make cards-generate` builds it; seven run inside test/go-tables, a
 // separate Go module whose generated replacements do not exist until `make`
-// builds them; and one is a $(3) template with no value until the caller
+// builds them; and two are $(3) templates with no value until the caller
 // expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
 // runs.
 var runPatternExceptions = []runPatternException{
@@ -218,14 +218,16 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk:548", "same separate test/go-tables module, -run Fuzz"},
 	{"make/go.mk:549", "same separate test/go-tables module, -run Fuzz under -race"},
 	{"make/go.mk:586", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
-	{"make/go.mk:882", "same separate test/go-tables module, -run '^TestSoak$$'"},
-	{"make/go.mk:995", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:929", "same separate test/go-tables module, -run '^TestSoak$$'"},
+	{"make/go.mk:1081", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:1099", "same separate test/go-tables module, -run '^TestKeyed'"},
 	{"make/go.mk:528", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone"},
 	{"make/go.mk:542", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone"},
 	{"make/moo-text.mk:28", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it"},
 	{"make/moo-text.mk:32", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it"},
 	{"make/moo-tables.mk:18", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them"},
-	{"Makefile:5410", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"Makefile:5535", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"make/js.mk:1476", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion"},
 }
 
 // checkRunPatterns is the shared code path for both tests. It extracts every

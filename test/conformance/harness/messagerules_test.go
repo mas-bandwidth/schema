@@ -179,7 +179,7 @@ func decodeOne(t *testing.T, model *tabletext.Model, root string, v *tablewire.V
 // message, or keeps the appended bit through the message round trip and so
 // contradicts the row §4 states as moved.
 func TestTheMasksWidth(t *testing.T) {
-	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\ntable Masked\n{\n    perks Perks\n}\n")
+	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	model := tabletext.NewModel(unit)
 	v := vocabularyOf(t, unit)
 	loadout := model.Lookup("Masked")
@@ -261,10 +261,11 @@ func TestTheRetiredAndReservedKindsRefuseTheAnnouncement(t *testing.T) {
 	}
 }
 
-// TestTheCountsTheDataDecide: an unbounded array, a map and a `*bytes` blob
-// node in one message, each carrying a thirty-two bit count or length. Red if
-// a leg sizes any of the three from a declaration, or refuses the construct on
-// this form.
+// TestTheCountsTheDataDecide: an unbounded array and a map are announced with
+// a thirty-two bit count, because the announcement is the whole unit's
+// vocabulary (§3.3). No body carries them: they are a variable table's, and
+// the message form is fixed tables only. Red if the announcement sizes either
+// count from a declaration.
 func TestTheCountsTheDataDecide(t *testing.T) {
 	unit := tempUnit(t, `package countsdemo
 
@@ -291,49 +292,6 @@ table Ledger
 		if got.Kind != ir.TableKindArray || got.Shape.Min != 0 || got.Shape.Max != ir.TableMessageListMax || ir.TableMessageCountBits(got.Shape) != 32 {
 			t.Errorf("%s is announced at kind %d over [%d, %d], not a thirty-two bit count", name, got.Kind, got.Shape.Min, got.Shape.Max)
 		}
-	}
-	inst := model.New(ledger)
-	var read tabletext.Report
-	if !model.Read(inst, []byte(`{"rows":[{"id":1},{"id":2},{"id":3}],"index":{"7":{"id":9},"2":{"id":4}},"data":"AQIDBAU="}`), &read) || !read.Silent() {
-		t.Fatalf("the ledger's text did not read: %+v", read)
-	}
-	message, err := tablewire.EncodeMessage(model, inst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// THE NODE TABLE IS THE FIRST FIELD, and the blob record's length is
-	// thirty-two raw bits after its type reference
-	r := newBits(message[1:])
-	r.get(8)
-	if ref := r.get(v.RefBits()); ref != slotOf(t, v, ir.TableNodeWireId, 0) {
-		t.Fatalf("the node table is not the root body's first field")
-	}
-	if nodes := r.get(32); nodes != 1 {
-		t.Fatalf("the node count reads %d, not one blob", nodes)
-	}
-	if typeRef := r.get(v.RefBits()); typeRef != slotOf(t, v, ir.BytesWireTypeId, 0) {
-		t.Fatalf("the record's type reference is not the bytes id")
-	}
-	if length := r.get(32); length != 5 {
-		t.Errorf("the blob's length reads %d at thirty-two bits, not 5", length)
-	}
-	// and the whole reads back and re-saves
-	back, ok, report, derr := decodeOne(t, model, "Ledger", v, message)
-	if derr != nil || !ok || !report.Silent() {
-		t.Fatalf("the ledger did not read back: ok=%v err=%v report=%+v", ok, derr, report)
-	}
-	if rows := fieldOf(t, back, "rows"); rows.Count != 3 || instU64(t, rows.Elems[2].Tab, "id") != 3 {
-		t.Errorf("the unbounded array did not read back: count=%d", rows.Count)
-	}
-	if index := fieldOf(t, back, "index"); len(index.Entries) != 2 {
-		t.Errorf("the map did not read back: %d entries", len(index.Entries))
-	}
-	if data := fieldOf(t, back, "data"); data.Cell.Blob == nil || string(data.Cell.Blob.Data) != "\x01\x02\x03\x04\x05" {
-		t.Error("the blob did not read back")
-	}
-	again, err := tablewire.EncodeMessage(model, back)
-	if err != nil || string(again) != string(message) {
-		t.Errorf("the ledger does not re-save to its own bytes (%v)", err)
 	}
 }
 
@@ -466,8 +424,8 @@ func TestARangedOffsetAboveTheSendersMax(t *testing.T) {
 // comes after the array. Red if a leg lands on the wrong bit, which the
 // following field's value catches, or counts more than one `clamped`.
 func TestAnOverLongArrayOfNonFixedElements(t *testing.T) {
-	writer := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\ntable Roster\n{\n    names [..16]Name\n    past uint32 = 0\n}\n")
-	reader := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\ntable Roster\n{\n    names [..4]Name\n    past uint32 = 0\n}\n")
+	writer := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\nfixed table Roster\n{\n    names [..16]Name\n    past uint32 = 0\n}\n")
+	reader := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\nfixed table Roster\n{\n    names [..4]Name\n    past uint32 = 0\n}\n")
 	wm, rm := tabletext.NewModel(writer), tabletext.NewModel(reader)
 	wv := vocabularyOf(t, writer)
 	inst := wm.New(wm.Lookup("Roster"))
@@ -503,8 +461,8 @@ func TestAnOverLongArrayOfNonFixedElements(t *testing.T) {
 // drops the field, reads the wrong value, or fails to count `clamped` where
 // the value falls outside its own bound.
 func TestARangeThatMoved(t *testing.T) {
-	narrow := tempUnit(t, "package rowdemo\n\ntable Tally\n{\n    score int32 = 0 | min = 0, max = 100000\n}\n")
-	wide := tempUnit(t, "package rowdemo\n\ntable Tally\n{\n    score int32 = 0 | min = 0, max = 200000\n}\n")
+	narrow := tempUnit(t, "package rowdemo\n\nfixed table Tally\n{\n    score int32 = 0 | min = 0, max = 100000\n}\n")
+	wide := tempUnit(t, "package rowdemo\n\nfixed table Tally\n{\n    score int32 = 0 | min = 0, max = 200000\n}\n")
 	nm, wm := tabletext.NewModel(narrow), tabletext.NewModel(wide)
 	nv, wv := vocabularyOf(t, narrow), vocabularyOf(t, wide)
 	if nv.Entries()[0].Shape.Bits != 17 || wv.Entries()[0].Shape.Bits != 18 {
@@ -598,7 +556,7 @@ fixed table Every
     last  uint32 = 0
 }
 `)
-	reader := tempUnit(t, "package rowdemo\n\ntable Every\n{\n    last uint32 = 0\n}\n")
+	reader := tempUnit(t, "package rowdemo\n\nfixed table Every\n{\n    last uint32 = 0\n}\n")
 	wm, rm := tabletext.NewModel(writer), tabletext.NewModel(reader)
 	wv := vocabularyOf(t, writer)
 	inst := wm.New(wm.Lookup("Every"))
@@ -1307,8 +1265,9 @@ func TestTheSixFindings(t *testing.T) {
 // §3.3 holds to the file's word for word: an integer kind read into a wider
 // one of the same signedness, and `f32` into `f64`, decodes EXACTLY at the
 // SENDER's announced width, the value lands, and one `widened` counts. The row
-// runs at the four sites the variable form counts it: a field, a union arm, a
-// positional array's element and a map's key.
+// runs at the three sites a fixed table holds: a field, a union arm and a
+// positional array's element. A map is a variable table's, and the message
+// form is fixed tables only.
 //
 // Red where a reader treats the announced kind as a mismatch and skips the
 // field: the value comes back at its default and `kind_mismatch` moves in
@@ -1321,13 +1280,12 @@ union Pick
     amount int16
 }
 
-table Row
+fixed table Row
 {
     score  int16 = 0
     ratio  float32 = 0
     marks  [4]int16
     pick   Pick
-    tally  map[int16]int32
 }
 `)
 	wide := tempUnit(t, `package widendemo
@@ -1337,13 +1295,12 @@ union Pick
     amount int32
 }
 
-table Row
+fixed table Row
 {
     score  int32 = 0
     ratio  float64 = 0
     marks  [4]int32
     pick   Pick
-    tally  map[int32]int32
 }
 `)
 	nm, wm := tabletext.NewModel(narrow), tabletext.NewModel(wide)
@@ -1360,13 +1317,6 @@ table Row
 	arm := nm.NewArm(nm.Lookup("Row").Fields[3].Type.Ref.(*ir.Union).Variants[0])
 	arm.Cell.I, arm.Cell.U = 33, 33
 	pick.Cell.Arm = arm
-	// ONE map entry, whose KEY is the kind that widens
-	tally := fieldOf(t, inst, "tally")
-	entry := nm.NewMapEntry(tally.Def)
-	setI64(t, entry, "key", 12)
-	setI64(t, entry, "value", 99)
-	tally.Entries = append(tally.Entries, tabletext.Cell{Tab: entry})
-	tally.Count = 1
 
 	message, err := tablewire.EncodeMessage(nm, inst)
 	if err != nil {
@@ -1380,9 +1330,9 @@ table Row
 		t.Errorf("a kind the declaration WIDENS is not a mismatch (§3.3, §4): kind_mismatch=%d", report.KindMismatch)
 	}
 	// ONE for the field, one for the f32 rung, one for the ARRAY however many
-	// elements it holds, one for the ARM, and ONE for the MAP at its key
-	if report.Widened != 5 {
-		t.Errorf("the five widened sites count one each (§3.3, §4): widened=%d", report.Widened)
+	// elements it holds, and one for the ARM
+	if report.Widened != 4 {
+		t.Errorf("the four widened sites count one each (§3.3, §4): widened=%d", report.Widened)
 	}
 	if got := fieldOf(t, back, "score").Cell.I; got != 1000 {
 		t.Errorf("the widened field's value is the writer's own, exactly: score=%d, not 1000", got)
@@ -1395,9 +1345,6 @@ table Row
 	}
 	if got := fieldOf(t, back, "pick"); got.Cell.U != 1 || got.Cell.Arm == nil || got.Cell.Arm.Cell.I != 33 {
 		t.Errorf("the widened arm is SELECTED and carries its value: %+v", got.Cell)
-	}
-	if got := fieldOf(t, back, "tally"); len(got.Entries) != 1 || fieldOf(t, got.Entries[0].Tab, "value").Cell.I != 99 {
-		t.Errorf("the map with a widened key loads WHOLE (§2.8): %d entries", len(got.Entries))
 	}
 }
 
@@ -1482,83 +1429,5 @@ func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
 	}
 	if got := instStr(t, inst, "sku"); !bytes.Equal(got, exact) {
 		t.Errorf("a payload at the bound lands whole: kept %d bytes, %q", len(got), got)
-	}
-}
-
-// TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule: kind `12`'s
-// content rule MET AT A NODE (docs/SPEC-TABLES.md §3.1) over a form-`2`
-// body (§3.3). §3.1 refuses a text blob's CONTENT on the variable form's own
-// terms, and §3.3 says a form-`2` body's content rules are §3's, unchanged in
-// what they reject: a `*string` blob whose bytes are not well-formed UTF-8, or
-// which carries a zero byte, is DAMAGE and not data. What differs is only the
-// recovery, which a bit stream does not have, so the damage is TERMINAL for
-// the batch. Red if the message path places a blob the file path refuses.
-//
-// The instrument is `blobdemo`'s `Catalog`, whose numbering reaches a
-// `*string` blob through `note` and a `*bytes` blob through `thumb`. A blob
-// record is its own framing wherever it appears: the type reference, a length
-// at thirty-two raw bits, the ALIGN, then the bytes verbatim. A record is
-// numbered and placed whether or not a slot names it, so the rule is reached
-// by the record alone.
-func TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule(t *testing.T) {
-	_, _, u := corpus(t)
-	unit, err := u.get("blobdemo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	model := tabletext.NewModel(unit)
-	v := vocabularyOf(t, unit)
-	// THE RESERVED IDS RIDE IN THE ANNOUNCEMENT'S TAIL whether or not a root
-	// names them (§3.1, §3.3), each a kind-0 entry that frames nothing
-	node := slotOf(t, v, ir.TableNodeWireId, 0)
-	stringType := slotOf(t, v, ir.StringWireTypeId, 0)
-	bytesType := slotOf(t, v, ir.BytesWireTypeId, 0)
-	body := func(typeSlot uint64, data []byte) []byte {
-		w := &bitw{}
-		w.put(node, v.RefBits())
-		w.put(1, 32)
-		w.put(typeSlot, v.RefBits())
-		w.put(uint64(len(data)), 32)
-		w.align()
-		w.bytes(data)
-		w.put(0, v.RefBits())
-		return batchOf(w)
-	}
-
-	// A WELL-FORMED BLOB IS ORDINARY, and the row is here first so a gate that
-	// went red by refusing everything is not one that holds the rule
-	_, ok, report, err := decodeOne(t, model, "Catalog", v, body(stringType, []byte("abcdefgh")))
-	if err != nil || !ok || !report.Silent() {
-		t.Fatalf("a well-formed *string blob on a message body loads silently: ok=%v err=%v report=%+v", ok, err, report)
-	}
-
-	// ILL-FORMED CONTENT IS DAMAGE AND IT IS TERMINAL: a truncated sequence, a
-	// zero byte, an overlong encoding and a lead byte UTF-8 never spells are
-	// each a payload that is not text at whatever length it arrived at
-	damaged := []struct {
-		name string
-		data []byte
-	}{
-		{"a truncated sequence", []byte{'p', 'a', 'c', 'k', 0xC3}},
-		{"a zero byte among the bytes", []byte{'p', 'a', 0x00, 'c', 'k'}},
-		{"an overlong encoding", []byte{'p', 0xC0, 0x80, 'k'}},
-		{"a lead byte UTF-8 never spells", []byte{'a', 'b', 'c', 0xFF, 'e', 'f', 'g', 'h'}},
-	}
-	for _, dr := range damaged {
-		_, loaded, rep, derr := decodeOne(t, model, "Catalog", v, body(stringType, dr.data))
-		if derr != nil {
-			t.Fatalf("%s: the decode errored: %v", dr.name, derr)
-		}
-		if loaded || !rep.Malformed || rep.Refused {
-			t.Errorf("%s in a *string blob record is damage, terminal for the batch (§3.1, §3.3): ok=%v report=%+v", dr.name, loaded, rep)
-		}
-	}
-
-	// AND A *bytes BLOB HAS NO SUCH RULE, because it is bytes and never text
-	// (§3.1): the same bytes under the reserved `bytes` id load clean, which
-	// holds the content rule to the `string` id alone
-	_, ok, report, err = decodeOne(t, model, "Catalog", v, body(bytesType, []byte{'p', 'a', 0x00, 'c', 0xFF}))
-	if err != nil || !ok || !report.Silent() {
-		t.Errorf("the same bytes under the reserved bytes id load silently (§3.1): ok=%v err=%v report=%+v", ok, err, report)
 	}
 }

@@ -58,7 +58,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `nested_append` | `Root { v Vec }`, `Vec {x,y,z}` | `Vec {x,y,z,w}` | `Vec {x,y}`: "field removed" (in the nested type, named as `Root: Vec.z`) | as `field_append`, inside Root | the hash |
 | `default_change` | `a int32 = 1` | — | `a int32 = 2`: "default changed" | — | — |
 | `keyword_change` | `fixed table` | — | `table`: "fixed removed"; the reverse: "fixed added" | — | (a different form, `previous_form` / `newer_form`, not `layout_newer`) |
-| `closure_plain_table` | — | — | a plain `table` reached by value: compile refusal (check_fixed) | — | — |
+| `closure_plain_table` | — | — | a variable table reached by value: compile refusal (check_fixed) | — | — |
 | `closure_variable_kind` | — | — | a pointer, a map, an unbounded array in the closure: compile refusal | — | — |
 | `closure_self` | — | — | a fixed table reaching itself by value, in an array, through a type, through a pointer: compile refusal | — | — |
 | `rename_without_was` | `a` | `a was = b` (allowed) | `b` alone: "renamed without was" | reads | reads |

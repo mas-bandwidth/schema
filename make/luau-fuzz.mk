@@ -29,11 +29,15 @@
 
 LUAU_FUZZ_SEED ?= 1
 LUAU_FUZZ_N    ?= 2000
+# the driver the differential runs; the release tier's control points it at a
+# scratch copy with one reader bug planted (tables-luau-release-negative-control)
+LUAU_WIREFUZZ_DRIVER ?= test/conformance/luau/wirefuzz-driver
 
-LUAU_WIRE_FUZZ_ABSENT_COUNT := 9
+LUAU_WIRE_FUZZ_ABSENT_COUNT := 7
 LUAU_WIRE_FUZZ_ABSENT_PIN   := test/conformance/luau/wire-fuzz-absent.txt
-LUAU_WIRE_FUZZ_LOG          := build/wire-fuzz/luau.log
-LUAU_WIRE_FUZZ_ABSENT       := build/wire-fuzz/luau.absent
+LUAU_WIRE_FUZZ_LOG          ?= build/wire-fuzz/luau.log
+LUAU_WIRE_FUZZ_ABSENT       ?= build/wire-fuzz/luau.absent
+LUAU_WIRE_FUZZ_FAILED       ?= build/wire-fuzz/failed-luau.bin
 
 # build/luaufuzzhost/luaufuzzhost is built by make/schema-luau-nightly-fuzz.mk;
 # its path is spelled out because that file is included after this one.
@@ -42,8 +46,8 @@ tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau build/lu
 	@mkdir -p build/wire-fuzz
 	@rm -f $(LUAU_WIRE_FUZZ_ABSENT)
 	@LUAUFUZZ_NOTE=$(CURDIR)/$(LUAU_WIRE_FUZZ_ABSENT) \
-		./build/conformance-harness wire-fuzz --driver test/conformance/luau/wirefuzz-driver \
-		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed build/wire-fuzz/failed-luau.bin \
+		./build/conformance-harness wire-fuzz --driver "$(LUAU_WIREFUZZ_DRIVER)" \
+		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed $(LUAU_WIRE_FUZZ_FAILED) \
 		> $(LUAU_WIRE_FUZZ_LOG) 2>&1; \
 		status=$$?; cat $(LUAU_WIRE_FUZZ_LOG); \
 		if [ ! -f $(LUAU_WIRE_FUZZ_ABSENT) ]; then \
@@ -74,3 +78,26 @@ tables-luau-wire-fuzz-negative-control: build/conformance-harness build/conforma
 	sh test/conformance/luau/wire-fuzz-negative-control
 
 test-luau: tables-luau-wire-fuzz tables-luau-wire-fuzz-negative-control
+
+# THE LEG's PINNED VECTORS (test/conformance/luau/wire-fuzz-vectors.txt): every
+# Luau red the fuzzer found, each replayed through the leg and the oracle
+# exactly as found (the harness's --replay: one mutant, no enumerated or random
+# pass). Its control reverts each vector's fix in a scratch copy of the emitted
+# units and requires that vector's replay red.
+.PHONY: tables-luau-wire-fuzz-vectors tables-luau-wire-fuzz-vectors-negative-control
+tables-luau-wire-fuzz-vectors: build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
+	@mkdir -p build/wire-fuzz
+	@n=0; grep -v '^#' test/conformance/luau/wire-fuzz-vectors.txt | grep . | while read -r name unit root file; do \
+		LUAUFUZZ_NOTE=$(CURDIR)/build/wire-fuzz/luau-vectors.absent \
+			./build/conformance-harness wire-fuzz --driver test/conformance/luau/wirefuzz-driver \
+			--replay $$file --unit $$unit --root $$root --failed build/wire-fuzz/failed-luau-vector.bin \
+			> build/wire-fuzz/luau-vector-$$name.log 2>&1 || { cat build/wire-fuzz/luau-vector-$$name.log; exit 1; }; \
+		grep -qE '(^|[^0-9])0 divergences' build/wire-fuzz/luau-vector-$$name.log || \
+			{ cat build/wire-fuzz/luau-vector-$$name.log; exit 1; }; \
+		echo "tables-luau-wire-fuzz-vectors: $$name ($$unit.$$root) 0 divergences"; \
+	done
+
+tables-luau-wire-fuzz-vectors-negative-control: build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
+	sh test/conformance/luau/wire-fuzz-vectors-negative-control
+
+test-luau: tables-luau-wire-fuzz-vectors tables-luau-wire-fuzz-vectors-negative-control

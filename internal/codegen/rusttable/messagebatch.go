@@ -34,6 +34,18 @@ type msgGen struct {
 	b     strings.Builder
 	n     int
 	slots map[string]uint64
+	// orig maps a field line the walk holds as a COPY (a union arm, an array's
+	// element) back to the declaration, so a non_finite_float refusal names
+	// <Owner>.<field> by the declaration and never by a guess (§3.3).
+	orig map[*ir.Field]*ir.Field
+}
+
+// origOf is the declaration a field line was copied from, or the line itself.
+func (m *msgGen) origOf(f *ir.Field) *ir.Field {
+	if o, ok := m.orig[f]; ok {
+		return o
+	}
+	return f
 }
 
 func (m *msgGen) pf(format string, args ...any) { fmt.Fprintf(&m.b, format, args...) }
@@ -47,8 +59,8 @@ const msgBad = "{ report.malformed = true; return false; }"
 
 // messageModule is <base>_message.rs: the body walkers of every type this
 // file declares that a fixed root reaches, and the three batch verbs of every
-// fixed root it declares. "`fixed table T` may ride here, a plain `table T`
-// may not" (§3.3), so a plain table grows no verb.
+// fixed root it declares. "`fixed table T` may ride here and a variable table
+// may not" (§3.3), so a variable table grows no verb.
 func (g *gen) messageModule() []byte {
 	reach, _ := unitFixedClosure(g.unit, g.closure)
 	var members []*ir.Struct
@@ -60,7 +72,7 @@ func (g *gen) messageModule() []byte {
 	if len(members) == 0 {
 		return nil
 	}
-	m := &msgGen{u: g.unit, slots: ir.TableVocabularySlots(g.unit)}
+	m := &msgGen{u: g.unit, slots: ir.TableVocabularySlots(g.unit), orig: map[*ir.Field]*ir.Field{}}
 	m.pf("%s", header(g.file.Base, g.unit.Package, "THE MESSAGE FORM's bodies, form byte 2 (docs/SPEC-TABLES.md §3.3)"))
 	m.pf(`//
 // A body is a run of (reference, value) pairs under the announced vocabulary,
@@ -242,11 +254,12 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 		if isUnionRef(f.Type) {
 			return fmt.Sprintf("%s.iter().any(|x| x.tag() != 0)", expr)
 		}
-		return fmt.Sprintf("(0..%d).any(|i| %s[i] != %s[i])", f.ArrayBound, expr, dexpr)
+		return fmt.Sprintf("(0..%d).any(|i| %s)", f.ArrayBound, scalarDiffers(f, expr+"[i]", dexpr+"[i]"))
 	case isUnionRef(f.Type):
 		return expr + ".tag() != 0"
 	}
-	return fmt.Sprintf("%s != %s", expr, dexpr)
+	// a plain float compares bits, so a -0 under a +0 default rides (§3.3)
+	return scalarDiffers(f, expr, dexpr)
 }
 
 // keyedPairs counts the slots of a keyed array that ride (§3.3).
@@ -351,6 +364,13 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 		m.pf("%sw.put(if %s { 1 } else { 0 }, 1);\n", ind, expr)
 	default:
 		lo, hi := expr+" as u64", "0"
+		if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+			// A NaN OR AN INFINITY IS REFUSED, never quantized or clamped
+			// (docs/SPEC-TABLES.md §3.3, both special-values rules): the writer
+			// answers false before the quantizer runs, so measure and save both
+			// return -1.
+			m.pf("%sif !%s.is_finite() { return false; }\n", ind, expr)
+		}
 		switch {
 		case f.Type.Kind == ir.TFloat32:
 			lo = expr + ".to_bits() as u64"
@@ -492,6 +512,7 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 					armExpr = local + ".value"
 				}
 				af := *v.F
+				m.orig[&af] = v.F
 				m.readValue(&af, armExpr, arm, in+"    ")
 				m.pf("%s    %s.set_%s(%s);\n", in, expr, v.Name, local)
 			}
@@ -526,10 +547,17 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s%s = (lo as u8) != 0;\n", ind, expr)
 		return
 	case ir.TFloat32, ir.TFloat64:
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
+		// become a value (docs/SPEC-TABLES.md §3.3), as a file read refuses it:
+		// the read names the field and the batch refuses as non_finite_float,
+		// so the 0.0 that stands in is never delivered. A QUANTIZED float rides
+		// an index, and the value an index names is finite; every finite
+		// float32 widens exactly through the ordinary conversion (§4).
+		owner := floatOwnerIn(m.u, m.origOf(f))
 		if f.Type.Kind == ir.TFloat32 {
-			m.pf("%slet mut x = f32::from_bits(lo as u32);\n", ind)
+			m.pf("%slet mut x = if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, entry, owner)
 		} else {
-			m.pf("%slet mut x = if %s.kind == 10 { f64::from_bits(table_message_widen_f32(lo as u32)) } else { f64::from_bits(lo) };\n", ind, entry)
+			m.pf("%slet mut x = if %s.kind == 10 { if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, entry, entry, owner, owner)
 		}
 		if f.HasFloatRange {
 			var lo, hi string
@@ -581,6 +609,7 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	}
 	m.pf("%s    let %s = TableMessageEntry { id: 0, kind: %s.shape.elem, shape: %s.element, element: TableMessageShape::default() };\n", ind, el, entry, entry)
 	e := msgElement(f)
+	m.orig[e] = m.origOf(f)
 	if f.KeyEnum != "" {
 		m.pf("%s    for _ in 0..n {\n", ind)
 		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
@@ -665,11 +694,19 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 
 /// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
-/// read whole. "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1"; "M ABOVE THE
+/// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
+/// the count is zero, malformed is set, and every body of the batch goes back
+/// to its declared defaults, bytes after the pad included; "M ABOVE THE
 /// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
 /// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
+///
+/// A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3):
+/// no body of it is delivered, so the count is zero, every body read so far
+/// goes back to its declared defaults, and the reason is non_finite_float.
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
+    report.non_finite_float = "";
+    report.non_finite_float_id = None;
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };
@@ -677,12 +714,27 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
         return (count, report.refuse(TableReason::BatchTooLarge));
     }
     let mut r = TableBitReader::new(&data[2..]);
-    for (i, value) in values.iter_mut().take(count).enumerate() {
-        if !%[1]s_load_message_body(&mut r, vocabulary, report, value) {
-            return (i, false);
+    for i in 0..count {
+        if !%[1]s_load_message_body(&mut r, vocabulary, report, &mut values[i]) || !report.non_finite_float.is_empty() {
+            if !report.non_finite_float.is_empty() {
+                for value in values.iter_mut().take(i + 1) {
+                    *value = %[1]s_message_default();
+                }
+                return (0, report.refuse(TableReason::NonFiniteFloat));
+            }
+            for value in values.iter_mut().take(count) {
+                *value = %[1]s_message_default();
+            }
+            return (0, false);
         }
     }
-    (count, table_message_batch_close(&mut r, report))
+    if !table_message_batch_close(&mut r, report) {
+        for value in values.iter_mut().take(count) {
+            *value = %[1]s_message_default();
+        }
+        return (0, false);
+    }
+    (count, true)
 }
 
 `, snake, row)
@@ -855,14 +907,6 @@ pub fn table_message_widens(from: u8, to: u8) -> bool {
         || (from == 10 && to == 11)
 }
 
-/// A float32 widened into a float64 bit-exactly, NaN payload included (§4).
-pub fn table_message_widen_f32(b: u32) -> u64 {
-    if b & 0x7f80_0000 == 0x7f80_0000 {
-        return ((b >> 31) as u64) << 63 | 0x7ff0_0000_0000_0000 | ((b & 0x7f_ffff) as u64) << 29;
-    }
-    (f32::from_bits(b) as f64).to_bits()
-}
-
 /// §3's one content rule for a string: well-formed UTF-8 with no zero byte.
 pub fn table_message_utf8(text: &[u8]) -> bool {
     core::str::from_utf8(text).is_ok() && !text.contains(&0)
@@ -945,7 +989,9 @@ pub fn table_message_write_scalar(w: &mut TableBitWriter, s: &TableMessageShape,
     if s.packing == 2 {
         let value = f32::from_bits(lo as u32);
         let mut ratio = (value - s.qmin) / s.qdelta;
-        // NaN clamps low, as the negated comparisons this replaces did
+        // a NaN never reaches here: the writer refuses one before the
+        // quantizer runs (§3.3); the test stays so no input moves the index
+        // outside [0, count]
         if ratio.is_nan() || ratio < 0.0 {
             ratio = 0.0;
         } else if ratio > 1.0 {

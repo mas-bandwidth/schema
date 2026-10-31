@@ -4189,7 +4189,14 @@ bool LeafFromJsonTolerant( LeafBuilder & builder, const char * text, int64_t byt
 {
     Leaf * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, LeafTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, LeafTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; LeafTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool LeafFromJson( LeafBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4226,7 +4233,14 @@ bool HolderFromJsonTolerant( HolderBuilder & builder, const char * text, int64_t
 {
     Holder * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, HolderTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, HolderTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; HolderTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool HolderFromJson( HolderBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4263,7 +4277,14 @@ bool HandFromJsonTolerant( HandBuilder & builder, const char * text, int64_t byt
 {
     Hand * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, HandTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, HandTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; HandTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool HandFromJson( HandBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4300,7 +4321,14 @@ bool ChainFromJsonTolerant( ChainBuilder & builder, const char * text, int64_t b
 {
     Chain * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, ChainTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, ChainTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ChainTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ChainFromJson( ChainBuilder & builder, const char * text, int64_t bytes, TableReport * report )

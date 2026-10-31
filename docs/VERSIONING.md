@@ -85,8 +85,9 @@ named in its section below.
     class has it and a fixed-class root has none. It covers unknown FIELDS
     and not unknown enum variants, union arms, keyed-array slots, node
     records, node indices or the node table itself. And it covers the
-    `unknown` class alone, so a load that reported `kind_mismatch`, `clamped`
-    or `malformed` still loses what those counters name. It is opt-in, it
+    `unknown` class alone, so a load that reported `kind_mismatch` or
+    `clamped` still loses what those counters name, and a `malformed` load is
+    discarded whole. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
     SPEC-TABLES.md §6.6. The C++ reference, C# and Go carry it; C, Rust, Java,
     JavaScript, Dart and Elixir do not yet.
@@ -298,7 +299,8 @@ Three mechanisms judge an edit, and each sees what the others cannot:
 - **The read report** says what a *reader* can tell happened: six counters,
   `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
   `malformed` flag, filled on every load and never fatal on data from another
-  build. A
+  build. `malformed` is DAMAGE rather than evolution, and a load that reports
+  it is discarded whole (SPEC-TABLES.md §4). A
   caller that opts into retain-unknown reads two more on the same struct
   (SPEC-TABLES.md §6.6), and they report on retention rather than on the read.
 - **The baseline** says what the *compiler* refuses to let you do to data
@@ -373,8 +375,9 @@ NO LOSS: an integer kind read into a wider one of the same signedness, or an
 `f32` into an `f64`, decodes exactly, and the count says the bytes were not
 the shape this reader declares rather than that anything was dropped. It fires
 on the NEW build reading the OLD file, and never the other way, which is the
-whole shape of the pattern below. `kind_mismatch`, `clamped` and `malformed` are damage or a decision,
-and a game that alarms on those three and logs the others has the severity
+whole shape of the pattern below. `kind_mismatch` and `clamped` are a
+decision the reader made, and `malformed` is damage, which discards the whole
+load (SPEC-TABLES.md §4); a game that alarms on those three and logs the others has the severity
 split it needs. A tool that wants to know *which* field was clamped re-walks
 the file with the descriptors, the per-field facts every table's generated
 header carries; per-event attribution on the generated read path is additive
@@ -449,7 +452,8 @@ whose read report is not silent, UNLESS retention was on and `retain_lost`,
 is the original condition with `unknown` struck out and nothing else moved,
 and it is precisely what retention buys. The other three still name real loss:
 a `kind_mismatch` field was skipped and read its declared default, a `clamped`
-value was changed on the way in, and a `malformed` load kept a partial decode.
+value was changed on the way in, and a `malformed` load was discarded whole
+and has nothing to rewrite.
 **`widened` is not in the condition and never was**, on either side of the
 opt-in: a widened field decoded exactly, so a rewrite loses nothing, and the
 counter is there to say the file's bytes will change shape rather than that
@@ -792,13 +796,10 @@ packet wire the residual is 6, 33 and 7 bytes, and on `MatchResult` 30 of the 33
 are ten rows of three references and a terminator, which is the price of naming
 a field inside an array of tables.
 
-**Damage is terminal for a batch, and that is the one thing tolerance gives up.**
-A byte-framed body has a place to resume, because its length says where the next
-field begins. A bit stream does not. So a reference above the entry count, a
-length running past the batch, and exhaustion each stop the batch: the fields
-decoded before the damage stand, one `malformed` counts, and nothing after is
-read, which is the packet wire's own answer reached for the same reason. What
-does NOT stop is EVOLUTION: an unknown field is stepped over exactly, by the
+**Damage discards the whole batch, as it discards the whole load on every
+form** (SPEC-TABLES.md §4). A reference above the entry count, a length
+running past the batch, and exhaustion each refuse the batch as `malformed`,
+and nothing it decoded is a value to use. What does NOT stop is EVOLUTION: an unknown field is stepped over exactly, by the
 width its announced shape gives it, and counted, which is the case that actually
 happens between two builds.
 
@@ -806,10 +807,8 @@ happens between two builds.
 spent, no payload of the variable form changes, no skip rule of the variable form
 changes. The protocol id does not move, the build version does not move, the
 baseline does not move, the text form does not move, the cook and the block do
-not move, and no EVOLUTION row of the table above moves. TWO rows do, in this
-form only, and they are the whole list. The FRAMING DAMAGE row: a damaged level
-cannot cost only itself where there is no length to read on past. And the MASK
-ROUND-TRIP row: a `flags` mask rides at its declared W bits here rather than as
+not move, no EVOLUTION row of the table above moves, and neither does the
+damage rule. ONE row does, in this form only: the MASK ROUND-TRIP row: a `flags` mask rides at its declared W bits here rather than as
 a raw `uint64`, which is the packet wire's rule taken for the packet wire's
 reason, so a bit a newer build appended survives a file round trip and not a
 message one. Sixty-four bits for a three-bit mask is the largest fixed overspend
@@ -1075,9 +1074,9 @@ still open.
   finds damaged is dropped too, and that never turns the plain read
   `malformed`.
 - **Retention covers `unknown` and no other counter.** A load that counted
-  `kind_mismatch`, `clamped` or `malformed` still loses what those name on a
-  rewrite, so the never-clobber condition keeps all three beside
-  `retain_lost`.
+  `kind_mismatch` or `clamped` still loses what those name on a rewrite, and
+  a `malformed` load is discarded whole, so the never-clobber condition keeps
+  all three beside `retain_lost`.
 - **The widening path runs FORWARD only.** A new build reads an old file's
   narrower integer of the same signedness, and its `float32` as a `float64`,
   exactly, counting `widened`. An OLD build reading a NEW file gets nothing:
@@ -1211,8 +1210,9 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #525: retain-unknown in the eight ports. The C++ reference, the two report
   counters, `internal/tablewire`'s own retention, the wire fuzzer's retention
-  leg, which needed it, the MESSAGE form's `LoadRetain` and the conformance
-  manifest's retain rows are built.
+  leg, which needed it, and the conformance manifest's retain rows are built.
+  The message form carries no retention: it is fixed tables only (SPEC-TABLES
+  §3.3).
 - #523: the unbounded array, `[]T` and `[]*T`, its refusals and the
   `list_migrates` golden that pins "the same bytes" as `[..N]T`
   (SPEC-TABLES.md §2.9). The C++ reference carries the construct and the

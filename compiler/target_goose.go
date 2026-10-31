@@ -20,6 +20,11 @@ import (
 
 type gooseTarget struct{}
 
+// gooseWideTableKinds is set by the surface that carries the fixed-point and
+// 128-bit table kinds (compiler/carries_goose_tablewire.go, §15); until then
+// the target refuses them by name.
+var gooseWideTableKinds bool
+
 func (gooseTarget) Names() []string { return []string{"goose"} }
 
 // Generate is the type surface (one module per schema file) and, for a unit
@@ -41,8 +46,10 @@ func (gooseTarget) Names() []string { return []string{"goose"} }
 // and its kin from an init) and never edits this file: each refusal below
 // stands down by itself, because each reads its registry, not this chain.
 func (gooseTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := ir.RefuseWideTableKinds(u, "goose"); err != nil {
-		return nil, err
+	if !gooseWideTableKinds {
+		if err := ir.RefuseWideTableKinds(u, "goose"); err != nil {
+			return nil, err
+		}
 	}
 	if err := refuseUnported(u, "goose"); err != nil {
 		return nil, err

@@ -73,7 +73,7 @@ func batchManifest(t *testing.T) []batchRow {
 		case len(fields) == 5 && fields[0] == "connection":
 			connUnit[fields[1]] = fields[2]
 			connWire[fields[1]] = fields[4]
-		case len(fields) == 6 && fields[0] == "message":
+		case len(fields) == 6 && fields[0] == "message" && fields[5] != "-": // a named refusal row (a variable table, §3.3) carries no message bytes
 			msgs = append(msgs, msgLine{fields[1], fields[2], fields[3], fields[4], fields[5]})
 		}
 	}
@@ -235,11 +235,11 @@ func TestMessageFormBatchDart(t *testing.T) {
 				u := batchUnit(t, row.path)
 				st := findTable(t, u, row.root)
 				if !st.IsTable || !st.FixedDeclared {
-					// "THE FORM IS A FIXED TABLE'S ... a plain `table T` may
+					// "THE FORM IS A FIXED TABLE'S ... a variable table may
 					// not" (docs/SPEC-TABLES.md §3.3): the manifest carries a
 					// `message` row for the variable root Scene, and what the
 					// Dart leg owes a variable root is reported, not decided.
-					t.Skipf("§3.3 is a fixed table's; %s is a plain table", row.root)
+					t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
 				}
 				out, err := runBatchProbe(t, u, row.root, roundTripBody(row.root, row.announce, row.message))
 				if err != nil {

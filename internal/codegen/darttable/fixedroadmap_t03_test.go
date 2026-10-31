@@ -709,9 +709,9 @@ func t03R22(t *testing.T) {
 		name, want, src string
 	}{
 		// "every table or type reached by value is itself fixed"
-		{"a plain table by value", "plain table Child",
+		{"a variable table by value", "variable table Child",
 			"package probe\n\ntable Child { x int32 }\n\nfixed table T { child Child }\n"},
-		{"a plain table in an array", "plain table Ship",
+		{"a variable table in an array", "variable table Ship",
 			"package probe\n\ntable Ship { hp int32 }\n\nfixed table T { ships [..4]Ship }\n"},
 		// "a pointer, map or unbounded array in the closure is a compile
 		// refusal"

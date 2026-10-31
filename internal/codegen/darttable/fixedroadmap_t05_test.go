@@ -184,7 +184,7 @@ fixed table T
 		t.Error("E8: the `| deprecated` marker is not on the IR field")
 	}
 	if got, want := len(fixedWalkRoot(depTable).entries), len(fixedWalkRoot(findTable(t, unitFrom(t, plain), "T")).entries); got != want {
-		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the plain table's %d", got, want)
+		t.Errorf("E8: the deprecated field's slot did not stay: %d walked entries, want the variable table's %d", got, want)
 	}
 	// THE DEPRECATED FIELD IS STILL A PLAN ENTRY: the identity walk copies its
 	// slot, so a reader reads what the writer left there and nothing skips it.

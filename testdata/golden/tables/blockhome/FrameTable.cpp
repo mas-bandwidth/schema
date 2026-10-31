@@ -3632,7 +3632,14 @@ namespace blockhome {
 
 bool PartRowFromJsonTolerant( PartRow & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PartRowTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PartRowTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PartRowTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PartRowFromJson( PartRow & value, const char * text, int64_t bytes, TableReport * report )
@@ -3665,7 +3672,14 @@ int64_t PartRowToJson( const PartRow & value, char * buffer, int64_t capacity )
 
 bool PartFrameFromJsonTolerant( PartFrame & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PartFrameTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PartFrameTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PartFrameTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PartFrameFromJson( PartFrame & value, const char * text, int64_t bytes, TableReport * report )

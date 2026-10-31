@@ -25,3 +25,26 @@ func init() {
 		new: "  return s; // SABOTAGED: text_holds_zero removed",
 	}}
 }
+
+// THE DART LEG'S SHARED-NODE TEXT CONTROL (docs/PORTING.md M14,
+// docs/SPEC-TABLES.md §16.7): _writePtr writes every node in place, so a node
+// two slots name is written twice in full with no "&node" label. `dart /
+// json-write` goes red on the shared-node rows; the reader and the wire never
+// run this branch and stay green.
+func init() {
+	sabotages["table-dart-text-share"] = []edit{{
+		old: "  if ((sh.count[node] ?? 0) <= 1) {\n    body(null);",
+		new: "  if (true /* SABOTAGED: every node written in place */) {\n    body(null);",
+	}}
+}
+
+// THE DART LEG'S FRAMING CONTROL (docs/LAYERS/1-framing.md F6,
+// docs/SPEC-TABLES.md §3): the id table's 4096-entry maximum is taken out of
+// the reader's open(), so a table of 4097 entries reads as clean. `dart /
+// framing` goes red on frame_entries_4097 alone.
+func init() {
+	sabotages["table-dart-id-table-cap"] = []edit{{
+		old: "    if (count > 4096) return 2;\n",
+		new: "    // SABOTAGED: the 4096-entry id-table maximum is gone\n",
+	}}
+}

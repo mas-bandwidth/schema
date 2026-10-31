@@ -48,7 +48,7 @@ func jsId(id uint64) string { return fmt.Sprintf("0x%016xn", id) }
 // take the fixed form's surfaces down with it. In such a unit a table the
 // variable wire does not carry stays absent and unclaimed.
 //
-// THE PREDICATE IS THE DECLARATION, NOT THE SERVICE. A plain `table` is the
+// THE PREDICATE IS THE DECLARATION, NOT THE SERVICE. A variable table is the
 // VARIABLE wire whatever its fields happen to be (§2.2), so the predicate
 // scopes on !ir.VariableTables(u)[name], the same predicate the Elixir leg
 // holds (internal/codegen/elixirtable/variablerefusal.go), so only a unit whose
@@ -201,6 +201,12 @@ func (g *variableGen) emitRuntime() {
 // ---------------------------------------------------------------------------
 
 export const TableVariableForm = 1;
+
+// THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3, THE DISTINCTNESS CHECK;
+// docs/LAYERS/1-framing.md F6): an id table of more than 4096 entries is
+// malformed for the whole wire, whatever the buffer would hold, so the
+// distinctness proof never runs past it. kTableProbeBound in the C++ reference.
+export const TableVariableEntryBound = 4096n;
 
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 export const TableNodeTableId = 0xffffffffffffffffn;
@@ -1090,7 +1096,7 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
 	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")
 	g.pf("  const count = dv.getBigUint64(bytes.length - 8, true);\n")
-	g.pf("  if (count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
+	g.pf("  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { return %s; }\n", refused)
 	g.pf("  const first = bytes.length - 8 - Number(count) * 8;\n")
 	g.pf("  const ids = [];\n")
 	g.pf("  const seen = new Set();\n")

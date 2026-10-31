@@ -13,11 +13,6 @@ local refuse = function(r, why) {
   return -1;
 };
 
-_M.RefuseTable <- function(name, report) {
-  reset(report);
-  return refuse(report, "message_form_plain_table:" + name);
-};
-
 local equalBytes = function(a, b) {
   if (a.len() != b.len()) return false;
   for (local i = 0; i < a.len(); i++) if ((a[i] & 0xff) != (b[i] & 0xff)) return false;
@@ -622,7 +617,12 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local walked=readBatch(T,v,r,d,storage,count,bytes,report);
   // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
   // §3.3), outranking every other verdict: no body of it is delivered
-  if(r.nonFinite!=null)return refuse(report,"non_finite_float: "+r.nonFinite);
+  // Damage discards every body, including bodies decoded before the stop.
+  if(walked!=count || r.nonFinite!=null) {
+    for(local i=0;i<count;i++)storage[i]=d.make();
+    if(r.nonFinite!=null)return refuse(report,"non_finite_float: "+r.nonFinite);
+    return 0;
+  }
   return walked;
 };
 readBatch = function(T, v, r, d, storage, count, bytes, report) {
