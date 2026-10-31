@@ -40,6 +40,7 @@
       "when": "pull-request",
       "why": "the C two-units control and the generated C tree it builds (23 s), the doc/tags family (17 s), the projection's wire-law and variant-order controls, the C ref-ordinal rewind, and the small refusers: clamps, JSON, was, retention, runtime homes, zero-cost, block, python packet and toolchain: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
+        "build-version-elemkind-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
         "tables-block-const-negative-control",
@@ -62,6 +63,7 @@
         "tables-slot-negative-control",
         "tables-view-containment-negative-control",
         "tables-was-negative-control",
+        "tables-wire-text-total-negative-control",
         "tables-wasrows-negative-control",
         "tables-zero-cost-negative-control",
         "toolchain-negative-control"
