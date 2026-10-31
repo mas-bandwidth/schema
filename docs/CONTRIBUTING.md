@@ -94,13 +94,17 @@ the paired before/after, and its refutations reported plainly; a wrong-magnitude
 prediction is a refutation, not a rounding error. Suspected vulnerabilities
 follow [SECURITY.md](SECURITY.md).
 
-**Streams land on `dev`; `dev` promotes to `main`** (Glenn, 2026-10-14). Sprint
-work lands as card heads, in a batch, onto a branch per work stream
-(`sprint/schema-<stream>`, one writer per stream). Each stream branch merges
-SERIALLY into `dev`, never into `main` and never into another stream. `main`
-only moves by a promotion pull request from `dev` (titled "promote dev to
-main"), which runs the full checks; a hand fix goes to `dev` first, the same
-way. A stream whose base is `main` is a defect. Pull requests into `main`,
+**Everything lands on `main` by pull request** (Glenn, 2026-10-30: "Start
+landing languages in main please"). A fix is one pull request into `main` per
+independent cause. A language's work is squash-merged into its branch
+`lang/<lang>` (or `lang/<lang>-300`), and that branch reaches `main` once, by
+one pull request with a merge commit. `dev` and the `sprint/*` stream branches
+are stale and take no new work. When two branches both edit the same register
+row in [docs/PORTING.md](PORTING.md), check the file out with
+`git checkout --conflict=diff3 docs/PORTING.md` and run
+`go run ./tools/cellmerge docs/PORTING.md`. It merges each conflicted row cell
+by cell by column name, three-way, and leaves any hunk it cannot merge exactly
+for a person. Pull requests into `main`,
 `dev`, or `fixed-table-form` automatically run `ci-fast.yml` (planning by diff
 against the target branch so only touched packages and legs are selected) and
 the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
