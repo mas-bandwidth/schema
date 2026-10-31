@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -21,6 +22,7 @@ import (
 // owes the refusal and nothing it decoded or would save is compared.
 func TestJavaFixMapEntryDamageRefused(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	const wireHex = "01010e370d021a020c05616c706861030e0e04030a0000000b0000000c0000000019020c0462657461030e0e0403000000000100000002000000000404070000000038810af11f06a7a3ec105b36194ac93dffffffffffffffffe9ea716f0f0182bf0400000000000000"
 	wire, err := hex.DecodeString(wireHex)
 	if err != nil {

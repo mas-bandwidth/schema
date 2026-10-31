@@ -5532,7 +5532,7 @@ tables-cpp-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/codecs.go":"%s/$(CPP_DISCARD_NC)/codecs.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(CPP_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
 			./internal/codegen/cpptable > $(CPP_DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C++ discard is gone and the gate stayed green"; \
 		cat $(CPP_DISCARD_NC)/log; exit 1; \
@@ -5557,7 +5557,7 @@ tables-cpp-region-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(CPP_REGION_DISCARD_NC)/pointers.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_REGION_DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(CPP_REGION_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_REGION_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
 			./internal/codegen/cpptable > $(CPP_REGION_DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C++ region discard is gone and the gate stayed green"; \
 		cat $(CPP_REGION_DISCARD_NC)/log; exit 1; \
@@ -5903,7 +5903,7 @@ endef
 # it, and requires the clean output to pass.
 .PHONY: message-form-fixed-only-lock-negative-control
 message-form-fixed-only-lock-negative-control:
-	go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
+	SCHEMA_SLOW=1 go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
 
 .PHONY: tables-message-form-text-negative-control
 tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp
