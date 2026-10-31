@@ -113,6 +113,10 @@ tables-squirrel-release:
 	$(MAKE) conformance-negative-control-squirrel-walk
 	$(MAKE) conformance-negative-control-squirrel-block
 	$(MAKE) conformance-negative-control-squirrel-retain
+	$(MAKE) conformance-negative-control-squirrel-absent
+	$(MAKE) tables-squirrel-usage-negative-control
+	$(MAKE) tables-squirrel-runtime-home-negative-control
+	$(MAKE) tables-squirrel-release-negative-control
 
 # I4, PER-CASE ABSENT (docs/PORTING.md): the leg answers a case it cannot
 # carry with `<case>.absent`, and the harness counts it. The control runs the
