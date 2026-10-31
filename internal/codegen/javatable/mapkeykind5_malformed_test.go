@@ -21,8 +21,10 @@ import (
 // (§2.8) SKIPS the mis-kind key, reads a later correct key, and the desynced
 // body tail counts malformed; it never reports a kind mismatch for the skipped
 // occurrence, a WIDENED key leaves the mis-kind mark as it was, and a correct
-// key clears it. The Java leg used to diverge on each: this pins the Java
-// answer to the oracle's (saved bytes and every report counter).
+// key clears it. On a mutant the oracle reads clean the Java answer is pinned
+// to the oracle's (saved bytes and every report counter); on one it reads as
+// damaged, DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) and the leg
+// owes the refusal alone.
 func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -102,6 +104,7 @@ public final class Driver {
         %s.TableVariable.Report report = new %s.TableVariable.Report();
         %s.%sVariable.Value v = %s.%sVariable.load(wire, report);
         System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        if (v == null) { System.out.println("S null"); return; }
         byte[] saved = %s.%sVariable.save(v);
         System.out.println("S " + java.util.HexFormat.of().formatHex(saved));
     }
@@ -137,13 +140,18 @@ public final class Driver {
 			model := tabletext.NewModel(u)
 			want := new(tabletext.Report)
 			value := model.New(u.Tables[root])
-			ok, err := tablewire.Decode(model, value, mutant, want)
-			if !ok || err != nil {
-				t.Fatalf("oracle decode: ok=%v err=%v report=%+v", ok, err, want)
+			if _, err := tablewire.Decode(model, value, mutant, want); err != nil {
+				t.Fatalf("oracle decode: err=%v report=%+v", err, want)
 			}
 			gotFields := strings.Split(javaReport, ",")
 			if len(gotFields) != 7 {
 				t.Fatalf("java report shape: %q", javaReport)
+			}
+			if want.Malformed {
+				if gotFields[5] != "true" {
+					t.Errorf("Java %s did not refuse a damaged load: %q", root, javaReport)
+				}
+				return
 			}
 			wantFields := []string{
 				fmt.Sprintf("%d", want.Unknown),

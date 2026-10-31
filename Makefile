@@ -80,6 +80,11 @@ toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
 # the layout model or the build version silently NOT rebuild the compiler every
 # gate below then measures.
 GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
+# and every file the compiler embeds (go:embed): the runtimes the scripting
+# targets copy beside their output. Without them an edit to a runtime left
+# bin/schema stale and every generate re-emitted the old runtime.
+# bin-schema-embeds checks it against `go list`'s own EmbedFiles.
+EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go')
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 # the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side
@@ -132,8 +137,38 @@ all: bin/schema
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
-bin/schema: $(GO_SOURCES)
+bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+
+# bin-schema-embeds: for one embedded file of every package that embeds
+# (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
+# newer mtime on that file makes bin/schema out of date. `make -q` asks
+# without building; the last step rebuilds once.
+.PHONY: bin-schema-embeds
+bin-schema-embeds: bin/schema
+	@n=0; for f in $$(go list -deps -f '{{$$d := .Dir}}{{range .EmbedFiles}}{{$$d}}/{{.}}{{"\n"}}{{break}}{{end}}' ./cmd/schema); do \
+		n=$$((n+1)); touch "$$f"; \
+		if $(MAKE) --no-print-directory -q bin/schema; then \
+			echo "bin-schema-embeds FAILED: touching $$f left bin/schema up to date"; exit 1; fi; \
+		touch -r "$$f" bin/schema; \
+	done; \
+	test $$n -gt 0 || { echo "bin-schema-embeds FAILED: go list named no embedded file"; exit 1; }; \
+	echo "bin-schema-embeds: $$n embedding package(s), a newer file in each rebuilds bin/schema"
+	@$(MAKE) --no-print-directory bin/schema
+
+test: bin-schema-embeds
+
+# Its control: with EMBED_SOURCES emptied on the command line, a touched
+# runtime leaves bin/schema up to date and bin-schema-embeds must go red.
+.PHONY: bin-schema-embeds-negative-control
+bin-schema-embeds-negative-control: bin/schema
+	@mkdir -p build
+	@if $(MAKE) --no-print-directory bin-schema-embeds EMBED_SOURCES= > build/bin-schema-embeds-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: with no embedded file a prerequisite, bin-schema-embeds stayed green"; cat build/bin-schema-embeds-control.log; exit 1; fi
+	@grep -q 'bin-schema-embeds FAILED: touching .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: bin-schema-embeds went red for another reason"; cat build/bin-schema-embeds-control.log; exit 1; }
+	@$(MAKE) --no-print-directory bin/schema
+	@echo "negative control: without the embedded files as prerequisites, a touched runtime leaves bin/schema stale and bin-schema-embeds goes RED"
 
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)
@@ -5481,6 +5516,58 @@ tables-wire-fuzz-discard-negative-control:
 	@grep -m1 "refuses the damaged load is red" $(DISCARD_NC)/log
 	@echo "negative control: comparing a damaged load's saved bytes turns the discard gate RED"
 
+# DAMAGE DISCARDS THE WHOLE LOAD in the C++ reference (docs/SPEC-TABLES.md §4):
+# the control removes the discard from a COPY of the emitter's LoadVerdict,
+# reached through a Go build overlay, so a fixed root damaged inside a nested
+# body hands back what it decoded, and the gate
+# TestDamageDiscardsTheWholeLoadCPP must go red on exactly that. Nothing
+# tracked is written to.
+CPP_DISCARD_NC := build/cpp-discard-nc
+.PHONY: tables-cpp-discard-negative-control
+tables-cpp-discard-negative-control:
+	@rm -rf $(CPP_DISCARD_NC) && mkdir -p $(CPP_DISCARD_NC)
+	@sed -e 's|if ( to->malformed ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
+		internal/codegen/cpptable/codecs.go > $(CPP_DISCARD_NC)/codecs.go.txt
+	@cmp -s internal/codegen/cpptable/codecs.go $(CPP_DISCARD_NC)/codecs.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/codecs.go":"%s/$(CPP_DISCARD_NC)/codecs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_DISCARD_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(CPP_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ discard is gone and the gate stayed green"; \
+		cat $(CPP_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "fixed: LoadTolerant answered true on damage" $(CPP_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "LoadTolerant answered true" $(CPP_DISCARD_NC)/log
+	@echo "negative control: removing the C++ discard turns the whole-load gate RED"
+
+# The REGION twin of tables-cpp-discard-negative-control: the discard is
+# removed from a COPY of the variable-class LoadTolerant in pointers.go, so a
+# variable root damaged inside a nested body hands back its region root, and
+# TestDamageDiscardsTheWholeLoadCPP must go red on exactly that.
+CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
+.PHONY: tables-cpp-region-discard-negative-control
+tables-cpp-region-discard-negative-control:
+	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
+	@sed -e 's|if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; }|if ( false ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the region discard is gone|' \
+		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(CPP_REGION_DISCARD_NC)/pointers.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_REGION_DISCARD_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_REGION_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(CPP_REGION_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ region discard is gone and the gate stayed green"; \
+		cat $(CPP_REGION_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "variable: LoadTolerant handed back a root on damage" $(CPP_REGION_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
+	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
+
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
 # ORACLE is taught the opposite reading, a nested-union arm whose L runs past
@@ -5815,7 +5902,7 @@ endef
 # it, and requires the clean output to pass.
 .PHONY: message-form-fixed-only-lock-negative-control
 message-form-fixed-only-lock-negative-control:
-	go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
+	SCHEMA_SLOW=1 go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
 
 .PHONY: tables-message-form-text-negative-control
 tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp

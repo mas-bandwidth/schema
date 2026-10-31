@@ -240,7 +240,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -954,8 +954,8 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -7314,7 +7314,7 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7626,7 +7626,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7806,8 +7806,8 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -7835,8 +7835,8 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -8690,6 +8690,8 @@ inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -8811,7 +8813,9 @@ inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TwigLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -8853,6 +8857,8 @@ inline bool TwigLoadBuilderTolerant( TwigBuilder & builder, const uint8_t * wire
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -8946,6 +8952,10 @@ inline bool TwigLoadBuilderTolerant( TwigBuilder & builder, const uint8_t * wire
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
+    // holds nothing to use, and false says so
+    if ( out->malformed ) { return false; }
+    out->malformed = malformed_before;
     return ok;
 }
 
@@ -9350,6 +9360,8 @@ inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -9471,7 +9483,9 @@ inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, co
     NestLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -9513,6 +9527,8 @@ inline bool NestLoadBuilderTolerant( NestBuilder & builder, const uint8_t * wire
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -9606,6 +9622,10 @@ inline bool NestLoadBuilderTolerant( NestBuilder & builder, const uint8_t * wire
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
+    // holds nothing to use, and false says so
+    if ( out->malformed ) { return false; }
+    out->malformed = malformed_before;
     return ok;
 }
 
@@ -9783,7 +9803,7 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -10103,7 +10123,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -10284,8 +10304,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -10313,8 +10333,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover keeps the decoded prefix, flags malformed, and the parent
-                        // continues at the next field
+                        // cover is damage, flags malformed, and the load is discarded
+                        // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -10393,6 +10413,8 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -10523,7 +10545,9 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TwigLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -10661,6 +10685,8 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -10791,7 +10817,9 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
     NestLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 

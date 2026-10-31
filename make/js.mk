@@ -1065,12 +1065,13 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # the roster and fails by name on one it names but cannot open; what it answers
 # absent are the message-form (form-2) entries, which this leg's wire-fuzz arm
 # does not bind: backenddemo LoginRequest, MatchResult and StorePurchase,
-# vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, graphdemo Scene
-# and blobdemo Catalog, 19 seeds. tblg1 Guarded's four answer since the target
+# vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, 14 seeds. The
+# message form is fixed tables only (docs/SPEC-TABLES.md §3.3), so the variable
+# roots graphdemo Scene and blobdemo Catalog carry no message-form seed. tblg1 Guarded's four answer since the target
 # carries an optional over a variable closure (§2.3). The count is pinned exactly, so a root
 # that drops to absent (or a new message-form root) fails the target by name
 # rather than shrinking the run unseen; it does not depend on SEED or N.
-TABLES_JS_WIRE_FUZZ_ABSENT := 19
+TABLES_JS_WIRE_FUZZ_ABSENT := 14
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 	@./build/conformance-harness wire-fuzz \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
@@ -1390,6 +1391,18 @@ conformance-negative-control-js-walk: build/conformance-harness build/tables-gen
 	sh test/conformance/js/negative-control walk
 
 test-js: conformance-negative-control-js-walk
+
+# THE JAVASCRIPT LEG's FRAMING NEGATIVE CONTROL (docs/LAYERS/1-framing.md): one
+# framing rule of the generated variable reader is dropped in a COPY of
+# build/tables-generated-js, and the framing surface must go red on exactly the
+# rows that rule owns while the wire surface stays green: entry-bound drops the
+# 4096-entry id-table cap (F6) and turns frame_entries_4097 red. Nothing
+# tracked is written to.
+.PHONY: tables-js-framing-negative-control
+tables-js-framing-negative-control: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control-framing entry-bound
+
+test-js: tables-js-framing-negative-control
 
 # THE GENERIC-WALK GATE, JavaScript side (docs/PORTING.md M9, docs/SPEC-TABLES.md
 # §16). The text form is one walk over the descriptors, emitted between the

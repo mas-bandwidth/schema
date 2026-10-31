@@ -206,7 +206,9 @@ pub fn fixed_table_save_messages(values: &[FixedTableRow], buffer: &mut [u8], re
 
 /// LoadMessages (§3.3): one batch into the caller's storage against the ENDPOINT's
 /// announced vocabulary. The count of bodies delivered and whether the batch
-/// read whole. "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1"; "M ABOVE THE
+/// read whole. DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH (§3.3, §4):
+/// the count is zero, malformed is set, and every body of the batch goes back
+/// to its declared defaults, bytes after the pad included; "M ABOVE THE
 /// CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME", with the count set
 /// to the wire's M; "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY
 /// NAME"; and "BYTES AFTER THE PAD ARE MALFORMED".
@@ -232,9 +234,18 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
                 }
                 return (0, report.refuse(TableReason::NonFiniteFloat));
             }
-            return (i, false);
+            for value in values.iter_mut().take(count) {
+                *value = fixed_table_message_default();
+            }
+            return (0, false);
         }
     }
-    (count, table_message_batch_close(&mut r, report))
+    if !table_message_batch_close(&mut r, report) {
+        for value in values.iter_mut().take(count) {
+            *value = fixed_table_message_default();
+        }
+        return (0, false);
+    }
+    (count, true)
 }
 

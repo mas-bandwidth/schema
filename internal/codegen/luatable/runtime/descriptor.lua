@@ -9,6 +9,11 @@
 -- value against its descriptor's shapes and declared defaults.
 local D = {}
 
+-- THE ID TABLE'S MAXIMUM ENTRY COUNT (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+-- CHECK; ir.TableWireIdTableBound): a wire whose id table names more entries
+-- than this is malformed on the whole-wire rule, whatever the buffer holds.
+D.ID_TABLE_BOUND = 4096
+
 -- D.field returns the descriptor of the field named name, or nil.
 function D.field(desc, name)
   for _, f in ipairs(desc.fields) do

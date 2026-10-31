@@ -219,7 +219,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -903,8 +903,8 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -4567,7 +4567,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -4992,17 +4992,21 @@ inline TableOpenVerdict MixedEntityLoadVerdict( MixedEntity & value, const uint8
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = MixedEntityLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedEntityReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedEntityReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { MixedEntityReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { MixedEntityReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // MixedEntityLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool MixedEntityLoadTolerant( MixedEntity & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return MixedEntityLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -5840,9 +5844,9 @@ inline int64_t MixedEntitySaveMessages( const MixedEntity * values, int64_t coun
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -5850,18 +5854,18 @@ inline bool MixedEntityLoadMessages( MixedEntity * values, int64_t * count, cons
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedEntityLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !MixedEntityLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { MixedEntityReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { MixedEntityReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t MixedStatMeasureBody( TableIds & ids, const MixedStat & value )
@@ -5926,7 +5930,7 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -6027,17 +6031,21 @@ inline TableOpenVerdict MixedStatLoadVerdict( MixedStat & value, const uint8_t *
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = MixedStatLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedStatReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedStatReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { MixedStatReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { MixedStatReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // MixedStatLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool MixedStatLoadTolerant( MixedStat & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return MixedStatLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -6267,9 +6275,9 @@ inline int64_t MixedStatSaveMessages( const MixedStat * values, int64_t count, u
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -6277,18 +6285,18 @@ inline bool MixedStatLoadMessages( MixedStat * values, int64_t * count, const Ta
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedStatLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !MixedStatLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { MixedStatReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { MixedStatReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t MixedHitEventMeasureBody( TableIds & ids, const MixedHitEvent & value )
@@ -6365,7 +6373,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -6523,17 +6531,21 @@ inline TableOpenVerdict MixedHitEventLoadVerdict( MixedHitEvent & value, const u
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = MixedHitEventLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedHitEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedHitEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { MixedHitEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { MixedHitEventReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // MixedHitEventLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool MixedHitEventLoadTolerant( MixedHitEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return MixedHitEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -6864,9 +6876,9 @@ inline int64_t MixedHitEventSaveMessages( const MixedHitEvent * values, int64_t 
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -6874,18 +6886,18 @@ inline bool MixedHitEventLoadMessages( MixedHitEvent * values, int64_t * count, 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedHitEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !MixedHitEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { MixedHitEventReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { MixedHitEventReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t MixedChatEventMeasureBody( TableIds & ids, const MixedChatEvent & value )
@@ -6950,7 +6962,7 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7064,17 +7076,21 @@ inline TableOpenVerdict MixedChatEventLoadVerdict( MixedChatEvent & value, const
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = MixedChatEventLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedChatEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedChatEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { MixedChatEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { MixedChatEventReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // MixedChatEventLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool MixedChatEventLoadTolerant( MixedChatEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return MixedChatEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -7321,9 +7337,9 @@ inline int64_t MixedChatEventSaveMessages( const MixedChatEvent * values, int64_
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -7331,18 +7347,18 @@ inline bool MixedChatEventLoadMessages( MixedChatEvent * values, int64_t * count
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedChatEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !MixedChatEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { MixedChatEventReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { MixedChatEventReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t MixedPickupEventMeasureBody( TableIds & ids, const MixedPickupEvent & value )
@@ -7407,7 +7423,7 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7521,17 +7537,21 @@ inline TableOpenVerdict MixedPickupEventLoadVerdict( MixedPickupEvent & value, c
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = MixedPickupEventLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { MixedPickupEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; MixedPickupEventReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { MixedPickupEventReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { MixedPickupEventReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // MixedPickupEventLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool MixedPickupEventLoadTolerant( MixedPickupEvent & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return MixedPickupEventLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -7778,9 +7798,9 @@ inline int64_t MixedPickupEventSaveMessages( const MixedPickupEvent * values, in
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -7788,18 +7808,18 @@ inline bool MixedPickupEventLoadMessages( MixedPickupEvent * values, int64_t * c
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MixedPickupEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !MixedPickupEventLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { MixedPickupEventReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { MixedPickupEventReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t BenchMixedMeasureBody( TableIds & ids, const BenchMixed & value )
@@ -8219,7 +8239,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -8492,9 +8512,9 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     uint64_t keep = count;
                     if ( keep > 8 ) { keep = 8; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -8550,9 +8570,9 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     uint64_t keep = count;
                     if ( keep > 80 ) { keep = 80; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -8689,9 +8709,9 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     uint64_t keep = count;
                     if ( keep > 4 ) { keep = 4; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
@@ -8716,8 +8736,8 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -8764,9 +8784,9 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     uint64_t keep = count;
                     if ( keep > 16 ) { keep = 16; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -9132,17 +9152,21 @@ inline TableOpenVerdict BenchMixedLoadVerdict( BenchMixed & value, const uint8_t
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = BenchMixedLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { BenchMixedReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; BenchMixedReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { BenchMixedReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { BenchMixedReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // BenchMixedLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool BenchMixedLoadTolerant( BenchMixed & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return BenchMixedLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -10671,9 +10695,9 @@ inline int64_t BenchMixedSaveMessages( const BenchMixed * values, int64_t count,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -10681,18 +10705,18 @@ inline bool BenchMixedLoadMessages( BenchMixed * values, int64_t * count, const 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !BenchMixedLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !BenchMixedLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { BenchMixedReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { BenchMixedReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----

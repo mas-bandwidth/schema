@@ -1811,7 +1811,11 @@ def trailer(data:string) -> [int], int, bool:
     if size < 9:
         return [], 0, false
     let count = read_int64_le(data, size - 8)
-    if count < 0 or count > size / 8:
+    // THE ENTRY COUNT IS BOUNDED AT 4096 (§3, the distinctness check;
+    // docs/LAYERS/1-framing.md F6): a count above it is malformed whatever
+    // the buffer would hold, and at or below it the entries are proved
+    // distinct below
+    if count < 0 or count > 4096 or count > size / 8:
         return [], 0, false
     let span = count * 8 + 8
     if span + 1 > size:
@@ -1967,13 +1971,16 @@ def decode_variable(st:LoadState, root:Record, hi:int):
 // §6.5): it reads a form-1 wire at the root table named root into a fresh
 // Record, filling report (§3, §4). A form byte this reader does not carry is
 // REFUSED and nothing is decoded: it returns nil with report.refused set.
-// Damage is reported, never fatal, and the record keeps what it decoded. A
+// Damage is reported, never fatal, and the entire read is discarded. A
 // missing required field and a non-finite float refuse even here (§2.3,
 // §3.3): nil, with the field named in report.reason.
 def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
     let rec = load_walk(root, data, report)
     if report.non_finite_float != "":
         report.reason = "non_finite_float: " + report.non_finite_float
+        release(rec)
+        return nil
+    if report.malformed:
         release(rec)
         return nil
     return rec

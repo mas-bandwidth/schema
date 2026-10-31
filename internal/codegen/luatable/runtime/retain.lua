@@ -1036,7 +1036,7 @@ local function wire_open(bytes)
   if #bytes < 1 or bytes:byte(1) ~= 1 then return nil end
   if #bytes < 9 then return nil end
   local count = string.unpack("<i8", bytes, #bytes - 7)
-  if count < 0 or count > (#bytes - 9) // 8 then return nil end
+  if count < 0 or count > (#bytes - 9) // 8 or count > D.ID_TABLE_BOUND then return nil end
   local endpos = #bytes - 8 - count * 8
   local ids = {}
   local seen = {}
@@ -1402,6 +1402,7 @@ function S.LoadRetain(T, name, bytes, retain, report)
   rep.retained = rep.retained or 0
   rep.retainLost = rep.retainLost or 0
   local v = load.Load(T, name, bytes, rep)
+  if rep.malformed then return nil end
   local retainedBefore, lostBefore = rep.retained, rep.retainLost
   capture(T, name, bytes, retain, rep)
   -- a retained unknown float that is not finite refuses the whole read, and
@@ -1415,6 +1416,7 @@ function S.LoadRetain(T, name, bytes, retain, report)
     rep.retained, rep.retainLost = retainedBefore, lostBefore
     return nil
   end
+  if rep.malformed then return nil end
   return v
 end
 

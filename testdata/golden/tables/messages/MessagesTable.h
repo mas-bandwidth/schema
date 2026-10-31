@@ -218,7 +218,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -918,8 +918,8 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -4760,7 +4760,7 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -4778,8 +4778,8 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -4845,17 +4845,21 @@ inline TableOpenVerdict UserLoadVerdict( User & value, const uint8_t * buffer, i
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = UserLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { UserReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; UserReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { UserReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { UserReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // UserLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool UserLoadTolerant( User & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return UserLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -5033,9 +5037,9 @@ inline int64_t UserSaveMessages( const User * values, int64_t count, uint8_t * b
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool UserLoadMessages( User * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -5043,18 +5047,18 @@ inline bool UserLoadMessages( User * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !UserLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !UserLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { UserReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { UserReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t ScriptMeasureBody( TableIds & ids, const Script & value )
@@ -5122,7 +5126,7 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -5140,8 +5144,8 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -5233,17 +5237,21 @@ inline TableOpenVerdict ScriptLoadVerdict( Script & value, const uint8_t * buffe
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = ScriptLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { ScriptReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; ScriptReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { ScriptReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { ScriptReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // ScriptLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool ScriptLoadTolerant( Script & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return ScriptLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -5469,9 +5477,9 @@ inline int64_t ScriptSaveMessages( const Script * values, int64_t count, uint8_t
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool ScriptLoadMessages( Script * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -5479,18 +5487,18 @@ inline bool ScriptLoadMessages( Script * values, int64_t * count, const TableVoc
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ScriptLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !ScriptLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ScriptReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { ScriptReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t SelectionMeasureBody( TableIds & ids, const Selection & value )
@@ -5583,7 +5591,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -5687,17 +5695,21 @@ inline TableOpenVerdict SelectionLoadVerdict( Selection & value, const uint8_t *
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = SelectionLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { SelectionReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; SelectionReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { SelectionReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { SelectionReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // SelectionLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool SelectionLoadTolerant( Selection & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return SelectionLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -5898,9 +5910,9 @@ inline int64_t SelectionSaveMessages( const Selection * values, int64_t count, u
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool SelectionLoadMessages( Selection * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -5908,18 +5920,18 @@ inline bool SelectionLoadMessages( Selection * values, int64_t * count, const Ta
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !SelectionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !SelectionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { SelectionReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { SelectionReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
@@ -6322,7 +6334,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -6364,8 +6376,8 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -6538,9 +6550,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -6685,9 +6697,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -6765,17 +6777,21 @@ inline TableOpenVerdict InsertTextLoadVerdict( InsertText & value, const uint8_t
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = InsertTextLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { InsertTextReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; InsertTextReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { InsertTextReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { InsertTextReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // InsertTextLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool InsertTextLoadTolerant( InsertText & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return InsertTextLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -7483,9 +7499,9 @@ inline int64_t InsertTextSaveMessages( const InsertText * values, int64_t count,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool InsertTextLoadMessages( InsertText * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -7493,18 +7509,18 @@ inline bool InsertTextLoadMessages( InsertText * values, int64_t * count, const 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !InsertTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !InsertTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { InsertTextReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { InsertTextReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t RemoveTextMeasureBody( TableIds & ids, const RemoveText & value )
@@ -7577,7 +7593,7 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBody( TableReader & r, RemoveText & 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7657,17 +7673,21 @@ inline TableOpenVerdict RemoveTextLoadVerdict( RemoveText & value, const uint8_t
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = RemoveTextLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { RemoveTextReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; RemoveTextReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { RemoveTextReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { RemoveTextReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // RemoveTextLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool RemoveTextLoadTolerant( RemoveText & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return RemoveTextLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -7836,9 +7856,9 @@ inline int64_t RemoveTextSaveMessages( const RemoveText * values, int64_t count,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool RemoveTextLoadMessages( RemoveText * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -7846,18 +7866,18 @@ inline bool RemoveTextLoadMessages( RemoveText * values, int64_t * count, const 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !RemoveTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !RemoveTextLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { RemoveTextReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { RemoveTextReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t EditMeasureBody( TableIds & ids, const Edit & value )
@@ -8076,7 +8096,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -8364,17 +8384,21 @@ inline TableOpenVerdict EditLoadVerdict( Edit & value, const uint8_t * buffer, i
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = EditLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { EditReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; EditReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { EditReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { EditReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // EditLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool EditLoadTolerant( Edit & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return EditLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -8866,9 +8890,9 @@ inline int64_t EditSaveMessages( const Edit * values, int64_t count, uint8_t * b
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool EditLoadMessages( Edit * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -8876,18 +8900,18 @@ inline bool EditLoadMessages( Edit * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !EditLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !EditLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { EditReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { EditReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & value )
@@ -8985,7 +9009,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -9003,8 +9027,8 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -9115,17 +9139,21 @@ inline TableOpenVerdict OpenDocumentLoadVerdict( OpenDocument & value, const uin
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = OpenDocumentLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { OpenDocumentReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; OpenDocumentReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { OpenDocumentReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { OpenDocumentReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // OpenDocumentLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool OpenDocumentLoadTolerant( OpenDocument & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return OpenDocumentLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -9372,9 +9400,9 @@ inline int64_t OpenDocumentSaveMessages( const OpenDocument * values, int64_t co
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool OpenDocumentLoadMessages( OpenDocument * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -9382,18 +9410,18 @@ inline bool OpenDocumentLoadMessages( OpenDocument * values, int64_t * count, co
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !OpenDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !OpenDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { OpenDocumentReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { OpenDocumentReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t SaveDocumentMeasureBody( TableIds & ids, const SaveDocument & value )
@@ -9461,7 +9489,7 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -9479,8 +9507,8 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -9560,17 +9588,21 @@ inline TableOpenVerdict SaveDocumentLoadVerdict( SaveDocument & value, const uin
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = SaveDocumentLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { SaveDocumentReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; SaveDocumentReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { SaveDocumentReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { SaveDocumentReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // SaveDocumentLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool SaveDocumentLoadTolerant( SaveDocument & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return SaveDocumentLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -9772,9 +9804,9 @@ inline int64_t SaveDocumentSaveMessages( const SaveDocument * values, int64_t co
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool SaveDocumentLoadMessages( SaveDocument * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -9782,18 +9814,18 @@ inline bool SaveDocumentLoadMessages( SaveDocument * values, int64_t * count, co
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !SaveDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !SaveDocumentLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { SaveDocumentReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { SaveDocumentReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value )
@@ -10224,7 +10256,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -10242,8 +10274,8 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -10291,9 +10323,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     uint64_t keep = count;
                     if ( keep > 3 ) { keep = 3; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -10348,9 +10380,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
@@ -10573,9 +10605,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
@@ -10620,9 +10652,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
@@ -10691,17 +10723,21 @@ inline TableOpenVerdict TransactionLoadVerdict( Transaction & value, const uint8
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = TransactionLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { TransactionReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; TransactionReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { TransactionReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { TransactionReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // TransactionLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool TransactionLoadTolerant( Transaction & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return TransactionLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -11444,9 +11480,9 @@ inline int64_t TransactionSaveMessages( const Transaction * values, int64_t coun
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool TransactionLoadMessages( Transaction * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -11454,18 +11490,18 @@ inline bool TransactionLoadMessages( Transaction * values, int64_t * count, cons
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !TransactionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !TransactionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { TransactionReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { TransactionReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t ToolMessageMeasureBody( TableIds & ids, const ToolMessage & value )
@@ -12451,7 +12487,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -12812,9 +12848,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -13122,9 +13158,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     uint64_t keep = count;
                     if ( keep > 3 ) { keep = 3; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -13180,9 +13216,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
@@ -13254,17 +13290,21 @@ inline TableOpenVerdict ToolMessageLoadVerdict( ToolMessage & value, const uint8
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = ToolMessageLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { ToolMessageReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; ToolMessageReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { ToolMessageReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { ToolMessageReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // ToolMessageLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool ToolMessageLoadTolerant( ToolMessage & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return ToolMessageLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -14613,9 +14653,9 @@ inline int64_t ToolMessageSaveMessages( const ToolMessage * values, int64_t coun
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool ToolMessageLoadMessages( ToolMessage * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -14623,18 +14663,18 @@ inline bool ToolMessageLoadMessages( ToolMessage * values, int64_t * count, cons
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ToolMessageLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !ToolMessageLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ToolMessageReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { ToolMessageReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t CursorMeasureBody( TableIds & ids, const Cursor & value )
@@ -14699,7 +14739,7 @@ MESSAGEDEMO_TABLE_INLINE bool CursorLoadBody( TableReader & r, Cursor & value )
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -14807,17 +14847,21 @@ inline TableOpenVerdict CursorLoadVerdict( Cursor & value, const uint8_t * buffe
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = CursorLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { CursorReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; CursorReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { CursorReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { CursorReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // CursorLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool CursorLoadTolerant( Cursor & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return CursorLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -15050,9 +15094,9 @@ inline int64_t CursorSaveMessages( const Cursor * values, int64_t count, uint8_t
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool CursorLoadMessages( Cursor * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -15060,18 +15104,18 @@ inline bool CursorLoadMessages( Cursor * values, int64_t * count, const TableVoc
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !CursorLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !CursorLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { CursorReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { CursorReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t PingMeasureBody( TableIds & ids, const Ping & value )
@@ -15130,7 +15174,7 @@ MESSAGEDEMO_TABLE_INLINE bool PingLoadBody( TableReader & r, Ping & value )
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -15212,17 +15256,21 @@ inline TableOpenVerdict PingLoadVerdict( Ping & value, const uint8_t * buffer, i
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = PingLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { PingReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; PingReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { PingReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { PingReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // PingLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool PingLoadTolerant( Ping & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return PingLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -15407,9 +15455,9 @@ inline int64_t PingSaveMessages( const Ping * values, int64_t count, uint8_t * b
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool PingLoadMessages( Ping * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -15417,18 +15465,18 @@ inline bool PingLoadMessages( Ping * values, int64_t * count, const TableVocabul
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PingLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !PingLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { PingReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { PingReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----

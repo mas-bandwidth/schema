@@ -785,18 +785,15 @@ defmodule Bench.TableMessage do
       # returns the refusal" (docs/SPEC-TABLES.md §3.3).
       {:error, :batch_too_large, count}
     else
+      # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
+      # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered and the count is
+      # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
       case read_bodies(vocab, {bytes_to_int(rest), 0, bit_size(rest)}, count, []) do
         {:ok, bodies, r} ->
-          if batch_ends_clean?(r) do
-            {:ok, bodies}
-          else
-            # "BYTES AFTER THE PAD ARE MALFORMED" (docs/SPEC-TABLES.md §3.3).
-            {:malformed, count, bodies}
-          end
+          if batch_ends_clean?(r), do: {:ok, bodies}, else: {:malformed, 0, []}
 
-        # "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1" (§3.3).
-        {:malformed, k, bodies} ->
-          {:malformed, k, bodies}
+        {:malformed, _k, _bodies} ->
+          {:malformed, 0, []}
       end
     end
   catch

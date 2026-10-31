@@ -239,7 +239,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -942,8 +942,8 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -6993,7 +6993,7 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7046,8 +7046,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -7113,17 +7113,21 @@ inline TableOpenVerdict GunnerSettingsLoadVerdict( GunnerSettings & value, const
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = GunnerSettingsLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { GunnerSettingsReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; GunnerSettingsReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { GunnerSettingsReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { GunnerSettingsReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // GunnerSettingsLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool GunnerSettingsLoadTolerant( GunnerSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return GunnerSettingsLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -7368,9 +7372,9 @@ inline int64_t GunnerSettingsSaveMessages( const GunnerSettings * values, int64_
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool GunnerSettingsLoadMessages( GunnerSettings * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -7378,18 +7382,18 @@ inline bool GunnerSettingsLoadMessages( GunnerSettings * values, int64_t * count
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !GunnerSettingsLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !GunnerSettingsLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { GunnerSettingsReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { GunnerSettingsReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
@@ -7505,7 +7509,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -7523,8 +7527,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -7636,9 +7640,9 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBody( TableReader & r, ShipEntry & valu
                     uint64_t keep = count;
                     if ( keep > 4 ) { keep = 4; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -7734,17 +7738,21 @@ inline TableOpenVerdict ShipEntryLoadVerdict( ShipEntry & value, const uint8_t *
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = ShipEntryLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { ShipEntryReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; ShipEntryReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { ShipEntryReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { ShipEntryReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // ShipEntryLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool ShipEntryLoadTolerant( ShipEntry & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return ShipEntryLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -8152,9 +8160,9 @@ inline int64_t ShipEntrySaveMessages( const ShipEntry * values, int64_t count, u
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool ShipEntryLoadMessages( ShipEntry * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -8162,18 +8170,18 @@ inline bool ShipEntryLoadMessages( ShipEntry * values, int64_t * count, const Ta
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !ShipEntryLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !ShipEntryLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ShipEntryReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { ShipEntryReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t GlobalSettingsMeasureBody( TableIds & ids, const GlobalSettings & value )
@@ -8295,7 +8303,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBody( TableReader & r, GlobalSetti
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -8364,8 +8372,8 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBody( TableReader & r, GlobalSetti
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -8412,9 +8420,9 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBody( TableReader & r, GlobalSetti
                     uint64_t keep = count;
                     if ( keep > 3 ) { keep = 3; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
@@ -8483,17 +8491,21 @@ inline TableOpenVerdict GlobalSettingsLoadVerdict( GlobalSettings & value, const
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = GlobalSettingsLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { GlobalSettingsReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; GlobalSettingsReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { GlobalSettingsReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { GlobalSettingsReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // GlobalSettingsLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool GlobalSettingsLoadTolerant( GlobalSettings & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return GlobalSettingsLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -8838,9 +8850,9 @@ inline int64_t GlobalSettingsSaveMessages( const GlobalSettings * values, int64_
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool GlobalSettingsLoadMessages( GlobalSettings * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -8848,18 +8860,18 @@ inline bool GlobalSettingsLoadMessages( GlobalSettings * values, int64_t * count
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !GlobalSettingsLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !GlobalSettingsLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { GlobalSettingsReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { GlobalSettingsReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 inline int64_t PackConfigMeasureBody( TableIds & ids, const PackConfig & value )
@@ -9094,7 +9106,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -9178,8 +9190,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
                             // no id at all, so a body carrying one is DAMAGED rather than
-                            // merely foreign: the read stops this body, keeps what it
-                            // decoded, and the parent reads on past the length (§3.2, §4).
+                            // merely foreign, and damage discards the whole load (§3.2,
+                            // §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -9235,8 +9247,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -9273,8 +9285,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -9335,9 +9347,9 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                     uint64_t keep = count;
                     if ( keep > 3 ) { keep = 3; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -9411,17 +9423,21 @@ inline TableOpenVerdict PackConfigLoadVerdict( PackConfig & value, const uint8_t
     TableReader r( buffer + 1, body_bytes, to, &table );
     r.nested = false; // the ROOT body, the one that may carry a node table
     const int32_t non_finite_before = to->non_finite_floats;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
     const bool whole = PackConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { PackConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( !whole ) { return TableOpenBodyStopped; }
+    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->malformed = to->malformed || malformed_before; PackConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->malformed ) { PackConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    if ( !whole ) { PackConfigReset( value ); return TableOpenBodyStopped; }
     return TableOpenOk;
 }
 
 // PackConfigLoadTolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps
-// the recovered value and its report, counting clamped, kind_mismatch and
-// malformed, and answers the plain name's BASE behaviour — true when the
-// body reached its own terminator, false for a refusal, an unreadable table
-// or a root body the walk could not finish (docs/SPEC-TABLES.md §4).
+// the value and its report, counting clamped and kind_mismatch, and answers
+// true for a whole read. DAMAGE DISCARDS THE WHOLE LOAD (§4): a refusal or
+// any damage answers false, malformed is set for damage, and the value is
+// reset to its declared defaults.
 inline bool PackConfigLoadTolerant( PackConfig & value, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     return PackConfigLoadVerdict( value, buffer, bytes, report ) == TableOpenOk;
@@ -9882,9 +9898,9 @@ inline int64_t PackConfigSaveMessages( const PackConfig * values, int64_t count,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded, and count
 // comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE INSIDE BODY k DELIVERS
-// BODIES 1 TO k - 1: count says k - 1, one malformed counts, and the storage
-// after it is not a body.
+// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
+// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
+// and every body the walk touched is reset to its declared defaults.
 inline bool PackConfigLoadMessages( PackConfig * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -9892,18 +9908,18 @@ inline bool PackConfigLoadMessages( PackConfig * values, int64_t * count, const 
     if ( values == NULL || count == NULL ) { to->malformed = true; return false; }
     const int64_t capacity = *count;
     *count = 0;
-    const int32_t non_finite_before = to->non_finite_floats;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
     if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PackConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { *count = to->non_finite_floats != non_finite_before ? 0 : i; return false; } // a fixed root numbers no node: no index width; a non-finite float refuses the whole batch (§3.3)
+        if ( !PackConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { PackConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
+    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { PackConfigReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
     *count = bodies;
-    return TableMessageBatchClose( br );
+    return true;
 }
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
@@ -11904,7 +11920,7 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBodyRetain( TableReader & r, Gunne
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -11957,8 +11973,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBodyRetain( TableReader & r, Gunne
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -12085,7 +12101,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBodyRetain( TableReader & r, ShipEntry 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -12103,8 +12119,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBodyRetain( TableReader & r, ShipEntry 
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -12216,9 +12232,9 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBodyRetain( TableReader & r, ShipEntry 
                     uint64_t keep = count;
                     if ( keep > 4 ) { keep = 4; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -12382,7 +12398,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBodyRetain( TableReader & r, Globa
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -12451,8 +12467,8 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBodyRetain( TableReader & r, Globa
                 }
                 uint64_t len = 0;
                 if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared
-                // default, one malformed counts, and the parent reads on past L
+                // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
+                // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
                 {
                     r.report->malformed = true;
@@ -12499,9 +12515,9 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBodyRetain( TableReader & r, Globa
                     uint64_t keep = count;
                     if ( keep > 3 ) { keep = 3; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < keep; i++ )
                     {
@@ -12745,7 +12761,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -12830,8 +12846,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
                             // no id at all, so a body carrying one is DAMAGED rather than
-                            // merely foreign: the read stops this body, keeps what it
-                            // decoded, and the parent reads on past the length (§3.2, §4).
+                            // merely foreign, and damage discards the whole load (§3.2,
+                            // §4).
                             r.report->malformed = true;
                             break;
                         }
@@ -12887,8 +12903,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -12925,8 +12941,8 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -12990,9 +13006,9 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                     uint64_t keep = count;
                     if ( keep > 3 ) { keep = 3; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover keeps the decoded prefix, flags malformed, and
-                    // the parent continues at the next field — following fields'
-                    // bytes are never fabricated into elements
+                    // cannot cover is damage, which discards the whole load (§4), and
+                    // the following fields' bytes are never fabricated into
+                    // elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )

@@ -1,6 +1,7 @@
 package luautable_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -11,9 +12,8 @@ import (
 // TestLuauTextListClampAndMalformedLoadLikeGo pins the text-list tolerant load
 // to the Go reference engine (docs/SPEC-TABLES.md §2.13): an element past M
 // clamps at a code point boundary and counts clamped; an element that is not
-// UTF-8 counts malformed. For each wire the Luau load must return a value (not
-// nil) with the Go engine's six counters and verdict, and save of it must give
-// the Go engine's bytes. Every expectation is computed here from
+// UTF-8 is malformed and discards the whole value. Sound input keeps the Go
+// engine's counters and saved bytes. Every expectation is computed here from
 // internal/tabletext and internal/tablewire, never typed by hand.
 func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 	t.Parallel()
@@ -45,24 +45,19 @@ func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 	})
 
 	t.Run("ill-formed UTF-8 is malformed", func(t *testing.T) {
+		// damage discards the whole load (docs/SPEC-TABLES.md §4): the Go
+		// load refuses it, and the leg owes the refusal and nothing else
 		raw := textListRawWire(t, m, "\xff\xfe")
-		back := m.New(m.Lookup("Lists"))
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, back, raw, &report); !ok || err != nil {
-			t.Fatalf("the Go load stops rather than reporting: ok=%v err=%v", ok, err)
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), raw, &report); ok || err != nil {
+			t.Fatalf("the Go load does not refuse the damaged load: ok=%v err=%v", ok, err)
 		}
 		if !report.Malformed {
 			t.Fatalf("the Go load does not call the element malformed: %+v", report)
 		}
 		got := runTextListProbe(t, g, raw)
-		if got.report != goReportText(report) {
-			t.Errorf("counters: luau %s, want the Go engine's %s", got.report, goReportText(report))
-		}
-		want, err := tablewire.Encode(m, back)
-		if err == nil {
-			if string(got.saved) != string(want) {
-				t.Errorf("the save is not the Go writer's bytes: %d saved, %d written; %s", len(got.saved), len(want), firstDiff(got.saved, want))
-			}
+		if !strings.HasSuffix(got.report, ",true") {
+			t.Errorf("counters: luau %s, and a damaged load owes malformed", got.report)
 		}
 	})
 }

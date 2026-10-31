@@ -240,7 +240,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // framing damage; decode stopped, partial result kept
+    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -966,8 +966,8 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: the field reads its declared default, one malformed counts, and the
-// parent reads on past L.
+// idiom: it is damage, malformed counts, and damage discards the whole load
+// (docs/SPEC-TABLES.md §4).
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -1030,8 +1030,8 @@ inline uint16_t TableUtf16Unit( const uint8_t * bytes, int64_t index )
 // checked AS IT ARRIVES and before the reader's own bound, on the rule kind 12
 // takes for UTF-8. An ODD L is framing damage and the caller rejects it ahead
 // of this, because units is L / 2. SPEC.md §4.12 refuses the same content
-// TERMINALLY on the packet wire; here the field reads its declared default,
-// one malformed counts, and the parent reads on past L.
+// TERMINALLY on the packet wire, and the table read refuses it whole too:
+// malformed counts, and damage discards the whole load (§4).
 inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
 {
     int64_t i = 0;
@@ -8251,7 +8251,7 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -8313,8 +8313,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -8349,8 +8349,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -8480,7 +8480,7 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -8541,9 +8541,8 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                         const int order = landed ? TableKeyOrder( (int64_t) last_key, (int64_t) read.key ) : -1;
                         if ( order > 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. The map
-                            // keeps the ascending prefix it has, the rest skips by the map's
-                            // L, and the PARENT reads on past the field's length (§4).
+                            // DESCENDING: not a body any conforming writer produced. It is
+                            // damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
@@ -9173,6 +9172,8 @@ inline const Slots * SlotsLoadTolerant( uint8_t * region, int64_t region_bytes, 
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -9294,7 +9295,9 @@ inline const Slots * SlotsLoadTolerant( uint8_t * region, int64_t region_bytes, 
     SlotsLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 
@@ -9336,6 +9339,8 @@ inline bool SlotsLoadBuilderTolerant( SlotsBuilder & builder, const uint8_t * wi
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -9429,6 +9434,10 @@ inline bool SlotsLoadBuilderTolerant( SlotsBuilder & builder, const uint8_t * wi
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
+    // holds nothing to use, and false says so
+    if ( out->malformed ) { return false; }
+    out->malformed = malformed_before;
     return ok;
 }
 
@@ -9595,7 +9604,7 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -9657,8 +9666,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -9693,8 +9702,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
                                 // no id at all, so a body carrying one is DAMAGED rather than
-                                // merely foreign: the read stops this body, keeps what it
-                                // decoded, and the parent reads on past the length (§3.2, §4).
+                                // merely foreign, and damage discards the whole load (§3.2,
+                                // §4).
                                 r.report->malformed = true;
                                 break;
                             }
@@ -9831,7 +9840,7 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
+            // is damage, and damage discards the whole load (§4).
             r.report->malformed = true;
             return false;
         }
@@ -9895,9 +9904,8 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                         const int order = landed ? TableKeyOrder( (int64_t) last_key, (int64_t) read.key ) : -1;
                         if ( order > 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. The map
-                            // keeps the ascending prefix it has, the rest skips by the map's
-                            // L, and the PARENT reads on past the field's length (§4).
+                            // DESCENDING: not a body any conforming writer produced. It is
+                            // damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
@@ -10011,6 +10019,8 @@ inline const Slots * SlotsLoadRetain( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
+    const bool malformed_before = out->malformed;
+    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -10141,7 +10151,9 @@ inline const Slots * SlotsLoadRetain( uint8_t * region, int64_t region_bytes, co
     SlotsLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    out->malformed = malformed_before;
     return root;
 }
 

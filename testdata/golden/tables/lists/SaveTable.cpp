@@ -4571,7 +4571,14 @@ namespace listdemo {
 
 bool PlacementFromJsonTolerant( Placement & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PlacementTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PlacementTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PlacementTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PlacementFromJson( Placement & value, const char * text, int64_t bytes, TableReport * report )
@@ -4604,7 +4611,14 @@ int64_t PlacementToJson( const Placement & value, char * buffer, int64_t capacit
 
 bool LogEntryFromJsonTolerant( LogEntry & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, LogEntryTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, LogEntryTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; LogEntryTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool LogEntryFromJson( LogEntry & value, const char * text, int64_t bytes, TableReport * report )
@@ -4639,7 +4653,14 @@ bool SaveFromJsonTolerant( SaveBuilder & builder, const char * text, int64_t byt
 {
     Save * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, SaveTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, SaveTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; SaveTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool SaveFromJson( SaveBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4674,7 +4695,14 @@ int64_t SaveToJson( const Save * root, char * buffer, int64_t capacity, TableAll
 
 bool PointFromJsonTolerant( Point & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, PointTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, PointTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; PointTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool PointFromJson( Point & value, const char * text, int64_t bytes, TableReport * report )
@@ -4709,7 +4737,14 @@ bool MixedFromJsonTolerant( MixedBuilder & builder, const char * text, int64_t b
 {
     Mixed * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, MixedTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, MixedTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; MixedTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool MixedFromJson( MixedBuilder & builder, const char * text, int64_t bytes, TableReport * report )

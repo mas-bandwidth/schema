@@ -1,8 +1,8 @@
 // The wire's READ half (docs/SPEC-TABLES.md §4): any reader reads any data, and
-// the differences are reported, never fatal. Unknown ids are skipped by their
+// evolution is reported, never fatal. Unknown ids are skipped by their
 // length and counted, a kind mismatch is skipped rather than misdecoded,
-// out-of-range values clamp, framing damage stops the damaged nesting level
-// and the parent reads on. Every decision mirrors the generated C++ reader.
+// out-of-range values clamp. Damage anywhere discards the whole load and
+// reports `malformed`. Every decision mirrors the generated C++ reader.
 package tablewire
 
 import (
@@ -29,9 +29,10 @@ func (e *FormRefusal) Error() string {
 
 // Decode fills one instance from a root table's wire bytes, counting every
 // evolution event in the report. The error is a REFUSAL — a wire this engine
-// does not decode at all — and is returned rather than folded into the report;
-// false with a nil error is framing damage past the point the walk could
-// continue, and the instance keeps what it decoded.
+// does not decode at all — and is returned rather than folded into the report.
+// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): false with
+// `malformed` in the report means the instance holds its declared defaults
+// and nothing the walk read.
 func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
 	return decodeWith(m, inst, data, report, nil, false)
 }
@@ -55,11 +56,26 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	// this one nor is lost by it.
 	prior := report.NonFiniteFloat
 	report.NonFiniteFloat = ""
+	priorMalformed := report.Malformed
+	report.Malformed = false
 	ok, err := decodeWalk(m, inst, data, report, rt, region)
 	if refusal := refusedNonFinite(report); refusal != nil {
+		report.Malformed = report.Malformed || priorMalformed
 		return false, refusal
 	}
 	report.NonFiniteFloat = prior
+	if report.Malformed {
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
+		// the walk decoded, defaulted or retained before or after the damage
+		// is handed back. The instance returns to its declared defaults and
+		// the retention store to empty, and `malformed` is the answer.
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
+		return false, err
+	}
+	report.Malformed = priorMalformed
 	return ok, err
 }
 
