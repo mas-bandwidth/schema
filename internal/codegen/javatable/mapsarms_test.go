@@ -27,7 +27,7 @@ func TestMapsAndUnionArmsOnTheTableWireJava(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected := map[string]bool{"mapdemo": true, "messagedemo": true, "scalars": true, "widedemo": true}
+	selected := map[string]bool{"mapdemo": true, "messagedemo": true, "scalars": true}
 	units := map[string]string{}
 	fixtures := map[string][]javaVariableFixture{}
 	for line := range strings.SplitSeq(string(data), "\n") {
@@ -39,7 +39,7 @@ func TestMapsAndUnionArmsOnTheTableWireJava(t *testing.T) {
 			fixtures[fields[2]] = append(fixtures[fields[2]], javaVariableFixture{fields[1], fields[3], filepath.Join(repo, fields[4]), filepath.Join(repo, "testdata", "conformance", "tables", "json", fields[1]+".json")})
 		}
 	}
-	for _, name := range []string{"mapdemo", "messagedemo", "scalars", "widedemo"} {
+	for _, name := range []string{"mapdemo", "messagedemo", "scalars"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			if units[name] == "" || len(fixtures[name]) == 0 {

@@ -25,14 +25,13 @@ import (
 // output is EMPTY, never the exit code alone.
 
 // strictGateDirs are the corpus directories the Makefile's generate targets
-// read whole (Makefile: SCHEMAS, SCHEMAS128, SCHEMAS_WIDE and the
+// read whole (Makefile: SCHEMAS, SCHEMAS128 and the
 // SCHEMAS_TABLES* wildcards). A unit that declares tables is analyzed over
 // what the leg generates for it today, its packet half, until the moo table
 // backend lands and joins strictGateGenerate below.
 var strictGateDirs = []string{
 	"examples",
 	"examples128",
-	"examples-wide",
 	"tables/examples",
 	"tables/pointers",
 	"tables/block",

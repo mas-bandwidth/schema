@@ -31,7 +31,7 @@ import (
 
 // armShapeReaders are the calls a per-shape reader makes: if read_field or
 // read_arm named one, the payload would be read there and not in read_payload.
-var armShapeReaders = []string{"scalar_at(", "utf8_ok(", "wstring_ok(", "enum_read(", "read_array_body(", "read_body(", "r_bytes(", "string.sub("}
+var armShapeReaders = []string{"scalar_at(", "utf8_ok(", "enum_read(", "read_array_body(", "read_body(", "r_bytes(", "string.sub("}
 
 // luaFunctionBody answers the source of the top-level function named by its
 // opening line, up to the next top-level `end`.

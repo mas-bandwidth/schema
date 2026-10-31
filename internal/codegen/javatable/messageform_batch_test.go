@@ -97,7 +97,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 
 	// 2. THE CONSTRUCTS NO MANIFEST ROW REACHES, against the Go codec:
 	// `tables/messages` (`unit messagedemo`) and every scalar kind and packing
-	// the fixed form carries, text, bytes and wide text, fixed and counted
+	// the fixed form carries, text, bytes, fixed and counted
 	// arrays, a nested type, an enum array, and a union with a table arm, a
 	// scalar arm, an enum arm and a payload-free arm.
 	t.Run("oracle_constructs", func(t *testing.T) {

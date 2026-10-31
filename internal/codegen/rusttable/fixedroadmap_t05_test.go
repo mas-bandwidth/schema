@@ -393,10 +393,8 @@ func t05C3(t *testing.T) {
 		"C3 the length is clamped to the plan's cap")
 	t04Has(t, text, "if held != raw {", "C3 the clamp counts when it fires")
 	t04Has(t, text, "report.clamped += 1;", "C3 the clamp counts once")
-	t04Has(t, runtime, "let unit = if me.kind == 33 { 2u32 } else { 1u32 };",
-		"C3 a wide text's unit is two bytes")
-	t04Has(t, runtime, "aux: bytes.checked_div(unit).unwrap_or(0),",
-		"C3 the cap is the writer's span in UNITS (§4.1)")
+	t04Has(t, runtime, "aux: bytes,",
+		"C3 the cap is the writer's span (§4.1)")
 	mod := t05Module(t, "package probe\n\nfixed table Lineage\n{\n    s string(8)\n}\n")
 	t04Has(t, mod, "let held = raw.clamp(0, 8);",
 		"C3 the identity read clamps the length to the declared bound")

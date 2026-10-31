@@ -191,13 +191,6 @@ local fieldOk = function(d, f, v, w) {
       if (x == y) return f.member + " is shared";
       if (x.len() != 0) return f.member + " is born with " + x.len() + " entries, not 0";
       return null;
-    case "wstr":
-      // wide text is its code units, born empty and never shared (SPEC §4.12)
-      if (typeof x != "array") return f.member + " is " + typeof x;
-      if (x == y || x == f.def) return f.member + " is shared";
-      if (x.len() != 0) return f.member + " is born with " + x.len() + " units, not 0";
-      if (f.optional && v[f.member + "Present"] != false) return f.member + "Present is not false";
-      return null;
     case "ptr": case "sblob": case "bblob":
       return x == null ? null : f.member + " is not null";
     case "bytes":

@@ -515,7 +515,7 @@ fixed table Root
 `
 
 // RETENTION RESOLVES EVERY KIND A NEWER ENDPOINT SENDS and writes it back under
-// the reader's field order (§6.6): text, wide text, a plain and a quantized
+// the reader's field order (§6.6): text, a plain and a quantized
 // f32, bytes, a counted array, an enum and a union arm all survive a reader
 // that declares only the field beside them.
 func TestRetainMessageAllKinds(t *testing.T) {

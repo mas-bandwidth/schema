@@ -38,8 +38,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !row.Refused || row.Verdict() != "refused" {
 			t.Fatalf("%s: the standard verdict is %q; §16.3 refuses a zero placed in text", caseName, row.Verdict())
 		}
-		// both rows are carried by Squirrel too: the map-key row's unit,
-		// tables/maps, declares wide text, which its descriptors now carry
+		// both rows are carried by Squirrel too
 		wantCarried := "go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir"
 		if strings.Join(row.CarriedBy, ",") != wantCarried {
 			t.Fatalf("%s: carried-by=%v; want %s: Go held the rule first, C, Rust, Dart, moo, Lobster, Squirrel, Lua, Luau and Elixir carry it, and every other port keeps its behaviour", caseName, row.CarriedBy, wantCarried)

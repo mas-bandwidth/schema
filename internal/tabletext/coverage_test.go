@@ -196,7 +196,7 @@ func TestUncoveredPaths(t *testing.T) {
 			"spawn": { "x": 1.0, "y": 1.0, "heading": 1.0 }
 		}`
 		if !m.Read(inst, []byte(text), &r) || r.Malformed {
-			t.Fatalf("wide text refused: %+v", r)
+			t.Fatalf("the wide kinds refused: %+v", r)
 		}
 		if got := tabletext.WideValue(&field(t, inst, "flux").Cell); got.String() != "9007199254740993" {
 			t.Fatalf("int128 key lost precision: %s", got)

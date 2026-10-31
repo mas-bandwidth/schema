@@ -37,7 +37,6 @@ func TestDamagedWireLoadsDefaultMalformedJavaScript(t *testing.T) {
 		{"tabledemo.RootConfig", "tables/examples", "RootConfig", "testdata/wire/tables/root_full.bin"},
 		{"tblv1.Cfg", "test/tables/V1.schema", "Cfg", "testdata/wire/tables/v1_cfg.bin"},
 		{"messagedemo.ToolMessage", "tables/messages", "ToolMessage", "testdata/wire/tables/message_open.bin"},
-		{"widedemo.Stamp", "examples-wide", "Stamp", "testdata/wire/tables/wide_stamp.bin"},
 		{"scalars.SimState", "tables/scalars", "SimState", "testdata/wire/tables/scalars_full.bin"},
 		{"backenddemo.LoginRequest", "tables/backend", "LoginRequest", "testdata/wire/tables/login_full.bin"},
 	}

@@ -571,9 +571,7 @@ func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 
 // luaFuzzControlAnchor is the string field's frame check in the emitted load
 // (runtime/load.lua, read_payload, the code a field and a union arm are both
-// read by): a length past the body is malformed (§3). The "string" branch is
-// matched so the anchor is unique (the "wstring" branch carries the same frame
-// check but a different elseif line).
+// read by): a length past the body is malformed (§3).
 const luaFuzzControlAnchor = `  elseif s == "string" then
     if n == nil then
       n = r_leb(r)

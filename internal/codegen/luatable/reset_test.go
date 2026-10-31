@@ -53,7 +53,6 @@ local function dirty(name, v, depth)
     elseif s == "float" then v[fd.name] = (type(x) == "number" and x or 0.0) + 1.5
     elseif s == "string" or s == "bytes" then v[fd.name] = (type(x) == "string" and x or "") .. "x"
     elseif s == "wide" then v[fd.name] = { lo = 5, hi = 6 }
-    elseif s == "wstring" then v[fd.name] = { 65, 66 }
     elseif s == "enum" then v[fd.name] = "NoSuchVariant"
     elseif s == "map" then v[fd.name] = { [1] = 1, junk = 2 }
     elseif s == "array" then
@@ -68,8 +67,6 @@ local function dirty(name, v, depth)
           seq[i] = "junk"
         elseif e.shape == "wide" then
           seq[i] = { lo = i, hi = i }
-        elseif e.shape == "wstring" then
-          seq[i] = { 65 }
         else
           seq[i] = i
         end

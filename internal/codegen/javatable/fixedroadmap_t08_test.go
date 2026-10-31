@@ -3,8 +3,7 @@ package javatable
 // fixedroadmap_t08 — the java leg's ordinary valid-data capability rows of
 // docs/roadmap.sexp's node `fixed-tables` (ROADMAP.md "NEW Fixed Tables"):
 // float32-values, float64-values, compressed-floats, signed-fixed-point,
-// unsigned-fixed-point, utf16-values, union-field-arms, payload-free-arms and
-// union-arrays. Law: docs/SPEC-TABLES.md §3.4 (the fixed form's record and the
+// unsigned-fixed-point, union-field-arms, payload-free-arms and union-arrays. Law: docs/SPEC-TABLES.md §3.4 (the fixed form's record and the
 // constant arm storage) and docs/FIXED-FORM-ALGORITHM.md §4.6 (the bounds pass).
 // One subtest per task id.
 //
@@ -32,8 +31,8 @@ import (
 
 // t08Walk is the probe's reflection dumper, byte for byte t03SaveLoadProbe's:
 // a float prints with its raw bits beside it so a float that requantized onto a
-// neighbouring value is red by bits and not by a friendly decimal. A char[] —
-// the wstring(8) store — prints its UTF-16 code units as hex, not through
+// neighbouring value is red by bits and not by a friendly decimal. A char[]
+// prints its UTF-16 code units as hex, not through
 // String.valueOf(char): a lone surrogate appended to a String and written out
 // is replaced by '?', so the boundary pair U+1F600 would dump "list:?,?" and a
 // one-bit corruption of the store would be invisible. The hex run sees every
@@ -338,23 +337,6 @@ fixed table T
         vals[0].hi = (byte) 240;`, []string{"lo", "hi"})
 }
 
-// utf16-values is recorded `unknown`: this exercises SPEC §3.4's kind 33 leaf
-// directly through javatable.Generate, laying wide text out as UTF-16 code
-// units with a used length beside them and round-tripping the PAIRED surrogate
-// pair U+1F600. The Java target refuses a wstring(N) field in a table closure
-// (compiler/widetext.go:49, java absent from tableWideTextTargets), so the
-// emitter branch below is unreachable in a target the gate runs.
-func t08UTF16(t *testing.T) {
-	t08RoundTrip(t, "utf16", `package probe
-
-fixed table T
-{
-}
-`, `        vals[0].s[0] = 0xD83D;
-        vals[0].s[1] = 0xDE00;
-        vals[0].sLength = 2;`, []string{"s", "sLength"})
-}
-
 // union-field-arms is recorded `unknown`: the title's scalar, text and array
 // clauses are all unreachable in the Java target, which refuses any union a
 // table closure holds (compiler/builtin.go:94, java registered without table
@@ -465,7 +447,6 @@ func TestFixedRoadmapJavaT08FloatsUnions(t *testing.T) {
 		{"compressed-floats/java/valid-data", t08Compressed},
 		{"signed-fixed-point/java/valid-data", t08SignedFixed},
 		{"unsigned-fixed-point/java/valid-data", t08UnsignedFixed},
-		{"utf16-values/java/valid-data", t08UTF16},
 		{"union-field-arms/java/valid-data", t08UnionFieldArms},
 		{"payload-free-arms/java/valid-data", t08PayloadFree},
 		{"union-arrays/java/valid-data", t08UnionArrays},

@@ -18,7 +18,6 @@ import (
 // package's directory. A unit with none carries no lock: there is nothing for
 // the file to promise.
 var corpora = []string{
-	"../../examples-wide",
 	"../../tables/arms",
 	"../../tables/backend",
 	"../../tables/block",
@@ -94,13 +93,13 @@ func TestEveryUnitWithFixedTablesIsLocked(t *testing.T) {
 	// single-file units in one directory and so has no place for a lock
 	// (SPEC §3.2)
 	units := []string{
-		"../../examples", "../../examples128", "../../examples-wide",
+		"../../examples", "../../examples128",
 		"../../tables/arms", "../../tables/backend", "../../tables/blobs",
 		"../../tables/block", "../../tables/blockhome", "../../tables/examples",
 		"../../tables/lists", "../../tables/maps", "../../tables/messages",
 		"../../tables/pointers", "../../tables/scalars", "../../tables/stream",
 		"../../tables/vocab", "../../tables/vocab9",
-		"../../test/packet-text", "../../test/packet-void", "../../test/packet-wide",
+		"../../test/packet-text", "../../test/packet-void",
 		"../../test/table-base64",
 	}
 	for _, dir := range units {

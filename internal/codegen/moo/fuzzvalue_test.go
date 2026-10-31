@@ -298,7 +298,7 @@ func (d *drawer) scalar(in *instance, f *ir.Field, g, m string) (bool, bool) {
 			d.t.Fatalf("fuzz: %s: a named type %T the generator does not know", f.Name, t.Ref)
 		}
 	default:
-		d.t.Fatalf("fuzz: %s: field kind %d the generator does not draw (wstring has no moo packet codec yet)", f.Name, t.Kind)
+		d.t.Fatalf("fuzz: %s: field kind %d the generator does not draw", f.Name, t.Kind)
 	}
 	return false, false
 }

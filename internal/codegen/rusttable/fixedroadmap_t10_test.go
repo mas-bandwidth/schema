@@ -26,16 +26,6 @@ package rusttable
 // `<Union>RowArm<Arm>` companion structs and `[T; N]`), and payload-free arms
 // take tag-only `is_<arm>` / `set_<arm>` accessors with no overlay member
 // (SPEC-TABLES §2.6, §3.4).
-//
-// `utf16-values` is NOT among these subtests: the Rust target refuses a
-// `wstring(N)` field in a table closure (compiler/target_rust.go:30 calls
-// refuseWideText, and rust is absent from tableWideTextTargets at
-// compiler/widetext.go:25), so a table fixture that declared one would only
-// reach an emitter branch the registered target never enters — the bypass
-// §5.9 #44 forbids folding into a green (internal/codegen/rusttable/
-// fixedversioning_test.go:230 refuses the same shape by name). The fixture
-// therefore declares no wstring field, and that row is reported :unknown in
-// docs/roadmap-evidence/fixed-rust.sexp.
 
 import (
 	"fmt"

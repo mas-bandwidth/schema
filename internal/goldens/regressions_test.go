@@ -63,7 +63,7 @@ import "testing"
 //     declared ranges (the library feeds them from a runtime context, which is
 //     not a wire feature); the 17-byte block is a fixed byte array behind an
 //     explicit align (the exact-N bytes form died in the §4.7 unification);
-//     int_relative (§4.10) and wstring are absent from this unit.
+//     int_relative (§4.10) is absent from this unit.
 //   - CompressedProbe: the FMA-boundary vectors SPEC §7.2 promises. The
 //     values were found by SWEEPING each range for divergence: an on-quantum
 //     value like TestData's 2.5 agrees under float32, double and fused

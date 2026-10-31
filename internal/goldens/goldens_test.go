@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -30,12 +29,7 @@ const (
 	// the fixed-point + 128-bit unit: all nine targets, pinned like the main
 	// corpus (the serialize ports all carry the phase-1 surface).
 	corpus128Dir = "../../examples128"
-	// the WIDE TEXT unit: wstring(N) and the string(N) read-side UTF-8 rule
-	// (SPEC §4.12, §4.7). Its own unit rather than a field in examples/,
-	// because examples/ pins gate 1 for all nine targets and eight of them
-	// refuse wide text today — so this one pins the target that carries it.
-	corpusWideDir = "../../examples-wide"
-	goldenDir     = "../../testdata/golden"
+	goldenDir = "../../testdata/golden"
 )
 
 // schema is the driver every test here runs on — the public API, with the
@@ -280,110 +274,6 @@ func TestGoldenLudicrousSource(t *testing.T) {
 	}
 }
 
-// TestGoldenWideId pins the wide-text unit's protocol id (SPEC §7.2 gate 2).
-func TestGoldenWideId(t *testing.T) {
-	u := loadCorpusDir(t, corpusWideDir)
-	got := fmt.Sprintf("0x%016x\n", u.ProtocolId)
-	path := filepath.Join(goldenDir, "wide", "id.txt")
-	if *update {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("missing golden id (run: make update-goldens): %v", err)
-	}
-	if got != string(want) {
-		t.Errorf("wide protocol id moved: got %s want %s — if the schema files changed this is expected once (re-pin deliberately); if they did not, the §3.1 hash procedure changed and that is stop-the-line", got, string(want))
-	}
-}
-
-// TestGoldenWideSource pins the wide-text unit's generated C++ byte-for-byte
-// (SPEC §7.2 gate 1). ONE target, deliberately: wide text is the C++
-// reference's today and every other backend refuses the unit by name, which
-// TestWideTextIsRefusedByEveryOtherTarget holds.
-func TestGoldenWideSource(t *testing.T) {
-	u := loadCorpusDir(t, corpusWideDir)
-	pinDir(t, filepath.Join(goldenDir, "wide", "cpp"), generate(t, u, "cpp", nil))
-	pinDir(t, filepath.Join(goldenDir, "wide", "cs"), generate(t, u, "cs", nil))
-}
-
-// The packet file is isolated from examples-wide's table kind 33 and its
-// baseline. Each port pins the exact same packet declarations as C++.
-var packetWideTargets = []string{"cpp", "c", "rust", "go", "cs", "java", "js", "dart", "elixir", "lua", "lobster", "squirrel", "luau"}
-
-func TestGoldenPacketWideSource(t *testing.T) {
-	source, err := os.ReadFile(filepath.Join(corpusWideDir, "WideText.schema"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "WideText.schema"), source, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	u := loadCorpusDir(t, dir)
-	for _, target := range compiler.New().Targets() {
-		carried := false
-		for _, name := range packetWideTargets {
-			if name == target {
-				carried = true
-			}
-		}
-		if carried {
-			pinDir(t, filepath.Join(goldenDir, "packet-wide", target), generate(t, u, target, nil))
-		} else if _, err := schema.Generate(u, target, nil); err == nil || !strings.Contains(err.Error(), "wstring(N)") {
-			t.Errorf("%s must refuse unported packet wide text by name: %v", target, err)
-		}
-	}
-	// moo carries packet wide text in its emitter (test/packet-wide/moo); its
-	// compiler target stays behind the schema_leg_moo tag until the port joins
-	// the builtins, so its pin comes from the emitter. Only the schema's own
-	// module: the runtime beside it is SERIALIZE_PIN's (internal/codegen/moo).
-	mooFiles, err := moo.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinDir(t, filepath.Join(goldenDir, "packet-wide", "moo"), map[string][]byte{"WideText.moo": mooFiles["WideText.moo"]})
-	pinDir(t, filepath.Join(goldenDir, "packet-wide", "identity"), map[string][]byte{"id.txt": []byte(fmt.Sprintf("0x%016x\n", u.ProtocolId))})
-}
-
-// TestWideTextIsRefusedByEveryOtherTarget is the other half of the pin above:
-// a target that has not landed the wstring codec must refuse the unit BY NAME
-// rather than emit a field it never laid out (SPEC §4.12). A backend that
-// silently dropped the field would leave this test green only by starting to
-// carry the construct, which is the whole point.
-func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
-	u := loadCorpusDir(t, corpusWideDir)
-	for _, target := range compiler.New().Targets() {
-		// THE TABLE-WIDE-TEXT CARRIERS. Dart joined them by landing kind 33 on
-		// §3.4's FIXED form — its block and its cook still refuse it, and
-		// internal/codegen/darttable scopes that refusal to the two
-		// accelerators by name. It still refuses THIS unit, for the unrelated
-		// reason that Caption.schema puts `was =` on a union arm, so leaving
-		// it in the loop below would only pin the wrong refusal. Rust, Java,
-		// JavaScript and Elixir joined on 2026-10-13 (5da823d67, "wide text
-		// rides in table closures on rust, java, js and elixir"), and they too
-		// refuse THIS unit only for its `was =` arm. Every built-in target now
-		// carries the construct, so the loop is the guard for the next target;
-		// compiler's TestWideTextInATableClosureRefusesMissingCarriers pins the
-		// by-name refusal itself. Lua joined as a builtin on 2026-10-28
-		// and generates this unit too.
-		switch target {
-		case "cpp", "c", "cs", "go", "dart", "rust", "java", "js", "elixir", "lua", "lobster", "squirrel", "luau":
-			continue
-		}
-		if _, err := schema.Generate(u, target, nil); err == nil {
-			t.Errorf("%s generated the wide-text unit — a target that has not landed the wstring(N) codec must refuse it by name (SPEC §4.12)", target)
-		} else if !strings.Contains(err.Error(), "wstring(N)") {
-			t.Errorf("%s refused the wide-text unit without naming the construct: %v", target, err)
-		}
-	}
-}
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.
 func pinDir(t *testing.T, dir string, files map[string][]byte) {
@@ -432,12 +322,10 @@ type tableUnit struct {
 // tableUnits derives the pinned tables units FROM THE DIRECTORY LISTING, so a
 // directory of goldens nobody compares cannot exist: a hand-kept list of the
 // units is how six maps headers went stale on main across two merges (#683 —
-// tables/maps, tables/arms, tables/lists and wide were pinned and compared by
+// tables/maps, tables/arms and tables/lists were pinned and compared by
 // nothing here). The names map by rule: `<unit>` is tables/<unit> emitted by
-// the C++ reference, `<unit>-c` and `<unit>-cs` are the same unit emitted by
-// the C and C# targets (make/c.mk, make/cs.mk), and `wide` is the one
-// directory whose unit lives outside tables/ — its home is examples-wide
-// (Makefile tables_generate). A directory that fits no rule is still a unit
+// the C++ reference, and `<unit>-c` and `<unit>-cs` are the same unit emitted
+// by the C and C# targets (make/c.mk, make/cs.mk). A directory that fits no rule is still a unit
 // under tables/, so a planted one is loaded and fails loudly rather than
 // being skipped.
 func tableUnits(goldenTables string) ([]tableUnit, error) {
@@ -453,8 +341,6 @@ func tableUnits(goldenTables string) ([]tableUnit, error) {
 		name := e.Name()
 		unit := tableUnit{name: name, target: "cpp"}
 		switch {
-		case name == "wide":
-			unit.dir = corpusWideDir
 		case strings.HasSuffix(name, "-cs"):
 			unit.dir, unit.target = "../../tables/"+strings.TrimSuffix(name, "-cs"), "cs"
 		case strings.HasSuffix(name, "-c"):
@@ -508,10 +394,10 @@ func TestGoldenTableSource(t *testing.T) {
 
 // TestGoldenTablesAreDerivedFromTheListing holds tableUnits to its rule: a
 // planted directory enters the compared set (there is no list to leave it off
-// of), and the four units #683 found uncompared are in the real set.
+// of), and the units #683 found uncompared are in the real set.
 func TestGoldenTablesAreDerivedFromTheListing(t *testing.T) {
 	planted := t.TempDir()
-	for _, name := range []string{"maps", "planted", "planted-c", "planted-cs", "wide"} {
+	for _, name := range []string{"maps", "planted", "planted-c", "planted-cs"} {
 		if err := os.Mkdir(filepath.Join(planted, name), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -528,7 +414,6 @@ func TestGoldenTablesAreDerivedFromTheListing(t *testing.T) {
 		{"planted", "../../tables/planted", "cpp"},
 		{"planted-c", "../../tables/planted", "c"},
 		{"planted-cs", "../../tables/planted", "cs"},
-		{"wide", corpusWideDir, "cpp"},
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("tableUnits over a planted listing = %v, want %v", got, want)
@@ -541,7 +426,7 @@ func TestGoldenTablesAreDerivedFromTheListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"maps", "arms", "lists", "wide"} {
+	for _, name := range []string{"maps", "arms", "lists"} {
 		found := false
 		for _, unit := range real {
 			if unit.name == name {
@@ -555,24 +440,23 @@ func TestGoldenTablesAreDerivedFromTheListing(t *testing.T) {
 }
 
 // pinnedUnits is every compilation unit this package pins by the name its
-// golden files are stored under: the three corpora, then every tables unit
+// golden files are stored under: the two corpora, then every tables unit
 // the goldens listing names (tableUnits), once each. The C and C# directories
-// are the SAME unit emitted by another target and `wide` IS examples-wide, so
-// those fold into the unit already named — excluded explicitly here, not by a
+// are the SAME unit emitted by another target, so those fold into the unit
+// already named — excluded explicitly here, not by a
 // list that has to remember them.
 func pinnedUnits(t *testing.T) []struct{ name, dir string } {
 	t.Helper()
 	units := []struct{ name, dir string }{
 		{"examples", corpusDir},
 		{"examples128", corpus128Dir},
-		{"examples-wide", corpusWideDir},
 	}
 	tables, err := tableUnits(tableGoldenDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, unit := range tables {
-		if unit.target != "cpp" || unit.dir == corpusWideDir {
+		if unit.target != "cpp" {
 			continue
 		}
 		units = append(units, struct{ name, dir string }{"tables-" + unit.name, unit.dir})

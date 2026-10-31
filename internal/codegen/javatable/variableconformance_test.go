@@ -18,7 +18,7 @@ func TestStageJavaVariableConformance(t *testing.T) {
 	if out == "" {
 		t.Skip("test-only native conformance staging is requested by make build-conformance-java")
 	}
-	for _, row := range []struct{ name, dir string }{{"native-messages", "tables/messages"}, {"native-wide", "examples-wide"}} {
+	for _, row := range []struct{ name, dir string }{{"native-messages", "tables/messages"}} {
 		u := unitFromDir(t, filepath.Join("..", "..", "..", row.dir))
 		files, err := javacodegen.Generate(u)
 		if err != nil {

@@ -1576,8 +1576,9 @@ fn compile_entry(
             // text: the length, clamped to MY bound, then the content
             let bytes = me.size.saturating_sub(4).min(te.size.saturating_sub(4));
             // THE CAP IS THE SPAN'S, AND THE SPAN IS THE SHORTER OF THE TWO
-            // (§5.2 TEXT: span := min(me.size, te.size) - 4, cap := span). The READER's own bound is the wrong number here: a
-            // reader whose bound GREW copies only the writer's span, so a
+            // (§5.2 TEXT: span := min(me.size, te.size) - 4, cap := span).
+            // The READER's own bound is the wrong number here: a reader whose
+            // bound GREW copies only the writer's span, so a
             // length between the writer's bound and the reader's reads bytes
             // this entry never landed, and the clamp that should have fired and
             // counted does not.

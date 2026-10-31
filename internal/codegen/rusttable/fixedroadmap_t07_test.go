@@ -347,7 +347,7 @@ fixed table Lineage
 	if got := t02IntConst(t, text, "LINEAGE_FIXED_BODY_BYTES"); got != 12+12 {
 		t.Errorf("W8: the body is %d, want 4 + 8 for the string and 4 + 8 for the bytes", got)
 	}
-	t07Has(t, string(fixedRuntimeBody), "12 | 33 => {", "W8 text is the string/wstring row")
+	t07Has(t, string(fixedRuntimeBody), "12 => {", "W8 text is the string row")
 	t07Has(t, string(fixedRuntimeBody), "14 => {", "W8 the array row, which bytes(N) rides")
 }
 

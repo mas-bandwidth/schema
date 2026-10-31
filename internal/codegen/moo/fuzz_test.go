@@ -778,7 +778,7 @@ func TestMooWireFuzzAgreesWithTheGoTarget(t *testing.T) {
 		t.Errorf("vacuous: %d reads accepted, %d refused", total.accepted, total.refused)
 	}
 	// every refusal the packet corpora can reach, met by the moo reader: the
-	// runtime's six and a schema rule's (const, reserved, a wstring rule)
+	// runtime's six and a schema rule's (const, reserved)
 	for _, r := range []string{"past_end", "value_out_of_range", "trailing_data", "nonzero_padding",
 		"non_finite_float", "invalid_utf8", "embedded_nul", "none"} {
 		if total.mooReasons[r] == 0 {

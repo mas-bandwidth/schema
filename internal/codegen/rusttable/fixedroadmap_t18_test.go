@@ -75,7 +75,6 @@ func TestFixedRustT18ArmLines(t *testing.T) {
 		"    pub value_count: i32,\n}",
 		"pub union BodyRowArms {",
 		"    pub(crate) s: BodyRowArmS,",
-		"    pub(crate) w: BodyRowArmW,",
 		"    pub(crate) b: BodyRowArmB,",
 		"    pub(crate) a: [i32; 3],",
 		"    pub(crate) c: BodyRowArmC,",
@@ -201,52 +200,7 @@ fn main() {
         say("s", full_ok && empty_ok && part_ok, "string(8) arm boundary, edge or slack failed");
     }
 
-    // Arm 2: w wstring(4) — boundary (full 4 UTF-16 units) and edge (empty + partial with dirty slack).
-    {
-        let mut full = LineageRow::default();
-        full.lead = i32::MIN;
-        full.trail = i32::MAX;
-        full.body.set_w(BodyRowArmW {
-            value: [0x0041, 0x00E9, 0xD83D, 0xDE00, 0],
-            value_length: 4,
-        });
-        let (fbody, fout, frep) = save_and_load(full);
-        let full_ok = clean(&frep)
-            && fout.lead == i32::MIN
-            && fout.trail == i32::MAX
-            && fout.body.tag() == 2
-            && fout.body.w().map(|a| (a.value_length, a.value))
-                == Some((4, [0x0041, 0x00E9, 0xD83D, 0xDE00, 0]))
-            && fbody[4 + 1 + 4 + 8..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
-
-        let mut edge = LineageRow::default();
-        edge.lead = 22;
-        edge.trail = -22;
-        let mut dirty = BodyRowArmW {
-            value: [0x007A; 5],
-            value_length: 0,
-        };
-        edge.body.set_w(dirty);
-        let (ebody, eout, erep) = save_and_load(edge);
-        let empty_ok = clean(&erep)
-            && eout.lead == 22
-            && eout.trail == -22
-            && eout.body.tag() == 2
-            && eout.body.w().map(|a| (a.value_length, a.value)) == Some((0, [0u16; 5]))
-            && ebody[4 + 1..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
-
-        dirty.value[0] = 0x0041;
-        dirty.value_length = 1;
-        edge.body.set_w(dirty);
-        let (pbody, pout, prep) = save_and_load(edge);
-        let part_ok = clean(&prep)
-            && pout.body.w().map(|a| (a.value_length, a.value[0], a.value[1])) == Some((1, 0x0041, 0))
-            && pbody[4 + 1 + 4 + 2..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
-
-        say("w", full_ok && empty_ok && part_ok, "wstring(4) arm boundary, edge or slack failed");
-    }
-
-    // Arm 3: b bytes(4) — boundary (full 4 bytes) and edge (empty + partial with dirty slack).
+    // Arm 2: b bytes(4) — boundary (full 4 bytes) and edge (empty + partial with dirty slack).
     {
         let mut full = LineageRow::default();
         full.lead = i32::MIN;
@@ -259,7 +213,7 @@ fn main() {
         let full_ok = clean(&frep)
             && fout.lead == i32::MIN
             && fout.trail == i32::MAX
-            && fout.body.tag() == 3
+            && fout.body.tag() == 2
             && fout.body.b().map(|a| (a.value_length, a.value))
                 == Some((4, [0x00, 0xff, 0x5a, 0x80]))
             && &fbody[4 + 1 + 4..4 + 1 + 4 + 4] == &[0x00, 0xff, 0x5a, 0x80]
@@ -277,7 +231,7 @@ fn main() {
         let empty_ok = clean(&erep)
             && eout.lead == 33
             && eout.trail == -33
-            && eout.body.tag() == 3
+            && eout.body.tag() == 2
             && eout.body.b().map(|a| (a.value_length, a.value)) == Some((0, [0u8; 4]))
             && ebody[4 + 1..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
 
@@ -293,7 +247,7 @@ fn main() {
         say("b", full_ok && empty_ok && part_ok, "bytes(4) arm boundary, edge or slack failed");
     }
 
-    // Arm 4: a [3]int32 — boundary ([i32::MIN, 0, i32::MAX]) and edge ([0, 0, 0]).
+    // Arm 3: a [3]int32 — boundary ([i32::MIN, 0, i32::MAX]) and edge ([0, 0, 0]).
     {
         let mut full = LineageRow::default();
         full.lead = i32::MIN;
@@ -303,7 +257,7 @@ fn main() {
         let full_ok = clean(&frep)
             && fout.lead == i32::MIN
             && fout.trail == i32::MAX
-            && fout.body.tag() == 4
+            && fout.body.tag() == 3
             && fout.body.a() == Some([i32::MIN, 0, i32::MAX])
             && fbody[4 + 1 + 12..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
 
@@ -315,14 +269,14 @@ fn main() {
         let empty_ok = clean(&erep)
             && eout.lead == 44
             && eout.trail == -44
-            && eout.body.tag() == 4
+            && eout.body.tag() == 3
             && eout.body.a() == Some([0, 0, 0])
             && ebody[4 + 1..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
 
         say("a", full_ok && empty_ok, "[3]int32 arm boundary, edge or slack failed");
     }
 
-    // Arm 5: c [..3]int32 — boundary (full 3 elements at i32::MIN/MAX) and edge (count 0 with dirty slack).
+    // Arm 4: c [..3]int32 — boundary (full 3 elements at i32::MIN/MAX) and edge (count 0 with dirty slack).
     {
         let mut full = LineageRow::default();
         full.lead = i32::MIN;
@@ -335,7 +289,7 @@ fn main() {
         let full_ok = clean(&frep)
             && fout.lead == i32::MIN
             && fout.trail == i32::MAX
-            && fout.body.tag() == 5
+            && fout.body.tag() == 4
             && fout.body.c().map(|a| (a.value_count, a.value))
                 == Some((3, [i32::MIN, 42, i32::MAX]))
             && fbody[4 + 1 + 4 + 12..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
@@ -352,7 +306,7 @@ fn main() {
         let empty_ok = clean(&erep)
             && eout.lead == 55
             && eout.trail == -55
-            && eout.body.tag() == 5
+            && eout.body.tag() == 4
             && eout.body.c().map(|a| (a.value_count, a.value)) == Some((0, [0, 0, 0]))
             && ebody[4 + 1..LINEAGE_FIXED_BODY_BYTES - 4].iter().all(|&b| b == 0);
 
@@ -552,7 +506,7 @@ func TestFixedRoadmapRustT18UnionArms(t *testing.T) {
 
 	t.Run("union-field-arms/rust/valid-data", func(t *testing.T) {
 		t.Parallel()
-		for _, arm := range []string{"s", "w", "b", "a", "c"} {
+		for _, arm := range []string{"s", "b", "a", "c"} {
 			id := "union-field-arms/rust/valid-data/" + arm
 			want := "T18 " + id + " ok"
 			if got := t18Line(directOut, id); got != want {

@@ -86,10 +86,14 @@ func TestLuaJsonRefusesNulEscapeInUnionArm(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 
-	u := luarun.LoadUnit(t, filepath.Join(repo, "examples-wide", "Caption.schema"))
+	src := filepath.Join(t.TempDir(), "Caption.schema")
+	if err := os.WriteFile(src, []byte("package caption\n\nunion Body\n{\n    narrow string(4)\n    tally  int32\n}\n\nfixed table Caption\n{\n    body Body\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := luarun.LoadUnit(t, src)
 	files, err := Generate(u)
 	if err != nil {
-		t.Fatalf("unit wide: %v", err)
+		t.Fatalf("unit caption: %v", err)
 	}
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, files)

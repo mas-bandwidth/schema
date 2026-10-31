@@ -450,7 +450,7 @@ func messageBatchRoundTrip(name, root string, announce, message []byte) string {
 // message form's batch owes (§3.3's shape table): each integer width raw and
 // ranged, 128-bit raw and ranged, bits(N), flags, bool, float32 raw and
 // compressed, float64, an enum and an enum array, string with a declared
-// default, bytes, wide text, fixed and counted arrays of scalars and of a
+// default, bytes, fixed and counted arrays of scalars and of a
 // nested type, and a union whose arms are a table, a scalar, an enum and
 // nothing at all.
 const messageBatchProbeSrc = `package batchprobe
