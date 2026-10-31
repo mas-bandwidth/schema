@@ -95,3 +95,17 @@ tables-moo-release: toolchain-moo build/conformance-harness build/conformance-mo
 	$(MAKE) tables-moo-usage
 	$(MAKE) tables-moo-usage-negative-control
 	@echo "tables moo release gate: the wire fuzz at release depth with its control, and the page's example with its witnesses"
+
+# M18 — AN ARM IS A FIELD LINE (internal/codegen/mootable/armfield_test.go):
+# table_load.moo's read_arm checks framing and reads through read_field, and
+# read_union leaves every payload to it; the control plants a per-shape reader
+# into each and requires the scan to name it. The behavior is the engine's: the
+# conformance surfaces over the corpus's arms and the wire-fuzz differential.
+.PHONY: tables-moo-arms tables-moo-arms-negative-control
+tables-moo-arms:
+	go test ./internal/codegen/mootable/ -run '^TestMooArmIsAFieldLine$$' -count=1
+
+tables-moo-arms-negative-control:
+	go test ./internal/codegen/mootable/ -run '^TestMooArmFieldLineNegativeControl$$' -count=1
+
+test-moo: tables-moo-arms tables-moo-arms-negative-control

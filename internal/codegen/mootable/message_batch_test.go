@@ -18,9 +18,9 @@ import (
 // (docs/SPEC-TABLES.md §3.3): the pinned batches of fixed roots — one body
 // each, and a batch of three — are mutated (every truncation, the form byte, the count byte, bytes after the
 // pad, every byte flipped three ways), and moo's LoadMessages must answer each
-// mutation as tablewire.DecodeMessages does: the same refusal by name, or the
-// same number of bodies delivered with the same counters and the same
-// malformed verdict.
+// mutation as tablewire.DecodeMessages does: damaged input is refused whole,
+// with no values; otherwise the refusal by name, body count and evolution
+// counters agree. No partial result after damage is compared (§4).
 
 type batchCase struct {
 	name, conn, root, wire string
@@ -95,7 +95,8 @@ while at < buffer.len(cases) do
 	local v = MS.NewVocabulary()
 	local rep: any = {}
 	if not MS.AnnounceRead(v, inputs.conn, rep) then print("ANNOUNCE " .. tostring(rep.reason)) return end
-	local n = MS.LoadMessages(v, %q, data, %d, rep)
+	local n, values = MS.LoadMessages(v, %q, data, %d, rep)
+	if rep.malformed and #values ~= 0 then print("DAMAGE RETURNED VALUES") continue end
 	print(string.format("%%d %%d %%d,%%d,%%d,%%d,%%d,%%s,%%d %%s", i, n, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, tostring(rep.malformed), rep.blobShared or 0, tostring(rep.reason)))
 end
 `, g.requireAll(), root, capacity)
@@ -109,6 +110,9 @@ func goAnswer(m *tabletext.Model, vocab *tablewire.Vocabulary, root string, capa
 	}
 	var rep tabletext.Report
 	n, _, err := tablewire.DecodeMessages(m, insts, data, vocab, &rep)
+	if rep.Malformed {
+		return "malformed" // §4: no other result of a damaged read is defined.
+	}
 	if err != nil {
 		var reason string
 		if r, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
@@ -130,6 +134,12 @@ func mooAnswer(line string) string {
 	f := strings.SplitN(line, " ", 3)
 	if len(f) < 3 {
 		return line
+	}
+	if strings.Contains(f[1], ",true,") {
+		if f[0] != "0" && f[0] != "-1" {
+			return "malformed batch returned bodies: " + f[0]
+		}
+		return "malformed"
 	}
 	if f[2] != "nil" {
 		reason, _, _ := strings.Cut(f[2], ":")

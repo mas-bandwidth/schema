@@ -53,13 +53,19 @@ build/conformance-moo: build/schema-moo $(MOO_CONFORMANCE_MANIFEST) make/moo-con
 # conformance-negative-control-moo-walk  the text walk's field-key index
 #                                        (I11: json-read and json-hostile red,
 #                                        json-write and wire green)
-.PHONY: conformance-negative-control-moo conformance-negative-control-moo-walk
+# conformance-negative-control-moo-framing  the id table's 4096-entry bound
+#                                        (framing red on frame_entries_4097,
+#                                        wire and report green)
+.PHONY: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing
 conformance-negative-control-moo: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control report
 
 conformance-negative-control-moo-walk: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control walk
 
-# both ride test-moo (make/moo.mk), as every leg's conformance controls ride its
+conformance-negative-control-moo-framing: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control framing
+
+# all three ride test-moo (make/moo.mk), as every leg's conformance controls ride its
 # own test target
-test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk
+test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing
