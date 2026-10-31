@@ -2398,10 +2398,8 @@ fn table_region_up(v: i64, a: i64) -> i64 {
     (v + a - 1) / a * a
 }
 
-/// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base
-/// (root_size is its record and its extent), then every node of the numbering
-/// in index order at its own alignment — a table node its record and its
-/// extent, a
+/// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base,
+/// then every node of the numbering in index order at its own alignment — a
 /// blob at eight, its u32 length, four zero bytes, its bytes and a *string
 /// blob's terminator — and the data part rounded to the region's alignment,
 /// the greatest record alignment, never below eight.
@@ -2411,7 +2409,6 @@ pub fn table_region_layout(
     root_size: i64,
     root_align: i64,
     layout: fn(u64) -> Option<(i64, i64)>,
-    extent: fn(u64, &Rc<dyn Any>) -> i64,
     order: u64,
 ) -> Result<TableRegionWriter<'_>, String> {
     let mut align = root_align.max(8);
@@ -2428,16 +2425,14 @@ pub fn table_region_layout(
                 offsets.push(offset);
                 offset += 8 + blob.len() as i64 + if *type_id == STRING_TYPE_ID { 1 } else { 0 };
             }
-            TableNodeRecord::Table(type_id, node) => {
+            TableNodeRecord::Table(type_id, _) => {
                 let Some((size, a)) = layout(*type_id) else {
                     return Err(String::from("invalid_value"));
                 };
                 align = align.max(a);
                 offset = table_region_up(offset, a);
                 offsets.push(offset);
-                // a NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map
-                // rides in its extent (§2.8, §2.9): the record, then the extent
-                offset += size + extent(*type_id, node);
+                offset += size;
             }
         }
     }
@@ -2586,45 +2581,5 @@ impl TableRegionWriter<'_> {
             at += 16;
         }
         Ok(out.data)
-    }
-}
-
-/// One node's extent being carved (docs/SPEC-TABLES.md §2.8, §2.9): where the
-/// extent begins in the region and the running offset inside it.
-#[cfg(feature = "cook")]
-pub struct TableCarve {
-    pub extent_at: i64,
-    pub at: i64,
-}
-
-#[cfg(feature = "cook")]
-impl TableCarve {
-    /// Reserve one container's whole array, count x size at align, and answer
-    /// where it starts inside the extent.
-    pub fn place(&mut self, count: usize, size: i64, align: i64) -> i64 {
-        self.at = (self.at + align - 1) / align * align;
-        let start = self.at;
-        self.at += count as i64 * size;
-        start
-    }
-}
-
-#[cfg(feature = "cook")]
-impl TableRegionWriter<'_> {
-    /// A container's sixteen-byte slot: the SELF-RELATIVE delta from the slot
-    /// to its array and the int32 count, or the null reference and zero for
-    /// an empty one (§2.8, §2.9).
-    pub fn put_slot(&mut self, at: i64, array: i64, count: usize) {
-        if count == 0 {
-            self.put(at, 0, 8);
-            self.put(at + 8, 0, 4);
-            return;
-        }
-        if count > i32::MAX as usize {
-            self.ok = false;
-            return;
-        }
-        self.put(at, (array - at) as u64, 8);
-        self.put(at + 8, count as u64, 4);
     }
 }

@@ -2,33 +2,22 @@
 # make/goose-wirefuzz.sh — THE WIRE-FUZZ DIFFERENTIAL for the Goose leg
 # (docs/PORTING.md I15; make/goose-fuzz.mk says why it is shaped this way).
 #
-#   goose-wirefuzz.sh <goose> <harness> <units dir> <work dir> <seed> <n> [plain|retain|all]
+#   goose-wirefuzz.sh <goose> <harness> <units dir> <work dir> <seed> <n>
 #
 # For every unit the goose target generated (a directory with a table
 # module), builds the leg for that unit and runs the harness's two arms over
 # it: --builder over its variable-class file roots, the region arm over its
 # value-only roots. An arm with no root of this unit is said and skipped. Every
 # arm that ran is required green; the line printed per arm is the harness's.
-# `retain` selects only --builder --retain, and `all` adds it to both plain
-# arms. Every mode compiles the unit legs once before running its arms.
 set -u
 goose=$1 harness=$2 units=$3 work=$4 seed=$5 n=$6
-# Direct callers keep the original two plain arms unless they opt in.
-mode=${7:-plain}
-case "$mode" in
-    plain) arms="builder fixed" ;;
-    retain) arms="retain" ;;
-    all) arms="builder fixed retain" ;;
-    *) echo "goose wire-fuzz: unknown mode $mode" >&2; exit 2 ;;
-esac
 rm -rf "$work" && mkdir -p "$work" || exit 2
 known_file=${SCHEMA_GOOSE_WIREFUZZ_KNOWN:-test/conformance/goose/wirefuzz-known.tsv}
 fail=0
 ran=0
 known_red=0
-# Each leg is a C compile. Cap parallel builds on shared fleet machines;
-# callers may set GOOSE_FUZZ_JOBS. The arms run one by one.
-jobs=${GOOSE_FUZZ_JOBS:-4}
+# the legs build in parallel (each is a C compile); the arms run one by one
+jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
 for d in "$units"/*/; do
 	ls "$d"*Table.goose >/dev/null 2>&1 && echo "$(basename "$d")"
 done >"$work/units.txt"
@@ -39,15 +28,11 @@ for u in $(cat "$work/units.txt"); do
 		fail=1
 		continue
 	fi
-	for arm in $arms; do
-        driver_arm=$arm
-        flag=
-        case "$arm" in
-            builder) flag=--builder ;;
-            retain) flag="--builder --retain"; driver_arm=builder ;;
-        esac
+	for arm in builder fixed; do
+		flag=
+		[ "$arm" = builder ] && flag=--builder
 		log="$work/$u.$arm.log"
-		"$harness" wire-fuzz $flag --driver "$work/$u/wirefuzz $u $driver_arm" --seed "$seed" --n "$n" \
+		"$harness" wire-fuzz $flag --driver "$work/$u/wirefuzz $u $arm" --seed "$seed" --n "$n" \
 			--failed "$work/failed-$u-$arm.bin" >"$log" 2>&1
 		rc=$?
 		if [ $rc -ne 0 ] && grep -q 'the leg has a codec for none' "$log"; then
@@ -74,7 +59,7 @@ for u in $(cat "$work/units.txt"); do
 			sed 's/^/  /' "$log"
 			fail=1
 		else
-			echo "goose wire-fuzz: $u ($arm arm): $(grep -E '^wire-fuzz[a-z-]*( retain)?:' "$log" | tail -1)"
+			echo "goose wire-fuzz: $u ($arm arm): $(grep -E '^wire-fuzz[a-z-]*:' "$log" | tail -1)"
 		fi
 	done
 done

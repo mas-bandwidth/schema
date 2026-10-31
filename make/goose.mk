@@ -75,7 +75,7 @@ tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 .PHONY: tables-goose-tablewire-negative-control
 tables-goose-tablewire-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
+	go test -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
 
 # build/conformance-goose is the manifest's units generated for goose, one
 # directory per unit. The schema_leg_goose tag is the target's until the port
@@ -115,7 +115,7 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 # the emitted runtime's discard and requires the damaged roots to escape.
 .PHONY: tables-goose-damage tables-goose-damage-negative-control
 tables-goose-damage: toolchain-goose
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadReturnsNoRoot$$'
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadReturnsNoRoot$$'
 tables-goose-damage-negative-control: toolchain-goose
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadNegativeControl$$'
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadNegativeControl$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control

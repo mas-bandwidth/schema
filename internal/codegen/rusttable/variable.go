@@ -1365,7 +1365,6 @@ pub static KNOWN_IDS: &[u64] = &[
 	b.WriteString("];\n")
 	b.WriteString(textHelpers())
 	b.WriteString(cookRegionWriterRust)
-	b.WriteString(cookCarveRust)
 	text := b.String()
 	text = strings.Replace(text, "STRING_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.StringWireTypeId), 1)
 	text = strings.Replace(text, "BYTES_TYPE_ID_VALUE", fmt.Sprintf("0x%016x", ir.BytesWireTypeId), 1)

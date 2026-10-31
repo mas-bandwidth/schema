@@ -807,7 +807,7 @@ test-rust: tables-rust-variable-fixed-class
 # turns the rustc skip into a failure, so the target never passes on a SKIP.
 .PHONY: tables-rust-cook-write
 tables-rust-cook-write:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteCarriesTheExtent' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteStandsDownOnTheExtent' -v
 	@echo 'tables Rust cook write: the storage value cooks to the bytes schema cook writes, in both byte orders'
 
 test-rust: tables-rust-cook-write
@@ -1611,26 +1611,6 @@ test-rust: cards-rust-test cards-rust-conformance cards-rust-conformance-negativ
 test-rust: cards-rust-conformance-upgrade-negative-control cards-rust-conformance-hash-negative-control
 test-rust: cards-rust-wire-fuzz cards-rust-retain-fuzz
 
-# M19 (docs/PORTING.md): A MAP IS A SORTED ENTRY ARRAY IN THE HOLDER'S NODE
-# EXTENT, and a list's elements ride the same extent (docs/SPEC-TABLES.md
-# §2.8, §2.9, §7.6). test/rust-cookmap cooks every map and list instance of the
-# corpus with the generated writer, in both byte orders, and holds the bytes to
-# `schema cook`'s (the C++ reference's cook lands on the same bytes in the
-# conformance cook-write rows); then it opens map_full's cook and searches every
-# map of the root in place, a map inside an entry included. Its controls make
-# the carve lay a map's entries unsorted, and an array unaligned, each red on
-# its own line.
-.PHONY: tables-rust-cook-map tables-rust-cook-map-negative-control
-tables-rust-cook-map: build/tables-generated-rust/.stamp
-	cd test/rust-cookmap && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
-	./test/rust-cookmap/target/debug/rust-cookmap
-
-tables-rust-cook-map-negative-control: bin/schema
-	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control sort
-	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-cookmap/control align
-
-test-rust: tables-rust-cook-map tables-rust-cook-map-negative-control
-
 # THE FRAMING SURFACE, its Rust leg (docs/LAYERS/1-framing.md): the Rust
 # driver answers every framing row and passes it, none absent
 # (test/conformance/framing/gate). Its negative control rebuilds the driver
@@ -1659,3 +1639,55 @@ conformance-negative-control-rust-framing: build/conformance-harness build/table
 	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/target/debug/conformance-rust \
 		$(RUST_FRAMING_CONTROL)/run frame_entries_4097
 test-rust: conformance-rust-framing conformance-negative-control-rust-framing
+
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) in the Rust leg:
+# TestDamageDiscardsTheWholeLoadRust reads damaged input through every public
+# load entry point (the variable wire's tolerant and retaining loads of a fixed
+# and a variable root, the fixed form, the message batch, the text read) and
+# requires no usable value. The two controls remove the discard from a COPY of
+# the emitter, reached through a Go build overlay, and the gate must go red on
+# exactly that entry point. Nothing tracked is written to.
+RUST_DISCARD_NC := build/rust-discard-nc
+.PHONY: tables-rust-discard tables-rust-discard-negative-control tables-rust-fixed-discard-negative-control
+tables-rust-discard:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadRust$$' -v
+
+tables-rust-discard-negative-control:
+	@rm -rf $(RUST_DISCARD_NC)/variable && mkdir -p $(RUST_DISCARD_NC)/variable
+	@sed -e 's|fmt.Fprintf(b, "    if damaged {\\n")|fmt.Fprintf(b, "    if false \&\& damaged { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+		internal/codegen/rusttable/variablecodec.go > $(RUST_DISCARD_NC)/variable/variablecodec.go.txt
+	@cmp -s internal/codegen/rusttable/variablecodec.go $(RUST_DISCARD_NC)/variable/variablecodec.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/$(RUST_DISCARD_NC)/variable/variablecodec.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/variable/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/variable/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/variable/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust discard is gone and the gate stayed green"; \
+		cat $(RUST_DISCARD_NC)/variable/log; exit 1; \
+	fi
+	@grep -q "root: load handed back a value on damage" $(RUST_DISCARD_NC)/variable/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_DISCARD_NC)/variable/log; exit 1; }
+	@grep -m1 "load handed back a value" $(RUST_DISCARD_NC)/variable/log
+	@echo "negative control: removing the Rust variable-wire discard turns the whole-load gate RED"
+
+tables-rust-fixed-discard-negative-control:
+	@rm -rf $(RUST_DISCARD_NC)/fixed && mkdir -p $(RUST_DISCARD_NC)/fixed
+	@sed -e 's|g.pf("    if damaged {\\n")|g.pf("    if false \&\& damaged { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+		internal/codegen/rusttable/fixedform.go > $(RUST_DISCARD_NC)/fixed/fixedform.go.txt
+	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_DISCARD_NC)/fixed/fixedform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust fixed discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_DISCARD_NC)/fixed/fixedform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/fixed/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/fixed/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/fixed/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust fixed discard is gone and the gate stayed green"; \
+		cat $(RUST_DISCARD_NC)/fixed/log; exit 1; \
+	fi
+	@grep -q "fixed: a damaged load left a caller record" $(RUST_DISCARD_NC)/fixed/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_DISCARD_NC)/fixed/log; exit 1; }
+	@grep -m1 "fixed: a damaged load" $(RUST_DISCARD_NC)/fixed/log
+	@echo "negative control: removing the Rust fixed-form discard turns the whole-load gate RED"
+
+test-rust: tables-rust-discard

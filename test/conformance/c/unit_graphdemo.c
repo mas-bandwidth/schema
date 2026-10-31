@@ -399,8 +399,7 @@ int conformance_cook_open_reason( const char * root_name, const uint8_t * data, 
 }
 
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Scene,scene)
-SCHEMA_CONFORMANCE_GRAPH_CODEC(ListNode,list_node)
-static const ConformanceCodec graph_codecs[] = { SCHEMA_CONFORMANCE_GRAPH_ROW(graphdemo,Scene), SCHEMA_CONFORMANCE_GRAPH_ROW(graphdemo,ListNode) };
+static const ConformanceCodec graph_codecs[] = { SCHEMA_CONFORMANCE_GRAPH_ROW(graphdemo,Scene) };
 const ConformanceCodec * conformance_codecs_graphdemo(int * count)
 { *count=(int)(sizeof(graph_codecs)/sizeof(graph_codecs[0])); return graph_codecs; }
 

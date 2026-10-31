@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -24,7 +23,6 @@ import (
 // mutant is the loadout_full length #36 mutant of the all-root gate.
 func TestJavaFixLoadoutLengthDamageRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	const wireHex = "01011e02030e051e03040502060e051e0300020007090100000000000000080d16090a000048410a01010b0f0c0d080d0a0000003f00000e0e090d020100040f063f00100e100d010d110406000000120a0000803e0000d48ac477299ba83291c5c4aa397792c4c599f782764e0ad9b318320d7ec916c48025f1eade1ae5c34925d7235af46fb44ae5967084f5064b39e983f77f1331bfc07fb38abe08637f593f2e60bc8765ad9443f2513bc8c136cc69e4e29bbeb5ffc6875c803a62dc9a24cc8a11f5f028dea4edcad59a3e01a5419a244003aa01f9d131fef61816776ae6b4e78a35d1f9ee1200000000000000"
 	wire, err := hex.DecodeString(wireHex)
 	if err != nil {

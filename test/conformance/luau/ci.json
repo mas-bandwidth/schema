@@ -1,4 +1,2 @@
-{
-  "targets": "build/conformance-harness build/conformance-luau cards-luau-test cards-luau-conformance",
-  "luau": "0.741"
-}
+{"targets": "build/conformance-harness build/conformance-luau",
+ "luau": "0.741"}

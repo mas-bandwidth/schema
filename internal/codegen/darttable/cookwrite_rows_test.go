@@ -72,8 +72,8 @@ func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
 		seen[fields[1]] = true
 		rows = append(rows, row{name: fields[1], little: fields[2], big: fields[3]})
 	}
-	if len(rows) != 47 {
-		t.Fatalf("cook-write manifest has %d rows, want 47", len(rows))
+	if len(rows) != 46 {
+		t.Fatalf("cook-write manifest has %d rows, want 46", len(rows))
 	}
 	outDir := t.TempDir()
 	cmd := exec.Command(dart, "--enable-asserts", "test/conformance/dart/main.dart", manifest, "cook-write", outDir)

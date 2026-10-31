@@ -63,7 +63,7 @@ func TestGooseAccessorsAgreeWithDescriptors(t *testing.T) {
 			}
 			out := strings.TrimSpace(string(gooserun.Run(t, work, "agree.goose", nil)))
 			want := fmt.Sprintf("agree %d", checks)
-			for line := range strings.SplitSeq(out, "\n") {
+			for _, line := range strings.Split(out, "\n") {
 				if strings.HasPrefix(line, "DISAGREE ") || strings.HasPrefix(line, "NO DESCRIPTOR ") {
 					t.Errorf("%s: %s", dir, line)
 				}
@@ -103,8 +103,8 @@ func agreeProgram(u *ir.Unit, files map[string][]byte) (string, int) {
 	b.WriteString("import os;\n")
 	var mods []string
 	for name := range files {
-		if mod, ok := strings.CutSuffix(name, ".goose"); ok {
-			mods = append(mods, mod)
+		if strings.HasSuffix(name, ".goose") {
+			mods = append(mods, strings.TrimSuffix(name, ".goose"))
 		}
 	}
 	sort.Strings(mods)

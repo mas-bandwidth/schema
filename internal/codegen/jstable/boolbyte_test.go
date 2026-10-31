@@ -1,6 +1,8 @@
 package jstable
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,12 +18,11 @@ import (
 // TestBoolByteAboveOneIsMalformedJavaScript pins the pinned fuzz vector
 // bool_byte_above_one (testdata/wire/tables/fuzz-vectors/INDEX.txt) on the
 // JavaScript leg's variable-form Load: a bool payload byte that is neither 0
-// nor 1 is damage (docs/SPEC-TABLES.md §3), and DAMAGE DISCARDS THE WHOLE LOAD
-// (§4): the Load hands back no value and the report says malformed, exactly as
-// internal/tablewire.Decode refuses it. The wire fuzzer found the JavaScript
-// reader reading it true and counting nothing at random mutant #18630 of seed
-// 24845619678 (tabledemo.ProfileConfig), a pass ci-full never reaches, so the
-// vector is held here, where the emitter lane runs it on every change.
+// nor 1 reads TRUE and counts one malformed (docs/SPEC-TABLES.md §3, §6.5),
+// exactly as internal/tablewire.Decode answers. The JavaScript reader read it
+// true and counted nothing; the wire fuzzer found it at random mutant #18630
+// of seed 24845619678 (tabledemo.ProfileConfig), a pass ci-full never reaches,
+// so the vector is held here, where the emitter lane runs it on every change.
 func TestBoolByteAboveOneIsMalformedJavaScript(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "node")
@@ -43,14 +44,21 @@ func TestBoolByteAboveOneIsMalformedJavaScript(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	inst := m.New(def)
 	var rep tabletext.Report
-	ok, decErr := tablewire.Decode(m, m.New(def), wire, &rep)
-	if decErr != nil {
-		t.Fatalf("oracle Decode: %v", decErr)
+	ok, decErr := tablewire.Decode(m, inst, wire, &rep)
+	if decErr != nil || !ok {
+		t.Fatalf("oracle Decode: ok=%v err=%v", ok, decErr)
 	}
-	if ok || !rep.Malformed {
-		t.Fatalf("the vector no longer carries a bool byte above 1: the oracle answers ok=%v %+v", ok, rep)
+	if !rep.Malformed {
+		t.Fatalf("the vector no longer carries a bool byte above 1: the oracle reads it silent")
 	}
+	wantSaved, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatalf("oracle Encode: %v", err)
+	}
+	want := fmt.Sprintf("%d|%d|%d|%d|%d|malformed=%v",
+		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, rep.Malformed)
 
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
@@ -73,8 +81,10 @@ const m = await import(pathToFileURL(%q).href);
 const wire = new Uint8Array(readFileSync(%q));
 const rep = new m.TableVariableReport();
 const v = m.%sLoad(wire, rep);
-console.log("JS loaded=" + (v !== null) + "|malformed=" + rep.malformed);
-`, module, wirePath, root)
+if (v === null) { console.log("JS null"); process.exit(0); }
+const hex = Buffer.from(m.%sSave(v)).toString("hex");
+console.log("JS " + [rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate].join("|") + "|malformed=" + rep.malformed + "|hasLoadout=" + v.has_loadout + "|hex=" + hex);
+`, module, wirePath, root, root)
 	script := filepath.Join(work, "probe.mjs")
 	if err := os.WriteFile(script, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
@@ -91,7 +101,18 @@ console.log("JS loaded=" + (v !== null) + "|malformed=" + rep.malformed);
 			line = after
 		}
 	}
-	if want := "loaded=false|malformed=true"; line != want {
-		t.Fatalf("JS = %q, want %q (damage hands back no value)", line, want)
+	got, gotHex, found := strings.Cut(line, "|hex=")
+	if !found {
+		t.Fatalf("unexpected JS output:\n%s", out)
+	}
+	if wantLine := want + "|hasLoadout=true"; got != wantLine {
+		t.Fatalf("JS = %q, want %q (the oracle's report, the bool read true)", got, wantLine)
+	}
+	gotSaved, err := hex.DecodeString(strings.TrimSpace(gotHex))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotSaved, wantSaved) {
+		t.Fatalf("JS saved %x, the oracle encodes %x", gotSaved, wantSaved)
 	}
 }

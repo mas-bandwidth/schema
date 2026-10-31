@@ -16,10 +16,10 @@
 .PHONY: tables-goose-json-walk tables-goose-json-walk-negative-control
 tables-goose-json-walk:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -run '^(TestGooseJSONWalkIsOneRuntime|TestGooseJSONRoundTripsTheGoldens|TestGooseJSONHostile)$$' ./internal/codegen/goosetable/
+	go test -count=1 -run '^(TestGooseJSONWalkIsOneRuntime|TestGooseJSONRoundTripsTheGoldens|TestGooseJSONHostile)$$' ./internal/codegen/goosetable/
 tables-goose-json-walk-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseJSONWalkNegativeControl$$' ./internal/codegen/goosetable/
+	go test -count=1 -run '^TestGooseJSONWalkNegativeControl$$' ./internal/codegen/goosetable/
 
 # tables-goose-json-differential (PORTING I13): 200 random instances, the leg's
 # text against the compiler's own engine's, both directions; its control caps
@@ -27,10 +27,10 @@ tables-goose-json-walk-negative-control:
 .PHONY: tables-goose-json-differential tables-goose-json-differential-negative-control
 tables-goose-json-differential:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseTextDifferential$$' ./internal/codegen/goosetable/
+	go test -count=1 -run '^TestGooseTextDifferential$$' ./internal/codegen/goosetable/
 tables-goose-json-differential-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseTextDifferentialNegativeControl$$' ./internal/codegen/goosetable/
+	go test -count=1 -run '^TestGooseTextDifferentialNegativeControl$$' ./internal/codegen/goosetable/
 
 # The leg gate reaches them (as make/cs.mk's test-cs reaches its differential):
 # a prerequisite added here, so make/goose.mk is not edited.

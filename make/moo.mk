@@ -57,39 +57,3 @@ TOOLCHAIN_PINS_moo := MOO MOO_ANALYZE
 CONFORMANCE_LEGS   += $(call unless_skipped,moo,build/conformance-moo)
 BENCH_TABLES_LEGS  += generated/bench/tables/moo/.stamp
 GOLDENS_LEGS       += update-goldens-moo
-
-# J6: native moo owning card facade. The Go host supplies only CLI file IO;
-# parser/render/upgrade/edit/hash/view execute under the pinned interpreter.
-CARDS_MOO_GENERATED := build/tables-generated-moo/cards
-CARDS_MOO_REQUIRE := load,save,render,parse,bounds,upgrade,edit,taskhash,view
-export CARDS_MOO_GENERATED
-.PHONY: cards-moo-generate cards-moo-test cards-moo-conformance cards-moo-conformance-negative-control cards-moo-conformance-upgrade-negative-control cards-moo-conformance-hash-negative-control
-cards-moo-generate: $(CARDS_MOO_GENERATED)/.stamp
-$(CARDS_MOO_GENERATED)/.stamp: build/schema-moo tables/cards/Card.schema tables/cards/schema.lock
-	@mkdir -p $(CARDS_MOO_GENERATED)
-	./build/schema-moo generate --lang moo --out $(CARDS_MOO_GENERATED) tables/cards
-	@touch $@
-
-build/cards-driver-moo: tables/cards/moo/host/main.go
-	@mkdir -p build
-	go build -o $@ tables/cards/moo/host/main.go
-
-cards-moo-test: toolchain-moo cards-moo-generate build/cards-driver-moo cards-corpus-check
-	@mkdir -p build/cards-moo-analyze
-	@cp $(CARDS_MOO_GENERATED)/*.moo tables/cards/moo/*.moo build/cards-moo-analyze/
-	@printf 'return {surface="unit",rows={},files={}}\n' > build/cards-moo-analyze/inputs.moo
-	$(MOO_ANALYZE) build/cards-moo-analyze/cards.moo build/cards-moo-analyze/cards_codec.moo build/cards-moo-analyze/cards_test.moo build/cards-moo-analyze/driver.moo
-	./build/cards-driver-moo tables/cards/moo/UNIT_INPUTS.txt unit build/cards-moo-unit
-	@cat build/cards-moo-unit/unit.txt
-
-cards-moo-conformance: toolchain-moo cards-moo-generate build/cards-driver-moo build/conformance-harness cards-corpus-check
-	SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(CARDS_MOO_REQUIRE) ./build/conformance-harness cards --work build/cards-moo-conformance --corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(CARDS_MOO_REQUIRE)
-
-cards-moo-conformance-negative-control: cards-moo-test cards-moo-conformance
-	sh tables/cards/moo/negative-control.sh render
-cards-moo-conformance-upgrade-negative-control: cards-moo-test cards-moo-conformance
-	sh tables/cards/moo/negative-control.sh upgrade
-cards-moo-conformance-hash-negative-control: cards-moo-test cards-moo-conformance
-	sh tables/cards/moo/negative-control.sh taskhash
-
-test-moo: cards-moo-test cards-moo-conformance

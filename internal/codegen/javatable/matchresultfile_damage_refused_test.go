@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -25,7 +24,6 @@ const matchResultFileDamagedMutant = "0101090101010101010101020ed1010d0a110309e8
 // counter or saved byte is compared.
 func TestJavaFixMatchResultFileDamageRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	repo := filepath.Join("..", "..", "..")
 	cardMutant, err := hex.DecodeString(matchResultFileDamagedMutant)
 	if err != nil {

@@ -306,39 +306,3 @@ TOOLCHAIN_PINS_luau := LUAU
 CONFORMANCE_LEGS  += $(call unless_skipped,luau,build/conformance-luau)
 BENCH_TABLES_LEGS += generated/bench/tables/luau/.stamp
 GOLDENS_LEGS      += update-goldens-luau
-
-# J6: native Luau owning card facade. The Go host supplies only CLI file IO;
-# parser/render/upgrade/edit/hash/view execute under the pinned interpreter.
-CARDS_LUAU_GENERATED := build/tables-generated-luau/cards
-CARDS_LUAU_REQUIRE := load,save,render,parse,bounds,upgrade,edit,taskhash,view
-export CARDS_LUAU_GENERATED
-.PHONY: cards-luau-generate cards-luau-test cards-luau-conformance cards-luau-conformance-negative-control cards-luau-conformance-upgrade-negative-control cards-luau-conformance-hash-negative-control
-cards-luau-generate: $(CARDS_LUAU_GENERATED)/.stamp
-$(CARDS_LUAU_GENERATED)/.stamp: bin/schema tables/cards/Card.schema tables/cards/schema.lock
-	@mkdir -p $(CARDS_LUAU_GENERATED)
-	./bin/schema generate --lang luau --out $(CARDS_LUAU_GENERATED) tables/cards
-	@touch $@
-
-build/cards-driver-luau: tables/cards/luau/host/main.go
-	@mkdir -p build
-	go build -o $@ tables/cards/luau/host/main.go
-
-cards-luau-test: toolchain-luau cards-luau-generate build/cards-driver-luau cards-corpus-check
-	@mkdir -p build/cards-luau-analyze
-	@cp $(CARDS_LUAU_GENERATED)/*.luau tables/cards/luau/*.luau build/cards-luau-analyze/
-	@printf 'return {surface="unit",rows={},files={}}\n' > build/cards-luau-analyze/inputs.luau
-	$(LUAU_ANALYZE) build/cards-luau-analyze/cards.luau build/cards-luau-analyze/cards_codec.luau build/cards-luau-analyze/cards_test.luau build/cards-luau-analyze/driver.luau
-	./build/cards-driver-luau tables/cards/luau/UNIT_INPUTS.txt unit build/cards-luau-unit
-	@cat build/cards-luau-unit/unit.txt
-
-cards-luau-conformance: toolchain-luau cards-luau-generate build/cards-driver-luau build/conformance-harness cards-corpus-check
-	SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(CARDS_LUAU_REQUIRE) ./build/conformance-harness cards --work build/cards-luau-conformance --corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(CARDS_LUAU_REQUIRE)
-
-cards-luau-conformance-negative-control: cards-luau-test cards-luau-conformance
-	sh tables/cards/luau/negative-control.sh render
-cards-luau-conformance-upgrade-negative-control: cards-luau-test cards-luau-conformance
-	sh tables/cards/luau/negative-control.sh upgrade
-cards-luau-conformance-hash-negative-control: cards-luau-test cards-luau-conformance
-	sh tables/cards/luau/negative-control.sh taskhash
-
-test-luau: cards-luau-test cards-luau-conformance

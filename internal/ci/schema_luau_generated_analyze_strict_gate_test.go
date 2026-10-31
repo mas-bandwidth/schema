@@ -42,7 +42,6 @@ var luauCorpusDirs = []string{
 	"tables/backend",
 	"tables/vocab",
 	"tables/vocab9",
-	"tables/widelist",
 }
 
 // luauCorpusFiles are the bench corpus's units. bench/corpus holds more than

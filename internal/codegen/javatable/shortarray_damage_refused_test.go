@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -22,7 +21,6 @@ import (
 // (bytes(32)) declares 32 bytes inside a body that carries 31.
 func TestJavaFixShortArrayDamageRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromDir(t, filepath.Join(repo, "tables", "backend"))
 
