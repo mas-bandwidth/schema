@@ -37,7 +37,7 @@ go run ./tools/sabotage -name "$sabotage" -out "$work/src.go.txt" internal/codeg
 printf '{"Replace":{"%s/internal/codegen/rusttable/cookcarve.go":"%s/%s/src.go.txt"}}\n' "$root" "$root" "$work" > "$work/overlay.json"
 go build -overlay "$work/overlay.json" -o "$work/schema" ./cmd/schema
 
-for unit in mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist; do
+for unit in mapdemo:tables/maps listdemo:tables/lists; do
 	name=${unit%%:*}
 	path=${unit#*:}
 	"./$work/schema" generate --lang rust --out "$work/gen/$name/src" "$path"

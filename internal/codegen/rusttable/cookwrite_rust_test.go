@@ -52,6 +52,7 @@ var cookWriteUnits = map[string]string{
 // spent, and the run says so.
 var cookWriteOwed = map[string]string{
 	"scalars.SimState": "the fixed-point kind is outside the variable class's load this leg carries (§15)",
+	"widelist.Wide":    "the 128-bit table-wire kind is outside the variable class's load this leg carries (§15)",
 }
 
 type cookWriteCase struct {
