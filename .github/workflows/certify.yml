@@ -321,6 +321,13 @@ jobs:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
 
+      # The Lua leg's pinned PUC-Rio interpreter (make/lua.mk): tables-lua-release
+      # refuses by name without it, and dist-lua builds it from source at the
+      # sha256 make/lua.mk names.
+      - name: install the Lua pin
+        if: matrix.target == 'tables-lua-release'
+        run: make dist-lua
+
       - name: ${{ matrix.target }}
         run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 

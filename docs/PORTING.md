@@ -1241,7 +1241,7 @@ the reference on the same numbers; a sitting on the box is what certifies.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 roadmap `port/lua/open/release-tier` (no Lua bench leg yet) |
+| ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-c-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-go2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-java-port-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-js2-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-dart-arm64-macbook.md` | ✅ `bench/tables/results/2026-09-03-pairing-elixir-arm64-macbook.md` | ❌ #381 roadmap `port/lua/open/bench-board` (the leg `bench/tables/lua` and its gate `tables-lua-bench-gate` are in; the labelled board needs a measured sitting, which only a certify run takes) |
 
 ### I9 — The soak is gated on the allocation count or a floor
 
@@ -1352,7 +1352,7 @@ found a module name the packet emitter refuses — the drift a gate catches.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` | ❌ #381 roadmap `port/lua/open/usage` (docs/USAGE.md has no Lua example yet) |
+| ✅ `tables-cook-open` | ✅ `tables-c-usage` | ❌ #418 | ✅ `tables-go-usage` | ✅ `tables-cook-open-cs` | ✅ `tables-java-usage` | ✅ `tables-js-usage` | ❌ #514 | ✅ `tables-elixir-usage` | ✅ `tables-lua-usage` `tables-lua-usage-negative-control` |
 
 ### I13 — The text differential against a third implementation
 
@@ -1547,7 +1547,7 @@ so and passes.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ❌ #381 roadmap `port/lua/open/release-tier` (no `tables-lua-release` yet) |
+| ❌ #423 | ✅ `tables-c-release` | ❌ #423 | ✅ `tables-go-release` | ✅ `tables-cs-release` | ✅ `tables-java-release` | ✅ `tables-js-release` | ✅ `tables-dart-release` | ✅ `tables-elixir-release` | ✅ `tables-lua-release` |
 
 ### J4 — Emitted text is analyzer-clean and format-canonical
 
@@ -1610,12 +1610,12 @@ in `test/conformance/harness/cards.go`, with `SCHEMA_CARDS_SURFACES` and
 `edit` 8/8, `taskhash` 3/3, `view` 1/1), comparing every byte and refusal
 verdict against the Go reference answers (`tla/CardVersioning.tla`,
 `tla/CardHops.tla`). `make cards-conformance-all` runs the Go leg and all
-eight non-Go legs with all nine surfaces required.
+nine non-Go legs with all nine surfaces required.
 
 **Reference.** `test/conformance/harness/cards.go`, `tables/cards/cmd/cards-driver/main.go`,
 and `make cards-conformance-all` in `make/go.mk`.
 
-**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir.
+**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Lua.
 
 **Measured effect.** Structural: every leg's card codec, facade bounds, brief
 parser/renderer, `v1` to `v2` upgrader, field editors, task hash, and
@@ -1625,12 +1625,13 @@ descriptor view agree byte for byte on the 43-case corpus.
 `cards-c-conformance-negative-control`, `cards-cpp-conformance-negative-control`,
 `cards-cs-conformance-negative-control`, `cards-rust-conformance-negative-control`,
 `cards-java-conformance-negative-control`, `cards-js-conformance-negative-control`,
-`cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`.
+`cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`,
+`cards-lua-conformance-negative-control`.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` (`tables/cards/cmd/cards-driver/main.go`) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) | ❌ #381 roadmap `port/lua/open/cards` (no Lua card facade or cards driver yet) |
+| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` (`tables/cards/cmd/cards-driver/main.go`) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) | ✅ `cards-lua-conformance` (`tables/cards/lua/driver.lua`) |
 
 
