@@ -873,10 +873,8 @@ func (r *tableTextFormResolver) field(v *tableTextFormNode, f *TableFieldInfo, p
 		return r.mapping(v, f, path)
 	case f.List:
 		return r.sequence(v, f, path)
-	case f.Kind == 33 && !f.Pointer:
-		return r.text(v, f.ArrayBound, true)
 	case f.Kind == 12 && !f.Pointer && tableTextFormList(f) == 0:
-		return r.text(v, f.ArrayBound, false)
+		return r.text(v, f.ArrayBound)
 	case f.IsArray && f.Kind == 6 && f.TypeName == "bytes":
 		return r.blob(v, int64(f.ArrayBound))
 	case f.KeyName != nil:
@@ -932,7 +930,7 @@ func (r *tableTextFormResolver) scalar(v *tableTextFormNode, f *TableFieldInfo, 
 		if tableTextFormUnbounded(&f.Table().Fields[0]) {
 			bound = -1
 		}
-		return r.text(v, bound, false)
+		return r.text(v, bound)
 	}
 	switch {
 	case f.Pointer:
@@ -965,22 +963,12 @@ func (r *tableTextFormResolver) scalar(v *tableTextFormNode, f *TableFieldInfo, 
 	return r.fail(TableTextFormKindMismatch, v, v.start)
 }
 
-// text is a string(N) (bytes) or a wstring(N) (UTF-16 code units).
-func (r *tableTextFormResolver) text(v *tableTextFormNode, bound int32, wide bool) bool {
+// text is a string(N), its bound in bytes.
+func (r *tableTextFormResolver) text(v *tableTextFormNode, bound int32) bool {
 	if v.kind != '"' {
 		return r.fail(TableTextFormKindMismatch, v, v.start)
 	}
-	size := len(v.text)
-	if wide {
-		size = 0
-		for _, c := range string(v.text) {
-			size++
-			if c >= 0x10000 {
-				size++
-			}
-		}
-	}
-	if bound >= 0 && size > int(bound) {
+	if bound >= 0 && len(v.text) > int(bound) {
 		return r.fail(TableTextFormBound, v, v.start)
 	}
 	v.canon = string(v.text)
@@ -1331,10 +1319,8 @@ func (r *tableTextFormResolver) pointer(v *tableTextFormNode, f *TableFieldInfo,
 		switch f.TypeName {
 		case "bytes":
 			return r.blob(v, -1)
-		case "wstring":
-			return r.text(v, -1, true)
 		}
-		return r.text(v, -1, false)
+		return r.text(v, -1)
 	}
 	if v.kind != '(' {
 		return r.fail(TableTextFormKindMismatch, v, v.start)
@@ -1406,7 +1392,7 @@ func (r *tableTextFormResolver) mapping(v *tableTextFormNode, f *TableFieldInfo,
 			if tableTextFormUnbounded(key) {
 				bound = -1
 			}
-			ok = r.text(k, bound, false)
+			ok = r.text(k, bound)
 		} else {
 			ok = r.integer(k, key)
 		}

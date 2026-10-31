@@ -608,7 +608,7 @@ func (g *gen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -750,7 +750,7 @@ func (g *gen) zeroScalar(t ir.FieldType) string {
 		return "false"
 	case ir.TFloat32, ir.TFloat64:
 		return "0.0"
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		return "<<>>"
 	case ir.TNamed:
 		switch t.Ref.(type) {
@@ -1486,8 +1486,6 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.use("f64_bits/1")
 		g.pf("%sw = f64_bits(%s)\n", ind, name)
 		g.emitWriteWide("w", 64, ind)
-	case ir.TWString:
-		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -2376,8 +2374,6 @@ func (g *gen) emitBuildStruct(ref *ir.Struct, pre, lv, ind string) {
 
 func (g *gen) emitReadScalar(f *ir.Field, lv, ind string, bounded bool) {
 	switch f.Type.Kind {
-	case ir.TWString:
-		g.emitReadWString(f, lv, ind)
 	case ir.TString, ir.TBytes:
 		g.emitReadBytesField(f, lv, ind)
 	case ir.TFixed:

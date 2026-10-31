@@ -283,7 +283,7 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 	case f.KeyEnum != "":
 		g.emitMessageKeyed(f, entry, pass)
 
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n",
 			name, name, f.Type.Size, messageBad(pass))
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", name)
@@ -389,23 +389,11 @@ func (g *tableGen) emitMessageHeader(entry ir.TableVocabularyEntry, pass message
 }
 
 // emitMessageTextPayload writes a `string(N)` or a `bytes(N)`: the length at
-// its own width, the ALIGN that buys a memcpy, then the bytes. A `wstring(N)`
-// is the length, NO align, and SIXTEEN bits a code unit (§3.3).
+// its own width, the ALIGN that buys a memcpy, then the bytes (§3.3).
 func (g *tableGen) emitMessageTextPayload(f *ir.Field, entry ir.TableVocabularyEntry, value, count, ind string, pass messagePass) {
 	width := ir.TableMessageBitsRequired(0, entry.Shape.Max)
 	if f.Type.Kind == ir.TBytes {
 		width = ir.TableMessageCountBits(entry.Shape)
-	}
-	if f.Type.Kind == ir.TWString {
-		if pass == messagePassMeasure {
-			g.pf("%sbits += %d + (int64_t) %s * 16;\n", ind, width, count)
-			return
-		}
-		sfx := g.msgEnter()
-		defer g.msgLeave()
-		g.pf("%sw.put( (uint64_t) %s, %d );\n", ind, count, width)
-		g.pf("%sfor ( int32_t i%s = 0; i%s < %s; i%s++ ) { w.put( (uint64_t) (uint16_t) %s[i%s], 16 ); } // sixteen bits a unit, no align\n", ind, sfx, sfx, count, sfx, value, sfx)
-		return
 	}
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)
@@ -665,7 +653,7 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 			g.pf("%s    w.put( index_%s, index_bits );\n", ind, af.Name)
 		}
 		g.pf("%s}\n", ind)
-	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes || af.Type.Kind == ir.TWString:
+	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes:
 		g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, af.Type.Size, messageBad(pass))
 		g.emitMessageTextPayload(af, entry, value, count, ind, pass)
 	case af.Array != ir.ArrayNone:

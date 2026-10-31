@@ -154,10 +154,6 @@ func maxBitsScalar(f *Field, m *bitMemo) int64 {
 	case TString, TBytes:
 		// length prefix + worst-case align pad + the bytes
 		return addSize(addSize(BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), 7), mulSize(f.Type.Size, 8))
-	case TWString:
-		// length prefix + one 32-BIT GROUP per code unit, and NO PADDING TERM:
-		// the wide path aligns nowhere (SPEC §4.12)
-		return addSize(BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), mulSize(f.Type.Size, 32))
 	case TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *Enum:
@@ -268,7 +264,7 @@ func maxBitsStruct(st *Struct, m *bitMemo) int64 {
 // under which [MaxBitsStruct] is EXACT rather than an upper bound.
 //
 // Not fixed: a branch (the two sides need not agree), an align (0..7 bits of
-// pad), a counted array (the element count varies), a string/bytes/wstring (a
+// pad), a counted array (the element count varies), a string/bytes (a
 // declared length is a bound, not a width), a union (arms differ and
 // [MaxBitsUnion] takes the largest), and a pointer (the reference is fixed but
 // nothing here is entitled to speak for the referent). Everything else has one
@@ -337,7 +333,7 @@ func fixedField(f *Field, m map[*Struct]fixedAnswer) bool {
 	switch f.Type.Kind {
 	case TInt, TBits, TBool, TFloat32, TFloat64, TFixed:
 		return true
-	case TString, TBytes, TWString:
+	case TString, TBytes:
 		return false
 	case TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -503,14 +499,6 @@ func afterField(f *Field, pos wirePos, m *alignMemo) wirePos {
 	case f.Type.Kind == TString || f.Type.Kind == TBytes:
 		// length prefix, align, then whole bytes — ends aligned (§4.7)
 		return wireAligned
-	case f.Type.Kind == TWString:
-		// length prefix, then one 32-bit group per code unit and no align
-		// (§4.12). Every group is a whole number of BYTES, so the groups move
-		// the position by a multiple of 8 whatever the length is: the exit is
-		// the entry plus the length prefix, and it stays KNOWN when the entry
-		// is. That is the sense in which wide text introduces no alignment
-		// point — it neither creates one nor destroys the one it entered on.
-		return pos.add(BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)))
 	case isStruct:
 		// nested structs are analyzed on their own; here only the exit
 		// position matters

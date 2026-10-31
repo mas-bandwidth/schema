@@ -100,8 +100,6 @@ func kindName(kind int) string {
 		return "int128"
 	case 19:
 		return "uint128"
-	case 33:
-		return "wstring"
 	case 20, 21, 22, 23, 24:
 		return "fixed"
 	case 25, 26, 27, 28, 29:

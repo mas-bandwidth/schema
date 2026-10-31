@@ -63,16 +63,14 @@ const (
 
 func tableScalarKind(f *ir.Field) int { return ir.TableWireScalarKind(f) }
 
-// the four kinds this form added (docs/SPEC-TABLES.md §3): an ENUM rides
-// under its own kind carrying the reference to its variant name's id, the
-// ESCAPE is how a later major adds a kind without the addition reading as
-// damage, the PAYLOAD-FREE kind is what an arm that holds nothing rides
-// under, because an arm header carries a kind, and WIDE TEXT is the table
-// half of `wstring(N)` — `L` bytes holding `L / 2` UTF-16 code units.
+// the kinds this form added (docs/SPEC-TABLES.md §3): an ENUM rides under
+// its own kind carrying the reference to its variant name's id, the ESCAPE
+// is how a later major adds a kind without the addition reading as damage,
+// and the PAYLOAD-FREE kind is what an arm that holds nothing rides under,
+// because an arm header carries a kind.
 const (
 	tkEnum      = ir.TableKindEnum
 	tkNoPayload = ir.TableKindNoPayload
-	tkWstring   = ir.TableKindWstring
 )
 
 // tableFieldWireId is a field's effective id on this wire: fnv1a64 of its
@@ -650,7 +648,7 @@ func tableMessageReasonMembers(refuseReason, pkg string) string {
 	return b.String()
 }
 
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, has128 bool, widen widenCensus, idCap int, u *ir.Unit) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, has128 bool, widen widenCensus, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
 	// The bucket count is the next power of two at twice the capacity, so the
@@ -676,17 +674,6 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	keyedStorage := ""
 	if anyKeyed {
 		keyedStorage = tableKeyedStorage
-	}
-	// KIND 33's runtime, and only where a kind 33 payload can arrive
-	// (docs/SPEC-TABLES.md §3, §2.2): the three wide-text helpers have exactly
-	// two call sites in this emitter — a wstring field and a wstring arm — and
-	// both are behind ir.TWString, so a unit whose census names no wide-text
-	// field cannot reach one of them. C++ is the only target handed such a
-	// unit at all; the other eight refuse it (compiler/widetext.go), which is
-	// why this is the only emitter that ever carried the block.
-	wideText := ""
-	if anyWide {
-		wideText = tableWideTextRuntime
 	}
 	// THE WIDENING RUNTIME, minus the helpers no kind in this unit's closure
 	// declares (docs/SPEC-TABLES.md §2.2, §4): the ladder predicate always,
@@ -1433,7 +1420,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
+            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1460,7 +1447,7 @@ struct TableReader
     }
 };
 
-` + widenRuntime + tableTextRuntime + wideText + `
+` + widenRuntime + tableTextRuntime + `
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,
 // because every body has to know that a NESTED body claiming one is damaged.
@@ -1647,13 +1634,6 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	anyMap := unitHasMap(u, closure)
 	anyList := unitHasList(u, closure)
 	anyExtent := anyMap || anyList
-	// WIDE TEXT is a unit-level fact, not a per-file one, because the
-	// primitives block sits behind ONE package-scoped guard: whichever
-	// <Base>Table.h a translation unit includes first defines the runtime for
-	// every other file of the package, so the kind 33 helpers have to be in
-	// or out for the whole unit. ir.WideTextFields is the census every other
-	// target refuses on (compiler/widetext.go), taken over both wires.
-	anyWide := len(ir.WideTextFields(u)) > 0
 	// THE WIDENING HELPERS take their census the same way and for the same
 	// reason (docs/SPEC-TABLES.md §4): a unit carries the runtime for the
 	// kinds it DECLARES, and the list runtime's own extent term is one more
@@ -1879,7 +1859,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, anyWide, unitHas128(u, closure), widen, ir.TableWireIdCapacity(u), u))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, unitHas128(u, closure), widen, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u, anyExtent))

@@ -403,10 +403,6 @@ func (g *fixedGen) writePayload(f *ir.Field, val string) []wseg {
 		out = append(out, wseg{inline: fmt.Sprintf("byte_size(%s)::little-signed-32", name)})
 		out = append(out, wseg{inline: fmt.Sprintf("%s::binary", name)})
 		out = append(out, wseg{inline: fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size)})
-	case f.Type.Kind == ir.TWString:
-		out = append(out, wseg{inline: fmt.Sprintf("div(byte_size(%s), 2)::little-signed-32", name)})
-		out = append(out, wseg{inline: fmt.Sprintf("%s::binary", name)})
-		out = append(out, wseg{inline: fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, 2*f.Type.Size)})
 	default:
 		out = append(out, g.writeElement(f, name)...)
 	}
@@ -827,8 +823,6 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 		out.match = append(out.match, segN, segB)
 		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.Type.Size))
 		out.field(f.Name, rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, f.Type.Size))
-	case f.Type.Kind == ir.TWString:
-		g.readText(out, f, v, 2, present)
 	default:
 		prior := g.present
 		if f.Type.Optional {
@@ -856,9 +850,6 @@ func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, unit int64, presen
 	}
 	def := g.fixedElemDefaultTerm(f)
 	helper := "R.text"
-	if f.Type.Kind == ir.TWString {
-		helper = "R.wtext"
-	}
 	out.stmt("{t_"+v+", m}", call(helper, used, raw(def), raw("m"), present))
 	out.field(f.Name, raw("t_"+v))
 }
@@ -1514,7 +1505,7 @@ func unionArmNeedsDecodeHelper(f *ir.Field) bool {
 		return true
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		return true
 	}
 	return false
@@ -1570,17 +1561,6 @@ func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name, armName string, sla
 			fmt.Sprintf("byte_size(%s)::little-signed-32", name),
 			fmt.Sprintf("%s::binary", name),
 			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size),
-		}
-		if slack > 0 {
-			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))
-		}
-		return binNode{segs: segs}
-	case ir.TWString:
-		segs := []string{
-			"acc::binary",
-			fmt.Sprintf("div(byte_size(%s), 2)::little-signed-32", name),
-			fmt.Sprintf("%s::binary", name),
-			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, 2*f.Type.Size),
 		}
 		if slack > 0 {
 			segs = append(segs, fmt.Sprintf("0::size(%d)-unit(8)", slack))

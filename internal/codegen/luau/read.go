@@ -345,8 +345,6 @@ func emitReadScalar(g *Gen, f *ir.Field, name, lenName, ind string) {
 	case ir.TFloat64:
 		g.call(ind, "stream:serializeDouble(STR)", "")
 		g.Pf("%s%s = STR.value\n", ind, name)
-	case ir.TWString:
-		emitReadWString(g, f, name, lenName, ind)
 	case ir.TString, ir.TBytes:
 		g.Pf("%sdo -- length, align, bytes into the pre-allocated buffer (SPEC §4.7)\n", ind)
 		g.call(ind+"  ", fmt.Sprintf("stream:serializeInt(BITS, 0, %d)", f.Type.Size),
@@ -407,39 +405,6 @@ func emitReadBareInt(g *Gen, f *ir.Field, name, ind string) {
 	}
 }
 
-// emitReadWString reads a wstring(N) field (SPEC §4.12), composed from
-// primitives because serialize format 2.0 carries no wide-string call: the
-// length in [0, N] over bits_required(0, N) bits, then each code unit as a
-// 32-bit group, with no alignment anywhere. A group above 0xFFFF, a zero
-// group, and an unpaired surrogate (a high one not followed by a low one, a
-// low one not preceded by a high one, a high one last) refuse the read. The
-// code units land in storage as they are; nothing past the used length is
-// written (§5's tail rule).
-func emitReadWString(g *Gen, f *ir.Field, name, lenName, ind string) {
-	g.Pf("%sdo -- wstring(%d): the length, then 32-bit groups of UTF-16 code units (SPEC §4.12)\n", ind, f.Type.Size)
-	g.call(ind+"  ", fmt.Sprintf("stream:serializeInt(BITS, 0, %d)", f.Type.Size), " -- the length guards the groups (§6.3)")
-	g.Pf("%s  local n = BITS.value\n", ind)
-	g.Pf("%s  local high = false\n", ind)
-	g.Pf("%s  for k = 0, n - 1 do\n", ind)
-	g.call(ind+"    ", "stream:serializeBits(BITS, 32)", "")
-	g.Pf("%s    local unit = BITS.value\n", ind)
-	g.Pf("%s    if unit == 0 or unit > 0xFFFF then return false end -- a zero group, or not a code unit\n", ind)
-	g.Pf("%s    if unit >= 0xD800 and unit <= 0xDBFF then\n", ind)
-	g.Pf("%s      if high then return false end -- a high surrogate not followed by a low one\n", ind)
-	g.Pf("%s      high = true\n", ind)
-	g.Pf("%s    elseif unit >= 0xDC00 and unit <= 0xDFFF then\n", ind)
-	g.Pf("%s      if not high then return false end -- a low surrogate not preceded by a high one\n", ind)
-	g.Pf("%s      high = false\n", ind)
-	g.Pf("%s    elseif high then\n", ind)
-	g.Pf("%s      return false -- a high surrogate not followed by a low one\n", ind)
-	g.Pf("%s    end\n", ind)
-	g.Pf("%s    buffer.writeu16(%s, k * 2, unit)\n", ind, name)
-	g.Pf("%s  end\n", ind)
-	g.Pf("%s  if high then return false end -- a high surrogate last\n", ind)
-	g.Pf("%s  %s = n\n", ind, lenName)
-	g.Pf("%send\n", ind)
-}
-
 // rawLiteral renders a value in its field's storage domain (docs/PORT-LUAU.md,
 // THE TYPE MAPPING): a number at 32 bits or fewer, an integer at 64, an
 // Int128 pair at 128.
@@ -468,11 +433,11 @@ func emitZeroItems(g *Gen, items []ir.Item, path, ind string) {
 func emitZeroField(g *Gen, f *ir.Field, path, ind string) {
 	name := path + "." + ir.GoExportName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.Pf("%sbuffer.fill(%s, 0, 0)\n%s%sLength = 0\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
 		switch f.Type.Kind {
-		case ir.TString, ir.TBytes, ir.TWString:
+		case ir.TString, ir.TBytes:
 			g.Pf("%sfor i = 1, %d do buffer.fill(%s[i], 0, 0); %sLength[i] = 0 end\n", ind, f.ArrayBound, name, name)
 		case ir.TNamed:
 			switch f.Type.Ref.(type) {
@@ -555,7 +520,7 @@ func emitInitField(g *Gen, f *ir.Field, name, ind string) {
 	switch {
 	case f.Array != ir.ArrayNone:
 		switch {
-		case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+		case t.Kind == ir.TString || t.Kind == ir.TBytes:
 			g.Pf("%sfor i = 1, %d do buffer.fill(%s[i], 0, 0); %sLength[i] = 0 end\n", ind, f.ArrayBound, name, name)
 		case isByteElem(t):
 			g.Pf("%sbuffer.fill(%s, 0, 0)\n", ind, name)
@@ -568,7 +533,7 @@ func emitInitField(g *Gen, f *ir.Field, name, ind string) {
 		if f.Array == ir.ArrayCounted {
 			g.Pf("%s%sCount = %d -- the born count (SPEC §4.6)\n", ind, name, f.BornCount())
 		}
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case t.Kind == ir.TString || t.Kind == ir.TBytes:
 		g.Pf("%sbuffer.fill(%s, 0, 0)\n%s%sLength = 0\n", ind, name, ind, name)
 		for _, line := range g.ByteDefault(f, name) {
 			g.Pf("%s%s\n", ind, line)

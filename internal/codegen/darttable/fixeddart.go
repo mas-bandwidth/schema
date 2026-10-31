@@ -13,8 +13,7 @@
 // constant widths inlined at each field, a `zero`/`init` pair that restores in
 // place, a read that FILLS the value it was handed, and a verdict rather than
 // an exception. `string(N)` is a `Uint8List(N)` with an `int` used length
-// beside it, `wstring(N)` a `Uint16List(N)` with its length in CODE UNITS, an
-// enum an `int` off the packet emitter's constant namespace, a union an `int
+// beside it, an enum an `int` off the packet emitter's constant namespace, a union an `int
 // type` beside its arms, and a 128-bit value the packet emitter's own
 // `Int128`/`UInt128` pair, `hi` and `lo`.
 //
@@ -523,9 +522,6 @@ func (g *fixedGen) emitFieldStorage(f *ir.Field, ind string) {
 			g.emitTextDefaultCascade(f, ind, n)
 		}
 		g.pf("%sint %sLength = %d;\n", ind, name, n)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sfinal Uint16List %s = Uint16List(%d);\n", ind, name, f.Type.Size)
-		g.pf("%sint %sLength = 0;\n", ind, name)
 	default:
 		if cls := fixedElementClass(f.Type); cls != "" {
 			g.need(cls)
@@ -605,7 +601,7 @@ func (g *fixedGen) emitFieldReset(f *ir.Field, ind, target string) {
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s%s.%sCount = %d;\n", ind, target, name, f.ArrayMin)
 		}
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.call(ind, "", target+"."+name+".fillRange",
 			[]string{"0", fmt.Sprintf("%d", f.Type.Size), "0"}, ";")
 		g.pf("%s%s.%sLength = %d;\n", ind, target, name, fixedDefaultTextLength(f))
@@ -668,8 +664,8 @@ func (g *fixedGen) emitTextDefaultCascade(f *ir.Field, ind string, n int64) {
 //
 // A COUNTED ARRAY WRITES ITS LIVE COUNT. Decode walks Count, so unused
 // slots still hold constructor defaults; writing the bound would put those
-// on the wire. Slack stays the template's zeros (SPEC §3.4). A string,
-// wstring, or bytes writes its live length and zeroes slack (SPEC §3.4);
+// on the wire. Slack stays the template's zeros (SPEC §3.4). A string or
+// bytes writes its live length and zeroes slack (SPEC §3.4);
 // decode copies the whole declared span from the image, so that slack is
 // the endpoint's.
 //
@@ -746,21 +742,6 @@ func (g *fixedGen) emitWriteValue(f *ir.Field, base string, at int64, expr, ind 
 		g.call(ind, "", "bytes.fillRange", []string{
 			fixedOff(base, at+fixedCountBytes) + " + " + length,
 			fixedOff(base, at+fixedCountBytes+f.Type.Size),
-			"0",
-		}, ";")
-	case f.Type.Kind == ir.TWString:
-		length := fixedDartSibling(expr, "Length")
-		g.pf("%sassert(%s >= 0);\n", ind, length)
-		g.pf("%sassert(%s <= %d);\n", ind, length, f.Type.Size)
-		g.call(ind, "", "view.setInt32",
-			[]string{fixedOff(base, at), length, "Endian.little"}, ";")
-		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, length)
-		g.call(ind+"  ", "", "view.setUint16",
-			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", expr + "[i]", "Endian.little"}, ";")
-		g.pf("%s}\n", ind)
-		g.call(ind, "", "bytes.fillRange", []string{
-			fixedOff(base, at+fixedCountBytes) + " + " + length + " * 2",
-			fixedOff(base, at+fixedCountBytes+2*f.Type.Size),
 			"0",
 		}, ";")
 	default:
@@ -897,21 +878,12 @@ func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind
 		g.emitTextLengthClamp(length, f.Type.Size, ind)
 		g.call(ind, "", expr+".setRange",
 			[]string{"0", fmt.Sprintf("%d", f.Type.Size), "image", fixedOff(base, at+fixedCountBytes)}, ";")
-	case f.Type.Kind == ir.TWString:
-		length := fixedDartSibling(expr, "Length")
-		g.call(ind, length+" = ", "view.getInt32",
-			[]string{fixedOff(base, at), "Endian.little"}, ";")
-		g.emitTextLengthClamp(length, f.Type.Size, ind)
-		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, f.Type.Size)
-		g.call(ind+"  ", expr+"[i] = ", "view.getUint16",
-			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", "Endian.little"}, ";")
-		g.pf("%s}\n", ind)
 	default:
 		g.emitDecodeElement(f, base, at, expr, ind)
 	}
 }
 
-// emitTextLengthClamp holds a string/wstring/bytes used-length to [0, cap].
+// emitTextLengthClamp holds a string/bytes used-length to [0, cap].
 // A counted array of wrapped strings COPIES the whole run into the image;
 // this is the pass both paths share, and it runs only for the LIVE element
 // decode already selected. Slack never.

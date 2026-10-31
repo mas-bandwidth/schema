@@ -234,7 +234,7 @@ func (rs *resolver) msgPayload(d *bitDecoder, entry ir.TableVocabularyEntry, dep
 		rs.msgFramed(d, arm, depth)
 	case ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed:
 		rs.msgFramed(d, entry, depth)
-	case ir.TableKindString, ir.TableKindWstring, ir.TableKindEscape:
+	case ir.TableKindString, ir.TableKindEscape:
 		// an opaque payload rides behind a CANONICAL LEB128 LENGTH on the file
 		b := rs.msgOpaque(d, entry)
 		if rs.bad {
@@ -248,24 +248,21 @@ func (rs *resolver) msgPayload(d *bitDecoder, entry ir.TableVocabularyEntry, dep
 }
 
 // msgOpaque reads one text or blob payload and answers its FILE bytes. Each of
-// the three has its own framing here and none of them on the file, where the
+// the two has its own framing here and neither has one on the file, where the
 // payload's own length frames it: a `string(N)` or a `bytes(N)` is a length at
-// its own width, the ALIGN that buys a memcpy, then the bytes; a wide string is
-// a length and then SIXTEEN bits a code unit, which is two file bytes each; and
-// the ESCAPE aligns, reads a thirty-two bit L and takes L bytes opaque (§3.3).
+// its own width, the ALIGN that buys a memcpy, then the bytes; and the ESCAPE
+// aligns, reads a thirty-two bit L and takes L bytes opaque (§3.3).
 func (rs *resolver) msgOpaque(d *bitDecoder, entry ir.TableVocabularyEntry) []byte {
 	n := 0
 	switch int(entry.Kind) {
-	case ir.TableKindString, ir.TableKindWstring:
+	case ir.TableKindString:
 		raw, ok := d.r.get(ir.TableMessageBitsRequired(0, entry.Shape.Max))
 		if !ok {
 			rs.bad = true
 			return nil
 		}
 		n = int(raw)
-		if entry.Kind == ir.TableKindWstring {
-			n *= 2
-		} else if !d.r.align() {
+		if !d.r.align() {
 			rs.bad = true
 			return nil
 		}
@@ -322,7 +319,7 @@ func (rs *resolver) msgContent(d *bitDecoder, entry ir.TableVocabularyEntry, dep
 		rs.msgPayload(d, entry, depth)
 	case ir.TableKindNoPayload:
 		// nothing rides, and the outer length is what says so
-	case ir.TableKindString, ir.TableKindEscape, ir.TableKindWstring:
+	case ir.TableKindString, ir.TableKindEscape:
 		// a content copied whole carries no inner length: the outer one frames
 		// it, which is what a keyed slot's element takes
 		rs.msgText(d, entry)

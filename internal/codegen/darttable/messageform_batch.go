@@ -240,7 +240,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 
 // messageRides answers the Dart condition under which one field rides the wire
 // (§3): a field at its declared default, an absent optional, an empty
-// string/bytes/wstring and an empty counted array all elide.
+// string/bytes and an empty counted array all elide.
 func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 	if f.IsList() || f.IsMap() {
 		return expr + ".length > 0"
@@ -253,9 +253,6 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 			return expr + "Length > 0"
 		}
 		return fmt.Sprintf("%sLength != %d", expr, len(f.DefBytes))
-	}
-	if f.Type.Kind == ir.TWString {
-		return expr + "Length > 0"
 	}
 	if f.Array == ir.ArrayCounted {
 		return expr + "Count > 0"
@@ -300,9 +297,6 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 		g.pf("%sw.put(%sLength, %d);\n", ind, expr, ir.TableMessageCountBits(shape))
 		g.pf("%sw.align();\n", ind)
 		g.pf("%sw.raw(Uint8List.sublistView(%s, 0, %sLength));\n", ind, expr, expr)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sw.put(%sLength, %d);\n", ind, expr, ir.TableMessageCountBits(shape))
-		g.pf("%sfor (var i = 0; i < %sLength; i++) { w.put(%s[i], 16); }\n", ind, expr, expr)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
@@ -510,18 +504,6 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  if (kept > %d) { kept = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %sLength = kept;\n", ind, expr)
 		g.pf("%s  %s.setRange(0, kept, r.bits.buffer, start);\n", ind, expr)
-		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%s{\n", ind)
-		g.pf("%s  final n = r.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
-		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
-		g.pf("%s  var kept = n;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.report.clamped++; }\n", ind, f.Type.Size, f.Type.Size)
-		g.pf("%s  final buf = List<int>.filled(n, 0);\n", ind)
-		g.pf("%s  for (var i = 0; i < n; i++) { buf[i] = r.bits.get(16); }\n", ind)
-		g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
-		g.pf("%s  for (var i = 0; i < kept; i++) { %s[i] = buf[i]; }\n", ind, expr)
-		g.pf("%s  %sLength = kept;\n", ind, expr)
 		g.pf("%s}\n", ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
@@ -1098,7 +1080,7 @@ final class TableMessageShape {
         s.bits = quantizedBits(sig, at);
         at += 12;
       }
-    } else if (kind == 12 || kind == 33) {
+    } else if (kind == 12) {
       final n = tableMessageLeb(sig, at, sig.length);
       s.max = n.$1;
       at = n.$2;
@@ -1245,10 +1227,6 @@ final class TableMessageShape {
         final n = r.bits.get(bitsRequired(0, s.max));
         if (r.bits.failed || !r.bits.align()) return false;
         return r.bits.skip(n * 8);
-      case 33:
-        final n = r.bits.get(bitsRequired(0, s.max));
-        if (r.bits.failed) return false;
-        return r.bits.skip(n * 16);
       case 31:
         if (!r.bits.align()) return false;
         final n = r.bits.get(32);

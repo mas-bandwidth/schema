@@ -669,10 +669,6 @@ func (g *variableGen) defaultExpr(f *ir.Field) string {
 		return "false"
 	case ir.TString:
 		return jsStr(string(f.DefBytes))
-	case ir.TWString:
-		// a JavaScript string IS UTF-16 code units, so the storage is one; wide
-		// text takes no declared default (SPEC.md §4.12), so it is empty
-		return `""`
 	case ir.TBytes:
 		return "new Uint8Array(" + jsByteList(f.DefBytes) + ")"
 	case ir.TFloat32, ir.TFloat64:
@@ -988,10 +984,6 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		fmt.Fprintf(&b, "s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", f.Type.Size, jsStr(string(f.DefBytes)))
-	case f.Type.Kind == ir.TWString:
-		// kind 33 (docs/SPEC-TABLES.md §3; SPEC.md §4.12): the bound is N CODE
-		// UNITS, and the empty text is the default an absent field reads
-		fmt.Fprintf(&b, "s: \"wstr\", js: \"s\", bound: %d, def: \"\" }", f.Type.Size)
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(&b, "s: \"bytes\", js: \"s\", list: false, bound: %d, ek: %d, def: new Uint8Array(%s) }",
 			f.Type.Size, ir.TableKindU8, jsByteList(f.DefBytes))

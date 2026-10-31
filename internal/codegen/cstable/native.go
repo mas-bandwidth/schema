@@ -19,7 +19,7 @@ func (g *tableGen) nativeColumns(f *ir.Field) string {
 	if f.Type.Optional {
 		present = pieces[len(pieces)-1].Offset
 	}
-	if !f.IsList() && !f.IsMap() && (f.CountedOnWire() || !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes)) {
+	if !f.IsList() && !f.IsMap() && (f.CountedOnWire() || !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes)) {
 		count = pieces[1].Offset
 	}
 	element := pieces[0].Size

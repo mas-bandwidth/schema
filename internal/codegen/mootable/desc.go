@@ -244,12 +244,12 @@ func valueDesc(g *Gen, f *ir.Field, def bool) string {
 		return fmt.Sprintf("s = \"ptr\", t = %q", t.Name)
 	case t.TextUnbounded():
 		return "s = \"text\""
-	case t.Kind == ir.TString || t.Kind == ir.TWString:
+	case t.Kind == ir.TString:
 		d := ""
 		if def {
 			d = ", def = " + luaString(f.DefBytes)
 		}
-		return fmt.Sprintf("s = \"str\", bound = %d, wide = %v%s", t.Size, t.Kind == ir.TWString, d)
+		return fmt.Sprintf("s = \"str\", bound = %d, wide = %v%s", t.Size, d)
 	case t.Kind == ir.TBytes:
 		d := ""
 		if def {

@@ -322,8 +322,6 @@ func elemZero(f *ir.Field) string {
 		return `""`
 	case f.Type.Kind == ir.TBytes:
 		return "blob(0)"
-	case f.Type.Kind == ir.TWString:
-		return "[]"
 	}
 	return scalarZero(f)
 }
@@ -361,11 +359,6 @@ func valueDefault(f *ir.Field) string {
 		return squirrel.StringLit(f.DefBytes)
 	case f.Type.Kind == ir.TBytes:
 		return "_rt_descriptor.blobOf(" + squirrel.StringLit(f.DefBytes) + ")"
-	case f.Type.Kind == ir.TWString:
-		// WIDE TEXT (SPEC §4.12) is its UTF-16 CODE UNITS, an array of
-		// integers each in [0, 0xFFFF] whose length is the used length; it
-		// takes no `= default`, so a fresh field is empty.
-		return "[]"
 	}
 	return scalarDefault(f)
 }
@@ -593,14 +586,6 @@ func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 		d["shape"] = `"bytes"`
 		d["bound"] = fmt.Sprint(f.Type.Size)
 		d["def"] = squirrel.StringLit(f.DefBytes)
-	case f.Type.Kind == ir.TWString:
-		// WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3; SPEC §4.12): storage is
-		// the UTF-16 code units, the bound is N in CODE UNITS, and the field
-		// takes no default, so the default is the empty array. A runtime that
-		// lands the default copies it, never shares this one.
-		d["shape"] = `"wstr"`
-		d["bound"] = fmt.Sprint(f.Type.Size)
-		d["def"] = "[]"
 	case f.Type.Kind == ir.TBool:
 		d["shape"] = `"bool"`
 		d["def"] = scalarDefault(f)

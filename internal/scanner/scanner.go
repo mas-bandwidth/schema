@@ -74,7 +74,7 @@ const (
 	KwFloat32
 	KwFloat64
 	KwString
-	KwWString // wstring(N) — wide text, N in UTF-16 code units (SPEC §4.12)
+	KwWString // reserved: `wstring` is no type; text is UTF-8 `string` (SPEC §4.12)
 	KwBytes
 	KwFixed  // fixed(I, F) — signed fixed point (SPEC §4.3)
 	KwUfixed // ufixed(I, F) — unsigned fixed point (SPEC §4.3)

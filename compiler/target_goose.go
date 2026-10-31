@@ -44,9 +44,6 @@ func (gooseTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := ir.RefuseWideTableKinds(u, "goose"); err != nil {
 		return nil, err
 	}
-	if err := refuseWideText(u, "goose"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "goose"); err != nil {
 		return nil, err
 	}

@@ -29,12 +29,6 @@ func (t jsTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // jstable opens no file and a build ships a reader for every layout the lock
 // records.
 func (jsTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Wide text is carried on the packet wire and on both table wires (kind 33
-	// on the variable form, docs/SPEC-TABLES.md §3; §3.4's fixed form), so
-	// refuseWideText answers nil for js (compiler/widetext.go).
-	if err := refuseWideText(u, "js"); err != nil {
-		return nil, err
-	}
 	// THE TABLE-SIDE UNION IS CARRIED, NAMED PER TABLE, NOT REFUSED PER UNIT
 	// (docs/SPEC-TABLES.md §2.6, §3.4): the fixed form walks a union's arms and
 	// this backend refuses only the tables its own closure test names
@@ -134,7 +128,6 @@ func init() {
 	// come back.
 	valueDefaultTargets = append(valueDefaultTargets, "js")
 	registerPacketValueDefaultCarrier("js")
-	registerWideTextCarrier("js")
 	registerListCarrier("js")
 	// The variable wire carries BOTH blobs (§2.5) — *string and *bytes — so js
 	// registers as a full byte-buffer carrier through registerBuiltin's blobs

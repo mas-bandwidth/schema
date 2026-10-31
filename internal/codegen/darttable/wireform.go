@@ -6,7 +6,7 @@
 // `float32`/`float64`, `string(N)`/`bytes(N)`, `*string`/`*bytes`, maps and
 // unions (wireunion.go), fixed positional and enum-keyed arrays
 // (wirearrays.go), optional fields and arrays, fixed(I, F) and the 128-bit
-// scalars (wirewide.go) and wstring(N). A construct none of these carries is
+// scalars (wirewide.go). A construct none of these carries is
 // refused by name in checkUnsupportedConstructs (§11) on a unit the variable
 // form owns, and nothing here encodes one.
 //
@@ -33,24 +33,23 @@ import (
 // rather than in the emitted text so a change is one place (docs/SPEC-TABLES.md
 // §3).
 const (
-	wireKindBool    = 1
-	wireKindI8      = 2
-	wireKindI16     = 3
-	wireKindI32     = 4
-	wireKindI64     = 5
-	wireKindU8      = 6
-	wireKindU16     = 7
-	wireKindU32     = 8
-	wireKindU64     = 9
-	wireKindF32     = 10
-	wireKindF64     = 11
-	wireKindString  = 12
-	wireKindTable   = 13
-	wireKindArray   = 14
-	wireKindPtr     = 17
-	wireKindEnum    = 30
-	wireKindEscape  = 31
-	wireKindWString = 33
+	wireKindBool   = 1
+	wireKindI8     = 2
+	wireKindI16    = 3
+	wireKindI32    = 4
+	wireKindI64    = 5
+	wireKindU8     = 6
+	wireKindU16    = 7
+	wireKindU32    = 8
+	wireKindU64    = 9
+	wireKindF32    = 10
+	wireKindF64    = 11
+	wireKindString = 12
+	wireKindTable  = 13
+	wireKindArray  = 14
+	wireKindPtr    = 17
+	wireKindEnum   = 30
+	wireKindEscape = 31
 )
 
 // dartU64Literal renders a wire id (fnv1a64, §5) as a Dart int literal: the
@@ -102,7 +101,7 @@ func isByValueTable(f *ir.Field) bool {
 // cardWireField reports whether a field is a construct this backend encodes
 // on form 1 (docs/SPEC-TABLES.md §2.1, §2.3, §2.4, §2.5, §2.6, §2.8, §2.9, §3):
 // every scalar kind (the wide ones included), bits, flags, the two floats,
-// enum, string(N), bytes(N), wstring(N), *string/*bytes, a pointer or
+// enum, string(N), bytes(N), *string/*bytes, a pointer or
 // by-value table or `type` whose target is itself carried, a counted,
 // unbounded, fixed or enum-keyed array of a carried element, a map whose
 // entry is carried, a union whose every arm is, and an optional of any of
@@ -138,10 +137,6 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 			return false
 		}
 		return cardWireUnionSeen(un, seen)
-	}
-	// wstring(N) (§3, kind 33) by value as a field; not yet inside an array
-	if f.Type.Kind == ir.TWString {
-		return f.Array == ir.ArrayNone && !f.Type.Pointer
 	}
 	if f.Type.Blob() && f.Array == ir.ArrayNone {
 		return true
@@ -1182,7 +1177,6 @@ final class TableWireReader {
       case 16:
       case 31:
       case 32:
-      case 33:
         final sl = readLeb();
         if (sl == null) return false;
         if (!has(sl)) return false;
@@ -1848,16 +1842,6 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		default:
 			g.emitSaveScalarList(f, expr, ind, id)
 		}
-	case f.Type.Kind == ir.TWString:
-		// WIDE TEXT TAKES NO SPECIFIED DEFAULT, so the empty value elides; L is
-		// a BYTE length, twice the code-unit count, and each UTF-16 unit rides
-		// little-endian (§3, kind 33)
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
-		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
-		g.pf("%s\tw.putByte(%d);\n", ind, wireKindWString)
-		g.pf("%s\tw.putLeb(%s.length * 2);\n", ind, expr)
-		g.pf("%s\tfor (final u in %s.codeUnits) { w.putU16(u); }\n", ind, expr)
-		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
@@ -2315,28 +2299,6 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		}
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
-		g.pf("%s\t}\n", ind)
-		g.pf("%s\tbreak;\n", ind)
-	case f.Type.Kind == ir.TWString:
-		// kind 33 (§3): an odd L is framing damage, ill-formed UTF-16 (a lone
-		// surrogate) is malformed and reads the default, and a value past the
-		// bound clamps at a code-point boundary, never through a pair
-		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindWString)
-		g.pf("%s\t{\n", ind)
-		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
-		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
-		g.pf("%s\t\tif (len.isOdd) { r.report.malformed = true; v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
-		g.pf("%s\t\tfinal units = <int>[];\n", ind)
-		g.pf("%s\t\tfor (var i = 0; i < len; i += 2) { units.add(r.data[r.pos + i] | (r.data[r.pos + i + 1] << 8)); }\n", ind)
-		g.pf("%s\t\tr.pos += len;\n", ind)
-		g.pf("%s\t\tif (!_wideValid(units)) { r.report.malformed = true; v.%s = %s; break; }\n", ind, name, g.stringDefault(f))
-		g.pf("%s\t\tvar keep = units.length;\n", ind)
-		g.pf("%s\t\tif (keep > %d) {\n", ind, f.Type.Size)
-		g.pf("%s\t\t\tkeep = %d;\n", ind, f.Type.Size)
-		g.pf("%s\t\t\tif (keep > 0 && units[keep - 1] >= 0xD800 && units[keep - 1] <= 0xDBFF) keep--;\n", ind)
-		g.pf("%s\t\t\tr.report.clamped++;\n", ind)
-		g.pf("%s\t\t}\n", ind)
-		g.pf("%s\t\tv.%s = String.fromCharCodes(units.sublist(0, keep));\n", ind, name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TString:

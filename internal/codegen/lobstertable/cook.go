@@ -180,7 +180,7 @@ func cookField(g *lobster.Gen, f *ir.Field, off int64) string {
 	if len(pieces) > 0 {
 		size = pieces[0].Size
 		parts = append(parts, fmt.Sprintf("size: %d", size))
-		if len(pieces) > 1 && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted || f.IsMap()) {
+		if len(pieces) > 1 && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted || f.IsMap()) {
 			parts = append(parts, fmt.Sprintf("count: %d", pieces[1].Offset-off))
 		}
 	}
@@ -202,7 +202,7 @@ func cookField(g *lobster.Gen, f *ir.Field, off int64) string {
 			esize = p.Offset + p.Size
 		}
 	}
-	if len(ep) > 1 && (ef.Type.Kind == ir.TString || ef.Type.Kind == ir.TWString || ef.Type.Kind == ir.TBytes) {
+	if len(ep) > 1 && (ef.Type.Kind == ir.TString || ef.Type.Kind == ir.TBytes) {
 		ecount = ep[1].Offset
 	}
 	if f.Array != ir.ArrayNone || f.IsMap() {

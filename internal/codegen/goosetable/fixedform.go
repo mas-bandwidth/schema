@@ -329,8 +329,6 @@ func (e *fixedEmit) kindOf(f *ir.Field) int {
 		return kF64
 	case ir.TString:
 		return kStr
-	case ir.TWString:
-		return kWStr
 	case ir.TBytes:
 		return kBytes
 	case ir.TNamed:
@@ -790,7 +788,7 @@ func elemNeedsClamp(f *ir.Field) bool {
 func elemNeedsCheck(f *ir.Field) bool {
 	return needs(f, map[string]bool{}, func(f *ir.Field) bool {
 		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes:
+		case ir.TString, ir.TBytes:
 			return true
 		}
 		return len(scalarBounds(f)) > 0
@@ -800,7 +798,7 @@ func elemNeedsCheck(f *ir.Field) bool {
 func elemNeedsScan(f *ir.Field) bool {
 	return needs(f, map[string]bool{}, func(f *ir.Field) bool {
 		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes:
+		case ir.TString, ir.TBytes:
 			return true
 		}
 		return false

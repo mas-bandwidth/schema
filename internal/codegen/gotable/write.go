@@ -276,7 +276,7 @@ func (g *tableGen) emitStorageCheck(f *ir.Field, expr, ind string) {
 	case f.Type.TextUnbounded():
 		// unbounded text (docs/SPEC-TABLES.md §2.13.1): no length bound beyond
 		// the blob record's own, which the text rule below reads
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%sif %sCount < 0 || %sCount > %d { return false }\n", ind, expr, expr, f.ArrayBound)
@@ -301,9 +301,6 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return byteValueRides(f, expr)
-	}
-	if f.Type.Kind == ir.TWString {
-		return expr + "Length > 0"
 	}
 	if f.Array == ir.ArrayCounted {
 		return expr + "Count > 0"
@@ -386,12 +383,6 @@ func (g *tableGen) emitWireValue(f *ir.Field, expr, writer, ind string, framed b
 			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)")
 		}
 		g.pf("%s%s.Raw(%s[:%sLength])\n", ind, writer, expr, expr)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sif !tableUtf16UnitsValid(%s[:%sLength]) { return false }\n", ind, expr, expr)
-		if framed {
-			g.emitPutLeb(ind, writer, "uint64("+expr+"Length)*2")
-		}
-		g.pf("%sfor i := range int32(%sLength) { %s.Put16(%s[i]) }\n", ind, expr, writer, expr)
 	case isStructRef(f.Type):
 		restore := ""
 		if g.retain && !g.retainArm {

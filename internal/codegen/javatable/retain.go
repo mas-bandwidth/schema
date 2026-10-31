@@ -361,7 +361,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
 		return
 	}
-	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
+	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
 		var body strings.Builder
 		writeFieldSave(&body, u, st, f)
 		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
@@ -370,8 +370,6 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	switch {
 	case isStruct(f) && f.Array == ir.ArrayNone && !f.Type.Pointer:
 		fmt.Fprintf(b, "        if(v.%s!=null){int mark=w.ids.count;long ref=w.ref(%s);TableVariable.Writer sw=w.sub(new byte[1<<20]);path[2*depth]=%d;path[2*depth+1]=0;%sRetain.writeBodyRetain(sw,nodes,v.%s,retain,report,path,depth+1);if(sw.off>1){w.putLeb(ref);w.put8(13);w.putLeb(sw.off);w.putBytes(sw.buf,0,sw.off);}else w.ids.count=mark;}\n", m, fieldRef, ordinal, f.Type.Name, m)
-	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "        if (v.%s.length != 0) { w.putLeb(w.ref(%s)); w.put8(33); w.putLeb(v.%s.length * 2L); for (char c : v.%s) { w.put8(c); w.put8(c >>> 8); } }\n", m, fieldRef, m, m)
 	case isScalarArray(f):
 		writeArrayFieldSaveRef(b, f, fieldRef)
 	case f.Type.Kind == ir.TString && f.Type.Blob():

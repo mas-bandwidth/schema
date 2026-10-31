@@ -286,8 +286,6 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	name := member(f)
 	typ := goFieldType(f.Type)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.tf("\t%s [%d]uint16\n\t%sLength int32\n", name, f.Type.Size, name)
 	case f.Type.TextUnbounded():
 		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): one slot naming a blob record
 		g.tf("\t%s TableRef // string: unbounded text, a blob record (docs/SPEC-TABLES.md §2.13.1)\n", name)
@@ -464,8 +462,6 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 			g.pf("value.%s=0\n", name)
 		}
 
-	case f.Type.Kind == ir.TWString:
-		g.pf("clear(value.%s[:]);value.%sLength=0\n", name, name)
 	case f.Type.TextUnbounded():
 		g.pf("value.%s=0\n", name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
@@ -533,8 +529,6 @@ func tableFieldTypeName(f *ir.Field) string {
 		return "float64"
 	case ir.TFixed:
 		return ir.FieldTypeSpelling(f)
-	case ir.TWString:
-		return "wstring"
 	case ir.TString:
 		return "string"
 	case ir.TBytes:
@@ -655,7 +649,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		kind = tkU8
 	}
 	isArray := f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
-	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
+	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString)
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -666,7 +660,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		bound = "int32(" + keyedExtent(f) + ")"
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
@@ -679,7 +673,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 	countOffset := "0xffffffff"
 	if counted {
 		companion := name + "Count"
-		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
 			companion = name + "Length"
 		}
 		countOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", g.storageName(st.Name), companion)

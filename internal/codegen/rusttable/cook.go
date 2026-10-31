@@ -337,7 +337,7 @@ func (g *gen) cookable(name string) bool {
 //
 // Every fixed-form union arm rides here (docs/SPEC-TABLES.md §2.6, §3.4):
 // payload-free arms take tag-only accessors, `[N]T` arms take `[T; N]`, and
-// companioned `string(N)`, `wstring(N)`, `bytes(N)` and `[..N]T` arms take a
+// companioned `string(N)`, `bytes(N)` and `[..N]T` arms take a
 // `#[repr(C)]` companion struct `<Union>RowArm<Arm>` matching cpptable's
 // unnamed arm struct. Only variable, keyed or optional arms are refused,
 // matching ir.TableFixedSupported.
@@ -415,7 +415,7 @@ func (g *gen) reaches(name string, ok func(*ir.Union) bool) bool {
 // unionRowable reports whether a union has a blittable twin here
 // (docs/SPEC-TABLES.md §2.6, §3.4, §7.2, §15): payload-free arms, scalar or
 // declaration arms, direct `[N]T` arms, and companioned `string(N)`,
-// `wstring(N)`, `bytes(N)` and `[..N]T` arms all ride. Only variable, keyed or
+// `bytes(N)` and `[..N]T` arms all ride. Only variable, keyed or
 // optional arms are refused, matching ir.TableFixedSupported.
 func unionRowable(un *ir.Union) bool {
 	for _, v := range un.Variants {
@@ -579,8 +579,8 @@ func unionHasPayload(un *ir.Union) bool {
 }
 
 // unionArmCompanionType names the #[repr(C)] companion struct an arm takes
-// when its storage is two pieces inside the union's overlay — a string/wstring/
-// bytes buffer beside `value_length`, or a counted array beside `value_count`
+// when its storage is two pieces inside the union's overlay — a string/bytes
+// buffer beside `value_length`, or a counted array beside `value_count`
 // (docs/SPEC-TABLES.md §2.6, matching cpptable/arms.go emitArmStorage).
 func unionArmCompanionType(un *ir.Union, v ir.UnionVariant) (string, bool) {
 	if v.F == nil {
@@ -588,7 +588,7 @@ func unionArmCompanionType(un *ir.Union, v ir.UnionVariant) (string, bool) {
 	}
 	f := v.F
 	switch {
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes, f.Array == ir.ArrayCounted:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Array == ir.ArrayCounted:
 		return un.Name + "RowArm" + ir.GoExportName(v.Name), true
 	}
 	return "", false
@@ -620,10 +620,6 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 		switch {
 		case f.Type.Kind == ir.TString:
 			g.pf("    pub value: [u8; %d], // string(%s): buffer, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
-				f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
-			g.pf("    pub value_length: i32,\n")
-		case f.Type.Kind == ir.TWString:
-			g.pf("    pub value: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it (docs/SPEC-TABLES.md §2.6)\n",
 				f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 			g.pf("    pub value_length: i32,\n")
 		case f.Type.Kind == ir.TBytes:
@@ -841,14 +837,6 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    pub %s_length: i32,\n", f.Name)
-	case f.Type.Kind == ir.TWString:
-		// WIDE TEXT's cooked storage (docs/SPEC-TABLES.md §7.2, and ir's own
-		// model in blocklayout.go): char16_t[N + 1] at two, then the int32 used
-		// length in CODE UNITS. Without this case a `wstring(N)` fell to the
-		// default and got a scalar slot of the wrong width entirely.
-		g.pf("    pub %s: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it\n",
-			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
-		g.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    pub %s: [u8; %d], // bytes(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -973,7 +961,7 @@ func cookRowMembers(f *ir.Field) []string {
 	switch {
 	case f.IsMap(), f.IsList():
 	case f.Type.Pointer && f.Array == ir.ArrayNone && f.KeyEnum == "":
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")
@@ -1085,7 +1073,7 @@ func (g *gen) emitCookWrite(st *ir.Struct) {
 // cookWriteCarried reports whether the cook WRITE side carries every construct
 // the record's by-value closure declares (§7.6): scalars, strings, bytes,
 // fixed and counted arrays, optionals and nested records. A pointer edge, a
-// map, a list or wide text is the variable region's writer, which this leg
+// map or a list is the variable region's writer, which this leg
 // does not carry yet, so the table keeps its read side only and the report
 // names it.
 func (g *gen) cookWriteCarried(st *ir.Struct) bool {
@@ -1098,7 +1086,7 @@ func (g *gen) cookWriteCarried(st *ir.Struct) bool {
 		seen[s.Name] = true
 		for _, f := range s.Fields {
 			switch {
-			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList(), f.Type.Kind == ir.TWString:
+			case f.Type.Pointer, f.Type.Blob(), f.IsMap(), f.IsList():
 				return false
 			}
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {

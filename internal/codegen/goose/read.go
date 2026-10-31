@@ -92,8 +92,6 @@ func (w *wgen) emitReadScalar(f *ir.Field, expr, length, ind string) error {
 			c := w.tmp("c")
 			w.Pf("%sfor %s in %s[0..%s] { guard %s != 0 else { return serialize_fail(s, SERIALIZE_ERROR_EMBEDDED_NUL); } } // an interior null is content the read refuses\n", ind, c, expr, length, c)
 		}
-	case ir.TWString:
-		w.emitReadWString(f, expr, length, ind)
 	case ir.TFixed:
 		return w.emitReadFixed(f, expr, ind)
 	case ir.TInt:
@@ -146,26 +144,6 @@ func (w *wgen) emitReadBareInt(f *ir.Field, expr, typ, ind string) {
 		}
 		w.Pf("%s%s = %s as! %s;\n", ind, expr, raw, typ)
 	}
-}
-
-// emitReadWString reads wide text (SPEC §4.12): each 32-bit group is one
-// UTF-16 code unit, never zero, never above 0xFFFF, and surrogates only in
-// high-then-low pairs; anything else is refused.
-func (w *wgen) emitReadWString(f *ir.Field, expr, length, ind string) {
-	w.emitReadRanged(big.NewInt(0), big.NewInt(f.Type.Size), "i32", length, ind)
-	i, g, el := w.tmp("unit"), w.tmp("group"), w.tmp("expectLow")
-	w.Pf("%svar %s = false;\n", ind, el)
-	w.Pf("%sfor %s in %s {\n", ind, i, length)
-	w.Pf("%s    var %s: u32 = 0;\n", ind, g)
-	w.Pf("%s    guard schema_rt::wire_bits(s, %s, 32) else { return false; }\n", ind, g)
-	w.Pf("%s    guard %s != 0 && %s <= 0xFFFF else { %s }\n", ind, g, g, failRange)
-	w.Pf("%s    let high%s = %s >= 0xD800 && %s <= 0xDBFF;\n", ind, g, g, g)
-	w.Pf("%s    let low%s = %s >= 0xDC00 && %s <= 0xDFFF;\n", ind, g, g, g)
-	w.Pf("%s    guard low%s == %s else { %s } // an unpaired surrogate (SPEC §4.12)\n", ind, g, el, failRange)
-	w.Pf("%s    %s = high%s;\n", ind, el, g)
-	w.Pf("%s    %s[%s] = %s as! u16;\n", ind, expr, i, g)
-	w.Pf("%s}\n", ind)
-	w.Pf("%sguard !%s else { %s } // a final high surrogate\n", ind, el, failRange)
 }
 
 func (w *wgen) emitReadFixed(f *ir.Field, expr, ind string) error {

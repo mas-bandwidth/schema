@@ -389,8 +389,6 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 			return mem + "Length > 0"
 		}
 		return fmt.Sprintf("%sLength !== %d", mem, len(f.DefBytes))
-	case ir.TWString:
-		return mem + "Length > 0"
 	}
 	if f.Array == ir.ArrayCounted {
 		return mem + "Count > 0"
@@ -460,9 +458,6 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 	case f.Type.Kind == ir.TString:
 		g.pf("%sw.Put(BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
 		g.pf("%sw.Raw(%s.subarray(0, %sLength));\n", ind, mem, mem)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sw.Put(BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
-		g.pf("%sfor (let i = 0; i < %sLength; i++) { w.Put(BigInt(%s[i]), 16); }\n", ind, mem, mem)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageWriteArray(f, entry, mem, ind)
 	case isStructRef(f.Type):
@@ -643,13 +638,6 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
-		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; }\n", ind, shape)
-		g.pf("%s  let kept = Number(n);\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
-		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  for (let i = 0; i < Number(n); i++) { const [u, uok] = r.Bits.Get(16); if (!uok) { r.Report.Malformed = true; return false; } if (i < kept) { %s[i] = Number(u); } }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, mem, ind)

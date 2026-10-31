@@ -500,7 +500,7 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind)
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=32).contains(&kind)
 }
 
 fn integer_kind(kind: u8) -> bool {
@@ -644,7 +644,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
         }
         return (s, false); // a packing outside the closed set
     }
-    if kind == 12 || kind == 33 {
+    if kind == 12 {
         let (v, ok) = read_leb(bytes, at);
         if !ok || v > i32::MAX as u64 {
             return (s, false);
@@ -673,9 +673,9 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
         if !known_kind(s.elem) {
             return (s, false);
         }
-        // an element kind of 12 or 33 is refused here, at the announcement,
-        // rather than at the skip that would meet it (§3.3)
-        if s.elem == 12 || s.elem == 33 {
+        // an element kind of 12 is refused here, at the announcement, rather
+        // than at the skip that would meet it (§3.3)
+        if s.elem == 12 {
             return (s, false);
         }
         return (s, true);
@@ -710,7 +710,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         // a nested body, an array, a keyed array, an escape, a payload-free
         // field and a wide string all frame the same way on the file, and a
         // wide string's length is its BYTE count (§3).
-        12 | 13 | 14 | 16 | 31 | 32 | 33 => {
+        12 | 13 | 14 | 16 | 31 | 32 => {
             let (n, ok) = read_leb(bytes, at);
             if !ok || *at + (n as usize) > bytes.len() {
                 return false;

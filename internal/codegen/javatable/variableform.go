@@ -2763,8 +2763,6 @@ func variableValueType(f *ir.Field) string {
 		return "double"
 	case ir.TString:
 		return "String"
-	case ir.TWString:
-		return "char[]"
 	case ir.TBytes:
 		return "byte[]"
 	case ir.TNamed:
@@ -2847,8 +2845,6 @@ func variableDefault(f *ir.Field) string {
 		return "0.0d"
 	case ir.TString:
 		return "\"\""
-	case ir.TWString:
-		return "new char[0]"
 	case ir.TBytes:
 		return "null"
 	case ir.TNamed:
@@ -3948,8 +3944,6 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	}
 	m := varMember(f)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "        TableJson.esc(b, new String(v.%s));\n", m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
@@ -4057,8 +4051,6 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	}
 	m := varMember(f)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "                if (in.peek() == '\"') { String text = in.scanString(); if (text != null) { char[] units = text.toCharArray(); if (!TableVariable.wideValid(units)) { in.rep.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, in.rep); } } } else { in.skipValue(); in.rep.kindMismatch++; }\n", m, m, f.Type.Size)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
@@ -4214,8 +4206,6 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	}
 	m := varMember(f)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "                if (kind == 33) { TableVariable.Reader text = r.body(); if (text != null) { if (((text.limit - text.off) & 1) != 0) { report.malformed = true; v.%s = new char[0]; } else { char[] units = new char[(text.limit - text.off) / 2]; for (int i = 0; i < units.length; i++) units[i] = (char) (text.get8() | text.get8() << 8); if (!TableVariable.wideValid(units)) { report.malformed = true; v.%s = new char[0]; } else { v.%s = TableVariable.wideClamp(units, %d, report); } } } } else { r.skip(kind); report.kindMismatch++; }\n", m, m, m, f.Type.Size)
 	case isPointerArray(f):
 		fmt.Fprintf(b, "                if (kind == 14) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
@@ -4677,8 +4667,6 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	}
 	m := varMember(f)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "        if (v.%s.length != 0) { w.putLeb(w.ref(F_%s)); w.put8(33); w.putLeb(v.%s.length * 2L); for (int i = 0; i < v.%s.length; i++) { char c = v.%s[i]; w.put8(c); w.put8(c >>> 8); } }\n", m, m, m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
@@ -4778,9 +4766,6 @@ func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
 	if f.IsMap() {
 		fmt.Fprintf(b, "        v.%s = order_%s(v.%s);\n", m, m, m)
 	}
-	if f.Type.Kind == ir.TWString {
-		fmt.Fprintf(b, "        if (!TableVariable.wideValid(v.%s) || v.%s.length > %d) return false;\n", m, m, f.Type.Size)
-	}
 	if un := variableUnion(f); un != nil {
 		if f.Array != ir.ArrayNone {
 			fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) { %sVariable.Value arm = v.%s.get(i); if (!%sVariable.buildGraph(g, arm)) return false; }\n", m, un.Name, m, un.Name)
@@ -4845,7 +4830,7 @@ func variableJsonShape(f *ir.Field, peek string) string {
 		return peek + "=='['"
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		return peek + "=='\"'"
 	case ir.TBool:
 		return "(" + peek + "=='t'||" + peek + "=='f')"

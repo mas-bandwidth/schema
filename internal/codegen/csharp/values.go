@@ -124,7 +124,7 @@ func bufferType(length int64, elem string) string {
 // or 0 for a field without one.
 func fieldBufferLength(f *ir.Field) int64 {
 	switch {
-	case f.Type.Kind == ir.TWString || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return f.Type.Size
 	case f.Array != ir.ArrayNone:
 		return f.ArrayBound

@@ -476,8 +476,8 @@ func valueDesc(g *lobster.Gen, f *ir.Field, def bool) []string {
 		return []string{"s: \"ptr\"", "t: " + lobster.StringLit([]byte(t.Name))}
 	case t.TextUnbounded():
 		return []string{"s: \"text\""}
-	case t.Kind == ir.TString || t.Kind == ir.TWString:
-		out := []string{"s: \"str\"", fmt.Sprintf("bound: %d", t.Size), fmt.Sprintf("wide: %v", t.Kind == ir.TWString)}
+	case t.Kind == ir.TString:
+		out := []string{"s: \"str\"", fmt.Sprintf("bound: %d", t.Size)}
 		if def {
 			out = append(out, "has_def: true", "def_str: "+lobster.StringLit(f.DefBytes))
 		}

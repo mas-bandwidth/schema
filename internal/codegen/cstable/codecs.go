@@ -240,8 +240,6 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		g.tf("    public %s[] %s = Array.Empty<%s>();\n    public int %sCount;\n", typ, name, typ, name)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.tf("    public %s %s;\n", typ, name)
-	case f.Type.Kind == ir.TWString:
-		g.tf("    public char[] %s = new char[%d];\n    public int %sLength;\n", name, f.Type.Size, name)
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%d]; // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -468,7 +466,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.pf("    Array.Clear(value.%s, 0, value.%s.Length); value.%sCount = 0;\n", name, name, name)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.pf("    value.%s = null;\n", name)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("    Array.Clear(value.%s, 0, value.%s.Length);\n", name, name)
 		g.pf("    value.%sLength = 0;\n", name)
 		g.emitBufferDefault(f, "value.", "    ", g.pf)
@@ -540,8 +538,6 @@ func tableFieldTypeName(f *ir.Field) string {
 		return "float64"
 	case ir.TString:
 		return "string"
-	case ir.TWString:
-		return "wstring"
 	case ir.TFixed:
 		return ir.TableTypeSpelling(f)
 	case ir.TBytes:
@@ -813,8 +809,6 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 			typ = f.MapEntry.Name
 		}
 		fmt.Fprintf(&b, ", GetChild = delegate (object o, int i) { return %s; }, SetChild = delegate (object o, int i, object v) { %s = (%s)v; }", g.elementExpr(f), g.elementExpr(f), typ)
-	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(&b, ", GetChars = delegate (object o) { return %s; }, GetCount = delegate (object o) { return %s%sLength; }, SetCount = delegate (object o, int n) { %s%sLength = n; }", g.storageExpr(f), cast, name, cast, name)
 	case ir.TableKindWide(tableScalarKind(f)):
 		fmt.Fprintf(&b, ", GetWide = delegate (object o, int i) { return unchecked((UInt128)(%s)%s); }, SetWide = delegate (object o, int i, UInt128 r) { %s = unchecked((%s)r); }", csFieldType(f.Type), g.elementExpr(f), g.elementExpr(f), csFieldType(f.Type))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
@@ -861,7 +855,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		kind = tkU8
 	}
 	isArray := f.Array != ir.ArrayNone || f.IsMap() || (f.Type.Kind == ir.TBytes && !f.Type.Pointer)
-	counted := f.CountedOnWire() || f.IsMap() || (!f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString))
+	counted := f.CountedOnWire() || f.IsMap() || (!f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString))
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -874,7 +868,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		bound = fmt.Sprintf("(int)global::%s.Schema.%sMax", capitalize(g.unit.Package), f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 

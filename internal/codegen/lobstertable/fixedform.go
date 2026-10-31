@@ -151,7 +151,7 @@ func fixedLobsterSimple(st *ir.Struct, depth int) bool {
 			return false // an optional array is a later card's shape
 		}
 		if f.Array != ir.ArrayNone || f.KeyEnumRef != nil {
-			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 				return false
 			}
 			if f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 8 {
@@ -276,11 +276,8 @@ func putElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride int6
 	case ir.TFloat64:
 		g.Pf("%sb = write_float64_le(b, %s, %s)\n", ind, at, expr)
 		return
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		unit := int64(1)
-		if t.Kind == ir.TWString {
-			unit = 2
-		}
 		length := slotExpr(expr, f, "Length")
 		g.Pf("%sb = write_int32_le(b, %s, %s)\n", ind, at, length)
 		g.Pf("%sfor(%s * %d) j_%s_%d: b = write_int8_le(b, %s + 4 + j_%s_%d, read_uint8_le(%s, j_%s_%d))\n", ind, length, unit, ir.GoExportName(f.Name), off, at, ir.GoExportName(f.Name), off, expr, ir.GoExportName(f.Name), off)
@@ -407,11 +404,8 @@ func getElementIndented(g *lobster.Gen, f *ir.Field, expr, base string, off, str
 	case ir.TFloat64:
 		g.Pf("%s%s = read_float64_le(data, %s)\n", ind, expr, at)
 		return
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		unit := int64(1)
-		if t.Kind == ir.TWString {
-			unit = 2
-		}
 		length := slotExpr(expr, f, "Length")
 		tmp := fmt.Sprintf("fbuf_%s_%d", ir.GoExportName(f.Name), off)
 		g.Pf("%s%s = read_int32_le(data, %s)\n", ind, length, at)

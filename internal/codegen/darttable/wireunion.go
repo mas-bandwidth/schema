@@ -201,8 +201,6 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		return fmt.Sprintf("double %s = %s;", name, g.floatDefault(f))
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return fmt.Sprintf("String %s = %s;", name, g.stringDefault(f))
-	case f.Type.Kind == ir.TWString:
-		return fmt.Sprintf("String %s = '';", name)
 	case f.Type.Kind == ir.TNamed && enumRef(f) != nil:
 		return fmt.Sprintf("%s %s = %s;", g.enumType(enumRef(f)), name, g.enumDefault(f))
 	}
@@ -309,8 +307,6 @@ func (g *wireGen) emitPutPayload(f *ir.Field, expr, p, ind string) {
 		g.pf("%sfor (final e in %s) {\n", ind, expr)
 		g.emitPutElem(f, ek, "e", p, ind+"\t")
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TWString: // kind 33: the code units, L is the byte length (§3)
-		g.emitWStringPayload(expr, p, ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%s%s.putString(%s);\n", ind, p, expr)
 	case f.Type.Kind == ir.TBytes:
@@ -587,8 +583,6 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfor (var i = 0; i < out.length && i < %d; i++) { fresh[i] = out[i]; }\n", ind, f.ArrayBound)
 		g.pf("%s%s = fresh;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
-	case f.Type.Kind == ir.TWString: // kind 33 (§3)
-		g.emitWStringGetPayload(f, dest, p, ind)
 	case isWide(f): // kinds 18-29: exactly the width, clamped raw (§3, §4, §15)
 		w := ir.TableKindWidth(wideKind(f))
 		g.pf("%sif (%s.limit - %s.pos %s %d) %s\n", ind, p, p, g.widthCmp(), w, bad)
@@ -926,23 +920,6 @@ List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
     out[j + 1] = x;
   }
   return out;
-}
-
-// _wideValid reports whether a run of UTF-16 code units is well-formed: every
-// high surrogate followed by a low one, no low surrogate alone, no NUL
-// (docs/SPEC-TABLES.md §3, kind 33).
-bool _wideValid(List<int> u) {
-  for (var i = 0; i < u.length; i++) {
-    final c = u[i];
-    if (c == 0) return false;
-    if (c >= 0xD800 && c <= 0xDBFF) {
-      if (i + 1 >= u.length || u[i + 1] < 0xDC00 || u[i + 1] > 0xDFFF) return false;
-      i++;
-    } else if (c >= 0xDC00 && c <= 0xDFFF) {
-      return false;
-    }
-  }
-  return true;
 }
 
 // _kindWidth is a fixed-width kind's payload size in bytes (docs/SPEC-TABLES.md §3).

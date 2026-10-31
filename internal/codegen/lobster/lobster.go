@@ -593,7 +593,7 @@ func (g *Gen) Slots(f *ir.Field) []Slot {
 		out = append(out, Slot{Name: name, Type: "string?", Init: "nil", Comment: "a byte buffer: nil is absent (docs/SPEC-TABLES.md §2.5)"})
 	case t.Pointer:
 		out = append(out, Slot{Name: name, Type: g.TypeRef(t.Name, true) + "?", Init: "nil", Comment: "a pointer: nil is null (docs/SPEC-TABLES.md §2.4)"})
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case t.Kind == ir.TString || t.Kind == ir.TBytes:
 		if f.Array != ir.ArrayNone {
 			out = append(out, Slot{Name: name, Type: "[string]", Init: "[]", Fill: fillN(f.ArrayBound, bufferInit(t))})
 			out = append(out, Slot{Name: name + "Length", Type: "[int]", Init: "[]", Fill: fillN(f.ArrayBound, "0")})
@@ -635,8 +635,6 @@ func typeWord(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TString:
 		return fmt.Sprintf("string(%d)", t.Size)
-	case ir.TWString:
-		return fmt.Sprintf("wstring(%d), UTF-16 code units", t.Size)
 	}
 	return fmt.Sprintf("bytes(%d)", t.Size)
 }
@@ -644,9 +642,6 @@ func typeWord(t ir.FieldType) string {
 // bufferInit is a string/bytes/wstring value's storage: a byte string of its
 // maximum size (a wstring's is two bytes a code unit), every byte zero.
 func bufferInit(t ir.FieldType) string {
-	if t.Kind == ir.TWString {
-		return fmt.Sprintf("%s.zeros(%d)", RuntimeNamespace, 2*t.Size)
-	}
 	return fmt.Sprintf("%s.zeros(%d)", RuntimeNamespace, t.Size)
 }
 
@@ -678,7 +673,7 @@ func (g *Gen) elem(f *ir.Field) (typ, init string) {
 	if f.Type.Pointer {
 		return g.TypeRef(f.Type.Name, true), "nil"
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return "string", bufferInit(f.Type)
 	}
 	return g.scalar(&e)

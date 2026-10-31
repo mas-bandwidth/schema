@@ -11,7 +11,7 @@ package ctable
 // and c/R16 compile and RUN the generated C through cRunVersionProbe
 // (fixedversioning_test.go), whose OLD file is built here in Go from the same
 // IR the emitter lays down. The self-contained rows c/C3, c/C4 and c/R24
-// compile and RUN through runCGenerated; c/R18, c/C5 and c/E9 read the C the
+// compile and RUN through runCGenerated; c/R18 and c/E9 read the C the
 // leg EMITS. The rows that DO need the oracle are the other fixedversioning_*
 // tests, which skip themselves without it.
 
@@ -227,17 +227,6 @@ int main(void)
 `)
 	})
 
-	// c/C5 "wide text code units" (docs/SPEC-TABLES.md §3.4: a wstring(N)'s
-	// length is in UTF-16 CODE UNITS and the payload is two bytes each): the
-	// wide-text content check rides in the unit that declares the field and the
-	// length is scaled by the two bytes of a unit.
-	t.Run("c/C5", func(t *testing.T) {
-		t.Parallel()
-		body := t05All(generate(t, "package probe\nfixed table Wide { w wstring(8) }\n"))
-		t05Want(t, body, "static SCHEMA_UNUSED int table_wire_utf16( const uint8_t * bytes, int64_t units )")
-		t05Want(t, body, "2 * value->w_length")
-	})
-
 	// c/R16 "§5.4's counters exactly" (docs/FIXED-FORM-ALGORITHM.md §5.4): the
 	// compile census counts unknown once per endpoint and lands once, after the
 	// record loop, never per record; a widened field counts one widened per
@@ -354,7 +343,7 @@ int main(void)
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5, docs/SPEC-TABLES.md §3.4).
 	t.Run("c/R24", func(t *testing.T) {
 		t.Parallel()
-		// narrow: clause 1 (refuse by name), clause 2 (bytes, clamp in bytes),
+		// clause 1 (refuse by name), clause 2 (bytes, clamp in bytes),
 		// clause 3 (slack not judged), and clauses 1+2 together (the clamp and
 		// the refusal on the SAME record, the counter staying zero)
 		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `
@@ -413,54 +402,6 @@ int main(void)
     CHECK(n == -1);
     CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
     CHECK(r.clamped == 0 && r.widened == 0 && r.unknown == 0);
-    return 0;
-}
-`)
-		// wide: clause 1 (unpaired surrogate refuses), clause 2 (units, clamp in
-		// units), clause 3 (slack units not judged)
-		runCGenerated(t, "package probe\nfixed table Wide { w wstring(8) }\n", `
-#include "ProbeTable.h"
-#include <stdio.h>
-#include <string.h>
-#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
-int main(void)
-{
-    Wide value, out;
-    TableReport r;
-    static TableFixedEntry plan[4096];
-    uint8_t buf[4096];
-    int64_t n, off;
-    off = kTableFixedHeaderBytes + 4 + wide_fixed_layout_bytes + 8;
-    wide_reset(&value);
-    value.w_length = 2;
-    value.w[0] = 0x0048; /* 'H' */
-    value.w[1] = 0xD800; /* a lone high surrogate */
-    n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
-    CHECK(n > 0);
-    memset(&r, 0, sizeof(r));
-    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == -1);
-    CHECK(r.refused == 1 && r.reason == SCHEMA_TABLE_TEXT_ILL_FORMED && !r.malformed);
-    wide_reset(&value);
-    value.w_length = 8;
-    value.w[0]='h'; value.w[1]='e'; value.w[2]='l'; value.w[3]='l'; value.w[4]='o'; value.w[5]='w'; value.w[6]='o'; value.w[7]='r';
-    n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
-    table_fixed_put32(buf + off, 100u); /* 100 units past the 8-unit bound */
-    memset(&r, 0, sizeof(r));
-    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == 1);
-    CHECK(!r.refused && !r.malformed && r.clamped == 1);
-    CHECK(out.w_length == 8);
-    wide_reset(&value);
-    value.w_length = 1;
-    value.w[0] = 0x0048; /* 'H' */
-    n = wide_fixed_save(&value, 1, buf, (int64_t) sizeof(buf));
-    buf[off + 4 + 2] = 0x00; buf[off + 4 + 3] = 0xD8; /* a lone surrogate in the slack */
-    memset(&r, 0, sizeof(r));
-    n = wide_fixed_load_tolerant(&out, 1, buf, n, plan, 4096, NULL, &r);
-    CHECK(n == 1);
-    CHECK(!r.refused && !r.malformed && r.clamped == 0);
-    CHECK(out.w_length == 1);
     return 0;
 }
 `)

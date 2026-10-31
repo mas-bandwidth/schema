@@ -2431,8 +2431,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 // field is bracketed by `lead` and `trail`, so a clamp that mislaid the size
 // moves a neighbour and this says so.
 //
-// THE SITE IS fixedruntime.go's `case tableFixedText`: `capn := p.Size / unit`
-// then `if v < 0 { v = 0; report.Clamped++ } else if uint32(v) > capn { v =
+// THE SITE IS fixedruntime.go's `case tableFixedText`: `capn := p.Size` then `if v < 0 { v = 0; report.Clamped++ } else if uint32(v) > capn { v =
 // int32(capn); report.Clamped++ }`. DISABLING that `else if` leaves the forged
 // length standing and the counters silent — a silently WRONG REPORT, measured
 // in CONTROL 2 below.

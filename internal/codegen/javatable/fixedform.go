@@ -187,9 +187,6 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
 			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextUtf8})
-	case f.Type.Kind == ir.TWString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextWide})
 	default:
 		fixedWalkElement(w, f, id, f.Name, at)
 	}
@@ -308,10 +305,6 @@ func fixedDefaultField(out []byte, f *ir.Field) {
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		fixedPutU32(out, uint32(len(f.DefBytes)))
 		copy(out[fixedCountBytes:], f.DefBytes)
-	case f.Type.Kind == ir.TWString:
-		// a wstring's declared default is code units, which no declaration
-		// spells today; the length rides and the units stay zero
-		fixedPutU32(out, uint32(len(f.DefBytes)))
 	default:
 		fixedDefaultElement(out, f)
 	}
@@ -699,11 +692,6 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		g.pf("        public boolean %sPresent;\n", name)
 	}
 	switch {
-	case f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone && f.KeyEnum == "":
-		g.pf("        /** wstring(%d): UTF-16 code units, used length beside them. */\n", f.Type.Size)
-		g.pf("        public final char[] %s = new char[%d];\n", name, f.Type.Size)
-		g.pf("        public int %sLength;\n", name)
-		return nil
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
 		g.pf("        /** %s(%d): a fixed buffer, used length beside it. */\n", ir.TableTypeSpelling(f), f.Type.Size)
 		g.pf("        public final byte[] %s = new byte[%d];\n", name, f.Type.Size)
@@ -1025,7 +1013,7 @@ func (g *fixedGen) emitCheckWrite(st *ir.Struct, cls string) {
 	for _, f := range st.Fields {
 		name := javaName(f.Name)
 		switch {
-		case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) &&
+		case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) &&
 			f.Array == ir.ArrayNone && f.KeyEnum == "":
 			lines = append(lines, fmt.Sprintf("        assert v.%sLength >= 0 && v.%sLength <= %d;\n", name, name, f.Type.Size))
 		case f.Array == ir.ArrayCounted:
@@ -1097,13 +1085,6 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base int64, buf, at, val string
 		g.pf("%sSystem.arraycopy(%s.%s, 0, %s, %s + %d, %s.%sLength);\n", ind, val, name, buf, at, base+4, val, name)
 		g.pf("%sjava.util.Arrays.fill(%s, %s + %d + %s.%sLength, %s + %d, (byte) 0);\n",
 			ind, buf, at, base+4, val, name, at, base+4+f.Type.Size)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sLength);\n", ind, buf, at, base, val, name)
-		g.pf("%sfor (int i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
-		g.pf("%s    TableFixed.put16(%s, %s + %d + i * 2, %s.%s[i]);\n", ind, buf, at, base+4, val, name)
-		g.pf("%s}\n", ind)
-		g.pf("%sjava.util.Arrays.fill(%s, %s + %d + %s.%sLength * 2, %s + %d, (byte) 0);\n",
-			ind, buf, at, base+4, val, name, at, base+4+2*f.Type.Size)
 	default:
 		g.emitWriteElement(f, base, buf, at, val+"."+name, indent)
 	}
@@ -1282,17 +1263,6 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
 		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
-			ind, val, name, val, name, val, name, val, name, val, name)
-	case f.Type.Kind == ir.TWString:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
-		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): paired
-		// UTF-16 with no zero unit over the stated length, never over 2N.
-		g.pf("%sif (!TableFixed.textOk(TableFixed.textWide, %s, %s + %d, %s.%sLength * 2)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
-			ind, buf, at, base+4, val, name, rep)
-		g.pf("%sfor (int i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
-		g.pf("%s    %s.%s[i] = (char) TableFixed.get16(%s, %s + %d + i * 2);\n", ind, val, name, buf, at, base+4)
-		g.pf("%s}\n", ind)
-		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (char) 0); }\n",
 			ind, val, name, val, name, val, name, val, name, val, name)
 	default:
 		g.emitScatterElement(f, base, buf, at, val+"."+name, rep, indent, f)

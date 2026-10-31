@@ -20,13 +20,10 @@ func (g *cookGen) emitUnionRow(un *ir.Union) {
 			g.sf("    [FieldOffset(%d)] public TableCookList %s;\n", at, name)
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			g.sf("    [FieldOffset(%d)] public long %s;\n", at, name)
-		case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
+		case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 			typ, n := "byte", f.Type.Size
 			if f.Type.Kind != ir.TBytes {
 				n++
-			}
-			if f.Type.Kind == ir.TWString {
-				typ = "char"
 			}
 			g.sf("    [FieldOffset(%d)] public fixed %s %s[%d];\n", at, typ, name, n)
 			g.sf("    [FieldOffset(%d)] public int %sLength;\n", pieces[1].Offset, name)

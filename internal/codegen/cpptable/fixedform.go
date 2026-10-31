@@ -338,8 +338,6 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s.%s_count", val, f.Name), buf, val+"."+f.Name, depth, indent)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedWriteText(f, base, buf, val, ind, 1)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedWriteText(f, base, buf, val, ind, 2)
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedWriteText(f, base, buf, val, ind, 1)
 	default:
@@ -440,8 +438,6 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val stri
 	switch {
 	case f.Type.Kind == ir.TString:
 		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedWriteTextArm(v, off, buf, val, ind, 2)
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedWriteTextArm(v, off, buf, val, ind, 1)
 	case f.Array == ir.ArrayFixed:
@@ -1117,7 +1113,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s.%s_count; ++i )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString:
 		g.emitFixedTextContent(f, val, ind)
 	default:
 		g.emitFixedClampElement(f, val+"."+f.Name, indent)
@@ -1126,8 +1122,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 
 // emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this
 // form's terms. A `string(N)`'s used bytes are well-formed UTF-8 with no zero
-// among them and a `wstring(N)`'s used units are paired UTF-16 with no zero
-// unit; the check runs over the USED LENGTH and over nothing else, because the
+// among them; the check runs over the USED LENGTH and over nothing else, because the
 // slack carries no meaning and reading it would be the cost this form exists to
 // avoid.
 //
@@ -1139,12 +1134,6 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 // §4.5, fix 11). The slack is unspecified on read and never judged.
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
-	if f.Type.Kind == ir.TWString {
-		// THE SAME BYTES THE COPY MOVED. A wstring's units ride little-endian
-		// and land as a raw copy, so the validator reads the storage as the
-		// wire it came from.
-		call = fmt.Sprintf("TableUtf16Valid( (const uint8_t *) %s.%s, (int64_t) %s.%s_length )", val, f.Name, val, f.Name)
-	}
 	if g.fixedCheck {
 		g.pf("%sbad |= (int) !%s;\n", ind, call)
 		return

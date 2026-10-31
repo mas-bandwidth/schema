@@ -101,8 +101,8 @@ static const uint64_t kTableNodeTableFieldSlot = %d;
 // The order is the COOK PROJECTION's (§20.2): each record in the order the
 // projection renders it and each record's fields in the order the projection
 // renders them, then each enum's variants and each union's arms. Then comes
-// the tail the projection does not name: the reserved node-table id, the three
-// blob type ids as bytes, string and wstring, and every table's own name id in
+// the tail the projection does not name: the reserved node-table id, the two
+// blob type ids as bytes and string, and every table's own name id in
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
@@ -464,7 +464,7 @@ inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
     // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -597,13 +597,13 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         return false; // a packing outside the closed set
     }
     // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
-    // and a wide string are bounded by the int32 storage cap the checker
+    // is bounded by the int32 storage cap the checker
     // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
     // the 32-bit count an unbounded array announces (§2.9), which is the
     // widest count this form spells. A larger bound is a shape no conforming
     // declaration can produce, and a reader that carried it would do its
     // length arithmetic in a range that overflows.
-    if ( kind == 12 || kind == 33 )
+    if ( kind == 12 )
     {
         if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
         f.max = (int64_t) v;
@@ -622,12 +622,11 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( at >= size ) { return false; }
         f.elem_kind = in[ at++ ];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
-        // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
-        // announcement, rather than at the skip that would meet it (§3.3): no
-        // declaration this language accepts is an array of string(N) or of
-        // wstring(N), so a shape announcing one is one rule's business and not
-        // two.
-        if ( f.elem_kind == 12 || f.elem_kind == 33 ) { return false; }
+        // AND AN ELEMENT KIND OF 12 IS REFUSED HERE, at the announcement,
+        // rather than at the skip that would meet it (§3.3): no declaration
+        // this language accepts is an array of string(N), so a shape
+        // announcing one is one rule's business and not two.
+        if ( f.elem_kind == 12 ) { return false; }
         return true;
     }
     return true;
@@ -1012,13 +1011,6 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
             return r.skip( (int64_t) n * 8 );
-        }
-        case 33:
-        {
-            // the length, NO align, then SIXTEEN bits a code unit (§3.3)
-            uint64_t n = 0;
-            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
-            return r.skip( (int64_t) n * 16 );
         }
         case 31:
         {

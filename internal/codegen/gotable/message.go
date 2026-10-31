@@ -167,17 +167,17 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
 // count, and the entry count is bounded above at 4096, so it is at most eight
 // million compares on a path that runs ONCE a connection and never again. The
 // compare is spelled inline so the emitter claims no new runtime name.
-// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..33 plus the
-// timestamp 36 (docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
+// timestamp 36 (docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
 // stay malformed.
-func tableMessageKnownKind(k uint8)bool {return k<=33||k==36}
+func tableMessageKnownKind(k uint8)bool {return k<=32||k==36}
 func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28,36:return 64;case 18,19,24,29:return 128};return -1}
 func tableMessageShapeRead(r *TableReader,k uint8)(s TableMessageShape,ok bool) {
  s.Kind=k;s.Bits=tableMessageKindBits(k)
  switch {case k>=2&&k<=10||k>=18&&k<=29:
  if !r.Has(1){return s,false};s.Packing=r.Get8();if s.Packing==0{return s,true};if s.Packing==1&&k!=10 {n,ok:=r.Leb();if !ok||n>uint64(s.Bits){return s,false};s.Bits=int64(n);if k>=18 {if !r.Has(16){return s,false};s.Base=[2]uint64{r.Get64(),r.Get64()}}else{base,ok:=r.Leb();if !ok{return s,false};if k>=2&&k<=5 {base=uint64(int64(base>>1)^ -int64(base&1))};s.Base[0]=base};return s,true}
  if s.Packing==2&&k==10 {if !r.Has(12){return s,false};lo:=math.Float32frombits(r.Get32());hi:=math.Float32frombits(r.Get32());res:=math.Float32frombits(r.Get32());if !(lo<hi)||!(res>0){return s,false};delta:=float32(hi-lo);values:=float32(delta/res);if delta-delta!=0||values-values!=0{return s,false};if !(values>=1){values=1}else if values>4294967040.0{values=4294967040.0};s.QMin=lo;s.QDelta=delta;s.QCount=uint32(math.Ceil(float64(values)));s.Bits=tableMessageBits(uint64(s.QCount));return s,true};return s,false
- case k==12||k==33:n,ok:=r.Leb();if !ok||n>math.MaxInt32{return s,false};s.Max=int64(n)
+ case k==12:n,ok:=r.Leb();if !ok||n>math.MaxInt32{return s,false};s.Max=int64(n)
  case k==14||k==16:if k==14 {n,ok:=r.Leb();if !ok||n>math.MaxUint32{return s,false};s.Min=int64(n)};n,ok:=r.Leb();if !ok||n>math.MaxUint32||int64(n)<s.Min{return s,false};s.Max=int64(n)
  };return s,true
 }
@@ -190,7 +190,7 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
  case 13:return tableMessageSkipBody(r,v,indexBits,depth+1)
  case 17:return indexBits>0&&r.Skip(indexBits)
  case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok};arm,ok:=v.Entry(ref);return ok&&arm.ID<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1)
- case 12,33:n,ok:=tableMessageCount(r,s);if !ok{return false};width:=int64(16);if s.Kind==12 {width=8;if !r.Align(){return false}};return r.Skip(int64(n)*width)
+ case 12:n,ok:=tableMessageCount(r,s);if !ok||!r.Align(){return false};return r.Skip(int64(n)*8)
  case 31:if !r.Align(){return false};n,ok:=r.Get(32);return ok&&r.Skip(int64(n)*8)
  case 14,16:n,ok:=tableMessageCount(r,s);if !ok{return false};if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false};if e.Element.Bits>=0||e.Element.Kind==0||e.Element.Kind==32 {width:=e.Element.Bits;width=max(width,0);if s.Kind==16 {width+=v.RefBits};return r.Skip(int64(n)*width)};for range n {if s.Kind==16&&!r.Skip(v.RefBits){return false};before:=r.Offset;if !tableMessageSkip(r,v,indexBits,TableMessageEntry{Shape:e.Element},depth+1)||r.Offset==before{return false}};return true
  };return s.Bits>=0&&r.Skip(s.Bits)

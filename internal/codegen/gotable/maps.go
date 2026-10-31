@@ -29,7 +29,7 @@ func (g *tableGen) mapDescriptor(f *ir.Field) string {
 }
 func mapValueHandle(u *ir.Unit, f *ir.Field) (typ, access string) {
 	v := ir.MapValueField(f)
-	if v.Type.Optional || v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TWString || v.Type.Kind == ir.TBytes) {
+	if v.Type.Optional || v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TBytes) {
 		return containerElementType(u, f), "entry"
 	}
 	typ = goCookBlittableType(u, v.Type)

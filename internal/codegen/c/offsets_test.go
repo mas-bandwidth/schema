@@ -110,7 +110,6 @@ type Refuse {
     const(3, 5)
     reserved(4)
     name   string(12)
-    wide   wstring(4)
     inner  Inner
 }
 `)

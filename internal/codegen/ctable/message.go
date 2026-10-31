@@ -164,12 +164,12 @@ static SCHEMA_UNUSED int table_message_shape_read(const uint8_t * in,int64_t siz
    return table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12||kind==33){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;f->max=(int64_t)v;return 1;}
+ if(kind==12){if(!table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;f->max=(int64_t)v;return 1;}
  if(kind==14||kind==16){
   if(kind==14){if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX)return 0;f->min=(int64_t)v;}
   if(!table_message_leb(in,size,at,&v)||v>UINT32_MAX||v<(uint64_t)f->min)return 0;f->max=(int64_t)v;
   if(*at>=size)return 0;f->elem_kind=in[(*at)++];
-  return table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
+  return table_message_known_kind(f->elem_kind)&&f->elem_kind!=12;
  }return 1;
 }
 static SCHEMA_UNUSED int table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,TableMessageEntry * e)
@@ -331,7 +331,7 @@ static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind 
 
 static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 );
 }
 
 `

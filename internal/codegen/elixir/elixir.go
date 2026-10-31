@@ -733,8 +733,6 @@ func (g *gen) emitFieldComments(d *ir.Struct) {
 func (g *gen) fieldComment(f *ir.Field) string {
 	var parts []string
 	switch f.Type.Kind {
-	case ir.TWString:
-		parts = append(parts, fmt.Sprintf("wstring(%s): a little-endian UTF-16 code-unit binary (SPEC §4.12)", ir.RenderExpr(f.Type.SizeExpr)))
 	case ir.TString:
 		parts = append(parts, fmt.Sprintf("string(%s) — a UTF-8 binary; byte_size is the used length (SPEC §4.7)", ir.RenderExpr(f.Type.SizeExpr)))
 	case ir.TBytes:
@@ -833,7 +831,7 @@ func (g *gen) scalarDefault(f *ir.Field) string {
 			return formatFloat(f.DefFloat)
 		}
 		return "0.0"
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		if f.HasDefault {
 			var bytes []string
 			for _, b := range f.DefBytes {

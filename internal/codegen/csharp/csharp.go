@@ -505,8 +505,6 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	}
 
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.tf("    public char[] %s = new char[%s];\n    public int %s;\n", name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), g.m(name+"Length"))
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%s]; // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "", true), ir.RenderExpr(f.Type.SizeExpr))
@@ -541,8 +539,6 @@ func (g *gen) emitStorageField(f *ir.Field) {
 func (g *gen) emitValueField(f *ir.Field, name, typ string) {
 	n := fieldBufferLength(f)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.tf("    public %s %s;\n    public int %s;\n", bufferType(n, "char"), name, g.m(name+"Length"))
 	case f.Type.Kind == ir.TString:
 		g.tf("    public %s %s; // string(%s): max length, used length beside it (SPEC §4.7)\n", bufferType(n, "byte"), name, ir.RenderExpr(f.Type.SizeExpr))
 		g.tf("    public int %s;\n", g.m(name+"Length"))

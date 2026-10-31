@@ -87,7 +87,7 @@ func cookField(u *ir.Unit, fl ir.FieldLayout) string {
 			countOffset = pieces[len(pieces)-2].Offset
 		}
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		pieces := ir.FieldPieces(u, f, fl.Offset)
 		if len(pieces) > 1 {
 			countOffset = pieces[1].Offset
@@ -124,10 +124,6 @@ func cookStorage(f *ir.Field) string {
 		return "String"
 	case ir.TBytes:
 		return "Bytes"
-	case ir.TWString:
-		// WIDE TEXT's slot is char16_t[N + 1] and an int32 used length in
-		// CODE UNITS (docs/SPEC-TABLES.md §7.2): two bytes a unit
-		return "WString"
 	case ir.TBits:
 		return "Unsigned"
 	case ir.TInt:

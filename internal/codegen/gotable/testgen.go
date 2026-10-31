@@ -266,7 +266,7 @@ func (g *tgGen) value(j *tgJSON, f *ir.Field, whole bool) error {
 		j.raw(testgenFixedDecimal(raw, t.FracBits))
 	case ir.TFloat32, ir.TFloat64:
 		j.raw(g.float(f))
-	case ir.TString, ir.TWString:
+	case ir.TString:
 		n := g.length(t.Size)
 		g.text(j, n)
 	case ir.TBytes:
@@ -398,14 +398,14 @@ func (g *tgGen) bytesValue(j *tgJSON, n int64) {
 }
 
 // pointer writes `*T` as the pointee's object, or null when T is on the path;
-// `*bytes`, `*string` and `*wstring` as their blob (§2.5, §16.2).
+// `*bytes` and `*string` as their blob (§2.5, §16.2).
 func (g *tgGen) pointer(j *tgJSON, f *ir.Field) error {
 	t := f.Type
 	switch t.Kind {
 	case ir.TBytes:
 		g.bytesValue(j, g.unbounded())
 		return nil
-	case ir.TString, ir.TWString:
+	case ir.TString:
 		g.text(j, g.unbounded())
 		return nil
 	}
@@ -532,7 +532,7 @@ func (g *tgGen) mapValue(j *tgJSON, f *ir.Field) error {
 	key, val := ir.MapKeyField(f), ir.MapValueField(f)
 	n := g.unbounded()
 	var keys []string
-	if key.Type.Kind == ir.TString || key.Type.Kind == ir.TWString {
+	if key.Type.Kind == ir.TString {
 		for i := range n {
 			keys = append(keys, string(rune('a'+i)))
 		}

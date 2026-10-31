@@ -137,7 +137,7 @@ func appendShape(out []byte, kind uint8, s TableMessageShape) []byte {
 			out = appendLebBytes(out, uint64(s.Bits))
 			out = appendWideBase(out, s.Base)
 		}
-	case kind == TableKindString, kind == TableKindWstring:
+	case kind == TableKindString:
 		out = appendLebBytes(out, uint64(s.Max))
 	case kind == TableKindArray:
 		out = appendLebBytes(out, uint64(s.Min))
@@ -234,7 +234,7 @@ func DecodeShape(in []byte, kind uint8) (TableMessageShape, int, bool) {
 		default:
 			return s, 0, false // a packing outside the closed set
 		}
-	case kind == TableKindString, kind == TableKindWstring:
+	case kind == TableKindString:
 		v, ok := leb()
 		if !ok || v > math.MaxInt32 {
 			return s, 0, false // A MAX ABOVE WHAT THE KIND CAN HOLD is a hostile width
@@ -289,7 +289,7 @@ func TableMessageKnownKind(kind uint8) bool {
 		return true
 	case kind >= TableKindI128 && kind <= TableKindUFixed128:
 		return true
-	case kind >= TableKindEnum && kind <= TableKindWstring:
+	case kind >= TableKindEnum && kind <= TableKindNoPayload:
 		return true
 	case kind == TableKindTimestamp:
 		// 36: the timestamp, a sixty-four bit raw payload with no shape bytes
@@ -467,7 +467,7 @@ func TableFieldShape(f *Field) TableMessageShape {
 			slots = f.KeyEnumRef.Max
 		}
 		return TableMessageShape{Max: slots, Elem: uint8(TableWireElemKind(f)), Inner: &inner}
-	case (f.Type.Kind == TString || f.Type.Kind == TWString) && !f.Type.Blob():
+	case f.Type.Kind == TString && !f.Type.Blob():
 		return TableMessageShape{Max: f.Type.Size}
 	case f.Type.Kind == TBytes && !f.Type.Blob():
 		inner := TableMessageShape{Packing: TableMessageRaw}
@@ -613,8 +613,6 @@ func TableVocabularyName(u *Unit, id uint64) string {
 		return "bytes"
 	case StringWireTypeId:
 		return "string"
-	case WstringWireTypeId:
-		return "wstring"
 	}
 	for member := range TableClosure(u) {
 		if TableWireId(member) == id {
@@ -670,7 +668,7 @@ func TableMessageShapeString(kind uint8, s TableMessageShape) string {
 			return fmt.Sprintf("quantized %d bits over [%g, %g] at %g", s.Bits, s.QMin, s.QMax, s.QRes)
 		}
 		return "raw"
-	case kind == TableKindString, kind == TableKindWstring:
+	case kind == TableKindString:
 		return fmt.Sprintf("max %d", s.Max)
 	case kind == TableKindArray:
 		return fmt.Sprintf("count %d..%d of kind %d %s", s.Min, s.Max, s.Elem, TableMessageShapeString(s.Elem, tableMessageInner(s)))

@@ -64,7 +64,6 @@ abstract final class TableFixedOp {
 
   // the flavours a text entry lands its units under
   static const int textUtf8 = 1;
-  static const int textWide = 2;
   static const int textBytes = 3;
 }
 
@@ -404,9 +403,9 @@ final class TableFixedLayout {
   }
 
   /// THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-  /// the no-payload variant 32, wstring 33, and the ONE kind this form's
-  /// layout adds, the optional wrapper 35. 31 is §3's body framing escape and
-  /// 34 is reserved: neither is a kind a declaration spells. A KIND OUTSIDE
+  /// the no-payload variant 32, and the ONE kind this form's layout adds, the
+  /// optional wrapper 35. 31 is §3's body framing escape, 33 is retired and 34
+  /// is reserved: none is a kind a declaration spells. A KIND OUTSIDE
   /// THIS SET IS A REFUSAL, not a leaf to step over — the form byte versions
   /// the kinds too, so a kind this build does not know means a form byte this
   /// build never saw, and stepping over it would be trusting a size whose
@@ -415,7 +414,7 @@ final class TableFixedLayout {
     if (kind >= 1 && kind <= 30) {
       return true;
     }
-    return kind == 32 || kind == 33 || kind == 35;
+    return kind == 32 || kind == 35;
   }
 
   /// A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire
@@ -642,16 +641,6 @@ final class TableFixedLayout {
           return 0;
         }
         if (mySize < 4) {
-          fail(TableFixedRefusal.layoutSizeMismatch);
-          return 0;
-        }
-        break;
-      case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-        if (kids != 0) {
-          fail(TableFixedRefusal.layoutKindInvalid);
-          return 0;
-        }
-        if (mySize < 4 || (mySize - 4) % 2 != 0) {
           fail(TableFixedRefusal.layoutSizeMismatch);
           return 0;
         }
@@ -1105,10 +1094,7 @@ int tableFixedRun(
         imageView.setInt32(d, counted, Endian.little);
         break;
       case TableFixedOp.text:
-        final unit = plan[b + TableFixedLane.meta] == TableFixedOp.textWide
-            ? 2
-            : 1;
-        final cap = size ~/ unit;
+        final cap = size;
         var used = sourceView.getInt32(s, Endian.little);
         var clampFired = false;
         if (used < 0) {
@@ -1231,36 +1217,11 @@ int tableFixedRun(
 
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
-/// well-formed UTF-8 with no zero byte for string(N), paired non-zero UTF-16
-/// code units for wstring(N). bytes(N) carries no content rule at all, and
-/// the SLACK past the used units is unspecified and never a refusal. used is
-/// the clamped length in the flavour's own units; at is the first unit byte.
+/// well-formed UTF-8 with no zero byte for string(N). bytes(N) carries no
+/// content rule at all, and the SLACK past the used bytes is unspecified and
+/// never a refusal. used is the clamped length; at is the first byte.
 bool tableFixedTextIllFormed(int meta, int used, Uint8List source, int at) {
   if (meta == TableFixedOp.textBytes) {
-    return false;
-  }
-  if (meta == TableFixedOp.textWide) {
-    // UTF-16 CODE UNITS, two bytes each little-endian: a lone high surrogate,
-    // a lone low surrogate, and a zero unit are each ill-formed.
-    int unitAt(int i) => source[at + i * 2] | (source[at + i * 2 + 1] << 8);
-    for (var i = 0; i < used; i++) {
-      final u = unitAt(i);
-      if (u == 0) {
-        return true;
-      }
-      if (u >= 0xD800 && u <= 0xDBFF) {
-        if (i + 1 >= used) {
-          return true;
-        }
-        final lo = unitAt(i + 1);
-        if (lo < 0xDC00 || lo > 0xDFFF) {
-          return true;
-        }
-        i++;
-      } else if (u >= 0xDC00 && u <= 0xDFFF) {
-        return true;
-      }
-    }
     return false;
   }
   // UTF-8 over the used BYTES: the shortest form of each sequence, no
@@ -1875,7 +1836,6 @@ abstract final class TableFixedCompiler {
         );
         break;
       case 12: // string(N)
-      case 33: // wstring(N)
         // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
         // would otherwise TEXT every bound slot, and slack lengths would
         // count. The decode both paths share clamps LIVE used-lengths.

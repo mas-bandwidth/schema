@@ -16,7 +16,7 @@ static SCHEMA_UNUSED int table_retain_message_scalar(TableRetainMessage * s,cons
 static SCHEMA_UNUSED int table_retain_message_opaque(TableRetainMessage * s,const TableMessageEntry * e,int framed)
 {
  uint64_t n,i;TableMessageReader * r=&s->input;
- if(e->kind==12||e->kind==33){if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;if(e->kind==33)n*=2;else if(!table_bit_align_read(&r->bits))return 0;}
+ if(e->kind==12){if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max))||!table_bit_align_read(&r->bits))return 0;}
  else if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
  if(n>INT64_MAX/8||!table_bit_has(&r->bits,(int64_t)n*8))return 0;
  if(framed&&!table_retain_leb(&s->output,n))return 0;
@@ -32,7 +32,7 @@ static SCHEMA_UNUSED int table_retain_message_content(TableRetainMessage * s,con
  for(i=0;i<n;i++){if(e->kind==16){const TableMessageEntry * key;if(!table_message_ref(&s->input,&key,1)||!key||!key->id||!table_retain_id(&s->output,key->id)||!table_retain_message_frame(s,&elem,depth+1))return 0;}else if(!table_retain_message_payload(s,&elem,depth))return 0;}return 1;}
  case 15:case 30:return table_retain_message_payload(s,e,depth);
  case 32:return 1;
- case 12:case 31:case 33:return table_retain_message_opaque(s,e,0);
+ case 12:case 31:return table_retain_message_opaque(s,e,0);
  case 0:case 17:return 0;
  default:return table_retain_message_scalar(s,e);
  }
@@ -45,7 +45,7 @@ static SCHEMA_UNUSED int table_retain_message_payload(TableRetainMessage * s,con
  case 30:{const TableMessageEntry * entry;if(!table_message_ref(&s->input,&entry,1))return 0;return table_retain_id(&s->output,entry?entry->id:0);}
  case 15:{const TableMessageEntry * arm;if(!table_message_ref(&s->input,&arm,0))return 0;if(!arm)return table_retain_id(&s->output,0);return arm->id&&arm->kind&&table_retain_id(&s->output,arm->id)&&table_retain_raw(&s->output,&arm->kind,1)&&table_retain_message_frame(s,arm,depth+1);}
  case 13:case 14:case 16:return table_retain_message_frame(s,e,depth+1);
- case 12:case 31:case 33:return table_retain_message_opaque(s,e,1);
+ case 12:case 31:return table_retain_message_opaque(s,e,1);
  default:return table_retain_message_scalar(s,e);
  }
 }

@@ -184,7 +184,7 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 		return s
 	}
 	s = tableSourceReplace(s, "func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", "func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\nif f.Unbounded{t,ok:=tableTextBytes((*TableRef)(storage),nil);if !ok{return false};tableJSONWriteString(out,t);return true}\n", 1)
-	s = tableSourceReplace(s, " if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", " if f.Unbounded {return tableJSONReadText(in,(*TableRef)(storage))}\n if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", 1)
+	s = tableSourceReplace(s, "\tif f.Kind == 12 {\n\t\tlength, ok := in.scanString(tableJSONBytes(storage, f.ArrayBound))", " if f.Unbounded {return tableJSONReadText(in,(*TableRef)(storage))}\n\tif f.Kind == 12 {\n\t\tlength, ok := in.scanString(tableJSONBytes(storage, f.ArrayBound))", 1)
 	// The write-element anchor lives in textListJsonSource, which textListJson
 	// inserts only for a unit that uses text forms; a unit whose only unbounded
 	// text is a map key carries it zero times, so that count is stated here.

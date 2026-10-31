@@ -144,7 +144,7 @@ func imageTermOffset(u *ir.Unit, t ir.TableFixedTerm) int64 {
 		if arm, sub, ok := strings.Cut(t.Member, "."); ok && sub == "value" {
 			for _, v := range un.Variants {
 				if v.Name == arm && v.F != nil {
-					if v.F.Array == ir.ArrayCounted || v.F.Type.Kind == ir.TString || v.F.Type.Kind == ir.TWString || v.F.Type.Kind == ir.TBytes {
+					if v.F.Array == ir.ArrayCounted || v.F.Type.Kind == ir.TString || v.F.Type.Kind == ir.TBytes {
 						return fixedUnionTagBytes(un) + ir.TableFixedCountBytes
 					}
 					break
@@ -209,7 +209,7 @@ func imageFieldMember(f *ir.Field, at int64, member string) (int64, bool) {
 		if member == f.Name {
 			return payload + ir.TableFixedCountBytes, true
 		}
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		if member == f.Name+"_length" {
 			return payload, true
 		}

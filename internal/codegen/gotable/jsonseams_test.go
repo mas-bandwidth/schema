@@ -75,7 +75,7 @@ func buildJsonWalkBase(t *testing.T, src string) (*ir.Unit, string) {
 	if unitHasRequired(u) {
 		walk = tableJSONRequiredWalk(walk, u)
 	}
-	extra := tableJSONWideSource + tableJSONWStringSource + tableJSONGraphSource + tableJSONListSource + tableJSONMapSource + tableJSONMapDecimalSource + timestampParserSource() + tableJSONTimestampSource + tableTimestampRuntime
+	extra := tableJSONWideSource + tableJSONGraphSource + tableJSONListSource + tableJSONMapSource + tableJSONMapDecimalSource + timestampParserSource() + tableJSONTimestampSource + tableTimestampRuntime
 	walk = tableSourceReplace(walk, "// ---- json walk: end ----", extra+"// ---- json walk: end ----", 1)
 	walk = textListJson(u, walk, true)
 	return u, walk

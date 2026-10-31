@@ -300,11 +300,6 @@ func (g *blockGen) emitBlittableField(f *ir.Field, projection bool, w *blockWrit
 		return
 	}
 	switch {
-	case f.Type.Kind == ir.TWString:
-		next()
-		g.sf("    public fixed char %s[%d];\n", name, f.Type.Size+1)
-		next()
-		g.sf("    public int %sLength;\n", name)
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("    public fixed byte %s[%d]; // string(%d): max length, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
@@ -524,7 +519,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 // the two have different addresses to take (docs/SPEC-TABLES.md §2.7).
 func (g *blockGen) blockFieldAddress(f *ir.Field, projection bool) string {
 	name := ir.GoExportName(f.Name)
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		return "probe." + name // a fixed-size buffer IS a pointer in unsafe context
 	}
 	inline := !projection || !ir.BlockOutOfLine(f)

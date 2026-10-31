@@ -97,7 +97,7 @@ func mapValueIsPointer(f *ir.Field) bool {
 // mapValueIsPair reports a value whose storage is TWO MEMBERS: the buffer or
 // the element array, and the `int32` length or count beside it that says how
 // much of it is used (docs/SPEC-TABLES.md §2.8, §4.2, §7.2). That is
-// `string(N)`, `wstring(N)`, `bytes(N)`, `[..N]T` and `[..N]*T`. Each is an
+// `string(N)`, `bytes(N)`, `[..N]T` and `[..N]*T`. Each is an
 // ordinary field of the generated entry, and two members are not one
 // addressable slot, so the handle every map surface hands back is the ENTRY,
 // which reaches both. A COUNTED ARRAY IS A PAIR WHATEVER ITS ELEMENT IS: a
@@ -112,7 +112,7 @@ func mapValueIsPair(f *ir.Field) bool {
 		return false
 	}
 	switch value.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		return true
 	}
 	return false
@@ -917,7 +917,7 @@ func (g *tableGen) emitMapEntrySurface(owner *ir.Struct, f *ir.Field) {
 		g.pf("inline const %s * TableEntryFound( const %s * entry ) { return entry != NULL ? %sAt( entry->value ) : NULL; }\n", t, n, t)
 		g.pf("inline TableRef * TableEntryValue( %s * entry ) { return &entry->value; } // the builder hands back the SLOT\n", n)
 	case mapValueIsPair(f):
-		// a map[K]string(N), map[K]wstring(N), map[K]bytes(N), map[K][..N]T or
+		// a map[K]string(N), map[K]bytes(N), map[K][..N]T or
 		// map[K][..N]*T: the value's storage is the buffer or the element array
 		// and the int32 used length or count beside it (§2.8, §4.2, §7.2), two
 		// members, so the ENTRY is the handle that reaches both. A caller fills

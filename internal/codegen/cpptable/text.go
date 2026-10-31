@@ -6,20 +6,16 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4), on BOTH
-// text kinds: a kind 12 payload is well-formed UTF-8 with no zero byte and a
-// kind 33 payload is paired UTF-16 with no zero unit, each checked as it
-// arrives and before the reader's own bound, and each clamp cuts at a boundary
-// its own content rule keeps whole.
+// THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4): a kind 12
+// payload is well-formed UTF-8 with no zero byte, checked as it arrives and
+// before the reader's own bound, and a clamp cuts at a boundary the content
+// rule keeps whole.
 //
-// THE TWO KINDS ARE TWO RUNTIMES, because they reach two different sets of
-// units. tableTextRuntime below is kind 12's, emitted after TableReader in
-// EVERY unit, and reached from a text field, a text arm, a string map key, a
-// text map value and a *string blob record — a unit with none of those still
-// carries it, because TableJsonScanUnit in the generic walk reads it, and that
-// walk is ONE artifact, byte-identical in every generated .cpp.
-// tableWideTextRuntime is kind 33's, and it is emitted only into a unit that
-// declares wide text.
+// tableTextRuntime is emitted after TableReader in EVERY unit, and reached
+// from a text field, a text arm, a string map key, a text map value and a
+// *string blob record — a unit with none of those still carries it, because
+// TableJsonScanUnit in the generic walk reads it, and that walk is ONE
+// artifact, byte-identical in every generated .cpp.
 const tableTextRuntime = `
 // ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 12 payload is
 // well-formed UTF-8 with no zero byte among its bytes, checked AS IT ARRIVES
@@ -75,69 +71,6 @@ inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t b
     if ( length <= (uint64_t) bound ) { return (int64_t) length; }
     int64_t cut = bound;
     while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
-    return cut;
-}
-`
-
-// tableWideTextRuntime is the KIND 33 half, and it is emitted ONLY into a unit
-// that declares a `wstring(N)` somewhere — the census ir.WideTextFields takes,
-// which is the same one every other target refuses the unit on. Nothing but a
-// wide-text field, a wide-text arm or a wide-text map value reads a kind 33
-// payload (docs/SPEC-TABLES.md §3), so a unit with no wide text has no call
-// site for these three and carried forty-seven lines it could not reach. Split
-// out for the reason the map, list and arena runtimes are: a unit pays for the
-// construct it declares (§2.2).
-const tableWideTextRuntime = `
-// ONE CODE UNIT off the wire: two bytes LITTLE-ENDIAN, this wire's order for
-// every fixed-width number (docs/SPEC-TABLES.md §3). No unit can exceed
-// 0xFFFF, because two bytes cannot spell one.
-inline uint16_t TableUtf16Unit( const uint8_t * bytes, int64_t index )
-{
-    return uint16_t( uint16_t( bytes[index * 2] ) | ( uint16_t( bytes[index * 2 + 1] ) << 8 ) );
-}
-
-// ILL-FORMED WIDE TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 33
-// payload carrying an UNPAIRED SURROGATE or a ZERO CODE UNIT among its units,
-// checked AS IT ARRIVES and before the reader's own bound, on the rule kind 12
-// takes for UTF-8. An ODD L is framing damage and the caller rejects it ahead
-// of this, because units is L / 2. SPEC.md §4.12 refuses the same content
-// TERMINALLY on the packet wire; here the field reads its declared default,
-// one malformed counts, and the parent reads on past L.
-inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
-{
-    int64_t i = 0;
-    while ( i < units )
-    {
-        const uint16_t unit = TableUtf16Unit( bytes, i );
-        if ( unit == 0 ) { return false; }
-        if ( unit >= 0xD800 && unit <= 0xDBFF )
-        {
-            if ( i + 1 >= units ) { return false; } // a high surrogate with no low half
-            const uint16_t low = TableUtf16Unit( bytes, i + 1 );
-            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
-            i += 2;
-            continue;
-        }
-        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first
-        i++;
-    }
-    return true;
-}
-
-// A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
-// the first bound units of a payload the check above already accepted, and
-// where the last kept unit is a HIGH SURROGATE whose low half did not fit,
-// that unit is dropped with it. So a clamp can never invent an unpaired
-// surrogate, exactly as kind 12's clamp can never invent a broken sequence.
-inline int64_t TableUtf16Clamp( const uint8_t * bytes, int64_t units, int64_t bound )
-{
-    if ( units <= bound ) { return units; }
-    int64_t cut = bound;
-    if ( cut > 0 )
-    {
-        const uint16_t last = TableUtf16Unit( bytes, cut - 1 );
-        if ( last >= 0xD800 && last <= 0xDBFF ) { cut--; }
-    }
     return cut;
 }
 `
@@ -385,8 +318,8 @@ struct TableTextFormReader
     }
 };
 
-// TableTextFormJsonString, TableB64Val and TableB64Valid, TableUtf16Length
-// are the §16.9.2 value checks: a string/wstring field's decoded length
+// TableTextFormJsonString, TableB64Val and TableB64Valid are the §16.9.2
+// value checks: a string field's decoded length
 // against its declared bound, and a bytes field's canonical base64 (zero pad
 // bits, no stray byte) with its decoded length against its bound.
 inline int TableB64Val( char c )
@@ -416,23 +349,6 @@ inline bool TableB64Valid( const char * s, int64_t n, int64_t & dec )
     if ( pad == 2 ) { const int v = TableB64Val( s[n - 3] ); if ( v < 0 || ( v & 0x0F ) != 0 ) { return false; } }
     dec = ( ( n / 4 ) * 3 ) - pad;
     return true;
-}
-
-inline int64_t TableUtf16Length( const std::string & s )
-{
-    int64_t units = 0;
-    for ( size_t i = 0; i < s.size(); )
-    {
-        const unsigned char c = (unsigned char) s[i];
-        uint32_t cp;
-        if ( c < 0x80 ) { cp = c; i += 1; }
-        else if ( ( c & 0xE0 ) == 0xC0 ) { cp = ( (uint32_t)( c & 0x1F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) ); i += 2; }
-        else if ( ( c & 0xF0 ) == 0xE0 ) { cp = ( (uint32_t)( c & 0x0F ) << 12 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 2] & 0x3F ) ); i += 3; }
-        else { cp = ( (uint32_t)( c & 0x07 ) << 18 ) | ( (uint32_t)( (unsigned char) s[i + 1] & 0x3F ) << 12 ) | ( (uint32_t)( (unsigned char) s[i + 2] & 0x3F ) << 6 ) | ( (uint32_t)( (unsigned char) s[i + 3] & 0x3F ) ); i += 4; }
-        units++;
-        if ( cp >= 0x10000 ) { units++; }
-    }
-    return units;
 }
 
 inline bool TableTextFormKeyNode( const TableTextFormNode & n ) { return n.kind == ':' || n.kind == '"'; }
@@ -685,11 +601,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         out += ']';
         return true;
     }
-    if ( f->kind == 12 || f->kind == 33 || f->kind == 36 )
+    if ( f->kind == 12 || f->kind == 36 )
     {
         if ( n.kind != '"' ) { *why = "text_kind_mismatch"; return false; }
         int64_t size = (int64_t) n.text.size();
-        if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
         if ( f->array_bound != 0 && size > f->array_bound ) { *why = "text_bound"; return false; }
         TableTextFormJsonString( out, n.text );
         tableTextFormCanon( spans, path, n.text );

@@ -71,7 +71,7 @@ func viewField(f *ir.Field) string {
 	kind := viewFieldKind(f)
 	isArray := f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
 	counted := f.Array == ir.ArrayCounted || !f.Type.Pointer && !f.Type.TextUnbounded() &&
-		(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString) ||
+		(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString) ||
 		f.IsList() || f.IsMap()
 	bound := viewArrayBound(f)
 	unbounded := f.IsList() || f.IsMap()
@@ -154,7 +154,7 @@ func viewArrayBound(f *ir.Field) int64 {
 		return f.KeyEnumRef.Max
 	case f.Array != ir.ArrayNone:
 		return f.ArrayBound
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		return f.Type.Size
 	}
 	return 0
@@ -195,8 +195,6 @@ func viewTypeName(f *ir.Field) string {
 		return "float64"
 	case ir.TFixed:
 		return ir.FieldTypeSpelling(f)
-	case ir.TWString:
-		return "wstring"
 	case ir.TString:
 		return "string"
 	case ir.TBytes:

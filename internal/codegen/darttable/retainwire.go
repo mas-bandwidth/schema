@@ -160,7 +160,6 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
     case 12:
     case 31:
     case 32:
-    case 33:
       final len = r.readLeb();
       if (len == null || !r.has(len)) return null;
       final out = <int>[];
@@ -312,7 +311,6 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
     case 12:
     case 31:
     case 32:
-    case 33:
       final start = c.at;
       var len = 0;
       var shift = 0;

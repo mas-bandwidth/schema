@@ -22,10 +22,9 @@ import "sort"
 // walk disagree, which is precisely what the arms gate's negative controls
 // make happen on purpose (schema#565).
 //
-// The census is UNIT-LEVEL for the reason [WideTextFields] is: a runtime that
-// sits behind one package-scoped guard is defined by whichever header of the
-// package a translation unit includes first, so the question is asked of the
-// unit and never of a file.
+// The census is UNIT-LEVEL: a runtime that sits behind one package-scoped guard
+// is defined by whichever header of the package a translation unit includes
+// first, so the question is asked of the unit and never of a file.
 func BlobPointerFields(u *Unit) []string {
 	var out []string
 	collect := func(name string, st *Struct) {

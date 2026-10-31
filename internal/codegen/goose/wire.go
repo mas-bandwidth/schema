@@ -267,7 +267,7 @@ func (w *wgen) emitZeroField(f *ir.Field, base, ind string) {
 	name := base + "." + ir.GoExportName(f.Name)
 	t := f.Type
 	switch {
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case t.Kind == ir.TString || t.Kind == ir.TBytes:
 		if f.Array != ir.ArrayNone {
 			i := w.tmp("ix")
 			w.Pf("%sfor %s in %d {\n%s    for %s in %d { %s[%s][%s] = 0; }\n%s    %sLength[%s] = 0;\n%s}\n",

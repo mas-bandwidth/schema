@@ -338,14 +338,11 @@ func emitResetElement(g *lobster.Gen, f *ir.Field, expr, ind string) {
 			g.Pf("%s%s = %s\n", ind, expr, lobster.IntLit(val))
 			return
 		}
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		unit := int64(1)
-		if t.Kind == ir.TWString {
-			unit = 2
-		}
 		length := slotExpr(expr, f, "Length")
 		g.Pf("%s%s = schema_rt.zeros(%d)\n", ind, expr, unit*t.Size)
-		if f.HasDefault && len(f.DefBytes) > 0 && t.Kind != ir.TWString {
+		if f.HasDefault && len(f.DefBytes) > 0 {
 			g.Pf("%s%s = schema_rt.put(%s, %s)\n", ind, expr, expr, lobster.StringLit(f.DefBytes))
 			g.Pf("%s%s = %d\n", ind, length, len(f.DefBytes))
 		} else {
@@ -432,9 +429,6 @@ func emitFixedPayloadLeaves(g *lobster.Gen, f *ir.Field, srcBase, dstBase string
 	case f.Type.Kind == ir.TString:
 		g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s + %d, dst: %s + %d, size: %d, aux: %s + %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 1 })\n",
 			ind, srcBase, base, dstBase, base, f.Type.Size, dstBase, base+4)
-	case f.Type.Kind == ir.TWString:
-		g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s + %d, dst: %s + %d, size: %d, aux: %s + %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 2 })\n",
-			ind, srcBase, base, dstBase, base, 2*f.Type.Size, dstBase, base+4)
 	case f.Type.Kind == ir.TBytes:
 		g.Pf("%spush(out, schema_rt.TableFixedEntry { src: %s + %d, dst: %s + %d, size: %d, aux: %s + %d, grd: schema_rt.tableFixedNoGuard, op: schema_rt.tableFixedText, meta: 3 })\n",
 			ind, srcBase, base, dstBase, base, f.Type.Size, dstBase, base+4)
@@ -593,11 +587,8 @@ func scatterElement(g *lobster.Gen, f *ir.Field, expr, base string, off, stride 
 	case ir.TFloat64:
 		g.Pf("%s%s = read_float64_le(data, %s)\n", ind, expr, at)
 		return
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		unit := int64(1)
-		if t.Kind == ir.TWString {
-			unit = 2
-		}
 		length := slotExpr(expr, f, "Length")
 		tmp := fmt.Sprintf("sbuf_%s_%d", ir.GoExportName(f.Name), off)
 		jv := fmt.Sprintf("j_sc_%s_%d", ir.GoExportName(f.Name), off)
@@ -707,7 +698,7 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 		return ir.TableFixedClampNeededField(f)
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		return true
 	}
 	return ir.TableFixedClampNeededField(f)
@@ -733,7 +724,7 @@ func fixedBoundNeeded(f *ir.Field, chk bool) bool {
 	}
 	if chk {
 		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes, ir.TFloat32, ir.TFloat64:
+		case ir.TString, ir.TBytes, ir.TFloat32, ir.TFloat64:
 			return true
 		}
 	}
@@ -924,11 +915,6 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 		case ir.TString:
 			length := slotExpr(expr, f, "Length")
 			g.Pf("%sif %s < 0 or %s > %d or not schema_rt.fixed_utf8_valid_no_nul(%s, 0, %s):\n%s    return false\n",
-				ind, length, length, f.Type.Size, expr, length, ind)
-			return true
-		case ir.TWString:
-			length := slotExpr(expr, f, "Length")
-			g.Pf("%sif %s < 0 or %s > %d or schema_rt.fixed_wide_ill_formed(%s, 0, %s):\n%s    return false\n",
 				ind, length, length, f.Type.Size, expr, length, ind)
 			return true
 		case ir.TBytes:
@@ -1157,9 +1143,6 @@ func buildLobsterFixedDst(st *ir.Struct) []lobsterFixedDstSpec {
 		case f.Type.Kind == ir.TString:
 			as := fixedDstArg(1, dep)
 			push(lobsterFixedDstSpec{Dst: off, Aux: off + 4, Arg: as, Meta: as, Note: note})
-		case f.Type.Kind == ir.TWString:
-			aw := fixedDstArg(2, dep)
-			push(lobsterFixedDstSpec{Dst: off, Aux: off + 4, Arg: aw, Meta: aw, Note: note})
 		default:
 			walkElement(f, off, dep, note)
 		}
@@ -1236,8 +1219,6 @@ func fixedWriteResetPayload(out []byte, at int64, f *ir.Field) {
 			fixedPutIntLE(out, at, 4, big.NewInt(n))
 			copy(out[at+ir.TableFixedCountBytes:at+ir.TableFixedCountBytes+n], f.DefBytes[:n])
 		}
-	case f.Type.Kind == ir.TWString:
-		// wstring defaults prefill empty (0 code units).
 	default:
 		fixedWriteResetElement(out, at, f)
 	}

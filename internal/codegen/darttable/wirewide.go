@@ -216,31 +216,3 @@ func (g *wireGen) emitSaveOptional(f *ir.Field, expr, ind string, id uint64) {
 	}
 	g.pf("%s}\n", ind)
 }
-
-// emitWStringPayload writes wide text as an arm payload (§3, kind 33): the
-// UTF-16 code units, little-endian, with no length of their own — the arm's L
-// is the byte length.
-func (g *wireGen) emitWStringPayload(expr, p, ind string) {
-	g.pf("%sfor (final u in %s.codeUnits) { %s.putU16(u); }\n", ind, expr, p)
-}
-
-// emitWStringGetPayload reads wide text out of an arm payload bounded to L
-// (§3, kind 33): an odd L or ill-formed UTF-16 is damage inside the arm, and a
-// value past the bound clamps at a code-point boundary.
-func (g *wireGen) emitWStringGetPayload(f *ir.Field, dest, p, ind string) {
-	bad := fmt.Sprintf("{ %s.report.malformed = true; return false; }", p)
-	g.pf("%sfinal len = %s.limit - %s.pos;\n", ind, p, p)
-	g.pf("%sif (len.isOdd) %s\n", ind, bad)
-	g.pf("%sfinal units = <int>[];\n", ind)
-	g.pf("%sfor (var i = 0; i < len; i += 2) { units.add(%s.data[%s.pos + i] | (%s.data[%s.pos + i + 1] << 8)); }\n", ind, p, p, p, p)
-	g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
-	g.pf("%sif (!_wideValid(units)) %s\n", ind, bad)
-	g.pf("%svar keep = units.length;\n", ind)
-	g.pf("%sif (keep > %d) {\n", ind, f.Type.Size)
-	g.pf("%s\tkeep = %d;\n", ind, f.Type.Size)
-	g.pf("%s\tif (keep > 0 && units[keep - 1] >= 0xD800 && units[keep - 1] <= 0xDBFF) keep--;\n", ind)
-	g.pf("%s\t%s.report.clamped++;\n", ind, p)
-	g.pf("%s}\n", ind)
-	g.pf("%s%s = String.fromCharCodes(units.sublist(0, keep));\n", ind, dest)
-	g.pf("%sreturn true;\n", ind)
-}

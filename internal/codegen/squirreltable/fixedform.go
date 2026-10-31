@@ -164,10 +164,6 @@ func fixedFieldSupported(f *ir.Field) bool {
 	switch f.Type.Kind {
 	case ir.TBool, ir.TInt, ir.TFixed, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
 		return f.Type.Width <= 128
-	case ir.TWString:
-		// WIDE TEXT (docs/SPEC-TABLES.md §3.4, §7.2): an int32 used length in
-		// CODE UNITS, then N two-byte units little-endian
-		return true
 	}
 	return false
 }
@@ -454,7 +450,7 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 // fixedIsText is a lone string(N), bytes(N) or wstring(N): a length and its
 // buffer, where an array element or a union arm holds one too.
 func fixedIsText(f *ir.Field) bool {
-	return f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString)
+	return f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes)
 }
 
 // fixedEmitWriteText stores a text field at `at + off`: the int32 used length,
@@ -463,11 +459,6 @@ func fixedIsText(f *ir.Field) bool {
 // counts CODE UNITS (docs/SPEC-TABLES.md §3.4, §7.2).
 func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
 	m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
-	if f.Type.Kind == ir.TWString {
-		m.Printf("%sfor (local i = 0; i < %s.len(); i++) { b[at + %s + %d + 2 * i] = %s[i] & 0xff; b[at + %s + %d + 2 * i + 1] = (%s[i] >> 8) & 0xff; }\n",
-			ind, expr, off, fixedCountBytes, expr, off, fixedCountBytes, expr)
-		return
-	}
 	m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %s + %d + i] = %s[i] & 0xff;\n", ind, expr, off, fixedCountBytes, expr)
 }
 
@@ -485,10 +476,6 @@ func fixedEmitDecodeText(m *Module, f *ir.Field, off, expr, ind string) {
 		m.Printf("%slocal s = \"\";\n", ind)
 		m.Printf("%sfor (local i = 0; i < n; i++) s += b[at + %s + %d + i].tochar();\n", ind, off, fixedCountBytes)
 		m.Printf("%s%s = s;\n", ind, expr)
-	case ir.TWString:
-		m.Printf("%slocal w = _rt_fixed.wideUnits(b, at + %s + %d, n);\n", ind, off, fixedCountBytes)
-		m.Printf("%sif (w == null) return \"text_ill_formed\";\n", ind)
-		m.Printf("%s%s = w;\n", ind, expr)
 	default:
 		m.Printf("%s%s = blob(n);\n", ind, expr)
 		m.Printf("%sfor (local i = 0; i < n; i++) %s[i] = b[at + %s + %d + i];\n", ind, expr, off, fixedCountBytes)
@@ -808,8 +795,6 @@ func fixedFieldBytes(f *ir.Field) int64 {
 		payload = fixedCountBytes + f.ArrayBound*fixedElementBytes(f)
 	case f.Type.Kind == ir.TString:
 		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		payload = fixedCountBytes + f.Type.Size
 	default:
@@ -872,9 +857,6 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
 			fixedDst{dst: at, aux: at + fixedCountBytes, arg: 1})
-	case f.Type.Kind == ir.TWString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			fixedDst{dst: at, aux: at + fixedCountBytes, arg: 2})
 	default:
 		fixedWalkElement(w, f, id, f.Name, at)
 	}

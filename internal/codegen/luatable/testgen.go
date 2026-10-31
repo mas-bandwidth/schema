@@ -452,7 +452,7 @@ func (g *ltgGen) value(j *ltgJSON, f *ir.Field, whole bool) error {
 		j.raw(ltgFixedDecimal(raw, t.FracBits))
 	case ir.TFloat32, ir.TFloat64:
 		j.raw(g.float(f))
-	case ir.TString, ir.TWString:
+	case ir.TString:
 		n := g.length(t.Size)
 		g.text(j, n)
 	case ir.TBytes:
@@ -591,7 +591,7 @@ func (g *ltgGen) pointer(j *ltgJSON, f *ir.Field) error {
 	case ir.TBytes:
 		g.bytesValue(j, g.unbounded())
 		return nil
-	case ir.TString, ir.TWString:
+	case ir.TString:
 		g.text(j, g.unbounded())
 		return nil
 	}
@@ -718,7 +718,7 @@ func (g *ltgGen) mapValue(j *ltgJSON, f *ir.Field) error {
 	key, val := ir.MapKeyField(f), ir.MapValueField(f)
 	n := g.unbounded()
 	var keys []string
-	if key.Type.Kind == ir.TString || key.Type.Kind == ir.TWString {
+	if key.Type.Kind == ir.TString {
 		for i := range n {
 			keys = append(keys, string(rune('a'+i)))
 		}

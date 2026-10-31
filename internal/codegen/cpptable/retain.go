@@ -652,7 +652,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
         default:
-            // every other content is bytes: a string, wide text, an escape, a
+            // every other content is bytes: a string, an escape, a
             // payload-free kind, a scalar under a keyed slot's own length
             TableRetainInRaw( s, s.in + s.at, length );
             s.at += length;
@@ -689,7 +689,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33: // L, then L bytes, nothing framed inside
+        case 12: case 31: case 32: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -1079,7 +1079,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33:
+        case 12: case 31: case 32:
         {
             uint64_t length = 0;
             if ( !TableRetainOutLebRead( s, length ) ) { return false; }
@@ -1374,7 +1374,7 @@ inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
     if ( width > 0 ) { return width; }
     switch ( kind )
     {
-        case 12: case 31: case 32: case 33: return 1;
+        case 12: case 31: case 32: return 1;
         case 13: case 14: case 16: case 15: case 30: return 8;
         default: return 1;
     }
@@ -1413,19 +1413,16 @@ inline bool TableMessageRetainRef( TableMessageRetainIn & s, uint64_t & id )
 }
 
 // ONE OPAQUE PAYLOAD's bytes: a string or a byte buffer is a length at its own
-// width, the ALIGN that buys a memcpy and the bytes; a wide string is a length
-// and then SIXTEEN bits a code unit, which is two file bytes each; and the
-// ESCAPE aligns, reads a thirty-two bit L and takes L bytes. On the file each
+// width, the ALIGN that buys a memcpy and the bytes; and the ESCAPE aligns,
+// reads a thirty-two bit L and takes L bytes. On the file each
 // is the same bytes behind a canonical LEB128 length, so the framed flag says which of
 // the two spellings this position takes.
 inline bool TableMessageRetainOpaque( TableMessageRetainIn & s, const TableMessageEntry & entry, bool framed )
 {
     uint64_t n = 0;
-    if ( entry.kind == 12 || entry.kind == 33 )
+    if ( entry.kind == 12 )
     {
-        if ( !s.r->get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
-        if ( entry.kind == 33 ) { n *= 2; }
-        else if ( !s.r->align() ) { return false; }
+        if ( !s.r->get( n, TableBitsRequired( 0, entry.max ) ) || !s.r->align() ) { return false; }
     }
     else
     {
@@ -1617,7 +1614,7 @@ inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableM
         case 14: case 16: if ( TableMessageRetainElements( s, entry, depth ) < 0 ) { return -1; } break;
         case 15: case 30: if ( TableMessageRetainPayload( s, entry, depth ) < 0 ) { return -1; } break;
         case 32: break; // nothing rides, and the outer length is what says so
-        case 12: case 31: case 33:
+        case 12: case 31:
             // a content copied whole carries no inner length: the outer one
             // frames it, which is what a keyed slot's element takes
             if ( !TableMessageRetainOpaque( s, entry, false ) ) { return -1; }
@@ -1669,7 +1666,7 @@ inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableM
         case 13: case 14: case 16:
             if ( TableMessageRetainFramed( s, entry, depth + 1 ) < 0 ) { return -1; }
             break;
-        case 12: case 31: case 33:
+        case 12: case 31:
             if ( !TableMessageRetainOpaque( s, entry, true ) ) { return -1; }
             break;
         default:

@@ -77,7 +77,7 @@ func(s *tableRetainMessageIn)scalar(e TableMessageEntry)bool{
  s.w.Raw(raw[:width]);return !s.w.Overflow
 }
 func(s *tableRetainMessageIn)opaque(e TableMessageEntry,framed bool)bool{var n uint64;var ok bool
- if e.Shape.Kind==12||e.Shape.Kind==33 {n,ok=tableMessageCount(&s.bits,e.Shape);if !ok{return false};if e.Shape.Kind==33{n*=2}else if !s.bits.Align(){return false}}else{if !s.bits.Align(){return false};n,ok=s.bits.Get(32);if !ok{return false}}
+ if e.Shape.Kind==12 {n,ok=tableMessageCount(&s.bits,e.Shape);if !ok||!s.bits.Align(){return false}}else{if !s.bits.Align(){return false};n,ok=s.bits.Get(32);if !ok{return false}}
  extra:=int64(0);if framed{extra=tableLebBytes(n)};if n>0x7fffffff||!s.room(int64(n)+extra)||int64(n)*8>int64(len(s.bits.Buffer))*8-s.bits.Offset{return false};if framed{s.w.PutLeb(n)};for range n {v,ok:=s.bits.Get(8);if !ok{return false};s.w.Put8(byte(v))};return true
 }
 func(s *tableRetainMessageIn)framed(e TableMessageEntry,depth int)bool{if depth>tableRetainWalkDepthMax||!s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);before:=s.w.Offset;if !s.content(e,depth)||s.w.Offset-before>0xffffffff{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-before))};return true}
@@ -87,9 +87,9 @@ func(s *tableRetainMessageIn)content(e TableMessageEntry,depth int)bool{if depth
  case 14,16:return s.elements(e,depth)
  case 15,30:return s.payload(e,depth)
  case 32:return true
- case 12,31,33:return s.opaque(e,false)
+ case 12,31:return s.opaque(e,false)
  };return s.scalar(e)}
-func tableRetainMessageMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 17:return -1;case 12,31,32,33:return 1};return -1}
+func tableRetainMessageMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 17:return -1;case 12,31,32:return 1};return -1}
 func(s *tableRetainMessageIn)elements(e TableMessageEntry,depth int)bool{if e.Element.Kind==17{return false};n,ok:=tableMessageCount(&s.bits,e.Shape);if !ok{return false};if e.Shape.Kind==14&&e.Element.Kind==6&&!s.bits.Align(){return false};if !s.room(1+tableLebBytes(n)){return false};s.w.Put8(e.Element.Kind);s.w.PutLeb(n);floor:=tableRetainMessageMinimum(e.Element.Kind);if e.Shape.Kind==16{floor=16};if floor<0||n>uint64((s.limit-s.w.Offset)/floor){return false};element:=TableMessageEntry{Shape:e.Element}
  for range n {if e.Shape.Kind==16{if _,ok:=s.ref(false);!ok||!s.framed(element,depth+1){return false}}else if !s.payload(element,depth){return false}};return true}
 func(s *tableRetainMessageIn)payload(e TableMessageEntry,depth int)bool{switch e.Shape.Kind{
@@ -98,6 +98,6 @@ func(s *tableRetainMessageIn)payload(e TableMessageEntry,depth int)bool{switch e
  case 30:_,ok:=s.ref(true);return ok
  case 15:arm,ok:=s.ref(true);if !ok{return false};if arm.ID==0{return true};if arm.Shape.Kind==0||!s.room(1){return false};s.w.Put8(arm.Shape.Kind);return s.framed(arm,depth+1)
  case 13,14,16:return s.framed(e,depth+1)
- case 12,31,33:return s.opaque(e,true)
+ case 12,31:return s.opaque(e,true)
  };return s.scalar(e)}
 `

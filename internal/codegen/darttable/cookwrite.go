@@ -41,7 +41,7 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 			if f.Type.Pointer || f.IsList() || f.IsMap() || f.Guard != "" {
 				supported = false
 			}
-			if (f.Array != ir.ArrayNone || f.KeyEnum != "") && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
+			if (f.Array != ir.ArrayNone || f.KeyEnum != "") && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 				supported = false
 			}
 		}
@@ -189,16 +189,12 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		g.pf("%s}\n", ind)
 		return
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		g.pf("%sif (%sLength < 0 ||\n%s    %sLength > %d ||\n%s    %sLength > %s.length)\n%s  return false;\n", ind, expr, ind, expr, f.Type.Size, ind, expr, expr, ind)
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %sLength, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%s  for (var i = 0; i < %sLength; i++) {\n", ind, expr)
-		if f.Type.Kind == ir.TWString {
-			g.pf("%s    out.setUint16(at + %d + i * 2, %s[i], order);\n", ind, offset, expr)
-		} else {
-			g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, expr)
-		}
+		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, expr)
 		g.pf("%s  }\n%s}\n", ind, ind)
 		return
 	}

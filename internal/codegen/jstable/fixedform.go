@@ -97,8 +97,6 @@ func fixedFieldBytes(f *ir.Field) int64 {
 		payload = fixedCountBytes + f.ArrayBound*fixedElementBytes(f)
 	case f.Type.Kind == ir.TString:
 		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		payload = fixedCountBytes + f.Type.Size
 	default:
@@ -263,9 +261,6 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
 			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextUtf8})
-	case f.Type.Kind == ir.TWString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextWide})
 	default:
 		fixedWalkElement(w, f, id, f.Name, at)
 	}
@@ -576,7 +571,7 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 		if f.KeyEnumRef == nil {
 			return name + ": an enum-keyed array of an enum this unit does not declare (docs/SPEC-TABLES.md §2.4)"
 		}
-		if f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+		if f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 			return name + ": an enum-keyed array of pointers or strings (docs/SPEC-TABLES.md §2.4)"
 		}
 		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
@@ -584,7 +579,7 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 		}
 	case f.Type.Optional && f.Type.Pointer:
 		return name + ": an optional pointer (docs/SPEC-TABLES.md §2.3)"
-	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		return name + ": an array of strings or byte strings (docs/SPEC-TABLES.md §2.9)"
 	}
 	switch f.Type.Kind {
@@ -593,13 +588,6 @@ func variableFieldRefusalNamed(name string, f *ir.Field) string {
 	case ir.TInt:
 		return ""
 	case ir.TFixed:
-		return ""
-	case ir.TWString:
-		// WIDE TEXT IS CARRIED (docs/SPEC-TABLES.md §2, §3, §4; SPEC.md §4.12):
-		// kind 33, a byte length L that is twice the UTF-16 code units, then
-		// the units little-endian — as a field, an arm, a map value and inside
-		// a nested type (variableruntime.go TableVariableWide*). An array of
-		// them stays refused above, with every other array of text.
 		return ""
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

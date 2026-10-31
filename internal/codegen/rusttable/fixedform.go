@@ -138,8 +138,6 @@ func fixedDefaultField(out []byte, f *ir.Field) {
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		fixedPutU32(out, uint32(len(f.DefBytes)))
 		copy(out[ir.TableFixedCountBytes:], f.DefBytes)
-	case f.Type.Kind == ir.TWString:
-		fixedPutU32(out, uint32(len(f.DefBytes)))
 	default:
 		fixedDefaultElement(out, f)
 	}
@@ -457,9 +455,7 @@ func (g *gen) emitFixedWritePayload(f *ir.Field, base int64, indent int) {
 		g.emitFixedWriteSlots(f, base+ir.TableFixedCountBytes,
 			fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound), indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.emitFixedWriteText(f, base, 1, indent)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedWriteText(f, base, 2, indent)
+		g.emitFixedWriteText(f, base, indent)
 	default:
 		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), "value."+f.Name, indent)
 	}
@@ -470,24 +466,13 @@ func (g *gen) emitFixedWritePayload(f *ir.Field, base int64, indent int) {
 // zero"). Copying the whole span instead put whatever the storage held past
 // the used length on the wire — stale bytes, and a `string(N)` written twice
 // with two different values would not compare equal on the second write.
-//
-// A `wstring(N)` is the same store with a TWO-BYTE unit, and it is here rather
-// than in a default case that emitted a zero-width slice: wide text's buffer is
-// [u16; N + 1] and its length counts CODE UNITS, so the span is 2 * length.
-func (g *gen) emitFixedWriteText(f *ir.Field, base, unit int64, indent int) {
+func (g *gen) emitFixedWriteText(f *ir.Field, base int64, indent int) {
 	ind := strings.Repeat(" ", indent)
 	g.fixedWriteBound(f.Name+"_length", f.Type.Size, "length", ind)
 	g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 	g.pf("%s{\n", ind)
 	g.pf("%s    let n = value.%s_length.clamp(0, %d) as usize;\n", ind, f.Name, f.Type.Size)
-	if unit == 1 {
-		g.pf("%s    b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", ind, base+4, base+4, f.Name)
-	} else {
-		g.pf("%s    for i in 0..n {\n", ind)
-		g.pf("%s        let at = %d + %d * i;\n", ind, base+4, unit)
-		g.pf("%s        b[at..at + %d].copy_from_slice(&value.%s[i].to_le_bytes());\n", ind, unit, f.Name)
-		g.pf("%s    }\n", ind)
-	}
+	g.pf("%s    b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", ind, base+4, base+4, f.Name)
 	g.pf("%s}\n", ind)
 }
 
@@ -636,17 +621,6 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 		g.emitFixedScatterCount(f.Name+"_length", base, f.Type.Size)
 		g.pf("    value.%s = [0u8; %d];\n", f.Name, f.Type.Size+1)
 		g.pf("    value.%s[..%d].copy_from_slice(&b[%d..%d]);\n", f.Name, f.Type.Size, base+4, base+4+f.Type.Size)
-		g.pf("    value.%s[value.%s_length as usize] = 0; // the used length terminates the buffer\n", f.Name, f.Name)
-	case f.Type.Kind == ir.TWString:
-		// WIDE TEXT lands unit by unit: the buffer is [u16; N + 1] and the wire
-		// is 2 * N little-endian code units, so there is no one-move copy here
-		// the way the narrow twin has.
-		g.emitFixedScatterCount(f.Name+"_length", base, f.Type.Size)
-		g.pf("    value.%s = [0u16; %d];\n", f.Name, f.Type.Size+1)
-		g.pf("    for i in 0..%d {\n", f.Type.Size)
-		g.pf("        let at = %d + 2 * i;\n", base+4)
-		g.pf("        value.%s[i] = u16::from_le_bytes(b[at..at + 2].try_into().expect(\"two bytes\"));\n", f.Name)
-		g.pf("    }\n")
 		g.pf("    value.%s[value.%s_length as usize] = 0; // the used length terminates the buffer\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedScatterCount(f.Name+"_length", base, f.Type.Size)
@@ -870,13 +844,6 @@ func (g *gen) emitFixedWriteArm(f *ir.Field, base int64, armExpr string, indent 
 		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
 		g.pf("%s{\n%s    let n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
 		g.pf("%s    b[%d..%d + n].copy_from_slice(&%s.value[..n]);\n%s}\n", ind, base+4, base+4, armExpr, ind)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sdebug_assert!(\n%s    %s.value_length >= 0 && %s.value_length <= %d,\n%s    \"the declared length is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
-			ind, ind, armExpr, armExpr, f.Type.Size, ind, ind)
-		g.pf("%sb[%d..%d].copy_from_slice(&(%s.value_length as u32).to_le_bytes());\n", ind, base, base+4, armExpr)
-		g.pf("%s{\n%s    let n = %s.value_length.clamp(0, %d) as usize;\n", ind, ind, armExpr, f.Type.Size)
-		g.pf("%s    for i in 0..n {\n%s        let at = %d + 2 * i;\n", ind, ind, base+4)
-		g.pf("%s        b[at..at + 2].copy_from_slice(&%s.value[i].to_le_bytes());\n%s    }\n%s}\n", ind, armExpr, ind, ind)
 	default:
 		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), armExpr, indent)
 	}
@@ -977,16 +944,6 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
 		g.pf("%sarm.value = [0u8; %d];\n", ind, f.Type.Size+1)
 		g.pf("%sarm.value[..%d].copy_from_slice(&b[%d..%d]);\n", ind, f.Type.Size, base+4, base+4+f.Type.Size)
-		g.pf("%sarm.value[arm.value_length as usize] = 0; // the used length terminates the buffer\n", ind)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
-		g.pf("%s{\n%s    let raw = i32::from_le_bytes(b[%d..%d].try_into().expect(\"four bytes\"));\n", ind, ind, base, base+4)
-		g.pf("%s    let held = raw.clamp(0, %d);\n", ind, f.Type.Size)
-		g.pf("%s    if held != raw {\n%s        report.clamped += 1;\n%s    }\n", ind, ind, ind)
-		g.pf("%s    arm.value_length = held;\n%s}\n", ind, ind)
-		g.pf("%sarm.value = [0u16; %d];\n", ind, f.Type.Size+1)
-		g.pf("%sfor i in 0..%d {\n%s    let at = %d + 2 * i;\n", ind, f.Type.Size, ind, base+4)
-		g.pf("%s    arm.value[i] = u16::from_le_bytes(b[at..at + 2].try_into().expect(\"two bytes\"));\n%s}\n", ind, ind)
 		g.pf("%sarm.value[arm.value_length as usize] = 0; // the used length terminates the buffer\n", ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%slet mut arm = %s::default();\n", ind, unionArmRowType(un, v))
@@ -1485,10 +1442,9 @@ func fixedRangeClampField(f *ir.Field, seen map[string]bool) bool {
 		return false // an enum's ordinal and a union's tag are the scatter's
 	}
 	// TEXT CARRIES THE ONE CONTENT RULE THE WIRE HAS (§3, §4): a `string(N)`'s
-	// used bytes are well-formed UTF-8 with no zero among them, and a
-	// `wstring(N)`'s used units are paired UTF-16 with no zero unit. `bytes(N)`
-	// has no content rule — it is bytes.
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+	// used bytes are well-formed UTF-8 with no zero among them. `bytes(N)` has
+	// no content rule — it is bytes.
+	if f.Type.Kind == ir.TString {
 		return true
 	}
 	if f.HasFloatRange {
@@ -1600,7 +1556,7 @@ func (g *gen) emitFixedClampArm(f *ir.Field, indent int) {
 		g.pf("%sfor i in 0..arm.value_count.clamp(0, %d) as usize {\n", ind, f.ArrayBound)
 		g.emitFixedClampElement(f, "arm.value[i]", indent+4)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString:
 		g.emitFixedTextContentAt(f, "arm.value", "arm.value_length", ind)
 	case f.Type.Kind == ir.TBytes:
 	default:
@@ -1657,7 +1613,7 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 		g.pf("%sfor i in 0..value.%s_count.clamp(0, %d) as usize {\n", ind, f.Name, f.ArrayBound)
 		g.emitFixedClampElement(f, expr+"[i]", indent+4)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString:
 		// the used LENGTH is held by the scatter's `count`; what is held here
 		// is the CONTENT
 		g.emitFixedTextContent(f, ind)
@@ -1686,10 +1642,6 @@ func (g *gen) emitFixedTextContentAt(f *ir.Field, bufExpr, lenExpr, ind string) 
 	used := fmt.Sprintf("%s.clamp(0, %d) as usize", lenExpr, f.Type.Size)
 	call := fmt.Sprintf("table_utf8_valid(&%s[..%s])", bufExpr, used)
 	zero := fmt.Sprintf("%s = [0u8; %d];", bufExpr, f.Type.Size+1)
-	if f.Type.Kind == ir.TWString {
-		call = fmt.Sprintf("table_utf16_valid(&%s[..%s])", bufExpr, used)
-		zero = fmt.Sprintf("%s = [0u16; %d];", bufExpr, f.Type.Size+1)
-	}
 	g.pf("%sif !%s {\n", ind, call)
 	g.pf("%s    %s\n", ind, zero)
 	if f.Type.Kind == ir.TString && f.HasDefault && len(f.DefBytes) > 0 {

@@ -447,7 +447,7 @@ type facts struct {
 	bits, ibits, fbits              int
 	f32, frange                     bool
 	flo, fhi, fres                  string
-	wide, timestamp                 bool
+	timestamp                       bool
 	defI, defF, defS                string
 	defB, hasDef                    bool
 }
@@ -497,7 +497,6 @@ func (v facts) writeRest(l *lit) {
 		l.add("fhi", v.fhi)
 		l.add("fres", v.fres)
 	}
-	l.flag("wide", v.wide)
 }
 
 // writeTail renders the markers and the default, in FieldDesc order.
@@ -538,8 +537,8 @@ func valueFacts(g *goose.Gen, f *ir.Field, def bool) facts {
 		return facts{shape: "ShapePtr", ref: t.Name}
 	case t.TextUnbounded():
 		return facts{shape: "ShapeText"}
-	case t.Kind == ir.TString || t.Kind == ir.TWString || t.Kind == ir.TBytes:
-		v := facts{shape: "ShapeStr", bound: fmt.Sprint(t.Size), wide: t.Kind == ir.TWString}
+	case t.Kind == ir.TString || t.Kind == ir.TBytes:
+		v := facts{shape: "ShapeStr", bound: fmt.Sprint(t.Size)}
 		if t.Kind == ir.TBytes {
 			v.shape, v.ek = "ShapeBytes", fmt.Sprint(ir.TableKindU8)
 		}

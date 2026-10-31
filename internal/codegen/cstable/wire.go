@@ -401,7 +401,7 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		b.WriteString(wideColumns(f))
 		return b.String()
 	}
-	if f.IsMap() || f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes || isClassRef(f.Type) {
+	if f.IsMap() || f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || isClassRef(f.Type) {
 		return b.String()
 	}
 	defaultExpr := fieldDefaultExpr(f)

@@ -276,8 +276,6 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s%s_count", val, f.Name), buf, val+f.Name, indent)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedWriteText(f, base, buf, val, ind, 1)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedWriteText(f, base, buf, val, ind, 2)
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedWriteText(f, base, buf, val, ind, 1)
 	default:
@@ -1036,7 +1034,7 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.emitFixedClampLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
 		g.emitFixedClampLoop(f, fmt.Sprintf("(int64_t) %s%s_count", val, f.Name), val+f.Name, indent)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString:
 		g.emitFixedTextContent(f, val, strings.Repeat(" ", indent))
 	default:
 		g.emitFixedClampElement(f, val+f.Name, indent)
@@ -1078,17 +1076,13 @@ func (g *tableGen) emitFixedClampArm(v ir.UnionVariant, expr string, indent int)
 emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), the C
 
 	twin of the reference's: a `string(N)`'s used bytes are well-formed UTF-8
-	with no zero among them and a `wstring(N)`'s used units are paired UTF-16
-	with no zero unit, checked over the USED LENGTH and nothing else. A payload
+	with no zero among them, checked over the USED LENGTH and nothing else. A payload
 	that is not text is a REFUSAL BY NAME, not damage: the `damaged` flag the
 	root's clamp turns into `refused` + `text_ill_formed`, nothing decoded and
 	no counter moved (§4.5, fix 11). The slack is unspecified and not judged.
 */
 func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	call := fmt.Sprintf("table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s%s_length )", val, f.Name, val, f.Name)
-	if f.Type.Kind == ir.TWString {
-		call = fmt.Sprintf("table_wire_utf16( (const uint8_t *) %s%s, (int64_t) %s%s_length )", val, f.Name, val, f.Name)
-	}
 	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
 	g.pf("%s    (*damaged)++;\n%s}\n", ind, ind)
 }

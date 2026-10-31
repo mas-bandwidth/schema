@@ -166,7 +166,7 @@ func TakesNull(f *ir.Field) bool { return f.Type.Optional || f.Type.Pointer }
 // enum-keyed array is an OBJECT keyed by variant name (§2.4).
 func Shape(f *ir.Field) byte {
 	switch {
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return 's'
 	case f.IsMap():
 		return 'o' // a plain JSON object keyed by the KEY (§2.8, §16)
@@ -264,10 +264,8 @@ func encodeUTF8(code uint32) []byte {
 }
 
 // scanUnit reads ONE STRING BODY CHARACTER at the cursor and answers it as
-// UTF-8: an escape's code point, or a UTF-8 sequence read whole. It is ONE
-// grammar serving both text kinds — the narrow scan places these bytes and the
-// wide scan converts them back to code units — so the escape table, the
-// lone-surrogate rule and the U+FFFD replacement are stated once. done is true
+// UTF-8: an escape's code point, or a UTF-8 sequence read whole, so the escape
+// table, the lone-surrogate rule and the U+FFFD replacement are stated once. done is true
 // where the closing quote was consumed; ok false where the text is not JSON.
 // The C++ walk's TableJsonScanUnit is the same function.
 func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {
@@ -432,52 +430,6 @@ func (in *reader) scanText(capacity int, store bool) (out []byte, clamped bool, 
 			continue
 		}
 		out = append(out, unit...)
-	}
-	return out, clamped, true
-}
-
-// scanWString reads one JSON string into UTF-16 CODE UNITS: the wstring row of
-// §16.2, the text TRANSCODED at the boundary. It shares scanUnit with the
-// narrow scan, so the escape grammar and the lone-surrogate rule are one
-// grammar, and appends ONE CODE POINT AT A TIME — one unit below U+10000 and
-// a surrogate PAIR above it — so a clamp at capacity units never splits a
-// pair and a high surrogate left without its low half is dropped with it,
-// which is the sentence the wire's clamp takes (§3). capacity < 0 is
-// unbounded, which is the `*wstring` blob's case.
-func (in *reader) scanWString(capacity int) (out []uint16, clamped bool, ok bool) {
-	if in.peek() != '"' {
-		in.bad = true
-		return nil, false, false
-	}
-	in.pos++
-	for {
-		unit, done, ok := in.scanUnit()
-		if !ok {
-			return nil, false, false
-		}
-		if done {
-			break
-		}
-		code, _ := utf8.DecodeRune(unit)
-		if code == 0 {
-			// §16.3: a wide scan always stores, and a zero unit is the
-			// same event as a narrow zero byte
-			in.zero = true
-			in.bad = true
-			return nil, false, false
-		}
-		var units []uint16
-		if code < 0x10000 {
-			units = []uint16{uint16(code)}
-		} else {
-			rest := uint32(code) - 0x10000
-			units = []uint16{uint16(0xd800 + rest>>10), uint16(0xdc00 + rest&0x3ff)}
-		}
-		if clamped || (capacity >= 0 && len(out)+len(units) > capacity) {
-			clamped = true
-			continue
-		}
-		out = append(out, units...)
 	}
 	return out, clamped, true
 }
@@ -842,19 +794,6 @@ func (in *reader) readField(fv *Field, depth int) bool {
 		}
 		fv.Cell.Str = out
 		fv.Count = len(out)
-		return true
-	case f.Type.Kind == ir.TWString:
-		// the wstring row of §16.2: the same text, TRANSCODED at the
-		// boundary, clamped at N CODE UNITS with a pair never split
-		units, clamped, ok := in.scanWString(int(f.Type.Size))
-		if !ok {
-			return false
-		}
-		if clamped {
-			in.report.Clamped++
-		}
-		fv.Cell.Units = units
-		fv.Count = len(units)
 		return true
 	case f.Type.Kind == ir.TBytes:
 		return in.readBase64(fv)

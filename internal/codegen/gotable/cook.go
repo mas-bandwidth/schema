@@ -393,11 +393,6 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 		// <T>At is the one add that resolves it.
 		next()
 		g.sf("\t%s int64 // *%s: signed self-relative delta, zero is null (§6.3)\n", name, f.Type.Name)
-	case f.Type.Kind == ir.TWString:
-		next()
-		g.sf("\t%s [%d]uint16\n", name, f.Type.Size+1)
-		next()
-		g.sf("\t%sLength int32\n", name)
 	case f.Type.TextUnbounded():
 		// UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): the eight-byte slot
 		// naming its blob record inside the node's extent, self-relative

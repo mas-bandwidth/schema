@@ -82,7 +82,6 @@ enum
 enum
 {
     kTableFixedTextUtf8  = 1,
-    kTableFixedTextWide  = 2,
     kTableFixedTextBytes = 3
 };
 
@@ -141,9 +140,8 @@ enum
     SCHEMA_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-       string(N)'s used bytes that are not well-formed UTF-8 — or a
-       wstring(N)'s used units that are not paired UTF-16 — refuse the read by
-       name, the verdict the packet reader gives, this form having no L to
+       string(N)'s used bytes that are not well-formed UTF-8 refuse the read
+       by name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
     SCHEMA_TABLE_TEXT_ILL_FORMED = 20
 };
@@ -468,21 +466,17 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
+            else if ( (uint32_t) v > p->size ) { v = (int32_t) p->size; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
             if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
-                   unit longer than the bound for exactly this. A store, not a
+                   byte longer than the bound for exactly this. A store, not a
                    call: memset of a runtime length is a call. */
-                uint8_t * end = dst + p->aux + (uint32_t) v * unit;
-                end[0] = 0;
-                if ( unit == 2 ) { end[1] = 0; }
+                dst[p->aux + (uint32_t) v] = 0;
             }
             break;
         }
@@ -700,10 +694,9 @@ static SCHEMA_UNUSED void table_fixed_entry_lands( const TableFixedEntry * e, ui
         case kTableFixedCount: lands[1] = e->dst + 4u; break;
         case kTableFixedText:
         {
-            const uint32_t unit = ( e->meta == kTableFixedTextWide ) ? 2u : 1u;
             lands[1] = e->dst + 4u;
             lands[2] = e->aux;
-            lands[3] = e->aux + e->size + ( e->meta == kTableFixedTextBytes ? 0u : unit );
+            lands[3] = e->aux + e->size + ( e->meta == kTableFixedTextBytes ? 0u : 1u );
             break;
         }
         case kTableFixedWidenF: lands[1] = e->dst + 8u; break;
@@ -940,14 +933,14 @@ static SCHEMA_UNUSED int table_fixed_leaf_size( uint8_t kind, uint32_t size, int
 static SCHEMA_UNUSED int table_fixed_ordinal_width( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 /* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-   the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-   adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-   reserved: neither is a kind a declaration spells, so neither is ever an
-   entry's kind. */
+   the no-payload variant 32, and the ONE kind this form's layout adds, the
+   optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+   reserved: none is a kind a declaration spells, so none is ever an entry's
+   kind. */
 static SCHEMA_UNUSED int table_fixed_known_kind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return 1; }
-    return kind == 32u || kind == 33u || kind == 35u;
+    return kind == 32u || kind == 35u;
 }
 
 /* table_fixed_check_entry validates the subtree rooted at i and answers how
@@ -1049,12 +1042,6 @@ static SCHEMA_UNUSED int32_t table_fixed_check_entry( TableFixedCheck * c, int32
         {
             if ( e.children != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
             if ( e.size < 4u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
-            break;
-        }
-        case 33: /* wstring(N): the length in CODE UNITS, then 2N bytes */
-        {
-            if ( e.children != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
             break;
         }
         /* Every kind of the closed set is either a leaf above or a case here,
@@ -1527,7 +1514,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 table_fixed_push( c, e );
                 break;
             }
-            case 12: case 33: /* text */
+            case 12: /* text */
             {
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();

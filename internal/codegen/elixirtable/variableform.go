@@ -6066,10 +6066,6 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
 		fmt.Fprintf(&b, ", size: %d", f.Type.Size)
-	case f.Type.Kind == ir.TWString:
-		// wstring(N) is kind 33 on the variable wire: L counts UTF-16LE bytes,
-		// two per code unit (docs/SPEC-TABLES.md §3). The value is UTF-8.
-		fmt.Fprintf(&b, ", t: :wstring, size: %d", f.Type.Size)
 	case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
 		b.WriteString(", t: :int")
 		width := (f.Type.Width + 7) / 8
@@ -6140,8 +6136,6 @@ func variableFieldDefault(f *ir.Field) string {
 		return "[]"
 	case f.IsMap():
 		return "%{}"
-	case f.Type.Kind == ir.TWString:
-		return "\"\""
 	case flagsRef(f) != nil:
 		if f.HasDefault && f.DefInt != nil {
 			return fixedIntLiteral(f.DefInt)

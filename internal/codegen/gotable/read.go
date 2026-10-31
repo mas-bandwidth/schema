@@ -247,9 +247,6 @@ func (g *tableGen) emitReadField(f *ir.Field, ind string) {
 		g.emitReadArray(f, ind, false)
 	case f.Type.Pointer:
 		g.emitReadScalar(f, expr, "r", matched, ind, "r.Report.Malformed=true;return false")
-	case f.Type.Kind == ir.TWString:
-		g.pf("%ssub,ok:=r.Body();if !ok {r.Report.Malformed=true;return false}\n", ind)
-		g.emitReadWString(f, expr, "sub", ind, "r.Report.Malformed=true;break")
 	case f.Type.TextUnbounded():
 		g.emitReadUnboundedText(f, expr, ind)
 	case f.Type.Kind == ir.TString:
@@ -463,10 +460,6 @@ func (g *tableGen) emitReadArm(v ir.UnionVariant, expr, rdr, kind, ind, none str
 	if f.Type.Pointer {
 		g.emitReadScalar(f, expr, rdr, kind, ind, bad)
 		g.pf("%sif %s.Offset!=int64(len(%s.Buffer)){%s}\n", ind, rdr, rdr, bad)
-		return
-	}
-	if f.Type.Kind == ir.TWString {
-		g.emitReadWString(f, expr, rdr, ind, bad)
 		return
 	}
 	if f.Type.Kind == ir.TString {

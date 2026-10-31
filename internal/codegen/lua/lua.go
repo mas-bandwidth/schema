@@ -428,8 +428,6 @@ func ZeroValue(m *Module, t ir.FieldType) string {
 		return "0.0"
 	case ir.TString, ir.TBytes:
 		return `""`
-	case ir.TWString:
-		return "{}"
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Struct, *ir.Union:
@@ -456,8 +454,6 @@ func DefaultValue(m *Module, f *ir.Field) string {
 		return FloatLiteral(f.DefFloat)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return ByteString(f.DefBytes)
-	case f.Type.Kind == ir.TWString:
-		return "{}"
 	case isWide(f.Type):
 		return Int128Literal(f.DefInt)
 	case f.DefInt != nil:
@@ -476,7 +472,7 @@ func fieldComment(f *ir.Field) string {
 			FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)))
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		parts = append(parts, fmt.Sprintf("at most %d", f.Type.Size))
 	}
 	if len(parts) == 0 {

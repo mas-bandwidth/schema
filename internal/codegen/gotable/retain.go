@@ -259,7 +259,7 @@ func tableRetainedFloatName(owner string,id uint64)string{const digits="01234567
 
 type tableRetainIn struct {r TableReader;w TableWriter;limit int64}
 func(s *tableRetainIn)room(n int64)bool{return n>=0&&n<=s.limit-s.w.Offset}
-func tableRetainFileMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 12,31,32,33:return 1};return 0}
+func tableRetainFileMinimum(kind uint8)int64{if n:=tableKindBytes(kind);n!=0{return n};switch kind{case 13:return 16;case 14,16:return 10;case 15,30:return 8;case 12,31,32:return 1};return 0}
 func(s *tableRetainIn)ref(zero bool)(uint64,bool){if !s.room(8){return 0,false};v,ok:=s.r.Leb();if !ok{return 0,false};if v==0{if !zero{return 0,false};s.w.Put64(0);return 0,true};id,ok:=s.r.Resolve(v);if !ok||id==0||id>=0xfffffffffffffffd{return 0,false};s.w.Put64(id);return id,true}
 func(s *tableRetainIn)raw(n int64)bool{if !s.room(n)||!s.r.Has(n){return false};s.w.Raw(s.r.Buffer[s.r.Offset:s.r.Offset+n]);s.r.Offset+=n;return !s.w.Overflow}
 func(s *tableRetainIn)framed(kind uint8,n int64,depth int)bool{if !s.room(8){return false};at:=s.w.Offset;s.w.Put64(0);start:=s.w.Offset;if !s.content(kind,n,depth)||s.w.Offset-start>0xffffffff{return false};if !s.w.Measuring{binary.LittleEndian.PutUint32(s.w.Buffer[at:],uint32(s.w.Offset-start))};return true}
@@ -276,7 +276,7 @@ func(s *tableRetainIn)content(kind uint8,n int64,depth int)bool{
 func(s *tableRetainIn)payload(kind uint8,depth int)bool{
  if width:=tableKindBytes(kind);width!=0{return s.raw(width)}
  switch kind{
- case 12,31,32,33:n,ok:=s.r.Leb();if !ok||!s.r.Room(n)||!s.room(tableLebBytes(n)){return false};s.w.PutLeb(n);return s.raw(int64(n))
+ case 12,31,32:n,ok:=s.r.Leb();if !ok||!s.r.Room(n)||!s.room(tableLebBytes(n)){return false};s.w.PutLeb(n);return s.raw(int64(n))
  case 13,14,16:n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(kind,int64(n),depth+1)
  case 15:id,ok:=s.ref(true);if !ok{return false};if id==0{return true};if !s.room(1)||!s.r.Has(1){return false};k:=s.r.Get8();s.w.Put8(k);n,ok:=s.r.Leb();return ok&&s.r.Room(n)&&s.framed(k,int64(n),depth+1)
  case 30:_,ok:=s.ref(true);return ok
@@ -307,7 +307,7 @@ func(s *tableRetainOut)content(kind uint8,n int64,depth int)bool{
  };return s.r.Offset==end
 }
 func(s *tableRetainOut)payload(kind uint8,depth int)bool{if n:=tableKindBytes(kind);n!=0{return s.raw(n)};switch kind{
- case 12,31,32,33:n,ok:=s.r.Leb();if !ok||!s.r.Room(n){return false};s.leb(n);return s.raw(int64(n))
+ case 12,31,32:n,ok:=s.r.Leb();if !ok||!s.r.Room(n){return false};s.leb(n);return s.raw(int64(n))
  case 13,14,16:return s.framed(kind,depth+1)
  case 15:id,ok:=s.ref();if !ok{return false};if id==0{return true};if !s.r.Has(1){return false};k:=s.r.Buffer[s.r.Offset];return s.raw(1)&&s.framed(k,depth+1)
  case 30:_,ok:=s.ref();return ok

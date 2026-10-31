@@ -585,8 +585,6 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		return d.keyed(fv, entry)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return d.text(&fv.Cell, &fv.Count, f, entry)
-	case f.Type.Kind == ir.TWString:
-		return d.wideText(&fv.Cell, &fv.Count, f, entry)
 	case f.Array != ir.ArrayNone:
 		return d.array(fv, entry)
 	case tabletext.UnionOf(f) != nil:
@@ -640,43 +638,6 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 		d.report.Clamped++
 	}
 	cell.Str = raw[:keep]
-	*count = keep
-	return true
-}
-
-// wideText reads a `wstring(N)` on this form (docs/SPEC-TABLES.md §3.3): the
-// length at bits_required( 0, max ), NO align, then SIXTEEN BITS A CODE UNIT.
-// The content rule is kind 33's own (§3): an unpaired surrogate or a zero unit
-// is DAMAGE, checked as the units arrive and before this reader's bound, and
-// a payload longer than the bound clamps without splitting a pair.
-func (d *bitDecoder) wideText(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
-	n, ok := d.r.get(ir.TableMessageBitsRequired(0, entry.Shape.Max))
-	if !ok || !d.r.has(int(n)*16) {
-		d.report.Malformed = true
-		return false
-	}
-	units := make([]uint16, n)
-	for i := range units {
-		u, got := d.r.get(16)
-		if !got {
-			d.report.Malformed = true
-			return false
-		}
-		units[i] = uint16(u)
-	}
-	if !wideValid(units) {
-		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
-		// stream has no defined position to continue from, which is the only
-		// thing that differs from §3's recovery
-		d.report.Malformed = true
-		return false
-	}
-	keep := len(units)
-	if bound := int(f.Type.Size); keep > bound {
-		keep = wideBoundary(units, bound)
-		d.report.Clamped++
-	}
-	cell.Units = units[:keep]
 	*count = keep
 	return true
 }
@@ -1154,8 +1115,6 @@ func (d *bitDecoder) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		return true
 	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes:
 		return d.text(&afv.Cell, &afv.Count, af, entry)
-	case af.Type.Kind == ir.TWString:
-		return d.wideText(&afv.Cell, &afv.Count, af, entry)
 	case af.Array != ir.ArrayNone:
 		return d.array(afv, entry)
 	case tabletext.UnionOf(af) != nil:
@@ -1481,13 +1440,6 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 			return false
 		}
 		return d.r.skip(int(n) * 8)
-	case ir.TableKindWstring:
-		// the length, NO align, then SIXTEEN bits a code unit (§3.3)
-		n, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))
-		if !ok {
-			return false
-		}
-		return d.r.skip(int(n) * 16)
 	case ir.TableKindEscape:
 		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
 		// the one path a later-major writer has on this form (§3.3)

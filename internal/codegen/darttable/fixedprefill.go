@@ -65,10 +65,6 @@ func fixedPrefillField(out []byte, at int64, f *ir.Field) {
 			fixedPutInt(out, at, 4, big.NewInt(n))
 			copy(out[at+fixedCountBytes:at+fixedCountBytes+n], f.DefBytes[:n])
 		}
-	case f.Type.Kind == ir.TWString:
-		// no wstring default rides here: the IR carries a wstring default as
-		// BYTES and this form counts CODE UNITS, so laying one down would be
-		// this backend guessing an encoding. A wstring field prefills empty.
 	default:
 		fixedPrefillElement(out, at, f)
 	}

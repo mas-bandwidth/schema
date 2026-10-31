@@ -185,7 +185,7 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // class this leg carries does not reach, and "" on every field it does: a
 // scalar of any int/uint/float/bits width (128-bit included), a fixed(I, F) or
 // ufixed(I, F) as its raw storage integer (§3, kinds 20–29), a string(N), a
-// bytes(N), a wstring(N) field, arm or map value (§3, kind 33), a *string or
+// bytes(N), a *string or
 // *bytes blob (§2.5), an enum, a table nested by value
 // or pointed at (§2.1, §3.1), an optional ?T (§2.3), an enum-keyed array [E]T
 // (§2.4), a map[K]V (§2.8), a union or array of unions (§2.6), an unbounded
@@ -194,10 +194,6 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {
 	switch {
-	case f.Type.Kind == ir.TWString && (f.Array != ir.ArrayNone || f.Type.Optional || f.KeyEnum != "" || f.Type.Pointer):
-		// wstring(N) rides as a field, an arm and a map value (§2.6, §2.8, §3);
-		// as an element, an optional or a keyed slot it is not carried yet
-		return "wstring(N) as an array element, an optional or an enum-keyed slot is outside the variable class this leg carries (§3)"
 	case f.Type.Optional && (f.Type.Pointer || f.KeyEnum != "" || f.IsMap()):
 		return "optional ?T of this shape is outside the variable class this leg carries (§2.3)"
 	case f.KeyEnum != "":

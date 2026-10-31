@@ -117,34 +117,26 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// at its kind's width (§7.6), and §3.4's fixed form lays both out by the
 	// constant-size table. So a wide unit loses only the block form.
 	wide := ir.TableWideFields(u)
-	// AND WIDE TEXT STILL STANDS BOTH ACCELERATORS DOWN. `wstring(N)` rides a
-	// table under kind 33 (docs/SPEC-TABLES.md §3), which the block row and
-	// the cooked node have not been taught here — but §3.4's fixed form lays
-	// it out at its bound, a length in CODE UNITS and 2N bytes behind it, so
-	// the same scoping applies: the accelerators go, the form stays.
-	text := ir.TableWideTextFields(u)
 	out := map[string][]byte{}
-	if len(text) == 0 {
-		blocks := ir.Blocks(u)
+	blocks := ir.Blocks(u)
+	if len(wide) == 0 {
 		var err error
-		if len(wide) == 0 {
-			out, err = generateBlockFiles(u, blocks)
-			if err != nil {
-				return nil, err
-			}
-		}
-		// A wide unit has no BLOCK form to hang a cursor or the build version
-		// on, so the cook emits both itself.
-		cookBlocks := blocks
-		if len(wide) > 0 {
-			cookBlocks = &ir.BlockUnit{}
-		}
-		cooks, err := generateCookFiles(u, cookBlocks)
+		out, err = generateBlockFiles(u, blocks)
 		if err != nil {
 			return nil, err
 		}
-		maps.Copy(out, cooks)
 	}
+	// A wide unit has no BLOCK form to hang a cursor or the build version on,
+	// so the cook emits both itself.
+	cookBlocks := blocks
+	if len(wide) > 0 {
+		cookBlocks = &ir.BlockUnit{}
+	}
+	cooks, err := generateCookFiles(u, cookBlocks)
+	if err != nil {
+		return nil, err
+	}
+	maps.Copy(out, cooks)
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: emitted for a
 	// unit that declares a fixed table, beside the VARIABLE FORM (form byte 1)
 	// emitted for the unit the variable form owns (below).
@@ -167,14 +159,6 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// The §8 unit registry is a separate, optional Dart library: a card
 	// reader may inspect every declaration, not only the wire closure.
 	maps.Copy(out, generateUnitViewFiles(u))
-	// WIDE TEXT with no fixed form to lay it out in has nothing left to
-	// emit, so it is refused whole and by name. The wide SCALARS no longer
-	// refuse the unit: the variable cook writer carries them (above, §7.6).
-	if len(fixed) == 0 && len(text) > 0 {
-		return nil, fmt.Errorf("the Dart table backend carries wstring(N) on the FIXED form and on no other — %s "+
-			"(docs/SPEC-TABLES.md §3, §3.4): this unit's tables take no fixed form, so there is nothing here to lay it out in",
-			strings.Join(text, ", "))
-	}
 	return out, nil
 }
 

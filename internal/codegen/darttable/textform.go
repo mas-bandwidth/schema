@@ -12,7 +12,7 @@
 // bound is clamped at a code-point boundary and counted — never cut through a
 // multi-byte character. Every function below cites the section it reads.
 //
-// Maps, unions, fixed and enum-keyed arrays, optionals, flags, wstring and the
+// Maps, unions, fixed and enum-keyed arrays, optionals, flags and the
 // wide scalars go through the generic walk in textmore.go. A shared node is
 // "&node" (§16.7).
 package darttable
@@ -188,7 +188,7 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 }
 
 // _jsonText is the ZERO RULE (§16.3, text_holds_zero), one helper for every
-// place the read stores text: a string(N) or wstring(N) value, a *string
+// place the read stores text: a string(N) value, a *string
 // value, a text-list element, a map key. A stored string that decodes to
 // U+0000 refuses the read, because no wire carries a zero in text. A string
 // the read only SKIPS (an unknown key's value) never reaches here.
@@ -662,7 +662,7 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 	g.pf("\tout.raw(': ');\n")
 	switch {
 	case needsGenericText(f):
-		// maps, unions, fixed and keyed arrays, optionals, flags, wstring and
+		// maps, unions, fixed and keyed arrays, optionals, flags and
 		// the wide scalars (§16.2: textmore.go)
 		g.emitJsonValue(f, "v."+name, 1, "\t", st.Name+"."+f.Name)
 	case f.Type.Blob(): // *string rides as a string or null; *bytes as base64 or null (§2.5, §16.2)

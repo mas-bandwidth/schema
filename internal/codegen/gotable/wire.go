@@ -23,9 +23,6 @@ func tableWireRuntime(u *ir.Unit) string {
 const tableIDCapacity = %d
 const tableIDBuckets = %d
 `, n, buckets) + source
-	if len(ir.WideTextFields(u)) > 0 {
-		res += tableWStringSource + tableWStringWriteSource
-	}
 	return res
 }
 
@@ -364,7 +361,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	switch kind {
 	case 17,30:
 		_, ok := r.Leb(); return ok
-	case 12,13,14,16,31,32,33:
+	case 12,13,14,16,31,32:
 		_, ok := r.Body(); return ok
 	case 15:
 		ref, ok := r.Leb()
@@ -490,22 +487,5 @@ func tableUTF8Valid(data []byte) bool {
 func tableUTF8Clamp(data []byte, n int64) int64 {
 	for n > 0 && n < int64(len(data)) && data[n]&0xc0 == 0x80 { n-- }
 	return n
-}
-`
-
-// tableWStringWriteSource is the writer's text rule for wstring(N), the twin
-// of tableUtf16Valid on the caller's own storage (docs/FIXED-FORM-ALGORITHM.md
-// §3.1): the used units are paired UTF-16 with no zero unit. It is spliced in
-// with tableWStringSource, only where the unit declares a wstring.
-const tableWStringWriteSource = `
-func tableUtf16UnitsValid(units []uint16) bool {
- for i:=0;i<len(units);i++ {
-  u:=units[i]
-  if u==0 || u>=0xdc00 && u<=0xdfff {return false}
-  if u>=0xd800 && u<=0xdbff {
-   i++;if i>=len(units) || units[i]<0xdc00 || units[i]>0xdfff {return false}
-  }
- }
- return true
 }
 `

@@ -406,7 +406,7 @@ func skipPayload(c *cursor, kind uint8) bool {
 		}
 		c.off += w
 		return true
-	case ir.TableKindString, ir.TableKindEscape, ir.TableKindNoPayload, ir.TableKindWstring:
+	case ir.TableKindString, ir.TableKindEscape, ir.TableKindNoPayload:
 		n, ok := c.leb()
 		if !ok || n > uint64(len(c.buf)) || !c.has(int(n)) {
 			return false

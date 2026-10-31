@@ -81,7 +81,7 @@ func cookWriteFieldCarried(f *ir.Field, seen map[*ir.Union]bool) bool {
 	switch {
 	case f.IsMap(), f.IsList(), f.Type.TextUnbounded():
 		return false
-	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) && !f.Type.Pointer &&
+	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer &&
 		(f.Array != ir.ArrayNone || f.KeyEnum != ""):
 		return false
 	case f.KeyEnum != "" && (f.KeyEnumRef == nil || f.ArrayBound <= 0):
@@ -355,9 +355,6 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "%sw.put_text(%s, %s, %d, %s);\n", ind, cookAt(base, value.Offset), cookRef(x), f.Type.Size, cookAt(base, pieces[1].Offset))
 		return
-	case f.Type.Kind == ir.TWString:
-		fmt.Fprintf(b, "%sw.put_units(%s, %s, %d, %s);\n", ind, cookAt(base, value.Offset), cookRef(x), f.Type.Size, cookAt(base, pieces[1].Offset))
-		return
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		bound := f.ArrayBound
 		step := cookElementBytes(g.unit, f)
@@ -594,19 +591,6 @@ impl TableRegionWriter<'_> {
         }
         self.data[at as usize..at as usize + bytes.len()].copy_from_slice(bytes);
         self.put(length_at, bytes.len() as u64, 4);
-    }
-
-    /// wstring(N): the used CODE UNITS, each a two-byte scalar in the cook's
-    /// byte order, and the int32 used length in units (§7.2).
-    pub fn put_units(&mut self, at: i64, units: &[u16], bound: usize, length_at: i64) {
-        if units.len() > bound {
-            self.ok = false;
-            return;
-        }
-        for (i, u) in units.iter().enumerate() {
-            self.put(at + 2 * i as i64, *u as u64, 2);
-        }
-        self.put(length_at, units.len() as u64, 4);
     }
 
     /// A reference slot to a table node: the SELF-RELATIVE delta from the

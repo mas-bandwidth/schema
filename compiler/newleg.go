@@ -169,9 +169,6 @@ func ({{TARGET}}) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := ir.RefuseWideTableKinds(u, "{{LANG}}"); err != nil {
 		return nil, err
 	}
-	if err := refuseWideText(u, "{{LANG}}"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "{{LANG}}"); err != nil {
 		return nil, err
 	}

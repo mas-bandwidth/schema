@@ -70,7 +70,6 @@ enum : uint8_t
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
-    kTableFixedTextWide  = 2,
     kTableFixedTextBytes = 3,
 };
 
@@ -358,21 +357,17 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            else if ( (uint32_t) v > p.size ) { v = (int32_t) p.size; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
-                // unit longer than the bound for exactly this. A store, not a
+                // byte longer than the bound for exactly this. A store, not a
                 // call: memset of a runtime length is a call.
-                uint8_t * end = dst + p.aux + (uint32_t) v * unit;
-                end[0] = 0;
-                if ( unit == 2 ) { end[1] = 0; }
+                dst[p.aux + (uint32_t) v] = 0;
             }
             break;
         }
@@ -544,10 +539,8 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else if ( p.op == kTableFixedText )
         {
-            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+            if ( v < 0 || (uint32_t) v > p.size ) { why = length_over_bound; return true; }
         }
     }
     return false;
@@ -609,10 +602,9 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedCount: lands[1] = e.dst + 4u; break;
         case kTableFixedText:
         {
-            const uint32_t unit = ( e.meta == kTableFixedTextWide ) ? 2u : 1u;
             lands[1] = e.dst + 4u;
             lands[2] = e.aux;
-            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : unit );
+            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : 1u );
             break;
         }
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
@@ -826,15 +818,15 @@ inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
 inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-// reserved: neither is a kind a declaration spells, so neither is ever an
-// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
+// the no-payload variant 32, and the ONE kind this form's layout adds, the
+// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// reserved: none is a kind a declaration spells, so none is ever an entry's
+// kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
 inline bool TableFixedKnownKind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return true; }
-    return kind == 32u || kind == 33u || kind == 35u;
+    return kind == 32u || kind == 35u;
 }
 
 // TableFixedCheckEntry validates the subtree rooted at i and answers how many
@@ -931,12 +923,6 @@ inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t dep
         {
             if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
             if ( e.size < 4u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
-            break;
-        }
-        case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-        {
-            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
             break;
         }
         // Every kind of the closed set is either a leaf above or a case here,
@@ -1365,7 +1351,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             TableFixedPush( c, e );
             break;
         }
-        case 12: case 33: // text
+        case 12: // text
         {
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;

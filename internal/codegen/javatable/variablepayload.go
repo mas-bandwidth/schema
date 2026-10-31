@@ -41,8 +41,6 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 		fmt.Fprintf(b, "        %s.put8(%s?1:0);\n", w, expr)
 	case ir.TString:
 		fmt.Fprintf(b, "        %s.putUtf8(%s);\n", w, expr)
-	case ir.TWString:
-		fmt.Fprintf(b, "        %s.putLeb(%s.length*2L);for(int i%d=0;i%d<%s.length;i%d++){char unit%d=%s[i%d];%s.put8(unit%d);%s.put8(unit%d>>>8);}\n", w, expr, depth, depth, expr, depth, depth, expr, depth, w, depth, w, depth)
 	case ir.TBytes:
 		fmt.Fprintf(b, "        %s.putLeb(%s.length+1+TableVariable.lebLen(%s.length));%s.put8(6);%s.putLeb(%s.length);%s.putBytes(%s,0,%s.length);\n", w, expr, expr, w, w, expr, w, expr, expr)
 	case ir.TFloat32, ir.TFloat64:

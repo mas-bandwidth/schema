@@ -35,12 +35,9 @@ func (g *tableGen) emitCookFieldColumns(st *ir.Struct, f *ir.Field) {
 		count = offset + 8
 	case f.Type.TextUnbounded():
 		// the blob slot (docs/SPEC-TABLES.md §2.13.1): eight bytes, no companion
-	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+	case !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		count = pieces[1].Offset
 		element = 1
-		if f.Type.Kind == ir.TWString {
-			element = 2
-		}
 	case f.Array != ir.ArrayNone || f.KeyEnum != "":
 		element /= f.ArrayBound
 		if f.Array == ir.ArrayCounted {
@@ -115,7 +112,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,li
  if f.List||f.Map {return w.container(p,f,dest,live)}
  count:=int32(1);used:=int32(1)
  if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
- if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes"||f.TypeName=="wstring") {
+ if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes") {
   width:=f.CookElemSize;for i := range used {v:=tableJSONGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }
  if f.IsArray {count=f.ArrayBound;if !f.Counted{used=count}}

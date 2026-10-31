@@ -207,9 +207,9 @@ func cookFieldBlocked(f *ir.Field, variable bool) bool {
 	}
 	if variable {
 		switch {
-		case f.IsMap(), f.IsList(), f.Type.Kind == ir.TMap, f.Type.Kind == ir.TWString:
+		case f.IsMap(), f.IsList(), f.Type.Kind == ir.TMap:
 			return true
-		case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+		case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 			return true
 		}
 		if f.Type.Kind == ir.TNamed {
@@ -236,11 +236,11 @@ func cookFieldBlocked(f *ir.Field, variable bool) bool {
 	switch {
 	case f.Type.Optional, f.IsMap(), f.IsList(), f.KeyEnum != "", f.Guard != "":
 		return true
-	case f.Type.Kind == ir.TFixed, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TMap:
+	case f.Type.Kind == ir.TFixed, f.Type.Kind == ir.TMap:
 		return true
 	case f.Type.Kind == ir.TInt && f.Type.Width >= 128:
 		return true
-	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		return true
 	case !variable && f.Type.Pointer:
 		return true

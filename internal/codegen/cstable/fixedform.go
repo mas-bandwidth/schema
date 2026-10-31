@@ -62,8 +62,6 @@ func fixedFieldBytes(f *ir.Field) int64 {
 		payload = fixedCountBytes + f.ArrayBound*fixedElementBytes(f)
 	case f.Type.Kind == ir.TString:
 		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		payload = fixedCountBytes + f.Type.Size
 	default:
@@ -121,7 +119,7 @@ func (g *tableGen) fixedFlatElem(f *ir.Field) bool {
 		}
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
+	case ir.TString, ir.TBytes, ir.TMap:
 		return false
 	}
 	return true
@@ -476,7 +474,7 @@ func (b *fixedRootBuild) countFieldSlots(f *ir.Field) int {
 		} else {
 			n += int(f.ArrayBound) * b.countElementSlots(f)
 		}
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		n += 2
 	default:
 		n += b.countElementSlots(f)
@@ -764,9 +762,6 @@ func (b *fixedRootBuild) pushPayloadBlockOnly(f *ir.Field, owner string, id uint
 	case f.Type.Kind == ir.TString:
 		b.entries = append(b.entries, fixedBlockEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name})
 		b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
-	case f.Type.Kind == ir.TWString:
-		b.entries = append(b.entries, fixedBlockEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name})
-		b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 	default:
 		b.pushElementBlockOnly(f, id, f.Name)
 	}
@@ -1003,37 +998,6 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			op:    2,
 			arg:   arg,
 			meta:  1,
-		})
-		*wireOff += size
-
-	case f.Type.Kind == ir.TWString:
-		lenSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
-			reset:  textLenReset(f, fieldExpr),
-		})
-		bufSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setChars: fmt.Sprintf("(t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (%s != null) c.Slice(0, Math.Min(c.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
-			reset:    bufferReset(f, fieldExpr),
-		})
-		b.entries = append(b.entries, fixedBlockEntry{
-			id:       id,
-			kind:     ir.TableKindWstring,
-			size:     size,
-			children: 0,
-			note:     f.Name,
-		})
-		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 0, %d, 0, 2)", lenSlot-baseSlot, bufSlot-baseSlot))
-		b.addPlan(fixedPlanEntry{
-			src:   fieldWireBase,
-			dst:   lenSlot,
-			size:  2 * f.Type.Size,
-			aux:   bufSlot,
-			guard: guard,
-			op:    2,
-			arg:   arg,
-			meta:  2,
 		})
 		*wireOff += size
 
@@ -1469,29 +1433,6 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		*wireOff += size
 
-	case f.Type.Kind == ir.TWString:
-		lenSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
-			reset:  textLenReset(f, fieldExpr),
-		})
-		bufSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setChars: fmt.Sprintf("(t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (%s != null) c.Slice(0, Math.Min(c.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
-			reset:    bufferReset(f, fieldExpr),
-		})
-		b.addPlan(fixedPlanEntry{
-			src:   fieldWireBase,
-			dst:   lenSlot,
-			size:  2 * f.Type.Size,
-			aux:   bufSlot,
-			guard: guard,
-			op:    2,
-			arg:   arg,
-			meta:  2,
-		})
-		*wireOff += size
-
 	default:
 		b.buildElementSlotsAndPlan(f, fieldExpr, baseSlot, guard, arg, wireOff)
 	}
@@ -1595,11 +1536,6 @@ func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base i
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
-		g.pf("%sif (len_%s > 0) { MemoryMarshal.AsBytes(%s.%s.AsSpan(0, len_%s)).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)

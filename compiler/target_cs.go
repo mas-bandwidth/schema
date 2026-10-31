@@ -27,10 +27,6 @@ func (t csTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) 
 // cstable opens no file and a build ships a reader for every layout the lock
 // records.
 func (csTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Wide text and declared value defaults are carried on both wires.
-	if err := refuseWideText(u, "cs"); err != nil {
-		return nil, err
-	}
 	if err := refuseValueDefaults(u, "cs"); err != nil {
 		return nil, err
 	}
@@ -91,7 +87,6 @@ func csTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]cstable.Fixe
 
 func init() {
 	registerPacketValueDefaultCarrier("cs")
-	registerWideTextCarrier("cs")
 	registerBuiltin(csTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("cs")
 	registerMapCarrier("cs")

@@ -7,7 +7,7 @@ package gotable
 // text in the USED units") and its fix 11 (the CONTENT refuses by name),
 // docs/SPEC-TABLES.md §3.4's text rows, and docs/FIXED-FORM-VERSIONING-TESTS.md.
 //
-// GO/C3, GO/C4 AND GO/C5 ARE READ OFF THE EMITTED SOURCE (tableFixedRuntime,
+// GO/C3 AND GO/C4 ARE READ OFF THE EMITTED SOURCE (tableFixedRuntime,
 // the package-scoped runtime the module carries). GO/R24 IS NOT: a string match
 // over the source cannot bite on a validator that ACCEPTS ill-formed bytes, so
 // t05GoR24 GENERATES the table unit and RUNS a probe against the package-scoped
@@ -36,7 +36,6 @@ func TestFixedRoadmapGoT05Evolution(t *testing.T) {
 	}{
 		{"go/C3", t05GoC3},
 		{"go/C4", t05GoC4},
-		{"go/C5", t05GoC5},
 		{"go/R24", t05GoR24},
 	}
 	for _, tc := range tests {
@@ -125,21 +124,6 @@ func t05GoC4(t *testing.T) {
 	t05Has(t, load, "tableFixedRefuse(report, why)", "the load refuses by the name the run reported (§5.8 row 8)")
 }
 
-// t05GoC5 holds C5 ("wide text code units") to the emitted text op: a
-// `wstring(N)` rides as UTF-16 CODE UNITS, so the cap is `span / 2` and never
-// `span`. §4.5 THE TEXT OP: "unit := 2 when the flavour is WIDE ... cap :=
-// p.span / unit -- the CAP is in UNITS, the SPAN is in BYTES", and "a
-// wstring(64) whose span is 128 bytes clamps at 64".
-func t05GoC5(t *testing.T) {
-	op := t05TextOp(t)
-	refusal := t05Refusal(t)
-	t05Has(t, refusal, "unit := uint32(1)", "the narrow unit is one byte (§4.5 THE TEXT OP)")
-	t05Has(t, refusal, "if p.Meta == tableFixedTextWide {", "the wide flavour selects the unit (§4.5 THE TEXT OP)")
-	t05Has(t, refusal, "unit = 2", "a wstring(N) rides two bytes a code unit (§4.5 THE TEXT OP)")
-	t05Has(t, refusal, "capn := p.Size / unit", "the cap is span/unit, so wstring(64)'s 128-byte span is bounded at 64 (§4.5 THE TEXT OP)")
-	t05Has(t, op, "dst[off] = 0", "the terminator is a STORE of ONE UNIT at the used length (§4.5 THE TEXT OP)")
-}
-
 // t05GoR24 holds R24 to the emitted runtime and load: ill-formed text in the
 // USED units refuses by name (`text_ill_formed`); text is counted in bytes with
 // the unit-specific bound; slack is unspecified on read and not a refusal.
@@ -161,18 +145,13 @@ func t05GoR24(t *testing.T) {
 	}
 	t05Has(t, ill, "case tableFixedTextUTF8:", "the narrow content rule is UTF-8 over the used bytes (§4.5)")
 	t05Has(t, ill, "!utf8.Valid(p[:used])", "UTF-8 validity over the USED bytes, the packet reader's own rule (§4.5, §5.4 fix 11)")
-	t05Has(t, ill, "case tableFixedTextWide:", "the wide content rule is over the used code units (§4.5)")
 	t05Has(t, refusal, "tableFixedTextIllFormed(", "the pre-scan consults the content gate (§5.8)")
-	// (2) TEXT IS COUNTED IN BYTES WITH THE CLAMP IN UNITS: the wire length word
-	// is the payload's own count and the capacity it clamps against is the byte
-	// span over the unit — a byte capacity for string(N), N code units for
-	// wstring(N)'s 2N-byte span (docs/SPEC-TABLES.md §3.4: "the length is in
-	// BYTES and N is a byte capacity" / "the length is in UTF-16 CODE UNITS and
-	// the payload is two bytes each"; §4.5: "unit := (meta == wide) ? 2 : 1;
-	// cap := size / unit").
-	t05Has(t, refusal, "unit := uint32(1)", "R24 a string's unit is one byte, so its cap is its byte span (§3.4)")
-	t05Has(t, refusal, "capn := p.Size / unit", "R24 the cap is the byte span over the unit — bytes narrow, code units wide (§4.5, §3.4)")
-	t05Has(t, refusal, "if v < 0 || uint32(v) > capn", "R24 the wire length word past that unit cap refuses by name (§4.5)")
+	// (2) TEXT IS COUNTED IN BYTES: the wire length word is the payload's own
+	// count and the capacity it clamps against is the byte span
+	// (docs/SPEC-TABLES.md §3.4: "the length is in BYTES and N is a byte
+	// capacity").
+	t05Has(t, refusal, "capn := p.Size", "R24 the cap is the byte span (§4.5, §3.4)")
+	t05Has(t, refusal, "if v < 0 || uint32(v) > capn", "R24 the wire length word past that cap refuses by name (§4.5)")
 	// BYTES is never a content refusal.
 	if strings.Contains(ill, "tableFixedTextBytes") {
 		t.Error("t05: bytes(N) is content-validated; bytes carries no text rule (§4.5)")

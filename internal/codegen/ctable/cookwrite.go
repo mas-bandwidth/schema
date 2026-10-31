@@ -24,11 +24,6 @@ static SCHEMA_UNUSED void table_cook_put128(uint8_t * at,uint64_t lo,uint64_t hi
 }
 static SCHEMA_UNUSED void table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
 { if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
-static SCHEMA_UNUSED void table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
-{
-    int64_t i, count=used<capacity ? used : capacity;
-    for(i=0;i<count;i++) { table_cook_put(at+i*2,source[i],2,order); }
-}
 static SCHEMA_UNUSED void table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
 {
     table_cook_put(raw,table_cook_magic,8,order); table_cook_put(raw+8,version,8,order);
@@ -201,12 +196,8 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	}
 	t := f.Type
 	switch t.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
-		if t.Kind == ir.TWString {
-			g.pf("%stable_cook_units(%s,%s,%s_length,%d,order);\n", ind, at, src, src, t.Size+1)
-		} else {
-			g.pf("%stable_cook_bytes(%s,%s,%s_length,%d);\n", ind, at, src, src, pieces[0].Size)
-		}
+	case ir.TString, ir.TBytes:
+		g.pf("%stable_cook_bytes(%s,%s,%s_length,%d);\n", ind, at, src, src, pieces[0].Size)
 		g.pf("%stable_cook_put(%s+%d,(uint32_t)%s_length,4,order);\n", ind, at, pieces[1].Offset-offset, src)
 	case ir.TBool:
 		g.pf("%stable_cook_put(%s,%s ? 1 : 0,1,order);\n", ind, at, src)

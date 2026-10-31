@@ -381,7 +381,7 @@ int tableMessageEntryEnd(Uint8List bytes, int at, int end) {
     }
     final elem = bytes[p];
     p += 1;
-    if (!tableMessageKnownKind(elem) || elem == 12 || elem == 33) {
+    if (!tableMessageKnownKind(elem) || elem == 12) {
       return -1;
     }
     p = tableMessageShapeEnd(bytes, p, end, elem);
@@ -394,7 +394,7 @@ int tableMessageEntryEnd(Uint8List bytes, int at, int end) {
       }
       final inner = bytes[p];
       p += 1;
-      if (!tableMessageKnownKind(inner) || inner == 12 || inner == 33) {
+      if (!tableMessageKnownKind(inner) || inner == 12) {
         return -1;
       }
     }
@@ -440,7 +440,7 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
     }
     return -1;
   }
-  if (kind == 12 || kind == 33) {
+  if (kind == 12) {
     final n = tableMessageLeb(bytes, at, end);
     return (!n.$3 || n.$1 < 0) ? -1 : n.$2;
   }
@@ -459,7 +459,7 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
-bool tableMessageKnownKind(int kind) => kind <= 33;
+bool tableMessageKnownKind(int kind) => kind <= 32;
 
 /// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
 /// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
@@ -517,7 +517,7 @@ int tableMessageKindWidth(int kind) {
 /// tableMessageSkipField steps over ONE unknown body field's payload by its
 /// kind (docs/SPEC-TABLES.md §3.3), the reference's Skip(kind) rule: a
 /// fixed-width scalar is its width, a reference or a union is a LEB, and a
-/// length-prefixed slice — 12, 13, 14, 16, 31, 32, 33 — is a LEB length then
+/// length-prefixed slice — 12, 13, 14, 16, 31, 32 — is a LEB length then
 /// that many bytes. Answers the offset past the payload, or -1
 /// where the bytes run out or a kind this reader cannot step is named.
 int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
@@ -536,7 +536,6 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 16:
     case 31:
     case 32:
-    case 33:
       final n = tableMessageLeb(bytes, at, end);
       if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
         return -1;

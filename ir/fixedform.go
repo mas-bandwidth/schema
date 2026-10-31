@@ -181,8 +181,6 @@ func TableFixedFieldBytes(f *Field) int64 {
 		payload = TableFixedCountBytes + f.ArrayBound*TableFixedElementBytes(f)
 	case f.Type.Kind == TString:
 		payload = TableFixedCountBytes + f.Type.Size
-	case f.Type.Kind == TWString:
-		payload = TableFixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == TBytes:
 		payload = TableFixedCountBytes + f.Type.Size
 	default:
@@ -289,7 +287,7 @@ func TableFixedFlatType(u *Unit, st *Struct) bool {
 			return false
 		}
 		switch f.Type.Kind {
-		case TString, TWString, TBytes, TMap:
+		case TString, TBytes, TMap:
 			return false
 		}
 		if _, isUnion := f.Type.Ref.(*Union); isUnion {
@@ -314,7 +312,7 @@ func TableFixedFlatElem(u *Unit, f *Field) bool {
 		}
 	}
 	switch f.Type.Kind {
-	case TString, TWString, TBytes, TMap:
+	case TString, TBytes, TMap:
 		return false
 	}
 	return true
@@ -377,7 +375,7 @@ func tableFixedFieldLeafCount(u *Unit, f *Field, normaliseBool bool) int {
 		if fold || boolRun {
 			n = 2
 		}
-	case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
+	case f.Type.Kind == TString, f.Type.Kind == TBytes:
 		n = 1
 	}
 	if f.Type.Optional {
@@ -528,9 +526,6 @@ func tableFixedWalkPayload(w *tableFixedWalk, owner string, f *Field, id uint64,
 	case f.Type.Kind == TString:
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindString, Size: size, Children: 0, Note: f.Name},
 			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Aux: tableFixedTerm1(owner, f.Name), Meta: 1})
-	case f.Type.Kind == TWString:
-		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindWstring, Size: size, Children: 0, Note: f.Name},
-			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Aux: tableFixedTerm1(owner, f.Name), Meta: 2})
 	default:
 		tableFixedWalkElement(w, f, id, f.Name, tableFixedTerm1(owner, f.Name))
 	}
@@ -597,9 +592,6 @@ func tableFixedWalkArm(w *tableFixedWalk, unionName string, v UnionVariant, armI
 	case f.Type.Kind == TString:
 		w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindString, Size: size, Children: 0, Note: v.Name},
 			TableFixedDstSpec{Dst: term(v.Name + ".value_length"), Aux: term(v.Name + ".value"), Meta: 1})
-	case f.Type.Kind == TWString:
-		w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindWstring, Size: size, Children: 0, Note: v.Name},
-			TableFixedDstSpec{Dst: term(v.Name + ".value_length"), Aux: term(v.Name + ".value"), Meta: 2})
 	default:
 		tableFixedWalkElement(w, f, armID, v.Name, term(v.Name))
 	}
@@ -826,7 +818,7 @@ func TableFixedMembers(u *Unit, st *Struct) []TableFixedMember {
 		pieces := FieldPieces(u, f, fl.Offset)
 		names := []string{f.Name}
 		switch {
-		case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
+		case f.Type.Kind == TString, f.Type.Kind == TBytes:
 			names = append(names, f.Name+"_length")
 		case f.Array == ArrayCounted:
 			names = append(names, f.Name+"_count")
@@ -1006,8 +998,6 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, normal
 		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, normaliseBool, out)
 	case f.Type.Kind == TString:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 1, out)
-	case f.Type.Kind == TWString:
-		tableFixedTextLeaf(u, st, f, base, dst, 2*f.Type.Size, 2, out)
 	case f.Type.Kind == TBytes:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 3, out)
 	default:
@@ -1077,9 +1067,6 @@ func tableFixedArmLeaves(u *Unit, v UnionVariant, src, dst int64, note string, n
 	case f.Type.Kind == TString:
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
 			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 1, Note: note})
-	case f.Type.Kind == TWString:
-		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
-			Size: 2 * f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 2, Note: note})
 	case f.Type.Kind == TBytes:
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
 			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 3, Note: note})
@@ -1440,10 +1427,9 @@ func TableFixedFormRoots(u *Unit) []*Struct {
 //   - 65536 is the WIRE's CEILING. Past it the table DOES NOT CARRY THE FIXED
 //     FORM at all — no conforming reader would decode such a record (§3.4) — and
 //     the compiler says so by name. It keeps form 1, which it never lost. This
-//     is not a refusal of the unit: §12.1's render frame and §2.8's wide text
-//     are legitimate fixed tables of megabytes that were never form-3 tables,
-//     and refusing the unit over a form it does not use would be refusing the
-//     wrong thing.
+//     is not a refusal of the unit: §12.1's render frame is a legitimate
+//     fixed table of megabytes that was never a form-3 table, and refusing the
+//     unit over a form it does not use would be refusing the wrong thing.
 //
 // `limit` is the HARD refusal bound in bytes and it is OFF by default (zero): a
 // project that wants the advisory enforced as a gate sets `--fixed-record-limit
@@ -1754,7 +1740,7 @@ func TableFixedHasWriteBound(u *Unit) bool {
 			switch {
 			case f.Array == ArrayCounted:
 				return true
-			case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
+			case f.Type.Kind == TString, f.Type.Kind == TBytes:
 				return true
 			}
 			if f.Type.Kind != TNamed {
@@ -1777,7 +1763,7 @@ func TableFixedHasWriteBound(u *Unit) bool {
 					switch {
 					case v.F.Array == ArrayCounted:
 						return true
-					case v.F.Type.Kind == TString, v.F.Type.Kind == TWString, v.F.Type.Kind == TBytes:
+					case v.F.Type.Kind == TString, v.F.Type.Kind == TBytes:
 						return true
 					}
 					if s2, ok := v.F.Type.Ref.(*Struct); ok && v.F.Type.Kind == TNamed && has(s2) {
@@ -1998,10 +1984,9 @@ func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 		return true
 	}
 	// TEXT CARRIES THE ONE CONTENT RULE THE WIRE HAS (§3, §4): a `string(N)`'s
-	// used bytes are well-formed UTF-8 with no zero among them, and a
-	// `wstring(N)`'s used units are paired UTF-16 with no zero unit. `bytes(N)`
-	// has no content rule — it is bytes.
-	if f.Type.Kind == TString || f.Type.Kind == TWString {
+	// used bytes are well-formed UTF-8 with no zero among them. `bytes(N)` has
+	// no content rule — it is bytes.
+	if f.Type.Kind == TString {
 		return true
 	}
 	return f.Type.Kind == TBits && int64(f.Type.Width) < 8*TableFixedStorageBytes(f.Type)

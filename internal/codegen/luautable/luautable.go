@@ -447,7 +447,7 @@ func unitArmBound(f *ir.Field) int64 {
 	if f.Array != ir.ArrayNone {
 		return f.ArrayBound
 	}
-	if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString {
 		return f.Type.Size
 	}
 	return 0
@@ -954,12 +954,12 @@ func valueDesc(g *luau.Gen, f *ir.Field, def bool, wire bool) string {
 		return fmt.Sprintf("s = \"ptr\", t = %q", t.Name)
 	case t.TextUnbounded():
 		return "s = \"text\""
-	case t.Kind == ir.TString || t.Kind == ir.TWString:
+	case t.Kind == ir.TString:
 		d := ""
 		if def {
 			d = fmt.Sprintf(", def = %q", string(f.DefBytes))
 		}
-		return fmt.Sprintf("s = \"str\", bound = %d, wide = %v%s", t.Size, t.Kind == ir.TWString, d)
+		return fmt.Sprintf("s = \"str\", bound = %d, wide = %v%s", t.Size, d)
 	case t.Kind == ir.TBytes:
 		d := ""
 		if def {

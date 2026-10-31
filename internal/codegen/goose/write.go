@@ -70,8 +70,6 @@ func (w *wgen) emitWriteScalar(f *ir.Field, expr, length, ind string) error {
 		w.Pf("%sif %s < 0 || %s > %d { %s }\n", ind, length, length, t.Size, refuseRange)
 		w.Pf("%sschema_rt::wire_bits(s, l, %s as! u32, %d);\n", ind, length, bits)
 		w.streamCall(ind, "%sserialize_bytes(s, %s[0..%s]);\n", ind, expr, length)
-	case ir.TWString:
-		w.emitWriteWString(f, expr, length, ind)
 	case ir.TFixed:
 		return w.emitWriteFixed(f, expr, ind)
 	case ir.TInt:
@@ -209,20 +207,6 @@ func (w *wgen) emitWriteCompressed(f *ir.Field, expr, ind string) {
 	delta := float32(f.FMax) - min32
 	w.Pf("%sif !serialize_float_bits_are_finite(serialize_f32_bits(%s)) { return SERIALIZE_ERROR_NON_FINITE_FLOAT; } // NaN and the infinities are not values of the type (SPEC §4.3)\n", ind, expr)
 	w.streamCall(ind, "%sserialize_compressed_float_precomputed(s, %s, %d, %d, %s, %s);\n", ind, expr, steps, bits, floatLit32(delta), floatLit32(min32))
-}
-
-// emitWriteWString writes wide text (SPEC §4.12): the length in [0, N], then
-// each UTF-16 code unit in its own 32-bit group. A zero unit is refused;
-// surrogate pairing is the reader's refusal.
-func (w *wgen) emitWriteWString(f *ir.Field, expr, length, ind string) {
-	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size))
-	w.Pf("%sif %s < 0 || %s > %d { %s }\n", ind, length, length, f.Type.Size, refuseRange)
-	w.Pf("%sschema_rt::wire_bits(s, l, %s as! u32, %d);\n", ind, length, bits)
-	i := w.tmp("unit")
-	w.Pf("%sfor %s in %s {\n", ind, i, length)
-	w.Pf("%s    if %s[%s] == 0 { %s } // an interior null is not text (SPEC §4.12)\n", ind, expr, i, refuseRange)
-	w.Pf("%s    schema_rt::wire_bits(s, l, %s[%s], 32);\n", ind, expr, i)
-	w.Pf("%s}\n", ind)
 }
 
 // ---- fixed point and 128-bit integers ---------------------------------------

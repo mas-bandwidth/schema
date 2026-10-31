@@ -549,7 +549,7 @@ func (g *gen) emitStruct(d *ir.Struct) {
 func zeroDerivable(fields []*ir.Field) bool {
 	for _, f := range fields {
 		switch {
-		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			if f.Type.Size > 32 {
 				return false
 			}
@@ -630,7 +630,7 @@ func (g *gen) emitDefaultImpl(name string, fields []*ir.Field) {
 // emitZeroInit writes one field's zero-form struct-literal entries.
 func (g *gen) emitZeroInit(f *ir.Field, ind string) {
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s: [0; %s],\n", ind, f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"))
 		g.pf("%s%s_length: 0,\n", ind, f.Name)
 	case f.Array != ir.ArrayNone:
@@ -704,7 +704,7 @@ func storageFieldCount(fields []*ir.Field) int {
 	n := 0
 	for _, f := range fields {
 		n++
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString || f.Array == ir.ArrayCounted {
+		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted {
 			n++
 		}
 	}
@@ -811,9 +811,6 @@ func (g *gen) emitStorageField(f *ir.Field) {
 	typ := g.rustFieldType(f.Type)
 
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.pf("    pub %s: [u16; %s], // UTF-16 code units (SPEC §4.12)\n", f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"))
-		g.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    pub %s: [u8; %s], // string(%s): max length, used length beside it (SPEC §4.7)\n",
 			f.Name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"), ir.RenderExpr(f.Type.SizeExpr))

@@ -80,8 +80,6 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};kept:=tableUTF8Clamp(text,min(int64(n),int64(%d)));if kept<int64(n){r.Report.Clamped++};clear(%s[:]);copy(%s[:],text[:kept]);%sLength=int32(kept)}\n", ind, entry, bad, bad, bad, f.Type.Size, expr, expr, expr)
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};kept:=min(n,uint64(%d));if kept<n{r.Report.Clamped++};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(kept)]);%sLength=int32(kept)}\n", ind, entry, bad, bad, f.Type.Size, expr, expr, expr)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||int64(n)*16>int64(len(r.Bits.Buffer))*8-r.Bits.Offset{%s};kept:=min(n,uint64(%d));if kept<n{r.Report.Clamped++};clear(%s[:]);var high bool;for i := range n {v,_:=r.Bits.Get(16);if v==0||v>=0xdc00&&v<=0xdfff&&!high||high&&(v<0xdc00||v>0xdfff){%s};high=v>=0xd800&&v<=0xdbff;if i<kept {%s[i]=uint16(v)}};if high{%s};if kept>0&&%s[kept-1]>=0xd800&&%s[kept-1]<=0xdbff {kept--};%sLength=int32(kept)}\n", ind, entry, bad, f.Type.Size, expr, bad, expr, bad, expr, expr, expr)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):

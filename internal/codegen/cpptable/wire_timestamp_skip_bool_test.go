@@ -18,7 +18,7 @@ import (
 func TestWireSkipCarriesTheTimestampKind(t *testing.T) {
 	t.Parallel()
 	u := &ir.Unit{Package: "bench"}
-	src := tablePrimitives("bench", false, false, false, false, false, widenCensus{}, 64, u)
+	src := tablePrimitives("bench", false, false, false, false, widenCensus{}, 64, u)
 	want := "case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;"
 	if !strings.Contains(src, want) {
 		t.Errorf("the emitted TableReader::skip does not step over a kind 36 timestamp by its eight bytes: want %q", want)

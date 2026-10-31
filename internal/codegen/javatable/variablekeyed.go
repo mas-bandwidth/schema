@@ -32,8 +32,6 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 	switch f.Type.Kind {
 	case ir.TString:
 		return expr + ".equals(" + variableDefault(f) + ")"
-	case ir.TWString:
-		return expr + ".length==0"
 	case ir.TBytes:
 		return "java.util.Arrays.equals(" + expr + "," + variableDefault(f) + ")"
 	case ir.TFloat32:

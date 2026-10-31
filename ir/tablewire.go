@@ -117,10 +117,11 @@ const (
 	TableKindEnum      = 30
 	TableKindEscape    = 31
 	TableKindNoPayload = 32
-	// kind 33 is WIDE TEXT, the table half of `wstring(N)` (docs/SPEC-TABLES.md
-	// §3): on the message form its length rides at bits_required(0, max), NO
-	// align, and SIXTEEN bits a code unit (§3.3).
-	TableKindWstring = 33
+	// KIND 33 IS RETIRED AND HELD BY NAME (docs/SPEC-TABLES.md §3): wide text
+	// is not part of schema, text is UTF-8 `string`, and 33 is never reused.
+	// No writer emits it, and a reader of this major meets it only as damage,
+	// exactly as it meets 34.
+	TableKindRetiredWstring = 33
 	// KIND 34 IS RESERVED BY NAME FOR float16 AND THE RESERVATION IS OF THE
 	// NAME AND NOTHING ELSE (docs/SPEC-TABLES.md §3): not part of this major,
 	// emitted by no writer, and met by a reader of this major only as damage.
@@ -189,7 +190,7 @@ func TableWireElemKind(f *Field) int {
 // canonical LEB128 they frame, which the reader checks against the reference
 // it read rather than against a constant.
 func ArmWireFixedWidth(f *Field) int {
-	if f == nil || f.Array != ArrayNone || f.Type.Kind == TString || f.Type.Kind == TWString || f.Type.Kind == TBytes {
+	if f == nil || f.Array != ArrayNone || f.Type.Kind == TString || f.Type.Kind == TBytes {
 		return 0
 	}
 	if f.Type.Pointer {
@@ -282,13 +283,6 @@ func TableWireIds(u *Unit) []uint64 {
 	return out
 }
 
-// WstringWireTypeId is the third RESERVED node type id the message form's
-// announcement carries (docs/SPEC-TABLES.md §3.3): the same hash a table's
-// name takes, over the keyword `wstring`, which no table can be named. The
-// three blob ids ride in the announcement whether or not the unit declares a
-// blob, so this one is a constant of the rule rather than of a declaration.
-var WstringWireTypeId = TableWireId("wstring")
-
 // TableBuildVersionWireId is the RESERVED id the ANNOUNCEMENT's one required
 // field rides under (docs/SPEC-TABLES.md §3.3), and the second id the language
 // holds back (§5, §11), beside the node table's [TableNodeWireId]. A reserved
@@ -325,9 +319,8 @@ const (
 // the order the projection renders it and each record's fields in the order
 // the projection renders them, then each enum's variants and each union's arms
 // in that same order, then the TAIL the projection does not name: the
-// reserved node-table id, the three blob type ids as `bytes`, `string`,
-// `wstring`, and every table's own name id in the projection's sorted record
-// order.
+// reserved node-table id, the two blob type ids as `bytes` then `string`,
+// and every table's own name id in the projection's sorted record order.
 //
 // An ENTRY IS A TRIPLE, an id beside a kind beside a shape, and a triple
 // already placed is never placed twice. ONE NAME MAY TAKE TWO SLOTS: a unit
@@ -341,7 +334,7 @@ const (
 // slice's index 0.
 //
 // The tail is UNCONDITIONAL: a unit with no pointer announces the node-table
-// id and the three blob ids anyway, so that an ordinary edit only ever grows
+// id and the two blob ids anyway, so that an ordinary edit only ever grows
 // the tail at its end and never reshuffles a slot a generated field header
 // carries as a constant.
 func TableVocabulary(u *Unit) []TableVocabularyEntry {
@@ -415,7 +408,6 @@ func TableVocabulary(u *Unit) []TableVocabularyEntry {
 	name(TableNodeWireId)
 	name(BytesWireTypeId)
 	name(StringWireTypeId)
-	name(WstringWireTypeId)
 	for _, member := range names {
 		// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S, and
 		// its name is generated: it is reached only through the map that

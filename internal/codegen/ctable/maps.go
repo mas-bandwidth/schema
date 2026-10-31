@@ -22,7 +22,7 @@ func (g *tableGen) mapKeyType(f *ir.Field) string {
 
 func mapPair(f *ir.Field) bool {
 	v := ir.MapValueField(f)
-	return v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TWString || v.Type.Kind == ir.TBytes)
+	return v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TBytes)
 }
 
 func (g *tableGen) mapValueType(f *ir.Field) string {

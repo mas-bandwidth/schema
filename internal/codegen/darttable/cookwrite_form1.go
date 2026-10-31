@@ -119,7 +119,7 @@ func form1CookField(f *ir.Field) bool {
 		if f.KeyEnum == "" && f.Array != ir.ArrayCounted && f.Array != ir.ArrayFixed {
 			return false
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 			return false
 		}
 		// an ARRAY OF UNIONS (§2.6, §3) is carried element by element: each

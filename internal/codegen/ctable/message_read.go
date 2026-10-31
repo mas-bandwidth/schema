@@ -82,10 +82,9 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
  case 15:
   if(!table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && table_message_skip_deeper(r,entry));
- case 12:case 33:
-  if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max)))return 0;
-  if(e->kind==12 && !table_bit_align_read(&r->bits))return 0;
-  return table_message_skip_run(r,n,e->kind==12?8:16);
+ case 12:
+  if(!table_bit_get(&r->bits,&n,table_bits_required(0,e->max))||!table_bit_align_read(&r->bits))return 0;
+  return table_message_skip_run(r,n,8);
  case 31:
   if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
   return table_message_skip_run(r,n,8);
@@ -278,14 +277,11 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 		g.emitMessageSequenceRead(f, dst, e, ind)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.messageReadElement(f, dst, e, ind)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		width := "table_bits_required(0," + e + "->max)"
 		bits := 8
 		if f.Type.Kind == ir.TBytes {
 			width = "table_bits_required(" + e + "->min," + e + "->max)"
-		}
-		if f.Type.Kind == ir.TWString {
-			bits = 16
 		}
 		g.pf("%s{uint64_t n,kept;if(!table_bit_get(&r->bits,&n,%s))goto malformed;\n", ind, width)
 		if bits == 8 {

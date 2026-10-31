@@ -149,7 +149,7 @@ func (g *gen) emitInitFunction(st *ir.Struct) {
 func (g *gen) emitInitField(f *ir.Field, path, ind string) {
 	name := path + "." + MemberName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
 		g.emitByteDefault(f, name, ind)
 	case f.Array != ir.ArrayNone:
@@ -328,7 +328,7 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
 	name := "value." + MemberName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s.fill(0);\n%s%sLength = 0;\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed && isClassRef(f.Type.Ref) {
@@ -642,8 +642,6 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		scratch := g.numScratch()
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
-	case ir.TWString:
-		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a pre-allocated buffer (SPEC §4.7),
@@ -892,8 +890,6 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		scratch := g.numScratch()
 		g.call(ind, fmt.Sprintf("stream.serializeDouble(%s)", scratch), "")
 		g.pf("%s%s = %s.value;\n", ind, name, scratch)
-	case ir.TWString:
-		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// the bool is checked BEFORE the slice: a hostile length never
 		// reaches subarray (a successful ranged read guarantees [0, N])

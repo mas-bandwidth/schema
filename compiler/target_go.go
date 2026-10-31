@@ -36,10 +36,6 @@ func (goTarget) GenerateLineage(u *ir.Unit, opts Options, lineage *FixedLineage)
 	if err != nil {
 		return nil, err
 	}
-	// Wide text is carried by both packet and table surfaces.
-	if err := refuseWideText(u, "go"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "go"); err != nil {
 		return nil, err
 	}
@@ -108,5 +104,4 @@ func init() {
 	valueDefaultTargets = append(valueDefaultTargets, "go")
 	wasRowTargets = append(wasRowTargets, "go")
 	registerPacketValueDefaultCarrier("go")
-	registerWideTextCarrier("go")
 }

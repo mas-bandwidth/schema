@@ -431,7 +431,7 @@ func fieldMembers(f *ir.Field) []string {
 	name := Member(f)
 	out := []string{name}
 	switch {
-	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		out = append(out, name+"Length")
 	case f.Array == ir.ArrayCounted:
 		out = append(out, name+"Count")
@@ -444,9 +444,6 @@ func fieldMembers(f *ir.Field) []string {
 // through [Module.Init].
 func emitFieldInit(m *Module, f *ir.Field, target, ind string) {
 	switch {
-	case f.Array == ir.ArrayNone && f.Type.Kind == ir.TWString:
-		m.Printf("%s%s = array(%d, 0); // wstring(%d): UTF-16 code units, used length beside it (SPEC §4.12)\n", ind, target, f.Type.Size, f.Type.Size)
-		m.Printf("%s%sLength = 0;\n", ind, target)
 	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		what := "string"
 		if f.Type.Kind == ir.TBytes {

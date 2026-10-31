@@ -183,15 +183,6 @@ func (g *gen) writeScalar(val, length string, f *ir.Field, ind string) error {
 		g.pf("%sNUM.value = %s\n", ind, length)
 		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", t.Size), "")
 		g.call(ind, fmt.Sprintf("stream:serializeBytes(%s, 0, %s)", val, length), "align, then the used bytes (SPEC §4.7)")
-	case ir.TWString:
-		g.refuse(ind, fmt.Sprintf("not isInt(%s, 0, %d) or buffer.len(%s) < %s * 2 or not validWide(%s, %s)", length, t.Size, val, length, val, length),
-			"UTF-16, no zero unit, surrogates paired (SPEC §4.12)")
-		g.pf("%sNUM.value = %s\n", ind, length)
-		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", t.Size), "the length, no alignment (SPEC §4.12)")
-		g.pf("%sfor u = 0, %s - 1 do\n", ind, length)
-		g.pf("%s\tNUM.value = buffer.readu16(%s, u * 2)\n", ind, val)
-		g.call(ind+"\t", "stream:serializeBits(NUM, 32)", "one 32-bit group per code unit")
-		g.pf("%send\n", ind)
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
@@ -508,15 +499,6 @@ func (g *gen) readScalar(val, length string, f *ir.Field, ind string) error {
 		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", t.Size), "the length guards the payload (SPEC §6.3)")
 		g.pf("%s%s = NUM.value\n", ind, length)
 		g.call(ind, fmt.Sprintf("stream:serializeBytes(%s, 0, %s)", val, length), "")
-	case ir.TWString:
-		g.call(ind, fmt.Sprintf("stream:serializeInt(NUM, 0, %d)", t.Size), "the length bounds the loop (SPEC §4.12)")
-		g.pf("%s%s = NUM.value\n", ind, length)
-		g.pf("%sfor u = 0, %s - 1 do\n", ind, length)
-		g.call(ind+"\t", "stream:serializeBits(NUM, 32)", "")
-		g.refuse(ind+"\t", "NUM.value > 0xFFFF", "a group above 0xFFFF is not a code unit (SPEC §4.12)")
-		g.pf("%s\tbuffer.writeu16(%s, u * 2, NUM.value)\n", ind, val)
-		g.pf("%send\n", ind)
-		g.refuse(ind, fmt.Sprintf("not validWide(%s, %s)", val, length), "no zero unit, surrogates paired (SPEC §4.12)")
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:

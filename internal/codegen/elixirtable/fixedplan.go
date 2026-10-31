@@ -130,7 +130,7 @@ func fixedFlatField(f *ir.Field) bool {
 		return false
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
+	case ir.TString, ir.TBytes, ir.TMap:
 		return false
 	}
 	if f.Type.Kind == ir.TNamed {

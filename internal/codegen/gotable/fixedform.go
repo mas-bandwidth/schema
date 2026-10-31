@@ -92,8 +92,6 @@ func fixedFieldBytes(f *ir.Field) int64 {
 		payload = fixedCountBytes + f.ArrayBound*fixedElementBytes(f)
 	case f.Type.Kind == ir.TString:
 		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		payload = fixedCountBytes + f.Type.Size
 	default:
@@ -293,9 +291,6 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id 
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
 			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, fixedDstArg(1, f.Deprecated)))
-	case f.Type.Kind == ir.TWString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			dstGo(g.offGo(owner, member(f)+"Length"), "", g.offGo(owner, member(f)), 0, fixedDstArg(2, f.Deprecated)))
 	default:
 		g.fixedWalkElement(w, f, id, f.Name, g.offGo(owner, member(f)), f.Deprecated)
 	}
@@ -555,7 +550,7 @@ func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
 		n = int(f.ArrayBound) * per
 	case f.Array == ir.ArrayCounted:
 		n = 1 + int(f.ArrayBound)*per
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		n = 1
 	}
 	if f.Type.Optional {
@@ -621,8 +616,6 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedTextLeaf(st, f, base, f.Type.Size, 1)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedTextLeaf(st, f, base, 2*f.Type.Size, 2)
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedTextLeaf(st, f, base, f.Type.Size, 3)
 	default:
@@ -745,8 +738,6 @@ func (g *tableGen) emitFixedArmLeaves(v ir.UnionVariant, unionName, src, dst str
 		g.emitFixedArmLoop(f, src+" + "+strconv.FormatInt(fixedCountBytes, 10), valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Type.Kind == ir.TString:
 		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, goname.Member(v.Name), f.Type.Size, 1)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, goname.Member(v.Name), 2*f.Type.Size, 2)
 	case f.Type.Kind == ir.TBytes:
 		g.emitFixedArmTextLeaf(ind, src, dst, valueDst, unionName, goname.Member(v.Name), f.Type.Size, 3)
 	default:
@@ -855,10 +846,6 @@ func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
 		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%sfor %s := uint32(0); %s < min(uint32(%s.%sLength), %d); %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s.%s[%s])\n%s}\n",
-			ind, fixedLoopVar(depth), fixedLoopVar(depth), val, member(f), f.Type.Size, fixedLoopVar(depth), ind, dest, fixedLoopVar(depth), val, member(f), fixedLoopVar(depth), ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
 		g.pf("%scopy(%s[4:], %s.%s[:min(uint32(%s.%sLength), %d)])\n", ind, dest, val, member(f), val, member(f), f.Type.Size)
@@ -1016,11 +1003,6 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, dest, arm string, depth,
 	case f.Type.Kind == ir.TString:
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
 		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
-	case f.Type.Kind == ir.TWString:
-		loop := fixedLoopVar(depth)
-		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
-		g.pf("%sfor %s := uint32(0); %s < min(uint32(%sLength), %d); %s++ {\n%s\ttableFixedPut16(%s[4+%s*2:], %s[%s])\n%s}\n",
-			ind, loop, loop, arm, f.Type.Size, loop, ind, dest, loop, arm, loop, ind)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%stableFixedPut32(%s, uint32(%sLength))\n", ind, dest, arm)
 		g.pf("%scopy(%s[4:], %s[:min(uint32(%sLength), %d)])\n", ind, dest, arm, arm, f.Type.Size)
@@ -1516,7 +1498,7 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 		return ir.TableFixedClampNeededField(f)
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		return true
 	}
 	return ir.TableFixedClampNeededField(f)
@@ -1751,10 +1733,6 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int, pas
 				g.pf("%sif uint32(%sLength) > %d || !tableFixedUTF8Ok(%s[:%sLength]) { return false }\n",
 					ind, expr, f.Type.Size, expr, expr)
 			}
-			return
-		case ir.TWString:
-			g.pf("%sif %sLength < 0 || %sLength > %d || tableFixedUnitsIllFormed(%s[:%sLength]) { return false }\n",
-				ind, expr, expr, f.Type.Size, expr, expr)
 			return
 		case ir.TBytes:
 			g.pf("%sif %sLength < 0 || %sLength > %d { return false }\n", ind, expr, expr, f.Type.Size)

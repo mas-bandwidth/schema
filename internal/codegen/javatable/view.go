@@ -138,7 +138,7 @@ func viewArmBound(f *ir.Field) int64 {
 		return 0
 	case f.Array != ir.ArrayNone:
 		return f.ArrayBound
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		return f.Type.Size
 	}
 	if f.Array != ir.ArrayNone {
@@ -696,7 +696,7 @@ func cookedPlace(u *ir.Unit, st *ir.Struct, f *ir.Field) fieldPlace {
 		return p
 	}
 	pieces := ir.FieldPieces(u, f, fl.Offset)
-	text := !f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
+	text := !f.Type.Pointer && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString)
 	p.isArray = f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Pointer) || f.KeyEnum != ""
 	p.counted = f.Array == ir.ArrayCounted || text
 	p.offset = pieces[0].Offset
@@ -742,7 +742,7 @@ func fieldCapacity(f *ir.Field) int64 {
 		return f.ArrayBound
 	case f.Type.Pointer:
 		return 0
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return f.Type.Size
 	}
 	return 0

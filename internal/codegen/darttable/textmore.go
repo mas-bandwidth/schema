@@ -4,7 +4,7 @@
 // arm's name; None is {}; a payload-free arm is null), arrays of unions and
 // fixed positional arrays (a JSON array), enum-keyed arrays (§2.4, an object
 // keyed by variant name, every slot), optional fields (§2.3, omitted when
-// absent), flags (a list of the set bits' names), wstring(N) (a string) and
+// absent), flags (a list of the set bits' names) and
 // the wide scalars (§15, §16.2: a 128-bit integer as its decimal integer, a
 // fixed value as the shortest exact decimal in whole units with at least one
 // fractional digit). The spellings are internal/tabletext write.go's and the
@@ -29,7 +29,7 @@ import (
 // needsGenericText reports whether a field's text goes through the generic
 // walk below rather than the card-class emitters in textform.go.
 func needsGenericText(f *ir.Field) bool {
-	return f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
+	return f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed ||
 		isWide(f) || f.Type.Optional || isFlags(f)
 }
 
@@ -404,23 +404,6 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r) {
   return null;
 }
 
-// _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
-// clamped at its bound in CODE UNITS and never through a surrogate pair.
-String _jsonWStringField(dynamic val, int bound, TableTextReport r) {
-  if (val is! String) {
-    r.kindMismatch++;
-    return '';
-  }
-  if (_jsonText(val).length <= bound) return val;
-  var keep = bound;
-  if (keep > 0) {
-    final u = val.codeUnitAt(keep - 1);
-    if (u >= 0xD800 && u <= 0xDBFF) keep--;
-  }
-  r.clamped++;
-  return val.substring(0, keep);
-}
-
 List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f) {
   final out = <T>[];
   if (val is! List) {
@@ -694,7 +677,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%sout.raw(_jsonWide(%s, %d, %v));\n", ind, expr, f.Type.FracBits, k == ir.TableKindI128 || k == ir.TableKindU128)
 	case isFlags(f):
 		g.pf("%s%s(out, %s, %s);\n", ind, flagsFn(flagsRef(f), "ToJson"), expr, depthExpr(d))
-	case f.Type.Kind == ir.TWString, f.Type.Kind == ir.TString:
+	case f.Type.Kind == ir.TString:
 		g.pf("%sout.raw(_jsonString(%s));\n", ind, expr)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sout.raw(_jsonString(base64Encode(latin1.encode(%s))));\n", ind, expr)
@@ -774,8 +757,6 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int) string {
 		return fmt.Sprintf("_jsonWideField(%s, r, %d, %v, %s, %s, %s)", val, f.Type.FracBits, ir.TableKindSigned(wideKind(f)), lo, hi, g.wideDefault(singleOf(f)))
 	case isFlags(f):
 		return fmt.Sprintf("%s(%s, r)", flagsFn(flagsRef(f), "FromJson"), val)
-	case f.Type.Kind == ir.TWString:
-		return fmt.Sprintf("_jsonWStringField(%s, %d, r)", val, f.Type.Size)
 	case f.Type.Kind == ir.TString:
 		return fmt.Sprintf("_jsonStringField(%s, %d, r)", val, f.Type.Size)
 	case f.Type.Kind == ir.TBytes:

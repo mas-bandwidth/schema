@@ -205,7 +205,7 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 // which no wire can spell (gotable emitStorageCheck).
 func (m *msgGen) storageCheck(f *ir.Field, expr, ind string) {
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		m.pf("%sif %s_length < 0 || %s_length > %d { return false; }\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
 		m.pf("%sif %s_count < 0 || %s_count > %d { return false; }\n", ind, expr, expr, f.ArrayBound)
@@ -225,7 +225,7 @@ func (m *msgGen) rides(f *ir.Field, expr, dexpr, ind string) string {
 		return probe + ".bits > TABLE_MESSAGE_REF_BITS as u64"
 	}
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		// TEXT AND BYTES RIDE WHEN NON-EMPTY, declared default or not: the
 		// C++ reference's rule (cpptable messagecodec.go, `value.x_length >
 		// 0`) and the repository's codec's (tablewire messageencode.go,
@@ -317,8 +317,6 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 		m.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
 		m.pf("%sw.put(%s_length as u64, %d);\n%sw.raw(&%s[..%s_length as usize]);\n", ind, expr, ir.TableMessageCountBits(entry.Shape), ind, expr, expr)
-	case f.Type.Kind == ir.TWString:
-		m.pf("%sw.put(%s_length as u64, %d);\n%sfor i in 0..(%s_length as usize) { w.put(%s[i] as u64, 16); }\n", ind, expr, ir.TableMessageCountBits(entry.Shape), ind, expr, expr)
 	case isStructRef(f.Type):
 		m.pf("%sif !%s_save_message_body(w, &%s) { return false; }\n", ind, ir.RustSnake(f.Type.Name), expr)
 	case isUnionRef(f.Type):
@@ -465,21 +463,6 @@ func (m *msgGen) readValue(f *ir.Field, expr, entry, ind string) {
 		m.pf("%s    let kept = core::cmp::min(n as usize, %d);\n", ind, f.Type.Size)
 		m.pf("%s    if kept < n as usize { report.clamped += 1; }\n", ind)
 		m.pf("%s    %s.fill(0);\n%s    %s[..kept].copy_from_slice(&buf[start..start + kept]);\n%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind, expr, ind, expr, ind)
-	case f.Type.Kind == ir.TWString:
-		m.pf("%s{\n", ind)
-		m.pf("%s    let Some(n) = table_message_count(r, &%s.shape) else %s;\n", ind, entry, msgBad)
-		m.pf("%s    if n * 16 > (r.buffer.len() as u64) * 8 - r.offset %s\n", ind, msgBad)
-		m.pf("%s    let mut kept = core::cmp::min(n as usize, %d);\n", ind, f.Type.Size)
-		m.pf("%s    if kept < n as usize { report.clamped += 1; }\n", ind)
-		m.pf("%s    %s.fill(0);\n%s    let mut high = false;\n", ind, expr, ind)
-		m.pf("%s    for i in 0..(n as usize) {\n", ind)
-		m.pf("%s        let unit = r.get(16).unwrap_or(0);\n", ind)
-		m.pf("%s        if unit == 0 || ((0xdc00..=0xdfff).contains(&unit) && !high) || (high && !(0xdc00..=0xdfff).contains(&unit)) %s\n", ind, msgBad)
-		m.pf("%s        high = (0xd800..=0xdbff).contains(&unit);\n", ind)
-		m.pf("%s        if i < kept { %s[i] = unit as u16; }\n%s    }\n", ind, expr, ind)
-		m.pf("%s    if high %s\n", ind, msgBad)
-		m.pf("%s    if kept > 0 && (0xd800..=0xdbff).contains(&%s[kept - 1]) { kept -= 1; %s[kept] = 0; }\n", ind, expr, expr)
-		m.pf("%s    %s_length = kept as i32;\n%s}\n", ind, expr, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 		m.readArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
@@ -1003,16 +986,12 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 None => false,
             },
         },
-        12 | 33 => {
+        12 => {
             let Some(n) = table_message_count(r, s) else { return false };
-            let mut width = 16u64;
-            if e.kind == 12 {
-                width = 8;
-                if !r.align() {
-                    return false;
-                }
+            if !r.align() {
+                return false;
             }
-            r.skip(n * width)
+            r.skip(n * 8)
         }
         31 => {
             if !r.align() {

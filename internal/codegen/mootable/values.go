@@ -106,12 +106,9 @@ func isByteElem(f *ir.Field) bool {
 	return f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 8 && !f.HasIntRange
 }
 
-func isBuffer(t ir.FieldType) bool { return t.Kind == ir.TBytes || t.Kind == ir.TWString }
+func isBuffer(t ir.FieldType) bool { return t.Kind == ir.TBytes }
 
 func bufferSize(t ir.FieldType) int64 {
-	if t.Kind == ir.TWString {
-		return 2 * t.Size
-	}
 	return t.Size
 }
 
@@ -298,9 +295,6 @@ func (g *Gen) slots(f *ir.Field) []slot {
 		}
 	case isBuffer(t):
 		what := fmt.Sprintf("bytes(%d)", t.Size)
-		if t.Kind == ir.TWString {
-			what = fmt.Sprintf("wstring(%d): UTF-16LE code units", t.Size)
-		}
 		out = append(out, slot{name, "buffer", fmt.Sprintf("buffer.create(%d)", bufferSize(t)), what + ", used length beside it (SPEC §4.7)"})
 		out = append(out, slot{name + "Length", "number", "0", ""})
 	default:

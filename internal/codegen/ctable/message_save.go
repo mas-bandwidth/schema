@@ -92,18 +92,14 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.pf("%s{ const void * node=table_ref_at(w->nodes ? w->nodes->ctx : NULL,&%s); uint64_t index=table_number_find(w->nodes,node);\n", ind, expr)
 		g.pf("%s if(node!=NULL && index==0) return 0; table_bit_put(w,index,w->index_bits); }\n", ind)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.Type.Size)
 		bits := ir.TableMessageBitsRequired(0, e.Shape.Max)
 		if f.Type.Kind == ir.TBytes {
 			bits = ir.TableMessageCountBits(e.Shape)
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s,%d);\n", ind, count, bits)
-		if f.Type.Kind == ir.TWString {
-			g.pf("%s{ int32_t i; for(i=0;i<%s;i++) table_bit_put(w,(uint16_t)%s[i],16); }\n", ind, count, expr)
-		} else {
-			g.pf("%stable_bit_align_write(w); table_bit_putbytes(w,%s,%s);\n", ind, expr, count)
-		}
+		g.pf("%stable_bit_align_write(w); table_bit_putbytes(w,%s,%s);\n", ind, expr, count)
 	case f.KeyEnum != "":
 		g.pf("%s{ uint32_t count=0; int32_t i;\n", ind)
 		g.pf("%s for(i=0;i<%d;i++) {\n", ind, f.ArrayBound)
@@ -201,7 +197,7 @@ func (g *tableGen) emitMessageSave(st *ir.Struct) {
 		case f.IsList() || f.IsMap():
 			condition = expr + ".count>0"
 			g.pf(" if(%s.count<0) return 0;\n", expr)
-		case !f.Type.Blob() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
+		case !f.Type.Blob() && (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString):
 			count = expr + "_length"
 			g.pf(" if(%s<0 || %s>%d) return 0;\n", count, count, f.Type.Size)
 			condition = g.wireBytesDiffer(f, expr)

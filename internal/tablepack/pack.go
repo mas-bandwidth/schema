@@ -481,8 +481,6 @@ func fieldShapeName(f *ir.Field) string {
 	switch {
 	case f.Type.Kind == ir.TString:
 		return "string"
-	case f.Type.Kind == ir.TWString:
-		return "wstring"
 	case f.Type.Kind == ir.TBytes:
 		return "bytes"
 	case tabletext.UnionOf(f) != nil:
