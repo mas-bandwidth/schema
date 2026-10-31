@@ -377,11 +377,38 @@ jobs:
       - uses: ./.github/actions/moo
         if: matrix.group == 'unit-codegen' || matrix.group == 'slow-gate-codegen'
 
+      # THE LOBSTER PIN for the emitter row: internal/codegen/lobster and
+      # internal/codegen/lobstertable run generated Lobster under the pinned
+      # compiler and fail, never skip, without it
+      # (internal/codegen/lobster/lobsterrun). make/lobster.mk's dist-lobster
+      # installs it at the sha256 it names, into the dist/ path the leg's
+      # default names. The release binary links libOpenGL and libGLX, which the
+      # fleet hosts carry and a hosted fallback does not.
+      - name: install the Lobster pin
+        if: matrix.group == 'unit-codegen'
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
         env:
           SCHEMA_SLOW: '1'
         run: go test $(go list ./internal/codegen/... | grep -v '/elixirtable$')
+
+      # THE LOBSTER FIXED FORM AGAINST THE REFERENCE'S BYTES. The step above
+      # runs internal/codegen/lobstertable without build/fixedform-corpus, so
+      # its corpus-reading tests skip there as every leg's do; test-lobster
+      # builds the corpus (the ../serialize checkout above is all it needs) and
+      # sets SCHEMA_REQUIRE_CORPUS=1, under which a missing oracle is a
+      # failure. The two packages' suites are seconds, so the repeat is cheap.
+      - name: the Lobster fixed form reads the reference's bytes
+        if: matrix.group == 'unit-codegen'
+        run: make test-lobster
 
       # THE COMPILER PACKAGE, IN TWO ROWS, because on its own it is 441 s of
       # the complement below and one package is one test binary: the only cut
@@ -775,6 +802,16 @@ jobs:
       # under the pinned compiler (make/goose.mk's dist-goose)
       - name: install the Goose pin
         run: make dist-goose
+      # and the Lobster packages under the pinned compiler (make/lobster.mk's
+      # dist-lobster).
+      - name: install the Lobster pin
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
 
       - name: rewrite every pin under testdata/ from the reference
         run: make -j"$(nproc)" conformance-pin update-goldens
@@ -951,6 +988,19 @@ jobs:
       # caches it under the pin.
       - uses: ./.github/actions/moo
         if: matrix.moo != ''
+
+      # THE LOBSTER PIN, installed exactly as make/lobster.mk's dist-lobster
+      # does: the same release archive, the same sha256 refused before it is
+      # unpacked, and the same dist/lobster-<version>/ layout the leg's LOBSTER
+      # default names. The row's field is the version. The release binary
+      # links libOpenGL and libGLX, which the hosted ubuntu image does not carry.
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
 
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
@@ -2021,6 +2071,16 @@ jobs:
       # caches it under the pin.
       - uses: ./.github/actions/moo
         if: matrix.moo != ''
+
+      # The Lobster pin, as the conformance row installs it (make dist-lobster
+      # at the row's version, the two GL libraries the release binary links).
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
 
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and

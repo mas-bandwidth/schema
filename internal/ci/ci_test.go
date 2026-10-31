@@ -1090,6 +1090,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-go-generated-golangci-lint-gate.yml:gate",
 		"schema-java-runs-hostile-corpus.yml:corpus",
 		"schema-java-runs-hostile-corpus.yml:negative-control",
+		"schema-lobster-generated-strict-gate.yml:strict",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
 		t.Fatalf("enumerated self-hosted jobs = %v, want %v", gotKeys, wantKeys)

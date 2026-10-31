@@ -173,7 +173,7 @@ func TestFixedLayoutDepthReadsTheBytes(t *testing.T) {
 
 // fixedDepthLegs is every leg that emits the fixed form, and the point of the
 // test below is that the list has no exceptions in it.
-var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
+var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "rust"}
 
 // fixedDepthTableMark matches a symbol the fixed form names AFTER THE TABLE —
 // `deep_fixed_save`, `DeepFixedPlan`, `deepFixedLoad`, `DEEP_FIXED_HASH`. It is

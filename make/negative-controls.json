@@ -954,6 +954,16 @@
       "dart": "3.13.2"
     },
     {
+      "name": "lobster-fuzz",
+      "when": "pull-request",
+      "why": "the Lobster leg's hostile-corpus control (a load that calls a clean wire damaged reds the corpus) and its wire-fuzz control (a dropped unknown count reds the fuzz; descriptors without their guards red the pinned guard-false-pointer vector). Both run the pinned v2026.8 toolchain, which the row installs (with the two GL libraries its release binary links) through its lobster field. Measured on the studio off one warm build: 2.3 s and 4.4 s.",
+      "targets": [
+        "schema-lobster-runs-hostile-corpus-negative-control",
+        "tables-lobster-wire-fuzz-negative-control"
+      ],
+      "lobster": "v2026.8"
+    },
+    {
       "name": "go-containers",
       "when": "pull-request",
       "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
@@ -1005,6 +1015,16 @@
         "schema-dart-generated-strict-analyze-nested-default-negative-control"
       ],
       "dart": "3.13.2"
+    },
+    {
+      "name": "lobster",
+      "when": "pull-request",
+      "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio. The bench legs' control (bench/lobster/negative-control.sh) flips each leg's golden, plants a compiler warning under the packet runner and a seconds_elapsed() clock and a corpus name in .lobster files under a copy of bench/, and requires each refused by name beside clean baselines; about 3 s. Both fit the per-commit rule with room.",
+      "targets": [
+        "bench-lobster-gate-negative-control",
+        "schema-lobster-generated-strict-gate-negative-control"
+      ],
+      "lobster": "v2026.8"
     },
     {
       "name": "moo",
