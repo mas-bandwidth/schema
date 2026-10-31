@@ -1058,81 +1058,64 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 	return true
 end
 
--- ONE ARM's payload, the bytes under the arm's L (§3's arm payload table)
-local function read_arm(arm: any, sub: any, u: any): boolean
+-- AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6, §3; docs/PORTING.md M18):
+-- an arm's payload is exactly the bytes a field of its type puts after its own
+-- framing prefix, so the arm is read by read_field, the field's own reader,
+-- with the arm's L standing in for the field's length. What this function
+-- adds is FRAMING ALONE, never a payload reader of its own:
+--
+--   - a length-shaped arm (a string, text, bytes, an array, a table) is read
+--     by read_field from the arm's L, over a reader that ends where the arm's
+--     payload ends, so its L is the field's L and every rule after it is the
+--     field's;
+--   - a fixed-width arm's L must be its kind's width, and a reference-shaped
+--     arm's L must be exactly the reference it frames: either is the arm's own
+--     framing damage, the union reading None and the parent reading on past L
+--     (internal/tablewire decode.go, arm);
+--   - a pointer arm's framing is checked BEFORE its reference is registered,
+--     because the engine checks the frame before it resolves the cell, so a
+--     damaged arm cannot produce a pointee-kind mismatch.
+--
+-- lpos is where the arm's L begins and sub the reader over its payload. The
+-- answer is true when the arm's value is whole: read_field's third answer says
+-- a payload was damaged inside its own L, and its second that an array carried
+-- a foreign element kind; either reads None, and the slot keeps nothing.
+local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any, holder: any, key: any): boolean
 	local s = arm.s
-	-- A FIXED-WIDTH ARM'S L IS ITS KIND'S WIDTH (§3)
 	if s == "bool" or s == "int" or s == "float" then
 		local w = V.width(arm.k)
 		if w > 0 and sub.e - sub.at ~= w then
 			_report.malformed = true
-			sub.at = sub.e
 			return false
 		end
+		return (read_field(arm, sub, u))
 	end
-	if s == "str" then
-		local n = sub.e - sub.at
-		if arm.wide then
-			if n % 2 ~= 0 or not V.wide(sub.b, sub.at, n) then
+	if s == "ptr" or s == "sblob" or s == "bblob" or s == "enum" then
+		if s ~= "enum" then
+			local framing = new_reader(sub.b, sub.at, sub.e)
+			r_leb(framing)
+			if framing.bad or framing.at ~= framing.e then
 				_report.malformed = true
-				sub.at = sub.e
 				return false
 			end
-			local units = n // 2
-			if arm.bound ~= nil and units > arm.bound then
-				units = V.clampWide(sub.b, sub.at, arm.bound)
-				_report.clamped += 1
-			end
-			store_buffer(u, arm.slot, sub.b, sub.at, units * 2, units)
-		else
-			if not V.utf8(sub.b, sub.at, n) then
-				_report.malformed = true
-				sub.at = sub.e
-				return false
-			end
-			local keep = n
-			if arm.bound ~= nil and keep > arm.bound then
-				keep = V.clampUtf8(sub.b, sub.at, arm.bound)
-				_report.clamped += 1
-			end
-			u[arm.slot] = buffer.readstring(sub.b, sub.at, keep)
 		end
-		sub.at = sub.e
-		return true
-	elseif s == "text" then
-		local n = sub.e - sub.at
-		if not V.utf8(sub.b, sub.at, n) then
+		local ok = read_field(arm, sub, u)
+		if ok and sub.at ~= sub.e then
 			_report.malformed = true
-			sub.at = sub.e
 			return false
 		end
-		u[arm.slot] = buffer.readstring(sub.b, sub.at, n)
-		sub.at = sub.e
-		return true
-	elseif s == "bytes" or s == "arr" then
-		local selected = true
-		if sub.e - sub.at >= 2 then
-			selected = array_body(arm, sub, _report, u)
-		end
-		sub.at = sub.e
-		return selected
-	elseif s == "ptr" or s == "sblob" or s == "bblob" then
-		-- A POINTER ARM IS THE REFERENCE AND NOTHING ELSE (§3)
-		local index = r_leb(sub)
-		if sub.bad or sub.at ~= sub.e then
-			_report.malformed = true
-			sub.at = sub.e
-			return false
-		end
-		_pending[#_pending + 1] = { holder = u, key = arm.slot, index = index, d = arm }
+		return ok
+	end
+	local ok, selected, intact = read_field(arm, new_reader(r.b, lpos, sub.e), u)
+	if s == "tab" and _retain ~= nil and holder ~= nil and u[arm.slot] ~= nil then
+		-- the occurrence's own body, whatever becomes of it (§6.6)
+		_retain.builtArm(holder, key, S.lookup(arm.t), u[arm.slot])
+	end
+	if ok and selected ~= false and intact ~= false then
 		return true
 	end
-	local ok = read_field(arm, sub, u)
-	if ok and s == "enum" and sub.at ~= sub.e then
-		_report.malformed = true
-		return false
-	end
-	return ok
+	u[arm.slot] = nil
+	return false
 end
 
 -- AN ARM HEADER IS A FIELD HEADER (§3, §2.6): the arm id reference, the
@@ -1155,6 +1138,7 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 	end
 	local armID = _table[ref]
 	local kind = r_u8(r)
+	local lpos = r.at
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then
 		report.malformed = true
@@ -1189,26 +1173,13 @@ read_union = function(fd: any, r: any, report: any, holder: any, key: any): (any
 		else
 			report.kindMismatch += 1
 		end
-	elseif arm.s == "tab" then
-		local d = S.lookup(arm.t)
-		local inst = d.new()
-		if _retain ~= nil and holder ~= nil then
-			_retain.builtArm(holder, key, d, inst) -- the occurrence's own body, whatever becomes of it (§6.6)
-		end
-		read_body(d, sub, inst, true)
-		if sub.at ~= sub.e then
-			report.malformed = true
-		else
-			u[arm.slot] = inst
-			u.Type = arm.tag
-		end
 	elseif arm.s == "void" then
 		if n ~= 0 then
 			report.malformed = true
 		else
 			u.Type = arm.tag
 		end
-	elseif read_arm(arm, sub, u) then
+	elseif read_arm(arm, r, lpos, sub, u, holder, key) then
 		u.Type = arm.tag
 	end
 	r.at += n
@@ -1218,6 +1189,10 @@ end
 -- ONE FIELD (§3): every value read is stored in its slot in the shape
 -- docs/PORT-MOO.md names; a string clamps at a whole code point and a wide
 -- string at a whole code unit.
+-- It answers (ok, selected, intact): ok false stops the body; selected false
+-- is an array of a FOREIGN ELEMENT KIND (§3); intact false is a payload
+-- damaged inside its own L, which a field answers with its declared default
+-- and a union arm (read_arm) with None.
 read_field = function(fd: any, r: any, v: any): ...any
 	local s = fd.s
 	if s == "bool" or s == "int" or s == "float" then
@@ -1239,7 +1214,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 			if n % 2 ~= 0 or not V.wide(r.b, r.at, n) then
 				_report.malformed = true
 				r.at += n
-				return true
+				return true, nil, false
 			end
 			local units = n // 2
 			if fd.bound ~= nil and units > fd.bound then
@@ -1255,7 +1230,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		if not V.utf8(r.b, r.at, n) then
 			_report.malformed = true
 			r.at += n
-			return true
+			return true, nil, false
 		end
 		local keep = n
 		if fd.bound ~= nil and n > fd.bound then
@@ -1276,7 +1251,7 @@ read_field = function(fd: any, r: any, v: any): ...any
 		if not V.utf8(r.b, r.at, n) then
 			_report.malformed = true
 			r.at += n
-			return true
+			return true, nil, false
 		end
 		if fd.slot ~= nil and v ~= nil then
 			v[fd.slot] = buffer.readstring(r.b, r.at, n)
@@ -1330,6 +1305,8 @@ read_field = function(fd: any, r: any, v: any): ...any
 			if fd.slot ~= nil and v ~= nil then
 				v[fd.slot] = inst
 			end
+			r.at += n
+			return true, nil, false
 		end
 		r.at += n
 		return true
