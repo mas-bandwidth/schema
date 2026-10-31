@@ -25,7 +25,7 @@
 //      data decides, and the fixed form's sizes are all compile constants), so
 //      their refusal leaves nothing to look for; the pointer's absence is the
 //      one assertion a reader can make. ("every table or type in it is declared
-//      fixed" is the same fact one step earlier: a nested plain `table` is
+//      fixed" is the same fact one step earlier: a nested variable table is
 //      itself a compile refusal — §2.2 — and a table's VARIABLE form would have
 //      introduced a kind 17, so every kind-13 table the walk reaches below the
 //      root is a fixed table by construction.)

@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-// TestLockClosurePlainTableRefuses: a plain `table` reached BY VALUE from a
+// TestLockClosurePlainTableRefuses: a variable table reached BY VALUE from a
 // fixed one is a closure break — the plain wire's record is variable-length, so
 // the holder could not be one size.
 func TestLockClosurePlainTableRefuses(t *testing.T) {

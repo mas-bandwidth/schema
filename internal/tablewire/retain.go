@@ -193,15 +193,6 @@ func (rt *retainState) forgetMap(fv *tabletext.Field) {
 	}
 }
 
-// forgetCellRecords is forgetCell with the nil-state check the exported
-// entry points carry, for a caller that discards one cell rather than a body.
-func (rt *retainState) forgetCellRecords(cell *tabletext.Cell) {
-	if rt == nil {
-		return
-	}
-	rt.forgetCell(cell)
-}
-
 func (rt *retainState) forgetCell(cell *tabletext.Cell) {
 	if cell.Tab != nil {
 		rt.forget(cell.Tab)
@@ -333,20 +324,7 @@ type resolver struct {
 	ids []uint64
 	out []byte
 	bad bool
-	// outCap is the byte cap for a MESSAGE-FORM capture (docs/SPEC-TABLES.md
-	// §3.3, §6.6): `out` may never take an append that carries it past this,
-	// and the walk sets `bad` instead. A count over an element that rides no
-	// bits is thus bounded by what the caller's store could hold rather than
-	// by the announced count. It is [noOutCap] for the FILE walk, whose
-	// lengths are the file's own and already walked by the plain read; only
-	// `captureMessage` states a budget.
-	outCap int
 }
-
-// noOutCap is the resolver's uncapped spelling: the file's resolving walk
-// measures nothing against the store because the store's own `keep` is the
-// only ceiling it needs, and the plain read has already bounded its lengths.
-const noOutCap = -1
 
 // id resolves one reference against the FILE's id table and answers the
 // sixty-four-bit id it names. THE WALK IS AN INTERPRETATION AND ITS VERDICT IS
@@ -630,7 +608,7 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 		rt.lost(report)
 		return
 	}
-	rs := &resolver{ids: ids, outCap: noOutCap}
+	rs := &resolver{ids: ids}
 	c := &cursor{buf: payload}
 	// THE CAP COUNTS NESTED BODIES, AND THE FIELD'S OWN PAYLOAD IS NOT ONE
 	// (§6.6): the walk starts at zero, `framed` is the one step that takes a
@@ -652,10 +630,7 @@ func (rt *retainState) capture(inst *tabletext.Instance, id uint64, kind uint8, 
 	rt.keep(inst, id, kind, rs.out, report)
 }
 
-// keep is the CAPACITY and the counter, which every capture answers the same
-// way whatever form it read from: the file's resolving walk above and the
-// message form's transcoding one (retainmessage.go) both land here, so the
-// accounting is stated once.
+// keep is the CAPACITY and the counter every capture answers.
 //
 // THE EXPANSION IS BOUNDED, AND THIS ENGINE STATES THE CONSTANT: a record costs
 // the id it rides under, its kind byte and the resolved payload, which is the

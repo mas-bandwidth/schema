@@ -412,7 +412,7 @@ TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
 # all fixed-size the generated output carries no builder, no arena, no reference
 # type, no lifecycle surface" (docs/SPEC-TABLES.md §2.2) — and under the KEYWORD
 # `tables/examples` is no longer such a unit: `Guarded.schema`'s `Patrol` is a
-# plain `table`, because a guarded branch is exactly the construct that keeps it
+# variable table, because a guarded branch is exactly the construct that keeps it
 # one, so the whole unit is a variable unit and carries the machinery by right.
 # Scanning it would be this gate asserting something the declaration has made
 # false, which is worse than not scanning it.
@@ -499,7 +499,7 @@ tables-json-walk: build/tables-generated/.stamp
 # The variable class stores through the arena and the region whether or not it
 # has a pointer in it, so a variable table's own `FromJson` names the graph
 # half's entry points — which is why `tables/examples` moved from the second
-# list to the first here: `Guarded.schema`'s `Patrol` is a plain `table`, and a
+# list to the first here: `Guarded.schema`'s `Patrol` is a variable table, and a
 # guarded branch is exactly the construct that keeps it one. The gate is
 # UNCHANGED in strength: every unit is still on one list or the other, and the
 # byte comparison across the first list now spans one unit more.
@@ -3631,12 +3631,10 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-float-nan-negative-control
 	# RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the round trip, the five
 	# excluded classes a wire can carry to the unknown arm, the two
-	# capacities, and the two refusals, each of which is a compile error that
-	# has to name itself
+	# capacities, and the fixed-class refusal, a compile error that has to
+	# name itself
 	$(MAKE) tables-retain
 	$(MAKE) tables-retain-fixed-class-negative-control
-	$(MAKE) tables-retain-message-form-negative-control
-	$(MAKE) tables-message-form-retain-negative-control
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
@@ -4135,7 +4133,7 @@ tables-retain: build/schema_test_retain build/schema_test_retain_asan
 	./build/schema_test_retain
 	./build/schema_test_retain_asan
 
-# THE TWO REFUSALS ARE COMPILE ERRORS, and each must name itself (§6.6, §3.3).
+# THE FIXED-CLASS REFUSALS ARE COMPILE ERRORS, and each must name itself (§6.6, §3.3).
 # A refusal that were a MISSING SYMBOL would be a linker error with no reason
 # in it, which is exactly what §11's rule for a surface a class does not carry
 # refuses, so the control asks for the name and greps for the sentence.
@@ -4158,53 +4156,6 @@ tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
 	fi
 	@grep -q "FIXED-class root" build/retain-fixed-class-message.log || { echo "RETAIN GATE FAILED: the fixed-class refusal of the message form was not by name"; cat build/retain-fixed-class-message.log; exit 1; }
 	@echo "the fixed-class root refuses the message form's retention BY NAME (docs/SPEC-TABLES.md §6.6, §3.3)"
-
-.PHONY: tables-retain-message-form-negative-control
-tables-retain-message-form-negative-control: build/tables-generated/.stamp
-	@mkdir -p build
-	@printf '#include "RT1Table.h"\nint main()\n{\n    const tblrt1::Node * roots[1] = { NULL };\n    uint8_t buffer[ 64 ];\n    tblrt1::TableRetain retain;\n    tblrt1::TableReport report;\n    return (int) tblrt1::NodeSaveRetainMessages( roots, (int64_t) 1, &retain, buffer, (int64_t) 64, &report );\n}\n' > build/retain-message-form.cpp
-	@if $(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) -c build/retain-message-form.cpp -o build/retain-message-form.o > build/retain-message-form.log 2>&1; then \
-		echo "RETAIN GATE FAILED: SaveRetain compiled on the MESSAGE form"; exit 1; \
-	fi
-	@grep -q "Retention writing the MESSAGE form is refused by name" build/retain-message-form.log || { echo "RETAIN GATE FAILED: the message-form refusal was not by name"; cat build/retain-message-form.log; exit 1; }
-	@echo "retention writing form 2 refuses BY NAME (docs/SPEC-TABLES.md §3.3)"
-
-# AND THE FORM 2 READ, WHICH RETAINS (docs/SPEC-TABLES.md §3.3, §6.6). The
-# unknown arm of a retaining message body SKIPS the entry and then re-reads the
-# bits it delimited, which is the whole of the form-2 capture. Take the second
-# half away and the skip is all that is left: the read is unchanged to the byte,
-# the six counters stand, and nothing about the batch says a field was lost.
-# What goes red is the pinned batch's own row of the retain gate, `retained` at
-# zero where the page says ten, which is what makes that row an instrument
-# rather than a restatement of what the emitter happens to do.
-#
-# The sabotage is one line of the emitter, through `go build -overlay`, so no
-# tracked file moves; the RT set is regenerated from the sabotaged compiler and
-# the gate is built against it.
-RETAIN_MSG_NC := build/retain-nc-message
-.PHONY: tables-message-form-retain-negative-control
-tables-message-form-retain-negative-control: bin/schema test/tables/retain_main.cpp
-	@rm -rf $(RETAIN_MSG_NC) && mkdir -p $(RETAIN_MSG_NC)
-	@go run ./tools/sabotage -name message-retain-no-capture \
-		-out $(RETAIN_MSG_NC)/messageload.gotext internal/codegen/cpptable/messageload.go
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(RETAIN_MSG_NC)/messageload.gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_MSG_NC)/overlay.json
-	go build -overlay $(RETAIN_MSG_NC)/overlay.json -o $(RETAIN_MSG_NC)/schema ./cmd/schema
-	@for u in rt1 rt2 rt3; do mkdir -p $(RETAIN_MSG_NC)/$$u; done
-	./$(RETAIN_MSG_NC)/schema generate --lang cpp --out $(RETAIN_MSG_NC)/rt1 test/tables/RT1.schema
-	./$(RETAIN_MSG_NC)/schema generate --lang cpp --out $(RETAIN_MSG_NC)/rt2 test/tables/RT2.schema
-	./$(RETAIN_MSG_NC)/schema generate --lang cpp --out $(RETAIN_MSG_NC)/rt3 test/tables/RT3.schema
-	$(CXX) $(TABLES_CXXFLAGS) -I$(RETAIN_MSG_NC)/rt1 -I$(RETAIN_MSG_NC)/rt2 -I$(RETAIN_MSG_NC)/rt3 \
-		-Itest/tables -I$(SERIALIZE) test/tables/retain_main.cpp -o $(RETAIN_MSG_NC)/gate
-	@if ./$(RETAIN_MSG_NC)/gate > $(RETAIN_MSG_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the message path never entered the walk and the retain gate stayed green"; \
-		cat $(RETAIN_MSG_NC)/log; exit 1; \
-	fi
-	@grep -q "report.retained == 10" $(RETAIN_MSG_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the message batch's own row"; \
-		  cat $(RETAIN_MSG_NC)/log; exit 1; }
-	@grep -m1 "FAIL" $(RETAIN_MSG_NC)/log
-	@echo "negative control: removing the message path's call into the walk turns the pinned batch RED"
 
 # ---- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables
 # ---- go finite-only too, same rule as packets") -----------------------------
@@ -5418,8 +5369,8 @@ tables-cpp-release: tables-cpp-release-battery
 	$(MAKE) tables-wire-fuzz-retain SEED=2 N=500000
 	SCHEMA_SLOW=1 SCHEMA_CERTIFY_INT32_MAX=1 go test -count=1 -run '^TestIssue746Base64WriterInt32MaxUBSan$$' ./compiler
 
-.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control
-tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-node-type-negative-control tables-wire-fuzz-blob-node-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control tables-wire-fuzz-message-blob-oracle-negative-control tables-wire-fuzz-message-blob-leg-negative-control
+.PHONY: tables-wire-fuzz-negative-control tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control
+tables-wire-fuzz-negative-control: tables-wire-fuzz-length-negative-control tables-wire-fuzz-index-negative-control tables-wire-fuzz-arm-width-negative-control tables-wire-fuzz-arm-terminator-negative-control tables-wire-fuzz-oracle-negative-control tables-wire-fuzz-wide-text-negative-control tables-wire-fuzz-message-text-oracle-negative-control tables-wire-fuzz-message-text-leg-negative-control
 
 # THE CONTENT RULE ON KIND 33 (docs/SPEC-TABLES.md §3, §4): an unpaired
 # surrogate is DAMAGE, not data. The fuzzer's wide-text pass plants one at
@@ -5710,7 +5661,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-align-between-bodies:internal/tablewire/messageencode.go:TestTheBatch \
 	message-no-batch-bound:internal/tablewire/messageencode.go:TestTheFiveAnswers \
 	message-string-no-align:internal/tablewire/messageencode.go:TestTheCostRows \
-	message-index-fixed-width:internal/tablewire/messageencode.go:TestAPointeredBatch \
 	message-reference-past-entries:internal/tablewire/messagedecode.go:TestAReferenceAtAndAboveTheEntryCount \
 	message-read-on-after-damage:internal/tablewire/messagedecode.go:TestDamageIsTerminal \
 	message-no-pad-check:internal/tablewire/messagedecode.go:TestThePadAndWhatFollowsIt \
@@ -5722,7 +5672,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-skip-string-no-align:internal/tablewire/messagedecode.go:TestTheShapesOneRowAKind \
 	message-wide-string-thirty-two:internal/tablewire/messagedecode.go:TestTheWideStringsWidth \
 	message-reader-own-width:internal/tablewire/messagedecode.go:TestARangeThatMoved \
-	message-index-fixed-width-read:internal/tablewire/messagedecode.go:TestAPointeredBatch \
 	message-reads-own-vocabulary:internal/tablewire/messagedecode.go:TestPerDirectionIndependence \
 	message-second-announcement-accepted:internal/tablewire/message.go:TestTheMessageFormRefusesByName \
 	message-strict-checks-relaxed:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
@@ -5750,11 +5699,10 @@ MESSAGE_FORM_CONTROLS := \
 	message-array-of-text-refused:ir/tablemessage.go:TestAHostileShape \
 	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
 	message-text-accepts-ill-formed:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
-	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
-	message-blob-accepts-ill-formed:internal/tablewire/messagedecode.go:TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule
+	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
 
 .PHONY: tables-message-form-negative-control
-tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control tables-message-form-blob-negative-control
+tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control
 	@for row in $(MESSAGE_FORM_CONTROLS); do \
 		name=$${row%%:*}; rest=$${row#*:}; file=$${rest%%:*}; test=$${rest#*:}; \
 		$(MAKE) --no-print-directory tables-message-form-one-negative-control \
@@ -5860,6 +5808,16 @@ define message_form_text_control
 	@echo "negative control ($(1)): the message form's text rows go red"
 endef
 
+# THE MESSAGE FORM IS FIXED TABLES ONLY, IN EVERY BACKEND (docs/SPEC-TABLES.md
+# §3.3): compiler/messageformlock_test.go generates one unit with a fixed table
+# beside three variable tables through all fifteen backends and refuses any
+# line that puts a variable table beside the message form. Its control plants
+# one such line in each backend's real output and requires the check to name
+# it, and requires the clean output to pass.
+.PHONY: message-form-fixed-only-lock-negative-control
+message-form-fixed-only-lock-negative-control:
+	go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
+
 .PHONY: tables-message-form-text-negative-control
 tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp
 	@mkdir -p build/message-nc
@@ -5869,119 +5827,6 @@ tables-message-form-text-negative-control: bin/schema test/tables/message_text_m
 	./build/message-nc/text-true
 	$(call message_form_text_control,message-emitter-text-accepts-ill-formed,internal/codegen/cpptable/messageload.go)
 	$(call message_form_text_control,message-emitter-text-clamp-off-boundary,internal/codegen/cpptable/messageload.go)
-
-# AND THE SAME CONTENT RULE MET AT A NODE (docs/SPEC-TABLES.md §3.1, §3.3;
-# schema#632): a `*string` blob record on a form-2 body is refused on the file
-# form's own terms, and the damage is terminal for the batch. A writer produces
-# no such record, so the instrument is a batch forged over `blobdemo`'s
-# `Catalog`, whose numbering reaches a `*string` blob through `note` and a
-# `*bytes` blob through `thumb`, and a program that reads the report back. The
-# emitter's own copy of the rule is what the sabotage removes; the ORACLE's
-# rides in MESSAGE_FORM_CONTROLS above. $(1) the sabotage, $(2) the emitter file.
-define message_form_blob_control
-	@mkdir -p build/message-nc
-	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
-	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
-	go build -overlay build/message-nc/$(1)-overlay.json -o build/message-nc/$(1)-schema ./cmd/schema
-	@rm -rf build/message-nc/$(1)-blobs && mkdir -p build/message-nc/$(1)-blobs
-	./build/message-nc/$(1)-schema generate --lang cpp --out build/message-nc/$(1)-blobs tables/blobs
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/message-nc/$(1)-blobs -Itest/tables -I$(SERIALIZE) \
-		test/tables/message_blob_main.cpp build/message-nc/$(1)-blobs/AssetsTable.cpp \
-		-o build/message-nc/$(1)-control
-	@if ./build/message-nc/$(1)-control > build/message-nc/$(1).log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and the message blob rows stayed green"; \
-		cat build/message-nc/$(1).log; exit 1; \
-	fi
-	@cat build/message-nc/$(1).log
-	@echo "negative control ($(1)): the message form's blob rows go red"
-endef
-
-.PHONY: tables-message-form-blob-negative-control
-tables-message-form-blob-negative-control: bin/schema test/tables/message_blob_main.cpp build/tables-generated/.stamp
-	@mkdir -p build/message-nc
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/blobs -Itest/tables -I$(SERIALIZE) \
-		test/tables/message_blob_main.cpp build/tables-generated/blobs/AssetsTable.cpp \
-		-o build/message-nc/blob-true
-	./build/message-nc/blob-true
-	$(call message_form_blob_control,message-emitter-blob-accepts-ill-formed,internal/codegen/cpptable/messagevariable.go)
-
-# THE NODE TYPE A ROOT CANNOT PLACE (docs/SPEC-TABLES.md §3.1, §6.5, §3.3), and
-# the vector message_node_type_unpointed is the red it closed. A node record is
-# a pointer's pointee, so a table no pointer below the root targets is a node
-# this reader cannot name: no region storage, body skipped, one unknown. The
-# engine named the whole unit closure instead, which a FILE can never expose
-# because a writer writes only the ids its body used — and which the MESSAGE
-# form exposes at once, because a connection's table announces every table's
-# name id. The sabotage is that revert, and the run must go red ON THE VECTOR.
-#
-# THE SABOTAGE IS APPLIED TO THE MESSAGE READER, because the message form is
-# the only form whose wire can carry the record: the placeable set is built
-# twice, once in the file reader's decodenodes.go and once in messagedecode.go,
-# and only the second decides a pinned message vector. THE ASSERTION IS THE
-# VECTOR REPLAYED ALONE, not a corpus pass, because the pinned vectors ride
-# last: an enumerated mutant of an ordinary message seed reaches this same
-# check, so a corpus pass goes red before the vector is ever fed and names the
-# mutant instead of the property.
-NODE_TYPE_NC := build/wire-fuzz-nc-node-type
-NODE_TYPE_VECTOR := testdata/wire/tables/fuzz-vectors/message_node_type_unpointed.bin
-.PHONY: tables-wire-fuzz-node-type-negative-control
-tables-wire-fuzz-node-type-negative-control: build/conformance-harness build/wire-fuzz-cpp
-	@rm -rf $(NODE_TYPE_NC) && mkdir -p $(NODE_TYPE_NC)
-	@sed -e 's|for name := range placeable {|for name := range ir.TableClosure(d.m.Unit) { // NEGATIVE CONTROL: every closure table is placeable again|' \
-		internal/tablewire/messagedecode.go > $(NODE_TYPE_NC)/messagedecode.go.txt
-	@cmp -s internal/tablewire/messagedecode.go $(NODE_TYPE_NC)/messagedecode.go.txt && \
-		{ echo "NEGATIVE CONTROL: the node-type sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(NODE_TYPE_NC)/messagedecode.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(NODE_TYPE_NC)/overlay.json
-	go build -overlay $(NODE_TYPE_NC)/overlay.json -o $(NODE_TYPE_NC)/harness ./test/conformance/harness
-	@if $(NODE_TYPE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
-			--replay $(NODE_TYPE_VECTOR) --unit graphdemo --root Scene --message \
-			--failed $(NODE_TYPE_NC)/failed.bin > $(NODE_TYPE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: every closure table is placeable again and the pinned vector stayed green"; \
-		cat $(NODE_TYPE_NC)/log; exit 1; \
-	fi
-	@grep -q "message_node_type_unpointed" $(NODE_TYPE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
-		  cat $(NODE_TYPE_NC)/log; exit 1; }
-	@grep -m1 "FAILED" $(NODE_TYPE_NC)/log
-	@echo "negative control: placing a node no pointer names turns the pinned vector RED"
-
-# A RECORD'S FRAMING IS ITS TYPE ID'S AND ITS PLACEMENT IS THE ROOT'S
-# (docs/SPEC-TABLES.md §2.5, §3.1, §3.3), and the vector
-# message_blob_node_unpointed is the red that separated them. The two RESERVED
-# BLOB IDS say a thirty-two bit length, an align and the bytes wherever they
-# appear, because the announcement's tail carries both ids whether or not a
-# root names them; whether this root can PLACE such a node is the second
-# question, and ir.PointerReachableBlobs is what answers it. The oracle asked
-# only the second: with no blob edge under graphdemo's Scene it framed a blob
-# record as a TABLE BODY and read its bytes as fields, where the reference read
-# the length and refused a record that runs past the batch. The sabotage is
-# that revert, gating the FRAMING on reachability again, and the run must go
-# red ON THE VECTOR.
-BLOB_NODE_NC := build/wire-fuzz-nc-blob-node
-BLOB_NODE_VECTOR := testdata/wire/tables/fuzz-vectors/message_blob_node_unpointed.bin
-.PHONY: tables-wire-fuzz-blob-node-negative-control
-tables-wire-fuzz-blob-node-negative-control: build/conformance-harness build/wire-fuzz-cpp
-	@rm -rf $(BLOB_NODE_NC) && mkdir -p $(BLOB_NODE_NC)
-	@sed -e 's|blobFramed := map\[uint64\]bool{ir.BytesWireTypeId: true, ir.StringWireTypeId: true}|blobFramed := map[uint64]bool{ir.BytesWireTypeId: bytesEdge, ir.StringWireTypeId: stringEdge} // NEGATIVE CONTROL: the framing is gated on reachability again|' \
-		internal/tablewire/messagedecode.go > $(BLOB_NODE_NC)/messagedecode.go.txt
-	@cmp -s internal/tablewire/messagedecode.go $(BLOB_NODE_NC)/messagedecode.go.txt && \
-		{ echo "NEGATIVE CONTROL: the blob-node sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(BLOB_NODE_NC)/messagedecode.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(BLOB_NODE_NC)/overlay.json
-	go build -overlay $(BLOB_NODE_NC)/overlay.json -o $(BLOB_NODE_NC)/harness ./test/conformance/harness
-	@if $(BLOB_NODE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
-			--replay $(BLOB_NODE_VECTOR) --unit graphdemo --root Scene --message \
-			--failed $(BLOB_NODE_NC)/failed.bin > $(BLOB_NODE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the framing is gated on reachability again and the pinned vector stayed green"; \
-		cat $(BLOB_NODE_NC)/log; exit 1; \
-	fi
-	@grep -q "message_blob_node_unpointed" $(BLOB_NODE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on the pinned vector"; \
-		  cat $(BLOB_NODE_NC)/log; exit 1; }
-	@grep -m1 "FAILED" $(BLOB_NODE_NC)/log
-	@echo "negative control: framing a blob record by reachability turns the pinned vector RED"
 
 # ILL-FORMED TEXT ON A MESSAGE BODY (docs/SPEC-TABLES.md §3, §3.3; schema#620),
 # and the vector message_ill_formed_text is what holds the two engines to one
@@ -6043,74 +5888,6 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 		  cat $(MESSAGE_TEXT_LEG_NC)/log; exit 1; }
 	@grep -m1 "FAILED" $(MESSAGE_TEXT_LEG_NC)/log
 	@echo "negative control: an emitted reader that accepts ill-formed message text turns the pinned vector RED"
-
-# ILL-FORMED TEXT IN A *string BLOB RECORD ON A MESSAGE BODY
-# (docs/SPEC-TABLES.md §3, §3.1, §3.3; schema#632), and the two vectors
-# message_blob_ill_formed_text and message_blob_zero_byte are what hold the two
-# engines to one answer on it. The blade in
-# tables-message-form-blob-negative-control holds each engine to the PAGE;
-# these two hold the engines to EACH OTHER, which is a different question and
-# the one a differential fuzzer exists to ask: before the repair both readers
-# placed the record, agreeing and agreeing wrongly, so nothing here could have
-# gone red. Each control repairs one engine and takes the rule back out of the
-# other, and the run must go red ON THE VECTOR.
-#
-# THE ASSERTION IS THE VECTOR REPLAYED ALONE, not a corpus pass, for the reason
-# the node-type control names: an enumerated mutant reaches the same check and
-# would name itself instead of the property.
-MESSAGE_BLOB_VECTOR := testdata/wire/tables/fuzz-vectors/message_blob_ill_formed_text.bin
-MESSAGE_BLOB_ZERO_VECTOR := testdata/wire/tables/fuzz-vectors/message_blob_zero_byte.bin
-
-MESSAGE_BLOB_ORACLE_NC := build/wire-fuzz-nc-message-blob-oracle
-.PHONY: tables-wire-fuzz-message-blob-oracle-negative-control
-tables-wire-fuzz-message-blob-oracle-negative-control: build/conformance-harness build/wire-fuzz-cpp
-	@rm -rf $(MESSAGE_BLOB_ORACLE_NC) && mkdir -p $(MESSAGE_BLOB_ORACLE_NC)
-	@go run ./tools/sabotage -name message-blob-accepts-ill-formed \
-		-out $(MESSAGE_BLOB_ORACLE_NC)/messagedecode.go.txt internal/tablewire/messagedecode.go
-	@printf '{"Replace":{"%s/internal/tablewire/messagedecode.go":"%s/$(MESSAGE_BLOB_ORACLE_NC)/messagedecode.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_BLOB_ORACLE_NC)/overlay.json
-	go build -overlay $(MESSAGE_BLOB_ORACLE_NC)/overlay.json -o $(MESSAGE_BLOB_ORACLE_NC)/harness ./test/conformance/harness
-	@for vector in $(MESSAGE_BLOB_VECTOR) $(MESSAGE_BLOB_ZERO_VECTOR); do \
-		if $(MESSAGE_BLOB_ORACLE_NC)/harness wire-fuzz --driver ./build/wire-fuzz-cpp \
-				--replay $$vector --unit blobdemo --root Catalog --message \
-				--failed $(MESSAGE_BLOB_ORACLE_NC)/failed.bin > $(MESSAGE_BLOB_ORACLE_NC)/log 2>&1; then \
-			echo "NEGATIVE CONTROL FAILED: the oracle places an ill-formed *string blob again and $$vector stayed green"; \
-			cat $(MESSAGE_BLOB_ORACLE_NC)/log; exit 1; \
-		fi; \
-		grep -q "$$(basename $$vector)" $(MESSAGE_BLOB_ORACLE_NC)/log || \
-			{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on $$vector"; \
-			  cat $(MESSAGE_BLOB_ORACLE_NC)/log; exit 1; }; \
-		grep -m1 "FAILED" $(MESSAGE_BLOB_ORACLE_NC)/log; \
-	done
-	@echo "negative control: an oracle that places an ill-formed *string blob turns both pinned vectors RED"
-
-MESSAGE_BLOB_LEG_NC := build/wire-fuzz-nc-message-blob-leg
-.PHONY: tables-wire-fuzz-message-blob-leg-negative-control
-tables-wire-fuzz-message-blob-leg-negative-control: build/conformance-harness
-	@rm -rf $(MESSAGE_BLOB_LEG_NC) && mkdir -p $(MESSAGE_BLOB_LEG_NC)
-	@go run ./tools/sabotage -name message-emitter-blob-accepts-ill-formed \
-		-out $(MESSAGE_BLOB_LEG_NC)/messagevariable.go.txt internal/codegen/cpptable/messagevariable.go
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/messagevariable.go":"%s/$(MESSAGE_BLOB_LEG_NC)/messagevariable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_BLOB_LEG_NC)/overlay.json
-	go build -overlay $(MESSAGE_BLOB_LEG_NC)/overlay.json -o $(MESSAGE_BLOB_LEG_NC)/schema ./cmd/schema
-	$(call tables_generate,./$(MESSAGE_BLOB_LEG_NC)/schema,$(MESSAGE_BLOB_LEG_NC)/generated)
-	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,$(MESSAGE_BLOB_LEG_NC)/generated) \
-		test/tables/wire_fuzz_main.cpp \
-		$(subst build/tables-generated/,$(MESSAGE_BLOB_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
-		-o $(MESSAGE_BLOB_LEG_NC)/leg
-	@for vector in $(MESSAGE_BLOB_VECTOR) $(MESSAGE_BLOB_ZERO_VECTOR); do \
-		if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_BLOB_LEG_NC)/leg \
-				--replay $$vector --unit blobdemo --root Catalog --message \
-				--failed $(MESSAGE_BLOB_LEG_NC)/failed.bin > $(MESSAGE_BLOB_LEG_NC)/log 2>&1; then \
-			echo "NEGATIVE CONTROL FAILED: the emitted reader places an ill-formed *string blob again and $$vector stayed green"; \
-			cat $(MESSAGE_BLOB_LEG_NC)/log; exit 1; \
-		fi; \
-		grep -q "$$(basename $$vector)" $(MESSAGE_BLOB_LEG_NC)/log || \
-			{ echo "NEGATIVE CONTROL FAILED: the wire fuzzer went red, but not on $$vector"; \
-			  cat $(MESSAGE_BLOB_LEG_NC)/log; exit 1; }; \
-		grep -m1 "FAILED" $(MESSAGE_BLOB_LEG_NC)/log; \
-	done
-	@echo "negative control: an emitted reader that places an ill-formed *string blob turns both pinned vectors RED"
 
 # The GENERATED half of the data: the JSON text of every instance and the read
 # report of every evolution case, both from the compiler's own engine.

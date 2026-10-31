@@ -54,7 +54,7 @@ func messageBatchRows(t *testing.T, path string) []messageBatchRow {
 	var rows []messageBatchRow
 	for line := range strings.SplitSeq(string(data), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 6 || fields[0] != "message" {
+		if len(fields) < 6 || fields[0] != "message" || fields[5] == "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 			continue
 		}
 		rows = append(rows, messageBatchRow{
@@ -84,9 +84,8 @@ func TestMessageFormBatchElixir(t *testing.T) {
 	// values the form-1 instance decodes to, and SaveMessages gives the batch
 	// bytes back exactly; MeasureMessages equals the length."
 	//
-	// THE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §3.3): "`fixed table T`
-	// may ride here, a plain `table T` may not". A message row whose root is a
-	// plain `table` (graph_tree's Scene) is refused rather than decoded, so the
+	// THE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): a message row
+	// whose root is a variable table is refused rather than decoded, so the
 	// round trip below covers the fixed roots only.
 	t.Run("round_trip", func(t *testing.T) {
 		for _, row := range rows {
