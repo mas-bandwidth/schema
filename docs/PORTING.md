@@ -1618,12 +1618,12 @@ in `test/conformance/harness/cards.go`, with `SCHEMA_CARDS_SURFACES` and
 `edit` 8/8, `taskhash` 3/3, `view` 1/1), comparing every byte and refusal
 verdict against the Go reference answers (`tla/CardVersioning.tla`,
 `tla/CardHops.tla`). `make cards-conformance-all` runs the Go leg and all
-eleven non-Go legs with all nine surfaces required.
+twelve non-Go legs with all nine surfaces required.
 
 **Reference.** `test/conformance/harness/cards.go`, `tables/cards/cmd/cards-driver/main.go`,
 and `make cards-conformance-all` in `make/go.mk`.
 
-**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Lua, Luau, Lobster.
+**Proven in.** Go, C, C++, C#, Rust, Java, JavaScript, Dart, Elixir, Lua, Luau, Moo, Lobster.
 
 **Measured effect.** Structural: every leg's card codec, facade bounds, brief
 parser/renderer, `v1` to `v2` upgrader, field editors, task hash, and
@@ -1636,12 +1636,13 @@ descriptor view agree byte for byte on the 43-case corpus.
 `cards-dart-conformance-negative-control`, `cards-elixir-conformance-negative-control`,
 `cards-lua-conformance-negative-control`, `cards-luau-conformance-negative-control`,
 `cards-luau-conformance-upgrade-negative-control`, `cards-luau-conformance-hash-negative-control`,
-`cards-lobster-conformance-negative-control`.
+`cards-moo-conformance-negative-control`, `cards-moo-conformance-upgrade-negative-control`,
+`cards-moo-conformance-hash-negative-control`, `cards-lobster-conformance-negative-control`.
 
 **Targets:** none
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` `cards-conformance-go-negative-control` (`tables/cards/cmd/cards-driver/main.go`; the control widens one separator in the Go card renderer and the check goes red on render, green on load) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) | ❌ #2236 — not yet carded in the schema-goose stream (docs/PORT-GOOSE.md, THE CARD MAP); no `tables/cards/goose` leg exists, so the goose leg is not in `make cards-conformance-all` | ❌ #381 — `tables/cards` has no moo driver: the card surfaces (load, save, render, parse, bounds, upgrade, edit, taskhash, view) need a moo card library beside the generated units and a driver on a pipe (the pinned moo CLI has no io library, so through a host like `tools/moofuzzhost`), about 6 hours | ✅ `cards-lobster-conformance` `cards-lobster-conformance-negative-control` (`tables/cards/lobster/driver.lobster`; three controls each damage one surface's answer through a test-only driver switch, render, upgrade and taskhash, and require that surface red and the other eight green) | ❌ #366 (no cards driver is in the squirrel leg, so `cards-conformance-all` runs none) | ✅ `cards-luau-conformance` `cards-luau-test` (`tables/cards/luau`; native facade and IO-only host, all 43 cases across nine surfaces; three source-sabotage controls require render, upgrade and taskhash red individually and the other eight green) | ✅ `cards-lua-conformance` (`tables/cards/lua/driver.lua`) |
+| ✅ `cards-cpp-conformance` (`tables/cards/cpp/driver.cpp`) | ✅ `cards-c-conformance` (`tables/cards/c/driver.c`) | ✅ `cards-rust-conformance` (`tables/cards/rust/src/bin/cards-driver.rs`) | ✅ `cards-conformance-go` `cards-conformance-go-negative-control` (`tables/cards/cmd/cards-driver/main.go`; the control widens one separator in the Go card renderer and the check goes red on render, green on load) | ✅ `cards-cs-conformance` (`tables/cards/cs/Driver/Program.cs`) | ✅ `cards-java-conformance` (`tables/cards/java/src/cards/Driver.java`) | ✅ `cards-js-conformance` (`tables/cards/js/driver.mjs`) | ✅ `cards-dart-conformance` (`tables/cards/dart/bin/driver.dart`) | ✅ `cards-elixir-conformance` (`tables/cards/elixir/driver.exs`) | ❌ #2236 — not yet carded in the schema-goose stream (docs/PORT-GOOSE.md, THE CARD MAP); no `tables/cards/goose` leg exists, so the goose leg is not in `make cards-conformance-all` | ✅ `cards-moo-conformance` `cards-moo-test` (`tables/cards/moo`; native facade and IO-only host, all 43 cases across nine surfaces; source-sabotage controls require render, upgrade and taskhash red individually and the other eight green) | ✅ `cards-lobster-conformance` `cards-lobster-conformance-negative-control` (`tables/cards/lobster/driver.lobster`; three controls each damage one surface's answer through a test-only driver switch, render, upgrade and taskhash, and require that surface red and the other eight green) | ❌ #366 (no cards driver is in the squirrel leg, so `cards-conformance-all` runs none) | ✅ `cards-luau-conformance` `cards-luau-test` (`tables/cards/luau`; native facade and IO-only host, all 43 cases across nine surfaces; three source-sabotage controls require render, upgrade and taskhash red individually and the other eight green) | ✅ `cards-lua-conformance` (`tables/cards/lua/driver.lua`) |
 
 

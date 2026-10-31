@@ -1607,6 +1607,17 @@
       "lobster": "v2026.8"
     },
     {
+      "name": "moo-cards",
+      "when": "pull-request",
+      "why": "Native moo owning cards: analyzer and unit checks plus all 43 shared cases across nine surfaces precede three real facade-source sabotages (render separator, retaining save and task-hash length frame). Each must red only its target surface. The IO-only Go host runs the pinned moo CLI; card behavior never runs in the host. The complete group, including the tagged compiler rebuild, took 3.19 seconds on Studio at GOMAXPROCS=4.",
+      "targets": [
+        "cards-moo-conformance-negative-control",
+        "cards-moo-conformance-upgrade-negative-control",
+        "cards-moo-conformance-hash-negative-control"
+      ],
+      "moo": "pin"
+    },
+    {
       "name": "moo-block-forgery",
       "when": "pull-request",
       "why": "Production block Open over 8000 deterministic mutants: independent compiler bounds, complete projection and row-byte touch, then reflective read. The control removes both extent clauses and requires actual buffer bounds throws plus independently non-whole admissions that do not throw. The baseline and control took 4.84 seconds together on Studio at GOMAXPROCS=4. Cook I3 is explicitly not covered.",
