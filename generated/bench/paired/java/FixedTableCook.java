@@ -245,8 +245,11 @@ public final class FixedTableCook {
     public record MeasureReason(long bytes, String reason) {}
 
     public static MeasureReason cookMeasureReason(Object value) {
-        long bytes = cookMeasure(value);
-        return new MeasureReason(bytes, bytes < 0 ? "invalid_value" : "ok");
+        boolean[] nonFinite = new boolean[1];
+        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite);
+        long bytes = p == null ? -1 : p.total;
+        return new MeasureReason(
+                bytes, bytes >= 0 ? "ok" : nonFinite[0] ? "non_finite_float" : "invalid_value");
     }
 
     public static boolean cookFrom(Object value, byte[] buffer, int order) {
