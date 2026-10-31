@@ -245,16 +245,25 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	b.WriteString("/// One table node's EXTENT, the bytes its lists and maps take behind its\n")
 	b.WriteString("/// record (§2.8, §2.9), by its type id: what the layout reserves.\n")
 	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(dead_code, unused_variables)]\n")
-	b.WriteString("fn cook_record_extent(type_id: u64, node: &Rc<dyn Any>) -> i64 {\n    match type_id {\n")
+	var extentTargets []*ir.Struct
 	for _, st := range targets {
-		if !cookHasExtent(st) {
-			continue
+		if cookHasExtent(st) {
+			extentTargets = append(extentTargets, st)
 		}
+	}
+	if len(extentTargets) == 0 {
+		b.WriteString("fn cook_record_extent(_type_id: u64, _node: &Rc<dyn Any>) -> i64 {\n    0 // no node of this graph holds a list or a map\n}\n\n")
+	} else {
+		b.WriteString("fn cook_record_extent(type_id: u64, node: &Rc<dyn Any>) -> i64 {\n    match type_id {\n")
+	}
+	for _, st := range extentTargets {
 		fmt.Fprintf(b, "        0x%016x => match node.downcast_ref::<%s>() {\n", ir.TableWireId(st.WireName()), st.Name)
 		fmt.Fprintf(b, "            Some(v) => {\n                let mut c = TableCarve { extent_at: 0, at: 0 };\n                %s(v, &mut c, None, 0);\n                c.at\n            }\n", fn(st.Name, "cook_carve"))
 		b.WriteString("            None => 0,\n        },\n")
 	}
-	b.WriteString("        _ => 0,\n    }\n}\n\n")
+	if len(extentTargets) > 0 {
+		b.WriteString("        _ => 0,\n    }\n}\n\n")
+	}
 	b.WriteString("/// One table node's cooked record, by its type id (§7.2).\n")
 	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(dead_code, unused_variables)]\n")
 	if len(targets) == 0 {
