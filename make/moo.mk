@@ -7,7 +7,7 @@
 # one number is Q48.16. moo ships no binary release, so `make dist-moo` builds
 # the CLI and the analyzer from the pinned COMMIT into dist/moo/ (gitignored)
 # and REFUSES a checkout whose HEAD is not the pin, exactly as serialize.moo's
-# own Makefile does. Generated moo is self-contained (serialize.moo v2.1.1 is
+# own Makefile does. Generated moo is self-contained (serialize.moo v2.1.2 is
 # emitted beside the modules, internal/codegen/moo/runtime), so the interpreter
 # and its analyzer are the leg's only toolchain. $MOO and $MOO_ANALYZE
 # override; CI restores dist/moo from a cache keyed on the pin

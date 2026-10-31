@@ -6,7 +6,7 @@ the same bits. Its one number is **Q48.16 fixed point** (a raw int64 underneath,
 exact for every integer below 2^47); it has no float, no double and no 64-bit
 integer, and its VM hashes, collects and formats deterministically. This page is
 the port's design. The runtime is [serialize.moo](https://github.com/mas-bandwidth/serialize.moo)
-v2.1.1, vendored verbatim; the language is [mas-bandwidth/moo](https://github.com/mas-bandwidth/moo)
+v2.1.2, vendored verbatim; the language is [mas-bandwidth/moo](https://github.com/mas-bandwidth/moo)
 v1.3.0, pinned by commit.
 
 ## The model it was written from
@@ -120,7 +120,7 @@ OS and architecture. No unit test uses real time, a socket or the network.
 | hostile values refused for their reasons | `TestMooTypeWireRefusesHostileValues` |
 | out-of-contract writes return false, never trap | `TestMooTypeWireWriteRefusesOutOfContract` |
 | `moo-analyze` silent (no error, no lint warning) over every generated corpus | `TestMooGeneratedCodeIsAnalyzerClean`; its control `TestMooAnalyzerGateNegativeControl` |
-| the runtime is serialize.moo v2.1.1 verbatim | `TestMooRuntimeIsTheVendoredPin` against `runtime/SERIALIZE_PIN` |
+| the runtime is serialize.moo v2.1.2 verbatim | `TestMooRuntimeIsTheVendoredPin` against `runtime/SERIALIZE_PIN` |
 
 ## THE TEXT FORMS (layer 4)
 

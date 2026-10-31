@@ -99,7 +99,7 @@ func TestMooAnalyzerGateNegativeControl(t *testing.T) {
 }
 
 // TestMooRuntimeIsTheVendoredPin holds runtime/*.moo to SERIALIZE_PIN's
-// sha256 lines: the runtime is serialize.moo v2.1.1 verbatim, never patched
+// sha256 lines: the runtime is serialize.moo v2.1.2 verbatim, never patched
 // here (a runtime gap is fixed in serialize.moo).
 func TestMooRuntimeIsTheVendoredPin(t *testing.T) {
 	pin, err := os.ReadFile(filepath.Join("runtime", "SERIALIZE_PIN"))
