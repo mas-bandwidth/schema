@@ -713,10 +713,8 @@ func answersDamage(got []byte) bool {
 }
 
 func firstLine(b []byte) string {
-	if i := bytes.IndexByte(b, '\n'); i >= 0 {
-		return string(b[:i])
-	}
-	return string(b)
+	line, _, _ := bytes.Cut(b, []byte{'\n'})
+	return string(line)
 }
 
 // absentReference is what the REFERENCE leg's absence reads as in the failure

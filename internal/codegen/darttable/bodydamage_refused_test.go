@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -33,6 +34,7 @@ type bodyDamageCase struct {
 
 func TestWireLoadRefusesPastBodyDamageDart(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Dart SDK (it runs the generated Dart)")
 	dart := dartBinary(t)
 
 	cases := []bodyDamageCase{

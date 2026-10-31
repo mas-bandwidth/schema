@@ -213,6 +213,14 @@
       ]
     },
     {
+      "name": "base-c-skip-timestamp",
+      "when": "pull-request",
+      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and the pinned root_full mutant replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "tables-c-skip-timestamp-kind-negative-control"
+      ]
+    },
+    {
       "name": "base-c-foreign",
       "when": "pull-request",
       "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
@@ -298,6 +306,15 @@
       ]
     },
     {
+      "name": "base-tool-cook-differential",
+      "when": "pull-request",
+      "why": "the tool's cook against the C++ reference's, nothing pinned between: the tool's map carve given slack after an entry array through go build -overlay, the harness rebuilt with it, and the differential required red on the map-bearing rows and on no other (1 s on hetzner1 beyond the reference driver's build); and the node alignment rule's two halves taken out of ir in turn through go test -overlay, each required to red the tool's cook of widelist_wide and no other row.",
+      "targets": [
+        "tables-tool-cook-differential-negative-control",
+        "tables-tool-cook-node-align-negative-control"
+      ]
+    },
+    {
       "name": "base-lists",
       "when": "pull-request",
       "why": "the list gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. The cook tool's list control rides here for the same corpus. Measured 35 s over 14 controls.",
@@ -314,6 +331,7 @@
         "tables-lists-preorder-negative-control",
         "tables-lists-shared-negative-control",
         "tables-lists-tool-cook-negative-control",
+        "tables-maps-tool-cook-negative-control",
         "tables-lists-unreached-negative-control",
         "tables-lists-walk-order-negative-control"
       ]
@@ -759,7 +777,7 @@
     {
       "name": "rust",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine. The tables soak's control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature: the allocator call count must go red while the live-heap drift line stays flat) rides here too: 6 s on the Linux bench, the fixed-form corpus and the generated Rust crates already built. The JSON-hostile control (the old reader planted through a go test overlay: exactly the fifteen \u00a716.3 refusal rows of TestJsonHostileTextRefusalsRust must red) rides here too: 2 s on the author's machine. The cook write's finite-float control (put_f32/put_f64's NaN and infinity refusal dropped through go test -overlay, so TestCookWriteRust must red on its FINITE probe alone) rides here too: 6 s on the author's machine. The wire fuzzer's control (the node reader's out-of-range malformed verdict dropped through go build -overlay, the all-roots driver rebuilt, and the enumerated passes required red on the report) rides here too: 24 s on the author's machine, 20 of them the driver build. The conformance walk control (the emitted JSON reader's field-key match sabotaged through go build -overlay, the units regenerated with that compiler, the conformance driver rebuilt against them, and rust / json-read required red while json-write and wire stay green) rides here too: 19 s on the author's machine, most of it the driver build. The text differential's control (the emitted float32 writer capped at six significant digits in memory, required red on the text comparison against the Go engine) rides here too: about 1 s on the author's machine. The accessor/descriptor agreement's two controls (a cook accessor pair swapped and a block pointer slot moved through go build -overlay, each required to red exactly its own fields) ride here too. The numbering walk's control (the grouped walk planted in the emitter through go test -overlay: arms_ptr and maps_pointers must red) and the float NaN control (table_widen_f32's bit surgery replaced by the hardware conversion through go test -overlay: the signalling NaNs must red) ride here too. The allocation gate's control (one Box planted per walked block row through the gate crate's negative-control feature: that row must red at exactly 192 a call and every other row stay green) rides here too: 6 s on the author's machine from a clean crate build. The keyed accessor's control (the None half, the E.Max half and the shift taken out of table_enums.rs in turn, each required to red exactly its own clause) rides here too. The map writer's sort control (each writer's sort made a no-op, each required to red its own clause) rides here too. The 3.0.0 proof's controls ride here too, each measured on vision (64 cores, warm build): the cook layout asserts taken out of the emitter (3 s), the fixed cook's scalar put made order-blind (4 s), the cook's and the block's order-word checks taken out in turn (7 s), the `&node` label renamed (9 s), two edited copies of docs/USAGE.md (9 s), the release tier's three scalings taken away (2 s), a clippy-only lint planted in a copy of a generated unit (10 s), and the conformance driver rebuilt with every absence written as an answer (about 30 s of driver build, the walk control's cost). The finite float rule's control (eight sabotages of the generated Rust, each required to red exactly its own clauses) rides here too: under 2 s on the author's machine, rustc alone. The framing control (docs/LAYERS/1-framing.md, F6) rebuilds the conformance driver over a copy of the tblr1 crate whose load has no 4096-entry cap and requires the framing surface to red on frame_entries_4097.",
+      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine. The tables soak's control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature: the allocator call count must go red while the live-heap drift line stays flat) rides here too: 6 s on the Linux bench, the fixed-form corpus and the generated Rust crates already built. The JSON-hostile control (the old reader planted through a go test overlay: exactly the fifteen \u00a716.3 refusal rows of TestJsonHostileTextRefusalsRust must red) rides here too: 2 s on the author's machine. The cook write's finite-float control (put_f32/put_f64's NaN and infinity refusal dropped through go test -overlay, so TestCookWriteRust must red on its FINITE probe alone) rides here too: 6 s on the author's machine. The wire fuzzer's control (the node reader's out-of-range malformed verdict dropped through go build -overlay, the all-roots driver rebuilt, and the enumerated passes required red on the report) rides here too: 24 s on the author's machine, 20 of them the driver build. The conformance walk control (the emitted JSON reader's field-key match sabotaged through go build -overlay, the units regenerated with that compiler, the conformance driver rebuilt against them, and rust / json-read required red while json-write and wire stay green) rides here too: 19 s on the author's machine, most of it the driver build. The text differential's control (the emitted float32 writer capped at six significant digits in memory, required red on the text comparison against the Go engine) rides here too: about 1 s on the author's machine. The accessor/descriptor agreement's two controls (a cook accessor pair swapped and a block pointer slot moved through go build -overlay, each required to red exactly its own fields) ride here too. The numbering walk's control (the grouped walk planted in the emitter through go test -overlay: arms_ptr and maps_pointers must red) and the float NaN control (table_widen_f32's bit surgery replaced by the hardware conversion through go test -overlay: the signalling NaNs must red) ride here too. The allocation gate's control (one Box planted per walked block row through the gate crate's negative-control feature: that row must red at exactly 192 a call and every other row stay green) rides here too: 6 s on the author's machine from a clean crate build. The keyed accessor's control (the None half, the E.Max half and the shift taken out of table_enums.rs in turn, each required to red exactly its own clause) rides here too. The map writer's sort control (each writer's sort made a no-op, each required to red its own clause) rides here too. The cook of maps and lists' two controls (the carve laying a map's entries unsorted, then an array unaligned, each through go build -overlay with the gate rebuilt against the regenerated mapdemo and listdemo crates and required red on its own line) ride here too: about 40 s on intel, most of it the two crate builds. The 3.0.0 proof's controls ride here too, each measured on vision (64 cores, warm build): the cook layout asserts taken out of the emitter (3 s), the fixed cook's scalar put made order-blind (4 s), the cook's and the block's order-word checks taken out in turn (7 s), the `&node` label renamed (9 s), two edited copies of docs/USAGE.md (9 s), the release tier's three scalings taken away (2 s), a clippy-only lint planted in a copy of a generated unit (10 s), and the conformance driver rebuilt with every absence written as an answer (about 30 s of driver build, the walk control's cost). The finite float rule's control (eight sabotages of the generated Rust, each required to red exactly its own clauses) rides here too: under 2 s on the author's machine, rustc alone. The framing control (docs/LAYERS/1-framing.md, F6) rebuilds the conformance driver over a copy of the tblr1 crate whose load has no 4096-entry cap and requires the framing surface to red on frame_entries_4097.",
       "targets": [
         "cards-rust-conformance-negative-control",
         "cards-rust-conformance-upgrade-negative-control",
@@ -793,7 +811,8 @@
         "tables-rust-clippy-negative-control",
         "conformance-rust-absent-negative-control",
         "conformance-negative-control-rust-framing",
-        "tables-rust-finite-float-negative-control"
+        "tables-rust-finite-float-negative-control",
+        "tables-rust-cook-map-negative-control"
       ],
       "rust": "stable"
     },
@@ -860,6 +879,16 @@
         "tables-js-usage-negative-control",
         "tables-js-release-negative-control",
         "conformance-negative-control-js-absent"
+      ]
+    },
+    {
+      "name": "js-discard",
+      "when": "pull-request",
+      "node": "26",
+      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md \u00a74): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
+      "targets": [
+        "tables-js-discard-negative-control",
+        "tables-js-batch-discard-negative-control"
       ]
     },
     {
@@ -997,7 +1026,9 @@
         "tables-java-retain-fuzz-negative-control",
         "tables-java-map-count-negative-control",
         "tables-java-keyed-count-negative-control",
-        "tables-java-retain-node-negative-control"
+        "tables-java-retain-node-negative-control",
+        "tables-java-node-index-negative-control",
+        "tables-java-map-key-damage-negative-control"
       ],
       "java": "21"
     },
@@ -1012,7 +1043,8 @@
         "tables-java-usage-negative-control",
         "tables-java-release-negative-control",
         "conformance-java-absent-negative-control",
-        "conformance-negative-control-java-framing"
+        "conformance-negative-control-java-framing",
+        "tables-java-generated-fresh-negative-control"
       ],
       "java": "21"
     },
@@ -1262,12 +1294,13 @@
     {
       "name": "goose-wire",
       "when": "pull-request",
-      "why": "the Goose leg under hostile input (make/goose-fuzz.mk): the wire-fuzz differential's two load sabotages (a non-minimal LEB128 accepted, every text taken as well-formed), each a sed over the generated wire_load.goose of one unit and a goose build -O2 of that leg, and the hostile corpus's non-finite plant, with the umbrella that names the two fuzz leaves (make builds each once in one invocation, so it costs the group nothing). Each installs the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else. Measured at 7.7 s of control time together on the author's machine (2026-10-28).",
+      "why": "the Goose leg under hostile input (make/goose-fuzz.mk): the wire-fuzz differential's two load sabotages (a non-minimal LEB128 accepted, every text taken as well-formed), each a sed over the generated wire_load.goose of one unit and a goose build -O2 of that leg, and the hostile corpus's non-finite plant, with the umbrella that names the two fuzz leaves (make builds each once in one invocation, so it costs the group nothing). Each installs the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else. Measured at 7.7 s of control time together on the author's machine (2026-10-28). The retaining binary protocol controls compile the native Goose driver, check clean/evolution/refusal fixtures, then suppress the runtime retained counter or map-replacement cleanup: each changes only its retention counter while saved bytes stay identical (24 s together on hetzner1). The combined wire-fuzz gate also runs every retaining builder arm.",
       "targets": [
         "schema-goose-runs-hostile-corpus-negative-control",
         "tables-goose-wire-fuzz-leb-negative-control",
         "tables-goose-wire-fuzz-negative-control",
-        "tables-goose-wire-fuzz-utf8-negative-control"
+        "tables-goose-wire-fuzz-utf8-negative-control",
+        "tables-goose-retain-fuzz-negative-control"
       ]
     },
     {
@@ -1385,6 +1418,7 @@
         "tables-lobster-order-negative-control",
         "tables-lobster-names-negative-control",
         "tables-lobster-json-differential-negative-control",
+        "tables-lobster-json-walk-negative-control",
         "tables-lobster-runtime-home-negative-control",
         "tables-lobster-usage-negative-control"
       ],
@@ -1505,6 +1539,7 @@
         "tables-squirrel-message-form-negative-control",
         "tables-squirrel-damage-discard-negative-control",
         "tables-squirrel-arms-negative-control",
+        "tables-squirrel-slot-negative-control",
         "tables-squirrel-save-negative-control",
         "tables-squirrel-base64-text-negative-control",
         "tables-squirrel-keyed-negative-control",
@@ -1567,6 +1602,26 @@
       "luau": "0.741"
     },
     {
+      "name": "luau-forgery",
+      "when": "pull-request",
+      "why": "Production block-open and optional CheckWhole/open composition controls on pinned Luau 0.741: remove both block extent bounds, then the optional cook-check region scan, and require independent bounds/checker findings. This does not complete production cook I3. Each control covers 24000 mutants; the actual make target took 63.44 seconds on hetzner1 at GOMAXPROCS=4. A separate group keeps this measured work within the owner's one-to-two-minute per-commit budget.",
+      "targets": [
+        "tables-luau-forgery-fuzz-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-cards",
+      "when": "pull-request",
+      "why": "Native Luau card facade: unit checks and all 43 shared cases across nine surfaces precede three actual source sabotages (render separator, retained-field save, and task-hash length framing). Each sabotage must red its own surface while the other eight remain green. The pinned Luau CLI uses a Go file-IO host; all card behavior runs in Luau. The complete warm-cache group took 4.21 seconds on hetzner1 at GOMAXPROCS=4.",
+      "targets": [
+        "cards-luau-conformance-negative-control",
+        "cards-luau-conformance-upgrade-negative-control",
+        "cards-luau-conformance-hash-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
       "name": "lobster",
       "when": "pull-request",
       "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio. The bench legs' control (bench/lobster/negative-control.sh) flips each leg's golden, plants a compiler warning under the packet runner and a seconds_elapsed() clock and a corpus name in .lobster files under a copy of bench/, and requires each refused by name beside clean baselines; about 3 s. Both fit the per-commit rule with room.",
@@ -1575,6 +1630,17 @@
         "schema-lobster-generated-strict-gate-negative-control"
       ],
       "lobster": "v2026.8"
+    },
+    {
+      "name": "moo-cards",
+      "when": "pull-request",
+      "why": "Native moo owning cards: analyzer and unit checks plus all 43 shared cases across nine surfaces precede three real facade-source sabotages (render separator, retaining save and task-hash length frame). Each must red only its target surface. The IO-only Go host runs the pinned moo CLI; card behavior never runs in the host. The complete group, including the tagged compiler rebuild, took 3.19 seconds on Studio at GOMAXPROCS=4.",
+      "targets": [
+        "cards-moo-conformance-negative-control",
+        "cards-moo-conformance-upgrade-negative-control",
+        "cards-moo-conformance-hash-negative-control"
+      ],
+      "moo": "pin"
     },
     {
       "name": "moo",

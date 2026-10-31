@@ -28,6 +28,7 @@ public final class BenchIntsRetain {
         retain.idUsed = 0;
         retain.nodeKeys.clear();
         BenchIntsVariable.Value v = new BenchIntsVariable.Value();
+        report.rootTypeId = BenchIntsVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -24,6 +25,7 @@ import (
 // random #868 at seed 24845619678) whose body union field occurs twice.
 func TestJavaFixUnionFieldRepeatedAfterShortLengthRefused(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "examples-wide")
 	u := unitFromDir(t, dir)
