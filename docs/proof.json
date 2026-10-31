@@ -8711,10 +8711,8 @@
     {
       "row": "porting J6",
       "lang": "lobster",
-      "status": "proven",
-      "gate": "cards-lobster-conformance",
-      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
-      "control": "cards-lobster-conformance-negative-control (CI full / negative controls (lobster-cards))"
+      "status": "red",
+      "why": "❌ #2272 — `tables/cards` has no lobster driver, so the leg is not in `cards-conformance-all`"
     },
     {
       "row": "porting J6",
