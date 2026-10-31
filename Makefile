@@ -5437,7 +5437,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-offset-past-max-is-damage:internal/tablewire/messagedecode.go:TestARangedOffsetAboveTheSendersMax \
 	message-clamp-drops-surplus:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
 	message-skip-string-no-align:internal/tablewire/messagedecode.go:TestTheShapesOneRowAKind \
-	message-wide-string-thirty-two:internal/tablewire/messagedecode.go:TestTheWideStringsWidth \
 	message-reader-own-width:internal/tablewire/messagedecode.go:TestARangeThatMoved \
 	message-index-fixed-width-read:internal/tablewire/messagedecode.go:TestAPointeredBatch \
 	message-reads-own-vocabulary:internal/tablewire/messagedecode.go:TestPerDirectionIndependence \

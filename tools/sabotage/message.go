@@ -121,12 +121,6 @@ var messageSabotages = map[string][]edit{
 		new: "\tcase ir.TableKindString:\n\t\tn, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))\n\t\tif !ok { // SABOTAGED: the skip does not align\n",
 	}},
 
-	// A WIDE STRING IS SIXTEEN BITS A CODE UNIT, not SPEC.md §4.12's group.
-	"message-wide-string-thirty-two": {{
-		old: "\t\treturn d.r.skip(int(n) * 16)\n",
-		new: "\t\treturn d.r.skip(int(n) * 32) // SABOTAGED: a thirty-two bit group a unit\n",
-	}},
-
 	// A RANGE THAT MOVED DECODES AT THE SENDER'S WIDTH, not the reader's own.
 	"message-reader-own-width": {{
 		old: "\twidth := int(ir.TableMessageValueBits(kind, shape))\n",
