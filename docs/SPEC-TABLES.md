@@ -5085,11 +5085,15 @@ one document rather than two.
   is silent**, because the kind byte separates every pair of arm types the
   way it separates every pair of field types, and an arm's ELEMENT KIND is
   checked exactly as a field's is.
-  **Bytes left inside a union arm's `L` after a whole inner union are not
-  damage**: the append rule lets a newer writer add at the end of an envelope,
-  so the reader decodes the inner union, steps over the rest of the arm by its
-  `L` and counts nothing, while a byte after the root's own terminator,
-  outside every envelope, stays malformed (above).
+  **A NESTED UNION FILLS ITS ARM'S `L` EXACTLY.** An arm whose payload is a
+  union carries the inner union's bytes and nothing after them, because that
+  is all any writer puts there, so bytes left inside the arm's `L` after a
+  whole inner union are input no writer produces, and they are damage that
+  discards the whole load (§4, INPUT NO WRITER PRODUCES IS DAMAGE; Glenn,
+  #391: "Table reads are exactly equivalent to type reads in security
+  posture."), exactly as a byte left inside a body's `L` after its terminator
+  is (above), and as a byte after the root's own terminator is
+  (`nested_arm_trailing`, `nested_arm_trailing_top`).
 
   **Spellings that add no row, and the one way they differ.** A `?T`
   optional field is framed exactly as the non-optional `T` (§2.3), so the two

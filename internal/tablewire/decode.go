@@ -1430,7 +1430,13 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 			return false
 		}
 	case tabletext.UnionOf(f) != nil:
-		ok = r.unionCell(&fv.Cell, fv, -1)
+		ok = r.unionCell(&fv.Cell, fv)
+		if ok && n != r.off {
+			// A NESTED UNION FILLS ITS ARM'S L EXACTLY (§3): bytes left after
+			// the whole inner union are bytes no writer put there, so damage
+			r.report.Malformed = true
+			return false
+		}
 	case tabletext.EnumOf(f) != nil:
 		ok = r.enumCell(&fv.Cell, f, false)
 		if ok && r.off != n {

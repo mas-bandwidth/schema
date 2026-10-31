@@ -329,14 +329,12 @@ report escape_arm             messagedemo ToolMessage testdata/wire/tables/escap
 report escape_element         messagedemo ToolMessage testdata/wire/tables/escape_element.bin
 report nopayload_named_field  messagedemo ToolMessage testdata/wire/tables/nopayload_named_field.bin
 
-# BYTES INSIDE AN ENVELOPE ARE SKIPPED (§3, the append rule). A nested-union
-# arm whose L runs one byte past the whole inner union it frames: the inner
-# union decodes, the byte is stepped over with the arm, the parent reads on,
-# and every counter stays zero. Its top-level twin, the same byte after the
-# ROOT's terminator, is a stopped read and so not a report row; it rides the
-# wire fuzzer's pinned vectors (testdata/wire/tables/fuzz-vectors/INDEX.txt)
-# beside this one. The bytes are the reference leg's, pinned by
-# test/tables/main.cpp.
+# A NESTED UNION FILLS ITS ARM'S L EXACTLY (§3). A nested-union arm whose L
+# runs one byte past the whole inner union it frames carries a byte no writer
+# put there, so it is damage and the whole load is refused (§4), exactly as the
+# same byte after the ROOT's terminator is (nested_arm_trailing_top, a wire
+# fuzzer pinned vector, testdata/wire/tables/fuzz-vectors/INDEX.txt). The bytes
+# are the reference leg's, pinned by test/tables/main.cpp.
 report nested_arm_trailing messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
 
 # THE ARM'S KIND BYTE, at the four pins §3 names. A2 declares `a` as an int64

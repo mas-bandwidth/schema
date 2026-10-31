@@ -213,13 +213,10 @@ load is discarded (§4)."
 LENGTH THAT RUNS PAST THE BODY CARRYING IT IS DAMAGE, at any depth, the root
 included: `malformed` counts and the whole load is discarded (§4)."
 
-**L5. Bytes left inside a union arm's `L` after a whole inner union are not
-damage, and the parent steps over them by the arm's `L`.** §3: "Bytes left
-inside a union arm's `L` after a whole inner union are not damage: the append
-rule lets a newer writer add at the end of an envelope, so the reader decodes
-the inner union, steps over the rest of the arm by its `L` and counts
-nothing, while a byte after the root's own terminator, outside every envelope,
-stays malformed."
+**L5. A nested union fills its arm's `L` exactly; bytes left after it are
+damage (D3).** §3: "A NESTED UNION FILLS ITS ARM'S `L` EXACTLY ... bytes left
+inside the arm's `L` after a whole inner union are input no writer produces,
+and they are damage that discards the whole load" (`nested_arm_trailing`).
 
 ## D. Arrays, maps and keyed arrays: the header against the parent
 
