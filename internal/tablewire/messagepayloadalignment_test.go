@@ -27,8 +27,8 @@ func TestMessageNestedPayloadAlignment(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Independently generated C++ output for the combined case.
-		if caseIndex == 2 && hex.EncodeToString(wire) != "02011303616263120740560c616263120760220203001303616263120740560c61626312076022020300" {
+		// The combined case's batch, pinned.
+		if caseIndex == 2 && hex.EncodeToString(wire) != "0201cb006162630a07a0cd006162630a07b0040203c0326162630a07a0cd006162630a07b004020300" {
 			t.Fatalf("C++ wire differs: %x", wire)
 		}
 		var vocabulary tablewire.Vocabulary

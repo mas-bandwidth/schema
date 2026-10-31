@@ -371,7 +371,17 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	entry := ir.TableFieldEntry(unionField)
 	arm := &bitw{}
 	arm.put(slotOf(t, mv, entry.Id, entry.Kind), mv.RefBits())
-	arm.put(slotOf(t, mv, ir.TableWireId("ToolMessage"), 0), mv.RefBits()) // a table's name id: kind 0, framing nothing
+	variant := uint64(0)
+	for i, e := range mv.Entries() {
+		if e.Kind == 0 {
+			variant = uint64(i + 1) // an enum variant's name: kind 0, framing nothing
+			break
+		}
+	}
+	if variant == 0 {
+		t.Fatal("the messagedemo vocabulary names no kind-0 entry")
+	}
+	arm.put(variant, mv.RefBits())
 	arm.put(0, mv.RefBits())
 	_, ok, report, derr := decodeOne(t, mm, "ToolMessage", mv, batchOf(arm))
 	if derr != nil || ok || !report.Malformed || report.Unknown != 0 || report.KindMismatch != 0 {
