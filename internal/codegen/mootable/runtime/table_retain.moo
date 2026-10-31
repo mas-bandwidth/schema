@@ -1078,6 +1078,40 @@ end
 
 -- ---- the hook itself --------------------------------------------------------
 
+-- resetInPlace puts a body back on its declared defaults and keeps its identity,
+-- and the identity of every table a nested field or a fixed or counted array of
+-- tables holds (internal/tabletext Refill): the records keyed by those tables
+-- stay where they were
+local reset_in_place: any
+reset_in_place = function(d: any, inst: any)
+	local fresh = d.new()
+	for _, fd in d.fields do
+		local slot = fd.slot
+		if slot ~= nil then
+			local held = inst[slot]
+			if fd.s == "tab" and type(held) == "table" then
+				reset_in_place(S.lookup(fd.t), held)
+				fresh[slot] = held
+			elseif fd.s == "arr" and (fd.array == "fixed" or fd.array == "counted") and fd.e ~= nil and fd.e.s == "tab" and type(held) == "table" and type(fresh[slot]) == "table" then
+				local ed = S.lookup(fd.e.t)
+				for j, _ in fresh[slot] do
+					local o = held[j]
+					if type(o) == "table" then
+						reset_in_place(ed, o)
+						fresh[slot][j] = o
+					end
+				end
+			end
+		end
+	end
+	for k, _ in inst do
+		inst[k] = nil
+	end
+	for k, v in fresh do
+		inst[k] = v
+	end
+end
+
 local function make_hook(st: any): any
 	local h: any = {}
 
@@ -1219,23 +1253,11 @@ local function make_hook(st: any): any
 	end
 
 	-- DAMAGE IS NOT A LATER OCCURRENCE: a body that falls back on its declared
-	-- defaults stays the body it was, and what it retained stays with it
-	function h.rekey(old: any, new: any)
-		local recs = st.records[old]
-		if recs ~= nil then
-			st.records[old] = nil
-			st.records[new] = recs
-		end
-		local m = st.maps[old]
-		if m ~= nil then
-			st.maps[old] = nil
-			st.maps[new] = m
-		end
-		local a = st.arms[old]
-		if a ~= nil then
-			st.arms[old] = nil
-			st.arms[new] = a
-		end
+	-- defaults stays the body it was, and what it retained stays with it. The
+	-- Go engine's Refill keeps the child tables a nested or fixed-array field
+	-- holds, so their records are still placed at save
+	function h.refill(d: any, inst: any)
+		reset_in_place(d, inst)
 	end
 
 	-- tail writes one body's retained fields AT THE END OF THAT BODY, in the

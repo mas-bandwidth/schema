@@ -119,7 +119,7 @@ func RunErr(t testing.TB, dir, main string, inputs map[string][]byte) ([]byte, e
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return stdout.Bytes(), fmt.Errorf("moorun: moo %s: %v\nstdout:\n%s\nstderr:\n%s", main, err, stdout.Bytes(), stderr.Bytes())
+		return stdout.Bytes(), fmt.Errorf("moorun: moo %s: %w\nstdout:\n%s\nstderr:\n%s", main, err, stdout.Bytes(), stderr.Bytes())
 	}
 	return stdout.Bytes(), nil
 }

@@ -3,6 +3,7 @@ package mootable
 import (
 	"bufio"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -121,12 +122,8 @@ func generateUnitDir(t *testing.T, u *ir.Unit, runtime map[string][]byte) string
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
-	for name, data := range runtime {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
+	maps.Copy(files, runtime)
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {

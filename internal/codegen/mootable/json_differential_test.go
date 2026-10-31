@@ -94,7 +94,7 @@ func (d *redraw) between(lo, hi *big.Int) *big.Int {
 	span := new(big.Int).Sub(hi, lo)
 	span.Add(span, big.NewInt(1))
 	n := new(big.Int)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		n.Lsh(n, 32)
 		n.Or(n, new(big.Int).SetUint64(uint64(d.r.Uint32())))
 	}
@@ -279,7 +279,7 @@ func differentialCases(t *testing.T, seed uint64, k, n int) (map[string]*ir.Unit
 		}
 		golden := readGolden(t, in.name)
 		model := tabletext.NewModel(u)
-		for j := 0; j < k; j++ {
+		for j := range k {
 			inst := model.New(model.Lookup(in.root))
 			var rep tabletext.Report
 			if !model.Read(inst, golden, &rep) {
@@ -296,7 +296,7 @@ func differentialCases(t *testing.T, seed uint64, k, n int) (map[string]*ir.Unit
 	}
 	model := oracleModel(t, i13Schema)
 	units["i13"] = model.Unit
-	for j := 0; j < n; j++ {
+	for j := range n {
 		inst := model.New(model.Lookup("Root"))
 		d := &redraw{r: r, m: model}
 		d.instance(inst)

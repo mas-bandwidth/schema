@@ -2,6 +2,7 @@ package mootable_test
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,7 +48,7 @@ func mutations(wire []byte) [][]byte {
 		}
 	}
 	add(wire)
-	for n := 0; n < len(wire); n++ {
+	for n := range wire {
 		add(append([]byte(nil), wire[:n]...))
 	}
 	for _, tail := range [][]byte{{0}, {0xFF}, {0, 0}} {
@@ -112,9 +113,9 @@ func goAnswer(m *tabletext.Model, vocab *tablewire.Vocabulary, root string, capa
 	}
 	var rep tabletext.Report
 	n, _, err := tablewire.DecodeMessages(m, insts, data, vocab, &rep)
-	reason := "nil"
 	if err != nil {
-		if r, ok := err.(*tablewire.MessageRefusal); ok {
+		var reason string
+		if r, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
 			reason = r.Reason.String()
 			if r.Reason != tablewire.ReasonBatchTooLarge {
 				n = -1
@@ -135,7 +136,7 @@ func mooAnswer(line string) string {
 		return line
 	}
 	if f[2] != "nil" {
-		reason := strings.SplitN(f[2], ":", 2)[0]
+		reason, _, _ := strings.Cut(f[2], ":")
 		return fmt.Sprintf("%s %s", f[0], reason)
 	}
 	return fmt.Sprintf("%s %s", f[0], f[1])

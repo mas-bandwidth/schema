@@ -2,6 +2,7 @@ package mootable_test
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -26,8 +27,15 @@ union Pick
     beta  int32
 }
 
+table Outer
+{
+    inner Inner
+    pair  [2]Inner
+}
+
 table Node
 {
+    outer Outer
     child Inner
     pick  Pick
     kids  []Inner
@@ -119,12 +127,29 @@ func (b *wb) child(value, future int, damage bool) {
 	b.innerBody(value, future, damage)
 }
 
+// outer writes an `Outer` whose children hold unknown fields: `inner`, and
+// the second element of the fixed array `pair`. damage appends two bytes after
+// the terminator, so the parent's framing fails and it falls back on its
+// declared defaults; the Go engine keeps the child tables (Refill).
+func (b *wb) outer(damage, _ bool) {
+	b.field("outer", ir.TableKindTable)
+	at := b.openLen()
+	b.field("inner", ir.TableKindTable)
+	b.innerBody(1, 7, false)
+	b.list("pair", 2, func(i int) { b.innerBody(i, 40+i, false) })
+	b.end()
+	if damage {
+		b.body = append(b.body, 0xAA, 0xBB)
+	}
+	b.closeLen(at)
+}
+
 func (b *wb) list(name string, n int, body func(i int)) {
 	b.field(name, ir.TableKindArray)
 	at := b.openLen()
 	b.u8(uint8(ir.TableKindTable))
 	b.leb(uint64(n))
-	for i := 0; i < n; i++ {
+	for i := range n {
 		body(i)
 	}
 	b.closeLen(at)
@@ -184,6 +209,9 @@ func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
 			b.child(2, -1, false)
 			b.end()
 		},
+		"damaged parent keeps its children": func(b *wb) { b.outer(true, false); b.end() },
+		"damaged parent then replaced":      func(b *wb) { b.outer(true, false); b.outer(false, false); b.end() },
+		"sound parent":                      func(b *wb) { b.outer(false, false); b.end() },
 		"kids twice, fewer": func(b *wb) {
 			b.list("kids", 4, func(i int) { b.innerBody(i, 40+i, false) })
 			b.list("kids", 2, func(i int) { b.innerBody(i, -1, false) })
@@ -238,7 +266,7 @@ func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
 			at := b.openLen()
 			b.u8(uint8(ir.TableKindUnion))
 			b.leb(6)
-			for i := 0; i < 6; i++ {
+			for i := range 6 {
 				if i == 4 {
 					b.armInner("alpha", 1, 7, true)
 				} else {
@@ -344,5 +372,38 @@ func sortStrings(s []string) {
 		for j := i; j > 0 && s[j] < s[j-1]; j-- {
 			s[j], s[j-1] = s[j-1], s[j]
 		}
+	}
+}
+
+// TestMooRetainDamagedParentKeepsItsChildren pins the vector the divergence
+// was found on: a nested body whose framing is damaged falls back on its
+// declared defaults and STAYS THE BODY IT WAS, with the child tables it holds,
+// so the records retained under those children are still placed at the save
+// (internal/tabletext Refill; docs/SPEC-TABLES.md §6.6, damage is not a later
+// occurrence). The wire and its expectations are fixed here, and the Go engine
+// must give the same answer.
+func TestMooRetainDamagedParentKeepsItsChildren(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
+	t.Parallel()
+	g := generateFiles(t, map[string]string{"Occ.schema": occurrenceUnit})
+	b := &wb{}
+	b.outer(true, false)
+	b.end()
+	wire := b.finish()
+	const (
+		wantWire     = "01010d34020d0d03040100000004040700000000050e1e0d020d030400000000040428000000000d0304010000000404290000000000aabb00d41b5e8f67ede6308792885f8f064c2dea0ce83094fde47c5630b3ead46180d8319a88eb0d2569030500000000000000"
+		wantCounters = "3,0,3"
+		wantSave     = "01010d20020d0703040700000000040e120d020703042800000000070304290000000000050e080d0301000100010000d41b5e8f67ede6308792885f8f064c2d5630b3ead46180d8319a88eb0d25690331b8db43729f53fb0500000000000000"
+	)
+	if got := hex.EncodeToString(wire); got != wantWire {
+		t.Fatalf("the vector moved: %s", got)
+	}
+	got := mooRetain(t, g, "Node", wire, retainFull, -1)
+	want := goRetain(t, g.unit, "Node", wire, retainFull, -1)
+	if got.counters() != wantCounters || got.saveLost != 0 || hex.EncodeToString(got.save) != wantSave {
+		t.Errorf("moo: load %s, save lost %d, saved %x", got.counters(), got.saveLost, got.save)
+	}
+	if want.counters() != wantCounters || want.saveLost != 0 || hex.EncodeToString(want.save) != wantSave {
+		t.Errorf("the Go engine: load %s, save lost %d, saved %x", want.counters(), want.saveLost, want.save)
 	}
 }
