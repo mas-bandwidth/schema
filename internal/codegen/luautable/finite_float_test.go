@@ -58,6 +58,14 @@ fixed table Fix
     f float32
     d float64
 }
+
+fixed table Msg
+{
+    a  float32
+    b  float64
+    xs [..4]float32
+    ys [..4]float64
+}
 `
 
 // finiteNewer is the writer one field newer, for the retained unknown float:
@@ -190,26 +198,27 @@ do
 	row("retain/twin", if Ret.LoadRetain("Var", inputs.retainTwin, r3) == nil then tostring(r3.reason) else "loaded")
 end
 
--- THE MESSAGE FORM: the batch read, and the writers over a body that carries one
+-- THE MESSAGE FORM (a fixed root's, §3.3): the batch read, and the writers
+-- over a body that carries one
 do
 	local voc = M.NewVocabulary()
 	local ar: any = { malformed = false, verdict = 0, reason = "", unknown = 0 }
 	assert(M.AnnounceRead(voc, inputs.ann, ar))
 	for _, w in { "msgA", "msgYs" } do
 		local r: any = {}
-		local n = M.LoadMessages(voc, "Var", inputs[w], 256, r)
+		local n = M.LoadMessages(voc, "Msg", inputs[w], 256, r)
 		row("msg/read/" .. w, if n < 0 then tostring(r.reason) else "loaded")
 	end
 	local r: any = {}
-	local n, bodies = M.LoadMessages(voc, "Var", inputs.msgTwin, 256, r)
+	local n, bodies = M.LoadMessages(voc, "Msg", inputs.msgTwin, 256, r)
 	assert(n == 1, "the twin batch did not load")
-	local back = M.SaveMessages(voc, "Var", bodies, r)
+	local back = M.SaveMessages(voc, "Msg", bodies, r)
 	row("msg/twin", if hex(back) == hex(inputs.msgTwin) then "same" else hex(back))
 	local bad = { { buffer = inputs.msgA, from = bodies[1].from, to = bodies[1].to } }
 	local rs: any = {}
-	local out = M.SaveMessages(voc, "Var", bad, rs)
+	local out = M.SaveMessages(voc, "Msg", bad, rs)
 	local rm: any = {}
-	local size = M.MeasureMessages(voc, "Var", bad, rm)
+	local size = M.MeasureMessages(voc, "Msg", bad, rm)
 	row("msg/write", (if out == nil then tostring(rs.reason) .. " " .. tostring(rs.field) else "written") ..
 		" " .. (if size < 0 then tostring(rm.reason) else "measured"))
 end
@@ -376,7 +385,14 @@ func finiteUnit(t *testing.T, src string) (*ir.Unit, *tabletext.Model) {
 // varInstance is the Var twin in the Go engine's model, with set applied.
 func varInstance(t *testing.T, m *tabletext.Model, set func(*tabletext.Instance)) *tabletext.Instance {
 	t.Helper()
-	inst := m.New(m.Lookup("Var"))
+	return twinInstance(t, m, "Var", set)
+}
+
+// twinInstance is the twin of a table with Var's fields (Var, or the fixed Msg
+// the message form carries) in the Go engine's model, with set applied.
+func twinInstance(t *testing.T, m *tabletext.Model, root string, set func(*tabletext.Instance)) *tabletext.Instance {
+	t.Helper()
+	inst := m.New(m.Lookup(root))
 	for i := range inst.Fields {
 		f := &inst.Fields[i]
 		switch f.Def.Name {
@@ -542,7 +558,7 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 
 	// THE MESSAGE FORM, against tablewire
 	in["ann"] = tablewire.Announce(u)
-	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{varInstance(t, m, nil)})
+	batch, err := tablewire.EncodeMessages(m, []*tabletext.Instance{twinInstance(t, m, "Msg", nil)})
 	if err != nil {
 		t.Fatalf("the Go message writer refused the twin: %v", err)
 	}
@@ -556,14 +572,14 @@ func newFiniteFixture(t *testing.T) *finiteFixture {
 	}
 	for _, w := range []string{"msgA", "msgYs"} {
 		var mrep tabletext.Report
-		_, _, derr := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Var"))}, in[w], &voc, &mrep)
+		_, _, derr := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Msg"))}, in[w], &voc, &mrep)
 		if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](derr); !ok {
 			t.Fatalf("%s: the Go batch reader answered %v, want a NonFiniteRefusal", w, derr)
 		}
 		fx.want["msg/read/"+w] = mrep.Reason
 	}
 	fx.want["msg/twin"] = "same"
-	fx.want["msg/write"] = "non_finite_float Var.a non_finite_float"
+	fx.want["msg/write"] = "non_finite_float Msg.a non_finite_float"
 
 	// THE FIXED FORM: the Luau writer's own twin is the file the reads patch
 	fx.want["fixed/twin"] = "1.5 2.5"
