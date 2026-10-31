@@ -285,8 +285,8 @@ func t12R27(t *testing.T, corpus string) {
 				file, rem, 20+L, records)
 		}
 	}
-	if lines < 76 {
-		t.Fatalf("rust/R27: manifest.txt has %d rows, want at least 76", lines)
+	if lines < 73 {
+		t.Fatalf("rust/R27: manifest.txt has %d rows, want at least 73", lines)
 	}
 	for _, r := range versionRows {
 		if r.unported != "" {

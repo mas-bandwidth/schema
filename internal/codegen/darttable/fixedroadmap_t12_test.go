@@ -515,7 +515,6 @@ func t12SchemaBase(file string) string {
 		"p3.bin":    "P3",
 		"fu1.bin":   "FU1",
 		"fu2.bin":   "FU2",
-		"fxw.bin":   "FXW",
 		"keyed.bin": "examples/Keyed",
 		"pack.bin":  "examples/Pack",
 

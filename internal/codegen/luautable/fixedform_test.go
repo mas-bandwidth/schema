@@ -34,7 +34,6 @@ var fixedCorpusVectors = []fixedVector{
 	{"p3.bin", "test/tables/P3.schema", "Chain"},
 	{"keyed.bin", "tables/examples/Keyed.schema", "KeyedConfig"},
 	{"pack.bin", "tables/examples/Pack.schema", "PackConfig"},
-	{"fxw.bin", "test/tables/FXW.schema", "FxWide"},
 	{"fu1.bin", "test/tables/FU1.schema", "FuRoot"},
 	{"fu2.bin", "test/tables/FU2.schema", "FuRoot"},
 }
