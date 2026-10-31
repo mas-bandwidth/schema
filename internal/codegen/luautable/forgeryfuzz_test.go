@@ -223,8 +223,8 @@ type luauForgeryImage struct {
 	root  string
 	bytes []byte
 	words []int
-	bl    *ir.BlockLayout   // a block
-	m     *tabletext.Model  // a cook
+	bl    *ir.BlockLayout  // a block
+	m     *tabletext.Model // a cook
 }
 
 // luauForgeryBlockTables is the root each manifest block row is a block of,

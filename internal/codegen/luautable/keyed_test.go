@@ -69,13 +69,13 @@ func TestLuauKeyedAccessorCoversBothEnds(t *testing.T) {
 	t.Parallel()
 	rows := luauKeyedRows(t, keyedUnit(t))
 	want := map[string]string{
-		"none refused":                     "true\ttrue",
-		"past max refused":                 "true\ttrue",
-		"negative and non-integer refused": "true\ttrue\ttrue",
-		"max is reachable":                 "true\ttrue",
-		"set places by key":                "10,20,30\ttrue",
-		"each yields key beside element":   "1=10,2=20,3=30",
-		"key by variant name":              "1\t3\ttrue",
+		"none refused":                                 "true\ttrue",
+		"past max refused":                             "true\ttrue",
+		"negative and non-integer refused":             "true\ttrue\ttrue",
+		"max is reachable":                             "true\ttrue",
+		"set places by key":                            "10,20,30\ttrue",
+		"each yields key beside element":               "1=10,2=20,3=30",
+		"key by variant name":                          "1\t3\ttrue",
 		"a field that is not keyed is refused by name": "true",
 	}
 	for name, w := range want {
