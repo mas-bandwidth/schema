@@ -826,42 +826,6 @@ tables-rust-message-batch:
 
 test-rust: tables-rust-message-batch
 
-# THE MESSAGE FORM OVER A POINTERED ROOT on the Rust leg (docs/SPEC-TABLES.md
-# §3.1, §3.3): a variable root's batch over the variable form's own storage,
-# each body's node table first and its pointers at the index width the node
-# count settles, byte for byte against the manifest's graph_tree row and the
-# Go codec, with the codec's counters on a versioned read and blob_shared
-# refused by name. SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure.
-.PHONY: tables-rust-message-variable tables-rust-message-variable-negative-control
-tables-rust-message-variable:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run '^TestMessageFormVariableRust$$' -v
-	@echo 'tables Rust message variable: a pointered root rides the message form as the reference writes it'
-
-# Its negative control writes every pointer index at a fixed thirty-two bits
-# instead of bits_required(0, node count + 1), through a `go test -overlay` of
-# internal/codegen/rusttable/messagevariable.go (no tracked file is edited):
-# the gate must go red on the manifest's graph_tree bytes.
-tables-rust-message-variable-negative-control:
-	@rm -rf build/rust-message-variable-control && mkdir -p build/rust-message-variable-control
-	@sed 's|ib = table_message_bits(g.records.len() as u64 + 1);|ib = 32;|' \
-		internal/codegen/rusttable/messagevariable.go > build/rust-message-variable-control/messagevariable.go.txt
-	@cmp -s internal/codegen/rusttable/messagevariable.go build/rust-message-variable-control/messagevariable.go.txt && \
-		{ echo "NEGATIVE CONTROL: the index-width sabotage did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/rusttable/messagevariable.go":"%s/build/rust-message-variable-control/messagevariable.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > build/rust-message-variable-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 20m \
-			-overlay=build/rust-message-variable-control/overlay.json \
-			-run '^TestMessageFormVariableRust$$' ./internal/codegen/rusttable/ > build/rust-message-variable-control/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the pointered batch stayed green with every index written at 32 bits"; \
-		exit 1; \
-	fi
-	@grep -q "does not reproduce the reference's graph_tree bytes" build/rust-message-variable-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the graph_tree bytes"; \
-		  cat build/rust-message-variable-control/log; exit 1; }
-	@echo "rust message variable negative control: a fixed index width turns the graph_tree row RED"
-
-test-rust: tables-rust-message-variable tables-rust-message-variable-negative-control
-
 # A FLOAT CROSSES TWO WIDTHS BY BIT SURGERY (docs/PORTING.md M21; SPEC.md
 # §4.3, docs/SPEC-TABLES.md §4): the variable runtime's table_widen_f32 and
 # the message runtime's table_message_widen_f32, cut out of the generated

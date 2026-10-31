@@ -59,13 +59,12 @@ for unit in backenddemo:tables/backend \
 		"$dir/gen/$name/table_enums.rs" "$dir/gen/$name/fixed_runtime.rs" "$dir/gen/$name/message_runtime.rs" \
 		"$dir/gen/$name"/*_records.rs "$dir/gen/$name"/*_fixed.rs \
 		"$dir/gen/$name"/*_table.rs "$dir/gen/$name"/*_variable.rs \
-		"$dir/gen/$name"/*_message.rs "$dir/gen/$name/vmessage_runtime.rs" "$dir/gen/$name"/*_vmessage.rs; do
+		"$dir/gen/$name"/*_message.rs; do
 		[ -f "$f" ] || continue
 		m=$(basename "$f" .rs)
-		# Generated message and fixed modules normally live at crate root (the
-		# pointered message modules under its `tables` re-export).
+		# Generated message and fixed modules normally live at crate root.
 		# In this multi-unit driver each unit is its own parent module.
-		sed -e 's/^use crate::\*;/use super::*;/' -e 's/^use crate::tables::\*;/use super::*;/' "$f" > "$dir/src/$name/$(basename "$f")"
+		sed 's/^use crate::\*;/use super::*;/' "$f" > "$dir/src/$name/$(basename "$f")"
 		printf '#[allow(dead_code, unused_imports)]\npub mod %s;\n#[allow(unused_imports)]\npub use %s::*;\n' "$m" "$m" >>"$dir/src/$name/mod.rs"
 	done
 done

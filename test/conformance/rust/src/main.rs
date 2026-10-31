@@ -1365,10 +1365,9 @@ fn surface_cook_write(manifest: &Manifest, out: &str) {
 // The one surface that reads two files: the CONNECTION's announcement into one
 // direction's vocabulary, then the message-form batch against it. The verbs are
 // PLURAL — LoadMessages, MeasureMessages and SaveMessages over the batch — and
-// the bytes written are SaveMessages' own. A fixed root's batch is over its
-// `<Name>Row` records, and a pointered root's over the variable form's storage
-// struct, its node table first in each body (§3.1, §3.3). A root this leg
-// carries no message verbs for is answered ABSENT with the reason.
+// the bytes written are SaveMessages' own. A row whose root is a plain `table`
+// carries no verbs ("`fixed table T` may ride here, a plain `table T` may
+// not", §3.3), so it is answered ABSENT with the reason, as the Go driver does.
 
 macro_rules! message_round_trip {
     ($krate:ident, $row:ident, $load:ident, $measure:ident, $save:ident, $ann:expr, $wire:expr) => {{
@@ -1410,8 +1409,6 @@ fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Opti
         ("vocabdemo", "Wide09") => message_round_trip!(vocabdemo, Wide09Row, wide09_load_messages, wide09_measure_messages, wide09_save_messages, ann, wire),
         ("vocab9demo", "Wide00") => message_round_trip!(vocab9demo, Wide00Row, wide00_load_messages, wide00_measure_messages, wide00_save_messages, ann, wire),
         ("vocab9demo", "Wide19") => message_round_trip!(vocab9demo, Wide19Row, wide19_load_messages, wide19_measure_messages, wide19_save_messages, ann, wire),
-        // a POINTERED root's batch over the variable form's own storage (§3.1, §3.3)
-        ("graphdemo", "Scene") => message_round_trip!(graphdemo, Scene, scene_load_messages, scene_measure_messages, scene_save_messages, ann, wire),
         _ => return None,
     })
 }
@@ -1451,8 +1448,7 @@ fn main() {
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
-            // and the pointered root graphdemo's Scene (§3.1, §3.3); the
-            // retaining file rows read through tblrt1 (§6.6).
+            // (§3.3); the retaining file rows read through tblrt1 (§6.6).
             "wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason"
         );
         return;

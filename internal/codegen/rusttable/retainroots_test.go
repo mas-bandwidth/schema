@@ -350,8 +350,7 @@ func layoutRustUnit(t *testing.T, dir, name string, modules map[string][]byte) {
 			file == FixedRuntimeModule+".rs" || file == MessageRuntimeModule+".rs" ||
 			strings.HasSuffix(file, "_records.rs") || strings.HasSuffix(file, "_fixed.rs") ||
 			strings.HasSuffix(file, "_table.rs") || strings.HasSuffix(file, "_variable.rs") ||
-			strings.HasSuffix(file, "_message.rs") ||
-			file == VariableMessageRuntimeModule+".rs" || strings.HasSuffix(file, "_vmessage.rs") {
+			strings.HasSuffix(file, "_message.rs") {
 			files = append(files, file)
 		}
 	}
@@ -359,7 +358,6 @@ func layoutRustUnit(t *testing.T, dir, name string, modules map[string][]byte) {
 	var mod strings.Builder
 	for _, file := range files {
 		body := bytes.ReplaceAll(modules[file], []byte("use crate::*;"), []byte("use super::*;"))
-		body = bytes.ReplaceAll(body, []byte("use crate::tables::*;"), []byte("use super::*;"))
 		if err := os.WriteFile(filepath.Join(dir, name, file), body, 0o600); err != nil {
 			t.Fatal(err)
 		}
