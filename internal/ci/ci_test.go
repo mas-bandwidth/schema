@@ -1083,6 +1083,14 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
+		"schema-squirrel-all-port-differential.yml:fast",
+		"schema-squirrel-all-port-differential.yml:nightly",
+		"schema-squirrel-nightly-fuzz.yml:fuzz",
+		"schema-squirrel-nightly-fuzz.yml:harness",
+		"schema-squirrel-resource-bounds.yml:fast",
+		"schema-squirrel-resource-bounds.yml:nightly",
+		"schema-squirrel-runs-hostile-corpus.yml:fast",
+		"schema-squirrel-runs-hostile-corpus.yml:nightly",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
 		t.Fatalf("enumerated self-hosted jobs = %v, want %v", gotKeys, wantKeys)

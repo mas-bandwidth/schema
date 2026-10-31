@@ -1230,8 +1230,9 @@ it (§4.6).
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
   (serialize v2.1.0), C (serialize.c v2.0.2), Rust (serialize.rs v3.1.0),
-  JavaScript (serialize.js v2.0.1), Go (serialize.go v2.0.1) and C#
-  (serialize.cs v2.0.1) enforce the rule through their serialize runtime,
+  JavaScript (serialize.js v2.0.1), Go (serialize.go v2.0.1), C#
+  (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.1) enforce the rule
+  through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Every
   packet target enforces it. A
   *quantized* `float32` is a different field: its wire is the step index and
@@ -2083,9 +2084,9 @@ prefix's bits and it sizes the storage. A `wstring` field takes no
 attributes and no `= default` (§4.2), and `wstring(N)` with N below 2 is a
 compile error, the same floor `string(N)` carries (§4.6).
 
-**Backend status.** All nine packet targets carry the storage, groups and
-read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart and Elixir.
-C++ also carries table kind `33`. The other eight targets refuse wide text
+**Backend status.** All ten packet targets carry the storage, groups and
+read refusals below: C++, C, Rust, Go, C#, Java, JavaScript, Dart, Elixir and
+Squirrel. C++ and Squirrel also carry table kind `33` in every table form. The other eight targets refuse wide text
 reachable from a table by name (SPEC-TABLES.md §3); an unrelated table in the
 same unit does not prevent a packet type from carrying wide text. `*wstring`,
 the unbounded twin, is specified ahead of implementation and no backend emits

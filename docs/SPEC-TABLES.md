@@ -6977,7 +6977,12 @@ refusal, in all three binary forms. The Go leg and the tool's engines
 `internal/codegen/gotable/floatspecial_test.go`
 (`TestGoPlainFloatSpecialValuesAgreeAcrossForms`) and
 `internal/tablewire/floatnan_test.go`, which reads the reference's NaN pin
-(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. Until a leg
+(`testdata/wire/tables/floats_nan.bin`) as a MUST-REFUSE vector. The Squirrel leg keeps it too (tables-finite/squirrel), in the variable,
+message and fixed forms, the retained unknown entry and the block and cook
+writers, held against the Go engine by
+`internal/codegen/squirreltable/nonfinite_test.go`
+(`TestSquirrelTableFloatsAreFinite`) and `nonfinite_forms_test.go`
+(`TestSquirrelTableFiniteFloatForms`). Until a leg
 lands the rule it keeps the 2026-10-18/19 behaviour (a NaN or an infinity
 rides, and only a strict read, where the leg has one, refuses it as
 `non_finite`); each leg's work is its card in docs/roadmap.sexp
@@ -10041,7 +10046,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it, the tolerant read keeps the one node and counts it, and the strict read refuses it |
   | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
   | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
-  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
+  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs. **It is the FIXED READER (`<T>FixedLoad`, §3.4) that answers it**, for a form byte `1` it is handed. **The STRICT read does not**: `ReadStrict` at a declared-fixed root READS a form-1 file as the variable form — the accepting read — so a form-1 file over a fixed root reads rather than refusing `previous_form` |
   | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
   | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
   | `layout_unknown` | a fixed file's header hash that no entry of this build's lineage holds (§3.4, §21.3, algorithm §5.3 step 5). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |

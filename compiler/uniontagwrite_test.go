@@ -72,8 +72,9 @@ var tagGoneFromRelease = map[string][]string{
 // a language with no dormant-assert idiom keeps the form native to it. They
 // are the only two left.
 var tagRefusesEveryBuild = map[string][]string{
-	"elixir": {`raise ArgumentError, "value.shot is not a Shot value: #{inspect(value_shot_other)}"`},
-	"go":     {"if value.Type > ShotTypeMax {"},
+	"elixir":   {`raise ArgumentError, "value.shot is not a Shot value: #{inspect(value_shot_other)}"`},
+	"go":       {"if value.Type > ShotTypeMax {"},
+	"squirrel": {`if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;`},
 }
 
 // CLAIM. The union tag is a write-side contract and nothing more: held by the
