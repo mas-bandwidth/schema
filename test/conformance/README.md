@@ -350,6 +350,55 @@ classpath, so the cook's node dump and the 111-row cook forgery battery ride
 inside processes that were already starting. Both shapes satisfy the contract,
 because the contract is a COMMAND.
 
+## The nightly
+
+`.github/workflows/nightly-conformance.yml` runs the corpus in BOTH
+DIRECTIONS every night at 05:41 UTC, on the fleet's runners and never on the
+host named space, and on `gh workflow run nightly-conformance.yml --ref
+<branch>`. Every port the registry discovers joins it with no edit there:
+the port list is `harness matrix --ports`, the registry without the reference.
+
+1. **Ports read what C++ writes.** `cpp-writes` builds the reference, has it
+   write the whole corpus (the type and table wires, the message form, the
+   block images, the cook and block pins, the fixed-form oracle in
+   `build/fixedform-corpus`), publishes it as the `cpp-corpus` artifact and
+   fails if it is not the committed one. Each `port (<lang>)` job lays that
+   corpus over its checkout, runs `harness run --only <lang> --claims` — every
+   answer byte-compared with C++'s canonical write, exactly as the per-commit
+   matrix does — then the leg's fixed-form gate, and publishes everything the
+   leg wrote as `port-<lang>-writes`.
+2. **C++ reads what ports write.** `cpp-reads-ports` hands each port's writes
+   to `harness cross-read --lang <lang> --writes <dir>`. On every surface
+   whose answer is a form the reference loads back — `wire` and `json-read`
+   (wire bytes, re-read by the reference's `wire`), `message` (re-read by its
+   `message`) and `json-write` (re-read by the reference-only `json-text`
+   surface: FromJson the port's text, ToJson it) — the port's bytes must
+   equal C++'s own write for the case, and the reference must accept them and
+   re-save them byte-identical. A refusal is rerun one case at a time, so it
+   is named by case. The other surfaces write answers the reference has no
+   reader for (a report, a verdict, a dump) or bytes it does not write
+   (`retain-save`, and `cook-write`, which `schema cook` writes), so they
+   have one direction.
+
+**A CLAIMED CASE MAY NOT BE ABSENT; AN UNCLAIMED ONE IS COVERAGE.** A port
+claims a case when the case's unit uses at least one construct of the
+compiler's carries registry (`compiler/carries_<target>.go`, read through
+`compiler.UnitConstructs`) and its target carries every one of them — the
+registration is the port naming, construct by construct, what it carries. A
+class a port lands one at a time (variable, message, wide-scalar, byte
+buffer) is not a construct there, so its cases are coverage until it is
+registered as one. Under
+`--claims` a claimed case answered `<case>.absent`, on a surface the leg
+runs, fails the night by name (the reversed witness is
+`harness/claims_test.go`); a case the port does not claim, and a whole
+surface it does not run, fail nothing and are counted, and the `coverage`
+job publishes the per-port table of answered, failed, claimed-absent and
+not-carried cases per surface and class in every run's summary — Glenn,
+2026-10-25: a gap that does not fail the night is fine as long as it is
+seen. The harness is built with every `schema_leg_<lang>` tag there, because
+a target behind a tag registers only under it, and a leg with no
+registration is refused rather than read as claiming nothing.
+
 ## The wire-fuzz driver
 
 `harness wire-fuzz` (docs/SPEC-TABLES.md §4.2) is the tolerant wire's fuzzer,
