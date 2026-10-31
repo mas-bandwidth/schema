@@ -45,7 +45,8 @@ local exists = function(path) {
 
 local readBytes = function(path) {
   local f = file(path, "rb");
-  local b = f.readblob(f.len());
+  // an empty file is an empty blob: readblob(0) raises "no data left to read"
+  local b = f.len() == 0 ? blob(0) : f.readblob(f.len());
   f.close();
   return b;
 };
@@ -206,7 +207,7 @@ local loadReport = function(unit, root, bytes) {
 };
 
 if (mode == "list") {
-  foreach (name in ["wire", "report", "json-read", "json-write", "json-hostile",
+  foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
                      "cook-write", "message", "retain", "retain-save"]) print(name + "\n");
@@ -225,6 +226,37 @@ if (mode == "report") {
     local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
     if (!generated(unit)) { writeAbsent(cname); continue; }
     writeText(outdir + "/" + cname, loadReport(unit, root, readBytes(wirepath)));
+  }
+  return;
+}
+
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the tolerant load's report
+// line, then the §16 text of the value it left, unless the row says
+// `no-value` or the read refused. Damaged input is discarded whole
+// (docs/SPEC-TABLES.md §4): the harness scores the report line alone there.
+// A derived line is `framing <case> <unit> <root> <wire> [no-value]`.
+if (mode == "framing") {
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 5 || f[0] != "framing") continue;
+    local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
+    local noValue = f.len() > 5 && f[5] == "no-value";
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local L = opened[0].require("schema_table_load");
+    local report = newReport();
+    local v = L.loadTolerant(T, root, readBytes(wirepath), report);
+    local m = (report.malformed || (v == null && !report.refused)) ? "true" : "false";
+    local text = report.unknown.tostring() + "," + report.kindMismatch.tostring() + "," +
+                 report.widened.tostring() + "," + report.clamped.tostring() + "," +
+                 report.duplicate.tostring() + "," + m + "," + (report.refused ? "refused" : "read") + "\n";
+    if (v != null && !report.refused && !report.malformed && !noValue) {
+      local json = T[root + "ToJson"](v);
+      if (json == null) throw cname + ": ToJson refused the value";
+      text += json;
+    }
+    writeText(outdir + "/" + cname, text);
   }
   return;
 }
@@ -612,7 +644,7 @@ if (mode == "cook-write") {
 // THE MESSAGE FORM (§3.3): AnnounceRead the connection's announcement into one
 // direction's vocabulary, LoadMessages the batch against it into a storage of
 // the form's batch maximum, then MeasureMessages and SaveMessages, the bytes.
-// A PLAIN table has no message form (§3.3): that row is absent by name.
+// A variable table has no message form (§3.3): that row is absent by name.
 if (mode == "message") {
   local connections = {};
   foreach (ln in lines) {
@@ -625,10 +657,15 @@ if (mode == "message") {
     local name = f[1]; local root = f[3];
     if (!(f[2] in connections)) throw name + ": no connection " + f[2];
     local conn = connections[f[2]];
+    if (f[5] == "-") {
+      // a named refusal row: the root is a variable table (§3.3)
+      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+      continue;
+    }
     if (!generated(conn.unit)) { writeAbsent(name); continue; }
     local T = openUnit(conn.unit)[1];
     if (!T.Descriptors[root].fixed) {
-      writeText(outdir + "/" + name + ".absent", "plain table: §3.3");
+      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
       continue;
     }
     local v = {};
@@ -654,19 +691,13 @@ if (mode == "message") {
 // retain_lost the save adds, `<retained>,<retain_lost>,<unknown> <save lost>`;
 // `retain-save` writes the saved bytes. `short` is one byte short of the last
 // record: load once at a roomy capacity, read what the store used, and load
-// again one byte under it. The id list's capacity is a count. A form-2 row
-// (retain-message) is the message form's, which a retained save refuses by
-// name (§3.3): absent by name, as the Go leg answers it.
+// again one byte under it. The id list's capacity is a count.
 if (mode == "retain" || mode == "retain-save") {
   local saves = mode == "retain-save";
   foreach (ln in lines) {
     local f = splitFields(ln);
-    if (f.len() < 2 || (f[0] != "retain" && f[0] != "retain-message")) continue;
+    if (f.len() < 2 || f[0] != "retain") continue;
     local name = f[1];
-    if (f[0] == "retain-message") {
-      writeText(outdir + "/" + name + ".absent", "plain table: §3.3");
-      continue;
-    }
     if (f.len() < 7) throw name + ": a retain row takes unit, root, wire and two capacities";
     local unit = f[2]; local root = f[3];
     if (!generated(unit)) { writeAbsent(name); continue; }

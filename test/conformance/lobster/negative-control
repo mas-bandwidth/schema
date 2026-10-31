@@ -9,7 +9,8 @@
 # file is written, so an interrupt leaves no sabotaged tree.
 #
 #   report  load.lobster counts every unknown field twice: the surfaces that
-#           print the load's report red (`lobster / report`, and
+#           print the load's report red (`lobster / report`,
+#           `lobster / framing`, whose answer opens with the same line, and
 #           `lobster / retain`, whose answer carries the same counters) and
 #           nothing else; `wire`, `json-read` and `retain-save` green (the
 #           sabotage moves no byte).
@@ -18,8 +19,12 @@
 #           and `lobster / json-hostile`, which reads through the same match)
 #           and nothing else; `json-write`, `wire` and `cook-write` green, so
 #           the break is the text walk's and the matrix localizes it (I11).
+#   framing load.lobster's id table takes any entry count the buffer holds,
+#           dropping the 4096 bound (docs/LAYERS/1-framing.md F6): exactly
+#           `lobster / framing` red, on its frame_entries_4097 row; `wire`,
+#           `report` and `retain` green.
 #
-# usage: test/conformance/lobster/negative-control <report|walk>
+# usage: test/conformance/lobster/negative-control <report|walk|framing>
 set -eu
 
 mode=$1
@@ -31,6 +36,10 @@ case "$mode" in
 report)
     source=internal/codegen/lobstertable/runtime/load.lobster
     sed 's/^\( *\)rep\.unknown++$/\1rep.unknown += 2/' "$source" > "$out/runtime.lobster"
+    ;;
+framing)
+    source=internal/codegen/lobstertable/runtime/load.lobster
+    sed 's/^    if count < 0 or count > 4096 or count > size \/ 8:$/    if count < 0 or count > size \/ 8:/' "$source" > "$out/runtime.lobster"
     ;;
 walk)
     source=internal/codegen/lobstertable/runtime/json.lobster
@@ -69,7 +78,8 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="report retain " ; green="wire json-read retain-save" ;;
+report) want="framing report retain " ; green="wire json-read retain-save" ;;
+framing) want="framing " ; green="wire report retain" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 esac
 if [ "$red" != "$want" ]; then

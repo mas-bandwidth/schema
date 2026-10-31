@@ -15,7 +15,7 @@ import (
 // knownSurfaces is every surface test/conformance/README.md names. A driver
 // may list a subset, but nothing else.
 var knownSurfaces = map[string]bool{
-	"wire": true, "message": true, "report": true,
+	"wire": true, "message": true, "report": true, "framing": true,
 	"retain": true, "retain-save": true,
 	"json-read": true, "json-write": true, "json-hostile": true,
 	"cook": true, "cook-write": true, "cook-foreign": true,

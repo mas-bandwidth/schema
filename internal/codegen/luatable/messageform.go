@@ -24,11 +24,19 @@ func init() {
 	RegisterPass(emitMessageForm)
 }
 
-// messageRoots is every fixed table of a unit the message form is emitted for:
-// the fixed form's roots (docs/SPEC-TABLES.md §3.3: the message form is a
-// FIXED table's; a plain table is refused by name).
+// messageRoots is every fixed table of a unit the message form is emitted for
+// (docs/SPEC-TABLES.md §3.3: the message form is fixed tables only). The class
+// is the declaration's: a variable table is never a message root, whatever its
+// shape, and runtime/message.lua refuses it by name.
 func messageRoots(u *ir.Unit) []*ir.Struct {
-	return fixedRoots(u)
+	variable := ir.VariableTables(u)
+	var out []*ir.Struct
+	for _, st := range fixedRoots(u) {
+		if !variable[st.Name] {
+			out = append(out, st)
+		}
+	}
+	return out
 }
 
 // emitMessageForm emits the announcement constants and the message-form entry

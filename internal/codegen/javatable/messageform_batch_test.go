@@ -48,8 +48,8 @@ func TestMessageFormBatchJava(t *testing.T) {
 	t.Run("manifest_rows", func(t *testing.T) {
 		t.Parallel()
 		rows := messageBatchManifest(t, root)
-		// "`fixed table T` may ride here, a plain `table T` may not" (§3.3):
-		// a row whose root is a plain table (graph_tree's Scene) carries no
+		// "`fixed table T` may ride here and a variable table may not" (§3.3):
+		// a row whose root is a variable table (graph_tree's Scene) carries no
 		// verbs, and its absence is the conformance driver's `.absent`, never a
 		// pass here.
 		byUnit := map[string][]messageBatchRow{}
@@ -321,7 +321,7 @@ func messageBatchManifest(t *testing.T, root string) []messageBatchRow {
 	var out []messageBatchRow
 	for _, line := range lines {
 		f := strings.Fields(line)
-		if len(f) != 6 || f[0] != "message" {
+		if len(f) != 6 || f[0] != "message" || f[5] == "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 			continue
 		}
 		unit, ok := connUnit[f[2]]

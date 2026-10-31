@@ -56,6 +56,12 @@ public final class TableVariable {
         public String reason;
         public int retained;
         public int retainLost;
+        // THE NUMBERING this load reads against, set when the node table is
+        // read, and the root's type: every node reference is JUDGED as it is
+        // read (judge, below), and a damaged table resolves nothing (§3.1).
+        NodeRecord[] nodeRecs;
+        boolean nodesGood;
+        long rootTypeId;
 
         // reset puts every counter back to its start, so one Report can serve
         // call after call (a reused Measure) without a fresh object per call.
@@ -69,6 +75,9 @@ public final class TableVariable {
             reason = null;
             retained = 0;
             retainLost = 0;
+            nodeRecs = null;
+            nodesGood = false;
+            rootTypeId = 0;
         }
     }
 
@@ -727,7 +736,9 @@ public final class TableVariable {
             return -1;
         }
         long count = u64(data, data.length - 8);
-        if (count < 0 || count > (data.length - 9) / 8) {
+        // §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+        // whatever the buffer would hold
+        if (count < 0 || count > 4096 || count > (data.length - 9) / 8) {
             report.malformed = true;
             return -1;
         }
@@ -1325,18 +1336,61 @@ public final class TableVariable {
         // (internal/tablewire/decodenodes.go). An ABSENT field is an empty but
         // valid numbering, and a whole read carries the records.
         NodeTable nt = new NodeTable();
+        report.nodeRecs = null;
+        report.nodesGood = false;
         if (bad) {
             nt.bad = true;
             return nt;
         }
         if (payload == null) {
+            report.nodesGood = true;
             return nt;
         }
         nt.recs = nodes(payload, retain);
         if (nt.recs == null) {
             nt.bad = true;
+        } else {
+            report.nodeRecs = nt.recs;
+            report.nodesGood = true;
         }
         return nt;
+    }
+
+    // THE RESOLUTION'S COUNTERS ARE NOT COUNTED TWICE: every reference was
+    // judged as it was read, so the pass that places the surviving values
+    // reports into this one, which nothing reads.
+    static final Report QUIET = new Report();
+
+    // judge is §3.1's verdict on one node reference AS IT IS READ, in every
+    // occurrence that carries it, an occurrence a later one replaces included
+    // (internal/tablewire/decodenodes.go resolveCell): 0 is null; 1 is the
+    // root, a kind mismatch unless the slot names the root's own type; a
+    // reference ABOVE the entry count is an unreadable reference, which is
+    // damage (§4); a record this reader cannot name reads null, counted once
+    // at the scan; and a record of another type is a kind mismatch. target is
+    // the slot's table type id, or STRING_ID / BYTES_ID for a byte buffer.
+    // Only the slots a field keeps are read: a clamped array's tail past its
+    // bound is stepped over by the field's length, unread.
+    static void judge(long index, Report report, long target) {
+        if (!report.nodesGood || index == 0) {
+            return;
+        }
+        if (index == 1) {
+            if (target == STRING_ID || target == BYTES_ID || target != report.rootTypeId) {
+                report.kindMismatch++;
+            }
+            return;
+        }
+        NodeRecord[] recs = report.nodeRecs;
+        // a reference is unsigned
+        if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) {
+            report.malformed = true; // a reference above the entry count is damage
+            return;
+        }
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId != 0 && rec.typeId != target) {
+            report.kindMismatch++;
+        }
     }
 
     // boolByte reads one bool byte: a byte past 1 is malformed and reads true,

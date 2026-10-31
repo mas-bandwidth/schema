@@ -4,9 +4,10 @@ package darttable
 // (docs/SPEC-TABLES.md §2.8, §3, §4; internal/tablewire/decode.go mapField):
 // a repeated map field commits to replacing the earlier map only AFTER its
 // array header is readable and compatible (len >= 2, canonical count LEB128,
-// and element kind 13). An inert repeat (len < 2), a repeat with an unreadable
-// count LEB128, or a repeat whose element kind is not 13 leaves the earlier
-// decoded map standing.
+// and element kind 13). An inert repeat (len < 2) or a repeat whose element
+// kind is not 13 leaves the earlier decoded map standing. A repeat whose count
+// LEB128 cannot be read is damage, and DAMAGE DISCARDS THE WHOLE LOAD (§4):
+// the Dart leg owes the refusal alone.
 
 import (
 	"encoding/hex"
@@ -87,6 +88,14 @@ func TestWireMapRepeatKeepsEarlierDart(t *testing.T) {
 			}
 
 			got := mapProbe(t, wire, c.root, c.hex)
+			if report.Malformed {
+				// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+				// leg owes the refusal, and no counter or saved byte is compared
+				if !got.malformed {
+					t.Errorf("the Dart load did not refuse a damaged map on %s", c.name)
+				}
+				return
+			}
 			if got.unknown != report.Unknown || got.kindMismatch != report.KindMismatch ||
 				got.widened != report.Widened || got.clamped != report.Clamped ||
 				got.duplicate != report.Duplicate || got.malformed != report.Malformed ||

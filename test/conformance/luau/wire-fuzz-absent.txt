@@ -8,8 +8,6 @@
 backenddemo.LoginRequest form=2 message
 backenddemo.MatchResult form=2 message
 backenddemo.StorePurchase form=2 message
-blobdemo.Catalog form=2 message
-graphdemo.Scene form=2 message
 vocab9demo.Wide00 form=2 message
 vocab9demo.Wide19 form=2 message
 vocabdemo.Wide00 form=2 message

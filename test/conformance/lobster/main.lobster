@@ -34,9 +34,9 @@ import .json
 // the surfaces this leg answers: the variable wire's load and save (§3, §4),
 // the message form (§3.3), retain-unknown (§6.6), the cooked form's read,
 // write and forgery battery (§7), and the block form's reflective read with
-// its forgery battery (§19.2), each refusal with its reason, and the JSON
-// text form (§16)
-let surfaces = ["wire", "message", "report", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
+// its forgery battery (§19.2), each refusal with its reason, the JSON
+// text form (§16), and the framing vectors (docs/LAYERS/1-framing.md)
+let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile"]
 
@@ -115,10 +115,29 @@ def surface_report(text:string):
     for(rows(text, "report")) f:
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
-        // a load answers no record only when it refused the wire
-        assert rec or rep.refused
+        // A damaged read discards the record; only its verdict is usable.
+        assert rec or rep.refused or rep.malformed
         let verdict = if rep.refused: "refused" else: "read"
         say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed},{verdict}\n")
+
+// the FRAMING surface (docs/LAYERS/1-framing.md): the read report as the
+// report surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read refused the wire or met damage.
+// Damage discards the whole load (§4), so a damaged read answers its report
+// line alone. A line is `framing <case> <unit> <root> <wire> [no-value]`.
+def surface_framing(text:string):
+    for(rows(text, "framing")) f:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.load_tolerant(f[3], fixture(f[4]), rep)
+        let malformed = rep.malformed or (not rec and not rep.refused)
+        let verdict = if rep.refused: "refused" else: "read"
+        var out = "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{malformed},{verdict}\n"
+        let no_value = length(f) > 5 and f[5] == "no-value"
+        if rec and not rep.refused and not malformed and not no_value:
+            let js, why = schema_rt.json_write(rec)
+            assert why == ""
+            out += js
+        say(f[1], out)
 
 // block_root is the table a block image of the manifest projects, by the
 // image's name, as every leg's driver names it (test/conformance/js/main.mjs)
@@ -162,7 +181,7 @@ def surface_block_dump(text:string):
 // `message <name> <connection> <root> <file wire> <message wire>`, and its
 // third word is the CONNECTION, joined to its
 // `connection <key> <unit> 0x<build> <announcement>` line for the unit. A root
-// that is a plain table carries no message verbs (§3.3): a named absence.
+// that is a variable table carries no message verbs (§3.3): a named absence.
 def surface_message(text:string):
     let lines = tokenize(text, "\n", " \t\r")
     for(lines) line:
@@ -177,7 +196,7 @@ def surface_message(text:string):
                     announcement = c[4]
             if unit == unit_key:
                 if not schema_rt.is_message_root(f[3]):
-                    print(f[1] + " absent blob_shared")
+                    print(f[1] + " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
                 else:
                     let v = schema_rt.new_vocabulary(schema_rt.message_entries_here())
                     let rep = schema_rt.LoadReport {}
@@ -292,13 +311,8 @@ def surface_reason(text:string, kind:string):
 // MeasureRetain, SaveRetain; the counters `<retained>,<retain_lost>,<unknown>
 // <save lost>`, or the saved bytes. A retain line is `retain <case> <unit>
 // <root> <wire> <capacity> <ids>`: `short` is one byte short of what this
-// leg's own load used, so the driver loads once roomy and once again. A
-// retain-message row needs the message form's SaveRetain, which §3.3 refuses
-// by name over a plain table root: a named absence, as the Go leg answers it.
+// leg's own load used, so the driver loads once roomy and once again.
 def surface_retain(text:string, saves:bool):
-    for(lines(text, "retain-message")) f:
-        if length(f) >= 4 and f[3] == unit_key:
-            print(f[1] + " absent plain table: §3.3")
     for(rows(text, "retain")) f:
         let wire = fixture(f[4])
         let ids = if f[6] == "full": 1 << 17 else: string_to_int(f[6])
@@ -369,6 +383,8 @@ else:
         surface_wire(text)
     elif surface == "report":
         surface_report(text)
+    elif surface == "framing":
+        surface_framing(text)
     elif surface == "block":
         surface_block(text, false)
     elif surface == "message":

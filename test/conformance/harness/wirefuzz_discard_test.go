@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31; docs/SPEC-TABLES.md §4):
 // on a mutant the oracle reads as damaged, the refusal is the whole of what a
@@ -38,6 +42,15 @@ func TestWireVerdictComparesOnlyTheRefusalOnDamage(t *testing.T) {
 		t.Fatalf("a leg that hands back no root on damage is red: %s", v)
 	}
 
+	// a builder leg that completes a damaged load still owes only the refusal
+	builder := &wireRoot{builder: true}
+	if v := wireVerdict(builder, legReply{loaded: true, report: Counts{Malformed: true}}, oracleAnswer{report: Counts{Malformed: true}, builderStopped: true, encFail: true}, 300); v != "" {
+		t.Fatalf("a builder leg that refuses the damaged load is red: %s", v)
+	}
+	if v := wireVerdict(builder, legReply{loaded: true}, oracleAnswer{builderStopped: true, encFail: true}, 300); v == "" {
+		t.Fatal("a builder's completion is no longer compared on a clean mutant")
+	}
+
 	refused := oracleAnswer{report: Counts{Refused: true}, encoded: []byte{1, 0}}
 	if v := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saved: []byte{1, 2, 3}}, refused, 10); v != "" {
 		t.Fatalf("a leg that refuses the form is held to saved defaults: %s", v)
@@ -49,5 +62,38 @@ func TestWireVerdictComparesOnlyTheRefusalOnDamage(t *testing.T) {
 	}
 	if v := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0, 0}, retained: 1}, clean, 10); v == "" {
 		t.Fatal("a clean mutant's retention report is no longer compared")
+	}
+
+	// a fixed root whose form the reader does not carry: both sides refuse
+	// and the leg hands back no root
+	fixedRoot := &wireRoot{}
+	if v := wireVerdict(fixedRoot, legReply{loaded: false, report: Counts{Refused: true}}, oracleAnswer{report: Counts{Refused: true}}, 10); v != "" {
+		t.Fatalf("a leg that refuses a form the oracle refuses, with no root, is red: %s", v)
+	}
+	if v := wireVerdict(fixedRoot, legReply{loaded: false}, oracleAnswer{report: Counts{Refused: true}}, 10); v == "" {
+		t.Fatal("a leg that hands back no root without the refusal verdict is green")
+	}
+}
+
+// The BUILDER ARM RETAINS too (docs/SPEC-TABLES.md §6.6): a builder root with
+// retention on is read by the plain retaining read, and a clean seed answers
+// the retention report beside the six counters.
+func TestWireFuzzBuilderRetainOracle(t *testing.T) {
+	_, _, units := corpus(t)
+	root, err := newWireRoot(units, "tblrt1", "Node", false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.builder = true
+	wire, err := os.ReadFile(filepath.Join("testdata", "wire", "tables", "retain_rt2.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := root.oracle(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answer.builderStopped || answer.report.Malformed || answer.retained == 0 {
+		t.Fatalf("builder retain oracle: %+v", answer)
 	}
 }

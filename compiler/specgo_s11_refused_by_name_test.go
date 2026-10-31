@@ -56,7 +56,7 @@ func TestSpecGoS11RefusedByName(t *testing.T) {
 		},
 		{
 			name:  "Go message paragraph",
-			want:  []string{"Go's message form is fixed roots only", "no variable root gets a message reader or its region sizing"},
+			want:  []string{"Go's message form is fixed roots only", "no variable root gets a message verb"},
 			stale: []string{"spells message region sizing", "or a slice of root pointers plus one caller-owned region for a variable root"},
 		},
 		{

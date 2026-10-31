@@ -33,7 +33,7 @@ LUAU_FUZZ_N    ?= 2000
 # scratch copy with one reader bug planted (tables-luau-release-negative-control)
 LUAU_WIREFUZZ_DRIVER ?= test/conformance/luau/wirefuzz-driver
 
-LUAU_WIRE_FUZZ_ABSENT_COUNT := 9
+LUAU_WIRE_FUZZ_ABSENT_COUNT := 7
 LUAU_WIRE_FUZZ_ABSENT_PIN   := test/conformance/luau/wire-fuzz-absent.txt
 LUAU_WIRE_FUZZ_LOG          ?= build/wire-fuzz/luau.log
 LUAU_WIRE_FUZZ_ABSENT       ?= build/wire-fuzz/luau.absent

@@ -157,6 +157,14 @@ func loadFixAverdict(line string, c loadFixAcounts, saveFail bool, enc []byte) s
 	if _, err := fmt.Sscanf(parts[0], "%d,%d,%d,%d,%d,%t", &got.unknown, &got.kindMismatch, &got.widened, &got.clamped, &got.duplicate, &got.malformed); err != nil {
 		return "the Luau probe answer did not parse: " + parts[0]
 	}
+	if c.malformed {
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the leg
+		// owes the refusal, and no counter or saved byte is compared
+		if !got.malformed {
+			return "the engine discards a damaged load; the Luau load did not refuse it"
+		}
+		return ""
+	}
 	if got != c {
 		return fmt.Sprintf("the report differs: Luau says {unknown:%d kindMismatch:%d widened:%d clamped:%d duplicate:%d malformed:%t}, the engine says {unknown:%d kindMismatch:%d widened:%d clamped:%d duplicate:%d malformed:%t}",
 			got.unknown, got.kindMismatch, got.widened, got.clamped, got.duplicate, got.malformed,
