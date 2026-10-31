@@ -86,7 +86,7 @@ func unboundedUTF8Answers(t *testing.T, patch func(string) string) (luau, engine
 	probe = strings.Replace(probe, "MODS", mods.String(), 1)
 	out := runProbe(t, g, probe, inputs)
 	luau = map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if i := strings.IndexByte(line, ':'); i > 0 {
 			luau[line[:i]] = line
 		}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,9 +115,7 @@ func strictGateGenerate(u *ir.Unit) (map[string][]byte, error) {
 func strictGateRuntime() map[string][]byte {
 	out := Runtime()
 	if StrictGateTableRuntime != nil {
-		for name, data := range StrictGateTableRuntime() {
-			out[name] = data
-		}
+		maps.Copy(out, StrictGateTableRuntime())
 	}
 	return out
 }
