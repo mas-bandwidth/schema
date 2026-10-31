@@ -293,6 +293,14 @@
       ]
     },
     {
+      "name": "base-tool-cook-differential",
+      "when": "pull-request",
+      "why": "the tool's cook against the C++ reference's, nothing pinned between: the tool's map carve given slack after an entry array through go build -overlay, the harness rebuilt with it, and the differential required red on the map-bearing rows and on no other. Measured 1 s of control time on hetzner1 beyond the reference driver's build.",
+      "targets": [
+        "tables-tool-cook-differential-negative-control"
+      ]
+    },
+    {
       "name": "base-lists",
       "when": "pull-request",
       "why": "the list gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. The cook tool's list control rides here for the same corpus. Measured 35 s over 14 controls.",
