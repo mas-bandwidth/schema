@@ -1015,6 +1015,12 @@ final class TableWireReader {
   List<int> path = <int>[];
   Object? rootObj;
   int rootType = 0;
+  // owner is the node index (§3.1: 1 the root, k + 2 the record at k) whose
+  // body this reader is reading, and edges holds one (from, to) pair for
+  // every table pointer slot the load stores, shared by every sub-reader:
+  // the graph cyclic() checks once the load is done.
+  int owner = 1;
+  final List<int> edges;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -1023,6 +1029,7 @@ final class TableWireReader {
       nodes = <Uint8List>[],
       knownTypes = <int>{},
       decoded = <Object?>[],
+      edges = <int>[],
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -1045,7 +1052,9 @@ final class TableWireReader {
       retain = parent.retain,
       path = parent.path,
       rootObj = parent.rootObj,
-      rootType = parent.rootType;
+      rootType = parent.rootType,
+      owner = parent.owner,
+      edges = parent.edges;
 
   // over reads one node-record body against the parent's numbering. The bytes
   // are the record, not a slice of the file, so the cursor starts at 0 (§3.1).
@@ -1066,7 +1075,9 @@ final class TableWireReader {
       retain = parent.retain,
       path = parent.path,
       rootObj = parent.rootObj,
-      rootType = parent.rootType;
+      rootType = parent.rootType,
+      owner = parent.owner,
+      edges = parent.edges;
 
   bool has(int n) => n >= 0 && pos + n <= limit;
 
@@ -1334,6 +1345,9 @@ final class TableWireReader {
         report.kindMismatch++;
         return null;
       }
+      edges
+        ..add(owner)
+        ..add(1);
       return rootObj;
     }
     final rec = idx - 2;
@@ -1358,14 +1372,22 @@ final class TableWireReader {
       return null;
     }
     final have = decoded[rec];
-    if (have != null) return have;
+    if (have != null) {
+      edges
+        ..add(owner)
+        ..add(idx);
+      return have;
+    }
     final obj = _newNode(wantType);
     if (obj == null) {
       report.kindMismatch++;
       return null;
     }
+    edges
+      ..add(owner)
+      ..add(idx);
     decoded[rec] = obj;
-    final sub = TableWireReader.over(nodes[rec], this);
+    final sub = TableWireReader.over(nodes[rec], this)..owner = idx;
     // A node record's body is read to its zero reference, and the reference
     // stops the body: bytes left after it inside the record's own length are
     // kept and do not damage the node (docs/SPEC-TABLES.md §3.1, "the body is
@@ -1563,9 +1585,48 @@ final class TableWireReader {
       final obj = _newNode(typeId);
       if (obj == null) continue;
       decoded[rec] = obj;
-      final sub = TableWireReader.over(nodes[rec], this);
+      final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
       _loadNodeBody(sub, typeId, obj);
     }
+  }
+
+  // cyclic reports whether the pointer graph the load stored has a cycle
+  // (docs/SPEC-TABLES.md §3.1: a cyclic wire is damage, and every read refuses
+  // the whole load). It is Kahn's pass over the node indices: count each
+  // node's in-degree from edges, then repeatedly take a node nothing points at
+  // and drop its out-edges; a node never taken sits on a cycle. Linear in
+  // nodes plus edges, with no recursion, so a diamond chain of shared nodes
+  // costs its node count and not its path count.
+  bool cyclic() {
+    if (edges.isEmpty) return false;
+    final count = nodes.length + 2;
+    final indegree = List<int>.filled(count, 0);
+    final outStart = List<int>.filled(count + 1, 0);
+    for (var i = 0; i < edges.length; i += 2) {
+      indegree[edges[i + 1]]++;
+      outStart[edges[i] + 1]++;
+    }
+    for (var k = 0; k < count; k++) {
+      outStart[k + 1] += outStart[k];
+    }
+    final fill = List<int>.from(outStart);
+    final out = List<int>.filled(edges.length ~/ 2, 0);
+    for (var i = 0; i < edges.length; i += 2) {
+      out[fill[edges[i]]++] = edges[i + 1];
+    }
+    final ready = <int>[];
+    for (var k = 1; k < count; k++) {
+      if (indegree[k] == 0) ready.add(k);
+    }
+    var taken = 0;
+    while (ready.isNotEmpty) {
+      final k = ready.removeLast();
+      taken++;
+      for (var e = outStart[k]; e < outStart[k + 1]; e++) {
+        if (--indegree[out[e]] == 0) ready.add(out[e]);
+      }
+    }
+    return taken != count - 1;
   }
 }
 
@@ -2894,6 +2955,9 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	// any damage the walk met (docs/SPEC-TABLES.md §3.3): nothing lands, and
 	// the caller holds the type's defaults.
 	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) return %s();\n", n)
+	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load
+	// is refused, and the caller holds the type's defaults.
+	g.pf("\tif (r.cyclic()) {\n\t\tr.report.malformed = true;\n\t\treturn %s();\n\t}\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }
