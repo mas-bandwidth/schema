@@ -31,7 +31,7 @@ grep -q 'FIXED-class root' "$control/fixed.log" || { cat "$control/fixed.log"; e
 cat > "$control/Program.cs" <<'CS'
 using System;
 using Tblrt1;
-class Program { static void Main() { Schema.NodeSaveRetainMessages(ReadOnlySpan<IntPtr>.Empty,Span<TableRetain>.Empty,Span<byte>.Empty,new TableReport()); } }
+class Program { static void Main() { Schema.InnerSaveRetainMessages(ReadOnlySpan<IntPtr>.Empty,Span<TableRetain>.Empty,Span<byte>.Empty,new TableReport()); } }
 CS
 if "$dotnet" build "$control/control.csproj" -v q > "$control/message.log" 2>&1; then
     echo 'NEGATIVE CONTROL FAILED: retained message writing compiled'; exit 1

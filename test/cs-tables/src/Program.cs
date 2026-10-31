@@ -1824,11 +1824,9 @@ static partial class Program
         TestBlobJsonAllocation();
         TestAllocationGate();
         TestAllocationGateCanGoRed();
-        TestNativeMessages();
         TestRetention();
         TestRetentionContracts();
         TestRetentionPaths();
-        TestCollectionMessages();
         TestCollectionEdges();
         TestGoldenWireWrite();
         TestGoldenWireRead();

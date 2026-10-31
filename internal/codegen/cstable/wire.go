@@ -358,7 +358,11 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	if g.owner.IsMapEntry() && f == g.owner.Fields[0] {
 		b.WriteString(", MapKey = true")
 	}
-	b.WriteString(messageSlot(g.unit, f))
+	// the message columns ride only where the message form does: a fixed
+	// table, and a struct or a union arm a fixed table holds (messageClosure)
+	if g.arm && g.messageUnions()[g.owner.Name] || !g.arm && g.messageStructs()[g.owner.Name] {
+		b.WriteString(messageSlot(g.unit, f))
+	}
 	b.WriteString(g.nativeColumns(f))
 	if f.IsList() || f.IsMap() {
 		size, align := int64(0), int64(0)
@@ -738,7 +742,7 @@ public static partial class TableWire
         }
     }
 
-` + tableVariableWireSource + tableLoadMeasureSource + tableMapWireSource + tableMessageSource + tableMessageReadSource + tableMessageMeasureSource + tableNativeSource + `
+` + tableVariableWireSource + tableLoadMeasureSource + tableMapWireSource + tableMessageSource + tableMessageReadSource + tableNativeSource + `
     static ulong Read64(ReadOnlySpan<byte> bytes, int offset)
     {
         return System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.Slice(offset));
