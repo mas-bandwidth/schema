@@ -199,6 +199,20 @@ jobs:
       - name: install the Lua pin
         run: make dist-lua
 
+      # THE C AND C++ FORMAT GATES' formatter, pinned, as ci-fast.yml installs
+      # it: clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
+      # names, in a venv under the runner's temp, exported as CLANG_FORMAT.
+      # `make test` runs tables-c-clean and tables-cpp-format, which refuse any
+      # other major by name; the hosted ubuntu image's own clang-format is 18.
+      - name: the pinned clang-format (C and C++ format gates)
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
+
       # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
       # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
       # make/squirrel.mk), and each leg's own dist-<lang> target installs it at
@@ -529,6 +543,20 @@ jobs:
       # it from source at the sha256 make/lua.mk names into the LUA default.
       - name: install the Lua pin
         run: make dist-lua
+
+      # THE C AND C++ FORMAT GATES' formatter, pinned, as ci-fast.yml installs
+      # it: clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
+      # names, in a venv under the runner's temp, exported as CLANG_FORMAT.
+      # `make test` runs tables-c-clean and tables-cpp-format, which refuse any
+      # other major by name; the hosted ubuntu image's own clang-format is 18.
+      - name: the pinned clang-format (C and C++ format gates)
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
       # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
       # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
