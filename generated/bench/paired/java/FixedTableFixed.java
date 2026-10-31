@@ -55,6 +55,14 @@ public final class FixedTableFixed {
         BenchMixedFixed.scatter(b, at + 0, v.value, r);
     }
 
+    /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */
+    static boolean finite(Value v) {
+        if (!BenchMixedFixed.finite(v.value)) {
+            return false;
+        }
+        return true;
+    }
+
     /** the hash and the body: what one record occupies. */
     public static final int recordBytes = 8 + bodyBytes;
 
@@ -233,6 +241,11 @@ public final class FixedTableFixed {
         final int need = measure(count);
         if (buffer.length < need) {
             return -1;
+        }
+        for (int k = 0; k < count; k++) {
+            if (!finite(values[k])) {
+                return -1;
+            }
         }
         int at = writeHeader(buffer);
         for (int k = 0; k < count; k++) {

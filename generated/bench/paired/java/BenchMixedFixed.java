@@ -306,7 +306,12 @@ public final class BenchMixedFixed {
             java.util.Arrays.fill(v.payload, v.payloadLength, v.payload.length, (byte) 0);
         }
         {
-            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1165));
+            final int fbits = TableFixed.get32(b, at + 1165);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.aim_x");
+                return;
+            }
+            float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
                 r.clamped++;
@@ -317,7 +322,12 @@ public final class BenchMixedFixed {
             v.aimX = q;
         }
         {
-            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1169));
+            final int fbits = TableFixed.get32(b, at + 1169);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.aim_y");
+                return;
+            }
+            float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
                 r.clamped++;
@@ -328,7 +338,12 @@ public final class BenchMixedFixed {
             v.aimY = q;
         }
         {
-            float q = Float.intBitsToFloat(TableFixed.get32(b, at + 1173));
+            final int fbits = TableFixed.get32(b, at + 1173);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.aim_z");
+                return;
+            }
+            float q = Float.intBitsToFloat(fbits);
             if (q < Float.intBitsToFloat(0xbf800000)) {
                 q = Float.intBitsToFloat(0xbf800000);
                 r.clamped++;
@@ -338,8 +353,22 @@ public final class BenchMixedFixed {
             }
             v.aimZ = q;
         }
-        v.recoil = Float.intBitsToFloat(TableFixed.get32(b, at + 1177));
-        v.drift = Double.longBitsToDouble(TableFixed.get64(b, at + 1181));
+        {
+            final int fbits = TableFixed.get32(b, at + 1177);
+            if ((fbits & 0x7f800000) == 0x7f800000) {
+                r.refuseNonFinite("BenchMixed.recoil");
+                return;
+            }
+            v.recoil = Float.intBitsToFloat(fbits);
+        }
+        {
+            final long fbits = TableFixed.get64(b, at + 1181);
+            if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                r.refuseNonFinite("BenchMixed.drift");
+                return;
+            }
+            v.drift = Double.longBitsToDouble(fbits);
+        }
         v.wideKey = new UInt128(TableFixed.get64(b, at + 1197), TableFixed.get64(b, at + 1189));
         v.flux = new Int128(TableFixed.get64(b, at + 1213), TableFixed.get64(b, at + 1205));
         {
@@ -381,5 +410,25 @@ public final class BenchMixedFixed {
             }
             v.idleTicks = (int) (q);
         }
+    }
+
+    /** every float this value stores is finite (docs/SPEC-TABLES.md §3.3). */
+    static boolean finite(Value v) {
+        if (!Float.isFinite(v.aimX)) {
+            return false;
+        }
+        if (!Float.isFinite(v.aimY)) {
+            return false;
+        }
+        if (!Float.isFinite(v.aimZ)) {
+            return false;
+        }
+        if (!Float.isFinite(v.recoil)) {
+            return false;
+        }
+        if (!Double.isFinite(v.drift)) {
+            return false;
+        }
+        return true;
     }
 }
