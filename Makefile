@@ -1953,7 +1953,19 @@ tables-cpp-runtime-home: bin/schema
 		case $$guard in TABLEDEMO_*) ;; *) echo "RUNTIME HOME GATE FAILED: guard $$guard is not prefixed TABLEDEMO_"; exit 1;; esac; \
 	 done; \
 	 if [ "$$base" != "$$added" ]; then echo "RUNTIME HOME GATE FAILED: the guard sets differ — base [$$base] vs added [$$added]"; exit 1; fi
-	@echo "runtime home gate (cpp): every _SCHEMA_TABLE_ guard is named by the package and the sorted set is identical across the two trees"
+	@# THE BYTES: within one tree every header carries the guarded runtime blocks
+	@# byte-for-byte alike, so whichever file a translation unit includes first
+	@# defines the same runtime and the include order decides nothing. The two
+	@# trees MAY differ from each other: the announcement, the id vocabulary and
+	@# BuildVersion are the UNIT's, and the added file is part of the unit.
+	@for tree in base added; do \
+		all=$$(test/cpp-tables/runtime_home_digest.sh build/runtime-home-cpp/$$tree); \
+		files=$$(printf '%s\n' "$$all" | grep -c .); \
+		distinct=$$(printf '%s\n' "$$all" | awk '{print $$1, $$2}' | sort -u | grep -c .); \
+		if [ "$$files" -lt 2 ]; then echo "RUNTIME HOME GATE FAILED: only $$files headers of the $$tree tree carry a runtime — the gate is comparing nothing"; exit 1; fi; \
+		if [ "$$distinct" != 1 ]; then echo "RUNTIME HOME GATE FAILED: the $$tree tree's $$files headers carry $$distinct different runtimes"; printf '%s\n' "$$all"; exit 1; fi; \
+	done
+	@echo "runtime home gate (cpp): every _SCHEMA_TABLE_ guard is named by the package, the sorted set is identical across the two trees, and within each tree the guarded runtime is byte-identical in every header"
 
 .PHONY: tables-cpp-runtime-home-negative-control
 tables-cpp-runtime-home-negative-control: bin/schema tables-cpp-runtime-home
@@ -1973,6 +1985,20 @@ tables-cpp-runtime-home-negative-control: bin/schema tables-cpp-runtime-home
 		echo "NEGATIVE CONTROL FAILED: the file-order rule kept the guard $$base — the gate is watching nothing"; exit 1; \
 	 fi; \
 	 echo "runtime home negative control (cpp): the file-order rule moves the guard from $$base to $$added"
+
+# THE BYTES HALF'S CONTROL: one header's guarded runtime made to differ from
+# its siblings' — the shape a runtime that follows the file it was emitted into
+# would have — in a COPY of the added tree, and the gate's own digest must see it.
+.PHONY: tables-cpp-runtime-home-bytes-negative-control
+tables-cpp-runtime-home-bytes-negative-control: bin/schema tables-cpp-runtime-home
+	@rm -rf build/runtime-home-cpp/bytes-sabotage && cp -R build/runtime-home-cpp/added build/runtime-home-cpp/bytes-sabotage
+	@f=$$(ls build/runtime-home-cpp/bytes-sabotage/*Table.h | head -1); \
+	 sed 's|^#define \([A-Z0-9_]*_SCHEMA_TABLE_PRIMITIVES\)$$|#define \1 // SABOTAGED: follows the file|' $$f > $$f.sabotaged && mv $$f.sabotaged $$f; \
+	 grep -q SABOTAGED $$f || { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@distinct=$$(test/cpp-tables/runtime_home_digest.sh build/runtime-home-cpp/bytes-sabotage | awk '{print $$1, $$2}' | sort -u | wc -l | tr -d ' '); \
+	 rm -rf build/runtime-home-cpp/bytes-sabotage; \
+	 if [ "$$distinct" = 1 ]; then echo "NEGATIVE CONTROL FAILED: a runtime that follows its file left the digest unchanged — the bytes half is watching nothing"; exit 1; fi; \
+	 echo "runtime home bytes negative control (cpp): a header whose runtime follows its file yields $$distinct distinct digests"
 
 # DEFECT B's NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.7's DEPTH ONE, BOUNDED ONLY).
 # The dogfood found the C# blittable emitter projecting a bounded array INSIDE
@@ -3622,6 +3648,7 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-runtime-home-negative-control
 	$(MAKE) tables-cpp-runtime-home
 	$(MAKE) tables-cpp-runtime-home-negative-control
+	$(MAKE) tables-cpp-runtime-home-bytes-negative-control
 	$(MAKE) tables-cpp-alloc
 	# the C++ soak (make/cpp.mk): 4096 passes of the count-gated loop, and the
 	# control that plants a matched new/delete pair and must turn the count red
