@@ -464,7 +464,7 @@ CS_FRAMING_NC := build/conformance-cs-framing-nc
 .PHONY: tables-cs-framing-negative-control
 tables-cs-framing-negative-control: build-conformance-cs build/conformance-harness
 	@set -e; for mode in cap cycle; do \
-		dir=$(CS_FRAMING_NC)/$$mode; rm -rf $$dir && mkdir -p $$dir/proj; \
+		dir=$(CS_FRAMING_NC)/$$mode; rm -rf $$dir && mkdir -p $$dir; \
 		cp -R build/tables-generated-cs $$dir/generated; \
 		case $$mode in \
 			cap) from='if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }'; \
@@ -475,9 +475,8 @@ tables-cs-framing-negative-control: build-conformance-cs build/conformance-harne
 		files=$$(grep -rlF "$$from" $$dir/generated); [ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $$mode sabotage matches no generated line"; exit 1; }; \
 		FROM="$$from" TO="$$to" perl -pi -e 's/\Q$$ENV{FROM}\E/$$ENV{TO}/g' $$files; \
 		grep -rqF 'SABOTAGED' $$dir/generated || { echo "NEGATIVE CONTROL FAILED: the $$mode sabotage patched nothing"; exit 1; }; \
-		cp -R test/conformance/cs/src test/conformance/cs/schemaconformance.csproj $$dir/proj/; \
-		$(DOTNET) build $$dir/proj --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$$dir/generated \
-			-p:CardsGeneratedDir=$(CURDIR)/$$dir/generated/cards -o $$dir/checker > $$dir/build.log 2>&1 || \
+		$(DOTNET) build test/conformance/cs --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$$dir/generated \
+			-p:CardsGeneratedDir=$(CURDIR)/$$dir/generated/cards -p:BaseIntermediateOutputPath=$(CURDIR)/$$dir/obj/ -o $$dir/checker > $$dir/build.log 2>&1 || \
 			{ cat $$dir/build.log; echo "NEGATIVE CONTROL FAILED: the $$mode-sabotaged driver does not compile"; exit 1; }; \
 		printf 'cs %s %s/checker/schemaconformance.dll\n' "$(DOTNET)" "$$dir" > $$dir/drivers; \
 		if ./build/conformance-harness run --drivers $$dir/drivers --work $$dir/run > $$dir/log 2>&1; then \
