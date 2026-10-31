@@ -1408,7 +1408,6 @@ public final class TableVariable {
             report.kindMismatch++;
         }
     }
-    }
 
     // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
     // as the engine's scalarAt reads it (§3).
