@@ -86,6 +86,9 @@ tables-goose-strict-negative-control: $(GOOSE_GATES_SCHEMA)
 # happens to inherit. Red is required on EXACTLY the <Base>Table.goose modules
 # that name it, each finding placed on a line that names it, and on nothing
 # else: the runtime and type modules beside them stay green.
+# A module that imports a sabotaged one (the unit module imports every Table
+# module) exits on that module's planted line: the same finding, reached
+# through the import, so its exit is required to cite a planted module.
 GOOSE_GATES_SED_UNREACHABLE := s|report = schema_rt::FixedReport { .. };|report = schema_rt::FixedReportUnreachable { .. }; // SABOTAGED: a binding no module declares|
 .PHONY: tables-goose-strict-emitter-negative-control
 tables-goose-strict-emitter-negative-control:
@@ -103,11 +106,13 @@ tables-goose-strict-emitter-negative-control:
 	@if sh make/goose-strict.sh "$(GOOSE)" $(GOOSE_GATES_DIR)/sabotage >$(GOOSE_GATES_DIR)/sabotage.log 2>&1; then \
 		cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: the strict gate stayed green on an emitter that names an unreachable binding"; exit 1; fi
 	@want=$$(cd $(GOOSE_GATES_DIR)/sabotage && grep -l 'schema_rt::FixedReportUnreachable' */*Table.goose | LC_ALL=C sort); \
-	got=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/' $(GOOSE_GATES_DIR)/sabotage.log | sed -E 's|^$(GOOSE_GATES_DIR)/sabotage/([^:]+):.*|\1|' | LC_ALL=C sort -u); \
+	got=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+\.goose:[0-9]+: ' $(GOOSE_GATES_DIR)/sabotage.log | sed -E 's|^$(GOOSE_GATES_DIR)/sabotage/([^:]+):.*|\1|' | LC_ALL=C sort -u); \
 	if [ -z "$$want" ]; then echo "NEGATIVE CONTROL FAILED: no Table module names the fixed runtime — the control watches nothing"; exit 1; fi; \
 	if [ "$$want" != "$$got" ]; then \
 		cat $(GOOSE_GATES_DIR)/sabotage.log; \
 		echo "NEGATIVE CONTROL FAILED: the gate went red on [$$(echo $$got)], expected exactly [$$(echo $$want)]"; exit 1; fi; \
+	exits=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+: goose check exits ' $(GOOSE_GATES_DIR)/sabotage.log | sed -E 's|^.*: goose check exits [0-9]+: ([^:]+):[0-9]+: .*$$|\1|' | LC_ALL=C sort -u); \
+	for m in $$exits; do echo "$$want" | grep -q "/$$m$$" || { cat $(GOOSE_GATES_DIR)/sabotage.log; echo "NEGATIVE CONTROL FAILED: a module exits on $$m, which the sabotage did not plant"; exit 1; }; done; \
 	other=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/' $(GOOSE_GATES_DIR)/sabotage.log | grep -v 'unknown type: schema_rt::FixedReportUnreachable'); \
 	if [ -n "$$other" ]; then echo "$$other"; echo "NEGATIVE CONTROL FAILED: the gate named a finding the sabotage did not plant"; exit 1; fi; \
 	placed=$$(grep -E '^$(GOOSE_GATES_DIR)/sabotage/[^:]+\.goose:[0-9]+: error: ' $(GOOSE_GATES_DIR)/sabotage.log); \
