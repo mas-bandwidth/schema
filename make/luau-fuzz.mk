@@ -29,6 +29,9 @@
 
 LUAU_FUZZ_SEED ?= 1
 LUAU_FUZZ_N    ?= 2000
+# the driver the differential runs; the release tier's control points it at a
+# scratch copy with one reader bug planted (tables-luau-release-negative-control)
+LUAU_WIREFUZZ_DRIVER ?= test/conformance/luau/wirefuzz-driver
 
 LUAU_WIRE_FUZZ_ABSENT_COUNT := 9
 LUAU_WIRE_FUZZ_ABSENT_PIN   := test/conformance/luau/wire-fuzz-absent.txt
@@ -42,7 +45,7 @@ tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau build/lu
 	@mkdir -p build/wire-fuzz
 	@rm -f $(LUAU_WIRE_FUZZ_ABSENT)
 	@LUAUFUZZ_NOTE=$(CURDIR)/$(LUAU_WIRE_FUZZ_ABSENT) \
-		./build/conformance-harness wire-fuzz --driver test/conformance/luau/wirefuzz-driver \
+		./build/conformance-harness wire-fuzz --driver "$(LUAU_WIREFUZZ_DRIVER)" \
 		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed build/wire-fuzz/failed-luau.bin \
 		> $(LUAU_WIRE_FUZZ_LOG) 2>&1; \
 		status=$$?; cat $(LUAU_WIRE_FUZZ_LOG); \

@@ -1261,6 +1261,14 @@ read_field = function(fd: any, r: any, v: any): any
 	elseif s == "text" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
+		if not utf8_ok(r.b, r.at, n) then
+			-- ILL-FORMED TEXT IS DAMAGE at any bound (docs/SPEC-TABLES.md §3,
+			-- §4): one malformed counts and the parent reads on past L
+			_report.malformed = true
+			if fd.slot ~= nil and v ~= nil then v[fd.slot] = fd.def or "" end
+			r.at = r.at + n
+			return true, nil, false
+		end
 		if fd.slot ~= nil and v ~= nil then v[fd.slot] = copy_out(r.b, r.at, n) end
 		r.at = r.at + n
 		return true

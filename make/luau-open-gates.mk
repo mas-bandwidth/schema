@@ -108,6 +108,23 @@ tables-luau-release: toolchain-luau build/conformance-harness build/conformance-
 	$(MAKE) tables-luau-usage-negative-control
 	@echo "tables Luau release gate: the wire fuzz at depth on two seeds with its control, and the page's example with its witnesses"
 
+# THE RELEASE TIER's CONTROL: the release gate runs over a scratch copy of the
+# units with the wire-fuzz control's reader bug planted (a string frame past its
+# body not counted malformed, test/conformance/luau/wire-fuzz-negative-control)
+# and must go RED on the report, at the release count, on its first seed: the
+# tier is not blind to what the PR tier catches.
+.PHONY: tables-luau-release-negative-control
+tables-luau-release-negative-control: toolchain-luau build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
+	sh test/conformance/luau/wire-fuzz-negative-control
+	@if $(MAKE) --no-print-directory tables-luau-release \
+		LUAU_WIREFUZZ_DRIVER="build/luaufuzzhost/luaufuzzhost build/luau-wire-fuzz-nc/test/conformance/luau/wirefuzz.luau" \
+		> build/luau-release-nc.log 2>&1; then \
+		cat build/luau-release-nc.log; \
+		echo "NEGATIVE CONTROL FAILED: the release gate stayed green over a reader that does not count a string frame past its body"; exit 1; fi
+	@grep -q 'the report differs' build/wire-fuzz/luau.log || { cat build/luau-release-nc.log; \
+		echo "NEGATIVE CONTROL FAILED: the release gate went red, but not on the report the plant moves"; exit 1; }
+	@echo "luau release negative control: the planted reader turns the release gate RED on the report"
+
 # M19: the writer holds the map sort (map_sort_test.go): every mapdemo instance
 # saved as read and saved with every map's entries reversed must be the same
 # committed bytes; the control removes the sort from the emitted save and
