@@ -4957,6 +4957,40 @@ end
 ```
 <!-- /lua-table-usage -->
 
+**Luau** — Luau 0.741, no dependencies. Generated code is self-contained: a
+`<Base>Table.luau` of descriptors per schema file, with the runtime modules
+(`schema_tables`, `schema_load`, `schema_save`, `schema_cookread`, ...) beside
+them, each reached as `require("./<module>")`. A value is a plain Luau table
+built by its descriptor's constructor, its fields in UpperCamelCase slots
+(`hull.Turrets`, `turret.Damage`), and the bytes are a Luau `buffer`. An
+enum-keyed array is a plain array with key k at index k; `S.keyed(table,
+field)` is the accessor that refuses None and any key past the enum's last
+variant by name. The plain read is the strict one: it answers the value, or
+`nil` with the refusal's name in `report.reason`. This fragment is run against
+the `tables/examples` unit by `make tables-luau-usage`:
+
+<!-- luau-table-usage -->
+```luau
+local S = require("./schema_tables")
+local save = require("./schema_save")
+local load = require("./schema_load")
+require("./KeyedTable")
+
+local hulls = S.lookup("HullConfig")
+local hull = hulls.new()                            -- every field at its declared default
+local turrets = S.keyed("HullConfig", "turrets")    -- one slot per Weapon variant
+turrets.get(hull.Turrets, turrets.key("Missile")).Damage = 25
+
+local bytes = save.save(hulls, hull)                -- the id-table wire, as a buffer
+local report = {}
+local back = load.load("HullConfig", bytes, report) -- nil and report.reason on a refusal
+if back == nil then error("the hull did not read: " .. report.reason) end
+for key, turret in turrets.each(back.Turrets) do
+  use(turret.Damage)
+end
+```
+<!-- /luau-table-usage -->
+
 **moo** — moo v1.3.0 (the deterministic Luau fork whose one number is
 Q48.16), no dependencies. Generated code is self-contained: a
 `<Base>Table.moo` of descriptors per schema file, with the runtime modules
