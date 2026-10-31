@@ -25,16 +25,20 @@ import (
 // Adapted from internal/codegen/luatable/forgeryfuzz_test.go: the same mutation
 // family and independent compiler bounds, exercised through Luau buffers.
 //
-// THE LUAU FORGERY FUZZ ORACLE (docs/PORTING.md I3; docs/SPEC-TABLES.md §7.4,
-// §19.2, §19.5; the Go twin is test/go-tables/fuzz_test.go, the JavaScript one
-// test/js-tables/main.mjs). A valid block or cook of the corpus, mutated, must
-// REFUSE, or OPEN and be WHOLE:
+// LUAU BLOCK-OPEN AND OPTIONAL COOK-CHECKER FUZZ (docs/PORTING.md I3;
+// docs/SPEC-TABLES.md §7.4, §19.2, §19.5). The block arm calls production
+// BlockOpen directly. The cook arm calls CheckWhole BEFORE open: it validates
+// that optional checker/reader composition, not production Check/open on
+// unfiltered mutants. Production cook I3 remains incomplete pending the shared
+// cook-contract work; these entry points are unchanged by this prerequisite.
+// Each mutated image must REFUSE through the surface under test, or that
+// surface must admit an image that is WHOLE:
 //
 //   - a block that opens has every pitch this build's own, every count inside
 //     its declared maximum, every array start aligned and inside the extent
 //     the caller passed, every row inside it, the used extent (padding
 //     included) inside it, and a prologue and a base this build accepts;
-//   - a cook that opens is a cook the tool's cook-check (internal/tablecook,
+//   - a cook admitted through CheckWhole is a cook the tool's cook-check (internal/tablecook,
 //     written from the spec and from neither backend) also accepts;
 //   - and in both, a full WALK of what opened (every block row byte and the
 //     cooked read) stays inside the buffer. Luau buffer access past the end
@@ -335,7 +339,7 @@ type luauForgeryResult struct {
 }
 
 func (r luauForgeryResult) summary() string {
-	return fmt.Sprintf("Luau forgery fuzz: %d mutants, %d refused (%d by the walk of what opened), %d opened and walked, %d findings",
+	return fmt.Sprintf("Luau block/checker fuzz: %d mutants, %d refused (%d by the walk of what opened), %d opened and walked, %d findings",
 		r.mutants, r.refused, r.walkRefused, r.opened, len(r.findings))
 }
 
@@ -462,10 +466,10 @@ end
 				if err != nil {
 					why = err.Error()
 				}
-				res.findings = append(res.findings, fmt.Sprintf("%s: the Luau Check OPENED a cook the tool's cook-check refuses: %s", where, why))
+				res.findings = append(res.findings, fmt.Sprintf("%s: the Luau CheckWhole ACCEPTED a cook the tool's cook-check refuses: %s", where, why))
 			}
 			if !opened && wantOpen {
-				res.findings = append(res.findings, fmt.Sprintf("%s: the Luau Check refused (%s) a cook the tool's cook-check accepts", where, ans))
+				res.findings = append(res.findings, fmt.Sprintf("%s: the Luau CheckWhole/open composition refused (%s) a cook the tool's cook-check accepts", where, ans))
 			}
 		}
 	}
@@ -542,8 +546,8 @@ func luauForgeryEdit(t *testing.T, files map[string][]byte, name, old, repl stri
 // the oracle must say so by name.
 //
 // The cook control removes pass two of the cook-check (the scan over the
-// region) from Check: it must red the differential against the tool's
-// cook-check as a Check that opened what the tool refuses.
+// region) from CheckWhole: it must red the differential against the tool's
+// cook-check as a CheckWhole that accepted what the tool refuses.
 func TestLuauForgeryFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, luauForgeryCost)
@@ -577,16 +581,16 @@ func TestLuauForgeryFuzzNegativeControl(t *testing.T) {
 		t.Log(res.summary())
 		differ := 0
 		for _, f := range res.findings {
-			if strings.Contains(f, "OPENED a cook the tool's cook-check refuses") {
+			if strings.Contains(f, "ACCEPTED a cook the tool's cook-check refuses") {
 				differ++
 				if differ <= 3 {
 					t.Log(f)
 				}
 			}
 		}
-		t.Logf("scan sabotage: %d opened cooks rejected by the independent checker", differ)
+		t.Logf("scan sabotage: %d CheckWhole-accepted cooks rejected by the independent checker", differ)
 		if differ == 0 {
-			t.Fatalf("a cook Check with no region scan left the differential green: %s", res.summary())
+			t.Fatalf("a cook CheckWhole with no region scan left the differential green: %s", res.summary())
 		}
 	})
 }

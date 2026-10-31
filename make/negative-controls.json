@@ -1565,7 +1565,7 @@
     {
       "name": "luau-forgery",
       "when": "pull-request",
-      "why": "I3's seeded forgery oracle controls on pinned Luau 0.741: remove both block extent bounds, then the optional cook-check region scan, and require independent bounds/checker findings. Each arm covers 24000 mutants; the focused baseline plus both controls took 59.3 seconds on hetzner1 at GOMAXPROCS=4 (the cook control 49.5 seconds). A separate group keeps this measured work within the owner's one-to-two-minute per-commit budget without assuming room in the existing Luau group.",
+      "why": "Production block-open and optional CheckWhole/open composition controls on pinned Luau 0.741: remove both block extent bounds, then the optional cook-check region scan, and require independent bounds/checker findings. This does not complete production cook I3. Each control covers 24000 mutants; the actual make target took 63.44 seconds on hetzner1 at GOMAXPROCS=4. A separate group keeps this measured work within the owner's one-to-two-minute per-commit budget.",
       "targets": [
         "tables-luau-forgery-fuzz-negative-control"
       ],
