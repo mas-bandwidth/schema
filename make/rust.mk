@@ -1444,7 +1444,7 @@ conformance-rust-absent: build/conformance-harness build/conformance-cpp build/s
 	@grep -Eq 'pass [0-9]+/[0-9]+ \+[0-9]+a' build/conformance-rust-absent.log || \
 		{ echo "conformance-rust-absent: no surface counted a per-case absence"; exit 1; }
 	@echo "conformance-rust-absent: the Rust leg is green with its per-case absences counted"
-conformance-rust-absent-negative-control: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
+conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
 	@sed -e 's|spill(dir, &format!("{name}.absent"), b"");|spill(dir, name, b""); // SABOTAGED: an absence answered as an answer|' \
 		-e 's|&format!("{}.absent", f\[1\])|\&f[1] /* SABOTAGED: an absence answered as an answer */|g' \
