@@ -5,3 +5,5 @@
 # refused: the unit does not load; no-codec: the unit loads and no module
 # registers the root. A root that opens deletes its line; a root that drops out
 # is a reviewed change here and to MOO_WIRE_FUZZ_ABSENT_COUNT.
+blobdemo.Catalog form=2 variable-message
+graphdemo.Scene form=2 variable-message
