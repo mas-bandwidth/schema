@@ -2531,11 +2531,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # slice returns one field's payload bytes by its kind (§3's skip table).
+  # slice returns one field's payload bytes by its kind (§3's skip table); kind
+  # 36, the timestamp, is an eight-byte value and skips its width.
   defp slice(bin, kind) when kind in [1, 2, 6, 20, 25], do: take(bin, 1)
   defp slice(bin, kind) when kind in [3, 7, 21, 26], do: take(bin, 2)
   defp slice(bin, kind) when kind in [4, 8, 10, 22, 27], do: take(bin, 4)
-  defp slice(bin, kind) when kind in [5, 9, 11, 23, 28], do: take(bin, 8)
+  defp slice(bin, kind) when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
   defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32, 33], do: body(bin)
