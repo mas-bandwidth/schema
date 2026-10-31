@@ -69,12 +69,17 @@ func TestJavaCookExtentNegativeControl(t *testing.T) {
 				drivers := map[string]string{}
 				for root := range u.rows {
 					drivers["CookGolden"+root] = cookDriverSource("CookGolden"+root, u.pkg, root)
+					drivers["CookReversed"+root] = cookReversedDriverSource("CookReversed"+root, u.pkg, root)
 				}
 				dir := compileCookUnit(t, javac, files, u.pkg, drivers)
 				for root, rows := range u.rows {
 					for _, row := range rows {
 						inst, cook := m.instance[row], m.cook[row]
-						out, err := exec.Command(javaBin, "-ea", "-cp", dir, "CookGolden"+root,
+						class := "CookGolden" + root
+						if w.name == "unsorted_map" {
+							class = "CookReversed" + root
+						}
+						out, err := exec.Command(javaBin, "-ea", "-cp", dir, class,
 							filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1])).CombinedOutput()
 						if err != nil && strings.Contains(string(out), "cook bytes order") {
 							red++
@@ -89,4 +94,74 @@ func TestJavaCookExtentNegativeControl(t *testing.T) {
 			}
 		})
 	}
+}
+
+// THE MAP WRITER HOLDS THE SORT (docs/SPEC-TABLES.md §2.8; docs/PORTING.md
+// M19): a loaded value's maps are already ascending, so a cook of one cannot
+// show whether the writer sorts. This gate reverses every map's entries at
+// every depth before cooking and requires the same golden bytes in both
+// orders; the unsorted_map witness above is its control.
+func TestJavaCookMapWriterHoldsTheSort(t *testing.T) {
+	t.Parallel()
+	javac, javaBin := javaTools(t)
+	m := readCookManifest(t)
+	repo := filepath.Join("..", "..", "..")
+	units := []struct {
+		schema, pkg string
+		rows        map[string][]string
+	}{
+		{filepath.Join(repo, "tables", "maps"), "mapdemo", map[string][]string{
+			"Fleet": {"map_full"}, "Depth": {"map_depth"}, "Cells": {"map_cells"}, "Crews": {"map_crews"}}},
+		{filepath.Join(repo, "tables", "lists"), "listdemo", map[string][]string{"Army": {"list_of_maps"}}},
+	}
+	for _, u := range units {
+		drivers := map[string]string{}
+		for root := range u.rows {
+			drivers["CookReversed"+root] = cookReversedDriverSource("CookReversed"+root, u.pkg, root)
+		}
+		dir := compileCookUnit(t, javac, cookUnitFiles(t, u.schema), u.pkg, drivers)
+		for root, rows := range u.rows {
+			for _, row := range rows {
+				inst, cook := m.instance[row], m.cook[row]
+				out, err := exec.Command(javaBin, "-ea", "-cp", dir, "CookReversed"+root,
+					filepath.Join(repo, inst[2]), filepath.Join(repo, cook[0]), filepath.Join(repo, cook[1])).CombinedOutput()
+				if err != nil {
+					t.Errorf("%s with every map reversed: %v\n%s", row, err, out)
+				}
+			}
+		}
+	}
+}
+
+func cookReversedDriverSource(class, pkg, root string) string {
+	src := cookDriverSource(class, pkg, root)
+	// reverse every map's entries, at every depth, right after the load
+	src = strings.Replace(src,
+		"        if (value == null || report.refused || report.malformed) throw new AssertionError(\"wire load\");\n",
+		"        if (value == null || report.refused || report.malformed) throw new AssertionError(\"wire load\");\n"+
+			"        reverseMaps(value, PKG.ROOTRow.cookInfo(), new java.util.IdentityHashMap<>());\n", 1)
+	src = strings.Replace(src, "PKG.ROOTRow", pkg+"."+root+"Row", 1)
+	helper := `
+    static void reverseMaps(Object v, PKG.TableCookInfo info, java.util.IdentityHashMap<Object, Boolean> seen) throws Exception {
+        if (v == null || info == null || seen.put(v, Boolean.TRUE) != null) return;
+        for (PKG.TableCookFieldInfo f : info.fields) {
+            Object x;
+            try { x = v.getClass().getField(f.sourceName).get(v); } catch (NoSuchFieldException e) { continue; }
+            if (x == null) continue;
+            if (f.storage == PKG.TableCookStorage.MAP) {
+                java.util.List<?> l = (java.util.List<?>) x;
+                java.util.Collections.reverse(l);
+                for (Object e : l) reverseMaps(e, f.element.record(), seen);
+            } else if (f.storage == PKG.TableCookStorage.LIST) {
+                if (f.element.record() != null) for (Object e : (java.util.List<?>) x) reverseMaps(e, f.element.record(), seen);
+            } else if (f.storage == PKG.TableCookStorage.RECORD && f.record() != null) {
+                if (x instanceof java.util.List<?>) { for (Object e : (java.util.List<?>) x) reverseMaps(e, f.record(), seen); }
+                else reverseMaps(x, f.record(), seen);
+            }
+        }
+    }
+}
+`
+	src = strings.TrimSuffix(strings.TrimRight(src, "\n"), "}") + strings.ReplaceAll(helper, "PKG", pkg)
+	return src
 }
