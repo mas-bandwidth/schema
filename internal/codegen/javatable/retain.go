@@ -109,6 +109,16 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("            }\n        }\n")
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
 		b.WriteString("        if (report.refused) { return null; }\n")
+		// THE SAME FRAMING WALK the plain load runs after its read: a load refuses
+		// exactly where loadMeasure answers -1 (docs/SPEC-TABLES.md §6.5), so a
+		// container whose count its framing cannot cover is refused whole here
+		// too, never retained around (§6.6).
+		b.WriteString("        TableVariable.Measure measure = new TableVariable.Measure();\n")
+		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure) < 0) {\n", st.Name)
+		b.WriteString("            report.refused = true;\n")
+		b.WriteString("            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
+		b.WriteString("            return null;\n")
+		b.WriteString("        }\n")
 		fmt.Fprintf(&b, "        %sVariable.resolveNodes(v, nt, report);\n", st.Name)
 		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
 		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); }\n", st.Name, st.Name)
