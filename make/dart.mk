@@ -193,6 +193,29 @@ tables-dart-clean: build/tables-generated-dart/.stamp
 	done
 	@echo "tables Dart: analyzer clean and format-canonical"
 
+# ITS CONTROL: a copy of one generated block library carries a planted unused
+# private declaration spelled off-format. The analyzer must reject the copy on
+# unused_element, and the formatter must rewrite it, which is the drift test the
+# gate above applies file by file. No generated file is written to.
+.PHONY: tables-dart-clean-negative-control
+tables-dart-clean-negative-control: build/tables-generated-dart/.stamp
+	@rm -rf build/tables-dart-clean-nc && mkdir -p build/tables-dart-clean-nc/tree
+	@cp build/tables-generated-dart/block/BlockdemoBlock.dart build/tables-dart-clean-nc/tree/BlockdemoBlock.dart
+	@printf '\nint   _plantedUnused=1;\n' >> build/tables-dart-clean-nc/tree/BlockdemoBlock.dart
+	@cp -r build/tables-dart-clean-nc/tree build/tables-dart-clean-nc/fmt
+	@$(DART) format build/tables-dart-clean-nc/fmt >/dev/null
+	@cmp -s build/tables-dart-clean-nc/tree/BlockdemoBlock.dart build/tables-dart-clean-nc/fmt/BlockdemoBlock.dart && \
+		{ echo "NEGATIVE CONTROL FAILED: the planted off-format line is format-canonical, so the drift gate cannot see it"; exit 1; } || true
+	@if $(DART) analyze build/tables-dart-clean-nc/tree > build/tables-dart-clean-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the analyzer stayed green with an unused private declaration planted"; \
+		cat build/tables-dart-clean-nc/log; exit 1; \
+	fi
+	@grep -Fq 'unused_element' build/tables-dart-clean-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the analyzer went red for some other reason"; cat build/tables-dart-clean-nc/log; exit 1; }
+	@echo "negative control: an off-format unused declaration is caught by the formatter drift test and by the analyzer's unused_element"
+
+test-dart: tables-dart-clean-negative-control
+
 # THE DART NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). Every
 # library-scope spelling of the Dart table runtime is registered in
 # internal/tablenames and refused as a schema declaration, and compiler's
@@ -457,6 +480,9 @@ tables-dart-release:
 	$(MAKE) tables-dart-fuzz SEED=1 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz SEED=2 DART_FUZZ_MUTANTS=20000
 	$(MAKE) tables-dart-fuzz-negative-control
+	$(MAKE) tables-dart-wire-fuzz N=500000
+	$(MAKE) tables-dart-wire-fuzz SEED=2 N=500000
+	$(MAKE) tables-dart-wire-fuzz-negative-control
 	$(MAKE) tables-dart-alloc
 	$(MAKE) tables-dart-alloc-negative-control
 	$(MAKE) tables-dart-alloc-runtime-negative-control
@@ -1525,6 +1551,14 @@ conformance-negative-control-dart-walk: build/conformance-harness
 conformance-negative-control-dart-zero: build/conformance-harness
 	sh test/conformance/dart/negative-control zero "$(DART)"
 
+# THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
+# image block_pitch open, `forgery` red on that row alone.
+.PHONY: conformance-negative-control-dart-block
+conformance-negative-control-dart-block: build/conformance-harness
+	sh test/conformance/dart/negative-control block "$(DART)"
+
+test-dart: conformance-negative-control-dart-block
+
 test-dart: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
 
 # I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Dart side:
@@ -1541,3 +1575,28 @@ tables-dart-usage-negative-control: tables-dart-usage
 	sh test/dart-tables/usage "$(DART)" control
 
 test-dart: tables-dart-usage tables-dart-usage-negative-control
+
+# I15 (docs/PORTING.md) — THE TOLERANT WIRE'S DIFFERENTIAL FUZZER, Dart side.
+# The harness owns the mutators and the oracle (docs/SPEC-TABLES.md §4.2); this
+# leg is the thin reader test/conformance/dart/main.dart's `wire-fuzz` mode:
+# every file root the wire surface carries, bound by (unit, root) in fuzzRoot,
+# read on a pipe through the generated tolerant Load and written back through
+# Save, and the form-2 roots of the message arm through the message codecs. A
+# Save the value cannot honour (a cycle, a blob two slots name) is the
+# StateError the driver answers as a refusal. The default N and SEED are the
+# Makefile's. The driver also binds LoadRetain/SaveRetain for every root
+# (`wire-fuzz --retain`, docs/SPEC-TABLES.md §6.6), but that arm is NOT gated:
+# the Dart leg carries no retain surface yet and the arm is red at its first
+# graph_tree mutant (docs/PORTING.md I15).
+.PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
+tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
+
+# Its control: the emitter's counted-list `widened` count is removed
+# (tools/sabotage table-dart-wire-widen), every unit the driver reads is
+# regenerated from that compiler and the driver rebuilt on the copy, and the
+# fuzzer must go red on the report comparison, at seed 1 with no random pass.
+tables-dart-wire-fuzz-negative-control: build/conformance-harness
+	sh test/conformance/dart/negative-control wire "$(DART)"
+
+test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control

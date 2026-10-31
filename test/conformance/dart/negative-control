@@ -22,7 +22,19 @@
 # str-zero-escape-value and str-zero-escape-map-key; the skipped unknown-key
 # zero, json-read and every other surface stay green.
 #
-# usage: negative-control <walk|zero> [dart]     (run from the repository root)
+# wire: the counted list's `widened` count is taken out of the WIRE emitter
+# (internal/codegen/darttable/wireform.go, tools/sabotage table-dart-wire-widen)
+# and the tolerant wire's differential fuzzer (docs/PORTING.md I15, harness
+# wire-fuzz) is run over a driver built from the regenerated units. It must go
+# red on the report, naming the mutant; it does not run the matrix.
+#
+# block: the block Open's pitch check (internal/codegen/darttable/block.go,
+# tools/sabotage table-dart-block-pitch) is taken out, so the forged image
+# block_pitch opens where it must refuse. The matrix must go red on
+# `dart / forgery` and `dart / block-reason` on that row alone; `block` and `block-dump` read the two
+# valid images, which carry this build's pitch, and stay green.
+#
+# usage: negative-control <walk|zero|wire|block> [dart]     (run from the repository root)
 set -eu
 
 mode=${1:-walk}
@@ -30,6 +42,8 @@ dart=${2:-dart}
 case "$mode" in
     walk) sabotage=table-dart-text-walk-bool; marker='SABOTAGED: the read stores the negation' ;;
     zero) sabotage=table-dart-text-zero; marker='SABOTAGED: text_holds_zero removed' ;;
+    wire) sabotage=table-dart-wire-widen; marker='SABOTAGED: the widened count is gone' ;;
+    block) sabotage=table-dart-block-pitch; marker='SABOTAGED: the pitch check is gone' ;;
     *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
 out=build/conformance-dart-negative-$mode
@@ -38,8 +52,11 @@ root=$(pwd)
 rm -rf "$out"
 mkdir -p "$out/build" "$out/test/conformance/dart"
 
-go run ./tools/sabotage -name "$sabotage" -out "$out/textform.gotext" internal/codegen/darttable/textform.go
-printf '{"Replace":{"%s/internal/codegen/darttable/textform.go":"%s/%s/textform.gotext"}}\n' "$root" "$root" "$out" > "$out/overlay.json"
+emitter=textform.go
+[ "$mode" = wire ] && emitter=wireform.go
+[ "$mode" = block ] && emitter=block.go
+go run ./tools/sabotage -name "$sabotage" -out "$out/emitter.gotext" "internal/codegen/darttable/$emitter"
+printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/emitter.gotext"}}\n' "$root" "$emitter" "$root" "$out" > "$out/overlay.json"
 go build -overlay="$out/overlay.json" -o "$out/schema" ./cmd/schema
 
 for pair in \
@@ -52,7 +69,8 @@ for pair in \
     r1:test/tables/R1.schema r2:test/tables/R2.schema \
     p1:test/tables/P1.schema p2:test/tables/P2.schema p3:test/tables/P3.schema \
     g1:test/tables/G1.schema m1:test/tables/M1.schema m2:test/tables/M2.schema \
-    k1:test/tables/K1.schema k2:test/tables/K2.schema a2:test/tables/A2.schema; do
+    k1:test/tables/K1.schema k2:test/tables/K2.schema a2:test/tables/A2.schema \
+    rt1:test/tables/RT1.schema; do
     unit=${pair%%:*}
     input=${pair#*:}
     "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart/$unit" "$input" >/dev/null
@@ -64,7 +82,7 @@ for pair in scalars:tables/scalars scalars2:test/tables/Scalars2.schema; do
 done
 
 # the sabotage must have reached generated code, or the control is vacuous
-if ! grep -rqF "$marker" "$out/build/tables-generated-dart/examples"; then
+if ! grep -rqF "$marker" "$out/build/tables-generated-dart"; then
     echo "negative control patched no generated reader" >&2
     exit 1
 fi
@@ -72,6 +90,21 @@ fi
 cp test/conformance/dart/main.dart "$out/test/conformance/dart/main.dart"
 "$dart" compile exe -o "$out/conformance-dart" "$out/test/conformance/dart/main.dart" >/dev/null
 printf 'dart %s/%s/conformance-dart\n' "$root" "$out" > "$out/drivers.txt"
+
+if [ "$mode" = wire ]; then
+    # the differential, not the matrix: seed 1, no random pass, the enumerated
+    # mutants alone, which are the same at every seed
+    if build/conformance-harness wire-fuzz --finite-owed tables-finite/dart --driver "$out/conformance-dart wire-fuzz" --seed 1 --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
+        cat "$out/log"
+        echo "NEGATIVE CONTROL FAILED: $mode ($sabotage) left the dart wire fuzzer green" >&2
+        exit 1
+    fi
+    grep -Fq 'harness: FAILED' "$out/log" && grep -Fq 'the report differs' "$out/log" || { cat "$out/log"; echo "the wire fuzzer went red for some other reason" >&2; exit 1; }
+    if grep -Eq 'leg died|did not answer' "$out/log"; then cat "$out/log"; exit 1; fi
+    grep -F 'the report differs' "$out/log" | head -1
+    echo "Dart wire negative control: the emitter sabotage ($sabotage) is detected by the wire fuzzer's report comparison"
+    exit 0
+fi
 
 if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
     cat "$out/log"
@@ -84,14 +117,20 @@ fi
 case "$mode" in
     walk) red=json-read ;;
     zero) red=json-hostile ;;
+    block) red=forgery ;;
 esac
 grep -Eq "^$red +FAIL " "$out/log" || { cat "$out/log"; exit 1; }
 for surface in wire message report json-read json-write json-hostile cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason; do
     [ "$surface" = "$red" ] && continue
+    # the refusal's NAME is a row of the same rule: block-reason holds the
+    # reason block_pitch must give, so it goes red beside the forgery battery
+    [ "$mode" = block ] && [ "$surface" = block-reason ] && continue
     grep -Eq "^$surface +pass " "$out/log" || { cat "$out/log"; echo "surface $surface did not stay green" >&2; exit 1; }
 done
 # every failing row is a row of the broken rule, and each is a wrong answer
-if grep '^  dart / ' "$out/log" | grep -Ev "^  dart / $red[:/ ]" >/dev/null; then
+allowed="^  dart / $red[:/ ]"
+[ "$mode" = block ] && allowed='^  dart / (forgery|block-reason): block_pitch: '
+if grep '^  dart / ' "$out/log" | grep -Ev "$allowed" >/dev/null; then
     cat "$out/log"; exit 1
 fi
 if [ "$mode" = zero ]; then
@@ -99,6 +138,10 @@ if [ "$mode" = zero ]; then
     if [ "$rows" != "str-zero-escape-map-key str-zero-escape-value " ]; then
         cat "$out/log"; echo "zero control turned red: '$rows', want exactly the two carried zero rows" >&2; exit 1
     fi
+fi
+if [ "$mode" = block ]; then
+    rows=$(grep '^  dart / forgery' "$out/log" | grep -Eo 'block_pitch' | sort -u | tr '\n' ' ')
+    [ "$rows" = "block_pitch " ] || { cat "$out/log"; echo "block control turned red on '$rows', want the block_pitch row" >&2; exit 1; }
 fi
 grep "^$red " "$out/log"
 echo "Dart $mode negative control: the emitter sabotage ($sabotage) is detected by dart / $red alone"
