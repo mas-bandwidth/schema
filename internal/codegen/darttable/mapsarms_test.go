@@ -40,15 +40,15 @@ func TestMapsAndUnionArmsOnTheTableWireDart(t *testing.T) {
 	}{
 		{name: "maps", unit: "tables/maps", wire: "MapdemoWire.dart", rows: manifestRows(t, repo, "mapdemo")},
 		{name: "arms", unit: "tables/arms", wire: "ArmdemoWire.dart", rows: []oracleRow{
-			{"arms_chain", "Chain", "testdata/wire/tables/arms_chain.bin"},
-			{"arms_gate", "Gate", "testdata/wire/tables/arms_gate.bin"},
-			{"arms_gate_text", "Gate", "testdata/wire/tables/arms_gate_text.bin"},
-			{"arms_hand", "Hand", "testdata/wire/tables/arms_hand.bin"},
-			{"arms_holder", "Holder", "testdata/wire/tables/arms_holder.bin"},
-			{"arms_nest", "Nest", "testdata/wire/tables/arms_nest.bin"},
-			{"arms_rack", "Rack", "testdata/wire/tables/arms_rack.bin"},
-			{"arms_ring", "Ring", "testdata/wire/tables/arms_ring.bin"},
-			{"arms_tray", "Tray", "testdata/wire/tables/arms_tray.bin"},
+			{"arms_chain", "Chain", "testdata/wire/tables/arms_chain.bin", ""},
+			{"arms_gate", "Gate", "testdata/wire/tables/arms_gate.bin", ""},
+			{"arms_gate_text", "Gate", "testdata/wire/tables/arms_gate_text.bin", ""},
+			{"arms_hand", "Hand", "testdata/wire/tables/arms_hand.bin", ""},
+			{"arms_holder", "Holder", "testdata/wire/tables/arms_holder.bin", ""},
+			{"arms_nest", "Nest", "testdata/wire/tables/arms_nest.bin", ""},
+			{"arms_rack", "Rack", "testdata/wire/tables/arms_rack.bin", ""},
+			{"arms_ring", "Ring", "testdata/wire/tables/arms_ring.bin", ""},
+			{"arms_tray", "Tray", "testdata/wire/tables/arms_tray.bin", ""},
 		}},
 		{name: "messages", unit: "tables/messages", wire: "MessagedemoWire.dart", rows: manifestRows(t, repo, "messagedemo")},
 		{name: "scalars", unit: "tables/scalars", wire: "ScalardemoWire.dart", rows: manifestRows(t, repo, "scalars")},
@@ -84,6 +84,10 @@ type oracleRow struct {
 	name string
 	root string
 	path string // repo-relative
+	// refusal is the manifest's `go-refusal=<name>`: a writer refuses the
+	// value by that name (docs/SPEC-TABLES.md §2.5, a blob two slots name), so
+	// the save must throw it and no bytes are compared
+	refusal string
 }
 
 // manifestRows reads the `instance` rows of one unit out of the committed
@@ -103,7 +107,13 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 		if len(fields) < 5 || fields[0] != "instance" || fields[2] != unit {
 			continue
 		}
-		rows = append(rows, oracleRow{name: fields[1], root: fields[3], path: fields[4]})
+		r := oracleRow{name: fields[1], root: fields[3], path: fields[4]}
+		for _, a := range fields[5:] {
+			if name, ok := strings.CutPrefix(a, "go-refusal="); ok {
+				r.refusal = name
+			}
+		}
+		rows = append(rows, r)
 	}
 	if err := sc.Err(); err != nil {
 		t.Fatalf("read manifest: %v", err)
@@ -113,7 +123,8 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 
 // resaveOracleRows writes the generated library and one probe that loads every
 // row's oracle wire through <root>WireLoad, saves it through <root>WireSave,
-// and requires the bytes to be identical, naming every row that is not.
+// and requires the bytes to be identical, naming every row that is not. A row
+// with a refusal must instead throw the refusal's name.
 func resaveOracleRows(t *testing.T, wireName string, wire []byte, repo string, rows []oracleRow, packet map[string][]byte) {
 	t.Helper()
 	dir := t.TempDir()
@@ -148,14 +159,21 @@ Uint8List resave(String root, Uint8List wire) {
 
 void main(List<String> args) {
   var bad = 0;
-  for (var i = 0; i + 2 < args.length; i += 3) {
+  for (var i = 0; i + 3 < args.length; i += 4) {
     final name = args[i];
     final wire = File(args[i + 2]).readAsBytesSync();
+    final refusal = args[i + 3];
     final Uint8List saved;
     try {
       saved = resave(args[i + 1], wire);
     } catch (e) {
+      if (refusal != '-' && e.toString().contains(refusal)) continue;
       stderr.writeln('FAIL $name: $e');
+      bad++;
+      continue;
+    }
+    if (refusal != '-') {
+      stderr.writeln('FAIL $name: saved ${saved.length} bytes of a value every writer refuses ($refusal)');
       bad++;
       continue;
     }
@@ -186,7 +204,11 @@ void main(List<String> args) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		args = append(args, r.name, r.root, abs)
+		refusal := r.refusal
+		if refusal == "" {
+			refusal = "-"
+		}
+		args = append(args, r.name, r.root, abs, refusal)
 	}
 	cmd := exec.Command(dartBinary(t), args...)
 	cmd.Dir = dir
