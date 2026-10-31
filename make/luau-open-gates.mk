@@ -46,9 +46,9 @@ tables-luau-runtime-home-negative-control: bin/schema tables-luau-runtime-home
 # witnesses, one plant per rule (the None guard, the past-Max guard, the shift).
 .PHONY: tables-luau-keyed tables-luau-keyed-negative-control
 tables-luau-keyed: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauKeyedAccessorCoversBothEnds$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauKeyedAccessorCoversBothEnds$$' -count=1 -timeout 600s
 tables-luau-keyed-negative-control: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauKeyedNegativeControls$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauKeyedNegativeControls$$' -count=1 -timeout 600s
 
 test-luau: tables-luau-runtime-home tables-luau-runtime-home-negative-control
 test-luau: tables-luau-keyed tables-luau-keyed-negative-control
@@ -136,9 +136,9 @@ test-luau: tables-luau-release-negative-control
 # are held against the engine by the wire-fuzz differential (make/luau-fuzz.mk).
 .PHONY: tables-luau-maps tables-luau-maps-negative-control
 tables-luau-maps: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauMapWriterHoldsTheSort$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauMapWriterHoldsTheSort$$' -count=1 -timeout 600s
 tables-luau-maps-negative-control: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauMapWriterSortNegativeControl$$' -count=1 -timeout 600s -v
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauMapWriterSortNegativeControl$$' -count=1 -timeout 600s -v
 
 test-luau: tables-luau-maps tables-luau-maps-negative-control
 
@@ -149,9 +149,9 @@ test-luau: tables-luau-maps tables-luau-maps-negative-control
 # that hold one to turn.
 .PHONY: tables-luau-accessor-descriptor-agreement tables-luau-accessor-negative-control
 tables-luau-accessor-descriptor-agreement: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauLayoutAgreesWithTheCompiler$$' -count=1 -timeout 600s -v
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauLayoutAgreesWithTheCompiler$$' -count=1 -timeout 600s -v
 tables-luau-accessor-negative-control: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauLayoutAgreementNegativeControl$$' -count=1 -timeout 600s -v
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauLayoutAgreementNegativeControl$$' -count=1 -timeout 600s -v
 
 test-luau: tables-luau-accessor-descriptor-agreement tables-luau-accessor-negative-control
 
@@ -161,9 +161,9 @@ test-luau: tables-luau-accessor-descriptor-agreement tables-luau-accessor-negati
 # registered name nothing emits.
 .PHONY: tables-luau-names tables-luau-names-negative-control
 tables-luau-names:
-	go test ./compiler/ -run '^TestLuauTableRuntimeNamesAreClaimed$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./compiler/ -run '^TestLuauTableRuntimeNamesAreClaimed$$' -count=1 -timeout 600s
 tables-luau-names-negative-control:
-	go test ./compiler/ -run '^TestLuauRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./compiler/ -run '^TestLuauRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
 
 test-luau: tables-luau-names tables-luau-names-negative-control
 
@@ -174,11 +174,11 @@ test-luau: tables-luau-names tables-luau-names-negative-control
 # and the wire-fuzz differential.
 .PHONY: tables-luau-arms tables-luau-arms-negative-control
 tables-luau-arms: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauArmIsAFieldLine$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauArmIsAFieldLine$$' -count=1 -timeout 600s
 	sh test/slowgate/proof tables-luau-arms 'TestLuauLoadUnionFramingAgreesWithTheEngine' \
 		./internal/codegen/luautable -run '^TestLuauLoadUnionFramingAgreesWithTheEngine$$' -count=1 -timeout 600s
 tables-luau-arms-negative-control: toolchain-luau
-	go test ./internal/codegen/luautable/ -run '^TestLuauArmFieldLineNegativeControl$$' -count=1 -timeout 600s
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauArmFieldLineNegativeControl$$' -count=1 -timeout 600s
 
 test-luau: tables-luau-arms tables-luau-arms-negative-control
 test-luau: conformance-negative-control-luau conformance-negative-control-luau-emitter conformance-negative-control-luau-walk
