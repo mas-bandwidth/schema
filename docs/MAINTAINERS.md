@@ -68,8 +68,10 @@ proves in full.*
   seconds-long job with no build and no test, so it does not break the NO PUSH TRIGGER rule
   `certify.yml` states for the heavy suite. A release `vX.Y.Z` is made only by dispatching
   `.github/workflows/release.yml` with the version (`gh workflow run release.yml --ref main -f version=vX.Y.Z`), which runs `make release VERSION=vX.Y.Z PUSH=1`; it refuses a version
-  that does not parse, one not greater than the newest `v` tag, and a commit not on `main`,
-  and it tags that commit and nothing else. Without `PUSH=1` both targets only print the
+  that does not parse, one not greater than the newest `v` tag, a commit not on `main`, a patch
+  release that moves the build version's form, and, first, a commit whose compiler encodes
+  different wire bytes than the newest `v` tag's under an equal protocol id
+  (`make release-differential`), and it tags that commit and nothing else. Without `PUSH=1` both targets only print the
   decision. The tag-name and refusal logic is `tools/releasetag`, unit-tested with no git;
   the policy is docs/VERSIONING.md ("The compiler's own version").
 - **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this

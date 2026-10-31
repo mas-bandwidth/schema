@@ -169,6 +169,7 @@ var catalog = []Entry{
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/matrix", "language matrix page", "make matrix-check", "make matrix"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
+	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
