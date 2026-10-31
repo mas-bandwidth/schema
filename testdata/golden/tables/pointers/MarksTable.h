@@ -4600,9 +4600,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7137,11 +7143,11 @@ inline void TableReset( Marker & value ) { MarkerReset( value ); }
 // Tally is a pointer target.
 inline const Tally * TallyAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Tally *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Tally *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Tally * TallyAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Tally *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Tally *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Tally * TallyAt( const TableRegionCtx &, const TableRef & ref ) { return TallyAt( ref ); }
 inline const Tally * TallyAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7168,11 +7174,11 @@ inline Tally * TallyEmplace( TableWorker & worker, TableRef & slot )
 // Marker is a pointer target.
 inline const Marker * MarkerAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Marker *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Marker *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Marker * MarkerAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Marker *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Marker *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Marker * MarkerAt( const TableRegionCtx &, const TableRef & ref ) { return MarkerAt( ref ); }
 inline const Marker * MarkerAt( const TableArenaCtx & ctx, const TableRef & ref )

@@ -1080,6 +1080,15 @@
       ]
     },
     {
+      "name": "go-message",
+      "when": "pull-request",
+      "why": "the generated Go MESSAGE form's controls (docs/SPEC-TABLES.md \u00a73.3): the conformance driver's message surface with one byte of the login_full batch flipped (red on that row, wire green), and the in-package controls of internal/codegen/gotable/messageform_negative_test.go, each planting one fault in a copy of the generated source (batch count on write and on read, the no_vocabulary, batch_too_large and form-byte refusals, the strict build-version comparison, the unknown counter, the fixed-only verb check, the integrity trailer) and requiring its gate's probe red on its own message. Measured on hulk (17 cores, load 45 from other jobs): the message control 117 s including a cold generated-Go tree and driver build, the in-package controls 23 s with a warm build cache, 13 s through make.",
+      "targets": [
+        "conformance-negative-control-go-message",
+        "tables-go-message-form-negative-controls"
+      ]
+    },
+    {
       "name": "base-reference-review",
       "when": "pull-request",
       "why": "compiled native and sanitizer regressions for variable wide closure, list extent and flags/map widening accounting; seven bounded emitter controls",
@@ -1205,12 +1214,28 @@
       ]
     },
     {
+      "name": "release-differential",
+      "when": "pull-request",
+      "why": "the previous-release differential's control (docs/VERSIONING.md, #463): cmd/schema built three times from this tree, clean, with every union arm's packet tag moved by one in the C++ writer, and with a true bool written as 2 in the Go engine's variable form, and tools/releasediff run clean against clean (must pass, having compared the packet wire and both table forms) and clean against each sabotage (each must refuse on its own wire alone, naming the unit, the instance and the byte). Go, the host C++ compiler and the serialize sibling; three compiler builds, the three packet drivers built six times each and the conformance instances packed four times.",
+      "targets": [
+        "release-differential-negative-control"
+      ]
+    },
+    {
       "name": "release-form-gate",
       "when": "pull-request",
       "why": "the build version's form gate's control (docs/VERSIONING.md, \"The release policy\"): tools/releasetag's FormGate is handed the tag's form twice through a go test overlay and TestReleaseFormGate must go red on the patch release that moves the form, and on it alone. One small go test build, Go only, a few seconds. Beside it, the release lock's control (release-proof-gate-negative-control): tools/matrix VerifyRelease is sabotaged through a go run overlay to pass red cells, and release-proof-refusal, which hands `make release` a red proof report at HEAD, must go red. Go only, a few seconds.",
       "targets": [
         "release-form-gate-negative-control",
         "release-proof-gate-negative-control"
+      ]
+    },
+    {
+      "name": "release-refuses-on-differential",
+      "when": "nightly",
+      "why": "the release path's own gate (docs/VERSIONING.md, #463): `make release` dry-run twice against a version past every tag, the clean compiler against itself (must reach its tag decision) and against one whose Go engine writes a true bool as 2 (must stop at the previous-release differential, tagging nothing), then the same test over a Makefile copy whose `release` no longer runs the differential, which must go red. Four full differential runs, each building the three C++ packet drivers twice: 1m33s at -j6 on the intel bench (measured 2026-10-31), so on a hosted runner past the pull-request rule, and it runs nightly. The differential itself keeps its pull-request control (release-differential).",
+      "targets": [
+        "release-refuses-on-differential-negative-control"
       ]
     }
   ],

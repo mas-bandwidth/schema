@@ -2999,11 +2999,11 @@ func (g *wireGen) measureSpec(root *ir.Struct) measureSpec {
 		if align < 1 {
 			align = 1
 		}
-		return fmt.Sprintf("const _MF(%d, %d, %d, %t, %d, %d, %t, %d, %d, %t)",
+		return fmt.Sprintf("_MF(%d, %d, %d, %t, %d, %d, %t, %d, %d, %t)",
 			ir.TableWireFieldKind(f), mode, elemKind, counts, size, align, keyed, child, uni, single)
 	}
 
-	g.pf("final %s = <Map<int, _MF>>[\n", spec.structsVar)
+	g.pf("const %s = <Map<int, _MF>>[\n", spec.structsVar)
 	for _, st := range structs {
 		g.pf("\t// %s\n\t{\n", st.Name)
 		seen := map[uint64]bool{}
@@ -3019,7 +3019,7 @@ func (g *wireGen) measureSpec(root *ir.Struct) measureSpec {
 		g.pf("\t},\n")
 	}
 	g.pf("];\n\n")
-	g.pf("final %s = <Map<int, _MF>>[\n", spec.unionsVar)
+	g.pf("const %s = <Map<int, _MF>>[\n", spec.unionsVar)
 	for _, un := range unions {
 		g.pf("\t// %s\n\t{\n", un.Name)
 		seen := map[uint64]bool{}

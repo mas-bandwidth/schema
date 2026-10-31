@@ -33,6 +33,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -151,7 +152,7 @@ func LoadResults(p string) (Results, error) {
 				return Results{}, fmt.Errorf("%s: the %s leg is named twice", f, l)
 			}
 			for s := range r.Results[l] {
-				if !contains(Surfaces, s) {
+				if !slices.Contains(Surfaces, s) {
 					return Results{}, fmt.Errorf("%s: surface %q is not one tools/matrix knows; the harness and Surfaces have drifted", f, s)
 				}
 			}
@@ -266,7 +267,7 @@ func (r Rulings) rowRuling(row, lang string) string {
 }
 
 func langIn(langs []string, lang string) bool {
-	return len(langs) == 0 || contains(langs, lang)
+	return len(langs) == 0 || slices.Contains(langs, lang)
 }
 
 // Controls is make/negative-controls.json reduced to what a cell cites: each
@@ -396,7 +397,7 @@ func PortingCells(root string, rows []string) (map[string]map[string]string, err
 			return nil, fmt.Errorf("%s: no section ### %s", portingPath, id)
 		}
 		var header []string
-		control := ""
+		var control strings.Builder
 		for i := start + 1; i < len(lines); i++ {
 			l := lines[i]
 			if strings.HasPrefix(l, "### ") || strings.HasPrefix(l, "## ") {
@@ -406,7 +407,8 @@ func PortingCells(root string, rows []string) (map[string]map[string]string, err
 			// REFERENCE column's controls (the table's first column)
 			if strings.HasPrefix(l, "**Negative control.**") {
 				for j := i; j < len(lines) && strings.TrimSpace(lines[j]) != ""; j++ {
-					control += lines[j] + " "
+					control.WriteString(lines[j])
+					control.WriteString(" ")
 				}
 			}
 			if !strings.HasPrefix(l, "|") {
@@ -424,8 +426,8 @@ func PortingCells(root string, rows []string) (map[string]map[string]string, err
 					row[strings.TrimSpace(h)] = strings.TrimSpace(cells[j])
 				}
 			}
-			if control != "" {
-				row[referenceControlKey] = control
+			if control.Len() > 0 {
+				row[referenceControlKey] = control.String()
 				row[referenceColumnKey] = strings.TrimSpace(header[0])
 			}
 			out[id] = row
@@ -705,15 +707,6 @@ func sortedKeys(m map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
 }
 
 // LoadProof reads the committed snapshot, docs/proof.json. A tree with no

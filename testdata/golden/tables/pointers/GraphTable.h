@@ -4603,9 +4603,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7370,11 +7376,11 @@ inline void TableReset( Album & value ) { AlbumReset( value ); }
 // Settings is a pointer target.
 inline const Settings * SettingsAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Settings *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Settings *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Settings * SettingsAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Settings *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Settings *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Settings * SettingsAt( const TableRegionCtx &, const TableRef & ref ) { return SettingsAt( ref ); }
 inline const Settings * SettingsAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7401,11 +7407,11 @@ inline Settings * SettingsEmplace( TableWorker & worker, TableRef & slot )
 // ListNode is a pointer target.
 inline const ListNode * ListNodeAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const ListNode *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const ListNode *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline ListNode * ListNodeAt( TableRef & ref )
 {
-    return ref.value != 0 ? (ListNode *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (ListNode *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const ListNode * ListNodeAt( const TableRegionCtx &, const TableRef & ref ) { return ListNodeAt( ref ); }
 inline const ListNode * ListNodeAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7432,11 +7438,11 @@ inline ListNode * ListNodeEmplace( TableWorker & worker, TableRef & slot )
 // TreeNode is a pointer target.
 inline const TreeNode * TreeNodeAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const TreeNode *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TreeNode *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline TreeNode * TreeNodeAt( TableRef & ref )
 {
-    return ref.value != 0 ? (TreeNode *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (TreeNode *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TreeNode * TreeNodeAt( const TableRegionCtx &, const TableRef & ref ) { return TreeNodeAt( ref ); }
 inline const TreeNode * TreeNodeAt( const TableArenaCtx & ctx, const TableRef & ref )

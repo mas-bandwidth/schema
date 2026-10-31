@@ -6620,7 +6620,12 @@ build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
 	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
 	@touch $@
 
-build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
+# The runtime check is ORDER-ONLY: it runs first on every invocation, but a
+# phony prerequisite would relink the dump every time, and the corpus rule
+# below would then rewrite build/fixedform-corpus under every port's tests
+# that are reading it at the same moment (`go test -p N` over the *table
+# packages, one of which runs `make tables-rust-fixedform`).
+build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp | tables-fixedform-corpus-check
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
@@ -6630,18 +6635,24 @@ build/schema_test_fixedform_dump: tables-fixedform-corpus-check build/tables-gen
 	    $(VLISTS_INCLUDES) \
 	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
 
+# The corpus is written beside the live one and swapped in whole, so a reader
+# never sees a directory that is half written.
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
-	@rm -rf build/fixedform-corpus
-	@mkdir -p build/fixedform-corpus
-	./build/schema_test_fixedform_dump build/fixedform-corpus
+	@rm -rf build/fixedform-corpus.next
+	@mkdir -p build/fixedform-corpus.next
+	./build/schema_test_fixedform_dump build/fixedform-corpus.next
 # ---- rowan/corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
 # emitter to use. Nothing under build/ is committed; the line below only refuses
 # to call the corpus finished when the manifest did not arrive.
-	@test -s build/fixedform-corpus/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
-	@touch $@
+	@test -s build/fixedform-corpus.next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
+	@touch build/fixedform-corpus.next/.stamp
+	@rm -rf build/fixedform-corpus.prev
+	@if test -d build/fixedform-corpus; then mv build/fixedform-corpus build/fixedform-corpus.prev; fi
+	@mv build/fixedform-corpus.next build/fixedform-corpus
+	@rm -rf build/fixedform-corpus.prev
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
@@ -6926,13 +6937,16 @@ include make/checks/reference-review.mk
 # and skips a commit already carrying one; .github/workflows/promotion-tag.yml
 # runs it on every push to main. release tags one commit on main vX.Y.Z and
 # refuses a version that does not parse, is not greater than the newest v tag,
-# or names a commit off main; .github/workflows/release.yml runs it when
-# dispatched. Without PUSH=1 both print the decision and write nothing.
+# or names a commit off main, and before any of that runs the previous-release
+# differential below and refuses on its difference; .github/workflows/release.yml
+# runs it when dispatched. Without PUSH=1 both print the decision and write nothing.
 # VERSION above defaults to `git describe`, which is never a release number:
 # release reads VERSION only when it was given on the command line or in the
 # environment, so a bare `make release` refuses on the grammar.
 RELEASE_VERSION = $(if $(filter command line environment,$(origin VERSION)),$(VERSION))
 RELEASE_COMMIT ?= HEAD
+# the ref whose ancestry is main; the release gate's own test names HEAD
+RELEASE_MAIN ?= origin/main
 .PHONY: promotion-tag release
 promotion-tag:
 	go run ./tools/releasetag promotion-tag -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
@@ -6943,11 +6957,124 @@ promotion-tag:
 # wrote AT THE COMMIT BEING RELEASED and that report is green: no red cell and
 # docs/proof.json in step with the results (tools/matrix VerifyRelease). The
 # refusal names the red cells. release.yml downloads the report from the
-# ci-full run on the commit; a release with no report refuses by name.
+# ci-full run on the commit; a release with no report refuses by name. The
+# lock runs first, so a red proof refuses before the previous-release
+# differential's build; the differential then runs, and the tagger last.
 MATRIX_GOFLAGS ?=
 release:
 	go run $(MATRIX_GOFLAGS) ./tools/matrix release-check -report '$(PROOF)' -commit $$(git rev-parse '$(RELEASE_COMMIT)^{commit}')
-	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
+	$(MAKE) --no-print-directory release-differential
+	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) -main $(RELEASE_MAIN) $(if $(PUSH),-push)
+
+# THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463): the WIRE bytes
+# the newest v tag's compiler and RELEASE_COMMIT's encode for the same
+# instances, compared under an equal protocol id. The packet wire through the
+# C++ reference (the packet drivers, compiled against each side's generated
+# C++, one driver source on both), the table forms through the Go engine each
+# compiler carries (`schema pack` over every MANIFEST instance with text). A
+# differing byte refuses, naming the unit, the instance and the byte; a unit
+# whose id moved is listed, not compared. `release` runs it first and tags
+# nothing on a difference; certify.yml runs it nightly. RELEASE_DIFFERENTIAL_PREV
+# names another previous release, and RELEASE_DIFFERENTIAL_FLAGS adds flags
+# (the release gate's own test hands it prebuilt compilers). It needs the tags
+# and their trees (a full clone), Go, a C++ compiler and the serialize C++
+# runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
+RELEASE_DIFFERENTIAL_PREV ?=
+RELEASE_DIFFERENTIAL_FLAGS ?=
+RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+.PHONY: release-differential release-differential-negative-control
+release-differential: $(SERIALIZE_RUNTIME)/serialize.h
+	go run ./tools/releasediff $(if $(RELEASE_DIFFERENTIAL_PREV),-prev $(RELEASE_DIFFERENTIAL_PREV)) -rev $(RELEASE_COMMIT) -serialize $(SERIALIZE_RUNTIME) -j $(RELEASE_DIFFERENTIAL_JOBS) $(RELEASE_DIFFERENTIAL_FLAGS)
+
+# THE RELEASE REFUSES ON IT (release-refuses-on-differential). Two dry runs of
+# `make release` itself, against a version past every tag, with main taken as
+# HEAD so the branch under test is "on main": the clean compiler against itself
+# must reach the tag decision, and the clean compiler against one whose Go
+# engine writes a true bool as 2 under an unchanged protocol id must stop at
+# the differential, naming the difference, with no tag decision printed.
+RELEASE_GATE_TEST ?= build/release-gate-test
+# the same Makefile this test was read from, so its control can hand it a copy
+RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
+.PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
+release-refuses-on-differential:
+	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
+	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
+	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
+	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
+	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
+		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
+	@grep -q '^release: would tag v99999.0.0 ' $(RELEASE_GATE_TEST)/guard.out || \
+		{ echo "FAILED: make release with no difference printed no tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
+	@if $(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-table -corpus . -work $(RELEASE_GATE_TEST)/red" > $(RELEASE_GATE_TEST)/red.out 2>&1; then \
+		echo "FAILED: make release went through a wire difference under an unchanged protocol id"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; \
+	fi
+	@grep -q '^DIFFERENCE under an equal protocol id: table variable form, ' $(RELEASE_GATE_TEST)/red.out || \
+		{ echo "FAILED: make release refused, but not on the differential's difference"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; }
+	@! grep -q 'would tag\|tagged and pushed' $(RELEASE_GATE_TEST)/red.out || \
+		{ echo "FAILED: make release reached a tag decision past a difference"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; }
+	@echo "release gate: make release reaches its tag decision with no difference, and stops at the differential, tagging nothing, on a wire difference under an unchanged protocol id"
+
+# ITS NEGATIVE CONTROL: the test, green on this Makefile, then the same test
+# over a copy whose `release` no longer runs the differential first, which
+# must go RED on the release that went through the difference.
+RELEASE_GATE_CONTROL := build/release-gate-control
+release-refuses-on-differential-negative-control: release-refuses-on-differential
+	@rm -rf $(RELEASE_GATE_CONTROL) && mkdir -p $(RELEASE_GATE_CONTROL)
+	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
+	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
+	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a release that never runs the differential left release-refuses-on-differential green"; cat $(RELEASE_GATE_CONTROL)/red.out; exit 1; \
+	fi
+	@grep -q 'FAILED: make release went through a wire difference under an unchanged protocol id' $(RELEASE_GATE_CONTROL)/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the release that went through the difference"; cat $(RELEASE_GATE_CONTROL)/red.out; exit 1; }
+	@echo "negative control: a release that does not run the differential first turns release-refuses-on-differential RED on the release that went through the difference"
+
+# ITS NEGATIVE CONTROL: one compiler built from this tree, and two built from
+# it under an overlay each (tools/sabotage): release-differential-union-tag
+# moves every union arm's tag by one in the C++ packet writer, and
+# release-differential-table-bool writes a true bool as 2 in the Go engine's
+# variable form. Neither moves a protocol id. The guard leg runs the clean
+# compiler against itself and must pass having compared both wires; each red
+# leg must refuse on its own wire, naming the unit, the instance and the byte,
+# and on no other wire.
+RELEASE_DIFFERENTIAL_CONTROL := build/release-differential-control
+RELEASE_DIFFERENTIAL_RUN = go run ./tools/releasediff -prev clean -old-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -corpus . -serialize $(SERIALIZE) -j $(RELEASE_DIFFERENTIAL_JOBS)
+release-differential-negative-control:
+	@rm -rf $(RELEASE_DIFFERENTIAL_CONTROL) && mkdir -p $(RELEASE_DIFFERENTIAL_CONTROL)
+	go build -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean ./cmd/schema
+	go run ./tools/sabotage -name release-differential-union-tag -out $(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext internal/codegen/cpp/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json
+	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-packet ./cmd/schema
+	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext internal/tablewire/encode.go
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/table.json
+	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/table.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-table ./cmd/schema
+	@for s in packet table; do \
+		test "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean id examples)" = "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s id examples)" || \
+			{ echo "NEGATIVE CONTROL FAILED: the $$s sabotage moved the protocol id, so the gate would list the unit rather than compare it"; exit 1; }; \
+	done
+	@$(RELEASE_DIFFERENTIAL_RUN) -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -work $(RELEASE_DIFFERENTIAL_CONTROL)/guard > $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the clean compiler against itself did not pass"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out; exit 1; }
+	@grep -q '^  compared     packet wire, driver examples ' $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out && \
+		grep -q '^  compared     table forms: [1-9][0-9]* variable-form and [1-9][0-9]* message-form' $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the guard leg did not compare both wires, so a green verdict would mean nothing"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out; exit 1; }
+	@for s in packet table; do \
+		if $(RELEASE_DIFFERENTIAL_RUN) -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s -work $(RELEASE_DIFFERENTIAL_CONTROL)/$$s > $(RELEASE_DIFFERENTIAL_CONTROL)/$$s.out 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$s sabotage moved wire bytes under an unchanged protocol id and left the differential green"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/$$s.out; exit 1; \
+		fi; \
+	done
+	@grep -q '^DIFFERENCE under an equal protocol id: packet wire, unit [a-zA-Z0-9/. +]*, instance [a-z_0-9/-]*\.bin first differs at byte [0-9]*' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the union-tag sabotage went red, but naming no instance and its byte"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out; exit 1; }
+	@grep -q '^DIFFERENCE under an equal protocol id: packet wire, unit examples' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the union-tag sabotage left the examples driver unnamed"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out; exit 1; }
+	@! grep '^DIFFERENCE' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out | grep -v ': packet wire, ' || \
+		{ echo "NEGATIVE CONTROL FAILED: a C++ packet sabotage was named on a table form"; exit 1; }
+	@grep -q '^DIFFERENCE under an equal protocol id: table variable form, unit [a-z0-9]*, instance [a-z_0-9]*: first differs at byte [0-9]*' $(RELEASE_DIFFERENTIAL_CONTROL)/table.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the table-bool sabotage went red, but not naming a variable-form instance and its byte"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/table.out; exit 1; }
+	@! grep '^DIFFERENCE' $(RELEASE_DIFFERENTIAL_CONTROL)/table.out | grep -v ': table variable form, ' || \
+		{ echo "NEGATIVE CONTROL FAILED: a variable-form sabotage was named on another wire"; exit 1; }
+	@echo "negative control: a union tag moved in the C++ packet writer, and a true bool written as 2 in the Go engine's variable form, each under an unchanged protocol id, turn the previous-release differential RED on that wire alone, naming the unit, the instance and the byte"
 
 # release-proof-refusal holds the lock at the make level: `make release`
 # handed a RED proof report at HEAD must refuse FROM THE PROOF GATE, naming a

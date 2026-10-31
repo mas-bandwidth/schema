@@ -655,6 +655,32 @@ jobs:
       - name: govulncheck
         run: make vuln-strict
 
+  # THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463), the gate
+  # `make release` runs before it tags: the newest v tag's compiler and this
+  # commit's encode the same instances, and under an equal protocol id the wire
+  # bytes must be the same (the packet wire through the C++ reference, the
+  # table forms through the Go engine). Here it says, every night, whether
+  # main could be released; the release workflow refuses on the same verdict.
+  # Its own job, so a red verdict is read as this gate's and colors nothing
+  # else. Go, the runner's C++ compiler, the tags, and the serialize runtime
+  # the target fetches at its pin.
+  release-differential:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the newest v tag and its tree are the previous side
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the previous release against this commit, wire bytes under an equal protocol id
+        env:
+          GOFLAGS: -mod=readonly
+        run: make release-differential
+
   # THE NIGHTLY NEGATIVE-CONTROL TIER (issue #563). Every negative control this
   # tree defines runs on every pull request, in ci.yml, one job per group, and
   # every one of those jobs fits the owner's rule for CI that runs per commit:
