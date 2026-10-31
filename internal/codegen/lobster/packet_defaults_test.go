@@ -17,6 +17,7 @@
 package lobster
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,9 +45,7 @@ func generatePacketDefaults(t *testing.T) map[string][]byte {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		for k, v := range out {
-			files[k] = v
-		}
+		maps.Copy(files, out)
 	}
 	return files
 }
@@ -89,7 +88,7 @@ func TestLobsterPacketDefaultsNegativeControl(t *testing.T) {
 	files := generatePacketDefaults(t)
 	var kept []string
 	removed := 0
-	for _, line := range strings.Split(string(files["Defaults.lobster"]), "\n") {
+	for line := range strings.SplitSeq(string(files["Defaults.lobster"]), "\n") {
 		if strings.Contains(line, " = schema_rt.put(value.") {
 			removed++
 			continue

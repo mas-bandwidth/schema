@@ -467,6 +467,63 @@ def finite_f32(x:float) -> bool:
 def finite_f64(x:float) -> bool:
     return finite_f64_bits(f64bits(x))
 
+// parse_float64 is a number token as the nearest double, the answer strtod
+// and Go's ParseFloat give on every host: a magnitude past the largest double
+// is an infinity of the token's sign, and one below the smallest subnormal is
+// a zero of it. Lobster's string_to_float is strtod on macOS and
+// std::from_chars elsewhere, and from_chars leaves 0.0 for a token out of
+// range at either end, so a zero is resolved by float_out_of_range.
+def parse_float64(token:string) -> float:
+    let d, _ = string_to_float(token)
+    if d != 0.0:
+        return d
+    return float_out_of_range(token, d)
+
+// float_out_of_range is the double a token that parsed to zero (d) stands
+// for: d itself when the token's digits are all zero, and otherwise the end
+// of the range it fell off, read off the decimal exponent of its first
+// nonzero digit: at or above 10^0 it overflowed to an infinity, below it it
+// underflowed to a zero, each of the token's sign.
+def float_out_of_range(token:string, d:float) -> float:
+    var i = 0
+    var neg = false
+    if i < length(token) and (token[i] == '-' or token[i] == '+'):
+        neg = token[i] == '-'
+        i++
+    var point = false
+    var nonzero = false
+    var e10 = 0
+    while i < length(token) and token[i] != 'e' and token[i] != 'E':
+        let c = token[i]
+        if c == '.':
+            point = true
+        elif nonzero:
+            if not point:
+                e10++
+        elif c != '0':
+            nonzero = true
+            if point:
+                e10--
+        elif point:
+            e10--
+        i++
+    if not nonzero:
+        return d
+    var exp = 0
+    var eneg = false
+    if i < length(token):
+        i++
+        if i < length(token) and (token[i] == '-' or token[i] == '+'):
+            eneg = token[i] == '-'
+            i++
+        while i < length(token):
+            exp = min(exp * 10 + (token[i] - '0'), 1000000)
+            i++
+    let total = e10 + (if eneg: -exp else: exp)
+    if total >= 0:
+        return if neg: -1.0 / 0.0 else: 1.0 / 0.0
+    return if neg: f64frombits(0x8000000000000000) else: 0.0
+
 // float_owner names a float descriptor as <Owner>.<field> for the
 // non_finite_float refusal (Go's tablewire.FloatOwner): the table, type or
 // union that declares the field, an array's element named by its field. It

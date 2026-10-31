@@ -180,11 +180,11 @@ func wireBytes(body []byte, ids []uint64) []byte {
 	out := []byte{1}
 	out = append(out, body...)
 	for _, id := range ids {
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			out = append(out, byte(id>>(8*i)))
 		}
 	}
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		out = append(out, byte(uint64(len(ids))>>(8*i)))
 	}
 	return out

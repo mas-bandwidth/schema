@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -34,10 +35,8 @@ func (r jsonRow) lobsterVerdict() string {
 	if len(r.carried) == 0 {
 		return r.verdict
 	}
-	for _, p := range r.carried {
-		if p == "lobster" {
-			return r.verdict
-		}
+	if slices.Contains(r.carried, "lobster") {
+		return r.verdict
 	}
 	return r.uncarried
 }

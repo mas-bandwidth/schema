@@ -166,7 +166,7 @@ func (l *unitLeg) ask(command string, measure func(io.Reader) ([]byte, error)) (
 	case r := <-ch:
 		return r.b, r.err
 	case <-l.dead:
-		return nil, fmt.Errorf("unit %s exited on %q (%v)\n%s", l.unit, command, l.err, l.output.String())
+		return nil, fmt.Errorf("unit %s exited on %q (%w)\n%s", l.unit, command, l.err, l.output.String())
 	}
 }
 
@@ -227,7 +227,7 @@ func (l *unitLeg) close() (leaked bool, err error) {
 	_ = l.reply.Close()
 	out := l.output.String()
 	if l.err != nil {
-		return false, fmt.Errorf("unit %s exited with %v\n%s", l.unit, l.err, out)
+		return false, fmt.Errorf("unit %s exited with %w\n%s", l.unit, l.err, out)
 	}
 	if out == "" {
 		return false, nil
@@ -250,7 +250,7 @@ func readKnownLeaks(path, arm string) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue
@@ -362,9 +362,7 @@ func main() {
 		if l == nil {
 			continue
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for _, i := range idx {
 				b, err := l.ask(entryCommand("root", roster[i]), oneByte)
 				if err == nil && b[0] > 1 {
@@ -378,7 +376,7 @@ func main() {
 				}
 				known[i] = b[0]
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if firstErr != nil {

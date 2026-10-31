@@ -50,7 +50,7 @@ func cyclicListWire(t *testing.T, to byte, orphan bool) []byte {
 		}
 		v.Cell.I = int64(0x41 + i)
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		next, ok := nodes[i].FieldByKey("next")
 		if !ok {
 			t.Fatal("ListNode has no next")

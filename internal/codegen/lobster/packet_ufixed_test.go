@@ -12,6 +12,7 @@
 package lobster
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -77,9 +78,7 @@ func generateUfixed(t *testing.T) map[string][]byte {
 		if err != nil {
 			t.Fatalf("%s: %v", src, err)
 		}
-		for k, v := range out {
-			files[k] = v
-		}
+		maps.Copy(files, out)
 	}
 	return files
 }

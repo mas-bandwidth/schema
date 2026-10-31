@@ -648,7 +648,7 @@ let j_flt_max = j_f32frombits(0x7F7FFFFF)
 // company with the exact answer when the double lands exactly on a float32
 // midpoint — decided there against the token's exact value.
 def j_parse_f32(token:string) -> float:
-    let d, _ = string_to_float(token)
+    let d = parse_float64(token)
     let neg = d < 0.0 or (d == 0.0 and (f64bits(d) & 0x8000000000000000) != 0)
     let a = if neg: -d else: d
     if a == 0.0 or j_is_inf(a):
@@ -1801,8 +1801,7 @@ def j_place_float(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, sin
     if single:
         v = j_parse_f32(token)
     else:
-        let d, _ = string_to_float(token)
-        v = d
+        v = parse_float64(token)
     if j_is_inf(v) or v != v:
         r.report.kind_mismatch++
         return
@@ -1856,7 +1855,7 @@ def j_interpret_integer(token:string, integral:bool) -> JsonInt:
         if out.mag == 0:
             out.neg = false
         return out
-    let d, _ = string_to_float(token)
+    let d = parse_float64(token)
     if j_is_inf(d) or d != d:
         out.finite = false
         return out

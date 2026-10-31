@@ -73,8 +73,7 @@ func RetainUnknownCensus(f *ir.File) RetainUnknownCounts {
 	}
 	seenStruct := map[string]bool{}
 	seenUnion := map[string]bool{}
-	var visitStruct func(st *ir.Struct)
-	visitStruct = func(st *ir.Struct) {
+	visitStruct := func(st *ir.Struct) {
 		if st == nil || seenStruct[st.Name] {
 			return
 		}

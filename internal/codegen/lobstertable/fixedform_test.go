@@ -171,7 +171,7 @@ func fixedOracleNonFinite(t *testing.T, corpus, file string) bool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(line, "file="+file+" ") {
 			return strings.Contains(line, "=nan|") || strings.Contains(line, "=inf|") || strings.Contains(line, "=-inf|")
 		}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,9 +105,7 @@ func generateCookUnit(t *testing.T, row cookWriteRow) *cookUnit {
 	if err != nil {
 		t.Fatalf("%s: lobster tables: %v", row.unit, err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	g := &cookUnit{u: u, pkg: u.Package, dir: t.TempDir()}
 	open := []byte("def " + row.root + "Open(")
 	for name, data := range files {
