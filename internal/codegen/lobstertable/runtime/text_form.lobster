@@ -628,7 +628,7 @@ def t_set_scalar(p:TextParser, sl:Slot, v:TNode, path:string) -> bool:
         // left is a magnitude past the storage, an infinity once parsed at
         // the field's width: a float is finite (docs/SPEC-TABLES.md §3.3)
         // and the text form refuses it as text_bound, as Go's resolver does
-        let x = string_to_float(v.text)
+        let x = parse_float64(v.text)
         if (f.f32 and not finite_f32(x)) or not finite_f64(x):
             t_set_fail(p, "text_bound")
             return false
