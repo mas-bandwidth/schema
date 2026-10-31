@@ -845,6 +845,35 @@ tables-rust-finite-float-negative-control:
 
 test-rust: tables-rust-finite-float
 
+# KEYED ARRAYS INDEX BY KEY, REFUSED AT BOTH ENDS (docs/PORTING.md M5,
+# docs/SPEC-TABLES.md §2.3): table_enums.rs's table_keyed / <Enum>::keyed take
+# the KEY, refuse None and any key past E.Max with a panic naming the key in an
+# optimized build, and iterate key beside slot. The gate compiles a probe
+# against tables/examples' HullConfig (its variable struct and its fixed row);
+# its control takes the None half, the E.Max half and the shift out of the
+# emitted runtime in turn, and each must red exactly its own clause.
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure.
+.PHONY: tables-rust-keyed tables-rust-keyed-negative-control
+tables-rust-keyed:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRust$$' -v
+tables-rust-keyed-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRustNegativeControl$$' -v
+
+test-rust: tables-rust-keyed
+
+# THE MAP WRITER HOLDS THE SORT (docs/PORTING.md M19, docs/SPEC-TABLES.md
+# §2.8): tables/maps' Fleet loaded from the pinned map_full wire, every map
+# REVERSED at every depth, must save the pinned bytes again and write the same
+# text. Its control makes the save's sort and then the text writer's a no-op
+# in the emitted Rust, and each must red exactly its own clause.
+.PHONY: tables-rust-map-sort tables-rust-map-sort-negative-control
+tables-rust-map-sort:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRust$$' -v
+tables-rust-map-sort-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRustNegativeControl$$' -v
+
+test-rust: tables-rust-map-sort
+
 # THE RUST UNIT REGISTRY GATE (docs/SPEC-TABLES.md §8.7): the same registry
 # listing oracle as the reference, through the Rust surface, mirroring
 # tables-c-view. For each VIEW_CORPUS unit the target generates the unit with
