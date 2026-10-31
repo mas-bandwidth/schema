@@ -1,8 +1,6 @@
 package jstable
 
 import (
-	"bytes"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,13 +12,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestDamagedWireLoadsDefaultMalformedJavaScript pins the JavaScript leg's
-// non-variable root Load and LoadMeasure on a wire whose framing is damaged
-// before any field decodes (docs/SPEC-TABLES.md §3, §4): an empty wire and a
-// truncated manifest instance wire must load a default root with
-// report.malformed == true and all five evolution counters at zero, matching
-// internal/tablewire.Decode.
-func TestDamagedWireLoadsDefaultMalformedJavaScript(t *testing.T) {
+// TestDamagedWireLoadsNothingJavaScript pins the JavaScript leg's non-variable
+// root Load on a wire whose framing is damaged before any field decodes
+// (docs/SPEC-TABLES.md §4, DAMAGE DISCARDS THE WHOLE LOAD): an empty wire and a
+// truncated manifest instance wire hand back no root and the report says
+// malformed, as internal/tablewire.Decode does.
+func TestDamagedWireLoadsNothingJavaScript(t *testing.T) {
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -87,19 +84,15 @@ func TestDamagedWireLoadsDefaultMalformedJavaScript(t *testing.T) {
 			}
 
 			for _, w := range wires {
-				inst := m.New(def)
 				var rep tabletext.Report
-				ok, decErr := tablewire.Decode(m, inst, w.bytes, &rep)
+				ok, decErr := tablewire.Decode(m, m.New(def), w.bytes, &rep)
 				if decErr != nil {
 					t.Fatalf("%s (%s): oracle Decode returned error: %v", tc.name, w.label, decErr)
 				}
-				wantMalformed := rep.Malformed || !ok
-				wantSaved, err := tablewire.Encode(m, inst)
-				if err != nil {
-					t.Fatalf("%s (%s): oracle Encode failed: %v", tc.name, w.label, err)
+				if ok || !rep.Malformed {
+					t.Fatalf("%s (%s): the engine does not read the wire as damage: ok=%v %+v", tc.name, w.label, ok, rep)
 				}
-				wantSummary := fmt.Sprintf("loaded=true|measureOk=true|%d|%d|%d|%d|%d|malformed=%v",
-					rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate, wantMalformed)
+				wantSummary := "loaded=false|malformed=true"
 
 				wirePath := filepath.Join(work, w.label+".wire")
 				if err := os.WriteFile(wirePath, w.bytes, 0o600); err != nil {
@@ -110,14 +103,10 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 const m = await import(pathToFileURL(%q).href);
 const wire = new Uint8Array(readFileSync(%q));
-const measure = m.%sLoadMeasure(wire);
 const rep = new m.TableVariableReport();
 const v = m.%sLoad(wire, rep);
-const loaded = v !== null;
-const saved = loaded ? m.%sSave(v) : null;
-const hex = saved !== null ? Buffer.from(saved).toString("hex") : "";
-console.log("JS loaded=" + loaded + "|measureOk=" + (measure >= 0) + "|" + [rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate].join("|") + "|malformed=" + rep.malformed + "|hex=" + hex);
-`, module, wirePath, tc.root, tc.root, tc.root)
+console.log("JS loaded=" + (v !== null) + "|malformed=" + rep.malformed);
+`, module, wirePath, tc.root)
 				script := filepath.Join(work, "probe_"+w.label+".mjs")
 				if err := os.WriteFile(script, []byte(src), 0o600); err != nil {
 					t.Fatal(err)
@@ -137,20 +126,8 @@ console.log("JS loaded=" + loaded + "|measureOk=" + (measure >= 0) + "|" + [rep.
 				if jsLine == "" {
 					t.Fatalf("%s (%s): no JS line in output:\n%s", tc.name, w.label, out)
 				}
-				parts := strings.Split(jsLine, "|hex=")
-				if len(parts) != 2 {
-					t.Fatalf("%s (%s): unexpected JS output %q", tc.name, w.label, jsLine)
-				}
-				gotSummary, gotHex := parts[0], strings.TrimSpace(parts[1])
-				if gotSummary != wantSummary {
-					t.Fatalf("%s (%s): JS=%q, want=%q", tc.name, w.label, gotSummary, wantSummary)
-				}
-				gotSaved, err := hex.DecodeString(gotHex)
-				if err != nil {
-					t.Fatalf("%s (%s): decode hex: %v", tc.name, w.label, err)
-				}
-				if !bytes.Equal(gotSaved, wantSaved) {
-					t.Fatalf("%s (%s): saved default root differs (%d bytes vs %d bytes)", tc.name, w.label, len(gotSaved), len(wantSaved))
+				if jsLine != wantSummary {
+					t.Fatalf("%s (%s): JS=%q, want=%q", tc.name, w.label, jsLine, wantSummary)
 				}
 			}
 		})

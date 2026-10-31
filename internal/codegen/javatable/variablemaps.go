@@ -88,7 +88,11 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			fmt.Sprintf("if (kind == %d) {", variableWireKind(&rawKey)),
 			fmt.Sprintf("if (kind == %d) { report.kindMismatch = 0;", variableWireKind(&rawKey)), 1)
 		b.WriteString(kr)
-		b.WriteString("        }else{r.skip(kind);}if(r.fail)return;}\n    }\n")
+		// A KEY THE READ JUDGES MALFORMED ENDS THE SCAN (§2.8; the oracle's
+		// mapKey returns at the first key its string read refuses): the map is
+		// malformed, a damaged load, and no later occurrence of the key can
+		// turn it into a kind mismatch.
+		b.WriteString("        }else{r.skip(kind);}if(r.fail||report.malformed)return;}\n    }\n")
 	}
 }
 
