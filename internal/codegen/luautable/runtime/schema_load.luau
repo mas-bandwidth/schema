@@ -671,10 +671,15 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	local endpos = r.at + n
 	local landed: { any } = {}
 	if n >= 2 then
-		local sub = new_reader(r.b, r.at, endpos)
-		local ek = r_u8(sub)
-		local count = r_leb(sub)
-		if sub.bad then report.malformed = true; r.at = endpos; return true end
+		-- THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
+		-- (internal/tablewire decode.go mapField, subTo; docs/SPEC-TABLES.md
+		-- §2.8, §3): a count LEB128 that runs past the map's L still reads,
+		-- the element kind is judged, and the entries walk an empty body.
+		local hdr = new_reader(r.b, r.at, r.e)
+		local ek = r_u8(hdr)
+		local count = r_leb(hdr)
+		if hdr.bad then report.malformed = true; r.at = endpos; return true end
+		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
 		if ek ~= 13 then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
 		-- THE STORAGE CAP (docs/SPEC-TABLES.md §2.9, §2.2; internal/tablewire
 		-- decode.go collectionCap): a REGION read reports damage and resumes,
@@ -792,10 +797,16 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	local dst: any = nil
 	if v ~= nil and fd.slot ~= nil then dst = v[fd.slot] end
 	if n >= 2 then
-		local sub = new_reader(r.b, r.at, endpos)
-		local ek = r_u8(sub)
-		local count = r_leb(sub)
-		if sub.bad then report.malformed = true; r.at = endpos; return true end
+		-- THE KEYED BODY'S HEADER IS READ AGAINST THE PARENT, as every
+		-- array's is (internal/tablewire decode.go keyed, subTo;
+		-- docs/SPEC-TABLES.md §3, §3.2): a pair count that runs past the
+		-- body's L still reads, the element kind is judged before the
+		-- triples, and the triples walk an empty body.
+		local hdr = new_reader(r.b, r.at, r.e)
+		local ek = r_u8(hdr)
+		local count = r_leb(hdr)
+		if hdr.bad then report.malformed = true; r.at = endpos; return true end
+		local sub = new_reader(r.b, hdr.at, if endpos < hdr.at then hdr.at else endpos)
 		if ek ~= fd.ek then
 			if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; r.at = endpos; return true end
 			report.widened = report.widened + 1
