@@ -227,7 +227,8 @@ function TableVariableElemDefault(e) {
 }
 
 function TableVariableElemIsDefault(e, x) {
-  if (e.s === "float" && e.f32) { return Math.fround(x) === Math.fround(e.def); }
+  // a float compares its bit pattern (§3): a -0 under a +0 default rides
+  if (e.s === "float") { return TableVariableSameFloat(e.f32, x, e.def); }
   return x === e.def;
 }
 
@@ -251,9 +252,9 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
+      if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       TableVariableHeader(w, ids, fd, fd.k);
-      if (fd.f32) { w.u32(TableVariableNarrowF32(val)); } else { w.f64(val); }
-      return true;
+      return TableVariableWriteFloat(w, fd.f32, val);
     case "str": {
       const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
@@ -400,9 +401,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   switch (f.s) {
     case "bool": w.u8(x ? 1 : 0); return true;
     case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
-    case "float":
-      if (f.f32) { w.u32(TableVariableNarrowF32(x)); } else { w.f64(x); }
-      return true;
+    case "float": return TableVariableWriteFloat(w, f.f32, x);
     case "str": w.raw(TableVariableUtf8Encode(x)); return true;
     // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table): the
     // units ride under it with no length of their own; past N units refuses
@@ -716,7 +715,12 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
   holder.value = x;
   return holder;
 }
+`
 
+// jsVariableArmsTextRuntime is the text half of the four constructs' walk,
+// called from the text walk's own switches (jsVariableTextRuntime). It is
+// emitted inside the json-walk markers with that walk (docs/PORTING.md M9).
+const jsVariableArmsTextRuntime = `
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {

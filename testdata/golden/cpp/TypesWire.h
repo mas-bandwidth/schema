@@ -29,7 +29,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_WRITE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_WRITE_INLINE inline
 #endif
@@ -48,7 +48,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_READ_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_READ_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_READ_INLINE inline
 #endif
@@ -62,23 +62,23 @@ namespace example {
 // operation in a generated body has the one spelling. serialize's own
 // read_object/write_object call a Serialize member; generated types carry
 // free Write/Read functions, so the function rides as an argument.
-#define schema_write_object( stream, function, value )                          \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_write_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 
-#define schema_read_object( stream, function, value )                           \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_read_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 #endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 SCHEMA_WRITE_INLINE bool WriteVec3( serialize::WriteStream & stream, const Vec3 & value )
@@ -379,17 +379,17 @@ SCHEMA_READ_INLINE bool ReadShipCreate( serialize::ReadStream & stream, ShipCrea
 
 SCHEMA_WRITE_INLINE bool WriteExpressionProbe( serialize::WriteStream & stream, const ExpressionProbe & value )
 {
-    serialize_assert( int32_t( value.hardpoint_index ) >= int32_t( 0 ) && int32_t( value.hardpoint_index ) <= int32_t( (ShipMaxLasers + ShipMaxMissiles) - 1 ) );
+    serialize_assert( int32_t( value.hardpoint_index ) >= int32_t( 0 ) && int32_t( value.hardpoint_index ) <= int32_t( ( ShipMaxLasers + ShipMaxMissiles ) - 1 ) );
     write_bits( stream, uint32_t( value.hardpoint_index ), 5 );
-    serialize_assert( int32_t( value.spin_rate ) >= int32_t( -(-RotationUnits) ) && int32_t( value.spin_rate ) <= int32_t( RotationUnits * 2 ) );
-    write_bits( stream, uint32_t( value.spin_rate ) - uint32_t( -(-RotationUnits) ), 11 );
+    serialize_assert( int32_t( value.spin_rate ) >= int32_t( -( -RotationUnits ) ) && int32_t( value.spin_rate ) <= int32_t( RotationUnits * 2 ) );
+    write_bits( stream, uint32_t( value.spin_rate ) - uint32_t( -( -RotationUnits ) ), 11 );
     return true;
 }
 
 SCHEMA_READ_INLINE bool ReadExpressionProbe( serialize::ReadStream & stream, ExpressionProbe & value )
 {
-    read_int( stream, value.hardpoint_index, 0, (ShipMaxLasers + ShipMaxMissiles) - 1 );
-    read_int( stream, value.spin_rate, -(-RotationUnits), RotationUnits * 2 );
+    read_int( stream, value.hardpoint_index, 0, ( ShipMaxLasers + ShipMaxMissiles ) - 1 );
+    read_int( stream, value.spin_rate, -( -RotationUnits ), RotationUnits * 2 );
     return true;
 }
 

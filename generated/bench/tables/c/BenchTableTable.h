@@ -4344,7 +4344,11 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_body( benchtable_table_rea
                     break;
                 }
                 if ( !benchtable_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->moving = benchtable_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = benchtable_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->moving = bool_byte != 0;
+                }
                 break;
             }
             case 0x7674cfd19b9031caull: /* firing */
@@ -4356,7 +4360,11 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_body( benchtable_table_rea
                     break;
                 }
                 if ( !benchtable_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->firing = benchtable_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = benchtable_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->firing = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -6628,7 +6636,11 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                     break;
                 }
                 if ( !benchtable_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->has_extra = benchtable_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = benchtable_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->has_extra = bool_byte != 0;
+                }
                 break;
             }
             case 0xfd29ee12a979cb69ull: /* extra */
@@ -7877,7 +7889,11 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_body( benchtable_table_
                     break;
                 }
                 if ( !benchtable_table_reader_has( &(*r), 1 ) ) { r->report->malformed = 1; return 0; }
-                value->crit = benchtable_table_reader_get8( &(*r) ) != 0;
+                {
+                    uint8_t bool_byte = benchtable_table_reader_get8( &(*r) );
+                    if ( bool_byte > 1 ) { r->report->malformed = true; }
+                    value->crit = bool_byte != 0;
+                }
                 break;
             }
             default:

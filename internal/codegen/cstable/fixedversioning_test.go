@@ -521,6 +521,20 @@ func csVersionNewReadsOld(t *testing.T, corpus string, r csVersionRow) string {
             }`, r.widened, r.widened)
 	}
 	root := csFixedRoot(t, csUnitOf(t, csReadSchema(t, "VOLD_"+r.row)))
+	if leaf := csManifestNonFinite(t, corpus)["old_"+r.row+".bin"]; leaf != "" {
+		// THE REFERENCE STILL WRITES A NaN HERE (the row's float rung), and
+		// under the finite rule of 2026-10-27 the newer reader refuses it by
+		// name before the bounds pass (docs/SPEC-TABLES.md §3.3): a must-refuse
+		// vector until the finite-tables plan's C++ card (tables-finite/cpp)
+		// regenerates the corpus with finite values, and an ordinary row after,
+		// because the manifest decides.
+		return csVersionHead + fmt.Sprintf(`            if (n != -1 || !r.Refused || r.NonFiniteFloat == null || !r.NonFiniteFloat.EndsWith(%q) || r.Reason != "non_finite_float: " + r.NonFiniteFloat)
+            {
+                bad += ProbeLog.Fail(@NAME@, "the non-finite float the older writer wrote was not refused by name: n=" + n + " reason=" + r.Reason);
+            }
+            _ = want;
+`, "."+leaf)
+	}
 	lead, trail := csBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))
 	bracket := ""
 	if csHasField(root, "lead") && csHasField(root, "trail") {
@@ -781,6 +795,82 @@ func csBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint
 	body := data[at : int64(at)+bodyBytes]
 	return binary.LittleEndian.Uint32(body[:4]),
 		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// csManifestNonFiniteValue is one manifest value whose bits are a NaN or an
+// infinity: its path, then the float's spelled bits (the dump writes a float as
+// its digits and its bits, "nan|0x7F800001").
+var csManifestNonFiniteValue = regexp.MustCompile(`^([A-Za-z0-9_.\[\]]+)=[^|]*\|0x([0-9A-Fa-f]{16}|[0-9A-Fa-f]{8})$`)
+
+// csManifestNonFinite reads, per `file=` line of the corpus manifest, the leaf
+// name of the first value the reference wrote as a NaN or an infinity, and ""
+// for a file that holds none. Under the finite rule of 2026-10-27
+// (docs/SPEC-TABLES.md §3.3) such a file is a MUST-REFUSE vector for this leg:
+// the reference's own writer still emits the pattern until the C++ card of the
+// finite-tables plan regenerates the corpus with finite values. The manifest
+// decides, so the row comes back by itself the day the corpus turns finite.
+// The Go leg reads it the same way (gotable's fixedOracleManifestNonFinite).
+func csManifestNonFinite(t *testing.T, corpus string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if os.IsNotExist(err) {
+		return out // no manifest, no value oracle: the row's own reads decide
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		head, values, ok := strings.Cut(line, " values=")
+		if !ok {
+			continue
+		}
+		file := ""
+		for field := range strings.FieldsSeq(head) {
+			if v, ok := strings.CutPrefix(field, "file="); ok {
+				file = v
+			}
+		}
+		for value := range strings.SplitSeq(values, ",") {
+			m := csManifestNonFiniteValue.FindStringSubmatch(value)
+			if m == nil {
+				continue
+			}
+			bits, err := strconv.ParseUint(m[2], 16, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nonFinite := len(m[2]) == 8 && bits&0x7F800000 == 0x7F800000 || len(m[2]) == 16 && bits&0x7FF0000000000000 == 0x7FF0000000000000
+			if nonFinite && file != "" && out[file] == "" {
+				leaf := m[1]
+				if i := strings.LastIndexByte(leaf, '.'); i >= 0 {
+					leaf = leaf[i+1:]
+				}
+				out[file] = leaf
+			}
+		}
+	}
+	return out
+}
+
+// TestCsManifestNonFinite pins the manifest reading the must-refuse rows stand
+// on: the first NaN or infinity a file's values spell, at either width, by its
+// leaf name, and nothing for a file whose floats are all finite.
+func TestCsManifestNonFinite(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	manifest := `file=fu1.bin row=fu1 side=none root=FuRoot records=3 values=r0.flag=1,r0.heat=nan|0x7F800001,r1.heat=-nan|0xFFA5A5A5,r2.heat=1.5|0x3FC00000
+file=fu2.bin row=fu2 side=none root=FuRoot records=2 values=r1.heat=-2.25|0xC002000000000000,r0.wide=inf|0x7FF0000000000000
+file=old_float_widen.bin row=float_widen side=old root=FloatWiden records=1 values=r0.lead=2863311530,r0.v=nan|0x7F8ABCDE,r0.trail=3149642683
+file=fx1.bin row=fx1 side=none root=FxRoot records=2 values=r0.keep=4242,r0.x=-0|0x80000000,r1.y=4.9e-324|0x0000000000000001
+`
+	if err := os.WriteFile(filepath.Join(dir, "manifest.txt"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := csManifestNonFinite(t, dir)
+	if got["fu1.bin"] != "heat" || got["fu2.bin"] != "wide" || got["old_float_widen.bin"] != "v" || got["fx1.bin"] != "" {
+		t.Fatalf("non-finite leaves %v, want fu1 heat, fu2 wide, old_float_widen v, fx1 none", got)
+	}
 }
 
 // csManifestBrackets reads ONE FILE'S row out of the corpus manifest, which is

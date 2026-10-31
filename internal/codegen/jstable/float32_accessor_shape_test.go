@@ -82,10 +82,15 @@ fixed table Shot
 		t.Errorf("%s is defined %d times across the unit, want exactly once (the block home)", reader, definitions)
 	}
 	home := string(files["ProbeBlock.js"])
-	if !strings.Contains(home, "export const "+reader+" = ") {
+	if !strings.Contains(home, "export function "+reader+"(") {
 		t.Errorf("the block home ProbeBlock.js does not export %s", reader)
 	}
-	if n := strings.Count(home, "new ArrayBuffer(8)"); n > 1 {
-		t.Errorf("the NaN scratch is built %d times in ProbeBlock.js, want once at module scope", n)
+	// the non-finite latch (docs/SPEC-TABLES.md §3.3) is built once, at module
+	// scope, and a finite read builds nothing
+	if n := strings.Count(home, "new WeakMap()"); n != 1 {
+		t.Errorf("the non-finite latch is built %d times in ProbeBlock.js, want once at module scope", n)
+	}
+	if strings.Contains(home, "new ArrayBuffer(8)") {
+		t.Errorf("ProbeBlock.js still builds the retired NaN scratch")
 	}
 }

@@ -29,5 +29,13 @@ edition = "2024"
 [lib]
 path = "lib.rs"
 
+# The two accelerators every generated table unit is gated on (lib.rs says
+# why). The paired bench measures the wire, so both are declared and left OFF:
+# a declared feature keeps `#[cfg(feature = "cook")]` free of rustc's
+# unexpected-cfg warning, and an off one compiles none of the cooked form.
+[features]
+block = []
+cook = []
+
 [dependencies]
 serialize = { package = "serialize-official", path = "../../../../build/paired/serialize.rs" }

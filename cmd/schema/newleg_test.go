@@ -175,14 +175,11 @@ func TestNewLegZigYieldsABuildingTestingSkeleton(t *testing.T) {
 	// the skeleton builds beside them, not whether their suites pass in a copy.
 	// tables/goruntime is the shared Go runtime the generated fuzz unit under
 	// internal/ imports (docs/SPEC-TABLES.md §8.4), so it comes along, and so
-	// does every runtime/ directory a backend embeds (//go:embed runtime/*.lua
-	// in internal/codegen/lua and luatable), or the copy would not build.
+	// does every file beside the sources, which a port's package may embed
+	// (runtime/*.goose, ...).
 	for _, dir := range []string{"cmd", "compiler", "internal", "ir", filepath.Join("tables", "goruntime")} {
 		copyScaffoldTree(t, filepath.Join(root, dir), filepath.Join(tree, dir), func(rel string) bool {
-			if path.Base(path.Dir(rel)) == "runtime" && !strings.HasSuffix(rel, ".go") {
-				return true
-			}
-			return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
+			return !strings.HasSuffix(rel, "_test.go")
 		})
 	}
 	copyScaffoldTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(string) bool { return true })

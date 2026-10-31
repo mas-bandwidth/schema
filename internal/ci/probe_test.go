@@ -49,9 +49,10 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	// built from this tree refuses --lang zig exactly as it refuses a fresh
 	// `schema new-leg zig` leg. A real `schema new-leg` leg in the tree
 	// (make/<lang>.mk beside a compiler/target_<lang>.go behind its
-	// schema_leg_<lang> tag) is a skeleton here too: its marker file is carried
-	// into the fixture, so the gate skips it by the same rule. A builtin target
-	// (lua among them) carries no tag and is probed like every other port.
+	// schema_leg_<lang> tag, such as goose, docs/PORT-GOOSE.md) is a skeleton
+	// here too: its marker file is carried into the fixture, so the gate skips
+	// it by the same rule. A builtin target (lua among them) carries no tag and
+	// is probed like every other port.
 	skeletons := map[string]bool{"zig": true} // the planted zig
 	tagged, err := filepath.Glob(filepath.Join(root, "compiler", "target_*.go"))
 	if err != nil {
@@ -156,7 +157,9 @@ func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	if err == nil {
 		t.Fatalf("unmarked unregistered backend passed the gate:\n%s", out)
 	}
-	if strings.Contains(out, "schema new-leg skeleton") || !strings.Contains(out, "backend stopped for another reason") {
+	// a tagged leg in the tree (goose) is still a skeleton; the unmarked lua
+	// must not be
+	if strings.Contains(out, "lua has no --lang yet (schema new-leg skeleton)") || !strings.Contains(out, "the lua backend stopped for another reason") {
 		t.Fatalf("unmarked backend did not fail as an ordinary backend:\n%s", out)
 	}
 }

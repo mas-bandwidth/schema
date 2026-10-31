@@ -24,6 +24,9 @@ func init() {
 		Name{Name: "TableCookPut", What: "the cook write's one unaligned scalar put, in the chosen byte order (§7.6)", Scoped: true},
 		Name{Name: "TableCookWriteRecord", What: "the cook write's record walk over the cook descriptors; a null buffer measures and validates only, so a refusal changes no byte (§7.6)", Scoped: true},
 		Name{Name: "TableCookRaw", What: "the cook write's raw slot read at the descriptor's width (§7.6)", Scoped: true},
+		Name{Name: "TableRegionWriter", What: "the cook write's region writer over the storage value: the data part, the byte order and each node's region offset (§6.3, §7.6)"},
+		Name{Name: "TableRegionLayout", What: "the cook write's layout pass: every node of the numbering at its own alignment, the region rounded to the greatest (§7, §7.6)", Scoped: true},
+		Name{Name: "TableRegionUp", What: "the cook write's align-up (§7)", Scoped: true},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
 		// Emitted for a unit that carries a fixed root, and claimed beside
 		// any table on this list's own rule: a name free today is a

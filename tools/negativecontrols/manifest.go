@@ -62,6 +62,11 @@ type Group struct {
 	// builds it with `make dist-lua` (make/lua.mk holds the pin and its
 	// sha256) before its controls run.
 	Lua string `json:"lua,omitempty"`
+	// Golangci is the golangci-lint release this row installs (no leading
+	// v), for the generated-Go lint controls. It is not a conformance
+	// toolchain, so it is held against make/schema-go-generated-golangci-lint-gate.mk's
+	// GOLANGCI_LINT_VERSION rather than against test/conformance/*/ci.json.
+	Golangci string `json:"golangci,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -180,15 +185,16 @@ func (m Manifest) tiers() []string {
 // hundred-target line out of the matrix value.
 func (m Manifest) matrix(when string) ([]byte, error) {
 	type row struct {
-		Name   string `json:"name"`
-		Rust   string `json:"rust"`
-		Dotnet string `json:"dotnet"`
-		Node   string `json:"node"`
-		Dart   string `json:"dart"`
-		Java   string `json:"java"`
-		OTP    string `json:"otp"`
-		Elixir string `json:"elixir"`
-		Lua    string `json:"lua"`
+		Name     string `json:"name"`
+		Rust     string `json:"rust"`
+		Dotnet   string `json:"dotnet"`
+		Node     string `json:"node"`
+		Dart     string `json:"dart"`
+		Java     string `json:"java"`
+		OTP      string `json:"otp"`
+		Elixir   string `json:"elixir"`
+		Lua      string `json:"lua"`
+		Golangci string `json:"golangci"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -199,15 +205,16 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			continue
 		}
 		rows = append(rows, row{
-			Name:   g.Name,
-			Rust:   g.Rust,
-			Dotnet: g.Dotnet,
-			Node:   g.Node,
-			Dart:   g.Dart,
-			Java:   g.Java,
-			OTP:    g.OTP,
-			Elixir: g.Elixir,
-			Lua:    g.Lua,
+			Name:     g.Name,
+			Rust:     g.Rust,
+			Dotnet:   g.Dotnet,
+			Node:     g.Node,
+			Dart:     g.Dart,
+			Java:     g.Java,
+			OTP:      g.OTP,
+			Elixir:   g.Elixir,
+			Lua:      g.Lua,
+			Golangci: g.Golangci,
 		})
 	}
 	return json.Marshal(struct {
