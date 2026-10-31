@@ -134,18 +134,20 @@
     {
       "name": "lua",
       "when": "pull-request",
-      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). Beside them, two reversed witnesses on the same build: the release tier's wire fuzz at its release count on seed 2 over a copy of the units whose load counts every unknown field twice (red at the first divergence, J3), and a copy of the driver whose absent() writes nothing (one harness run over the leg; red because an unanswered case never passes, I4). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green; the id table's 4096-entry bound lifted, red on exactly lua / framing with wire and report green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). Beside them, two reversed witnesses on the same build: the release tier's wire fuzz at its release count on seed 2 over a copy of the units whose load counts every unknown field twice (red at the first divergence, J3), and a copy of the driver whose absent() writes nothing (one harness run over the leg; red because an unanswered case never passes, I4). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
         "conformance-negative-control-lua-walk",
+        "conformance-negative-control-lua-framing",
         "schema-lua-fuzz-negative-control",
         "schema-lua-resource-bounds-negative-control",
         "tables-lua-alloc-negative-control",
         "tables-lua-alloc-runtime-negative-control",
         "tables-lua-soak-negative-control",
         "tables-lua-release-negative-control",
-        "conformance-negative-control-lua-absent"
+        "conformance-negative-control-lua-absent",
+        "tables-lua-damage-discard-negative-control"
       ],
       "lua": "5.4.8"
     },
@@ -566,7 +568,8 @@
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
       "targets": [
         "tables-moo-retain-negative-control",
-        "tables-moo-retain-refusal-negative-control"
+        "tables-moo-retain-refusal-negative-control",
+      "tables-moo-damage-discard-negative-control"
       ],
       "moo": "pin"
     },
@@ -1238,7 +1241,8 @@
         "tables-goose-tablewire-negative-control",
         "tables-goose-message-form-negative-control",
         "tables-goose-message-peer-negative-control",
-        "tables-goose-versioning-negative-control"
+        "tables-goose-versioning-negative-control",
+        "tables-goose-damage-negative-control"
       ]
     },
     {
@@ -1462,13 +1466,14 @@
     {
       "name": "squirrel",
       "when": "pull-request",
-      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur neutralizes the emitted kind-mismatch counter, so report goes red and wire stays green; the walk saboteur breaks the text reader's bool arm, so json-read goes red and json-write and wire stay green; the block saboteur drops the Open's pitch check, so forgery goes red and block and block-dump stay green; the retain saboteur drops the retained-id capacity, so retain goes red and wire and report stay green. Each rebuilds the compiler under an overlay and regenerates the corpus, about 12 s on the studio. The packet wide-text control removes the generated reader's surrogate pairing and requires the harness's bit-flip agreement with C++ to fail. Beside them, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds. Beside them, the resource-bounds negative control (make/schema-squirrel-resource-bounds.mk) runs the planted-pattern gate over the port's allocation counter and depth cap: pure Go, no sq interpreter, so it is another pull-request blade for the Squirrel lens. The packet FINITE-FLOAT control (SPEC.md §4.3) drops the vendored serialize.nut's read test at both widths in memory (internal/codegen/squirrel/finite_test.go) and must red exactly the sixty-three non_finite_float read vectors of test/packet-finite/squirrel/main.nut while its write traps and bit-exact round trips stay green; one generate and one sq run, well under a second. The TABLE finite-float controls (docs/SPEC-TABLES.md §3.3) remove one check at a time in memory (internal/codegen/squirreltable/nonfinite_test.go and nonfinite_forms_test.go): the variable read, the retained unknown entry's test and the variable writer, then the message read and writer and the fixed read and writer; each must red exactly that check's rows while the rest stay green; seven sq runs, about two seconds. The FLOAT-PARITY controls (internal/codegen/squirreltable/floatparity_test.go) put the old behaviour back in memory and must red exactly the rows the Go engine says it gets wrong: the variable read's compressed-float clamp removed (the rows the engine clamps), the message quantizer at one rounding in double (the fuzz rows where it parts from ir.TableMessageQuantize), an over-count message index clamped rather than refused (the over-count rows), and CookMeasure without its walk (the non-finite rows); four sq runs, under a second. Beside them, the hostile-corpus runner's planted reader (2.6 s on the studio) must go red; the nightly fuzzer's control patches the emitted load's array-frame bound and requires the wire differential to go red (1.8 s on the studio: it is the differential under a plant, not the nightly campaign, which schema-squirrel-nightly-fuzz.yml runs on its own schedule); and the generated-code lint gate's three plants (a refused statement, a trailing space, a blank-line run, each named by file and rule) run in under a second. The row installs the pinned interpreter (make/squirrel.mk's dist-squirrel) through its squirrel field, which must match test/conformance/squirrel/ci.json.",
+      "why": "the Squirrel port's four conformance controls (test/conformance/squirrel/negative-control): the load saboteur neutralizes the emitted kind-mismatch counter, so report goes red and wire stays green; the walk saboteur breaks the text reader's bool arm, so json-read goes red and json-write and wire stay green; the block saboteur drops the Open's pitch check, so forgery goes red and block and block-dump stay green; the retain saboteur drops the retained-id capacity, so retain goes red and wire and report stay green. The framing saboteur drops the id table's 4096-entry maximum, so framing goes red on frame_entries_4097 and wire and report stay green. Each rebuilds the compiler under an overlay and regenerates the corpus, about 12 s on the studio. The packet wide-text control removes the generated reader's surrogate pairing and requires the harness's bit-flip agreement with C++ to fail. Beside them, the all-port differential's planted-bad-pattern control changes one byte of a scratch answer tree and requires the comparison to go red and name wire/Scene; both halves of that control run on a t.TempDir(), with no toolchain, so the Squirrel lens still has a blade on a host carrying none of the other ports. It costs milliseconds. Beside them, the resource-bounds negative control (make/schema-squirrel-resource-bounds.mk) runs the planted-pattern gate over the port's allocation counter and depth cap: pure Go, no sq interpreter, so it is another pull-request blade for the Squirrel lens. The packet FINITE-FLOAT control (SPEC.md §4.3) drops the vendored serialize.nut's read test at both widths in memory (internal/codegen/squirrel/finite_test.go) and must red exactly the sixty-three non_finite_float read vectors of test/packet-finite/squirrel/main.nut while its write traps and bit-exact round trips stay green; one generate and one sq run, well under a second. The TABLE finite-float controls (docs/SPEC-TABLES.md §3.3) remove one check at a time in memory (internal/codegen/squirreltable/nonfinite_test.go and nonfinite_forms_test.go): the variable read, the retained unknown entry's test and the variable writer, then the message read and writer and the fixed read and writer; each must red exactly that check's rows while the rest stay green; seven sq runs, about two seconds. The FLOAT-PARITY controls (internal/codegen/squirreltable/floatparity_test.go) put the old behaviour back in memory and must red exactly the rows the Go engine says it gets wrong: the variable read's compressed-float clamp removed (the rows the engine clamps), the message quantizer at one rounding in double (the fuzz rows where it parts from ir.TableMessageQuantize), an over-count message index clamped rather than refused (the over-count rows), and CookMeasure without its walk (the non-finite rows); four sq runs, under a second. Beside them, the hostile-corpus runner's planted reader (2.6 s on the studio) must go red; the nightly fuzzer's control patches the emitted load's array-frame bound and requires the wire differential to go red (1.8 s on the studio: it is the differential under a plant, not the nightly campaign, which schema-squirrel-nightly-fuzz.yml runs on its own schedule); and the generated-code lint gate's three plants (a refused statement, a trailing space, a blank-line run, each named by file and rule) run in under a second. The row installs the pinned interpreter (make/squirrel.mk's dist-squirrel) through its squirrel field, which must match test/conformance/squirrel/ci.json.",
       "targets": [
         "conformance-negative-control-squirrel",
         "conformance-negative-control-squirrel-block",
         "conformance-negative-control-squirrel-retain",
         "conformance-negative-control-squirrel-walk",
         "conformance-negative-control-squirrel-absent",
+        "conformance-negative-control-squirrel-framing",
         "tables-squirrel-usage-negative-control",
         "tables-squirrel-runtime-home-negative-control",
         "tables-squirrel-release-negative-control",
@@ -1495,6 +1500,7 @@
         "tables-squirrel-json-negative-control",
         "tables-squirrel-load-negative-control",
         "tables-squirrel-message-form-negative-control",
+        "tables-squirrel-damage-discard-negative-control",
         "tables-squirrel-save-negative-control",
         "tables-squirrel-base64-text-negative-control",
         "tables-squirrel-keyed-negative-control",
@@ -1526,6 +1532,7 @@
         "bench-luau-gate-negative-control",
         "conformance-negative-control-luau",
         "conformance-negative-control-luau-emitter",
+        "conformance-negative-control-luau-framing",
         "conformance-negative-control-luau-walk",
         "luau-ludicrous-negative-control",
         "luau-nightly-fuzz-negative-control",
@@ -1550,7 +1557,8 @@
         "tables-luau-usage-negative-control",
         "tables-luau-versioning-negative-control",
         "tables-luau-wire-fuzz-negative-control",
-        "tables-luau-wire-fuzz-vectors-negative-control"
+        "tables-luau-wire-fuzz-vectors-negative-control",
+        "tables-luau-damage-discard-negative-control"
       ],
       "luau": "0.741"
     },
@@ -1580,9 +1588,10 @@
     {
       "name": "moo-conformance",
       "when": "pull-request",
-      "why": "the moo leg's two conformance negative controls (make/moo-conformance.mk, test/conformance/moo/negative-control; docs/PORTING.md I2 and I11), on the moo pin .github/actions/moo restores into dist/moo: each seds one runtime file the table emitter embeds, builds a private compiler with go build -overlay, regenerates the manifest's units and runs the harness over them, which must go red on exactly the named surfaces with the neighbours green (report: the load counting each unknown field twice, report and retain red; walk: the text reader's field-key index missing the first field, json-read and json-hostile red). Measured 6.9 s and 6.8 s on amd-3 (2026-10-31; 10.2 s and 9.7 s under a load of 14 on its 16 cores), the overlay compile and the 33 units' generation included, so the row is the harness build plus the pin's cache restore.",
+      "why": "the moo leg's three conformance negative controls (make/moo-conformance.mk, test/conformance/moo/negative-control; docs/PORTING.md I2 and I11, docs/LAYERS/1-framing.md F6), on the moo pin .github/actions/moo restores into dist/moo: each seds one runtime file the table emitter embeds, builds a private compiler with go build -overlay, regenerates the manifest's units and runs the harness over them, which must go red on exactly the named surfaces with the neighbours green (report: the load counting each unknown field twice, framing, report and retain red; walk: the text reader's field-key index missing the first field, json-read and json-hostile red; framing: the id table's 4096-entry bound dropped, framing red on frame_entries_4097). The framing control measured 57.5 s on hulk (2026-10-31) under a load of about 90 on its 17 cores, where the report and walk controls took 46.3 s and 64.3 s. Measured 6.9 s and 6.8 s on amd-3 (2026-10-31; 10.2 s and 9.7 s under a load of 14 on its 16 cores), the overlay compile and the 33 units' generation included, so the row is the harness build plus the pin's cache restore.",
       "targets": [
         "conformance-negative-control-moo",
+        "conformance-negative-control-moo-framing",
         "conformance-negative-control-moo-walk"
       ],
       "moo": "pin"
@@ -1599,8 +1608,9 @@
     {
       "name": "moo-open-gates",
       "when": "pull-request",
-      "why": "the moo leg's controls of make/moo-open-gates.mk, on the moo pin .github/actions/moo restores: the runtime home's (docs/PORTING.md J2; the file-order rule put back through go build -overlay, the tables/examples unit generated with and without an earlier-sorting file, and the home must move) and the documented surface's (I12; two edited copies of docs/USAGE.md, a renamed save and a walk that reads nothing, each must fail the moo usage gate). Go, the moo pin and nothing else: 1.3 s and 2.0 s on amd-3 (2026-10-31) with the compiler built.",
+      "why": "the moo leg's controls of make/moo-open-gates.mk, on the moo pin .github/actions/moo restores: the runtime home's (docs/PORTING.md J2; the file-order rule put back through go build -overlay, the tables/examples unit generated with and without an earlier-sorting file, and the home must move) and the documented surface's (I12; two edited copies of docs/USAGE.md, a renamed save and a walk that reads nothing, each must fail the moo usage gate), and the arm field line's (M18; a per-shape payload reader planted into table_load.moo's read_arm and a table-arm reader into read_union, each must be the one finding of the source scan, a Go test over the embedded runtime that needs no moo). Go, the moo pin and nothing else: 1.3 s and 2.0 s on amd-3 (2026-10-31) with the compiler built; the arm control is one go test of internal/codegen/mootable, 1.6 s on hulk (2026-10-31).",
       "targets": [
+        "tables-moo-arms-negative-control",
         "tables-moo-runtime-home-negative-control",
         "tables-moo-usage-negative-control"
       ],

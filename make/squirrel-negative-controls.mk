@@ -73,3 +73,9 @@ tables-squirrel-text-differential: $(SQUIRREL_NC_DEPS)
 	$(call squirrel_nc,$@,TestSquirrelTextDifferentialAgainstTheGoEngine,internal/codegen/squirreltable)
 tables-squirrel-text-differential-negative-control: $(SQUIRREL_NC_DEPS)
 	$(call squirrel_nc,$@,TestSquirrelTextDifferentialNegativeControl,internal/codegen/squirreltable)
+
+.PHONY: tables-squirrel-damage-discard tables-squirrel-damage-discard-negative-control
+tables-squirrel-damage-discard: toolchain-squirrel dist-squirrel
+	sh test/slowgate/proof $@ 'TestSquirrelDamageDiscardsValues TestSquirrelDelegatedDamageDiscardsValue' ./internal/codegen/squirreltable -run '^TestSquirrel(DamageDiscardsValues|DelegatedDamageDiscardsValue)$$' -count=1
+tables-squirrel-damage-discard-negative-control: toolchain-squirrel dist-squirrel
+	$(call squirrel_nc,$@,TestSquirrelDamageDiscardNegativeControl,internal/codegen/squirreltable)

@@ -5,7 +5,8 @@
 // internal/tablewire's decode.go, decodenodes.go and nodetable.go.
 //
 // _M.load(T, root, bytes, report) is the strict read: the root or null (§6.5).
-// _M.loadTolerant(T, root, bytes, report) keeps the recovered root and counters.
+// _M.loadTolerant(T, root, bytes, report) keeps the recovered root and counters;
+// a damaged load (report.malformed) returns null (§4).
 // T is a unit's table module (the exports table schema_module.nut requires);
 // root is the root table's schema name. report is the caller's §4 report: the
 // six counters, the malformed flag and the refusal verdict. It is filled in
@@ -25,6 +26,8 @@ local MAP_KEY_ID = 0x3dc94a19365b10ec;
 local MAP_VALUE_ID = 0x7ce4fd9430e80cea;
 
 local FORM_VARIABLE = 1;
+// the id table's maximum entry count (docs/SPEC-TABLES.md §3; ir.TableWireIdTableBound)
+local ID_TABLE_BOUND = 4096;
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
 // 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14), the trailer an integrity root appends
@@ -714,17 +717,12 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     return true;
   }
   if (shape == "union") {
-    // A UNION FIELD IS REPLACED ONCE ITS ARM HEADER READS (the engine's
-    // unionCell): a repeat whose arm reference names no entry, or whose kind
-    // or L cannot be read, is framing damage that stops this body and leaves
-    // the earlier occurrence standing (docs/SPEC-TABLES.md §4). Only an
-    // ELEMENT of an array of unions resets at its arm id.
     local u = unionDesc(T, fd.table);
     local inst = u.make();
-    if (!readUnionInto(r, T, table, u, inst, report, st)) return false;
     v[fd.member] = inst;
+    local ok = readUnionInto(r, T, table, u, inst, report, st);
     if (fd.optional) v[fd.member + "Present"] = true;
-    return true;
+    return ok;
   }
   if (shape == "bytes" || shape == "arr") {
     return readFieldArray(fd, r, T, table, v, report, st);
@@ -1431,8 +1429,11 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   if (bytes.len() < 9) { report.malformed = true; return null; }
   local count = u64At(bytes, bytes.len() - 8);
   // the count is bounded by division, never by count * 8, which wraps for a
-  // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file)
-  if (count < 0 || count > (bytes.len() - 9) / 8) { report.malformed = true; return null; }
+  // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file),
+  // and THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK;
+  // ir.TableWireIdTableBound): a table above it is malformed on the
+  // whole-wire rule, whatever the buffer would hold
+  if (count < 0 || count > (bytes.len() - 9) / 8 || count > ID_TABLE_BOUND) { report.malformed = true; return null; }
   local end = bytes.len() - 8 - count * 8;
   local table = [];
   local seen = {};
@@ -1517,6 +1518,15 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     }
     local strict = ::getstackinfos(2);
     if (strict != null && ("_strictFrame" in strict.locals)) strict.locals.report.nonFiniteFloat <- st.nonFinite;
+    return null;
+  }
+  // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that met
+  // damage returns nothing; the report says malformed and the caller discards
+  if (report.malformed) {
+    // The strict witness distinguishes body damage from an unopened file,
+    // without requiring this tolerant API to hand it a partial record.
+    local frame = ::getstackinfos(2);
+    if (frame != null && ("_strictFrame" in frame.locals)) frame.locals.store.walkDamaged = true;
     return null;
   }
   if (report.getdelegate() == null) {

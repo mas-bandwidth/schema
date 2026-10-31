@@ -244,7 +244,7 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 		plainValue, reason, twinValue, twinCounters := g[0], g[1], g[2], g[3]
 		pin := pinned[c.key]
 		wantCounters := strings.Join(strings.Split(pin, ",")[:6], ",")
-		if twinCounters != wantCounters {
+		if c.want != "malformed" && twinCounters != wantCounters {
 			t.Errorf("load %s: loadTolerant counted %s, the pinned report is %s", c.key, twinCounters, wantCounters)
 		}
 		loadNames[reason]++
@@ -262,7 +262,10 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 			if reason != c.want {
 				t.Errorf("load %s: the plain load refused %q, ReadStrict names %q", c.key, reason, c.want)
 			}
-			if c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && twinValue != "val" {
+			if c.want == "malformed" && (twinValue != "null" || !strings.HasSuffix(twinCounters, ",true")) {
+				t.Errorf("load %s: malformed read retained a value or lost its verdict", c.key)
+			}
+			if c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && twinValue != "val" {
 				t.Errorf("load %s: loadTolerant did not keep the recovered value", c.key)
 			}
 		}
