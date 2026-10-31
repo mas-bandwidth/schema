@@ -107,3 +107,16 @@ tables-luau-release: toolchain-luau build/conformance-harness build/conformance-
 	$(MAKE) tables-luau-usage
 	$(MAKE) tables-luau-usage-negative-control
 	@echo "tables Luau release gate: the wire fuzz at depth on two seeds with its control, and the page's example with its witnesses"
+
+# M19: the writer holds the map sort (map_sort_test.go): every mapdemo instance
+# saved as read and saved with every map's entries reversed must be the same
+# committed bytes; the control removes the sort from the emitted save and
+# requires rows to turn. The reader's ascending, duplicate and key-kind rules
+# are held against the engine by the wire-fuzz differential (make/luau-fuzz.mk).
+.PHONY: tables-luau-maps tables-luau-maps-negative-control
+tables-luau-maps: toolchain-luau
+	go test ./internal/codegen/luautable/ -run '^TestLuauMapWriterHoldsTheSort$$' -count=1 -timeout 600s
+tables-luau-maps-negative-control: toolchain-luau
+	go test ./internal/codegen/luautable/ -run '^TestLuauMapWriterSortNegativeControl$$' -count=1 -timeout 600s -v
+
+test-luau: tables-luau-maps tables-luau-maps-negative-control
