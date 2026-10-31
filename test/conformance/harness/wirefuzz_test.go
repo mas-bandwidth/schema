@@ -186,8 +186,10 @@ func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
 // of a batch is its own root, and a body can cost one reference. This 7-byte
 // batch claims 182 bodies and frames four before its damage, each the root's
 // 176 bytes and one directory entry, 768 in all, which the oracle, the C++
-// reference and the C# leg all answer exactly. It is under the message
-// ceiling; a measure one body larger is over it.
+// reference and the C# leg all answer exactly. The file form's bound counts
+// one root and refused it; the message bound counts a body for every
+// reference the payload can hold, 40 bits at 6 bits a reference for graphdemo,
+// six bodies. The reversed witness is a measure of seven.
 func TestMessageAmplificationCeilingCountsEveryBody(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "graphdemo", "Scene", true, false)
@@ -209,16 +211,21 @@ func TestMessageAmplificationCeilingCountsEveryBody(t *testing.T) {
 	if verdict := wireVerdict(root, reply, answer, wire); verdict != "" {
 		t.Fatalf("the exact measure is over the message ceiling: %s", verdict)
 	}
-	// the reversed witness: one body more than the batch can frame
-	over := answer
-	over.exact = false
-	over.bytes = answer.bytes + root.rootStorage + nodeDirEntryBytes
+	body := root.rootStorage + nodeDirEntryBytes
+	elements := int64(len(wire)) * (root.maxElement + 16)
+	refs := (int64(len(wire)) - messageBatchHeaderBytes) * 8 / int64(root.vocabulary.RefBits())
+	if refs != 6 || root.amplificationCeiling(wire) != refs*body+elements {
+		t.Fatalf("the message ceiling is %d over %d references, want six bodies and the element term, %d",
+			root.amplificationCeiling(wire), refs, 6*body+elements)
+	}
+	file := root.rootStorage + (int64(len(wire))/nodeRecordHeaderBytes+1)*(root.maxStorage+nodeDirEntryBytes) + elements
+	if answer.bytes <= file {
+		t.Fatalf("the witness no longer separates the forms: file bound %d, exact %d", file, answer.bytes)
+	}
+	// the reversed witness: one body more than the payload can spell
+	over := oracleAnswer{report: answer.report, encoded: answer.encoded, bytes: (refs+1)*body + elements}
 	reply.measure = over.bytes
 	if verdict := wireVerdict(root, reply, over, wire); !strings.Contains(verdict, "amplification ceiling") {
-		t.Fatalf("a measure one body past the batch was not refused by the ceiling: %q", verdict)
-	}
-	// and the file form's bound, which counts one root, is what refused it before
-	if file := root.rootStorage + (int64(len(wire))/nodeRecordHeaderBytes+1)*(root.maxStorage+nodeDirEntryBytes) + int64(len(wire))*(root.maxElement+16); answer.bytes <= file {
-		t.Fatalf("the witness no longer separates the forms: file bound %d, exact %d", file, answer.bytes)
+		t.Fatalf("a measure one body past the bound was not refused by the ceiling: %q", verdict)
 	}
 }
