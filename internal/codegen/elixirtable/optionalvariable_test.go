@@ -146,10 +146,10 @@ func TestScalarListUnderATableHeaderElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// the list payload is the element-kind byte (7, int16) then the count (3)
+	// the list payload is the element-kind byte (7, uint16) then the count (3)
 	at := strings.Index(string(wire), "\x07\x03")
 	if at < 0 {
-		t.Fatalf("no int16 list header in the probe wire %x", wire)
+		t.Fatalf("no uint16 list header in the probe wire %x", wire)
 	}
 	mutant := append([]byte{}, wire...)
 	mutant[at] = 13
@@ -188,7 +188,7 @@ const scalarListProbeSrc = `package slprobe
 
 table Holder
 {
-    samples []int16
+    samples []uint16
     tail    int32
 }
 `
