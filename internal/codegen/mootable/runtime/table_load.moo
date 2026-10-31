@@ -1555,8 +1555,9 @@ local function reset(report: any)
 end
 
 -- loadTolerant loads a form-1 wire at the descriptor named root, fills report
--- and returns the recovered root value; it is the TOLERANT walk, reached only
--- by this explicit name (§6.5). A non-finite float refuses it whole (§3.3):
+-- and returns the root value only if the wire is whole. Tolerant evolution
+-- is not damage (§4): malformed input returns nil, as on every read form.
+-- A non-finite float also refuses it whole (§3.3):
 -- nil, with report.reason "non_finite_float: <Owner>.<field>".
 function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	if report.missingRequired == nil then
@@ -1598,7 +1599,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		if ref == 0 then
 			if walk.at ~= o.e then
 				report.malformed = true
-				return v
+				return nil
 			end
 			break
 		end
@@ -1656,6 +1657,9 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		return nil
 	end
 	report.nonFiniteField = prior
+	if report.malformed then
+		return nil
+	end
 	return v
 end
 

@@ -2054,8 +2054,8 @@ end
 -- (DecodeMessages) and answers how many bodies it delivered and the values.
 -- -1 with report.reason is a refusal (newer_form, no_vocabulary,
 -- integrity_mismatch, non_finite_float); a count above capacity is
--- batch_too_large and returns the wire's M; damage inside body k delivers
--- bodies 1 to k - 1 with report.malformed set.
+-- batch_too_large and returns the wire's M. Damage anywhere discards the
+-- whole batch: zero bodies, no values, with report.malformed set (§4).
 function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, report: any?): (number, { any })
 	local d = messageRoot(root)
 	local rep: any = report or {}
@@ -2119,6 +2119,9 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 	end
 	if got == count and (not ralign(r) or r.off ~= r.n) then
 		rep.malformed = true
+	end
+	if rep.malformed then
+		return 0, {}
 	end
 	return got, values
 end
