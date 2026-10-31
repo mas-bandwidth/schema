@@ -24,37 +24,24 @@ import (
 //     committed golden, `"&node": N` at the first appearance and the bare
 //     label after.
 //
-// Each property has a REVERSED WITNESS: the same driver over a copy of the
+// Each property has a REVERSED WITNESS, held apart in
+// TestJavaPointerGraphNegativeControl: the same driver over a copy of the
 // generated runtime with that property's one check planted out must fail and
 // name the property. A witness that stays green is a test that cannot see.
 func TestJavaPointerGraphSharesOnceRefusesCyclesAndLabelsNodes(t *testing.T) {
 	t.Parallel()
-	javac, javaBin := javaTools(t)
-	files, err := Generate(unitFromDir(t, filepath.Join("..", "..", "..", "tables", "pointers")))
-	if err != nil {
-		t.Fatal(err)
+	javac, javaBin, files, wire, golden := graphFixture(t)
+	if out, ok := runGraphDriver(t, javac, javaBin, files, wire, golden); !ok {
+		t.Fatalf("the Java pointer graph driver failed:\n%s", out)
 	}
-	root := filepath.Join("..", "..", "..")
-	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "graph_shared.bin"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	golden, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", "graph_shared.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// the golden carries the property: a label, and the label named again
-	if !strings.Contains(string(golden), `"&node": 1,`) || !strings.Contains(string(golden), "{\n    \"&node\": 1\n  }") {
-		t.Fatal("graph_shared.json carries no shared-node label; the fixture no longer holds M14")
-	}
+}
 
-	t.Run("carried", func(t *testing.T) {
-		t.Parallel()
-		if out, ok := runGraphDriver(t, javac, javaBin, files, wire, golden); !ok {
-			t.Fatalf("the Java pointer graph driver failed:\n%s", out)
-		}
-	})
-
+// TestJavaPointerGraphNegativeControl is the reversed witness of each property
+// above: one check planted out of the generated runtime, and the driver must go
+// red on that property by name.
+func TestJavaPointerGraphNegativeControl(t *testing.T) {
+	t.Parallel()
+	javac, javaBin, files, wire, golden := graphFixture(t)
 	witnesses := []struct {
 		name, file, from, to, want string
 	}{
@@ -205,3 +192,26 @@ public final class Driver {
     }
 }
 `
+
+// graphFixture is what both graph tests run over: the JDK, the generated
+// tables/pointers unit, graph_shared's wire and its golden text.
+func graphFixture(t *testing.T) (javac, javaBin string, files map[string][]byte, wire, golden []byte) {
+	t.Helper()
+	javac, javaBin = javaTools(t)
+	files, err := Generate(unitFromDir(t, filepath.Join("..", "..", "..", "tables", "pointers")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join("..", "..", "..")
+	if wire, err = os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "graph_shared.bin")); err != nil {
+		t.Fatal(err)
+	}
+	if golden, err = os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", "graph_shared.json")); err != nil {
+		t.Fatal(err)
+	}
+	// the golden carries the property: a label, and the label named again
+	if !strings.Contains(string(golden), `"&node": 1,`) || !strings.Contains(string(golden), "{\n    \"&node\": 1\n  }") {
+		t.Fatal("graph_shared.json carries no shared-node label; the fixture no longer holds M14")
+	}
+	return javac, javaBin, files, wire, golden
+}

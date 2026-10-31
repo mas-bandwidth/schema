@@ -530,12 +530,17 @@ tables-java-compile: build/tables-generated-java/.stamp
 # glob that matched nothing is a failure and not a pass.
 TABLES_JAVA_COMPILE_ALL_MIN ?= 25
 .PHONY: tables-java-compile-all
+JAVA_COMPILE_ALL_DIRS ?= build/tables-generated-java/*/ build/java-clean-packet/*/
+JAVA_COMPILE_ALL_OUT ?= build/tables-java-classes-all
+.PHONY: tables-java-compile-all-run
 tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
-	@rm -rf build/tables-java-classes-all
-	@n=0; for d in build/tables-generated-java/*/ build/java-clean-packet/*/; do \
+	$(MAKE) --no-print-directory tables-java-compile-all-run
+tables-java-compile-all-run:
+	@rm -rf $(JAVA_COMPILE_ALL_OUT)
+	@n=0; for d in $(JAVA_COMPILE_ALL_DIRS); do \
 		unit=$$(basename $$(dirname $$d))-$$(basename $$d); \
-		mkdir -p build/tables-java-classes-all/$$unit; \
-		$(JAVAC) --release 17 -Xlint:all -Werror -d build/tables-java-classes-all/$$unit $$d*.java || \
+		mkdir -p $(JAVA_COMPILE_ALL_OUT)/$$unit; \
+		$(JAVAC) --release 17 -Xlint:all -Werror -d $(JAVA_COMPILE_ALL_OUT)/$$unit $$d*.java || \
 			{ echo "JAVA COMPILE GATE FAILED: unit $$unit"; exit 1; }; \
 		n=$$((n+1)); \
 	done; \
@@ -544,15 +549,21 @@ tables-java-compile-all: build/tables-generated-java/.stamp build/java-clean-pac
 	fi; \
 	echo "tables Java compile gate: all $$n generated units (table and packet) compile under --release 17 -Xlint:all -Werror"
 
+# THE TABLES LEG'S SOURCES, beside the generated units on every classpath that
+# runs them.
+JAVA_TABLES_LEG_SOURCES := test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java \
+	test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java \
+	test/java-tables/src/LayoutContract.java
+
 # THE JAVA TABLES LEG (test/java-tables/src/Main.java): the gates the
 # conformance harness does not hold, because none of them is a case — the
 # readers' fuzz oracle, the reference extent gate and the byte-order leg.
-build/java-tables/.stamp: build/tables-generated-java/.stamp test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
+build/java-tables/.stamp: build/tables-generated-java/.stamp $(JAVA_TABLES_LEG_SOURCES)
 	@rm -rf build/java-tables && mkdir -p build/java-tables
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-tables \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java build/tables-generated-java/arms/*.java \
-		build/tables-generated-java/lists/*.java build/tables-generated-java/block/*.java test/java-tables/src/Main.java test/java-tables/src/AgreeAccessors.java test/java-tables/src/BlockLead.java test/java-tables/src/AllocPaths.java test/java-tables/src/Soak.java
+		build/tables-generated-java/lists/*.java build/tables-generated-java/block/*.java $(JAVA_TABLES_LEG_SOURCES)
 	@touch $@
 
 # THE READERS' ORACLE (docs/SPEC-TABLES.md §7.5, §19.2). Mutants of a block image
@@ -1144,6 +1155,115 @@ tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.s
 tables-java-order: build/java-tables/.stamp build/cook-open/.stamp
 	$(JAVA) -cp build/java-tables Main order build/cook-open/Scene.cook build/cook-open/Scene-be.cook
 
+# java_tables_sabotage DIR,GOFILES,SEDVAR builds a compiler over COPIES of the
+# emitter files GOFILES with the sed script in the variable SEDVAR applied (each
+# copy must change), regenerates the tables leg's six units with it, and
+# compiles them with the leg's sources into DIR/classes. The controls below are
+# each one call of it and one run of the gate they break.
+define java_tables_sabotage
+	@rm -rf $(1) && mkdir -p $(1)
+	@printf '{"Replace":{' > $(1)/overlay.json; sep=; for f in $(2); do \
+		c=$(CURDIR)/$(1)/$$(echo $$f | tr / _).txt; sed '$($(3))' $$f > $$c; \
+		if cmp -s $$f $$c; then echo "NEGATIVE CONTROL: the sabotage did not apply to $$f"; exit 1; fi; \
+		printf '%s"%s/%s":"%s"' "$$sep" "$(CURDIR)" "$$f" "$$c" >> $(1)/overlay.json; sep=,; \
+	done; printf '}}\n' >> $(1)/overlay.json
+	go build -overlay $(1)/overlay.json -o $(1)/schema ./cmd/schema
+	@for u in examples pointers blobs arms lists block; do \
+		$(1)/schema generate --lang java --out $(1)/generated/$$u tables/$$u > $(1)/generate.log 2>&1 || \
+			{ cat $(1)/generate.log; exit 1; }; done
+	@grep -rlq SABOTAGED $(1)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted nothing sabotaged"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(1)/classes $(1)/generated/*/*.java $(JAVA_TABLES_LEG_SOURCES)
+endef
+
+# ITS TWO NEGATIVE CONTROLS, one per check the gate holds.
+#
+# tables-java-order-negative-control (docs/PORTING.md I7): the cook Open's
+# ORDER-WORD check planted out. The cook of the other order still refuses on
+# its magic, so only the forged cook — magic intact, the other order word —
+# can see it, and the gate must go red on exactly that cook.
+#
+# tables-java-order-le-negative-control (docs/PORTING.md M12): TableBytes.i64
+# read through a ByteBuffer in the JVM's default order instead of composed
+# little-endian byte by byte. The magic then reads back reversed and the gate
+# must go red on this reader's OWN cook.
+JAVA_ORDER_WORD_SABOTAGE := build/java-order-word-sabotage
+JAVA_ORDER_WORD_SED := s@if (TableBytes.i64(data, offset + 16) != TableCookInfo.byteOrder) { return -1; }@if (false) { return -1; } // SABOTAGED: no order-word check@
+JAVA_ORDER_LE_SABOTAGE := build/java-order-le-sabotage
+JAVA_ORDER_LE_SED := s@return (i32(data, at) & 0xffffffffL) | ((long) i32(data, at + 4) << 32);@return java.nio.ByteBuffer.wrap(data).getLong(at); // SABOTAGED: the JVM default order@
+.PHONY: tables-java-order-negative-control tables-java-order-le-negative-control
+tables-java-order-negative-control: build/cook-open/.stamp
+	$(call java_tables_sabotage,$(JAVA_ORDER_WORD_SABOTAGE),internal/codegen/javatable/cook.go,JAVA_ORDER_WORD_SED)
+	@if $(JAVA) -cp $(JAVA_ORDER_WORD_SABOTAGE)/classes Main order build/cook-open/Scene.cook build/cook-open/Scene-be.cook \
+			> $(JAVA_ORDER_WORD_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a cook Open with no order-word check left the order gate green"; \
+		cat $(JAVA_ORDER_WORD_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "the order word was not checked" $(JAVA_ORDER_WORD_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the forged order word"; \
+		  cat $(JAVA_ORDER_WORD_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_ORDER_WORD_SABOTAGE)/log
+	@echo "negative control: the order-word check planted out turns the order gate RED on the forged cook alone"
+tables-java-order-le-negative-control: build/cook-open/.stamp
+	$(call java_tables_sabotage,$(JAVA_ORDER_LE_SABOTAGE),internal/codegen/javatable/block.go,JAVA_ORDER_LE_SED)
+	@if $(JAVA) -cp $(JAVA_ORDER_LE_SABOTAGE)/classes Main order build/cook-open/Scene.cook build/cook-open/Scene-be.cook \
+			> $(JAVA_ORDER_LE_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a reader in the JVM's default order left the order gate green"; \
+		cat $(JAVA_ORDER_LE_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "a cook of this reader's own byte order did not open" $(JAVA_ORDER_LE_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on this reader's own cook"; \
+		  cat $(JAVA_ORDER_LE_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_ORDER_LE_SABOTAGE)/log
+	@echo "negative control: a word read in the JVM's default order turns the order gate RED on this reader's own cook"
+test-java: tables-java-order-negative-control tables-java-order-le-negative-control
+
+# THE LAYOUT CONTRACT GATE (docs/PORTING.md M11, docs/SPEC-TABLES.md §19.3).
+# TableBlockLayout and TableCookLayout hold each record's accessor offsets
+# against its descriptor offsets once, before the first open. The gate opens
+# this build's block and cook, then compiles a copy of the block and pointers
+# units with ONE accessor offset moved four bytes (RenderCameraRow's and
+# SceneRow's first field) and requires each open to THROW naming the record
+# before any row is read. tables-java-layout-planted is that second half alone,
+# over the units in JAVA_LAYOUT_GEN.
+JAVA_LAYOUT_BLOCK := testdata/wire/tables/block_render.bin
+JAVA_LAYOUT_GEN ?= build/tables-generated-java
+JAVA_LAYOUT_DIR ?= build/java-layout
+.PHONY: tables-java-layout-contract tables-java-layout-planted tables-java-layout-contract-negative-control
+tables-java-layout-contract: build/java-tables/.stamp build/cook-open/.stamp
+	$(JAVA) -cp build/java-tables LayoutContract clean $(JAVA_LAYOUT_BLOCK) build/cook-open/Scene.cook
+	$(MAKE) --no-print-directory tables-java-layout-planted JAVA_LAYOUT_GEN=build/tables-generated-java JAVA_LAYOUT_DIR=build/java-layout
+tables-java-layout-planted:
+	@rm -rf $(JAVA_LAYOUT_DIR) && mkdir -p $(JAVA_LAYOUT_DIR)/planted
+	@cp -R $(JAVA_LAYOUT_GEN)/block $(JAVA_LAYOUT_GEN)/pointers $(JAVA_LAYOUT_DIR)/planted/
+	@for f in block/RenderCameraRow.java pointers/SceneRow.java; do \
+		sed -i.orig 's/static final int\[\] offsets = {0, /static final int[] offsets = {4, /' $(JAVA_LAYOUT_DIR)/planted/$$f; \
+		if cmp -s $(JAVA_LAYOUT_DIR)/planted/$$f $(JAVA_LAYOUT_DIR)/planted/$$f.orig; then \
+			echo "LAYOUT GATE: the planted offset did not apply to $$f"; exit 1; fi; \
+		rm $(JAVA_LAYOUT_DIR)/planted/$$f.orig; done
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_LAYOUT_DIR)/classes \
+		$(JAVA_LAYOUT_DIR)/planted/*/*.java test/java-tables/src/LayoutContract.java
+	$(JAVA) -cp $(JAVA_LAYOUT_DIR)/classes LayoutContract planted $(JAVA_LAYOUT_BLOCK) build/cook-open/Scene.cook
+test-java: tables-java-layout-contract tables-java-layout-contract-negative-control
+
+# ITS NEGATIVE CONTROL: both halves' comparison planted out of the emitters
+# (block.go's TableBlockLayout and cook.go's TableCookLayout), and the planted
+# half of the gate must go red: the moved offset opens.
+JAVA_LAYOUT_SABOTAGE := build/java-layout-sabotage
+JAVA_LAYOUT_SED := s@if (accessors != descriptors) {@if (false) { // SABOTAGED: the layout contract compares nothing@
+tables-java-layout-contract-negative-control: build/cook-open/.stamp
+	$(call java_tables_sabotage,$(JAVA_LAYOUT_SABOTAGE),internal/codegen/javatable/block.go internal/codegen/javatable/cook.go,JAVA_LAYOUT_SED)
+	@if $(MAKE) --no-print-directory tables-java-layout-planted JAVA_LAYOUT_GEN=$(JAVA_LAYOUT_SABOTAGE)/generated \
+			JAVA_LAYOUT_DIR=$(JAVA_LAYOUT_SABOTAGE)/layout > $(JAVA_LAYOUT_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a layout contract that compares nothing left the layout gate green"; \
+		cat $(JAVA_LAYOUT_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "compiled with a moved accessor offset answered open" $(JAVA_LAYOUT_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the moved offset opening"; \
+		  cat $(JAVA_LAYOUT_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_LAYOUT_SABOTAGE)/log
+	@echo "negative control: a layout contract that compares nothing turns the layout gate RED: the moved offset opens"
+
 # THE REFERENCE EXTENT GATE (§6.3, §7.4), and it is the forged delta a blind read
 # of this port found. §7.1 blesses a cook that carries data alone, so the region
 # ends at the array's end and no directory bytes absorb an overrun; a reference
@@ -1296,17 +1416,41 @@ tables-java-soak-short: build/java-tables/.stamp
 # fixture cook and supplies the page's `use` hook, compiled with the generated
 # `tables/pointers` package under the consumer's `-Xlint:all -Werror`, and run.
 .PHONY: tables-java-usage
+JAVA_USAGE_POINTERS ?= build/tables-generated-java/pointers
+JAVA_USAGE_DIR ?= build/java-usage
+.PHONY: tables-java-usage-run tables-java-usage-negative-control
 tables-java-usage: build/tables-generated-java/.stamp build/cook-open/.stamp docs/USAGE.md
-	@rm -rf build/java-usage && mkdir -p build/java-usage
-	printf 'package graphdemo;\n\nimport java.nio.file.Files;\nimport java.nio.file.Path;\n\npublic final class Usage {\n    static int used;\n\n    static void use(int value) { used++; }\n\n    public static void main(String[] args) throws Exception {\n        byte[] bytes = Files.readAllBytes(Path.of(args[0]));\n\n' > build/java-usage/Usage.java
+	$(MAKE) --no-print-directory tables-java-usage-run JAVA_USAGE_POINTERS=build/tables-generated-java/pointers JAVA_USAGE_DIR=build/java-usage
+tables-java-usage-run:
+	@rm -rf $(JAVA_USAGE_DIR) && mkdir -p $(JAVA_USAGE_DIR)
+	printf 'package graphdemo;\n\nimport java.nio.file.Files;\nimport java.nio.file.Path;\n\npublic final class Usage {\n    static int used;\n\n    static void use(int value) { used++; }\n\n    public static void main(String[] args) throws Exception {\n        byte[] bytes = Files.readAllBytes(Path.of(args[0]));\n\n' > $(JAVA_USAGE_DIR)/Usage.java
 	sed -n '/<!-- java-table-usage -->/,/<!-- \/java-table-usage -->/p' docs/USAGE.md \
-		| sed '1,2d' | sed '$$d' | sed '$$d' >> build/java-usage/Usage.java
-	printf '\n        if (used == 0) { throw new IllegalStateException("the cook walk read no node"); }\n        System.out.println("usage: docs/USAGE.md Java cook example opened the Scene cook and walked " + used + " node(s)");\n    }\n}\n' >> build/java-usage/Usage.java
-	grep -q 'SceneCook.open' build/java-usage/Usage.java || \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(JAVA_USAGE_DIR)/Usage.java
+	printf '\n        if (used == 0) { throw new IllegalStateException("the cook walk read no node"); }\n        System.out.println("usage: docs/USAGE.md Java cook example opened the Scene cook and walked " + used + " node(s)");\n    }\n}\n' >> $(JAVA_USAGE_DIR)/Usage.java
+	grep -q 'SceneCook.open' $(JAVA_USAGE_DIR)/Usage.java || \
 		{ echo "MISSING: docs/USAGE.md carries no java-table-usage example"; exit 1; }
-	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-usage/classes \
-		build/tables-generated-java/pointers/*.java build/java-usage/Usage.java
-	$(JAVA) -cp build/java-usage/classes graphdemo.Usage $(CURDIR)/build/cook-open/Scene.cook
+	$(JAVAC) --release 17 -Xlint:all -Werror -d $(JAVA_USAGE_DIR)/classes \
+		$(JAVA_USAGE_POINTERS)/*.java $(JAVA_USAGE_DIR)/Usage.java
+	$(JAVA) -cp $(JAVA_USAGE_DIR)/classes graphdemo.Usage $(CURDIR)/build/cook-open/Scene.cook
+
+# ITS NEGATIVE CONTROL: the cook's documented `root()` renamed in the emitter
+# (cook.go), the code drifting from the page. The page's example must stop
+# compiling, and the gate must go red on Usage.java itself.
+JAVA_USAGE_SABOTAGE := build/java-usage-sabotage
+JAVA_USAGE_SED := s@public int root() { return region; }@public int rootRegion() { return region; } // SABOTAGED: the documented root() is gone@
+tables-java-usage-negative-control: build/cook-open/.stamp docs/USAGE.md
+	$(call java_tables_sabotage,$(JAVA_USAGE_SABOTAGE),internal/codegen/javatable/cook.go,JAVA_USAGE_SED)
+	@if $(MAKE) --no-print-directory tables-java-usage-run JAVA_USAGE_POINTERS=$(JAVA_USAGE_SABOTAGE)/generated/pointers \
+			JAVA_USAGE_DIR=$(JAVA_USAGE_SABOTAGE)/usage > $(JAVA_USAGE_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the documented root() renamed in the code left the usage gate green"; \
+		cat $(JAVA_USAGE_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "Usage.java.*cannot find symbol" $(JAVA_USAGE_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the page's example"; \
+		  cat $(JAVA_USAGE_SABOTAGE)/log; exit 1; }
+	@grep -m1 "cannot find symbol" $(JAVA_USAGE_SABOTAGE)/log
+	@echo "negative control: the documented root() renamed in the emitter turns the usage gate RED on the page's example"
+test-java: tables-java-usage-negative-control
 
 # THE JAVA LEG's RELEASE PASS: everything `make test` cannot afford.
 #
@@ -1341,6 +1485,27 @@ tables-java-release:
 	$(MAKE) tables-java-block-lead-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
 	$(MAKE) tables-java-runtime-home-negative-control
+
+# THE RELEASE TIER'S NEGATIVE CONTROL (docs/PORTING.md J3). The instrument only
+# this tier runs is the whole-tree compile under -Xlint:all -Werror
+# (tables-java-compile-all). The control plants a REDUNDANT CAST in the emitted
+# TableBytes.u8 (block.go), which every unit carries and which compiles and
+# reads exactly as before, and the compile gate must go red on the warning.
+JAVA_RELEASE_SABOTAGE := build/java-release-sabotage
+JAVA_RELEASE_SED := s@return data\[at\] & 0xff;@return (int) (data[at] \& 0xff); // SABOTAGED: a redundant cast@
+.PHONY: tables-java-release-negative-control
+tables-java-release-negative-control: build/cook-open/.stamp
+	$(call java_tables_sabotage,$(JAVA_RELEASE_SABOTAGE),internal/codegen/javatable/block.go,JAVA_RELEASE_SED)
+	@if $(MAKE) --no-print-directory tables-java-compile-all-run JAVA_COMPILE_ALL_DIRS='$(JAVA_RELEASE_SABOTAGE)/generated/*/' \
+			JAVA_COMPILE_ALL_OUT=$(JAVA_RELEASE_SABOTAGE)/all TABLES_JAVA_COMPILE_ALL_MIN=6 > $(JAVA_RELEASE_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a redundant cast in every unit left the release compile gate green"; \
+		cat $(JAVA_RELEASE_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "redundant cast" $(JAVA_RELEASE_SABOTAGE)/log && grep -q "JAVA COMPILE GATE FAILED" $(JAVA_RELEASE_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the planted warning"; \
+		  cat $(JAVA_RELEASE_SABOTAGE)/log; exit 1; }
+	@grep -m1 "JAVA COMPILE GATE FAILED" $(JAVA_RELEASE_SABOTAGE)/log
+	@echo "negative control: one redundant cast in the emitted TableBytes turns the release tier's compile gate RED"
 
 # THE PAIRED UNIT, in the discovered generation graph beside the four the
 # driver already tracks (c, cpp, cs, go each have this rule in their own .mk).
@@ -1417,6 +1582,49 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+
+# THE PER-CASE ABSENT GATE (docs/PORTING.md I4; test/conformance/README.md).
+# The Java leg alone through the harness: it must be green, and at least one
+# surface it otherwise answers must carry a per-case absence (`pass N/M +Ka`
+# with N > 0), which is the case grain the method names, as opposed to a whole
+# surface left out of `list`.
+JAVA_ABSENT := build/conformance-java-absent
+.PHONY: conformance-java-absent conformance-java-absent-negative-control
+conformance-java-absent: build/conformance-harness build-conformance-java
+	@rm -rf $(JAVA_ABSENT) && mkdir -p $(JAVA_ABSENT)
+	@printf 'java %s/test/conformance/java/driver\n' "$(CURDIR)" > $(JAVA_ABSENT)/drivers.txt
+	JAVA=$(JAVA) ./build/conformance-harness run --drivers $(JAVA_ABSENT)/drivers.txt \
+		--work $(JAVA_ABSENT)/work --results $(JAVA_ABSENT)/results.json > $(JAVA_ABSENT)/log 2>&1 || \
+		{ cat $(JAVA_ABSENT)/log; echo "conformance-java-absent: the Java leg is not green"; exit 1; }
+	@grep -qE ' pass [1-9][0-9]*/[0-9]+ \+[1-9][0-9]*a' $(JAVA_ABSENT)/log || \
+		{ cat $(JAVA_ABSENT)/log; echo "conformance-java-absent: no surface carries a per-case absence"; exit 1; }
+	@grep -E ' pass [1-9][0-9]*/[0-9]+ \+[1-9][0-9]*a' $(JAVA_ABSENT)/log | head -3
+	@echo "conformance-java-absent: the Java leg is green and answers absent per case"
+
+# ITS NEGATIVE CONTROL: the driver's two absence writers (spillAbsent and
+# spillAbsentReason) write no marker. Every case the leg cannot answer then has
+# no answer at all, and the gate must go red on "the driver wrote nothing".
+JAVA_ABSENT_SABOTAGE := build/conformance-java-absent-sabotage
+JAVA_ABSENT_SED := s@Files.write(Path.of(out, name + ".absent"), @if (false) Files.write(Path.of(out, name + ".absent"), /* SABOTAGED */ @
+conformance-java-absent-negative-control: build/conformance-harness build-conformance-java
+	@rm -rf $(JAVA_ABSENT_SABOTAGE) && mkdir -p $(JAVA_ABSENT_SABOTAGE)/src $(JAVA_ABSENT_SABOTAGE)/classes
+	@sed '$(JAVA_ABSENT_SED)' test/conformance/java/src/Driver.java > $(JAVA_ABSENT_SABOTAGE)/src/Driver.java
+	@test "$$(grep -c SABOTAGED $(JAVA_ABSENT_SABOTAGE)/src/Driver.java)" = 2 || \
+		{ echo "NEGATIVE CONTROL: the absence sabotage did not apply to both writers"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_ABSENT_SABOTAGE)/classes $(JAVA_ABSENT_SABOTAGE)/src/Driver.java
+	@printf '#!/bin/sh\nexec %s -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" "$(CURDIR)" > $(JAVA_ABSENT_SABOTAGE)/driver
+	@chmod +x $(JAVA_ABSENT_SABOTAGE)/driver
+	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" > $(JAVA_ABSENT_SABOTAGE)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(JAVA_ABSENT_SABOTAGE)/drivers.txt \
+			--work $(JAVA_ABSENT_SABOTAGE)/work > $(JAVA_ABSENT_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a driver that writes no absence marker left the harness green"; \
+		cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a missing answer"; \
+		  cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; }
+	@grep -m1 "the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
+	@echo "negative control: a driver that writes no absence marker turns the harness RED on the cases it cannot answer"
 
 # THE JAVA LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (docs/PORTING.md
 # I15; test/conformance/README.md, "The wire-fuzz driver"). One JVM on a pipe,
