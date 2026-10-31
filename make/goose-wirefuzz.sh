@@ -16,8 +16,9 @@ known_file=${SCHEMA_GOOSE_WIREFUZZ_KNOWN:-test/conformance/goose/wirefuzz-known.
 fail=0
 ran=0
 known_red=0
-# the legs build in parallel (each is a C compile); the arms run one by one
-jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+# Each leg is a C compile. Cap parallel builds on shared fleet machines;
+# callers may set GOOSE_FUZZ_JOBS. The arms run one by one.
+jobs=${GOOSE_FUZZ_JOBS:-4}
 for d in "$units"/*/; do
 	ls "$d"*Table.goose >/dev/null 2>&1 && echo "$(basename "$d")"
 done >"$work/units.txt"
