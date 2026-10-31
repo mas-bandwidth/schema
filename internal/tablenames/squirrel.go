@@ -52,3 +52,46 @@ func init() {
 		Name{Name: "TableRetain", What: "the caller's retention buffer and retained-id list (§6.6)", Scoped: true},
 	)
 }
+
+// squirrelDeclarationSuffixes are the names the Squirrel table emitter writes
+// per declaration on the unit's table module: the declaration's own name
+// followed by one of these (the `Fixed...` facts of the fixed form are matched
+// by their prefix). A declaration named for another's spelling is refused by
+// the emitter, which refuses any key its module would assign twice.
+var squirrelDeclarationSuffixes = []string{
+	"Descriptor", "EditTextForm", "FromJson", "LoadMessages", "LoadRetain", "LoadTextForm", "Load",
+	"MeasureMessages", "MeasureRetain", "Measure", "SaveMessages", "SaveRetain", "SaveTextForm", "Save",
+	"TableFields", "TableInfo", "ToJsonMeasure", "ToJson",
+}
+
+// SquirrelDeclarationSuffixes is squirrelDeclarationSuffixes, a copy.
+func SquirrelDeclarationSuffixes() []string { return append([]string(nil), squirrelDeclarationSuffixes...) }
+
+// squirrelModuleKeys is every name the Squirrel table backend defines that a
+// declaration does not spell: the unit's own keys on its table module
+// (<Package>Tables.nut), and every runtime file's exports. It is NOT the
+// shared registry: a runtime export lives on its own module table and claims
+// nothing, and a unit key is held by the emitter's refusal of a key assigned
+// twice. compiler's TestSquirrelTableRuntimeNamesAreClaimed holds this list
+// to the emitted text both ways, and TestSquirrelRuntimeNameScanGoesRed is its
+// control.
+var squirrelModuleKeys = map[string][]string{
+	"the unit's table module (<Package>Tables.nut)": {},
+}
+
+// SquirrelModuleKeys is every name squirrelModuleKeys lists, sorted, without
+// repeats.
+func SquirrelModuleKeys() []string {
+	seen := map[string]bool{}
+	for _, keys := range squirrelModuleKeys {
+		for _, k := range keys {
+			seen[k] = true
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for k := range seen {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
