@@ -19,8 +19,6 @@ local D = require("descriptor")
 local crc32c = load.crc32c
 
 local NODE_TABLE_ID = -1 -- 0xffffffffffffffff
-local STRING_BLOB_ID = 0x704be0d8faaffc58
-local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 local MAX64 = 0xffffffffffffffff
 
 -- THE WRITER (docs/PORT-LUA.md, BYTE BUFFERS): a table of pieces joined once
@@ -34,12 +32,24 @@ local function w_raw(w, s)
   w.n = w.n + #s
 end
 
-local function w_u8(w, v)
-  w_raw(w, string.char(v & 0xff))
+-- one string per byte value, built once, so a byte or a one-byte LEB128 is a
+-- table read and not a call
+local CH = {}
+for i = 0, 255 do
+  CH[i] = string.char(i)
 end
 
--- CANONICAL LEB128 (§3), unsigned, of a Lua integer's low 64 bits.
+local function w_u8(w, v)
+  w_raw(w, CH[v & 0xff])
+end
+
+-- CANONICAL LEB128 (§3), unsigned, of a Lua integer's low 64 bits. The common
+-- value, a reference or a length under 128, is one byte.
 local function w_leb(w, v)
+  if v >= 0 and v < 0x80 then
+    w_raw(w, CH[v])
+    return
+  end
   v = v & MAX64
   local out = {}
   repeat
@@ -129,186 +139,14 @@ local function text_ok(s)
   return true
 end
 
--- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go): first-visit order of
--- a depth-first pre-order walk from the root over POINTER EDGES, descending
--- through every by-value edge to reach them. Node index 1 is the root and
--- record k is index k + 1. A reference to a node whose descent is still open
--- is a DATA CYCLE, and the save refuses it (nil).
-local number_nodes
-local edges
+-- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go) is the one pointer
+-- walk of descriptor.lua (D.number_nodes, docs/PORTING.md M15), shared with
+-- the retaining save, the cook's layout and the JSON text form. A shared blob
+-- refuses the save by name (blob_shared, §2.5, §16.7).
+local guard_holds, count_of, map_entries = D.guard_holds, D.count_of, D.map_entries
 
--- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
--- field under a false guard is elided whatever its storage holds; §3.1: it is
--- not an edge, so its target takes no node). fd.guard is the conjunction of
--- the field's `if` branch conditions, each a bool field of the same body and
--- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
--- field with no guard always rides. A bool not set reads false.
-local function guard_holds(fd, v)
-  local g = fd.guard
-  if g == nil then return true end
-  for _, t in ipairs(g) do
-    if (v[t.field] == true) ~= t.want then return false end
-  end
-  return true
-end
-local edge_value
-local edge_union
-
--- A MAP'S ENTRIES IN ASCENDING KEY ORDER (§2.8, §3.1; internal/tablewire
--- nodes.go MapEntryOrder): one entry table per key, built once per map and
--- shared by the numbering and the write, so both walks meet the same slots.
--- BYTEWISE KEY ORDER (§2.8): Lua's string < is strcoll, which is bytewise
--- only under the C locale, so a string key is ordered by its unsigned bytes
--- here, a shorter prefix first, whatever locale the host runs.
-local function bytes_less(a, b)
-  local n = math.min(#a, #b)
-  local i = 1
-  while i <= n do
-    local j = math.min(i + 255, n)
-    local ca, cb = a:sub(i, j), b:sub(i, j)
-    if ca ~= cb then
-      for k = 1, j - i + 1 do
-        local x, y = ca:byte(k), cb:byte(k)
-        if x ~= y then return x < y end
-      end
-    end
-    i = j + 1
-  end
-  return #a < #b
-end
-
-local function map_entries(cache, fd, x)
-  if x == nil then return {} end
-  local got = cache[x]
-  if got ~= nil then return got end
-  local kf = fd.key_field
-  local keys = {}
-  for key in pairs(x) do
-    keys[#keys + 1] = key
-  end
-  table.sort(keys, function(a, b)
-    if kf.shape == "string" then return bytes_less(a, b) end
-    if kf.signed or kf.width < 8 then return a < b end
-    return math.ult(a, b)
-  end)
-  local keyname = kf.name
-  local valname = fd.value_field.name
-  got = {}
-  for i, key in ipairs(keys) do
-    got[i] = { [keyname] = key, [valname] = x[key] }
-  end
-  cache[x] = got
-  return got
-end
-
-local function count_of(fd, v)
-  local s = fd.shape
-  if s == "bytes" then return #v end
-  if fd.list then return #v end
-  if fd.fixed then return fd.bound or 0 end
-  return math.min(#v, fd.bound or 0)
-end
-
--- one value's pointer and blob edges, in the walk's order. holder/name name
--- the slot the value occupies (a table's field or a union arm's payload);
--- cache holds each map's entries (map_entries).
-edge_value = function(T, fd, val, holder, name, out, cache)
-  local s = fd.shape
-  if s == "string_blob" or s == "bytes_blob" then
-    if val ~= nil and val ~= false then
-      out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
-    end
-  elseif s == "pointer" then
-    if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
-  elseif s == "table" then
-    local d = T.Tables[fd.target]
-    if d then edges(T, d, val, out, cache) end
-  elseif s == "array" then
-    local n = count_of(fd, val)
-    local e = fd.elem
-    for i = 1, n do
-      edge_value(T, e, val[i], val, i, out, cache)
-    end
-  elseif s == "union" then
-    edge_union(T, T.Unions[fd.target], val, out, cache)
-  elseif s == "map" then
-    -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
-    -- entries in ascending key order, each descended before the next
-    local d = T.Tables[fd.entry]
-    for _, kv in ipairs(map_entries(cache, fd, val)) do
-      edges(T, d, kv, out, cache)
-    end
-  end
-end
-
--- a union arm's payload is a field line: its pointers, blobs, tables, arrays
--- and nested unions are edges at the arm's position (§2.6, §3.1).
-edge_union = function(T, u, val, out, cache)
-  local tag = type(val) == "table" and val.tag or 0
-  if tag == 0 or u == nil then return end
-  local arm = u.arms[tag]
-  if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
-end
-
--- the pointer and blob edges of one node's by-value closure, in the walk's
--- order: fields in declaration order, array elements in index order. An absent
--- by-value node (nil) holds only its declared defaults and no pointer or blob
--- edge (§3, §4.2). AN ABSENT ?T OWNS NO NODE (§2.3): the numbering gates on
--- the presence companion, so a value made absent after it was present writes
--- no stale node for the edges its untouched storage still holds.
-edges = function(T, desc, v, out, cache)
-  if v == nil then return out end
-  for _, fd in ipairs(desc.fields) do
-    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
-      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
-    end
-  end
-  return out
-end
-
-number_nodes = function(T, desc, root)
-  local nodes = { list = {}, index = {}, entries = {} }
-  nodes.index[root] = 1
-  local open = { [root] = true }
-  local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
-  while #stack > 0 do
-    local top = stack[#stack]
-    if top.i >= #top.edges then
-      open[top.v] = nil
-      stack[#stack] = nil
-    else
-      local e = top.edges[top.i + 1]
-      top.i = top.i + 1
-      if e.blob then
-        -- A BLOB NODE IS NUMBERED BY IDENTITY (§3.1: every reachable node is
-        -- written once and two references to one node are one node; §6.3:
-        -- sharing and a back-reference are the same fact). A loaded blob is
-        -- the box load gave its node, so the index is keyed by the box and
-        -- its bytes are the box's value: two distinct nodes with equal bytes
-        -- stay two, and one box named from two slots is one node.
-        -- A BLOB IS OWNED BY ONE SLOT (§2.5, §16.7): the numbering walk meets
-        -- the second naming here, so the save refuses the graph by name,
-        -- blob_shared, and never writes a copy per slot.
-        if nodes.index[e.val] ~= nil then return nil, "blob_shared" end
-        local tid = e.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
-        local body = type(e.val) == "table" and e.val.value or e.val
-        nodes.list[#nodes.list + 1] = { typeId = tid, body = body }
-        nodes.index[e.val] = #nodes.list + 1
-      else
-        if open[e.val] then return nil end
-        if nodes.index[e.val] == nil then
-          local d = T.Tables[e.target]
-          if d == nil then return nil end
-          nodes.list[#nodes.list + 1] = { typeId = d.type_id, codec = d, v = e.val }
-          nodes.index[e.val] = #nodes.list + 1
-          open[e.val] = true
-          stack[#stack + 1] = { v = e.val, edges = edges(T, d, e.val, {}, nodes.entries), i = 0 }
-        end
-      end
-    end
-  end
-  return nodes
+local function number_nodes(T, desc, root)
+  return D.number_nodes(T, desc, root, true)
 end
 
 local write_body
@@ -383,19 +221,26 @@ local function at_default(fd, v)
   return x == fd.default
 end
 
+-- THE ID TABLE (§3): ids.list is the wire's table in first-use order and
+-- ids.map its inverse, so a reference is one lookup however many ids the unit
+-- has (a scan of the list was quadratic in the fields a body names).
 local function id_ref(ids, id)
-  for i, v in ipairs(ids.list) do
-    if v == id then return i end
-  end
-  ids.list[#ids.list + 1] = id
-  return #ids.list
+  local ref = ids.map[id]
+  if ref ~= nil then return ref end
+  local list = ids.list
+  ref = #list + 1
+  list[ref] = id
+  ids.map[id] = ref
+  return ref
 end
 
 -- AN ENUM-KEYED ELEMENT (§2.4, §3.2): its payload is bare — the key's L
 -- frames it — and a zero element does not ride, so the pair is absent.
 local function id_rollback(ids, keep)
-  for i = #ids.list, keep + 1, -1 do
-    ids.list[i] = nil
+  local list = ids.list
+  for i = #list, keep + 1, -1 do
+    ids.map[list[i]] = nil
+    list[i] = nil
   end
 end
 
@@ -572,7 +417,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     local ok = write_body(T, ids, nodes, d, x, body)
     if not ok then return false end
     if not fd.required and not fd.optional and body.n <= 1 then
-      ids.list[mark + 1] = nil
+      id_rollback(ids, mark)
       return true
     end
     w_leb(w, ref)
@@ -753,8 +598,14 @@ end
 -- default is elided in form 1, leaving the terminator byte (§3, §4.2).
 write_body = function(T, ids, nodes, desc, v, w)
   if v ~= nil then
-    for _, fd in ipairs(desc.fields) do
-      if not write_field(T, ids, nodes, fd, v, w) then return false end
+    local typed = ids.typed
+    typed = typed and typed[desc.name]
+    if typed ~= nil then
+      if not typed(ids, nodes, v, w) then return false end
+    else
+      for _, fd in ipairs(desc.fields) do
+        if not write_field(T, ids, nodes, fd, v, w) then return false end
+      end
     end
   end
   w_u8(w, 0)
@@ -781,7 +632,7 @@ write_union = function(T, ids, nodes, u, val, w)
   w_leb(w, id_ref(ids, arm.id))
   w_u8(w, f.kind)
   local body = W()
-  if not write_union_at(T, ids, nodes, f, val[arm.name], body) then return false end
+  if not write_union_at(T, ids, nodes, f, val[arm.slot], body) then return false end
   w_leb(w, body.n)
   w_raw(w, table.concat(body.parts))
   return true
@@ -856,8 +707,11 @@ end
 -- THE SAVE (docs/SPEC-TABLES.md §3, §3.1): the form byte, the root's fields,
 -- the node table LAST in the root body under the reserved id at kind 12, the
 -- terminator, then the id table and its count. A data cycle or a value with no
--- wire identity refuses the save (nil).
-function S.Save(T, name, v)
+-- wire identity refuses the save (nil). It is the walk S.Save drives by the
+-- descriptors alone and S.SaveTyped drives through the unit's typed bodies
+-- (docs/PORTING.md M22); the numbering, the node table, the id table and the
+-- trailer are this one function either way.
+local function save_with(T, name, v, typed)
   -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
@@ -866,10 +720,15 @@ function S.Save(T, name, v)
   local nodes, why = number_nodes(T, desc, v)
   if nodes == nil then return nil, why end
   local idx = W()
-  local ids = { list = {} }
+  local ids = { list = {}, map = {}, typed = typed }
   w_u8(idx, 1)
-  for _, fd in ipairs(desc.fields) do
-    if not write_field(T, ids, nodes, fd, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+  local root = typed and typed[name]
+  if root ~= nil then
+    if not root(ids, nodes, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+  else
+    for _, fd in ipairs(desc.fields) do
+      if not write_field(T, ids, nodes, fd, v, idx) then return nil, D.refuse_non_finite(T, name, v) end
+    end
   end
   if #nodes.list > 0 then
     w_leb(idx, id_ref(ids, NODE_TABLE_ID))
@@ -904,6 +763,47 @@ function S.Save(T, name, v)
   if desc.integrity ~= nil then out = out .. string.pack("<I4", crc32c(out)) end
   return out
 end
+
+function S.Save(T, name, v)
+  return save_with(T, name, v, nil)
+end
+
+-- THE TYPED SAVE (docs/PORTING.md M22). The unit's generated module carries,
+-- per table, a typed body (T.TypedBodies[name], runtime/save.lua's S.Typed the
+-- helpers it is written against): the scalar leaves, bool, integer, float and
+-- string fields with no guard, presence or `required`, are written straight
+-- from the value with their ids, kinds, widths and defaults as constants in the
+-- body, and every other field goes through the descriptor walk's write_field.
+-- S.Save above stays the descriptor-driven entry that reads the descriptors
+-- on every field; S.SaveTyped writes the same bytes (TestLuaTypedSave...).
+function S.SaveTyped(T, name, v)
+  local typed = T.TypedBodies
+  if typed == nil then error("SaveTyped: this module carries no typed save bodies", 2) end
+  return save_with(T, name, v, typed)
+end
+
+-- what a generated typed body is written against: the writer's pieces, the id
+-- reference, the default compare of a float, and the descriptor walk for the
+-- fields it does not type
+S.Typed = {
+  leb = w_leb,
+  raw = w_raw,
+  float = w_float,
+  same_float = same_float,
+  id_ref = id_ref,
+  field = write_field,
+  -- a field header, the reference to its id then its kind byte: one call, and
+  -- one string when the reference is under 128
+  head = function(w, ids, id, kind)
+    local ref = ids.map[id] or id_ref(ids, id)
+    if ref < 0x80 then
+      w_raw(w, CH[ref] .. CH[kind])
+    else
+      w_leb(w, ref)
+      w_raw(w, CH[kind])
+    end
+  end,
+}
 
 -- THE MEASURE: the length of what Save would write — the saved length.
 -- It mirrors jstable (variableform.go emitRootCodec: Measure is the length

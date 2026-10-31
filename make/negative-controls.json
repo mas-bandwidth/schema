@@ -124,13 +124,16 @@
     {
       "name": "lua",
       "when": "pull-request",
-      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), and the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit), and the caller-owned load's three (an allocation planted per queued slot and per array body turns only the rows that pass through it, another interpreter's version is refused before anything is measured, and a table built and dropped per load turns the soak's count and not its drift; each takes a couple of seconds). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
       "targets": [
         "conformance-negative-control-lua",
         "packet-finite-lua-negative-control",
         "conformance-negative-control-lua-walk",
         "schema-lua-fuzz-negative-control",
-        "schema-lua-resource-bounds-negative-control"
+        "schema-lua-resource-bounds-negative-control",
+        "tables-lua-alloc-negative-control",
+        "tables-lua-alloc-runtime-negative-control",
+        "tables-lua-soak-negative-control"
       ],
       "lua": "5.4.8"
     },

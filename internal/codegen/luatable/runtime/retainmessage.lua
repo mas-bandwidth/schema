@@ -641,7 +641,7 @@ decode_value = function(T, vocab, reader, indexBits, f, holder, key, path, store
         if arm.field ~= nil then
           local owner, field = reader.owner, reader.field
           reader.owner, reader.field = un.name, arm.name
-          local aok = decode_value(T, vocab, reader, indexBits, arm.field, uv, arm.name, p, store, report, o, true)
+          local aok = decode_value(T, vocab, reader, indexBits, arm.field, uv, arm.slot, p, store, report, o, true)
           reader.owner, reader.field = owner, field
           if not aok then return false end
         end

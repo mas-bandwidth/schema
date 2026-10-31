@@ -103,7 +103,7 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, err
 		}
 	}
-	m.Body.WriteString("return _M\n")
+	emitTail(m)
 	out := map[string][]byte{name + ".lua": lua.Format([]byte(m.Body.String()))}
 	names, err := fs.Glob(runtime, "runtime/*.lua")
 	if err != nil {
@@ -134,6 +134,22 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 		out[base] = data
 	}
 	return out, nil
+}
+
+// emitTail closes the module: the keyed accessor's entry (docs/PORTING.md M5),
+// then the seal (M13), which builds every derived descriptor fact once and
+// freezes the module's data against new keys. It is the last thing the module
+// runs before it returns, so every pass's descriptors are in it.
+func emitTail(m *Module) {
+	m.Printf("-- the accessor of an enum-keyed array field (docs/PORTING.md M5): get, set and\n")
+	m.Printf("-- each take the key and refuse None and any key past the enum's last variant\n")
+	m.Printf("function _M.Keyed(table_name, field_name)\n")
+	m.Printf("  return require(\"descriptor\").keyed(_M, table_name, field_name)\n")
+	m.Printf("end\n\n")
+	m.Printf("-- THE DESCRIPTORS ARE CONSTANTS (docs/PORTING.md M13): every derived fact is\n")
+	m.Printf("-- built here, once, and the module's data is frozen against new keys\n")
+	m.Printf("require(\"descriptor\").seal(_M)\n\n")
+	m.Printf("return _M\n")
 }
 
 // unitDeclaresForms reports whether any declared table of u carries an
@@ -421,6 +437,7 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 	m.Printf("  tag = %d,\n", tag)
 	m.Printf("  arm_offset = %d,\n", armOffset)
 	m.Printf("  arms = {\n")
+	slots := armSlots(un)
 	for i, v := range un.Variants {
 		wire := v.Name
 		if v.WasName != "" {
@@ -430,10 +447,35 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 		if v.F != nil {
 			field = fieldDescriptorAt(m.Unit, v.F, i+1, fieldPieces(m.Unit, v.F))
 		}
-		m.Printf("    { name = %q, tag = %d, id = %s, field = %s },\n", v.Name, i+1, idLit(ir.TableWireId(wire)), field)
+		m.Printf("    { name = %q, slot = %q, tag = %d, id = %s, field = %s },\n", v.Name, slots[i], i+1, idLit(ir.TableWireId(wire)), field)
 	}
 	m.Printf("  },\n")
 	m.Printf("}\n\n")
+}
+
+// armSlots answers, per arm, the key of the union VALUE that holds the arm's
+// payload. A Lua union value is { tag = <arm index>, <slot> = <payload> }, so
+// an arm named like the discriminator (`tag`) must not store its payload under
+// the discriminator's key: its slot is the name with underscores appended
+// until it names no arm (docs/SPEC-TABLES.md §2.6). Every other arm's slot is
+// its name; the wire, the text and the JSON still name the arm, never the slot.
+func armSlots(un *ir.Union) []string {
+	taken := map[string]bool{"tag": true}
+	for _, v := range un.Variants {
+		taken[v.Name] = true
+	}
+	out := make([]string, len(un.Variants))
+	for i, v := range un.Variants {
+		slot := v.Name
+		for slot == "tag" {
+			slot += "_"
+			for taken[slot] {
+				slot += "_"
+			}
+		}
+		out[i] = slot
+	}
+	return out
 }
 
 // guardTerm is one conjunct of a guarded field's branch condition: a bool

@@ -76,20 +76,31 @@ func RepoRoot() (string, error) {
 // returns stdout. A nonzero exit fails t with stderr.
 func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	t.Helper()
+	stdout, stderr, err := Try(t, dir, main, inputs)
+	if err != nil {
+		t.Fatalf("lua %s: %v\nstderr:\n%s\nstdout:\n%s", main, err, stderr, stdout)
+	}
+	return []byte(stdout)
+}
+
+// Try is Run for a probe that is EXPECTED to fail: the negative controls
+// sabotage a runtime and require the probe to go red, so they need the
+// failure handed back with both streams and not raised. An interpreter that
+// does not resolve still fails t.
+func Try(t testing.TB, dir, main string, inputs map[string][]byte) (stdout, stderr string, err error) {
+	t.Helper()
 	lua := Interpreter(t)
-	if err := os.WriteFile(filepath.Join(dir, "inputs.lua"), InputsModule(inputs), 0o644); err != nil {
-		t.Fatal(err)
+	if werr := os.WriteFile(filepath.Join(dir, "inputs.lua"), InputsModule(inputs), 0o644); werr != nil {
+		t.Fatal(werr)
 	}
 	cmd := exec.Command(lua, main)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("lua %s: %v\nstderr:\n%s\nstdout:\n%s", main, err, stderr.String(), stdout.String())
-	}
-	return stdout.Bytes()
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	err = cmd.Run()
+	return out.String(), errb.String(), err
 }
 
 // InputsModule renders inputs as a Lua module returning a table of byte
@@ -209,11 +220,20 @@ func LoadUnit(t testing.TB, paths ...string) *ir.Unit {
 	return u
 }
 
-// WriteFiles writes generated files into dir.
+// WriteFiles writes generated files into dir, in byte order of their names. On
+// a case-insensitive filesystem a unit's Save.lua and the runtime's save.lua
+// are one file, and map order would pick the winner at random; byte order
+// writes the capitalized module first and the runtime after it, so the
+// runtime a table module requires is the one that is there, on every host.
 func WriteFiles(t testing.TB, dir string, files map[string][]byte) {
 	t.Helper()
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), files[name], 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

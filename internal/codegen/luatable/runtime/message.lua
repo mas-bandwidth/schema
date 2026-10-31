@@ -496,7 +496,7 @@ read_value = function(R, T, f, holder, key, ctx)
         if arm.field ~= nil then
           local owner, field = ctx.owner, ctx.field
           ctx.owner, ctx.field = un.name, arm.name
-          local aok = read_value(R, T, arm.field, uv, arm.name, ctx)
+          local aok = read_value(R, T, arm.field, uv, arm.slot, ctx)
           ctx.owner, ctx.field = owner, field
           if not aok then return false end
         end
@@ -667,7 +667,7 @@ write_value = function(W, T, f, holder, key, ctx)
       local un = T.Unions[f.target]
       local arm = un.arms[tag]
       W:put(slot(T, arm.id), ctx.refBits)
-      if arm.field ~= nil and not write_value(W, T, arm.field, v, arm.name, ctx) then return false end
+      if arm.field ~= nil and not write_value(W, T, arm.field, v, arm.slot, ctx) then return false end
     end
   elseif s == "table" then
     if not write_body(W, T, f.target, v, ctx) then return false end
@@ -798,17 +798,17 @@ build_numbering = function(T, root, value)
             if arm.field ~= nil then
               local af = arm.field
               if af.shape == "table" then
-                local ok, why = scan(af.target, val[f.name][arm.name])
+                local ok, why = scan(af.target, val[f.name][arm.slot])
                 if not ok then return false, why end
               elseif af.shape == "pointer" then
-                local target = val[f.name][arm.name]
+                local target = val[f.name][arm.slot]
                 if target ~= nil and index[target] == nil then
                   if not add_pointer(target, af.target) then return false end
                   local ok, why = scan(af.target, target)
                   if not ok then return false, why end
                 end
               elseif af.shape == "string_blob" or af.shape == "bytes_blob" then
-                if not add_blob(af, val[f.name][arm.name]) then return false, "blob_shared" end
+                if not add_blob(af, val[f.name][arm.slot]) then return false, "blob_shared" end
               end
             end
           end
@@ -1156,7 +1156,7 @@ local function strict_count(T, d, v)
     local un = T.Unions[d.target]
     if tag ~= 0 and un ~= nil then
       local arm = un.arms[tag]
-      if arm ~= nil and arm.field ~= nil then return strict_count(T, arm.field, v[arm.name]) end
+      if arm ~= nil and arm.field ~= nil then return strict_count(T, arm.field, v[arm.slot]) end
     end
     return 0
   elseif s == "array" then

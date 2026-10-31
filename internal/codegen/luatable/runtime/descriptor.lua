@@ -238,7 +238,7 @@ local function deprecated_value(T, d, val, where, seen)
     if u ~= nil and type(val) == "table" then
       local arm = u.arms[val.tag or 0]
       if arm ~= nil and arm.field ~= nil then
-        return deprecated_value(T, arm.field, val[arm.name], u.name .. "." .. arm.name, seen)
+        return deprecated_value(T, arm.field, val[arm.slot], u.name .. "." .. arm.name, seen)
       end
     end
   end
@@ -316,7 +316,7 @@ local function non_finite_value(T, d, val, where, seen)
     if u ~= nil and type(val) == "table" then
       local arm = u.arms[val.tag or 0]
       if arm ~= nil and arm.field ~= nil then
-        return non_finite_value(T, arm.field, val[arm.name], u.name .. "." .. arm.name, seen)
+        return non_finite_value(T, arm.field, val[arm.slot], u.name .. "." .. arm.name, seen)
       end
     end
   end
@@ -342,6 +342,514 @@ function D.refuse_non_finite(T, name, v)
   local hit = non_finite_in(T, desc, v, {})
   if hit == nil then return nil end
   return "non_finite_float: " .. hit
+end
+
+-- THE ONE POINTER WALK (docs/PORTING.md M15; docs/SPEC-TABLES.md §3.1, §6.3).
+-- The numbering of the save, of the retaining save, of the cook's layout and
+-- the pack that follows it, and of the JSON text form's reference count is ONE
+-- depth-first walk over a member's fields in DECLARATION ORDER that descends
+-- every by-value edge in place (a nested table, an element of a bounded or
+-- keyed array of them, a map entry, a union's set arm) to reach the pointer and
+-- blob fields inside it. Every consumer calls D.number_nodes and differs only
+-- in what it does with the answer, so a node's first visit is the same in all
+-- of them by construction. The shape to refuse is a second copy: it is
+-- self-consistent, the wire surface stays green, and the two numberings part
+-- the first time a by-value edge declared before a pointer reaches a shared
+-- node first (retain.lua's copy had already lost the optional's presence gate).
+
+-- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (§3: a field under a false
+-- guard is elided whatever its storage holds; §3.1: it is not an edge, so its
+-- target takes no node). fd.guard is the conjunction of the field's `if` branch
+-- conditions, each a bool field of the same body and the value it must hold
+-- (luatable.go emitDescriptor; tabletext.Guards); a field with no guard always
+-- rides. A bool not set reads false.
+function D.guard_holds(fd, v)
+  local g = fd.guard
+  if g == nil then return true end
+  for _, t in ipairs(g) do
+    if (v[t.field] == true) ~= t.want then return false end
+  end
+  return true
+end
+
+-- BYTEWISE KEY ORDER (§2.8): Lua's string < is strcoll, which is bytewise only
+-- under the C locale, so a string key is ordered by its unsigned bytes, a
+-- shorter prefix first, whatever locale the host runs.
+function D.bytes_less(a, b)
+  local n = math.min(#a, #b)
+  local i = 1
+  while i <= n do
+    local j = math.min(i + 255, n)
+    local ca, cb = a:sub(i, j), b:sub(i, j)
+    if ca ~= cb then
+      for k = 1, j - i + 1 do
+        local x, y = ca:byte(k), cb:byte(k)
+        if x ~= y then return x < y end
+      end
+    end
+    i = j + 1
+  end
+  return #a < #b
+end
+
+-- A MAP'S ENTRIES IN ASCENDING KEY ORDER (§2.8, §3.1; internal/tablewire
+-- nodes.go MapEntryOrder): one entry table per key, built once per map and
+-- shared by the numbering and the write, so both walks meet the same slots.
+function D.map_entries(cache, fd, x)
+  if x == nil then return {} end
+  local got = cache[x]
+  if got ~= nil then return got end
+  local kf = fd.key_field
+  local keys = {}
+  for key in pairs(x) do
+    keys[#keys + 1] = key
+  end
+  table.sort(keys, function(a, b)
+    if kf.shape == "string" then return D.bytes_less(a, b) end
+    if kf.signed or kf.width < 8 then return a < b end
+    return math.ult(a, b)
+  end)
+  local keyname = kf.name
+  local valname = fd.value_field.name
+  got = {}
+  for i, key in ipairs(keys) do
+    got[i] = { [keyname] = key, [valname] = x[key] }
+  end
+  cache[x] = got
+  return got
+end
+
+-- the live element count of an array field's value
+function D.count_of(fd, v)
+  local s = fd.shape
+  if s == "bytes" then return #v end
+  if fd.list then return #v end
+  if fd.fixed then return fd.bound or 0 end
+  return math.min(#v, fd.bound or 0)
+end
+
+local STRING_BLOB_ID = 0x704be0d8faaffc58
+local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
+
+local edge_value, edge_union, edges
+
+-- one value's pointer and blob edges, in the walk's order. holder/name name
+-- the slot the value occupies (a table's field or a union arm's payload);
+-- cache holds each map's entries (D.map_entries).
+edge_value = function(T, fd, val, holder, name, out, cache)
+  local s = fd.shape
+  if s == "string_blob" or s == "bytes_blob" then
+    if val ~= nil and val ~= false then
+      out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
+    end
+  elseif s == "pointer" then
+    if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
+  elseif s == "table" then
+    local d = T.Tables[fd.target]
+    if d then edges(T, d, val, out, cache) end
+  elseif s == "array" then
+    local n = D.count_of(fd, val)
+    local e = fd.elem
+    for i = 1, n do
+      edge_value(T, e, val[i], val, i, out, cache)
+    end
+  elseif s == "union" then
+    edge_union(T, T.Unions[fd.target], val, out, cache)
+  elseif s == "map" then
+    -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
+    -- entries in ascending key order, each descended before the next
+    local d = T.Tables[fd.entry]
+    for _, kv in ipairs(D.map_entries(cache, fd, val)) do
+      edges(T, d, kv, out, cache)
+    end
+  end
+end
+
+-- a union arm's payload is a field line: its pointers, blobs, tables, arrays
+-- and nested unions are edges at the arm's position (§2.6, §3.1).
+edge_union = function(T, u, val, out, cache)
+  local tag = type(val) == "table" and val.tag or 0
+  if tag == 0 or u == nil then return end
+  local arm = u.arms[tag]
+  if arm == nil or arm.field == nil then return end
+  edge_value(T, arm.field, val[arm.slot], val, arm.slot, out, cache)
+end
+
+-- the pointer and blob edges of one node's by-value closure, in the walk's
+-- order: fields in declaration order, array elements in index order. An absent
+-- by-value node (nil) holds only its declared defaults and no pointer or blob
+-- edge (§3, §4.2). AN ABSENT ?T OWNS NO NODE (§2.3): the walk gates on the
+-- presence companion, so a value made absent after it was present writes no
+-- stale node for the edges its untouched storage still holds.
+edges = function(T, desc, v, out, cache)
+  if v == nil then return out end
+  for _, fd in ipairs(desc.fields) do
+    if D.guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
+      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
+    end
+  end
+  return out
+end
+
+-- D.number_nodes numbers the nodes (§3.1, internal/tablewire/nodes.go):
+-- first-visit order of a depth-first pre-order walk from root over POINTER
+-- EDGES, every by-value edge descended in place. Node index 1 is the root and
+-- record k is index k + 1. It answers
+--   { list = { {typeId, codec, v} | {typeId, body, string, val}, ... },
+--     index = { [value or blob box] = index },
+--     refs = { [value or blob box] = how many slots name it },
+--     entries = the maps' entry tables }
+-- or nil for a DATA CYCLE (a reference to a node whose descent is still open),
+-- or nil, "blob_shared" when refuse_shared is set and a blob is named twice
+-- (§2.5, §16.7: a blob is owned by one slot; the save refuses it by name).
+-- A BLOB NODE IS NUMBERED BY IDENTITY (§3.1, §6.3): a loaded blob is the box
+-- load gave its node, so two distinct nodes with equal bytes stay two and one
+-- box named from two slots is one node.
+function D.number_nodes(T, desc, root, refuse_shared)
+  local nodes = { list = {}, index = {}, refs = {}, entries = {} }
+  local list, index, refs = nodes.list, nodes.index, nodes.refs
+  index[root] = 1
+  local open = { [root] = true }
+  local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
+  while #stack > 0 do
+    local top = stack[#stack]
+    if top.i >= #top.edges then
+      open[top.v] = nil
+      stack[#stack] = nil
+    else
+      local e = top.edges[top.i + 1]
+      top.i = top.i + 1
+      local val = e.val
+      if e.blob then
+        refs[val] = (refs[val] or 0) + 1
+        if index[val] ~= nil then
+          if refuse_shared then return nil, "blob_shared" end
+        else
+          local isstring = e.shape == "string_blob"
+          local tid = isstring and STRING_BLOB_ID or BYTES_BLOB_ID
+          local body = type(val) == "table" and val.value or val
+          list[#list + 1] = { typeId = tid, body = body, string = isstring, val = val }
+          index[val] = #list + 1
+        end
+      else
+        if open[val] then return nil end
+        refs[val] = (refs[val] or 0) + 1
+        if index[val] == nil then
+          local d = T.Tables[e.target]
+          if d == nil then return nil end
+          list[#list + 1] = { typeId = d.type_id, codec = d, v = val }
+          index[val] = #list + 1
+          open[val] = true
+          stack[#stack + 1] = { v = val, edges = edges(T, d, val, {}, nodes.entries), i = 0 }
+        end
+      end
+    end
+  end
+  return nodes
+end
+
+-- THE DEFAULTS IN PLACE (docs/PORTING.md M1; docs/SPEC-TABLES.md §3, §4). A
+-- load fills caller-owned storage, so the caller's value is put back to the
+-- declared defaults IN PLACE and read into: D.reset(T, desc, v) leaves v
+-- deep-equal to the module's New<Name>() and allocates nothing where v already
+-- has the shape (a nested table, a fixed array, a union value, a wide integer
+-- and a wide string are reused; a list, a map and a counted array are emptied
+-- to their born length). TestLuaResetEqualsTheConstructor holds it to the
+-- constructor over every table.
+local reset_value, reset_union, reset_array, reset_clear
+
+-- empties a table of every key
+reset_clear = function(t)
+  for k in pairs(t) do
+    t[k] = nil
+  end
+end
+
+-- one array element's zero (§2.9): a record's own defaults, a union's tag 0,
+-- None as false, and a scalar's zero; x is the slot's present value
+local function reset_elem(T, e, x)
+  local s = e.shape
+  if s == "table" then
+    local d = T.Tables[e.target]
+    if type(x) == "table" then
+      D.reset(T, d, x)
+      return x
+    end
+    return D.fresh(T, d)
+  elseif s == "union" then
+    return reset_union(x)
+  elseif s == "bool" or s == "enum" or s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+    return false
+  elseif s == "float" then
+    return 0.0
+  elseif s == "string" or s == "bytes" then
+    return ""
+  elseif s == "wstring" then
+    if type(x) == "table" then
+      reset_clear(x)
+      return x
+    end
+    return {}
+  elseif s == "wide" then
+    if type(x) == "table" then
+      x.lo, x.hi = 0, 0
+      return x
+    end
+    return { lo = 0, hi = 0 }
+  end
+  return 0
+end
+
+reset_union = function(x)
+  if type(x) == "table" then
+    reset_clear(x)
+    x.tag = 0
+    return x
+  end
+  return { tag = 0 }
+end
+
+reset_array = function(T, fd, x)
+  local n
+  if fd.list then
+    n = 0
+  elseif fd.fixed or fd.keyed ~= nil then
+    n = fd.bound
+  else
+    n = fd.min or 0
+  end
+  if type(x) ~= "table" then x = {} end
+  local e = fd.elem
+  for i = 1, n do
+    x[i] = reset_elem(T, e, x[i])
+  end
+  for i = #x, n + 1, -1 do
+    x[i] = nil
+  end
+  return x
+end
+
+reset_value = function(T, fd, v)
+  local name, s = fd.name, fd.shape
+  if s == "array" then
+    v[name] = reset_array(T, fd, v[name])
+  elseif s == "map" or s == "wstring" then
+    local x = v[name]
+    if type(x) == "table" then
+      reset_clear(x)
+    else
+      v[name] = {}
+    end
+  elseif s == "table" then
+    local d = T.Tables[fd.target]
+    local x = v[name]
+    if type(x) == "table" then
+      D.reset(T, d, x)
+    else
+      v[name] = D.fresh(T, d)
+    end
+  elseif s == "union" then
+    v[name] = reset_union(v[name])
+  elseif s == "wide" then
+    local x, def = v[name], fd.default
+    if type(x) == "table" then
+      x.lo, x.hi = def.lo, def.hi
+    else
+      v[name] = { lo = def.lo, hi = def.hi }
+    end
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+    v[name] = nil
+  elseif s == "enum" then
+    v[name] = fd.default
+  else
+    v[name] = fd.default
+  end
+  if fd.optional then v[fd.pkey] = false end
+end
+
+-- one array element's zero, put in place into the slot x holds (a union's
+-- table is emptied and tagged 0, a record reset), for a load that reads a fixed
+-- array into the array it already holds
+D.reset_elem = reset_elem
+
+-- D.fresh builds one table's defaults, the descriptor's own constructor: the
+-- module's New<Name>() where it has one (it always does), else the walk's.
+function D.fresh(T, desc)
+  local ctor = desc.ctor
+  if ctor ~= nil then return ctor() end
+  return D.reset(T, desc, {})
+end
+
+-- D.reset puts v back to desc's declared defaults in place and answers it.
+function D.reset(T, desc, v)
+  for _, fd in ipairs(desc.fields) do
+    reset_value(T, fd, v)
+  end
+  return v
+end
+
+-- THE KEYED ACCESSOR (docs/PORTING.md M5; docs/SPEC-TABLES.md §2.4, §3.2). An
+-- enum-keyed array has one slot per NAMED variant: key 1 lives at index 1 and
+-- E.Max at the last, and None (key 0) has no slot. D.keyed(T, table, field)
+-- resolves the field once and answers the accessor:
+--   get(array, key), set(array, key, value)   one unsigned compare covers both
+--     ends, so None, a negative key and any key past E.Max are refused in the
+--     one place the key is spelled; a Lua error always runs, and a bare
+--     `array[key]` is nil for all three and refuses nothing;
+--   each(array)    for key, element in acc.each(array): the key beside the
+--     element, so the caller never does the shift;
+--   key(name)      the key of a variant NAME (the table wire's own identity,
+--     §5), refused by name when the enum has no such variant;
+--   max            E.Max.
+function D.keyed(T, tname, fname)
+  local desc = T.Tables[tname]
+  if desc == nil then error("keyed: no table " .. tostring(tname), 2) end
+  local f = D.field(desc, fname)
+  if f == nil or f.keyed == nil then
+    error("keyed: " .. tname .. "." .. tostring(fname) .. " is not an enum-keyed array", 2)
+  end
+  local n = #f.keyed
+  local where = tname .. "." .. fname
+  local function refuse(key)
+    error(
+      string.format("keyed_refused: key %s names no variant of %s (1 through %d; 0 is None)", tostring(key), where, n),
+      3
+    )
+  end
+  local by_name = {}
+  for i, v in ipairs(f.keyed) do
+    by_name[v[1]] = i
+  end
+  local function step(array, i)
+    i = i + 1
+    if i > n then return nil end
+    return i, array[i]
+  end
+  return {
+    max = n,
+    get = function(array, key)
+      if math.type(key) ~= "integer" or not math.ult(key - 1, n) then refuse(key) end
+      return array[key]
+    end,
+    set = function(array, key, value)
+      if math.type(key) ~= "integer" or not math.ult(key - 1, n) then refuse(key) end
+      array[key] = value
+    end,
+    each = function(array)
+      return step, array, 0
+    end,
+    key = function(name)
+      local k = by_name[name]
+      if k == nil then error(string.format("keyed_refused: %s names no variant of %s", tostring(name), where), 2) end
+      return k
+    end,
+  }
+end
+
+-- THE DESCRIPTORS ARE CONSTANTS (docs/PORTING.md M13). The generated module
+-- ends with D.seal(_M): first D.prepare builds, once, every fact the runtime
+-- derives from the descriptors (a table's pointer reachability, the type-id
+-- index, the fixed form's layout trees), then every data table the module
+-- holds is frozen against NEW KEYS by a metatable whose __newindex refuses, so
+-- a read-a-static, build-on-nil, store-back cache written into a descriptor
+-- fails where it is written. Lua has no way to refuse the overwrite of a key
+-- that is already there without moving the table behind a proxy (a function
+-- call on every descriptor read), so the second half of the rule is a gate:
+-- D.fingerprint(T) is the whole tree as one string and the test that runs
+-- every surface requires it unchanged (TestLuaDescriptorsAreConstants).
+local SEALED = {
+  __newindex = function(_, k)
+    error("a descriptor is a constant: refusing to write key " .. tostring(k) .. " into it (docs/PORTING.md M13)", 2)
+  end,
+  __metatable = false,
+}
+
+local function seal_tree(t, seen)
+  if seen[t] then return end
+  seen[t] = true
+  for _, v in pairs(t) do
+    if type(v) == "table" then seal_tree(v, seen) end
+  end
+  setmetatable(t, SEALED)
+end
+
+function D.prepare(T)
+  local ids = {}
+  for _, d in pairs(T.Tables) do
+    ids[d.type_id] = d
+    local nodes, string_blob, bytes_blob = D.pointer_reachable(T, d)
+    d.reach = { nodes = nodes, string_blob = string_blob, bytes_blob = bytes_blob }
+    -- the field of each wire id, the `| required` fields (false when there are
+    -- none, so a load tracks arrivals only where a field is demanded) and each
+    -- optional's presence key, so the load never scans a field list, builds
+    -- a name or allocates a set per body
+    local byid, required = {}, {}
+    for _, f in ipairs(d.fields) do
+      byid[f.id] = f
+      if f.required then required[#required + 1] = f end
+      if f.optional then f.pkey = f.name .. "_present" end
+    end
+    d.byid = byid
+    d.required = #required > 0 and required or false
+    d.ctor = T["New" .. d.name]
+  end
+  for _, u in pairs(T.Unions) do
+    local byid = {}
+    for _, a in ipairs(u.arms) do
+      byid[a.id] = a
+    end
+    u.byid = byid
+  end
+  T.TypeIds = ids
+  if T.Fixed ~= nil then require("fixed").prepare(T) end
+end
+
+function D.seal(T)
+  D.prepare(T)
+  local seen = {}
+  for _, v in pairs(T) do
+    if type(v) == "table" then seal_tree(v, seen) end
+  end
+end
+
+-- D.fingerprint answers the module's data as one string: every key and scalar
+-- of every table the module holds, in sorted key order, a table reached twice
+-- named by its first visit. Two calls on an unmodified module answer the same
+-- string.
+function D.fingerprint(T)
+  local out, seen, n = {}, {}, 0
+  local function walk(t, path)
+    n = n + 1
+    seen[t] = n
+    local keys = {}
+    for k in pairs(t) do
+      keys[#keys + 1] = k
+    end
+    table.sort(keys, function(a, b)
+      local ta, tb = type(a), type(b)
+      if ta ~= tb then return ta < tb end
+      if ta == "number" or ta == "string" then return a < b end
+      return tostring(a) < tostring(b)
+    end)
+    for _, k in ipairs(keys) do
+      local v = t[k]
+      local at = path .. "." .. tostring(k)
+      if type(v) == "table" then
+        if seen[v] then
+          out[#out + 1] = at .. "=@" .. seen[v]
+        else
+          out[#out + 1] = at .. "=#"
+          walk(v, at)
+        end
+      elseif math.type(v) == "float" then
+        out[#out + 1] = at .. "=float:" .. string.format("%a", v)
+      elseif type(v) ~= "function" then
+        out[#out + 1] = at .. "=" .. type(v) .. ":" .. tostring(v)
+      end
+    end
+  end
+  walk(T, "")
+  return table.concat(out, "\n")
 end
 
 return D

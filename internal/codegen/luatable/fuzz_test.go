@@ -122,6 +122,11 @@ end
 local function hex(s)
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
+-- THE CALLER-OWNED LOAD (docs/PORTING.md M1) rides every mutant: one state and
+-- one value are kept across the whole run, so each mutant is read into the
+-- value the one before it left, and must answer exactly what the plain load
+-- answers: the same report, the same root or none, the same re-saved bytes.
+local state, into = load.NewState(), T.New` + root + `()
 local function work(wire)
   local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
                    clamped = 0, widened = 0, duplicate = 0 }
@@ -132,6 +137,20 @@ local function work(wire)
     loaded = 1
     local b = save.Save(T, "` + root + `", v)
     if b ~= nil then savedHex = hex(b) end
+  end
+  local report2 = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
+                    clamped = 0, widened = 0, duplicate = 0 }
+  local v2 = load.LoadTolerant(T, "` + root + `", wire, report2, state, into)
+  local saved2 = "none"
+  if v2 ~= nil then
+    local b = save.Save(T, "` + root + `", v2)
+    if b ~= nil then saved2 = hex(b) end
+  end
+  for _, k in ipairs({ "malformed", "refused", "unknown", "kindMismatch", "clamped", "widened", "duplicate" }) do
+    if report[k] ~= report2[k] then error("the caller-owned load counted " .. k .. " differently") end
+  end
+  if (report.nonFiniteFloat == nil) ~= (report2.nonFiniteFloat == nil) or (v == nil) ~= (v2 == nil) or saved2 ~= savedHex then
+    error("the caller-owned load read a different value")
   end
   return table.concat({ loaded, report.unknown, report.kindMismatch,
     report.widened, report.clamped, report.duplicate,
@@ -551,14 +570,17 @@ func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 }
 
 // luaFuzzControlAnchor is the string field's frame check in the emitted load
-// (runtime/load.lua, read_field): a length past the body is malformed (§3).
-// The "string" branch is matched so the anchor is unique (the "wstring" branch
-// carries the same frame check but a different elseif line).
+// (runtime/load.lua, read_payload, the code a field and a union arm are both
+// read by): a length past the body is malformed (§3). The "string" branch is
+// matched so the anchor is unique (the "wstring" branch carries the same frame
+// check but a different elseif line).
 const luaFuzzControlAnchor = `  elseif s == "string" then
-    local n = r_leb(r)
-    if r.bad or not fits(r, n) then
-      report.malformed = true
-      return false
+    if n == nil then
+      n = r_leb(r)
+      if r.bad or not fits(r, n) then
+        report.malformed = true
+        return nil, STOP
+      end
     end`
 
 // TestLuaWireFuzzNegativeControl patches the emitted load in memory — one

@@ -24,28 +24,26 @@ local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 
 -- CRC-32C, the Castagnoli polynomial reflected (0x82F63B78) with the initial
--- value and final XOR §2.14 names. ONE TABLE, built once on first use, is the
--- check save.lua seals and load.lua and refusal.lua verify (docs/SPEC-TABLES.md
--- §2.14, §3.4).
-local crc_table = nil
-
-function L.crc32c(bytes)
-  if crc_table == nil then
-    crc_table = {}
-    for i = 0, 255 do
-      local c = i
-      for _ = 1, 8 do
-        if c & 1 == 1 then
-          c = (c >> 1) ~ 0x82f63b78
-        else
-          c = c >> 1
-        end
-      end
-      crc_table[i] = c
+-- value and final XOR §2.14 names. ONE TABLE, built once when the file is
+-- required (a constant: docs/PORTING.md M13 bans the read-a-static, build-on-nil,
+-- store-back cache), is the check save.lua seals and load.lua and refusal.lua
+-- verify (docs/SPEC-TABLES.md §2.14, §3.4).
+local crc_table = {}
+for i = 0, 255 do
+  local c = i
+  for _ = 1, 8 do
+    if c & 1 == 1 then
+      c = (c >> 1) ~ 0x82f63b78
+    else
+      c = c >> 1
     end
   end
+  crc_table[i] = c
+end
+
+function L.crc32c(bytes, n)
   local crc = 0xffffffff
-  for i = 1, #bytes do
+  for i = 1, n or #bytes do
     crc = crc_table[(crc ~ bytes:byte(i)) & 0xff] ~ (crc >> 8)
   end
   return crc ~ 0xffffffff
@@ -55,6 +53,32 @@ end
 -- bytes and a 0-based cursor with a limit for a nested body.
 local function new_reader(b, at, lim)
   return { b = b, at = at, lim = lim, bad = false }
+end
+
+-- a reader the caller already owns, pointed at another range: no table is
+-- built (docs/PORTING.md M1)
+local function point(r, b, at, lim)
+  r.b, r.at, r.lim, r.bad = b, at, lim, false
+  return r
+end
+
+-- A NESTED BODY IS BOUNDED BY NARROWING THE READER'S LIMIT, never by slicing a
+-- new view (docs/PORTING.md M1: a sub-view is an allocation and a limit is an
+-- integer). narrow(r, n) bounds r to the n bytes at its cursor and answers what
+-- restore(r, at, n, lim, bad) puts back: the limit, the sticky bad flag a
+-- nested read may have set (it belongs to that body alone), and the cursor
+-- past the body's L, wherever the body stopped.
+local function narrow(r, n)
+  local lim, bad = r.lim, r.bad
+  r.lim = r.at + n
+  r.bad = false
+  return lim, bad
+end
+
+local function restore(r, at, n, lim, bad)
+  r.lim = lim
+  r.bad = bad
+  r.at = at + n
 end
 
 local function byteat(r)
@@ -263,8 +287,10 @@ end
 
 -- the form byte, the trailer and the id table, and the root body's own
 -- framing (docs/SPEC-TABLES.md §3): nil when the wire is refused or damaged.
-local function open(bytes, report)
-  if #bytes < 1 then
+-- The id table and its seen-set are the loader state's own (st.ids, st.seen,
+-- emptied here before they are filled), and so is the answer.
+local function open(bytes, blen, report, st)
+  if blen < 1 then
     report.malformed = true
     report.wireDamaged = true
     return nil
@@ -273,20 +299,23 @@ local function open(bytes, report)
     report.refused = 1
     return nil
   end
-  if #bytes < 9 then
+  if blen < 9 then
     report.malformed = true
     report.wireDamaged = true
     return nil
   end
-  local count = string.unpack("<i8", bytes, #bytes - 7)
-  if count < 0 or count > (#bytes - 9) // 8 then
+  local count = string.unpack("<i8", bytes, blen - 7)
+  if count < 0 or count > (blen - 9) // 8 then
     report.malformed = true
     report.wireDamaged = true
     return nil
   end
-  local endpos = #bytes - 8 - count * 8
-  local table_ids = {}
-  local seen = {}
+  local endpos = blen - 8 - count * 8
+  local table_ids, seen = st.ids, st.seen
+  for i = 1, #table_ids do
+    seen[table_ids[i]] = nil
+    table_ids[i] = nil
+  end
   for i = 0, count - 1 do
     local id = string.unpack("<i8", bytes, endpos + i * 8 + 1)
     if seen[id] then
@@ -298,7 +327,7 @@ local function open(bytes, report)
     table_ids[i + 1] = id
   end
   -- roots end at their own zero reference; bytes after it are damage (§3)
-  local w = new_reader(bytes, 1, endpos)
+  local w = point(st.scan, bytes, 1, endpos)
   while true do
     local ref = r_leb(w)
     if w.bad then break end
@@ -315,7 +344,9 @@ local function open(bytes, report)
     local kind = r_u8(w)
     if not skip(w, kind) then break end
   end
-  return { table = table_ids, lim = endpos }
+  local o = st.o
+  o.table, o.lim = table_ids, endpos
+  return o
 end
 
 -- THE NODE RECORDS (§3.1): the numbering is positional and whole or nothing.
@@ -323,10 +354,14 @@ end
 -- table rides only in a VARIABLE root's body; in a FIXED root the reserved id is
 -- an ordinary field this table cannot name, skipped and counted unknown (§3.1,
 -- §4), never a numbering to parse — the Go oracle's body reader treats it the
--- same (§3).
-local function node_scan(bytes, o, report, variable)
-  local w = new_reader(bytes, 1, o.lim)
-  local payload = nil
+-- same (§3). Each record is its type id and the range of its body in the wire
+-- itself (at, lim), never a copy of it. A wire with no node table answers NO_NODES,
+-- the one empty list, which nothing writes to.
+local NO_NODES = {}
+
+local function node_scan(bytes, o, report, variable, st)
+  local w = point(st.scan, bytes, 1, o.lim)
+  local at, lim = nil, nil
   local present = false
   local bad = false
   while not bad do
@@ -348,7 +383,7 @@ local function node_scan(bytes, o, report, variable)
         bad = true
         break
       end
-      payload = string.sub(w.b, w.at + 1, w.at + n)
+      at, lim = w.at, w.at + n
       w.at = w.at + n
     elseif not skip(w, kind) then
       break
@@ -359,8 +394,8 @@ local function node_scan(bytes, o, report, variable)
     report.wireDamaged = true
     return nil
   end
-  if not present then return {} end
-  local rec = new_reader(payload, 0, #payload)
+  if not present then return NO_NODES end
+  local rec = point(st.scan, bytes, at, lim)
   local count = r_leb(rec)
   if rec.bad then
     report.malformed = true
@@ -381,7 +416,7 @@ local function node_scan(bytes, o, report, variable)
       report.wireDamaged = true
       return nil
     end
-    raw[#raw + 1] = { tid = o.table[tref], body = string.sub(payload, rec.at + 1, rec.at + n) }
+    raw[#raw + 1] = { tid = o.table[tref], at = rec.at, lim = rec.at + n }
     rec.at = rec.at + n
   end
   if count ~= #raw then
@@ -475,6 +510,15 @@ local function widens(kind, declared)
   if declared == 19 then return kind >= 6 and kind <= 9 end
   if declared == 11 then return kind == 10 end
   return false
+end
+
+-- a bound the value is clamped to is the VALUE it becomes: a wide bound is the
+-- descriptor's own { lo, hi } table, which a value must never alias (a load that
+-- reads into the caller's value puts it back in place, and a descriptor is a
+-- constant, docs/PORTING.md M13), so it is copied
+local function bound_value(b)
+  if type(b) == "table" then return { lo = b.lo, hi = b.hi } end
+  return b
 end
 
 local function less_than(d, a, b)
@@ -586,10 +630,10 @@ local function scalar_at(r, d, kind, report, ctx)
   end
   if d.lo ~= nil and d.hi ~= nil then
     if less_than(d, x, d.lo) then
-      x = d.lo
+      x = bound_value(d.lo)
       report.clamped = report.clamped + 1
     elseif less_than(d, d.hi, x) then
-      x = d.hi
+      x = bound_value(d.hi)
       report.clamped = report.clamped + 1
     end
   end
@@ -640,9 +684,59 @@ local read_element
 local read_union
 
 local function fresh(T, desc)
-  local ctor = T["New" .. desc.name]
-  if ctor == nil then return {} end
-  return ctor()
+  return D.fresh(T, desc)
+end
+
+-- the table a nested value is read into: the one the holder already has
+-- (put back to the declared defaults in place) when the field is read for the
+-- first time, a fresh one otherwise (docs/PORTING.md M1)
+local function renew(T, desc, existing)
+  if type(existing) == "table" then return D.reset(T, desc, existing) end
+  return D.fresh(T, desc)
+end
+
+-- THE PENDING POINTER SLOTS (§3.1): one entry per slot a load queues for
+-- resolution, kept in the loader state and reused, so queueing a slot builds
+-- nothing once the state has run a load of its size
+local function queue(ctx, holder, key, index, d)
+  local n = ctx.np + 1
+  ctx.np = n
+  local pending = ctx.pending
+  local p = pending[n]
+  if p == nil then
+    p = {}
+    pending[n] = p
+  end
+  p.holder, p.key, p.index, p.d = holder, key, index, d
+end
+
+-- takes slot j out of the queue; its entry is kept at the end for reuse
+local function unqueue(ctx, j)
+  local pending, n = ctx.pending, ctx.np
+  local p = pending[j]
+  for k = j, n - 1 do
+    pending[k] = pending[k + 1]
+  end
+  pending[n] = p
+  ctx.np = n - 1
+end
+
+-- a map entry's key at its declared default: the descriptor's own, except a
+-- wide one, which is a table the constructor builds fresh
+local function key_default(T, entry, kf)
+  if kf.shape == "wide" then return D.fresh(T, entry)[kf.name] end
+  return kf.default
+end
+
+-- a body that is read again from its defaults (damage inside its own L reads
+-- the defaults) must not take the pointer slots the damaged read queued: they
+-- are pointed at the state's sink, a table nothing reads, and still resolve
+-- and count as they always did
+local function discard(ctx, from)
+  local pending, sink = ctx.pending, ctx.sink
+  for i = from + 1, ctx.np do
+    pending[i].holder = sink
+  end
 end
 
 local function zero_elem(T, e)
@@ -678,7 +772,7 @@ local function zero_array(T, f)
 end
 
 -- one element of an array body (docs/SPEC-TABLES.md §2.9, §3)
-read_element = function(T, ctx, e, ek, sub, out, index)
+read_element = function(T, ctx, e, ek, sub, out, index, reuse)
   local s = e.shape
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     local i = r_leb(sub)
@@ -686,7 +780,7 @@ read_element = function(T, ctx, e, ek, sub, out, index)
       ctx.report.malformed = true
       return false, false
     end
-    ctx.pending[#ctx.pending + 1] = { holder = out, key = index, index = i, d = e }
+    queue(ctx, out, index, i, e)
     return false, true
   elseif s == "enum" then
     local x, ok = enum_read(ctx.table, sub, e, ctx.report)
@@ -731,14 +825,20 @@ read_element = function(T, ctx, e, ek, sub, out, index)
       return false, false
     end
     local d = T.Tables[e.target]
-    local inst = fresh(T, d)
-    local body = new_reader(sub.b, sub.at, sub.at + n)
-    read_body(T, ctx, d, body, inst, true)
-    if body.at ~= body.lim then
+    -- a fixed array's slot is read into the record it holds, once, and a
+    -- counted or unbounded element is built
+    local inst = reuse and renew(T, d, out[index]) or fresh(T, d)
+    local np0 = ctx.np
+    local at0 = sub.at
+    local lim, bad = narrow(sub, n)
+    read_body(T, ctx, d, sub, inst, true)
+    local clean = sub.at == sub.lim
+    restore(sub, at0, n, lim, bad)
+    if not clean then
       ctx.report.malformed = true
-      inst = fresh(T, d)
+      discard(ctx, np0)
+      inst = renew(T, d, inst)
     end
-    sub.at = sub.at + n
     return inst, true
   elseif s == "union" then
     local u = T.Unions[e.target]
@@ -800,8 +900,10 @@ end
 -- mismatch, and a key the scan cannot read, or a terminator that does not end
 -- the entry, is damage. Nothing the scan reads is counted.
 local function map_key(ctx, kf, b, at, lim, key)
-  local scan = new_reader(b, at, lim)
-  local junk = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false }
+  local scan = point(ctx.scan, b, at, lim)
+  local junk = ctx.junk
+  junk.unknown, junk.kindMismatch, junk.widened, junk.clamped, junk.duplicate = 0, 0, 0, 0, 0
+  junk.malformed, junk.nonFiniteFloat = false, nil
   local kindbad, widened = false, false
   while true do
     local ref = r_leb(scan)
@@ -878,15 +980,31 @@ end
 -- before this occurrence: a FIXED array keeps the elements a damaged repeat
 -- could not replace (decode.go arrayBody leaves fv.Elems standing), while a
 -- counted or unbounded one is replaced whole.
-read_array_body = function(T, ctx, fd, hdr, endpos, prior)
+local array_elements
+
+read_array_body = function(T, ctx, fd, r, endpos, prior, reuse)
   local report = ctx.report
-  local ek = r_u8(hdr)
-  local count = r_leb(hdr)
-  if hdr.bad then
+  -- the header is read through the reader that carries the body, bounded by its
+  -- parent, and the elements through the same reader with its limit narrowed to
+  -- the body's own end (docs/PORTING.md M1: a limit, never a new view)
+  local lim, bad = r.lim, r.bad
+  r.bad = false
+  local ek = r_u8(r)
+  local count = r_leb(r)
+  if r.bad then
+    r.lim, r.bad = lim, bad
     report.malformed = true
     return nil
   end
-  local sub = new_reader(hdr.b, hdr.at, math.max(hdr.at, endpos))
+  r.lim = math.max(r.at, endpos)
+  local out, selected = array_elements(T, ctx, fd, r, ek, count, prior, reuse)
+  r.lim, r.bad = lim, bad
+  return out, selected
+end
+
+-- the elements of an array body, read from the reader sub, bounded to the body
+array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
+  local report = ctx.report
 
   if fd.shape == "bytes" then
     local expected = 6
@@ -902,15 +1020,18 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
       keep = fd.bound
       report.clamped = report.clamped + 1
     end
-    local out = {}
-    for _ = 1, keep do
-      if sub.at >= sub.lim then
-        report.malformed = true
-        break
-      end
-      out[#out + 1] = string.char(r_u8(sub))
+    -- `keep` bytes, or the bytes the body holds (a body that is short is
+    -- malformed); a count at or past 2^63 is a negative integer and keeps none
+    local take = keep
+    if take < 0 then take = 0 end
+    local avail = sub.lim - sub.at
+    if take > avail then
+      take = avail
+      report.malformed = true
     end
-    return table.concat(out)
+    local out = string.sub(sub.b, sub.at + 1, sub.at + take)
+    sub.at = sub.at + take
+    return out
   end
 
   if fd.shape == "map" then
@@ -948,7 +1069,7 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
       end
       local at = sub.at
       sub.at = sub.at + n
-      local key, keyok, kindbad, ewidened = map_key(ctx, kf, sub.b, at, at + n, fresh(T, entry)[keyname])
+      local key, keyok, kindbad, ewidened = map_key(ctx, kf, sub.b, at, at + n, key_default(T, entry, kf))
       if ewidened and not widened then
         -- the MAP counts one widened, at the first key the declaration widens
         widened = true
@@ -979,14 +1100,17 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
           break
         end
         local inst = fresh(T, entry)
-        read_body(T, ctx, entry, new_reader(sub.b, at, at + n), inst, true, keyname)
+        sub.at = at
+        local elim, ebad = narrow(sub, n)
+        read_body(T, ctx, entry, sub, inst, true, keyname)
+        restore(sub, at, n, elim, ebad)
         local dkey = inst[keyname]
         if order == 0 then
           -- EQUAL: a DUPLICATE, and last wins WHOLE
           report.duplicate = report.duplicate + 1
-          for j = #ctx.pending, 1, -1 do
+          for j = ctx.np, 1, -1 do
             local pp = ctx.pending[j]
-            if pp.holder == out and pp.key == last then table.remove(ctx.pending, j) end
+            if pp.holder == out and pp.key == last then unqueue(ctx, j) end
           end
           out[last] = nil
         else
@@ -1001,7 +1125,7 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
         local vf = fd.value_field
         if vf.shape == "pointer" or vf.shape == "string_blob" or vf.shape == "bytes_blob" then
           out[dkey] = false
-          for j = #ctx.pending, 1, -1 do
+          for j = ctx.np, 1, -1 do
             local pp = ctx.pending[j]
             if pp.holder == inst then
               pp.holder = out
@@ -1028,12 +1152,18 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
   if fd.keyed ~= nil then
     -- A keyed slot a repeat does not name keeps what the earlier occurrence
     -- placed (decode.go keyed writes one slot at a time and clears none).
-    local out = {}
-    for i = 1, fd.bound do
-      if prior ~= nil then
-        out[i] = prior[i]
-      else
-        out[i] = zero_elem(T, fd.elem)
+    local out
+    if prior ~= nil and reuse then
+      -- the array the field already holds, read into in place
+      out = prior
+    else
+      out = {}
+      for i = 1, fd.bound do
+        if prior ~= nil then
+          out[i] = prior[i]
+        else
+          out[i] = zero_elem(T, fd.elem)
+        end
       end
     end
     -- AN ENUM-KEYED BODY places its triples BY KEY (docs/SPEC-TABLES.md §3.2;
@@ -1060,8 +1190,11 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
       end
       if slot == nil then
         report.unknown = report.unknown + 1
+        sub.at = sub.at + n
       else
-        local body = new_reader(sub.b, sub.at, sub.at + n)
+        local at0 = sub.at
+        local blim, bbad = narrow(sub, n)
+        local body = sub
         local e = fd.elem
         local es = e.shape
         if es == "pointer" or es == "string_blob" or es == "bytes_blob" then
@@ -1069,7 +1202,7 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
           if body.bad or body.at ~= body.lim then
             report.malformed = true
           else
-            ctx.pending[#ctx.pending + 1] = { holder = out, key = slot, index = idx, d = e }
+            queue(ctx, out, slot, idx, e)
           end
         elseif es == "enum" then
           -- a slot's value is read inside its own L, which also skips its
@@ -1084,11 +1217,13 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
           end
         elseif es == "table" then
           local d = T.Tables[e.target]
-          local inst = fresh(T, d)
+          local inst = reuse and renew(T, d, out[slot]) or fresh(T, d)
+          local np0 = ctx.np
           read_body(T, ctx, d, body, inst, true)
           if body.at ~= body.lim then
             report.malformed = true
-            inst = fresh(T, d)
+            discard(ctx, np0)
+            inst = renew(T, d, inst)
           end
           out[slot] = inst
         elseif es == "union" then
@@ -1129,21 +1264,27 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
           local x = scalar_at(body, e, ek, report, ctx)
           if x ~= nil then out[slot] = x end
         end
+        restore(sub, at0, n, blim, bbad)
       end
-      sub.at = sub.at + n
     end
     return out
   end
 
-  local out = {}
-  if fd.fixed then
-    if prior ~= nil then
-      for i = 1, fd.bound do
-        out[i] = prior[i]
-      end
-    else
-      for i = 1, fd.bound do
-        out[i] = zero_elem(T, fd.elem)
+  local out
+  if fd.fixed and prior ~= nil and reuse then
+    -- the array the field already holds, read into in place
+    out = prior
+  else
+    out = {}
+    if fd.fixed then
+      if prior ~= nil then
+        for i = 1, fd.bound do
+          out[i] = prior[i]
+        end
+      else
+        for i = 1, fd.bound do
+          out[i] = zero_elem(T, fd.elem)
+        end
       end
     end
   end
@@ -1172,8 +1313,14 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
     -- READ (decode.go element, docs/SPEC-TABLES.md §2.6, §4): a damaged
     -- repeat leaves None, never the arm an earlier occurrence placed. A
     -- counted or unbounded element that fails is simply not counted.
-    if fd.fixed and fd.elem.shape == "union" then out[i] = zero_elem(T, fd.elem) end
-    local el, ok = read_element(T, ctx, fd.elem, ek, sub, out, i)
+    if fd.fixed and fd.elem.shape == "union" then
+      if reuse then
+        out[i] = D.reset_elem(T, fd.elem, out[i])
+      else
+        out[i] = zero_elem(T, fd.elem)
+      end
+    end
+    local el, ok = read_element(T, ctx, fd.elem, ek, sub, out, i, reuse)
     if not ok then break end
     -- THE TOTAL (docs/SPEC-TABLES.md §2.13): keep the longest PREFIX whose
     -- element bytes sum within `total`; the first element that would carry
@@ -1185,7 +1332,7 @@ read_array_body = function(T, ctx, fd, hdr, endpos, prior)
       if
         vf ~= nil
         and vf.shape == "string"
-        and (vf.optional == nil or vf.optional == false or (el ~= nil and el[vf.name .. "_present"] == true))
+        and (vf.optional == nil or vf.optional == false or (el ~= nil and el[vf.pkey] == true))
       then
         add = #((el and el[vf.name]) or "")
       end
@@ -1224,7 +1371,13 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
   -- missing_required naming the field. A required field inside an `if` guard
   -- is demanded only while its guard holds — with the branch off it is absent
   -- and no refusal is owed (§2.3, §3).
-  local arrived = {}
+  local req = desc.required
+  local arrived = nil
+  if req then arrived = {} end
+  -- which of the first 62 fields this body has already read: a nested value is
+  -- read INTO the table the value already holds only the first time its field
+  -- rides, so a repeat of the field starts from the field's defaults again
+  local seen = 0
   local missingBefore = report.missingRequired or 0
   while true do
     local ref = r_leb(r)
@@ -1234,21 +1387,23 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
     end
     if ref == 0 then
       local missing = nil
-      for _, f in ipairs(desc.fields) do
-        if f.required and not arrived[f.id] then
-          local hold = true
-          if f.guard ~= nil then
-            for _, t in ipairs(f.guard) do
-              if (v[t.field] == true) ~= t.want then
-                hold = false
-                break
+      if req then
+        for _, f in ipairs(req) do
+          if not arrived[f.id] then
+            local hold = true
+            if f.guard ~= nil then
+              for _, t in ipairs(f.guard) do
+                if (v[t.field] == true) ~= t.want then
+                  hold = false
+                  break
+                end
               end
             end
-          end
-          if hold then
-            if missing == nil then missing = "" end
-            if #missing > 0 then missing = missing .. ", " end
-            missing = missing .. f.name
+            if hold then
+              if missing == nil then missing = "" end
+              if #missing > 0 then missing = missing .. ", " end
+              missing = missing .. f.name
+            end
           end
         end
       end
@@ -1297,13 +1452,7 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
         end
       end
     else
-      local fd = nil
-      for _, f in ipairs(desc.fields) do
-        if f.id == id then
-          fd = f
-          break
-        end
-      end
+      local fd = desc.byid[id]
       if fd ~= nil then ctx.field = fd.name end
       if fd == nil then
         report.unknown = report.unknown + 1
@@ -1316,8 +1465,8 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
           local x = scalar_at(r, fd, kind, report, ctx)
           if x == nil then return false end
           v[fd.name] = x
-          arrived[fd.id] = true
-          if fd.optional then v[fd.name .. "_present"] = true end
+          if arrived then arrived[fd.id] = true end
+          if fd.optional then v[fd.pkey] = true end
           -- a map entry's KEY widens once per MAP (§2.8), counted by the map
           if fd.name ~= mapkey then report.widened = report.widened + 1 end
         else
@@ -1328,58 +1477,89 @@ read_body_fields = function(T, ctx, desc, r, v, nested, mapkey)
           end
         end
       else
-        if not read_field(T, ctx, fd, r, v) then return false end
-        arrived[fd.id] = true
+        local bit, ord = 0, fd.ordinal
+        if ord < 63 then bit = 1 << ord end
+        local first = bit ~= 0 and (seen & bit) == 0
+        seen = seen | bit
+        if not read_field(T, ctx, fd, r, v, first) then return false end
+        if arrived then arrived[fd.id] = true end
       end
     end
   end
 end
 
--- ONE FIELD (§3, §4), at its declared kind: scalars and strings decode into
--- storage, a table nests by value, an array is AN ARRAY BODY, a union is an
--- arm header, and a pointer stores its index for RESOLUTION (§3.1).
-read_field = function(T, ctx, fd, r, v)
+-- A PAYLOAD'S OUTCOME. read_payload answers (value, status):
+--   OK         the value read; a pointer or blob answers no value, its slot is
+--              queued for resolution (§3.1)
+--   DAMAGED    the content is wrong inside its own framing (ill-formed text, a
+--              body that does not end at its terminator, a scalar whose L is
+--              not its width) and the counter is set; the value is what a FIELD
+--              then holds in its place (its declared default), which an ARM
+--              does not keep: the union reads None
+--   STOP       the framing itself broke, the counter is set, nothing is kept
+--   INERT      an array body shorter than its own header (§3): nothing read
+--   KEEP       an array body whose header could not be read: the holder keeps
+--              what it has
+--   MISMATCH   an array body of another element kind: the payload is not this
+--              array's, so an optional stays absent and an arm is not selected
+local OK, DAMAGED, STOP, INERT, KEEP, MISMATCH = 1, 2, 3, 4, 5, 6
+
+-- A FIELD'S PAYLOAD, read ONCE for a field and for a union arm (docs/PORTING.md
+-- M18; docs/SPEC-TABLES.md §2.6, §3). An arm payload is exactly the bytes a
+-- field puts after its own framing prefix, so the arm is read by the SAME code
+-- one level down: `n` is the arm's L standing in for the field's own length
+-- where the kind has one, and the fixed width the L frames where it does not;
+-- a field passes nil and reads its own L from r. (holder, key) is the slot the
+-- value lands in, which a pointer queues for resolution; `kind` is the wire kind
+-- on the header, which differs from fd.kind only when the kind widens. The shape
+-- to refuse is a second reader for arms beside this one: it drifts from the
+-- field's the first time a kind changes, and the drift is silent on both wires.
+local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
   local report = ctx.report
   local s = fd.shape
   if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
-    local x = scalar_at(r, fd, fd.kind, report, ctx)
-    if x == nil then return false end
-    v[fd.name] = x
-    if fd.optional then v[fd.name .. "_present"] = true end
-    return true
+    if n ~= nil and kind == fd.kind then
+      -- an arm's L must BE the kind's width
+      local w = width_of(kind)
+      if w == 0 or n ~= w then
+        report.malformed = true
+        return nil, DAMAGED
+      end
+    end
+    local x = scalar_at(r, fd, kind, report, ctx)
+    if x == nil then return nil, STOP end
+    return x, OK
   elseif s == "string" then
-    local n = r_leb(r)
-    if r.bad or not fits(r, n) then
-      report.malformed = true
-      return false
+    if n == nil then
+      n = r_leb(r)
+      if r.bad or not fits(r, n) then
+        report.malformed = true
+        return nil, STOP
+      end
     end
     local raw = r_bytes(r, n)
     if not utf8_ok(raw) then
       report.malformed = true
-      v[fd.name] = fd.default or ""
-      if fd.optional then v[fd.name .. "_present"] = true end
-      return true
+      return fd.default or "", DAMAGED
     end
     if fd.bound ~= nil and fd.bound > 0 and #raw > fd.bound then
       report.clamped = report.clamped + 1
       raw = utf8_clamp(raw, fd.bound)
     end
-    v[fd.name] = raw
-    if fd.optional then v[fd.name .. "_present"] = true end
-    return true
+    return raw, OK
   elseif s == "wstring" then
-    local n = r_leb(r)
-    if r.bad or not fits(r, n) then
-      report.malformed = true
-      return false
+    if n == nil then
+      n = r_leb(r)
+      if r.bad or not fits(r, n) then
+        report.malformed = true
+        return nil, STOP
+      end
     end
     local raw = r_bytes(r, n)
     local ok, units = wstring_ok(raw)
     if not ok then
       report.malformed = true
-      v[fd.name] = {}
-      if fd.optional then v[fd.name .. "_present"] = true end
-      return true
+      return {}, DAMAGED
     end
     if fd.bound ~= nil and fd.bound > 0 and #units > fd.bound then
       report.clamped = report.clamped + 1
@@ -1390,84 +1570,113 @@ read_field = function(T, ctx, fd, r, v)
       if fd.bound > 0 and keep[fd.bound] >= 0xd800 and keep[fd.bound] <= 0xdbff then keep[fd.bound] = nil end
       units = keep
     end
-    v[fd.name] = units
-    if fd.optional then v[fd.name .. "_present"] = true end
-    return true
+    return units, OK
   elseif s == "enum" then
     local x, ok = enum_read(ctx.table, r, fd, report)
-    if not ok then return false end
-    v[fd.name] = x
-    if fd.optional then v[fd.name .. "_present"] = true end
-    return true
+    if not ok then return nil, STOP end
+    if n ~= nil and r.at ~= r.lim then
+      report.malformed = true
+      return nil, DAMAGED
+    end
+    return x, OK
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     local i = r_leb(r)
     if r.bad then
       report.malformed = true
-      return false
+      return nil, STOP
     end
-    ctx.pending[#ctx.pending + 1] = { holder = v, key = fd.name, index = i, d = fd }
-    if fd.optional then v[fd.name .. "_present"] = true end
-    return true
-  elseif s == "table" then
-    local n = r_leb(r)
-    if r.bad or not fits(r, n) then
+    if n ~= nil and r.at ~= r.lim then
       report.malformed = true
-      return false
+      return nil, DAMAGED
+    end
+    queue(ctx, holder, key, i, fd)
+    return nil, OK
+  elseif s == "table" then
+    if n == nil then
+      n = r_leb(r)
+      if r.bad or not fits(r, n) then
+        report.malformed = true
+        return nil, STOP
+      end
     end
     local d = T.Tables[fd.target]
-    local inst = fresh(T, d)
-    local body = new_reader(r.b, r.at, r.at + n)
-    read_body(T, ctx, d, body, inst, true)
-    if body.at ~= body.lim then
-      report.malformed = true
+    -- the first read of a field is into the record the holder already has,
+    -- put back to its defaults; a repeat of the field is read into a new one
+    local inst
+    if reuse then
+      inst = renew(T, d, holder[key])
+    else
       inst = fresh(T, d)
     end
-    r.at = r.at + n
-    v[fd.name] = inst
-    if fd.optional then v[fd.name .. "_present"] = true end
-    return true
+    local np0 = ctx.np
+    local at0 = r.at
+    local lim, bad = narrow(r, n)
+    read_body(T, ctx, d, r, inst, true)
+    local clean = r.at == r.lim
+    restore(r, at0, n, lim, bad)
+    if not clean then
+      report.malformed = true
+      discard(ctx, np0)
+      return renew(T, d, inst), DAMAGED
+    end
+    return inst, OK
   elseif s == "union" then
     local u = T.Unions[fd.target]
     if u == nil then
       report.malformed = true
-      return false
+      return nil, STOP
     end
+    -- a union field is its arm header in place; an arm that is another union
+    -- is that union's own arm header inside this arm's L (decode.go arm): its
+    -- damage reads None, and slack after it is skipped by the outer L, uncounted
     local x = read_union(T, ctx, u, r)
-    if x == nil then return false end
-    v[fd.name] = x
-    if fd.optional then v[fd.name .. "_present"] = true end
-    return true
+    if x == nil then return nil, STOP end
+    return x, OK
   elseif s == "array" or s == "map" or s == "bytes" then
-    local n = r_leb(r)
-    if r.bad or not fits(r, n) then
-      report.malformed = true
-      return false
+    if n == nil then
+      n = r_leb(r)
+      if r.bad or not fits(r, n) then
+        report.malformed = true
+        return nil, STOP
+      end
     end
     local endpos = r.at + n
-    local selected = true
-    if n >= 2 then
-      local out, sel = read_array_body(
-        T,
-        ctx,
-        fd,
-        new_reader(r.b, r.at, r.lim),
-        endpos,
-        (fd.fixed or fd.keyed ~= nil) and v[fd.name] or nil
-      )
-      if out ~= nil then v[fd.name] = out end
-      selected = sel ~= false
+    if n < 2 then
+      r.at = endpos
+      return nil, INERT
     end
+    -- a fixed or keyed array keeps the elements a damaged repeat could not
+    -- replace (decode.go arrayBody leaves fv.Elems standing)
+    local prior = nil
+    if fd.fixed or fd.keyed ~= nil then prior = holder[key] end
+    local out, sel = read_array_body(T, ctx, fd, r, endpos, prior, reuse)
     r.at = endpos
-    if fd.optional and selected then v[fd.name .. "_present"] = true end
-    return true
+    if sel == false then return nil, MISMATCH end
+    if out == nil then return nil, KEEP end
+    return out, OK
   end
-  return false
+  report.malformed = true
+  return nil, STOP
+end
+
+-- ONE FIELD (§3, §4), at its declared kind: its payload is read by
+-- read_payload, the code a union arm is read by too (M18), and the field line
+-- is what it does with the outcome: a value is stored, damaged content reads the
+-- field's default, framing damage stops the body, and an optional is present
+-- unless its payload was another array's.
+read_field = function(T, ctx, fd, r, v, first)
+  local x, st = read_payload(T, ctx, fd, r, nil, v, fd.name, fd.kind, first)
+  if st == STOP then return false end
+  if st == OK or st == DAMAGED then v[fd.name] = x end
+  if fd.optional and st ~= MISMATCH then v[fd.pkey] = true end
+  return true
 end
 
 -- AN ARM HEADER is a field header (§3): the arm id reference, its kind, L,
 -- then L bytes of arm payload. A retyped arm is an ordinary kind mismatch,
 -- and damage inside L reads the union None and the parent reads on.
 local read_arm
+local read_arm_payload
 
 -- read_union names a float arm <Union>.<arm> (docs/SPEC-TABLES.md §3.3), and
 -- gives the holder's name back when it returns.
@@ -1501,150 +1710,70 @@ read_arm = function(T, ctx, u, r)
     report.malformed = true
     return nil
   end
-  local sub = new_reader(r.b, r.at, r.at + n)
-  r.at = r.at + n
-  local arm = nil
-  for _, a in ipairs(u.arms) do
-    if a.id == armid then
-      arm = a
-      break
-    end
-  end
+  local arm = u.byid[armid]
   if arm == nil then
     report.unknown = report.unknown + 1
+    r.at = r.at + n
     return { tag = 0 }
   end
+  -- the payload is read through the same reader, its limit narrowed to the arm's
+  -- L (docs/PORTING.md M1)
+  local at0 = r.at
+  local lim, bad = narrow(r, n)
+  local x = read_arm_payload(T, ctx, u, arm, armkind, r, n)
+  restore(r, at0, n, lim, bad)
+  return x
+end
+
+-- one arm's payload, read from the reader sub bounded to the arm's L
+read_arm_payload = function(T, ctx, u, arm, armkind, sub, n)
+  local report = ctx.report
   local f = arm.field
   ctx.owner, ctx.field = u.name, arm.name
-  local none = { tag = 0 }
   if f == nil then
     if armkind ~= 32 then
       report.kindMismatch = report.kindMismatch + 1
-      return none
+      return { tag = 0 }
     end
     if n ~= 0 then
       report.malformed = true
-      return none
+      return { tag = 0 }
     end
     return { tag = arm.tag }
   end
   if armkind ~= f.kind then
     if widens(armkind, f.kind) then
-      local x = scalar_at(sub, f, armkind, report, ctx)
-      if x == nil then return none end
+      -- the same payload reader, at the kind the header carried
+      local out = { tag = arm.tag }
+      local x, st = read_payload(T, ctx, f, sub, n, out, arm.slot, armkind)
+      if st ~= OK then return { tag = 0 } end
       if sub.at ~= sub.lim then
         report.malformed = true
-        return none
+        return { tag = 0 }
       end
       report.widened = report.widened + 1
-      local out = { tag = arm.tag }
-      out[arm.name] = x
+      out[arm.slot] = x
       return out
     end
     report.kindMismatch = report.kindMismatch + 1
-    return none
+    return { tag = 0 }
   end
-  local s = f.shape
+  -- THE ARM'S PAYLOAD IS A FIELD LINE (docs/PORTING.md M18): the field's own
+  -- reader, one level down, with the arm's L standing in for the field's
+  -- length. What the field would store the arm holds under its name; what the
+  -- field would default or stop on, the union reads None, and the parent reads
+  -- on past L.
   local out = { tag = arm.tag }
-  if s == "bool" or s == "int" or s == "flags" or s == "float" or s == "wide" then
-    local w = width_of(armkind)
-    if w == 0 or n ~= w then
-      report.malformed = true
-      return none
-    end
-    local x = scalar_at(sub, f, armkind, report, ctx)
-    if x == nil then return none end
-    out[arm.name] = x
-    return out
-  elseif s == "string" then
-    local raw = string.sub(sub.b, sub.at + 1, sub.lim)
-    sub.at = sub.lim
-    if not utf8_ok(raw) then
-      report.malformed = true
-      return none
-    end
-    if f.bound ~= nil and f.bound > 0 and #raw > f.bound then
-      report.clamped = report.clamped + 1
-      raw = utf8_clamp(raw, f.bound)
-    end
-    out[arm.name] = raw
-    return out
-  elseif s == "wstring" then
-    local raw = string.sub(sub.b, sub.at + 1, sub.lim)
-    sub.at = sub.lim
-    local ok, units = wstring_ok(raw)
-    if not ok then
-      report.malformed = true
-      return none
-    end
-    if f.bound ~= nil and f.bound > 0 and #units > f.bound then
-      report.clamped = report.clamped + 1
-      local keep = {}
-      for i = 1, f.bound do
-        keep[i] = units[i]
-      end
-      if f.bound > 0 and keep[f.bound] >= 0xd800 and keep[f.bound] <= 0xdbff then keep[f.bound] = nil end
-      units = keep
-    end
-    out[arm.name] = units
-    return out
-  elseif s == "enum" then
-    local x, ok = enum_read(ctx.table, sub, f, report)
-    if not ok then
-      report.malformed = true
-      return none
-    end
-    if sub.at ~= sub.lim then
-      report.malformed = true
-      return none
-    end
-    out[arm.name] = x
-    return out
-  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
-    local i = r_leb(sub)
-    if sub.bad or sub.at ~= sub.lim then
-      report.malformed = true
-      return none
-    end
-    ctx.pending[#ctx.pending + 1] = { holder = out, key = arm.name, index = i, d = f }
-    return out
-  elseif s == "union" then
-    local inner = T.Unions[f.target]
-    if inner == nil then
-      report.malformed = true
-      return none
-    end
-    -- an arm that is another union is that union's own arm header inside
-    -- this arm's L (decode.go arm): its damage reads None, and slack after it
-    -- is skipped by the outer L, uncounted
-    local x = read_union(T, ctx, inner, sub)
-    if x == nil then return none end
-    out[arm.name] = x
-    return out
-  elseif s == "table" then
-    local d = T.Tables[f.target]
-    local inst = fresh(T, d)
-    read_body(T, ctx, d, sub, inst, true)
-    if sub.at ~= sub.lim then
-      report.malformed = true
-      return none
-    end
-    out[arm.name] = inst
-    return out
-  elseif s == "array" or s == "map" or s == "bytes" then
-    -- an arm's payload is framed by the arm's L (decode.go arm, arrayBody):
-    -- shorter than its own header it is inert and the arm holds its zero;
-    -- damage, or another array's element kind, reads None
-    if n < 2 then
-      out[arm.name] = zero_array(T, f)
-      return out
-    end
-    local x, sel = read_array_body(T, ctx, f, sub, sub.lim)
-    if x == nil or sel == false then return none end
-    out[arm.name] = x
-    return out
+  local x, st = read_payload(T, ctx, f, sub, n, out, arm.slot, armkind)
+  if st == OK then
+    out[arm.slot] = x
+  elseif st == INERT then
+    -- shorter than its own header, it is inert and the arm holds its zero
+    out[arm.slot] = zero_array(T, f)
+  else
+    return { tag = 0 }
   end
-  return none
+  return out
 end
 
 -- RESOLUTION (§3.1, decodenodes.go resolveCell): 0 is null, 1 is the root
@@ -1654,8 +1783,10 @@ end
 local function resolve(ctx, root, rootdesc)
   local report = ctx.report
   local good = ctx.good
-  local seen_blob = {}
-  for _, p in ipairs(ctx.pending) do
+  local seen_blob = nil
+  local pending = ctx.pending
+  for i = 1, ctx.np do
+    local p = pending[i]
     local d = p.d
     local value = nil
     if good and p.index ~= 0 then
@@ -1677,6 +1808,7 @@ local function resolve(ctx, root, rootdesc)
           if d.shape == "string_blob" then
             if node.kind == "s" then
               value = node.box
+              if seen_blob == nil then seen_blob = {} end
               if seen_blob[p.index] then
                 report.blobShared = (report.blobShared or 0) + 1
               else
@@ -1688,6 +1820,7 @@ local function resolve(ctx, root, rootdesc)
           elseif d.shape == "bytes_blob" then
             if node.kind == "b" then
               value = node.box
+              if seen_blob == nil then seen_blob = {} end
               if seen_blob[p.index] then
                 report.blobShared = (report.blobShared or 0) + 1
               else
@@ -1712,7 +1845,63 @@ local function resolve(ctx, root, rootdesc)
     -- place"): read_element stored it, so an assignment of nil here must not
     -- drop the trailing null and the count.
     if value ~= nil then p.holder[p.key] = value end
+    -- the queue keeps its entries for the next load, and no value it named
+    p.holder, p.d = nil, nil
   end
+  ctx.np = 0
+end
+
+-- THE LOADER STATE (docs/PORTING.md M1: the read path allocates nothing, and the
+-- storage it works in is the caller's). L.NewState() builds everything a load
+-- keeps between its first and its last byte: the id table and its seen-set, the
+-- two readers (one that walks the bodies, one that scans), the queue of pointer
+-- slots, the context. A caller that loads many records keeps ONE state and
+-- hands it to each load; a load with no state builds one, and answers exactly
+-- what it answered before. A state serves one load at a time.
+function L.NewState()
+  local scan = new_reader("", 0, 0)
+  local junk = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0, malformed = false }
+  local sink = {}
+  return {
+    ids = {},
+    seen = {},
+    o = { table = nil, lim = 0 },
+    scan = scan,
+    rd = new_reader("", 0, 0),
+    junk = junk,
+    sink = sink,
+    ctx = {
+      table = nil,
+      report = nil,
+      pending = {},
+      np = 0,
+      nodes = NO_NODES,
+      good = false,
+      owner = nil,
+      field = nil,
+      scan = scan,
+      junk = junk,
+      sink = sink,
+    },
+  }
+end
+
+-- the queue of a load that stopped before it resolved, and the sink the damaged
+-- bodies' slots were pointed at, are given back empty
+local function release(ctx)
+  local pending = ctx.pending
+  for i = 1, ctx.np do
+    local p = pending[i]
+    p.holder, p.d = nil, nil
+  end
+  ctx.np = 0
+  local sink = ctx.sink
+  if next(sink) ~= nil then
+    for k in pairs(sink) do
+      sink[k] = nil
+    end
+  end
+  ctx.report, ctx.nodes = nil, NO_NODES
 end
 
 -- LoadTolerant loads a form-1 wire for table `name` of module T into a fresh
@@ -1723,11 +1912,20 @@ end
 -- after the root's terminator) answers the root at its defaults, with the
 -- report saying what happened. Only a VARIABLE root answers nil there.
 --
+-- `state` (L.NewState()) and `into` are the CALLER-OWNED STORAGE form
+-- (docs/PORTING.md M1): with `into`, the root is the caller's value, put back to
+-- the declared defaults in place and read into, and what it already holds of a
+-- nested table, a fixed array and a union is the storage that is read into; with
+-- `state`, the readers, the id table and the queue are the caller's and nothing
+-- of them is built. Neither changes a byte of what is read: both are nil in the
+-- plain form. A load that answers nil leaves `into` at defaults or partly read.
+--
 -- This is THE TOLERANT READ (docs/SPEC-TABLES.md §6.5), under its explicit
 -- name: it keeps the recovered value and its report. The plain L.Load below is
 -- the strict read.
-function L.LoadTolerant(T, name, bytes, report)
+function L.LoadTolerant(T, name, bytes, report, state, into)
   local desc = T.Tables[name]
+  state = state or L.NewState()
   report.nonFiniteFloat = nil
   -- THE INTEGRITY TRAILER (§2.14, §3.4): a declaring root's form-1 file ends
   -- with the little-endian CRC-32C of every byte before it. The form byte is
@@ -1735,22 +1933,24 @@ function L.LoadTolerant(T, name, bytes, report)
   -- names it; a form-1 file shorter than five bytes or one whose trailer does
   -- not match is the whole-file damage integrity_mismatch, and nothing is
   -- decoded. The trailer is then removed and every rule below speaks of the
-  -- file without it (it is outside the region measure).
-  if desc ~= nil and desc.integrity ~= nil and #bytes >= 1 and bytes:byte(1) == 1 then
-    if #bytes < 5 then
+  -- file without it (it is outside the region measure): the wire's length is
+  -- four less, and no copy of it is made.
+  local blen = #bytes
+  if desc ~= nil and desc.integrity ~= nil and blen >= 1 and bytes:byte(1) == 1 then
+    if blen < 5 then
       report.malformed = true
       report.reason = "integrity_mismatch"
       return nil
     end
-    local n = #bytes - 4
-    if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes:sub(1, n)) then
+    local n = blen - 4
+    if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes, n) then
       report.malformed = true
       report.reason = "integrity_mismatch"
       return nil
     end
-    bytes = bytes:sub(1, n)
+    blen = n
   end
-  local o = open(bytes, report)
+  local o = open(bytes, blen, report, state)
   if o == nil then
     -- A WIRE THAT DOES NOT OPEN IS MALFORMED, NOT A REGION REFUSAL: the
     -- file's own framing stopped it before any field, and the tolerant read
@@ -1759,15 +1959,19 @@ function L.LoadTolerant(T, name, bytes, report)
     -- VARIABLE root answers nil for that (§3, §4.2).
     if desc == nil then return nil end
     if report.refused ~= 0 and desc.variable then return nil end
+    if into ~= nil then return D.reset(T, desc, into) end
     return fresh(T, desc)
   end
   if desc == nil then
     report.malformed = true
     return nil
   end
-  local raw = node_scan(bytes, o, report, desc.variable)
-  local ctx = { table = o.table, report = report, pending = {}, nodes = {}, good = raw ~= nil }
+  local raw = node_scan(bytes, o, report, desc.variable, state)
+  local ctx = state.ctx
+  ctx.table, ctx.report, ctx.np, ctx.good, ctx.owner, ctx.field = o.table, report, 0, raw ~= nil, nil, nil
+  ctx.nodes = NO_NODES
   if raw ~= nil then
+    if #raw > 0 then ctx.nodes = {} end
     for _, rec in ipairs(raw) do
       -- A BLOB NODE KEEPS ITS IDENTITY (§3.1: every reachable node is written
       -- once and two references to one node are one node; §6.3: sharing and a
@@ -1776,8 +1980,9 @@ function L.LoadTolerant(T, name, bytes, report)
       -- every slot naming it resolves to the SAME box, as a *T slot resolves
       -- to the same instance table.
       if rec.tid == STRING_BLOB_ID then
-        if utf8_ok(rec.body) then
-          ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = rec.body, box = { value = rec.body } }
+        local body = string.sub(bytes, rec.at + 1, rec.lim)
+        if utf8_ok(body) then
+          ctx.nodes[#ctx.nodes + 1] = { kind = "s", blob = body, box = { value = body } }
         else
           report.malformed = true
           report.wireDamaged = true
@@ -1787,12 +1992,10 @@ function L.LoadTolerant(T, name, bytes, report)
           ctx.nodes[#ctx.nodes + 1] = { kind = "null" }
         end
       elseif rec.tid == BYTES_BLOB_ID then
-        ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = rec.body, box = { value = rec.body } }
+        local body = string.sub(bytes, rec.at + 1, rec.lim)
+        ctx.nodes[#ctx.nodes + 1] = { kind = "b", blob = body, box = { value = body } }
       else
-        local subdesc = nil
-        for _, d in pairs(T.Tables) do
-          if d.type_id == rec.tid then subdesc = d end
-        end
+        local subdesc = T.TypeIds[rec.tid]
         if subdesc == nil then
           report.unknown = report.unknown + 1
           -- §3.1: numbering is positional in the table, so a node this reader
@@ -1800,28 +2003,37 @@ function L.LoadTolerant(T, name, bytes, report)
           ctx.nodes[#ctx.nodes + 1] = { kind = "unknown" }
         else
           local inst = fresh(T, subdesc)
-          ctx.nodes[#ctx.nodes + 1] = { kind = "t", codec = subdesc, value = inst, body = rec.body }
+          ctx.nodes[#ctx.nodes + 1] = { kind = "t", codec = subdesc, value = inst, at = rec.at, lim = rec.lim }
         end
       end
     end
+    local rd = state.rd
     for _, node in ipairs(ctx.nodes) do
-      if node ~= nil and node.kind == "t" then
-        read_body(T, ctx, node.codec, new_reader(node.body, 0, #node.body), node.value, true)
-      end
+      if node.kind == "t" then read_body(T, ctx, node.codec, point(rd, bytes, node.at, node.lim), node.value, true) end
     end
   end
-  local root = fresh(T, desc)
+  local root
+  if into ~= nil then
+    root = D.reset(T, desc, into)
+  else
+    root = fresh(T, desc)
+  end
   local missingBefore = report.missingRequired or 0
-  read_body(T, ctx, desc, new_reader(bytes, 1, o.lim), root, false)
+  read_body(T, ctx, desc, point(state.rd, bytes, 1, o.lim), root, false)
   -- A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
   -- any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing
   -- lands, and Reason names the float.
   if report.nonFiniteFloat ~= nil then
     report.reason = "non_finite_float: " .. report.nonFiniteFloat
+    release(ctx)
     return nil
   end
-  if report.missingRequired and report.missingRequired > missingBefore then return nil end
+  if report.missingRequired and report.missingRequired > missingBefore then
+    release(ctx)
+    return nil
+  end
   resolve(ctx, root, desc)
+  release(ctx)
   return root
 end
 
@@ -1865,7 +2077,7 @@ end
 -- it), and answers the root only where the strict set accepts the wire.
 -- Otherwise it answers nil, raising nothing, with report.reason naming the
 -- refusal. A nil report refuses the same way (§6.5).
-function L.Load(T, name, bytes, report)
+function L.Load(T, name, bytes, report, state, into)
   local r = report
   if r == nil then r = {} end
   r.malformed = false
@@ -1879,7 +2091,7 @@ function L.Load(T, name, bytes, report)
   r.missingRequired = 0
   r.wireDamaged = false
   r.reason = nil
-  local root = L.LoadTolerant(T, name, bytes, r)
+  local root = L.LoadTolerant(T, name, bytes, r, state, into)
   local reason = strict_refusal(bytes, r, root)
   if reason ~= nil then
     r.reason = reason
@@ -2079,17 +2291,18 @@ function L.LoadMeasure(T, name, bytes)
   end
   local total, ok = size_of(desc, bytes, 1, o.lim)
   if not ok then return nil end
-  local raw = node_scan(bytes, o, {}, desc.variable)
+  local raw = node_scan(bytes, o, {}, desc.variable, L.NewState())
   if raw == nil then return nil end
-  local nodes, string_blob, bytes_blob = D.pointer_reachable(T, desc)
+  local reach = desc.reach
+  local nodes, string_blob, bytes_blob = reach.nodes, reach.string_blob, reach.bytes_blob
   for _, rec in ipairs(raw) do
     local st = nodes[rec.tid]
     if st ~= nil then
-      local n, rok = size_of(st, rec.body, 0, #rec.body)
+      local n, rok = size_of(st, bytes, rec.at, rec.lim)
       if not rok then return nil end
       total = total + n
     elseif (rec.tid == BYTES_BLOB_ID and bytes_blob) or (rec.tid == STRING_BLOB_ID and string_blob) then
-      local blen = #rec.body
+      local blen = rec.lim - rec.at
       if blen > 0xffffffff then return nil end
       local n = 8 + blen
       if rec.tid == STRING_BLOB_ID then n = n + 1 end

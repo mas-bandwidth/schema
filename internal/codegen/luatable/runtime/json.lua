@@ -1726,7 +1726,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     if not skip_value(inp, depth + 1, graph) then return nil end
   else
     out.tag = tag
-    if not read_value(T, arm.field, inp, out, arm.name, depth + 1, graph, report, false, table_name, field_name) then
+    if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false, table_name, field_name) then
       return nil
     end
   end
@@ -2440,22 +2440,7 @@ end
 
 -- a map's entries in ascending key order, bytewise for strings, the key's own
 -- signedness for integers (§2.8)
-local function bytes_less(a, b)
-  local n = math.min(#a, #b)
-  local i = 1
-  while i <= n do
-    local j = math.min(i + 255, n)
-    local ca, cb = a:sub(i, j), b:sub(i, j)
-    if ca ~= cb then
-      for k = 1, j - i + 1 do
-        local x, y = ca:byte(k), cb:byte(k)
-        if x ~= y then return x < y end
-      end
-    end
-    i = j + 1
-  end
-  return #a < #b
-end
+local bytes_less = D.bytes_less
 
 local function map_entries(cache, fd, x)
   if x == nil then return {} end
@@ -2479,103 +2464,18 @@ local function map_entries(cache, fd, x)
   return got
 end
 
-local function count_of(fd, v)
-  local s = fd.shape
-  if s == "bytes" then return #v end
-  if fd.list then return #v end
-  if fd.fixed then return fd.bound or 0 end
-  return math.min(#v, fd.bound or 0)
-end
-
--- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
--- field under a false guard is elided whatever its storage holds; §3.1: it is
--- not an edge, so its target takes no node). fd.guard is the conjunction of
--- the field's `if` branch conditions, each a bool field of the same body and
--- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
--- field with no guard always rides. A bool not set reads false.
-local function guard_holds(fd, v)
-  local g = fd.guard
-  if g == nil then return true end
-  for _, t in ipairs(g) do
-    if (v[t.field] == true) ~= t.want then return false end
-  end
-  return true
-end
+local count_of = D.count_of
+local guard_holds = D.guard_holds
 
 -- THE NUMBERING PASS (§16.7): how many slots name each node, and whether the
--- graph has a cycle, which the text refuses as the wire does (§3.1).
-local edge_value, edge_union, edges
-edge_value = function(T, fd, val, _holder, _name, out, cache)
-  local s = fd.shape
-  if s == "string_blob" or s == "bytes_blob" then
-    -- a blob is a node too (§3.1): counted by its box, never descended
-    if val ~= nil and val ~= false then out[#out + 1] = { blob = true, val = val } end
-  elseif s == "pointer" then
-    if val ~= nil and val ~= false then out[#out + 1] = { target = fd.target, val = val } end
-  elseif s == "table" then
-    local d = T.Tables[fd.target]
-    if d then edges(T, d, val, out, cache) end
-  elseif s == "array" then
-    local n = count_of(fd, val)
-    for i = 1, n do
-      edge_value(T, fd.elem, val[i], val, i, out, cache)
-    end
-  elseif s == "union" then
-    edge_union(T, T.Unions[fd.target], val, out, cache)
-  elseif s == "map" then
-    local d = T.Tables[fd.entry]
-    if d then
-      for _, key in ipairs(map_entries(cache, fd, val)) do
-        local tmp = { [fd.key_field.name] = key, [fd.value_field.name] = val[key] }
-        edges(T, d, tmp, out, cache)
-        -- the value field's own pointer is reached through the entry above
-      end
-    end
-  end
-end
-
-edge_union = function(T, u, val, out, cache)
-  local tag = val and val.tag or 0
-  if tag == 0 or u == nil then return end
-  local arm = u.arms[tag]
-  if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
-end
-
-edges = function(T, desc, v, out, cache)
-  for _, fd in ipairs(desc.fields) do
-    if guard_holds(fd, v) and not (fd.optional and not v[fd.name .. "_present"]) then
-      edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
-    end
-  end
-  return out
-end
-
+-- graph has a cycle, which the text refuses as the wire does (§3.1). It is the
+-- one pointer walk of descriptor.lua (D.number_nodes, docs/PORTING.md M15): the
+-- reference count is the walk's own, so the text's labels agree with the
+-- wire's numbering by construction.
 local function count_nodes(T, desc, root)
-  local g = { count = {}, labels = {}, next = 0 }
-  local open = { [root] = true }
-  local cache = {}
-  local stack = { { v = root, edges = edges(T, desc, root, {}, cache), i = 0 } }
-  while #stack > 0 do
-    local top = stack[#stack]
-    if top.i >= #top.edges then
-      open[top.v] = nil
-      stack[#stack] = nil
-    else
-      local e = top.edges[top.i + 1]
-      top.i = top.i + 1
-      if not e.blob and open[e.val] then return nil end
-      local n = (g.count[e.val] or 0) + 1
-      g.count[e.val] = n
-      if n == 1 and not e.blob then
-        local d = T.Tables[e.target]
-        if d == nil then return nil end
-        open[e.val] = true
-        stack[#stack + 1] = { v = e.val, edges = edges(T, d, e.val, {}, cache), i = 0 }
-      end
-    end
-  end
-  return g
+  local nodes = D.number_nodes(T, desc, root, false)
+  if nodes == nil then return nil end
+  return { count = nodes.refs, labels = {}, next = 0 }
 end
 
 local write_value, write_table, write_pointer, write_field, write_fields
@@ -2671,7 +2571,7 @@ local function write_union(T, u, val, depth, g, w)
   if arm.field == nil then
     raw(w, "null")
   else
-    if not write_value(T, arm.field, val[arm.name], depth + 1, g, w, false) then return false end
+    if not write_value(T, arm.field, val[arm.slot], depth + 1, g, w, false) then return false end
   end
   line(w, depth)
   put(w, "}")

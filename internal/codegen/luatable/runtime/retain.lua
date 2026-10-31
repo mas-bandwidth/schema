@@ -24,8 +24,6 @@ local load = require("load")
 local D = require("descriptor")
 
 local NODE_TABLE_ID = -1 -- 0xffffffffffffffff
-local STRING_BLOB_ID = 0x704be0d8faaffc58
-local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 local MAX64 = 0xffffffffffffffff
 
 -- A RECORD'S BODY PATH (§6.6): the node index the load gave the body (1 is
@@ -135,180 +133,14 @@ local function same_float(f32, a, b)
   return string.pack("<d", a) == string.pack("<d", b)
 end
 
--- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go): first-visit order of
--- a depth-first pre-order walk from the root over POINTER EDGES, descending
--- through every by-value edge to reach them. Node index 1 is the root and
--- record k is index k + 1. A reference to a node whose descent is still open
--- is a DATA CYCLE, and the save refuses it (nil).
-local number_nodes
-local edges
+-- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go) is the one pointer
+-- walk of descriptor.lua (D.number_nodes, docs/PORTING.md M15), the save's own:
+-- the retaining save numbers the same graph the same way. A blob named twice
+-- is one node here, as it was before the walk was shared.
+local guard_holds, count_of, map_entries = D.guard_holds, D.count_of, D.map_entries
 
--- A GUARDED FIELD RIDES ONLY WHEN ITS GUARD HOLDS (docs/SPEC-TABLES.md §3: a
--- field under a false guard is elided whatever its storage holds; §3.1: it is
--- not an edge, so its target takes no node). fd.guard is the conjunction of
--- the field's `if` branch conditions, each a bool field of the same body and
--- the value it must hold (luatable.go emitDescriptor; tabletext.Guards); a
--- field with no guard always rides. A bool not set reads false.
-local function guard_holds(fd, v)
-  local g = fd.guard
-  if g == nil then return true end
-  for _, t in ipairs(g) do
-    if (v[t.field] == true) ~= t.want then return false end
-  end
-  return true
-end
-local edge_value
-local edge_union
-
--- A MAP'S ENTRIES IN ASCENDING KEY ORDER (§2.8, §3.1; internal/tablewire
--- nodes.go MapEntryOrder): one entry table per key, built once per map and
--- shared by the numbering and the write, so both walks meet the same slots.
--- BYTEWISE KEY ORDER (§2.8): Lua's string < is strcoll, which is bytewise
--- only under the C locale, so a string key is ordered by its unsigned bytes
--- here, a shorter prefix first, whatever locale the host runs.
-local function bytes_less(a, b)
-  local n = math.min(#a, #b)
-  local i = 1
-  while i <= n do
-    local j = math.min(i + 255, n)
-    local ca, cb = a:sub(i, j), b:sub(i, j)
-    if ca ~= cb then
-      for k = 1, j - i + 1 do
-        local x, y = ca:byte(k), cb:byte(k)
-        if x ~= y then return x < y end
-      end
-    end
-    i = j + 1
-  end
-  return #a < #b
-end
-
-local function map_entries(cache, fd, x)
-  if x == nil then return {} end
-  local got = cache[x]
-  if got ~= nil then return got end
-  local kf = fd.key_field
-  local keys = {}
-  for key in pairs(x) do
-    keys[#keys + 1] = key
-  end
-  table.sort(keys, function(a, b)
-    if kf.shape == "string" then return bytes_less(a, b) end
-    if kf.signed or kf.width < 8 then return a < b end
-    return math.ult(a, b)
-  end)
-  local keyname = kf.name
-  local valname = fd.value_field.name
-  got = {}
-  for i, key in ipairs(keys) do
-    got[i] = { [keyname] = key, [valname] = x[key] }
-  end
-  cache[x] = got
-  return got
-end
-
-local function count_of(fd, v)
-  local s = fd.shape
-  if s == "bytes" then return #v end
-  if fd.list then return #v end
-  if fd.fixed then return fd.bound or 0 end
-  return math.min(#v, fd.bound or 0)
-end
-
--- one value's pointer and blob edges, in the walk's order. holder/name name
--- the slot the value occupies (a table's field or a union arm's payload);
--- cache holds each map's entries (map_entries).
-edge_value = function(T, fd, val, holder, name, out, cache)
-  local s = fd.shape
-  if s == "string_blob" or s == "bytes_blob" then
-    if val ~= nil and val ~= false then
-      out[#out + 1] = { blob = true, shape = s, name = name, holder = holder, val = val }
-    end
-  elseif s == "pointer" then
-    if val ~= nil and val ~= false then out[#out + 1] = { blob = false, target = fd.target, val = val } end
-  elseif s == "table" then
-    local d = T.Tables[fd.target]
-    if d then edges(T, d, val, out, cache) end
-  elseif s == "array" then
-    local n = count_of(fd, val)
-    local e = fd.elem
-    for i = 1, n do
-      edge_value(T, e, val[i], val, i, out, cache)
-    end
-  elseif s == "union" then
-    edge_union(T, T.Unions[fd.target], val, out, cache)
-  elseif s == "map" then
-    -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
-    -- entries in ascending key order, each descended before the next
-    local d = T.Tables[fd.entry]
-    for _, kv in ipairs(map_entries(cache, fd, val)) do
-      edges(T, d, kv, out, cache)
-    end
-  end
-end
-
--- a union arm's payload is a field line: its pointers, blobs, tables, arrays
--- and nested unions are edges at the arm's position (§2.6, §3.1).
-edge_union = function(T, u, val, out, cache)
-  local tag = type(val) == "table" and val.tag or 0
-  if tag == 0 or u == nil then return end
-  local arm = u.arms[tag]
-  if arm == nil or arm.field == nil then return end
-  edge_value(T, arm.field, val[arm.name], val, arm.name, out, cache)
-end
-
--- the pointer and blob edges of one node's by-value closure, in the walk's
--- order: fields in declaration order, array elements in index order. An absent
--- by-value node (nil) holds only its declared defaults and no pointer or blob
--- edge (§3, §4.2).
-edges = function(T, desc, v, out, cache)
-  if v == nil then return out end
-  for _, fd in ipairs(desc.fields) do
-    if guard_holds(fd, v) then edge_value(T, fd, v[fd.name], v, fd.name, out, cache) end
-  end
-  return out
-end
-
-number_nodes = function(T, desc, root)
-  local nodes = { list = {}, index = {}, entries = {} }
-  nodes.index[root] = 1
-  local open = { [root] = true }
-  local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
-  while #stack > 0 do
-    local top = stack[#stack]
-    if top.i >= #top.edges then
-      open[top.v] = nil
-      stack[#stack] = nil
-    else
-      local e = top.edges[top.i + 1]
-      top.i = top.i + 1
-      if e.blob then
-        -- A BLOB NODE IS NUMBERED BY IDENTITY (§3.1: every reachable node is
-        -- written once and two references to one node are one node; §6.3:
-        -- sharing and a back-reference are the same fact). A loaded blob is
-        -- the box load gave its node, so the index is keyed by the box and
-        -- its bytes are the box's value: two distinct nodes with equal bytes
-        -- stay two, and one box named from two slots is one node.
-        if nodes.index[e.val] == nil then
-          local tid = e.shape == "string_blob" and STRING_BLOB_ID or BYTES_BLOB_ID
-          local body = type(e.val) == "table" and e.val.value or e.val
-          nodes.list[#nodes.list + 1] = { typeId = tid, body = body }
-          nodes.index[e.val] = #nodes.list + 1
-        end
-      else
-        if open[e.val] then return nil end
-        if nodes.index[e.val] == nil then
-          local d = T.Tables[e.target]
-          if d == nil then return nil end
-          nodes.list[#nodes.list + 1] = { typeId = d.type_id, codec = d, v = e.val }
-          nodes.index[e.val] = #nodes.list + 1
-          open[e.val] = true
-          stack[#stack + 1] = { v = e.val, edges = edges(T, d, e.val, {}, nodes.entries), i = 0 }
-        end
-      end
-    end
-  end
-  return nodes
+local function number_nodes(T, desc, root)
+  return D.number_nodes(T, desc, root, false)
 end
 
 local write_body
@@ -1121,7 +953,7 @@ write_union = function(T, ids, nodes, u, val, w, path, ord, retain, report)
   w_leb(w, id_ref(ids, arm.id))
   w_u8(w, f.kind)
   local body = W()
-  if not write_union_at(T, ids, nodes, f, val[arm.name], body, path_step(path, ord, tag), ord, retain, report) then
+  if not write_union_at(T, ids, nodes, f, val[arm.slot], body, path_step(path, ord, tag), ord, retain, report) then
     return false
   end
   w_leb(w, body.n)
