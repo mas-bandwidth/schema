@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -67,13 +68,11 @@ func gooseAnnounceProbe(t *testing.T, u *ir.Unit, cases [][]byte, maxEntries int
 	if err != nil {
 		t.Fatalf("goose table surface: %v", err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
@@ -204,15 +203,13 @@ func TestGooseMessageFormAnnounceOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	var b strings.Builder
 	b.WriteString("import os;\n")
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)
@@ -259,7 +256,6 @@ fn main() {
 func TestGooseMessageFormHostileBatches(t *testing.T) {
 	t.Parallel()
 	for _, row := range gooseMsgRows(t) {
-		row := row
 		u := gooseMsgUnitDir(t, row.unitDir)
 		if !isFixedRoot(u, row.root) {
 			continue
@@ -312,12 +308,10 @@ func goBatchVerdict(t *testing.T, u *ir.Unit, root string, announce, batch []byt
 	var rep tabletext.Report
 	n, _, err := tablewire.DecodeMessages(m, insts, batch, &vocab, &rep)
 	if err != nil {
-		var refusal *tablewire.MessageRefusal
-		if errors.As(err, &refusal) {
+		if refusal, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
 			return "0 " + refusal.Reason.String() + " 0"
 		}
-		var nonFinite *tablewire.NonFiniteRefusal
-		if errors.As(err, &nonFinite) {
+		if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); ok {
 			return "0 non_finite_float 0"
 		}
 		return "error " + err.Error()
@@ -341,13 +335,11 @@ func gooseBatchProbe(t *testing.T, u *ir.Unit, root string, announce []byte, cas
 	if err != nil {
 		t.Fatal(err)
 	}
-	for k, v := range tables {
-		files[k] = v
-	}
+	maps.Copy(files, tables)
 	var mods []string
 	for name := range files {
-		if strings.HasSuffix(name, ".goose") {
-			mods = append(mods, strings.TrimSuffix(name, ".goose"))
+		if before, ok := strings.CutSuffix(name, ".goose"); ok {
+			mods = append(mods, before)
 		}
 	}
 	sort.Strings(mods)

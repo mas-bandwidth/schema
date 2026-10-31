@@ -2,6 +2,7 @@ package lobstertable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,9 +130,7 @@ func TestLobsterKeyedAccessorCoversBothEnds(t *testing.T) {
 	t.Parallel()
 	rows := keyedRows(t, nil)
 	want := map[string]string{}
-	for k, v := range keyedUse {
-		want[k] = v
-	}
+	maps.Copy(want, keyedUse)
 	for c := range keyedRefusals {
 		want[c+" refused"] = "refused by name"
 	}
