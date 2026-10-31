@@ -638,7 +638,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static MAPDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -649,16 +649,6 @@ struct TableIds
     // the reference an id takes: the file's own first-use entry, appended on
     // first use. The MESSAGE form names no id at all: its references are
     // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
-    //
-    // ids and chain are left unset by the constructor on purpose: a save
-    // builds one TableIds, and only the entries below count are ever read,
-    // because a bucket's chain links only entries this function appended.
-    // gcc cannot see that invariant through the chain and calls the reads
-    // maybe-uninitialized, so the warning is off for this function alone.
-#if defined( __GNUC__ ) && !defined( __clang__ )
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-#endif
     MAPDEMO_TABLE_INLINE uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
@@ -670,9 +660,6 @@ struct TableIds
         ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
-#if defined( __GNUC__ ) && !defined( __clang__ )
-#pragma GCC diagnostic pop
-#endif
 
     // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
     // header, union arm header or blob header names. A REPEAT answers from
@@ -1805,7 +1792,7 @@ static const int64_t kTableAnnounceBytes = 901;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xdc, 0xde, 0x7b, 0x79, 0x38, 0x68, 0x8e, 0x1c, 0x02,
+    0x01, 0x01, 0x09, 0x24, 0x69, 0x6a, 0xfd, 0x26, 0xca, 0x28, 0x9f, 0x02,
     0x0e, 0xdd, 0x06, 0x06, 0xda, 0x06, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
     0xc9, 0x3d, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36,
@@ -8298,7 +8285,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x1c8e6838797bdedcull;
+static const uint64_t BuildVersion = 0x9f28ca26fd6a6924ull;
 
 } // namespace mapdemo
 

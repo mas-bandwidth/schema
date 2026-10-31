@@ -54,7 +54,7 @@ const tableRetainSaveSource = `
     {
         if (pointer == IntPtr.Zero || !measure && report == null) { return -1; }
         NativeValue native = new NativeValue((byte*)pointer, 0);
-        RegionGraph graph = RegionNumber(native, type, allocator); if (!graph.Valid) { return -1; }
+        RegionGraph graph = RegionNumber(native, type, allocator, true); if (!graph.Valid) { return -1; }
         try
         {
             RegionIds validate = new RegionIds(vocabulary) { Graph = graph, RootType = type };
