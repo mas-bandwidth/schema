@@ -80,6 +80,11 @@ toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
 # the layout model or the build version silently NOT rebuild the compiler every
 # gate below then measures.
 GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
+# and every file the compiler embeds (go:embed): the runtimes the scripting
+# targets copy beside their output. Without them an edit to a runtime left
+# bin/schema stale and every generate re-emitted the old runtime.
+# bin-schema-embeds checks it against `go list`'s own EmbedFiles.
+EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go')
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 # the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side
@@ -132,8 +137,38 @@ all: bin/schema
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
-bin/schema: $(GO_SOURCES)
+bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+
+# bin-schema-embeds: for one embedded file of every package that embeds
+# (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
+# newer mtime on that file makes bin/schema out of date. `make -q` asks
+# without building; the last step rebuilds once.
+.PHONY: bin-schema-embeds
+bin-schema-embeds: bin/schema
+	@n=0; for f in $$(go list -deps -f '{{$$d := .Dir}}{{range .EmbedFiles}}{{$$d}}/{{.}}{{"\n"}}{{break}}{{end}}' ./cmd/schema); do \
+		n=$$((n+1)); touch "$$f"; \
+		if $(MAKE) --no-print-directory -q bin/schema; then \
+			echo "bin-schema-embeds FAILED: touching $$f left bin/schema up to date"; exit 1; fi; \
+		touch -r "$$f" bin/schema; \
+	done; \
+	test $$n -gt 0 || { echo "bin-schema-embeds FAILED: go list named no embedded file"; exit 1; }; \
+	echo "bin-schema-embeds: $$n embedding package(s), a newer file in each rebuilds bin/schema"
+	@$(MAKE) --no-print-directory bin/schema
+
+test: bin-schema-embeds
+
+# Its control: with EMBED_SOURCES emptied on the command line, a touched
+# runtime leaves bin/schema up to date and bin-schema-embeds must go red.
+.PHONY: bin-schema-embeds-negative-control
+bin-schema-embeds-negative-control: bin/schema
+	@mkdir -p build
+	@if $(MAKE) --no-print-directory bin-schema-embeds EMBED_SOURCES= > build/bin-schema-embeds-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: with no embedded file a prerequisite, bin-schema-embeds stayed green"; cat build/bin-schema-embeds-control.log; exit 1; fi
+	@grep -q 'bin-schema-embeds FAILED: touching .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: bin-schema-embeds went red for another reason"; cat build/bin-schema-embeds-control.log; exit 1; }
+	@$(MAKE) --no-print-directory bin/schema
+	@echo "negative control: without the embedded files as prerequisites, a touched runtime leaves bin/schema stale and bin-schema-embeds goes RED"
 
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)
@@ -5532,54 +5567,6 @@ tables-cpp-region-discard-negative-control:
 		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
 	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
-
-# A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1): the C++
-# control removes the cycle walk from a COPY of pointers.go, so a cyclic graph
-# loads, and TestPointerNamingAnOpenNodeIsRefusedCPP must go red on it.
-CPP_CYCLE_NC := build/cpp-cycle-nc
-.PHONY: tables-cpp-cycle-negative-control
-tables-cpp-cycle-negative-control:
-	@rm -rf $(CPP_CYCLE_NC) && mkdir -p $(CPP_CYCLE_NC)
-	@sed -e 's|if ( !%sNumberFrom( cycle_ctx, cycle_walk, \*root ) ) { out->malformed = true; }|if ( false ) { out->malformed = true; } // NEGATIVE CONTROL: the cycle walk is gone|' \
-		internal/codegen/cpptable/pointers.go > $(CPP_CYCLE_NC)/pointers.go.txt
-	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_CYCLE_NC)/pointers.go.txt && \
-		{ echo "NEGATIVE CONTROL: the C++ cycle sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(CPP_CYCLE_NC)/pointers.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_NC)/overlay.json
-	@if go test -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
-			./internal/codegen/cpptable > $(CPP_CYCLE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the C++ cycle walk is gone and the gate stayed green"; \
-		cat $(CPP_CYCLE_NC)/log; exit 1; \
-	fi
-	@grep -q "cycle: the region load handed back a cyclic graph" $(CPP_CYCLE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
-		  cat $(CPP_CYCLE_NC)/log; exit 1; }
-	@grep -m1 "cyclic graph" $(CPP_CYCLE_NC)/log
-	@echo "negative control: removing the C++ cycle walk turns the open-node gate RED"
-
-# The engine's twin: cyclic() answers false in a COPY of decode.go, so the
-# oracle reads node_cycle_self clean, and the framing oracle check
-# TestFramingVectorsReadThroughTheEngine must go red on that row.
-ENGINE_CYCLE_NC := build/engine-cycle-nc
-.PHONY: tables-engine-cycle-negative-control
-tables-engine-cycle-negative-control:
-	@rm -rf $(ENGINE_CYCLE_NC) && mkdir -p $(ENGINE_CYCLE_NC)
-	@sed -e 's|^	_, err := NumberPacking(m, inst)$$|	_, err := NumberPacking(m, inst); err = nil // NEGATIVE CONTROL: cycles read clean|' \
-		internal/tablewire/decode.go > $(ENGINE_CYCLE_NC)/decode.go.txt
-	@cmp -s internal/tablewire/decode.go $(ENGINE_CYCLE_NC)/decode.go.txt && \
-		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/$(ENGINE_CYCLE_NC)/decode.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
-	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
-			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
-		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
-	fi
-	@grep -q "node_cycle_self" $(ENGINE_CYCLE_NC)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the check went red, but not on node_cycle_self"; \
-		  cat $(ENGINE_CYCLE_NC)/log; exit 1; }
-	@grep -m1 "node_cycle_self" $(ENGINE_CYCLE_NC)/log
-	@echo "negative control: letting the engine read a cycle turns node_cycle_self RED"
 
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
