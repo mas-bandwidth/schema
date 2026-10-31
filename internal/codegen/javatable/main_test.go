@@ -56,12 +56,20 @@ func TestMain(m *testing.M) {
 func capJavaTools() (string, error) {
 	javac, java := os.Getenv("JAVAC"), os.Getenv("JAVA")
 	if javac == "" || java == "" {
-		jc, err1 := exec.LookPath("javac")
-		j, err2 := exec.LookPath("java")
-		if err1 != nil || err2 != nil {
-			return "", nil
-		}
-		javac, java = jc, j
+		javac, java = "javac", "java"
+	}
+	// Resolved to paths before PATH changes: a bare name (JAVAC=javac) would
+	// otherwise find the wrapper itself.
+	javac, err1 := exec.LookPath(javac)
+	java, err2 := exec.LookPath(java)
+	if err1 != nil || err2 != nil {
+		return "", nil
+	}
+	if javac, err1 = filepath.Abs(javac); err1 != nil {
+		return "", err1
+	}
+	if java, err2 = filepath.Abs(java); err2 != nil {
+		return "", err2
 	}
 	dir, err := os.MkdirTemp("", "javatable-jdk-")
 	if err != nil {
