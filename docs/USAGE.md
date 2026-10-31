@@ -4957,6 +4957,44 @@ end
 ```
 <!-- /lua-table-usage -->
 
+**Lobster** — the pinned Lobster release (`make dist-lobster`), no
+dependencies. Generated code is self-contained: a module per schema file, and
+for tables a `<Base>Table.lobster` module per file of descriptors and per-table
+functions, with the runtime modules (`schema_tables`, `load`, `schema_save`,
+`cook`, `json`, ...) beside them, every one in `namespace schema_rt`, so the
+directory is the whole program. Lobster has no reflection, so a load does not
+fill a generated class: it reads the table AS DATA into a `schema_rt.Record`
+(one `Slot` per field, in declaration order; `slot_named` reaches one by its
+schema name, and a name the table does not declare is refused by name), and
+the same `Record` is what a save, a cook and a text write take. A buffer is a
+Lobster string, which has no address, so a cook's `<Table>OpenReason` (in the
+unit's namespace, its package: `graphdemo.SceneOpenReason`) takes the
+buffer's lead past an aligned base and answers `"ok"` or the refusal's name
+(`unaligned_base`, a foreign build, the other byte order); `<Table>ReadCook`
+reads a cook back into a `Record`, `nil` for a corrupt one. An enum-keyed array
+is a plain vector with key k at slot k-1, and `<Owner><Field>Slot(key)`,
+`<Owner><Field>At(v, key)` and `<Owner><Field>Each(v) key, e:` take the key
+instead, refusing None and a key past the enum's `Max` by name. This fragment
+is compiled and run against the `tables/pointers` unit by
+`make tables-lobster-usage`:
+
+<!-- lobster-table-usage -->
+```lobster
+import .GraphTable
+
+// open the cook another build wrote; a refusal names a foreign build, a
+// corrupt file or the other byte order: fall back to the tolerant wire
+let why = graphdemo.SceneOpenReason(bytes, 0, false)
+assert why == "ok"
+let scene = graphdemo.SceneReadCook(bytes)      // nil for a forged cook
+assert scene
+var node = schema_rt.slot_named(scene, "head").cell.node
+while node:
+    use(schema_rt.slot_named(node, "value").cell.i)
+    node = schema_rt.slot_named(node, "next").cell.node   // nil is the null reference
+```
+<!-- /lobster-table-usage -->
+
 All nine are generated from the same IR and compared against each other in CI
 on every push. The wire is bit-packed, so the property being checked is
 bit-identity — if they ever disagree by one bit, the build fails.
