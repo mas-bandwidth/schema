@@ -1699,11 +1699,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp decode_node_table(nodes, name, body, ids, idx) do
-    if open_node?(idx), do: throw(:wire_damaged), else: decode_open_node(nodes, name, body, ids, idx)
+    case node_mark(idx) do
+      :open -> throw(:wire_damaged)
+      {:closed, value} -> {:value, value}
+      :unvisited -> decode_open_node(nodes, name, body, ids, idx)
+    end
   end
 
   defp decode_open_node(nodes, name, body, ids, idx) do
     desc = Map.fetch!(@tables, name)
+    set_mark(idx, :open)
 
     # DAMAGE DISCARDS THE WHOLE LOAD (§4): a pointee record whose body cannot
     # be framed, or that is damaged inside, refuses the load
@@ -1711,7 +1716,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {:ok, fields, []} ->
         {value, report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
         if report.malformed, do: throw(:wire_damaged)
-        close_node(idx)
+        set_mark(idx, {:closed, value})
         {:value, value}
 
       _ ->
@@ -1720,48 +1725,39 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no
-  # writer produces a cyclic wire, so a pointer that reaches a node whose
-  # descent is still open (on the current path from the root) refuses the
-  # whole load; a second pointer to a CLOSED node is a share and legal. The
-  # root is open for the whole read. The marks live for one load
-  # (with_open_marks/2).
+  # writer produces a cyclic wire. Each node carries one of three marks for
+  # the load: unvisited, OPEN while its descent is on the current path from the
+  # root, CLOSED (with its value) once that descent is done. A pointer to an
+  # open node refuses the whole load; a pointer to a closed node is a share and
+  # takes the one value, so each node is entered once and the walk is linear.
+  # The root is open for the whole read (root_named!/1).
   defp with_open_marks(root, fun) do
-    Process.put(:elixir_open_nodes, {root, MapSet.new()})
+    Process.put(:elixir_node_marks, {root, %{}})
 
     try do
       fun.()
     after
-      Process.delete(:elixir_open_nodes)
+      Process.delete(:elixir_node_marks)
     end
   end
 
-  # open_node? answers whether idx is already open (a cycle), and marks it
-  # open when it is not
-  defp open_node?(idx) do
-    case Process.get(:elixir_open_nodes) do
-      nil ->
-        false
-
-      {root, open} ->
-        if MapSet.member?(open, idx) do
-          true
-        else
-          Process.put(:elixir_open_nodes, {root, MapSet.put(open, idx)})
-          false
-        end
+  defp node_mark(idx) do
+    case Process.get(:elixir_node_marks) do
+      nil -> :unvisited
+      {_root, marks} -> Map.get(marks, idx, :unvisited)
     end
   end
 
-  defp close_node(idx) do
-    case Process.get(:elixir_open_nodes) do
+  defp set_mark(idx, mark) do
+    case Process.get(:elixir_node_marks) do
       nil -> :ok
-      {root, open} -> Process.put(:elixir_open_nodes, {root, MapSet.delete(open, idx)})
+      {root, marks} -> Process.put(:elixir_node_marks, {root, Map.put(marks, idx, mark)})
     end
   end
 
   defp root_named!(f) do
-    case Process.get(:elixir_open_nodes) do
-      {root, _open} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)
+    case Process.get(:elixir_node_marks) do
+      {root, _marks} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)
       nil -> :ok
     end
   end
@@ -1910,7 +1906,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {1, _} ->
         # node index 1 is the ROOT: under the root's own table it is a cycle
-        # (open_node?/1), under any other a kind mismatch
+        # (with_open_marks/2), under any other a kind mismatch
         root_named!(f)
         {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 

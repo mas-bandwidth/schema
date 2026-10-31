@@ -1912,8 +1912,8 @@ test-elixir: tables-elixir-view
 # corpus and requires framing RED on frame_entries_4097 and both cycle rows,
 # while report stays green.
 ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|' \
-	-e 's|    if open_node?(idx), do: throw(:wire_damaged), else:|    if open_node?(idx), do: :null, else:|' \
-	-e 's|      {root, _open} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)|      {root, _open} -> if false and Map.get(f, :elem) == root, do: throw(:wire_damaged)|'
+	-e 's|      :open -> throw(:wire_damaged)|      :open -> :null|' \
+	-e 's|      {root, _marks} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)|      {root, _marks} -> if false and Map.get(f, :elem) == root, do: throw(:wire_damaged)|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
