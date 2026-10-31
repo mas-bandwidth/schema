@@ -115,6 +115,7 @@
       "why": "the shared conformance harness's Go side: the Go leg's wire, walk and wire-fuzz controls, which share one generated Go tree and one build/conformance-go (72 s together on run 40684250024), and the Go rows control beside them. One half of what was the single `base-conformance` group, cut on 2026-10-28 because that group ran 261 s median and 296 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 259 s of control time over 7 controls). Measured about 75 s of control time on run 40684770225 and 108 s on run 40684250024. The proof gate's end-to-end control (proof-negative-control: the Go leg run twice through a substituted registry, once with one wire answer deleted, and tools/matrix proof required red naming that case) rides here on the same build/conformance-go. The Lua packet finite-float control rides here because this row installs the pinned Lua interpreter (make dist-lua) and already builds build/schema-lua for conformance-negative-control-lua; on that build it is two small sabotage-tool runs and two Lua checker runs over one generated unit, 3.7 s on the studio with a cold Go build cache, so the row stays inside the 120 s rule.",
       "targets": [
         "conformance-negative-control-go",
+        "conformance-negative-control-go-cycle",
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
         "conformance-go-rows-negative-control",

@@ -2803,7 +2803,143 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	if tableNonFiniteRefused(report) {
 		return nil
 	}
+	if !report.Malformed && tableRegionCyclic(base, root, directory) {
+		report.Malformed = true
+		return nil
+	} // a pointer naming an open node is damage: the whole load is refused (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1, §4)
 	return base
+}
+
+// A POINTER NAMING AN OPEN NODE IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1, §4): no
+// writer produces one (the numbering walk refuses a cycle at an open entry), so
+// a load walks the decoded graph once from its root, depth first, and a
+// reference to a node whose descent is still open refuses the whole load. A
+// share of a CLOSED node is legal and is not this. The walk allocates nothing:
+// its OPEN and CLOSED marks ride in the high bits of a node directory sorted by
+// key (a region offset, or an arena reference), where a node is found by binary
+// search.
+const tableCycleEmpty, tableCycleOpen, tableCycleClosed = uint64(1) << 61, uint64(1) << 63, uint64(1) << 62
+
+type tableCycleWalk struct {
+	base  unsafe.Pointer
+	arena *TableArena
+	dir   []TableNodeDirEntry
+	cycle bool
+}
+
+// tableRegionCyclic walks a loaded region over the region's own directory. An
+// entry the load left empty (^0) holds the offset before it under the EMPTY
+// bit, so the offsets stay ascending; every entry is restored before it returns.
+func tableRegionCyclic(base unsafe.Pointer, root *TableTypeInfo, dir []TableNodeDirEntry) bool {
+	last := uint64(0)
+	for i := range dir {
+		if dir[i].Offset == ^uint64(0) {
+			dir[i].Offset = tableCycleEmpty | last
+		} else {
+			last = dir[i].Offset
+		}
+	}
+	w := tableCycleWalk{base: base, dir: dir}
+	w.visit(0, base, root)
+	for i := range dir {
+		if dir[i].Offset&tableCycleEmpty != 0 {
+			dir[i].Offset = ^uint64(0)
+		} else {
+			dir[i].Offset &^= tableCycleOpen | tableCycleClosed
+		}
+	}
+	return w.cycle
+}
+
+// tableArenaCyclic walks a builder's arena graph: keys is scratch beside the
+// load's directory, filled with the directory's arena references and sorted.
+func tableArenaCyclic(rootRef uint64, root unsafe.Pointer, info *TableTypeInfo, a *TableArena, dir, keys []TableNodeDirEntry) bool {
+	n := 0
+	for i := range dir {
+		if dir[i].Offset != ^uint64(0) {
+			keys[n] = TableNodeDirEntry{Offset: dir[i].Offset}
+			n++
+		}
+	}
+	keys = keys[:n]
+	for i := n/2 - 1; i >= 0; i-- {
+		tableCycleSift(keys, i, n)
+	}
+	for end := n - 1; end > 0; end-- {
+		keys[0], keys[end] = keys[end], keys[0]
+		tableCycleSift(keys, 0, end)
+	}
+	w := tableCycleWalk{arena: a, dir: keys}
+	w.visit(rootRef, root, info)
+	return w.cycle
+}
+func tableCycleSift(k []TableNodeDirEntry, i, n int) {
+	for {
+		c := 2*i + 1
+		if c >= n {
+			return
+		}
+		if c+1 < n && k[c+1].Offset > k[c].Offset {
+			c++
+		}
+		if k[i].Offset >= k[c].Offset {
+			return
+		}
+		k[i], k[c] = k[c], k[i]
+		i = c
+	}
+}
+func (w *tableCycleWalk) find(key uint64) int {
+	keys := ^(tableCycleOpen | tableCycleClosed | tableCycleEmpty)
+	lo, hi := 0, len(w.dir)
+	for lo < hi {
+		m := int(uint(lo+hi) >> 1)
+		if w.dir[m].Offset&keys < key {
+			lo = m + 1
+		} else {
+			hi = m
+		}
+	}
+	if lo < len(w.dir) && w.dir[lo].Offset&tableCycleEmpty == 0 && w.dir[lo].Offset&keys == key {
+		return lo
+	}
+	return -1
+}
+func (w *tableCycleWalk) visit(key uint64, p unsafe.Pointer, t *TableTypeInfo) bool {
+	i := w.find(key)
+	if i < 0 || p == nil {
+		return true
+	}
+	e := &w.dir[i]
+	if e.Offset&tableCycleOpen != 0 {
+		w.cycle = true
+		return false
+	}
+	if e.Offset&tableCycleClosed != 0 || t == nil {
+		e.Offset |= tableCycleClosed
+		return true
+	}
+	e.Offset |= tableCycleOpen
+	tableRegionEdges(p, t, w.edge)
+	if w.cycle {
+		return false
+	}
+	w.dir[i].Offset = w.dir[i].Offset&^tableCycleOpen | tableCycleClosed
+	return true
+}
+func (w *tableCycleWalk) edge(slot *TableRef, f *TableFieldInfo) bool {
+	if *slot == 0 {
+		return true
+	}
+	var t *TableTypeInfo
+	if f.Table != nil {
+		t = f.Table()
+	}
+	if w.arena != nil {
+		return w.visit(uint64(*slot), w.arena.At(*slot), t)
+	}
+	p := tableRefAt(slot, nil)
+	return w.visit(uint64(uintptr(p)-uintptr(w.base)), p, t)
 }
 func tablePackNodeBytes(e *tableNodeEntry, a *TableArena) int64 {
 	if e.info != nil {
@@ -2990,7 +3126,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		}
 	}
 	count := int64(scan.records + 1)
-	memory := worker.Arena.Allocator.alloc(count * 16)
+	memory := worker.Arena.Allocator.alloc(count * 32)
 	if memory == nil {
 		report.Malformed = true
 		return false
@@ -3080,6 +3216,10 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	if tableNonFiniteRefused(report) {
 		return false
 	}
+	if ok && !worker.refused && !report.Malformed && tableArenaCyclic(uint64(ref), p, root, worker.Arena, directory, unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[count*16])), int(count))) {
+		report.Malformed = true
+		return false
+	} // a pointer naming an open node (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1, §4)
 	return ok && !worker.refused
 }
 
@@ -4355,6 +4495,10 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	if tableNonFiniteRefused(report) {
 		return nil
 	}
+	if !report.Malformed && tableRegionCyclic(base, root, directory) {
+		report.Malformed = true
+		return nil
+	} // a pointer naming an open node is damage: the whole load is refused (mas-bandwidth/schema docs/SPEC-TABLES.md §3.1, §4)
 	return base
 }
 func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, retain *TableRetain, report *TableReport, allocator ...TableAllocator) int64 {

@@ -704,6 +704,16 @@ conformance-big-endian-negative-control: build/conformance-harness build/conform
 conformance-negative-control-go: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control wire
 
+# THE OPEN-NODE REFUSAL's control (docs/SPEC-TABLES.md §3.1, §4): the generated
+# Go reader's cycle walk answers "no cycle", and the framing rows
+# node_cycle_self and node_cycle_to_root must go red while wire stays green.
+# It rebuilds only the driver over the generated tree, about 3 s.
+.PHONY: conformance-negative-control-go-cycle
+conformance-negative-control-go-cycle: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control cycle
+
+test-go: conformance-negative-control-go-cycle
+
 .PHONY: conformance-negative-control-go-walk
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk

@@ -35,7 +35,8 @@ const (
 	// +2: the open's bounded-work cap and the unsigned-overflow ceiling clamp (schema-shared landing, SPEC-TABLES §3, schema#611)
 	// +821: table floats are finite only (SPEC-TABLES §3.3, Glenn 2026-10-27): every float read tests its raw bits, every tolerant load and message batch refuses a non-finite one, and every fixed type holding a float gains its finite pass and its writer clause (tables-finite/go)
 	// -7200: variable tables carry no message form: no body codecs, region-message or retain-message runtime for them
-	goExamplesLineBudget = 58858
+	// +144: a load refuses a pointer naming an open node, walking the graph with its marks in the node directory (SPEC-TABLES §3.1, Glenn 2026-10-31)
+	goExamplesLineBudget = 59002
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
