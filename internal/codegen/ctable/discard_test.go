@@ -205,17 +205,17 @@ type discardSabotage struct {
 }
 
 var discardSabotages = []discardSabotage{
-	{"value read", [][2]string{{"if ( !whole || report->malformed ) { probe_root_reset( value ); return 0; }", "if ( !whole ) { return 0; }"}},
+	{"value read", [][2]string{{"if ( !whole || report->malformed ) { root_reset( value ); return 0; }", "if ( !whole ) { return 0; }"}},
 		[]string{"value"}},
-	{"region read", [][2]string{{"if(!probe_graph_load_graph(&reader,(Graph *)(void *)region,&nodes,directory,&sink) || report->malformed) {", "if(!probe_graph_load_graph(&reader,(Graph *)(void *)region,&nodes,directory,&sink)) {"}},
+	{"region read", [][2]string{{"if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink) || report->malformed) {", "if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink)) {"}},
 		[]string{"region"}},
 	{"retaining read", [][2]string{{"retention)||report->malformed){", "retention)){"}},
 		[]string{"retain"}},
-	{"builder read", [][2]string{{"if(!ok || report->malformed) { probe_graph_reset(root); return 0; }", "if(!ok) { return 0; }"}},
+	{"builder read", [][2]string{{"if(!ok || report->malformed) { graph_reset(root); return 0; }", "if(!ok) { return 0; }"}},
 		[]string{"builder"}},
-	{"text read", [][2]string{{"if ( value != NULL ) { probe_root_reset( value ); } /* damage discards the whole load (§4) */", "/* SABOTAGED */"}},
+	{"text read", [][2]string{{"if ( value != NULL ) { root_reset( value ); } /* damage discards the whole load (§4) */", "/* SABOTAGED */"}},
 		[]string{"text"}},
-	{"graph text read", [][2]string{{"if ( root != NULL ) { probe_graph_reset( root ); } /* damage discards the whole load (§4) */", "/* SABOTAGED */"}},
+	{"graph text read", [][2]string{{"if ( root != NULL ) { graph_reset( root ); } /* damage discards the whole load (§4) */", "/* SABOTAGED */"}},
 		[]string{"graph text"}},
 }
 
