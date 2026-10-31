@@ -1,0 +1,3 @@
+// wirefuzz.build — the sidecar of wirefuzz.goose (the pinned Goose release's packages guide, section 3): the
+// one C the leg needs, an exact-length read of stdin.
+c_sources = ["wirefuzz_io.c"];

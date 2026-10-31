@@ -4957,6 +4957,41 @@ end
 ```
 <!-- /lua-table-usage -->
 
+**Goose** — the pinned Goose compiler (`make dist-goose`), no dependencies.
+Generated code is one module per schema file and per surface
+(`<File>Table.goose`, `<File>Cook.goose`, `<File>Block.goose`, ...) in the
+schema's package namespace, with the runtime modules (`schema_rt`) emitted
+beside them, so the directory is the whole program. A slice has no address, so
+the cook's `<Root>CookOpenReason(bytes, lead)` takes the buffer's lead past a
+64-byte-aligned base as a stated fact, and answers `schema_rt::TableRefuseOk`
+or the refusal's number (`schema_rt::table_refuse_name` spells it: an
+unaligned base, a foreign build, the other byte order). On a match the root is
+at offset zero of `schema_rt::cook_region(bytes)`, and every field is a typed
+accessor at an offset into that view: a `*T` answers the target's offset, or
+below zero for null. This fragment is compiled and run against the
+`tables/pointers` unit by `make tables-goose-usage`:
+
+<!-- goose-table-usage -->
+```goose
+// open the cook another build wrote; a refusal is a foreign build, a corrupt
+// file or the other byte order: fall back to the tolerant wire
+let why = graphdemo::SceneCookOpenReason(bytes, 0);
+if why != schema_rt::TableRefuseOk {
+    write_stderr(str("the Scene cook did not open: ", schema_rt::table_refuse_name(why), "\n"));
+    exit(1);
+}
+let region = schema_rt::cook_region(bytes);
+var node = graphdemo::SceneRowHead(region, 0);
+var walked: i64 = 0;
+var total: i64 = 0;
+while node >= 0 {
+    total += graphdemo::ListNodeRowValue(region, node) as i64;
+    walked += 1;
+    node = graphdemo::ListNodeRowNext(region, node); // below zero is null
+}
+```
+<!-- /goose-table-usage -->
+
 **Squirrel** — Squirrel 3.2, no dependencies. Generated code is self-contained: a
 module per schema file beside the serialize runtime, and for tables a
 `<Package>Tables.nut` of classes and descriptors with the runtime modules

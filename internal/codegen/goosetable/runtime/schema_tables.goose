@@ -101,3 +101,10 @@ struct UnionDesc {
     name: const u8[:],
     arms: const FieldDesc[:],
 }
+
+// LoadReg is one row of THE LOAD DISPATCH TABLE (registry/tablewire.goosereg,
+// assembled onto this file as `load_registry`): the descriptor facts it
+// matches — the shape, the array kind (0: any) and wstring — and the Loader
+// it selects. The first row that matches wins. It lives here, beside the
+// array it types, so this module checks on its own.
+struct LoadReg { shape: u8, array: u8, wide: bool, loader: Loader }
