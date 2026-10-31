@@ -1154,6 +1154,11 @@ local function read_arm(arm: any, r: any, lpos: number, sub: any, u: any): boole
 		end
 		return ok
 	end
+	if s == "union" then
+		-- a NESTED UNION's field line has no L of its own: its arm line (the
+		-- arm id reference, the kind, the arm's L) is the outer arm's payload
+		return read_field(arm, sub, u) == true
+	end
 	local ok, selected, intact = read_field(arm, new_reader(r.b, lpos, sub.e), u)
 	return ok == true and selected ~= false and intact ~= false
 end
