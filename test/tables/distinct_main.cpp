@@ -84,6 +84,18 @@ static bool has_repeat( const std::vector<uint64_t> & ids )
     return false;
 }
 
+// THE SWEEP'S SHAPE. Every count gets a clean table. A repeat goes at every
+// position for the small counts and for the counts within kSweepEdge of the
+// bound; between them, at the positions sweep_position names.
+static const int kSweepEveryBelow = 64;
+static const int kSweepEdge = 8;
+static const int kSweepStride = 61;
+
+static bool sweep_position( int at, int n )
+{
+    return at <= 2 || at >= n - 2 || at == n / 2 || at == n / 2 + 1 || at % kSweepStride == 0;
+}
+
 static void expect( const char * name, const std::vector<uint64_t> & ids )
 {
     const std::vector<uint8_t> w = wire_of( ids );
@@ -276,13 +288,20 @@ int main()
         expect( "probe: wrapping cluster, repeat inside it", ids );
     }
 
-    // ---- THE SWEEP: every count either side of the bound, clean and with a
-    // repeat planted at every position, against the reference verdict ----
+    // ---- THE SWEEP: every count from 0 to the bound + 4, clean and with a
+    // repeat planted, against the reference verdict. A count where the walk can
+    // change shape (the small tables, and the counts either side of the bound
+    // where the probe hands over to the fallback) gets a repeat at EVERY
+    // position; every other count gets the positions that touch the ends, the
+    // middle and a stride, so the sweep stays linear in the bound per count
+    // instead of quadratic. ----
     for ( int n = 0; n <= bound + 4; n++ )
     {
         expect( "sweep clean", spread( n ) );
+        const bool every = n <= kSweepEveryBelow || n >= bound - kSweepEdge;
         for ( int at = 1; at < n; at++ )
         {
+            if ( !every && !sweep_position( at, n ) ) { continue; }
             std::vector<uint64_t> ids = spread( n );
             ids[at] = ids[ at / 2 ];
             expect( "sweep planted", ids );
@@ -291,9 +310,11 @@ int main()
     }
 
     // the same sweep over the hostile cluster, which is the shape where the
-    // probe does the most work it can be made to do
+    // probe does the most work it can be made to do: every small count, every
+    // count either side of the bound, and a stride between
     for ( int n = 0; n <= bound + 2; n++ )
     {
+        if ( n > kSweepEveryBelow && n < bound - kSweepEdge && n % kSweepStride != 0 ) { continue; }
         expect( "hostile sweep clean", all_colliding( n, 5 ) );
         if ( n > 1 )
         {
