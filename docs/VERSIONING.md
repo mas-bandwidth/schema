@@ -297,8 +297,8 @@ pipeline step; player saves hold state, which has no weekly default.
 Three mechanisms judge an edit, and each sees what the others cannot:
 
 - **The read report** says what a *reader* can tell happened: six counters,
-  `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
-  `malformed` flag, filled on every load and never fatal on data from another
+  `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` (retired,
+  always zero) and the `malformed` flag, filled on every load and never fatal on data from another
   build. `malformed` is DAMAGE rather than evolution, and a load that reports
   it is discarded whole (SPEC-TABLES.md §4). A
   caller that opts into retain-unknown reads two more on the same struct

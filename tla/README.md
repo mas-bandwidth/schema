@@ -277,15 +277,17 @@ the one invariant that names the rule; only that invariant may fail.
 
 | cfg | switch | invariant violated | the bug it is |
 |---|---|---|---|
-| `MCFramingHeaderAgainstParent.cfg` | `HeaderAgainstParent` | `HeaderInsideBody` | the retired reading: a count spelled past `L` completed from the parent's bytes |
-| `MCFramingShortBodyInert.cfg` | `ShortBodyInert` | `HeaderInsideBody` | the retired reading: a body of fewer than two bytes stepped over as inert |
-| `MCFramingRepeatLastWins.cfg` | `RepeatLastWins` | `OneIdOncePerBody` | the retired reading: a body carrying one id twice accepted, the last occurrence winning |
+| `MCFramingHeaderAgainstParent.cfg` | `HeaderAgainstParent` | `HeaderInsideBody` | a count spelled past `L` completed from the parent's bytes |
+| `MCFramingShortBodyInert.cfg` | `ShortBodyInert` | `HeaderInsideBody` | a body of fewer than two bytes stepped over as inert |
+| `MCFramingRepeatLastWins.cfg` | `RepeatLastWins` | `OneIdOncePerBody` | a body carrying one id twice accepted, the last occurrence winning |
 | `MCFramingOffByOneAtL.cfg` | `OffByOneAtL` | `NoReadPastBuffer` | a payload ending one byte past the buffer accepted, and read |
+| `MCFramingResumeAtHeader.cfg` | `ResumeAtHeader` | `ResumeAtEnd` | resuming after the header instead of at `end`, so the elements are read as the parent's next field |
 | `MCFramingResumeAfterDamage.cfg` | `ResumeAfterDamage` | `DamageEndsLoad` | resuming past `L` after damage inside a field, the partial read the ruling of 2026-10-31 removed |
 
-Each counterexample was checked by hand against the code it names: the engine
-before this model's change read a header past `L` (`subTo` clamped the span),
-stepped over a body of fewer than two bytes, and let a repeated id win.
+Each counterexample was checked by hand against a reader written the way its
+switch reads: a header completed past `L` from the parent's bytes, a body of
+fewer than two bytes stepped over, a repeated id read again, a payload one
+byte past the buffer, a resume after the header, and a resume after damage.
 
 ## Running
 
@@ -296,7 +298,7 @@ nice -n 19 timeout 180s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
   -workers 1 -config MCFraming.cfg -metadir "$JOB/tlc-MCFraming" Framing
 ```
 
-Repeat for each of the six cfgs. The positive cfg must exit 0 with exhaustive
+Repeat for each of the seven cfgs. The positive cfg must exit 0 with exhaustive
 completion; each reversed cfg must report its named invariant violation. The
 runs are recorded in `tla/RUNS.tsv`.
 

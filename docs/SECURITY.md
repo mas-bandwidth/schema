@@ -149,8 +149,9 @@ what the language specifies, in a way that weakens a check.
   the fuzzer to go red (docs/SPEC-TABLES.md §4.2). The cooked form is the
   whole of the trusted class — opened at a build version, integrity by
   signature (§7.4) — and only loading cooked data is trusted (Glenn,
-  2026-10-31). The block form is untrusted input like the wire: its open
-  validates as an untrusted read (§19.2).
+  2026-09-03, #391). The block form is untrusted input like the wire: its open
+  validates the block's layout as untrusted input, and what a row's values
+  may hold is not yet specified (§19.2).
 
 None of that is proof. It is why we would rather hear from you.
 

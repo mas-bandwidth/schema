@@ -9,4 +9,5 @@ MCFramingHeaderAgainstParent.cfg	Framing	counterexample	HeaderInsideBody	39	15	2
 MCFramingShortBodyInert.cfg	Framing	counterexample	HeaderInsideBody	3	3	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCFramingRepeatLastWins.cfg	Framing	counterexample	OneIdOncePerBody	59	19	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCFramingOffByOneAtL.cfg	Framing	counterexample	NoReadPastBuffer	15	13	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCFramingResumeAtHeader.cfg	Framing	counterexample	ResumeAtEnd	7	5	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCFramingResumeAfterDamage.cfg	Framing	counterexample	DamageEndsLoad	3	3	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)

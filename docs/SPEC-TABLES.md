@@ -2341,16 +2341,16 @@ any other, and there is no path that forgives one.
   for the key's id and reads the key, which is a bounded string or an integer
   and always a primitive. The scan decides the slot. A body carrying the key's
   id twice is damage, as every body carrying one id twice is (§3, §4). An
-  entry whose body carries no key field at all has the key's default. This implementation writes the key
-  first in every entry, so on any wire this schema wrote the scan ends at the
-  first header, and the rule is the scan and not the position.
+  entry whose body carries no key field at all has the key's default. This
+  implementation writes the key first in every entry, so on any wire this
+  schema wrote the scan ends at the first header, and the rule is the scan and
+  not the position.
 - **ASCENDING** against the key of the last entry that LANDED: the body
   decodes into the next slot.
 - **EQUAL or DESCENDING**: the body is not a map any conforming writer
-  produced, because a writer puts each key down once and in ascending order
-  (Glenn, #391: "Table reads are not trusted, they will come over the
-  network."). It is damage: `malformed` is set and the whole load is discarded (§4, DAMAGE
-  DISCARDS THE WHOLE LOAD). Nothing
+  produced, because a writer puts each key down once and in ascending order.
+  It is damage: `malformed` is set and the whole load is discarded (§4, INPUT
+  NO WRITER PRODUCES IS DAMAGE). Nothing
   is sorted at load, because the region path allocates nothing and sorting
   entries that hold self-relative references would be a second pack walk.
 - **KEYS NEVER CLAMP.** An entry whose key does not fit the reader's bound,
@@ -2465,7 +2465,8 @@ shape an enum-keyed array already takes:
   is byte-stable (§17.2) and a diff of two texts is a diff of two maps.
 - **`FromJson` reads keys in whatever order the text gives them.** A key the
   object gives twice, in one spelling or in two that read as one key, is
-  damage, the object rule (§16.2) applied inside the map. An empty object is an empty map, and `null` is
+  damage, the object rule (§16.2) applied inside the map. An empty object is
+  an empty map, and `null` is
   `kind_mismatch`.
 
 **THE COOK, and the generated `Find`.** A cook is a region written verbatim
@@ -2636,9 +2637,9 @@ red:
 - **The duplicate refusal is dropped**, a repeated key read as an ascending
   one. The `framing` row `map_repeat_key` is what meets it, and its
   `malformed` verdict goes red.
-- **The parent stops at a descending key** instead of reading on. A `report`
-  row whose map has a descending key and whose HOLDER carries a field after
-  the map is what meets it, and that field's decoded value goes red.
+- **The descending refusal is dropped**, a descending key read as an
+  ascending one. The `framing` row `map_descending` is what meets it, and its
+  `malformed` verdict goes red.
 - **The key-kind rule decodes anyway.** A `report` row written under a
   CHANGED KEY KIND is what meets it, and its six counters go red, because an
   entry lands under a defaulted key where the row says the map is empty.
@@ -3036,7 +3037,7 @@ is the same event that reader raises for any oversized array and is the price
 of adding a bound.
 
 **A body TOO SHORT TO CARRY ITS OWN HEADER, and a count whose spelling runs
-past the field's `L`, are damage**, §3's rule unchanged (THE HEADER LIES
+past the field's `L`, are damage**, by §3's rule (THE HEADER LIES
 INSIDE THE BODY): no writer produces either, `malformed` counts and the whole
 load is discarded (§4), on every path, the builder's included, before any
 count cap is consulted (`list_count_cross_length.bin`,
@@ -5285,7 +5286,8 @@ twenty unnameable entries counts nothing at all if no body references them.
   so a body carrying one id twice, whether or not the reader can name it, is
   input no writer produces, and it is damage (§4, INPUT NO WRITER PRODUCES IS
   DAMAGE; Glenn, #391: "Table reads are exactly equivalent to type reads in
-  security posture."). There is no occurrence rule. An encoder written from this section is therefore free
+  security posture."). There is no occurrence rule. An encoder written from
+  this section is therefore free
   to order fields as it likes, and byte-identical output against this
   implementation requires matching its declaration order as well as its
   framing. **First-use order in the id table follows from the write order**,
@@ -8796,7 +8798,7 @@ tolerance is the versioning model:
     whether or not this reader can name it, the reserved node-table id
     included (§3, §3.1);
   - **one key twice**: a keyed array carrying one slot key twice (§3.2), and a
-    map entry whose key equals the key of the entry before it (§2.8);
+    map entry whose key equals the key of the last entry that landed (§2.8);
   - **a header outside its body**: an array, keyed-array or map body too
     short to carry its element kind byte and its count (`L` below `2`), and a
     count whose spelling runs past the body's `L` (§3);
@@ -8838,7 +8840,8 @@ tolerance is the versioning model:
   fuzzer compares only that both sides say `malformed`. **EVOLUTION IS NOT
   DAMAGE** and every other row of this section stands: an unknown field,
   variant, arm or slot skipped and counted, a kind mismatch, a widening and a
-  clamp; the load succeeds and the report counts them. Array elements decode **inside their field's body
+  clamp; the load succeeds and the report counts them. Array elements decode
+  **inside their field's body
   bounds**, so no value is ever read from a neighbor's bytes.
   After an accepted counted array, slots beyond its live count hold the
   value-initialized element (§7.2).
@@ -8849,7 +8852,8 @@ tolerance is the versioning model:
 
 Every event lands in the **read report**. The wire-tolerance counters are
 `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` (retired:
-always zero, below) and the `malformed` flag; the report also carries `missing_required` (§2.3) and
+always zero, below) and the `malformed` flag; the report also carries
+`missing_required` (§2.3) and
 `blob_shared` (§2.5), and its `Reason` names the strict read's typed refusal (§6.5), and every
 read's `non_finite_float` refusal (§3.3).
 `unknown` counts every id this reader cannot name: a field id, an enum
@@ -8896,9 +8900,9 @@ declaration and read under another, pinning the six counters and the value:
   a reader that has it decodes anything at all, or if a reader that declares
   the arm with a payload reports anything but one `kind_mismatch`.
 
-**`duplicate` IS RETIRED, AND NO READ RAISES IT.** Every repeat it once
-counted, a map's repeated key on the wire and a repeated member in the text,
-is input no writer produces and so damage (above). The member stays zero in
+**`duplicate` IS RETIRED, AND NO READ RAISES IT.** A map's repeated key on
+the wire and a repeated member in the text are input no writer produces, and
+so damage (above). The member stays zero in
 every backend's report struct and in the conformance report line until one
 cross-leg change removes both.
 
@@ -9119,11 +9123,12 @@ game uploaded to a server, a config a client hands back — and the posture is
 exactly the type wire's: the tolerant read of §3 must be safe on hostile bytes
 in every language, with no verifier in front of it and no "re-pack it
 server-side first". **THE COOK IS THE WHOLE OF THE TRUSTED CLASS** (Glenn,
-2026-10-31: "Only loading cooked data is trusted."): a cook is opened at the
-build version that wrote it and its integrity answer is a signature over the
-file (§7). A BLOCK is not in it: both sides generated from one schema settles
-the block's layout, not its bytes, so `BlockOpen` validates as an untrusted
-read (§19.2). What the tolerant read
+#391: "Only loading cooked data is trusted."): a cook is opened at the build
+version that wrote it and its integrity answer is a signature over the file
+(§7). A BLOCK is not in it (the strike list Glenn approved, 2026-10-31): one
+schema generating both sides settles the block's layout and not its bytes, so
+`BlockOpen` validates the layout as untrusted input, and what a row's values
+may hold is not yet specified (§19.2). What the tolerant read
 does on damaged input — refuse the whole load as `malformed` and return,
 never crash, never read past its buffer (§4) — is the verifier, and this
 subsection is the gate on that claim.
@@ -9980,7 +9985,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
-  | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+  | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6); `schema cook-check` names a cook whose references close a cycle with the same value, as the tool's refusal (§7.4) |
   | `invalid_value` | a writer handed a value outside the declaration: a count past its maximum, a value off min or max, an ordinal past its set, ill-formed text. The fixed writer answers it as its save reason (§3.1, §11) |
   | `allocation_failed` | an allocation the codec asked for was refused (§7.6) |
   | `wire_damaged` | a read that reached damage rather than a refusal: the report's verdict is damage (§4) |
@@ -10779,7 +10784,8 @@ does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
 two stores, the resolving walk one pass each way, the six excluded classes at
-one `retain_lost` each, the drop rule, the retained tail at the end of its own body and the two
+one `retain_lost` each, the drop rule, the retained tail at the end of its own
+body and the two
 stores numbered into one trailer in merged first-use order. The leg's own two
 negative controls, one per engine, stand beside the fuzzer's (§4.2).
 
@@ -11371,6 +11377,8 @@ the wire, and keeps the flexibility that comes with it.
   NOTHING POINTS AT, which no traversal from the root can reach. The cost is
   `O(R + P log N)` — linear in the region, plus one search per pointer slot,
   plus a walk linear in nodes and edges — and it terminates on every input.
+  Pass three keeps the edge list and one mark per directory entry, which the
+  file's own directory bounds.
 
 - **Pack order and checking are INDEPENDENT.** The region is packed in
   pre-order (§6.3) because that is the order the wire numbers nodes in
@@ -15943,7 +15951,9 @@ object that names one member twice, whether or not this reader can name it,
 is input no writer produces, and the whole read is refused (§4, INPUT NO
 WRITER PRODUCES IS DAMAGE; Glenn, #391: "Table reads are not trusted, they
 will come over the network."). Names compare whole, as decoded, so `"a"` and
-`"\u0061"` are one name. A keyed object's two names for one slot and a map
+`"\u0061"` are one name. The comparison keeps one entry per member the object
+has carried, which the text's own length bounds. A keyed object's two names
+for one slot and a map
 object's two spellings of one key are the same event. A skipped value is
 opaque: the members of an unknown member's value are not compared.
 **Trailing commas** in objects and arrays are accepted on read — the
@@ -15985,7 +15995,8 @@ that must preserve a person's comments does not rewrite the file in place.
 wrong JSON type — a string where a number was declared — is skipped, never
 coerced), `clamped`, `malformed`. **`widened` STAYS ZERO in this form**,
 because it is the wire's own event and a text cannot raise it at all: a JSON
-number carries no kind for a reader to find narrower than its own. Silence means the
+number carries no kind for a reader to find narrower than its own. Silence
+means the
 text matched the schema exactly, and it means it honestly: no value a read
 calls clean can be one the writer would refuse.
 
@@ -15999,7 +16010,7 @@ passed beside the text or the buffer:
 
 | option | direction | the rule |
 |---|---|---|
-| **null as empty** | read | a JSON `null` where the field's row is an ARRAY — `[N]T`, `[..N]T`, `[]T`, `[]*T`, a text list, a `flags` mask, a table declared `json = "array"` — or a `map[K]V` reads exactly as `[]` or `{}` would there: the field is emptied and back at its declared defaults, last-wins like any repeated key, and NOTHING is counted. Without the option that `null` stays `kind_mismatch` (**`null`**, above). The option reaches no other row: a `?T` whose value is `null` is still ABSENT (the optional row is consulted first), a pointer's `null` is still a null pointer, an enum-keyed `[E]T`'s `null` is still `kind_mismatch`, and a `null` ELEMENT inside an array keeps its own row's verdict |
+| **null as empty** | read | a JSON `null` where the field's row is an ARRAY — `[N]T`, `[..N]T`, `[]T`, `[]*T`, a text list, a `flags` mask, a table declared `json = "array"` — or a `map[K]V` reads exactly as `[]` or `{}` would there: the field is emptied and back at its declared defaults, and NOTHING is counted. Without the option that `null` stays `kind_mismatch` (**`null`**, above). The option reaches no other row: a `?T` whose value is `null` is still ABSENT (the optional row is consulted first), a pointer's `null` is still a null pointer, an enum-keyed `[E]T`'s `null` is still `kind_mismatch`, and a `null` ELEMENT inside an array keeps its own row's verdict |
 | **omit defaults** | write | a field whose value is what an ABSENT key reads as — its declared default (SPEC §4.2) — writes no key: an empty list, map, array, string or bytes, a scalar at its default, a union at `None`, a null pointer, a nested table or type whose every field is at its default, and an absent optional, which writes no key in any mode. A PRESENT optional is written whatever its value, because its key IS its presence. The rule is decided on STORAGE, conservatively: a value the walk cannot show to be at its default is written, so the option may elide less than it could and never more, and a read of the text lands the same instance. Inside every object the write emits, a field marked `required` (§2.3) is ALWAYS written, at its default too, because a text that leaves it out is refused as `missing_required`; a nested table or type that is not itself required and is wholly at its default is still elided whole, required fields and all, because its absent key reads as its defaults and nothing is missing. An array ELEMENT is positional and is never elided, though the fields inside one are; a `&node` definition (§16.7) that would elide every field writes all of them, because a definition holding no field is not one |
 | **compact** | write | no whitespace outside a string: no line break, no indent, no space after a `:`, and NO TRAILING NEWLINE. The text is the pretty text with every whitespace byte outside a string removed, which is how measure and write still agree byte for byte |
 
@@ -17092,8 +17103,8 @@ The layer is a leading byte-order mark if there is one, then ONE whole value
 under RFC 8259's grammar, then whitespace, then the end of the input, under the
 three caps both walks carry: depth 128, a key of 255 bytes, a number token of
 511 bytes. **The table walk above it is not ruled here**: clamps,
-`kind_mismatch` and the repeated-key refusal (§16.2) decide what an accepted value
-means for a field, and they never turn a refusal into an acceptance.
+`kind_mismatch` and the repeated-key refusal (§16.2) decide what an accepted
+value means for a field, and they never turn a refusal into an acceptance.
 
 **The rule under every row: write strictly; read forgivingly only where that
 is nearly free; never lose a bound; security trumps.**
@@ -17285,7 +17296,8 @@ refusal is removed for that target alone.
 number's TOKEN, byte for byte as the text spelled it, and nothing else about
 it. Object members keep their order, and a repeated key keeps every one of
 its members, in order. The repeated-key refusal is §16.2's table-walk rule,
-and no table walk runs here. A string and a key keep their DECODED UTF-8 bytes: escapes
+and no table walk runs here. A string and a key keep their DECODED UTF-8
+bytes: escapes
 are resolved on read and chosen again on write (§16.3's writer).
 Whitespace, a leading byte-order mark, comments and trailing commas are not
 data, and none is kept (§16.2, §16.12). **No step expands a number's
@@ -18533,11 +18545,11 @@ beside them: that is the table wire's storage, and binding one here is the
 mistake the suffix exists to stop. A field's C# member is the PascalCase of its
 schema name, as everywhere else in that backend.
 
-- **A BLOCK IS UNTRUSTED INPUT** (§4.2; Glenn, 2026-10-31: "Only loading
-  cooked data is trusted."): one schema generating both sides settles the
-  layout and not the bytes, so `BlockOpen` validates as an untrusted read.
-  The clauses below are its LAYOUT half. Its ROW-VALUE half, which value a
-  row may hold, is not yet specified on this page.
+- **A BLOCK IS UNTRUSTED INPUT** (§4.2; Glenn, #391: "Only loading cooked
+  data is trusted."): one schema generating both sides settles the layout and
+  not the bytes, so `BlockOpen` validates the layout as untrusted input, by
+  the clauses below. What a row's values may hold is not yet specified on
+  this page.
 - **`BlockOpen` checks the layout once and points**, in
   §7's own order so that one enum and one order serve both accelerators: the
   magic read bytewise, the byte order it establishes, the build version

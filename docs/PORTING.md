@@ -792,7 +792,8 @@ and nothing passes between them, so `measure == save` over a map is a real
 check on two sorts agreeing. The READER trusts nothing and spends one compare
 per entry: the key is read by a SCAN of the entry's field headers before the
 slot is chosen, ascending against the key of the last entry that LANDED, a
-repeated or a descending key is damage and discards the whole load, a key past the bound is skipped by its `L`
+repeated or a descending key is damage and discards the whole load, a key past
+the bound is skipped by its `L`
 and counted `clamped`, and a key kind the reader does not declare empties the
 map for ONE `kind_mismatch`. The shape to refuse is closed addressing: a node
 per entry is an allocation per entry on the authoring side, a directory entry

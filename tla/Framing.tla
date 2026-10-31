@@ -42,12 +42,16 @@ CONSTANTS HeaderAgainstParent, \* the header read against the parent buffer,
                                \* accepted (the retired last-wins reading)
           OffByOneAtL,         \* a payload ending one byte past the buffer
                                \* is accepted
+          ResumeAtHeader,      \* the walk resumes after the header rather
+                               \* than at end, so the elements are read as
+                               \* the parent's next field
           ResumeAfterDamage    \* damage inside a field is resumed past L, the
                                \* partial read the ruling of 2026-10-31 removed
 ASSUME HeaderAgainstParent \in BOOLEAN
 ASSUME ShortBodyInert \in BOOLEAN
 ASSUME RepeatLastWins \in BOOLEAN
 ASSUME OffByOneAtL \in BOOLEAN
+ASSUME ResumeAtHeader \in BOOLEAN
 ASSUME ResumeAfterDamage \in BOOLEAN
 
 VARIABLES off,        \* the parent's cursor: the next byte the scan reads
@@ -135,8 +139,9 @@ Field(R, L, H) ==
           ELSE \* accepted: the elements bounded by L, the parent resumes at
                \* end (L1)
                LET reach == IF L < 2 THEN start ELSE IF hend > end THEN hend ELSE end
-               IN /\ off' = end
-                  /\ resumed' = end
+                   resume == IF ResumeAtHeader /\ L >= 2 THEN hend ELSE end
+               IN /\ off' = resume
+                  /\ resumed' = resume
                   /\ fieldEnd' = end
                   /\ cursor' = reach
                   /\ accShort' = (L < 2)

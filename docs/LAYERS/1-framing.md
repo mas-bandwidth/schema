@@ -218,7 +218,7 @@ damage (D3).** §3: "A NESTED UNION FILLS ITS ARM'S `L` EXACTLY ... bytes left
 inside the arm's `L` after a whole inner union are input no writer produces,
 and they are damage that discards the whole load" (`nested_arm_trailing`).
 
-## D. Arrays, maps and keyed arrays: the header against the parent
+## D. Arrays, maps and keyed arrays: the header inside the body
 
 **H1. An array body is `element kind (u8)`, `N`, then the elements, under the
 field's `L`.** §3, payload table, kind `14`: "`L`, then the array body:
@@ -272,8 +272,8 @@ reference of `0` is MALFORMED rather than an unknown variant ... It is damage:
 cannot name "is skipped by its length and counted `unknown`" and "a slot the
 writer never sent keeps its declared default", which are evolution (D2).
 
-**H8. Malformed entry framing in a map, and a descending key, are damage
-(D1).** §3 (L3) and §2.8: "EQUAL or DESCENDING: the body is not a map any
+**H8. Malformed entry framing in a map, a repeated key and a descending key
+are damage (D1, D3).** §3 (L3) and §2.8: "EQUAL or DESCENDING: the body is not a map any
 conforming writer produced ... It is damage: `malformed` is set and the whole
 load is discarded." A repeated key is the EQUAL case (D3; `map_repeat_key`).
 
@@ -292,12 +292,10 @@ union and carries nothing after it, not even a kind byte ... a reader accepts
 the id wherever it appears."
 
 **H10. An array arm's header is read inside the arm's `L`, and a count that
-crosses it is damage (D1).** §3: "AN ARRAY ARM IS THE ONE PLACE THE BOUND IS
-NOT THE ENCLOSING BODY: an arm's `L` stands in for the field's own length (the
-arm payload table, below), and the buffer an arm payload is read from is the
-arm's, so an array arm's header is read inside the arm's `L` and a count that
-crosses it is damage, which discards the whole load
-(`arm_array_count_past_arm_length`)."
+crosses it is damage (D1).** H3 applied at an arm: §3, THE HEADER LIES INSIDE
+THE BODY, names "kind `14`, ... kind `16`, ... a map and ... an array arm
+alike" (`arm_array_count_past_arm_length`). An arm's `L` stands in for the
+field's own length (the arm payload table).
 
 **H11. A keyed body carrying one slot key twice is damage (D3).** §3.2: "A key
 rides ONCE per body: a keyed body carrying one key reference twice, whether
@@ -394,11 +392,9 @@ the refusal alone (D1).
   (L4).
 - **N3. Where a header is read, for kinds `14` and `16` and maps.** Settled
   (Glenn, 2026-10-31, the strike list): the header lies inside the body's `L`
-  and a crossing is damage (H3), which retires the header-against-parent
-  reading.
-- **N4. An array ARM's header is bounded by the arm's `L`.** Settled: §3
-  states it as the one place the bound is not the enclosing body, and a count
-  that crosses it is damage (H10).
+  and a crossing is damage (H3).
+- **N4. An array ARM's header is bounded by the arm's `L`.** Settled: every
+  header is bounded by its body's `L`, an arm's included (H3, H10).
 - **N5. A count header that does not complete inside `L`.** Settled: damage
   (H3), and a body of fewer than two bytes is damage too (H2).
 - **N6. An empty buffer.** Settled: §3 says a buffer of no bytes has no form
@@ -406,7 +402,7 @@ the refusal alone (D1).
   refusal row.
 - **N7. The node table riding twice.** Settled (Glenn, 2026-10-31, the strike
   list): one id twice in the root body, which is damage (R5, D3);
-  `node_table_twice` is a refusal row.
+  `node_table_twice` is a `malformed` row.
 - **N8. The 4096 entry bound.** An engine fix, not a finding: F6 is
   unambiguous and the engine applies it (`ir.TableWireIdTableBound`,
   `internal/tablewire` `trailerBounded`, held by
