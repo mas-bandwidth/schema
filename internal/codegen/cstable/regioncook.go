@@ -62,7 +62,6 @@ const tableRegionCookSource = `
         if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
         if (f.Kind == 12) { w.Raw(at, value.Buffer(f).Slice(0, live)); return true; }
-        if (f.Kind == 33) { for (int i = 0; i < live; i++) { w.Put(at + i * 2L, value.Chars(f)[i], 2); } return true; }
         if (f.GetBuffer != null) { w.Raw(at, value.Buffer(f).Slice(0, live)); return true; }
         int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
         if (f.Dynamic)
@@ -114,7 +113,7 @@ const tableRegionCookSource = `
             ref RegionNode node = ref graph.Entries[i]; TableTypeInfo child = node.BlobKind == 0 ? type.PointerType(node.TypeId) : null;
             int align = child == null ? 8 : child.StorageAlign;
             alignment = Math.Max(alignment, align); at = Align(at, align); node.NativeOffset = at;
-            if (child == null) { at = checked(at + 8 + node.Blob.Length + (node.BlobKind == 12 ? 1 : node.BlobKind == 33 ? 2 : 0)); }
+            if (child == null) { at = checked(at + 8 + node.Blob.Length + (node.BlobKind == 12 ? 1 : 0)); }
             else
             {
                 extent = 0; if (!RegionExtentSize(node.Value, child, ref extent)) { return -1; }

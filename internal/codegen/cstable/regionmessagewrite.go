@@ -31,11 +31,10 @@ const tableRegionMessageWriteSource = `
                 RegionMessageElement(ref w, value, f, i, shape.Inner, graph, indexBits);
             }
         }
-        else if (f.Kind == 12 || f.Kind == 33)
+        else if (f.Kind == 12)
         {
             int count = RegionCount(value, f); w.Put((uint)count, BitCount(shape.Max));
-            if (f.Kind == 12) { w.Align(); w.Raw(value.Buffer(f).Slice(0, count)); }
-            else { for (int i = 0; i < count; i++) { w.Put(value.Chars(f)[i], 16); } }
+            w.Align(); w.Raw(value.Buffer(f).Slice(0, count));
         }
         else { RegionMessageElement(ref w, value, f, 0, shape, graph, indexBits); }
     }

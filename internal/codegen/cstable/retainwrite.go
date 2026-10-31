@@ -25,14 +25,14 @@ func tableRetainWriteSource() string {
 	s = tableReplace(s, "                n += VarSize(reference) + VarSize((ulong)elem) + elem;", "                if (f.Kind == 13 && elem == 1) { ids.Truncate(mark); continue; }\n                n += VarSize(reference) + VarSize((ulong)elem) + elem;")
 	s = tableReplace(s, `            n += VarSize(ids.Reference(f.Id)) + 1;
             if (f.IsArray) { long a = RetainArraySize(value, f, ref ids); n += VarSize((ulong)a) + a; }
-            else if (f.Kind == 12 || f.Kind == 33) { long s = RetainPayloadSize(value, f, ref ids); n += VarSize((ulong)s) + s; }
+            else if (f.Kind == 12) { long s = RetainPayloadSize(value, f, ref ids); n += VarSize((ulong)s) + s; }
             else { n += RetainElementSize(value, f, 0, ref ids, true); }`,
 		`            int mark = ids.Count; ulong reference = ids.Reference(f.Id);
             long payload = RetainPayloadSize(value, f, ref ids);
             if (!f.Optional && (f.Kind == 13 && !f.IsArray && payload == 1 || f.KeyId != null && payload == 2))
             { ids.Truncate(mark); continue; }
             n += VarSize(reference) + 1 + payload;
-            if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13) { n += VarSize((ulong)payload); }`)
+            if (f.IsArray || f.Kind == 12 || f.Kind == 13) { n += VarSize((ulong)payload); }`)
 	s = tableReplace(s, "            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));", `            if (!f.Optional && (f.Kind == 13 && !f.IsArray && RetainPayloadSize(value, f, ref ids) == 1 || f.KeyId != null && RetainArraySize(value, f, ref ids) == 2)) { continue; }
             w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));`)
 	// On the emit pass the trailer is already settled. A slot whose only

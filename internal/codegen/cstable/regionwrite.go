@@ -83,7 +83,7 @@ const tableRegionWriteSource = `
     {
         if (f == null) { return 0; }
         if (f.IsArray) { return RegionArraySize(value, f, ref ids); }
-        if (f.Kind == 12 || f.Kind == 33) { return RegionCount(value, f) * (f.Kind == 33 ? 2L : 1L); }
+        if (f.Kind == 12) { return RegionCount(value, f); }
         return RegionElementSize(value, f, 0, ref ids, false);
     }
     static long RegionElementSize(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids, bool framed)
@@ -134,7 +134,7 @@ const tableRegionWriteSource = `
             if (!RegionRides(value, f)) { continue; }
             n += VarSize(ids.Reference(f.Id)) + 1;
             if (f.IsArray) { long a = RegionArraySize(value, f, ref ids); n += VarSize((ulong)a) + a; }
-            else if (f.Kind == 12 || f.Kind == 33) { long s = RegionPayloadSize(value, f, ref ids); n += VarSize((ulong)s) + s; }
+            else if (f.Kind == 12) { long s = RegionPayloadSize(value, f, ref ids); n += VarSize((ulong)s) + s; }
             else { n += RegionElementSize(value, f, 0, ref ids, true); }
         }
         return n;
@@ -193,7 +193,6 @@ const tableRegionWriteSource = `
                 RegionWriteElement(ref w, value, f, i, ref ids, f.KeyId == null);
             }
         }
-        else if (f.Kind == 33) { Span<char> chars = value.Chars(f); for (int i = 0; i < RegionCount(value, f); i++) { w.Fixed(chars[i], 2); } }
         else if (f.Kind == 12) { w.Raw(value.Buffer(f).Slice(0, RegionCount(value, f))); }
         else { RegionWriteElement(ref w, value, f, 0, ref ids, false); }
     }
@@ -203,7 +202,7 @@ const tableRegionWriteSource = `
         {
             if (!RegionRides(value, f)) { continue; }
             w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));
-            if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13) { w.Var((ulong)RegionPayloadSize(value, f, ref ids)); }
+            if (f.IsArray || f.Kind == 12 || f.Kind == 13) { w.Var((ulong)RegionPayloadSize(value, f, ref ids)); }
             RegionWritePayload(ref w, value, f, ref ids);
         }
         if (root) { RegionWriteNodes(ref w, ref ids); }

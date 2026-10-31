@@ -245,7 +245,6 @@ const tableRetainSource = `
             case 12:
             case 31:
             case 32:
-            case 33:
                 if (!s.R.Var(out ulong size) || size > (ulong)(s.R.Buffer.Length - s.R.Offset)) { return false; }
                 s.Var(size); s.Raw(s.R.Buffer.Slice(s.R.Offset, (int)size)); s.R.Offset += (int)size; return true;
             case 13:
@@ -410,7 +409,6 @@ const tableRetainSource = `
             case 12:
             case 31:
             case 32:
-            case 33:
                 if (!s.R.Var(out ulong size) || size > (ulong)(s.R.Buffer.Length - s.R.Offset)) { return false; }
                 s.Var(size); s.Raw(s.R.Buffer.Slice(s.R.Offset, (int)size)); s.R.Offset += (int)size; return true;
             case 13: case 14: case 16: return RetainOutFrame(ref s, ref ids, kind, depth + 1);

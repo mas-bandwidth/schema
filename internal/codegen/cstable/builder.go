@@ -132,8 +132,6 @@ public sealed unsafe class TableWorker
     }
     public TableBlobSlot AllocBytes(long length) { return Blob(length, 0); }
     public TableBlobSlot AllocString(long length) { return Blob(length, 1); }
-    public TableBlobSlot AllocWString(long units)
-    { if (units < 0 || units > int.MaxValue / 2) { return default; } TableBlobSlot slot = Blob(units * 2, 2); if (slot.Pointer != IntPtr.Zero) { slot.Length = units; } return slot; }
     TableBlobSlot Blob(long length, int terminator)
     {
         if (length < 0 || length > int.MaxValue) { return default; }
@@ -171,7 +169,6 @@ public abstract unsafe class TableBuilder : IDisposable
     public T* Alloc<T>() where T : unmanaged { return worker.Alloc<T>(); }
     public TableBlobSlot AllocBytes(long bytes) { return worker.AllocBytes(bytes); }
     public TableBlobSlot AllocString(long bytes) { return worker.AllocString(bytes); }
-    public TableBlobSlot AllocWString(long units) { return worker.AllocWString(units); }
     public bool Lock()
     {
         if (disposed) { return false; }

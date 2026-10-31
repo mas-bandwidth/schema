@@ -82,7 +82,7 @@ internal sealed class TableMessageEntry
 const tableMessageSource = `
     static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
     static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-    static bool MessageKind(byte kind) { return kind <= 33 || kind == 36; }
+    static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
     static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
     static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
     static int ValueBits(byte kind, TableMessageShape s)
@@ -121,14 +121,14 @@ const tableMessageSource = `
             }
             else if (shape.Packing != 0) { return false; }
         }
-        else if (kind == 12 || kind == 33)
+        else if (kind == 12)
         { if (!r.Var(out shape.Max) || shape.Max > int.MaxValue) { return false; } }
         else if (kind == 14 || kind == 16)
         {
             if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
             if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
             shape.Elem = r.Byte();
-            if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33) { return false; }
+            if (!MessageKind(shape.Elem) || shape.Elem == 12) { return false; }
             // An entry carries its own shape and one element shape. The C++
             // announcement reader does not recursively parse nested arrays.
             if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
@@ -253,11 +253,10 @@ const tableMessageSource = `
                 MessageElement(ref w, value, f, i, shape.Inner, graph, indexBits);
             }
         }
-        else if (f.Kind == 12 || f.Kind == 33)
+        else if (f.Kind == 12)
         {
             int count = Count(value, f); w.Put((uint)count, BitCount(shape.Max));
-            if (f.Kind == 12) { w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count)); }
-            else { for (int i = 0; i < count; i++) { w.Put(f.GetChars(value)[i], 16); } }
+            w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count));
         }
         else { MessageElement(ref w, value, f, 0, shape, graph, indexBits); }
     }

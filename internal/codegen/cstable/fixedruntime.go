@@ -210,7 +210,6 @@ public readonly struct TableFixedSlot<T>
     public readonly Action<T, double> SetDouble;
     public readonly Action<T, UInt128> SetWide;
     public readonly TableFixedSetBytes<T> SetBytes;
-    public readonly TableFixedSetBytes<T> SetChars;
     public readonly Action<T, ulong, TableReport> SetRawReport;
     public readonly Action<T> Reset; // declared default into this slot, and nowhere else
 
@@ -219,7 +218,6 @@ public readonly struct TableFixedSlot<T>
         Action<T, double> setDouble = null,
         Action<T, UInt128> setWide = null,
         TableFixedSetBytes<T> setBytes = null,
-        TableFixedSetBytes<T> setChars = null,
         Action<T, ulong, TableReport> setRawReport = null,
         Action<T> reset = null)
     {
@@ -227,7 +225,6 @@ public readonly struct TableFixedSlot<T>
         SetDouble = setDouble;
         SetWide = setWide;
         SetBytes = setBytes;
-        SetChars = setChars;
         SetRawReport = setRawReport;
         Reset = reset;
     }
@@ -268,7 +265,6 @@ public static class TableFixedWire
 
     // Arg on a Text entry
     public const byte TextUtf8 = 1;
-    public const byte TextWide = 2;
     public const byte TextBytes = 3;
 
     public const int EntryBytes = 17;
@@ -375,7 +371,7 @@ public static class TableFixedWire
     private static bool KnownKind(byte kind)
     {
         if (kind >= 1 && kind <= 30) return true;
-        return kind == 32 || kind == 33 || kind == 35;
+        return kind == 32 || kind == 35;
     }
 
     private ref struct Checker
@@ -465,10 +461,6 @@ public static class TableFixedWire
             case 12: // string
                 if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
                 if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
-                break;
-            case 33: // wstring
-                if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
-                if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
                 break;
             default:
                 c.Fail("layout_kind_unknown");
@@ -914,7 +906,6 @@ public static class TableFixedWire
                     break;
                 }
             case 12:
-            case 33: // Text / WString
                 {
                     uint units = Math.Min(me.Size - 4u, te.Size - 4u);
                     TableFixedEntry e = new TableFixedEntry(
@@ -1416,11 +1407,9 @@ public static class TableFixedWire
                     }
                 case Text:
                     {
-                        uint unit = (p.Meta == TextWide) ? 2u : 1u;
-                        uint cap = p.Size / unit;
                         int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                         if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                        else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                        else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
                         ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
                         // ELSE, and a violation REFUSES BY NAME, the verdict the
@@ -1433,14 +1422,7 @@ public static class TableFixedWire
                             return "text_ill_formed";
                         }
                         slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
-                        if (p.Meta == TextWide)
-                        {
-                            slots[(int)p.Aux].SetChars?.Invoke(dst, textBytes, v);
-                        }
-                        else
-                        {
-                            slots[(int)p.Aux].SetBytes?.Invoke(dst, textBytes, v);
-                        }
+                        slots[(int)p.Aux].SetBytes?.Invoke(dst, textBytes, v);
                         break;
                     }
                 case Ordinal:
@@ -1541,10 +1523,9 @@ public static class TableFixedWire
 
     // TextIllFormed reports whether a text payload's USED units are the text
     // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-    // with no zero byte for string, paired non-zero UTF-16 code units for
-    // wstring. bytes(N) carries no text rule at all, and slack past the used
-    // units is unspecified and never a refusal (docs/SPEC-TABLES.md §3.4).
-    // The used argument is the clamped length in the flavour's own units.
+    // with no zero byte for string. bytes(N) carries no text rule at all, and
+    // slack past the used bytes is unspecified and never a refusal
+    // (docs/SPEC-TABLES.md §3.4). The used argument is the clamped length.
     public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
     {
         switch (meta)
@@ -1573,23 +1554,6 @@ public static class TableFixedWire
                         if (continuations == 2 && (code_point < 0x800 || (code_point >= 0xD800 && code_point <= 0xDFFF))) { return true; }
                         if (continuations == 3 && (code_point < 0x10000 || code_point > 0x10FFFF)) { return true; }
                         i += 1 + continuations;
-                    }
-                    break;
-                }
-            case TextWide:
-                {
-                    for (uint i = 0; i < used; i++)
-                    {
-                        uint u = (uint)(p[(int)i * 2] | (p[(int)i * 2 + 1] << 8));
-                        if (u == 0) { return true; }
-                        if (u >= 0xD800 && u <= 0xDBFF)
-                        {
-                            if (i + 1 >= used) { return true; }
-                            uint lo = (uint)(p[(int)(i + 1) * 2] | (p[(int)(i + 1) * 2 + 1] << 8));
-                            if (lo < 0xDC00 || lo > 0xDFFF) { return true; }
-                            i++;
-                        }
-                        else if (u >= 0xDC00 && u <= 0xDFFF) { return true; }
                     }
                     break;
                 }

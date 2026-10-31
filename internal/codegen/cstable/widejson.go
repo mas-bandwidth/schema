@@ -3,19 +3,6 @@ package cstable
 // Exact decimal operations for the 128-bit and fixed-point domains. The
 // reference is cpptable/json.go: representability is checked before saturation.
 const tableWideJsonSource = `
-    static void WriteChars(ref Out o, ReadOnlySpan<char> text)
-    {
-        o.Put((byte)'"');
-        for (int i = 0; i < text.Length; i++)
-        {
-            int code = text[i];
-            if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.Length && text[i + 1] >= 0xdc00 && text[i + 1] <= 0xdfff)
-            { code = 0x10000 + ((code - 0xd800) << 10) + text[++i] - 0xdc00; }
-            else if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
-            if (!WriteEscape(ref o, code)) { WriteUtf8(ref o, code); }
-        }
-        o.Put((byte)'"');
-    }
     static void WriteWide(ref Out o, UInt128 raw, TableFieldInfo f)
     {
         if (f.WideSigned && unchecked((Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }

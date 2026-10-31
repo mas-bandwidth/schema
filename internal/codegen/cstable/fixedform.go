@@ -252,7 +252,6 @@ type fixedSlot struct {
 	setDouble    string
 	setWide      string
 	setBytes     string
-	setChars     string
 	setRawReport string
 	reset        string
 }
@@ -1787,9 +1786,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if s.setBytes != "" {
 			parts = append(parts, "setBytes: "+s.setBytes)
 		}
-		if s.setChars != "" {
-			parts = append(parts, "setChars: "+s.setChars)
-		}
 		if s.setRawReport != "" {
 			parts = append(parts, "setRawReport: "+s.setRawReport)
 		}
@@ -2218,15 +2214,6 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	}
 	g.pf("        default: break;\n    }\n}\n\n")
 
-	g.pf("private static void %sFixedSetChars(%s t, uint slot, ReadOnlySpan<byte> b, int l)\n{\n", name, name)
-	g.pf("    switch (slot)\n    {\n")
-	for i, s := range slots {
-		if s.setChars != "" {
-			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setChars))
-		}
-	}
-	g.pf("        default: break;\n    }\n}\n\n")
-
 	g.pf("private static void %sFixedResetSlot(%s t, uint slot)\n{\n", name, name)
 	g.pf("    switch (slot)\n    {\n")
 	for i, s := range slots {
@@ -2311,21 +2298,14 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Text:\n                {\n")
-	g.pf("                    uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;\n")
-	g.pf("                    uint cap = p.Size / unit;\n")
 	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    if (v < 0) { v = 0; if (report != null) report.Clamped++; }\n")
-	g.pf("                    else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }\n")
+	g.pf("                    else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }\n")
 	g.pf("                    ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);\n")
 	g.pf("                    if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))\n                    {\n")
 	g.pf("                        return \"text_ill_formed\";\n                    }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
-	g.pf("                    if (p.Meta == TableFixedWire.TextWide)\n                    {\n")
-	g.pf("                        %sFixedSetChars(dst, p.Aux, textBytes, v);\n", name)
-	g.pf("                    }\n")
-	g.pf("                    else\n                    {\n")
-	g.pf("                        %sFixedSetBytes(dst, p.Aux, textBytes, v);\n", name)
-	g.pf("                    }\n")
+	g.pf("                    %sFixedSetBytes(dst, p.Aux, textBytes, v);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Ordinal:\n                {\n")
 	g.pf("                    ulong raw = 0;\n")

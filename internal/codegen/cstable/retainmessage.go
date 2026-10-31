@@ -37,8 +37,8 @@ const tableRetainMessageCaptureSource = `
     static bool RetainMessageOpaque(ref BitReader r, ref RetainIn output, byte kind, TableMessageShape shape, bool framed)
     {
         UInt128 raw;
-        if (kind == 12 || kind == 33)
-        { if (!r.Get(BitCount(shape.Max), out raw) || kind == 12 && !r.Align()) { return false; } if (kind == 33) { raw *= 2; } }
+        if (kind == 12)
+        { if (!r.Get(BitCount(shape.Max), out raw) || kind == 12 && !r.Align()) { return false; } }
         else if (!r.Align() || !r.Get(32, out raw)) { return false; }
         if (raw > int.MaxValue || (long)raw > (r.End - r.At) / 8) { return false; }
         if (framed) { output.Var((ulong)raw); }
@@ -112,7 +112,7 @@ const tableRetainMessageCaptureSource = `
                 return true;
             case 15: case 30: return RetainMessagePayload(ref r, d, ref output, kind, shape, depth);
             case 32: return true;
-            case 12: case 31: case 33: return RetainMessageOpaque(ref r, ref output, kind, shape, false);
+            case 12: case 31: return RetainMessageOpaque(ref r, ref output, kind, shape, false);
             default: return RetainMessageScalar(ref r, ref output, kind, shape);
         }
     }
@@ -133,7 +133,7 @@ const tableRetainMessageCaptureSource = `
                 output.Fixed(entry.Kind, 1);
                 return RetainMessageFrame(ref r, d, ref output, entry.Kind, entry.Shape, depth);
             case 13: case 14: case 16: return RetainMessageFrame(ref r, d, ref output, kind, shape, depth);
-            case 12: case 31: case 33: return RetainMessageOpaque(ref r, ref output, kind, shape, true);
+            case 12: case 31: return RetainMessageOpaque(ref r, ref output, kind, shape, true);
             default: return RetainMessageScalar(ref r, ref output, kind, shape);
         }
     }

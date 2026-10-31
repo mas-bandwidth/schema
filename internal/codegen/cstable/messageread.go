@@ -46,7 +46,6 @@ const tableMessageReadSource = `
             case 13: return MessageSkipBody(ref r, d, depth + 1);
             case 17: return d.IndexBits > 0 && r.Skip(d.IndexBits);
             case 12:
-            case 33:
                 if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
                 return r.Skip((long)length * (kind == 12 ? 8 : 16));
             case 31:
@@ -163,31 +162,13 @@ const tableMessageReadSource = `
             if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
             r.At += (long)n * 8; return true;
         }
-        if (kind == 12 || kind == 33)
+        if (kind == 12)
         {
-            if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
-            long bits = (long)length * (kind == 12 ? 8 : 16);
+            if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align()) { return false; }
+            long bits = (long)length * 8;
             if (bits > r.End - r.At) { return false; }
-            if (kind == 12)
-            {
-                ReadOnlySpan<byte> text = r.Bytes.Slice((int)(r.At / 8), (int)length); r.At += bits;
-                return ReadText(text, value, f, d.Report);
-            }
-            BitReader check = r;
-            for (int i = 0; i < (int)length; i++)
-            {
-                check.Get(16, out UInt128 raw); uint c = (uint)raw;
-                if (c == 0 || c >= 0xdc00 && c <= 0xdfff) { return false; }
-                if (c >= 0xd800 && c <= 0xdbff)
-                { if (++i == (int)length || !check.Get(16, out UInt128 low) || low < 0xdc00 || low > 0xdfff) { return false; } }
-            }
-            int keep = Math.Min((int)length, f.ArrayBound);
-            if (length > (uint)f.ArrayBound) { d.Report.Clamped++; }
-            char last = default;
-            for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last = (char)(uint)raw; if (value != null) { f.GetChars(value)[i] = last; } }
-            if (keep > 0 && keep < (int)length && char.IsHighSurrogate(last)) { keep--; }
-            if (value != null) { f.SetCount(value, keep); }
-            r = check; return true;
+            ReadOnlySpan<byte> text = r.Bytes.Slice((int)(r.At / 8), (int)length); r.At += bits;
+            return ReadText(text, value, f, d.Report);
         }
         if (f.IsArray)
         {
