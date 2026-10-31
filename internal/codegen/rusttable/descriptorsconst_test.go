@@ -27,11 +27,11 @@ import (
 )
 
 var (
-	// the one LazyLock the output may carry, and it is not a descriptor
+	// the one LazyLock the output may carry, and it is not a descriptor.
 	rustPlanLazyLock = regexp.MustCompile(`^static [A-Z0-9_]+_FIXED_PLANS: std::sync::LazyLock<[A-Za-z0-9_]+FixedPlans> = std::sync::LazyLock::new\(\|\| \{$`)
-	// a descriptor accessor: `pub fn x() -> &'static TableBlockInfo {` and kin
+	// a descriptor accessor: `pub fn x() -> &'static TableBlockInfo {` and kin.
 	rustDescriptorAccessor = regexp.MustCompile(`^(\s*)pub fn ([a-z0-9_]+)\(\) -> &'static (TableBlockInfo|TableCookInfo|TableUnitView) \{$`)
-	// a column holding a function pointer to a descriptor
+	// a column holding a function pointer to a descriptor.
 	rustFactoryColumn = regexp.MustCompile(`Option<fn\(\) -> &'static [A-Za-z0-9_]+>`)
 )
 

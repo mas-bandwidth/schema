@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const floatNaNSrc = `package probe
@@ -75,6 +77,7 @@ var floatNaNProbes = []uint32{
 
 // TestRustFloatWideningKeepsNaNPayloads is M21 for the Rust leg.
 func TestRustFloatWideningKeepsNaNPayloads(t *testing.T) {
+	slowtest.Gate(t, "rustc (it compiles and runs the generated widening probe)")
 	files := generate(t, floatNaNSrc)
 	variable := string(files[VariableRuntimeModule+".rs"])
 	message := string(files[MessageRuntimeModule+".rs"])
