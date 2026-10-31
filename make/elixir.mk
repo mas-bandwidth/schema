@@ -677,13 +677,12 @@ test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tabl
 # THE ELIXIR TABLES SOAK (docs/PORTING.md I9), test/elixir-soak/main.exs over
 # the derived manifest and the generated ebin: one PASS is one iteration of
 # every pinned case of the allocation audit above, TABLES_ELIXIR_SOAK_ITERATIONS
-# passes in one long-lived process (a count, never a clock: `make shape-gate`
-# refuses a timing primitive outside the sanctioned bench), cut into samples of
-# 200, the audit's own window. Every sample re-measures the audit's two
-# counters, heap words and binary calls, for every case and holds each to its
-# pinned budget in $(ELIXIR_ALLOC_BUDGET) with the audit's slack; the live-heap
-# and binary-memory drift is printed beside it as the weaker instrument and
-# bounds retention. The pin comes first, as in the audit. THE LENGTH CHECK rides
+# passes (a count, never a clock: `make shape-gate` refuses a timing primitive
+# outside the sanctioned bench), cut into samples of 200, the audit's own
+# window. Every sample is the audit's own measurement of every case, heap words
+# and binary calls, each held to its pinned budget in 20 20 12 61 79 80 81 98 701 33 100 204 250 395 398 399 400ELIXIR_ALLOC_BUDGET)
+# with the audit's slack; the VM's binary, ETS, persistent-term and atom drift
+# is printed beside it as the weaker instrument and bounds retention. The pin comes first, as in the audit. THE LENGTH CHECK rides
 # every run: the soak must report exactly the passes and samples its count
 # names, so a soak that ignored its count is red, not silently green. The
 # default count is the release act, about an hour on vision (a pass over the

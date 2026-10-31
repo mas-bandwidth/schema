@@ -12,23 +12,26 @@
 # no-text instance, each held to the reference outputs taken once at the start.
 #
 # THE GATE IS THE ALLOCATION COUNT, RE-MEASURED EVERY SAMPLE. The passes are cut
-# into samples of 200, the audit's own window: in a sample every case runs 200
-# times back to back and the audit's two counters are read over that window in
-# ONE long-lived process: heap words (the words this process's collections
-# reclaimed, traced with :erlang.trace/3 on :garbage_collection, plus the live
-# change across the window) and binary calls (binary_alloc's VM-wide call
-# counter). The window is the audit's because a collection's heap resizing is
-# a cost per window, so a figure averaged over another length is a different
-# measurement than the budget. Every case's per-pass figure must sit inside its
-# pinned budget in test/conformance/elixir/alloc-budget.txt with the audit's
-# own slack, at every sample: a path that allocates and frees the same bytes
-# every pass reds at the first sample and at every one after it, naming the
-# case. ELIXIR_SOAK_CASES, a comma-separated list of case names, narrows the
+# into samples of 200, the audit's own window, and a sample is the audit's own
+# measurement of every case: a fresh process takes the reference outputs, runs
+# one warm iteration, then runs the case 200 times back to back while the two
+# counters are read: heap words (the words its collections reclaimed, traced
+# with :erlang.trace/3 on :garbage_collection, plus its live change across the
+# window) and binary calls (binary_alloc's VM-wide call counter). It is the
+# audit's process and window because the heap words of a window depend on the
+# heap it starts from (a long-lived process with an old generation reads about
+# one percent more for the same code), so a figure taken any other way is a
+# different measurement from the budget. Every case's per-pass figure must sit
+# inside its pinned budget in test/conformance/elixir/alloc-budget.txt with the
+# audit's own slack, at every sample: a path that allocates and frees the same
+# bytes every pass reds at the first sample and at every one after it, naming
+# the case. ELIXIR_SOAK_CASES, a comma-separated list of case names, narrows the
 # soak to those cases (the negative control's short run).
 #
-# DRIFT IS THE WEAKER INSTRUMENT, KEPT BESIDE IT: the live heap words after a
-# full collection and the VM's binary memory, read at the first sample and at
-# the last. It sees retention, and it reads +0 forever for a matched
+# DRIFT IS THE WEAKER INSTRUMENT, KEPT BESIDE IT: what a codec could keep
+# across the processes that call it (the VM's refc binaries, ETS, persistent
+# terms and atoms), read after the warm-up and after the last sample, each held
+# to a small bound. It sees retention, and it reads +0 forever for a matched
 # allocate-and-free, which is why it does not stand alone.
 #
 # THE PIN COMES FIRST, as it does in the audit: the budget is pinned on one
@@ -50,9 +53,9 @@ defmodule Soak do
   # the audit's slack per case and per iteration (test/elixir-alloc/main.exs)
   @heap_slack 64
   @binary_slack 8
-  # retention the drift line tolerates: the collector's own bookkeeping, far
-  # under one retained instance of the corpus
-  @live_drift_words 4096
+  # retention the drift line tolerates in the VM: allocator bookkeeping, far
+  # under one retained instance of the corpus; an atom made per pass is a leak
+  @table_drift_bytes 65_536
   @binary_drift_bytes 1_048_576
 
   def main([manifest, otp_want, elixir_want, passes | rest]) do
@@ -62,8 +65,8 @@ defmodule Soak do
     Code.prepend_path(ebin)
     passes = String.to_integer(passes)
 
-    if passes < @window do
-      IO.puts("SOAK FAILED: #{passes} passes cannot fill one sample of #{@window}")
+    if passes < @window or rem(passes, @window) != 0 do
+      IO.puts("SOAK FAILED: #{passes} passes is not a whole number of samples of #{@window}")
       System.halt(1)
     end
 
@@ -86,27 +89,23 @@ defmodule Soak do
     end
 
     samples = div(passes, @window)
-    lead = passes - samples * @window
 
     IO.puts(
       "soak: #{passes} passes over #{length(cases)} pinned cases, #{samples} samples of " <>
         "#{@window} passes, each case held to its pinned budget at every sample"
     )
 
-    parent = self()
-
-    {pid, mon} =
-      spawn_monitor(fn -> send(parent, {:soaked, self(), run(parent, cases, lead, samples)}) end)
-
-    {sampled, ran, drift} = collect_samples(pid, mon, [])
-
-    by_name = Map.new(cases, &{&1.name, &1})
+    # the warm-up: every case read and written once in a throwaway process, so the
+    # modules and the atoms a first call loads are in place before drift is read
+    Enum.each(cases, fn c -> Task.await(Task.async(fn -> reference(c) end), :infinity) end)
+    drift0 = vm_footprint()
 
     over =
-      for {i, figures} <- sampled do
+      Enum.count(1..samples, fn i ->
+        figures = Enum.map(cases, &{&1, measure(&1)})
+
         cols =
-          for {name, {w, b}} <- figures,
-              c <- [Map.fetch!(by_name, name)],
+          for {c, {w, b}} <- figures,
               w > c.words + @heap_slack + div(c.words, 10_000) or b > c.binary + @binary_slack do
             "#{c.name} #{w} words (pinned #{c.words}), #{b} binary calls (pinned #{c.binary})"
           end
@@ -126,32 +125,34 @@ defmodule Soak do
           )
         end
 
-        cols
-      end
-      |> Enum.reject(&(&1 == []))
-
-    IO.puts("soak: worker ran #{ran} passes, driver took #{length(sampled)} samples")
-
-    {live_drift, binary_drift} = drift
-    drift_ok = live_drift <= @live_drift_words and binary_drift <= @binary_drift_bytes
+        cols != []
+      end)
 
     IO.puts(
-      "soak: drift #{live_drift} live heap words, #{binary_drift} binary bytes " <>
-        if(drift_ok, do: "[PASS]", else: "[FAIL]")
+      "soak: worker ran #{samples * @window} passes, driver took #{samples} samples"
+    )
+
+    drift = Enum.zip_with(vm_footprint(), drift0, fn {k, v1, bound}, {k, v0, bound} -> {k, v1 - v0, bound} end)
+    drift_ok = Enum.all?(drift, fn {_k, d, bound} -> d <= bound end)
+
+    IO.puts(
+      "soak: drift " <>
+        Enum.map_join(drift, ", ", fn {k, d, _bound} -> "#{d} #{k}" end) <>
+        if(drift_ok, do: " [PASS]", else: " [FAIL]")
     )
 
     cond do
       any_otp ->
         IO.puts(
           "soak: NOT CERTIFIED — read under SCHEMA_ELIXIR_ANY_OTP=1 (the pin wants OTP " <>
-            "#{otp_want}, Elixir #{elixir_want}); #{length(over)} samples over, and nothing is certified"
+            "#{otp_want}, Elixir #{elixir_want}); #{over} samples over, and nothing is certified"
         )
 
-      over != [] ->
+      over > 0 ->
         System.halt(1)
 
       not drift_ok ->
-        IO.puts("SOAK FAILED: the live heap or the binary memory drifted past its bound")
+        IO.puts("SOAK FAILED: the VM's binary, ETS, persistent term or atom footprint drifted past its bound")
         System.halt(1)
 
       true ->
@@ -168,71 +169,61 @@ defmodule Soak do
     System.halt(2)
   end
 
-  # the samples as the soaking process sends them, in order, then its end
-  defp collect_samples(pid, mon, acc) do
-    receive do
-      {:sample, ^pid, i, figures} ->
-        collect_samples(pid, mon, [{i, figures} | acc])
+  # THE VM'S FOOTPRINT, what a codec could keep across processes: refc binaries,
+  # ETS, persistent terms and atoms, each with the growth the drift line allows
+  defp vm_footprint do
+    :erlang.garbage_collect()
 
-      {:soaked, ^pid, {ran, drift}} ->
+    [
+      {"binary bytes", :erlang.memory(:binary), @binary_drift_bytes},
+      {"ets bytes", :erlang.memory(:ets), @table_drift_bytes},
+      {"persistent term bytes", :persistent_term.info().memory, @table_drift_bytes},
+      {"atoms", :erlang.system_info(:atom_count), 0}
+    ]
+  end
+
+  # ---- one sample of one case: the audit's measurement ----
+
+  # ONE CASE'S WINDOW in a FRESH process, so its heap is nobody else's: the
+  # reference outputs, one warm iteration, then @window iterations measured
+  defp measure(c) do
+    parent = self()
+
+    {pid, mon} =
+      spawn_monitor(fn ->
+        ref = reference(c)
+        once(c, ref)
+        binary0 = binary_calls()
+        :erlang.garbage_collect()
+        live0 = used()
+        reclaimed = traced(fn -> repeat(c, ref, @window) end)
+        live1 = used()
+        binary1 = binary_calls()
+
+        send(
+          parent,
+          {:measured, self(),
+           {div(reclaimed + (live1 - live0), @window), div(binary1 - binary0, @window)}}
+        )
+      end)
+
+    receive do
+      {:measured, ^pid, figures} ->
         Process.demonitor(mon, [:flush])
-        {Enum.reverse(acc), ran, drift}
+        figures
 
       {:DOWN, ^mon, :process, ^pid, reason} ->
-        IO.puts("SOAK FAILED: the soaking process died: #{inspect(reason)}")
+        IO.puts("SOAK FAILED: #{c.name}: the measuring process died: #{inspect(reason)}")
         System.halt(1)
     end
   end
 
-  # ---- the soaking process ----
+  defp repeat(_c, _ref, 0), do: :ok
 
-  defp run(parent, cases, lead, samples) do
-    cases = Enum.map(cases, &Map.put(&1, :ref, reference(&1)))
-    pass(cases)
-    spin(cases, lead)
-    :erlang.garbage_collect()
-    live_first = used()
-    binary_first = :erlang.memory(:binary)
-
-    # each sample's figures go to the driver as they are taken, so nothing the
-    # soak itself keeps grows the live heap the drift line reads
-    for i <- 1..samples do
-      send(parent, {:sample, self(), i, Enum.map(cases, &{&1.name, window(&1)})})
-    end
-
-    :erlang.garbage_collect()
-    drift = {used() - live_first, :erlang.memory(:binary) - binary_first}
-    {lead + samples * @window, drift}
+  defp repeat(c, ref, n) do
+    once(c, ref)
+    repeat(c, ref, n - 1)
   end
-
-  # ONE CASE'S WINDOW in a sample: @window iterations back to back, measured
-  # on their own exactly as the audit measures them, so the count names the
-  # case that moved
-  defp window(c) do
-    binary0 = binary_calls()
-    :erlang.garbage_collect()
-    live0 = used()
-    reclaimed = traced(fn -> repeat(c, @window) end)
-    live1 = used()
-    binary1 = binary_calls()
-    {div(reclaimed + (live1 - live0), @window), div(binary1 - binary0, @window)}
-  end
-
-  defp repeat(_c, 0), do: :ok
-
-  defp repeat(c, n) do
-    once(c)
-    repeat(c, n - 1)
-  end
-
-  defp spin(_cases, 0), do: :ok
-
-  defp spin(cases, n) do
-    pass(cases)
-    spin(cases, n - 1)
-  end
-
-  defp pass(cases), do: Enum.each(cases, &once/1)
 
   # ---- the corpus, as the audit reads it ----
 
@@ -297,7 +288,7 @@ defmodule Soak do
     end
   end
 
-  defp once(%{ref: ref} = c) do
+  defp once(c, ref) do
     {:ok, value, _} = c.mod.load(c.root, c.wire)
     {:ok, saved} = c.mod.save(c.root, value)
     if saved != ref.saved, do: raise("#{c.name}: the wire round trip drifted")
