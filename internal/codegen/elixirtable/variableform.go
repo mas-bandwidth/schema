@@ -842,8 +842,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # a table node's identity is its type and content (docs/SPEC-TABLES.md
-  # §3.1); a blob's is its slot (blob_site/1), so equal bytes in two slots are
-  # two nodes, and an empty *bytes and an empty *string are two nodes.
+  # §3.1), and a LOADED node's content carries its index (:__node__), so a load
+  # and a save keep one node per record; a value a caller builds is identified
+  # by its content. A blob's identity is its slot (blob_site/1), so equal bytes
+  # in two slots are two nodes, and an empty *bytes and an empty *string are
+  # two nodes.
   defp node_content({_type_id, :blob, site, _bytes}), do: site
   defp node_content({type_id, _kind, _ref, c}), do: {type_id, c}
 
@@ -1770,7 +1773,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         case entries(body, ids, desc.string_blob, :nested) do
           {:ok, fields, []} ->
             {value, _report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
-            {:value, value}
+            # IDENTITY IS PRESERVED, ONE INDEX, ONE NODE (docs/SPEC-TABLES.md
+            # §3.1): a loaded node carries its index, so two records with equal
+            # content stay two nodes through a save, and a record two pointers
+            # name is one map and one node
+            {:value, Map.put(value, :__node__, idx)}
 
           _ ->
             :null

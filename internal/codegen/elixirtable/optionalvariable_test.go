@@ -690,3 +690,98 @@ IO.puts("ok")
 		t.Fatalf("the pointer read without its damage answer still passed: the probe does not see the rule\n%s", out)
 	}
 }
+
+// TestLoadedNodeIdentityIsPreservedElixir pins docs/SPEC-TABLES.md §3.1,
+// "Identity is preserved: one index, one node", on the Elixir variable form:
+// two node records with EQUAL content are two nodes through a load and a save,
+// byte for byte against the oracle (internal/tablewire). The leg identified a
+// node by its type and content and merged them. Two wires hold it: clean input
+// with two empty TreeNodes under one parent, and a wire fuzzer mutant (pass
+// entry, graphdemo.Scene) whose `label` id moved, so every label reads unknown
+// and the two leaves of graph_tree become equal.
+//
+// THE REVERSED WITNESS drops the index a loaded node carries and the probe
+// must go red.
+func TestLoadedNodeIdentityIsPreservedElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "tables", "pointers")
+	u := loadUnit(t, filepath.Join(dir, "Graph.schema"), filepath.Join(dir, "Marks.schema"), filepath.Join(dir, "Parts.schema"))
+	m := tabletext.NewModel(u)
+
+	// clean: two empty TreeNodes, two records
+	inst := m.New(m.Lookup("Scene"))
+	var rep tabletext.Report
+	if !m.Read(inst, []byte(`{"name":"twins","tree":{"label":"root","left":{},"right":{}}}`), &rep) || rep != (tabletext.Report{}) {
+		t.Fatalf("the oracle did not read the twins text cleanly: %+v", rep)
+	}
+	twins, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// the mutant: graph_tree with the `label` id's low byte moved
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "graph_tree.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	label := "\x3d\x62\xcb\x8f\xec\xfc\xf7\x39" // 0x39f7fcec8fcb623d, little-endian
+	at := strings.LastIndex(string(wire), label)
+	if at < 0 {
+		t.Fatalf("graph_tree.bin's id table no longer carries the label id this probe moves")
+	}
+	mutant := append([]byte{}, wire...)
+	mutant[at] = 0x3c
+	var mrep tabletext.Report
+	minst := m.New(m.Lookup("Scene"))
+	if ok, err := tablewire.Decode(m, minst, mutant, &mrep); !ok || err != nil || mrep.Malformed {
+		t.Fatalf("the oracle does not read the mutant as well-framed input: %v %v %+v", ok, err, mrep)
+	}
+	resaved, err := tablewire.Encode(m, minst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var probe strings.Builder
+	probe.WriteString(`
+defmodule Probe do
+  def hex(b), do: Base.encode16(b, case: :lower)
+
+  def check(name, wire, want) do
+    {:ok, v, _r} = Graphdemo.Table.load("Scene", Base.decode16!(wire, case: :lower))
+    {:ok, out} = Graphdemo.Table.save("Scene", v)
+
+    if hex(out) != want do
+      IO.puts(:stderr, "FAIL: " <> name <> " re-saves " <> hex(out) <> ", the oracle " <> want)
+      System.halt(1)
+    end
+  end
+end
+`)
+	fmt.Fprintf(&probe, "Probe.check(%q, %q, %q)\n", "twins", hex.EncodeToString(twins), hex.EncodeToString(twins))
+	fmt.Fprintf(&probe, "Probe.check(%q, %q, %q)\n", "mutant", hex.EncodeToString(mutant), hex.EncodeToString(resaved))
+	probe.WriteString("IO.puts(\"ok\")\n")
+
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe.String()); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir variable form merges two equal nodes: %v\n%s", err, out)
+	}
+	const tag = "{:value, Map.put(value, :__node__, idx)}"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), tag)
+		planted[name] = []byte(strings.ReplaceAll(string(data), tag, "{:value, value}"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no node index on a loaded node in the generated reader")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe.String()); err == nil {
+		t.Fatalf("the reader without the loaded node's index still passed: the probe does not see the rule\n%s", out)
+	}
+}
