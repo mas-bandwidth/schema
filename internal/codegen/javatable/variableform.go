@@ -1554,12 +1554,13 @@ public final class TableVariable {
         }
     }
 
-    // A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
-    // no writer produces a cyclic wire, so the load walks the resolved graph
-    // from the root and a pointer that reaches a node whose descent is still
-    // OPEN (a back edge) refuses the whole load; a second pointer to a CLOSED
-    // node is a share and legal. The walk is iterative, visits each node once
-    // and keeps one open mark per node on the current path.
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
+    // produces one, so the load walks the resolved graph, the root first and
+    // then every record the root did not reach, and a pointer that reaches a
+    // node whose descent is still OPEN (a back edge) refuses the whole load; a
+    // pointer to a CLOSED node is a share and legal and is never re-entered.
+    // Three marks per node (unvisited, open, closed), each node entered once:
+    // linear, iterative, nothing recursed.
     public static boolean cyclic(NodeTable nt) {
         int pairs = nt.edgeCount / 2;
         if (pairs == 0) {
@@ -1578,28 +1579,33 @@ public final class TableVariable {
         for (int i = 0; i < pairs; i++) {
             to[fill[(int) nt.edges[2 * i]]++] = (int) nt.edges[2 * i + 1];
         }
-        byte[] state = new byte[n]; // 0 unseen, 1 open, 2 closed
+        byte[] state = new byte[n]; // 0 unvisited, 1 open, 2 closed
         int[] stack = new int[n];
         int[] next = new int[n];
-        int depth = 0;
-        stack[depth++] = 1;
-        state[1] = 1;
-        next[1] = start[1];
-        while (depth > 0) {
-            int at = stack[depth - 1];
-            if (next[at] == start[at + 1]) {
-                state[at] = 2;
-                depth--;
+        for (int root = 1; root < n; root++) {
+            if (state[root] != 0) {
                 continue;
             }
-            int t = to[next[at]++];
-            if (state[t] == 1) {
-                return true;
-            }
-            if (state[t] == 0) {
-                state[t] = 1;
-                next[t] = start[t];
-                stack[depth++] = t;
+            int depth = 0;
+            stack[depth++] = root;
+            state[root] = 1;
+            next[root] = start[root];
+            while (depth > 0) {
+                int at = stack[depth - 1];
+                if (next[at] == start[at + 1]) {
+                    state[at] = 2;
+                    depth--;
+                    continue;
+                }
+                int t = to[next[at]++];
+                if (state[t] == 1) {
+                    return true;
+                }
+                if (state[t] == 0) {
+                    state[t] = 1;
+                    next[t] = start[t];
+                    stack[depth++] = t;
+                }
             }
         }
         return false;

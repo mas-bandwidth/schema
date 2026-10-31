@@ -2313,28 +2313,38 @@ test-java: tables-java-view tables-java-descriptor-doc
 
 # THE FRAMING SURFACE, its Java leg (docs/LAYERS/1-framing.md): the Java driver
 # answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control recompiles two units
-# with one rule out of each: tblr1 without the id table's 4096-entry cap (§3,
-# THE DISTINCTNESS CHECK; F6), and the pointers unit without the cycle walk
-# (§3.1, a pointer naming an OPEN node; T8). The framing surface must go RED on
-# frame_entries_4097 and on both cycle rows.
+# (test/conformance/framing/gate). The diamond-chain row (2^40 paths over 82
+# shared nodes) passing is the linear-time check: a walk that re-entered a
+# closed node would not finish. Its negative control recompiles two units
+# twice. First, one rule out of each: tblr1 without the id table's 4096-entry
+# cap (§3, THE DISTINCTNESS CHECK; F6), and the pointers unit's ListNode load
+# without the cycle check (§3.1, §4; T8); framing must go RED on
+# frame_entries_4097 and the three cycle rows. Second, the pointers unit's
+# cycle walk taking a CLOSED node for an open one, so a share reads as a
+# cycle: framing must go RED on node_diamond_chain.
 JAVA_FRAMING_CONTROL := build/conformance-java-framing-control
 .PHONY: conformance-java-framing conformance-negative-control-java-framing
 conformance-java-framing: build/conformance-harness build-conformance-java
 	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/build/conformance-java Driver" build/conformance-java-framing
 conformance-negative-control-java-framing: build/conformance-harness build-conformance-java
-	@rm -rf $(JAVA_FRAMING_CONTROL) && mkdir -p $(JAVA_FRAMING_CONTROL)/r1 $(JAVA_FRAMING_CONTROL)/pointers $(JAVA_FRAMING_CONTROL)/classes
+	@rm -rf $(JAVA_FRAMING_CONTROL) && mkdir -p $(JAVA_FRAMING_CONTROL)/r1 $(JAVA_FRAMING_CONTROL)/pointers \
+		$(JAVA_FRAMING_CONTROL)/share $(JAVA_FRAMING_CONTROL)/classes $(JAVA_FRAMING_CONTROL)/share-classes
 	@cp build/tables-generated-java/r1/*.java $(JAVA_FRAMING_CONTROL)/r1/
 	@cp build/tables-generated-java/pointers/*.java $(JAVA_FRAMING_CONTROL)/pointers/
+	@cp build/tables-generated-java/pointers/*.java $(JAVA_FRAMING_CONTROL)/share/
 	@sed -i.orig 's/count < 0 || count > 4096 || count/count < 0 || count/' $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java
-	@! cmp -s $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java.orig || \
-		{ echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
 	@sed -i.orig 's/if (TableVariable.cyclic(nt))/if (false \&\& TableVariable.cyclic(nt))/' $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java
-	@! cmp -s $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java.orig || \
-		{ echo "NEGATIVE CONTROL: the cycle-walk sabotage did not apply"; exit 1; }
+	@sed -i.orig 's/if (state\[t\] == 1) {/if (state[t] != 0) {/' $(JAVA_FRAMING_CONTROL)/share/TableVariable.java
+	@for f in r1/TableVariable.java pointers/ListNodeVariable.java share/TableVariable.java; do \
+		! cmp -s $(JAVA_FRAMING_CONTROL)/$$f $(JAVA_FRAMING_CONTROL)/$$f.orig || \
+			{ echo "NEGATIVE CONTROL: the sabotage of $$f did not apply"; exit 1; }; done
 	@rm $(JAVA_FRAMING_CONTROL)/*/*.orig
 	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/classes \
 		$(JAVA_FRAMING_CONTROL)/r1/*.java $(JAVA_FRAMING_CONTROL)/pointers/*.java
+	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/share-classes \
+		$(JAVA_FRAMING_CONTROL)/share/*.java
 	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/classes:$(CURDIR)/build/conformance-java Driver" \
-		$(JAVA_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root
+		$(JAVA_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
+	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/share-classes:$(CURDIR)/build/conformance-java Driver" \
+		$(JAVA_FRAMING_CONTROL)/run-share node_diamond_chain
 test-java: conformance-java-framing
