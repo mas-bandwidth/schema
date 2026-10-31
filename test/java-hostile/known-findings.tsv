@@ -1,5 +1,3 @@
 # carried findings: name	slug	input	one line
 # every line is a FIX-CARD the java port owes; the runner fails if one goes green
 wire-non-finite-float	java-hostile-wire-non-finite-float	inputs/wire-non-finite-float.bin	the wire reader lands a NaN float32 where the engine refuses non_finite_float; owed by the finite-tables Java card (docs/roadmap.sexp tables-finite/java)
-conformance-str-zero-byte-bounded	java-hostile-conformance-str-zero-byte-bounded	inputs/conformance-str-zero-byte-bounded.json	the text reader stores a \u0000 escape into a bounded string(N) field the engine refuses as text_holds_zero (SPEC-TABLES §16.3)
-conformance-str-zero-byte-bounded-nested	java-hostile-conformance-str-zero-byte-bounded-nested	inputs/conformance-str-zero-byte-bounded-nested.json	the text reader stores a \u0000 escape into a nested bounded string(N) field the engine refuses as text_holds_zero (SPEC-TABLES §16.3)

@@ -724,8 +724,8 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # reads clean. The ports that carry the str-zero-escape rows below carry this
 # refusal; every other port stores the zero as text and keeps the counters its
 # reader gives until its port.
-json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
 # THE ZERO RULE IN THE TEXT (§16.3): "A JSON string the read would PLACE in text
 # storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
 # false, the report is Malformed, and Reason reads text_holds_zero:
