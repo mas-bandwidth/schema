@@ -68,6 +68,9 @@ type Module struct {
 
 	body     strings.Builder
 	runtimes map[string]bool
+	// viewNone is set once the view surface has written TableDocNone and
+	// TableTagsNone, which the module assigns exactly once
+	viewNone bool
 }
 
 // Printf appends to the module body.
