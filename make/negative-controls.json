@@ -1618,6 +1618,17 @@
       "lobster": "v2026.8"
     },
     {
+      "name": "moo-cards",
+      "when": "pull-request",
+      "why": "Native moo owning cards: analyzer and unit checks plus all 43 shared cases across nine surfaces precede three real facade-source sabotages (render separator, retaining save and task-hash length frame). Each must red only its target surface. The IO-only Go host runs the pinned moo CLI; card behavior never runs in the host. The complete group, including the tagged compiler rebuild, took 3.19 seconds on Studio at GOMAXPROCS=4.",
+      "targets": [
+        "cards-moo-conformance-negative-control",
+        "cards-moo-conformance-upgrade-negative-control",
+        "cards-moo-conformance-hash-negative-control"
+      ],
+      "moo": "pin"
+    },
+    {
       "name": "moo",
       "when": "pull-request",
       "why": "the moo port's controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the type-wire golden gate's two controls (one bool written twice in a generated module, exactly shipcreate_flags red and the other thirteen C++-pinned goldens still matching; and every bool write doubled in the EMITTER through tools/sabotage and go test -overlay, exactly the seven goldens that write a bool red and the other seven matching), layer 1's analyzer control (a planted unused local named by moo-analyze), and the strict gate's two (a planted type error and a planted unused local each red the gate with exactly one diagnostic on the planted line; an analyzer beside a PIN naming another commit is refused by name). Each is one go test of internal/codegen/moo, four under test/slowgate/proof; measured under 1 s of test time each on the studio (0.05 s, 0.16 s, 0.53 s, 0.02 s; the overlay control adds one sabotaged test build), so the row is the package's compile plus the pin's cache restore. A cache miss builds the pin from source (make dist-moo), which is the one cost here outside the rule, paid once per runner image.",
