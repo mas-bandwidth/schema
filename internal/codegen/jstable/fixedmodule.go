@@ -92,7 +92,7 @@ type fixedModule struct {
 	// the message form's body codecs ride
 	messageClosure []*ir.Struct
 	gen            fixedGen
-	body     strings.Builder
+	body           strings.Builder
 }
 
 func (g *fixedModule) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
