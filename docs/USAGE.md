@@ -1403,23 +1403,23 @@ standing one rather than anything tables added.
 
 An enum-keyed array is a plain `T slots[E_MAX]` — one slot per named variant,
 nothing for `None`, the key `k` at index `k - 1`. **Index it by the ENUM
-VALUE through `TableKeyedAt`**, which is where the left shift and the `None`
+VALUE through `SCHEMA_<PACKAGE>_TABLE_KEYED_AT`**, which is where the left shift and the `None`
 refusal live; the refusal is an assert plus an abort and it stands in every
 build, exactly as C++'s accessor refuses. This fragment is compiled and run
 against the `tables/examples` unit by `make tables-c-usage`:
 
 <!-- c-table-usage -->
 ```c
-KeyedConfig config;
-keyed_config_reset( &config );
+tabledemo_keyed_config_t config;
+tabledemo_keyed_config_reset( &config );
 
-SCHEMA_TABLE_KEYED_AT( config.hulls, HULL_GUNSHIP, HULL_MAX ).health *= 2.0f;
+SCHEMA_TABLEDEMO_TABLE_KEYED_AT( config.hulls, TABLEDEMO_HULL_GUNSHIP, TABLEDEMO_HULL_MAX ).health *= 2.0f;
 
 /* walking every slot: the key is 1 .. E_MAX, never a storage index */
 int32_t key;
-for ( key = 1; key <= HULL_MAX; key++ )
+for ( key = 1; key <= TABLEDEMO_HULL_MAX; key++ )
 {
-    HullConfig * hull = &SCHEMA_TABLE_KEYED_AT( config.hulls, key, HULL_MAX );
+    tabledemo_hull_config_t * hull = &SCHEMA_TABLEDEMO_TABLE_KEYED_AT( config.hulls, key, TABLEDEMO_HULL_MAX );
     hull->health *= 2.0f;
 }
 ```
@@ -3002,6 +3002,7 @@ runtime reads it.
 schema cook --root Scene --in config/ --out Scene.cook .
 ```
 
+<!-- cpp-cook-usage-read -->
 ```cpp
 #include "GraphTable.h"
 
@@ -3026,6 +3027,7 @@ for ( const ListNode * n = graphdemo::ListNodeAt( scene->head ); n != NULL;
     printf( "  %s = %d\n", n->name, n->value );
 }
 ```
+<!-- /cpp-cook-usage-read -->
 
 `SceneOpen` takes `const void *` and a `uint64_t` length and returns
 `const Scene *` or `NULL`. The length is unsigned because every number the
@@ -3155,6 +3157,7 @@ the reference and the conformance harness holds the two to one file over every
 instance it carries — so a cook your editor wrote and a cook your build farm
 ran the tool for are the same artifact.
 
+<!-- cpp-cook-usage-write -->
 ```cpp
 // measure, then write: the buffer is yours and nothing here allocates
 const int64_t bytes = graphdemo::SettingsCookMeasure( settings );
@@ -3165,6 +3168,7 @@ if ( !graphdemo::SettingsCook( settings, file.data(), file.size(),
     return false; // the only refusal: a capacity short of the measure
 }
 ```
+<!-- /cpp-cook-usage-write -->
 
 A pointered root is a region and a root pointer, never a value, so its `Cook`
 takes the builder — locked or not — or a region root, the same two forms
@@ -3172,6 +3176,7 @@ takes the builder — locked or not — or a region root, the same two forms
 the numbering: a node named from three places is written once, and a data cycle
 is refused as it is everywhere else.
 
+<!-- cpp-cook-usage-write-pointered -->
 ```cpp
 // a pointered root is a region and a root pointer, so its Cook takes the
 // builder — locked or not — or a region root, and never a value. What it
@@ -3184,6 +3189,7 @@ if ( !graphdemo::SceneCook( builder, file.data(), file.size(),
     return false; // a capacity short of the measure, or a data cycle
 }
 ```
+<!-- /cpp-cook-usage-write-pointered -->
 
 The byte order is a PARAMETER and it is the TARGET's, not yours: pass
 `TableByteOrder::Big` and a little-endian machine writes the file a big-endian
