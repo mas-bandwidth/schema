@@ -76,6 +76,7 @@ my %kinds = (
 	"cook-write"    => ["instance"],
 	"json-read"     => ["instance"],
 	"report"        => ["report"],
+	"framing"       => ["framing"],
 	"retain"        => ["retain", "retain-message", "connection"],
 	"retain-save"   => ["retain", "retain-message", "connection"],
 	"message"       => ["connection", "message"],
