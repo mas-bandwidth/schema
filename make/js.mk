@@ -333,8 +333,8 @@ tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz
 # COUNT (never a clock), the bytes per iteration re-measured and gated at every
 # one of sixteen samples, and the live heap's drift after a collection beside it
 # as the weaker instrument that sees retention. The default count is the release
-# act, about an hour on the bench; `make test` runs the short form.
-TABLES_JS_SOAK_ITERATIONS ?= 17179869184
+# act, 2^35 passes, about forty minutes on mini-m5; `make test` runs the short form.
+TABLES_JS_SOAK_ITERATIONS ?= 34359738368
 .PHONY: tables-js-soak tables-js-soak-short tables-js-soak-negative-control
 tables-js-soak: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	cd $(CURDIR) && TABLES_JS_SOAK_ITERATIONS=$(TABLES_JS_SOAK_ITERATIONS) $(NODE) --expose-gc test/js-tables/main.mjs soak
