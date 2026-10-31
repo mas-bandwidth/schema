@@ -18,7 +18,7 @@ import (
 // U+0000 refuses the read, the report is Malformed, and its reason is
 // `text_holds_zero: <Table>.<field>` naming the innermost field. The forms
 // are the rows of TestGoTextZeroByteTakesOneRuleInEveryForm the Luau leg
-// carries: string(8), *string, a nested table's string(8), wstring(8), a
+// carries: string(8), *string, a nested table's string(8), a
 // map[string(8)]int32 key and a map[int32]int32 key, with the zero at the
 // front, middle and end. A `\u0001` control in the same place reads clean and
 // round-trips, and a zero the read only SKIPS (an unknown key's value, or an
@@ -64,14 +64,13 @@ table Root
 
 	// every other field is present, so the read value's unread defaults are
 	// not what this test measures.
-	const base = `{"s":"sv","t":"tv","w":"wv","i":{"n":"nv"},"m":{"ok":1},"k":{"7":1}}`
+	const base = `{"s":"sv","t":"tv","i":{"n":"nv"},"m":{"ok":1},"k":{"7":1}}`
 	forms := []struct {
 		name string
 		text string
 	}{
 		{"s", strings.Replace(base, `"s":"sv"`, `"s":"%s"`, 1)},
 		{"t", strings.Replace(base, `"t":"tv"`, `"t":"%s"`, 1)},
-		{"w", strings.Replace(base, `"w":"wv"`, `"w":"%s"`, 1)},
 		{"i", strings.Replace(base, `"i":{"n":"nv"}`, `"i":{"n":"%s"}`, 1)},
 		{"m", strings.Replace(base, `"m":{"ok":1}`, `"m":{"ok":1,"%s":2}`, 1)},
 		{"k", strings.Replace(base, `"k":{"7":1}`, `"k":{"7":1,"%s":2}`, 1)},

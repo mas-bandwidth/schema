@@ -125,12 +125,11 @@ func t05GoC4(t *testing.T) {
 }
 
 // t05GoR24 holds R24 to the emitted runtime and load: ill-formed text in the
-// USED units refuses by name (`text_ill_formed`); text is counted in bytes with
-// the unit-specific bound; slack is unspecified on read and not a refusal.
-// docs/FIXED-FORM-ALGORITHM.md §4.5: "the CONTENT RULES apply to the USED UNITS
-// and nothing else: UTF-8 validity over v bytes, never over N; wide code units
-// over v, never 2N ... A content violation REFUSES BY NAME, the verdict the
-// packet reader gives"; docs/SPEC-TABLES.md §3.4: "ZERO on write past the used
+// USED units refuses by name (`text_ill_formed`); text is counted in bytes;
+// slack is unspecified on read and not a refusal. docs/FIXED-FORM-ALGORITHM.md
+// §4.5: "the CONTENT RULES apply to the USED UNITS and nothing else: UTF-8
+// validity over v bytes, never over N ... A content violation REFUSES BY NAME,
+// the verdict the packet reader gives"; docs/SPEC-TABLES.md §3.4: "ZERO on write past the used
 // bytes, UNSPECIFIED on read, never a refusal".
 //
 // THE SOURCE IS NOT THE PROOF. A string match cannot bite on a validator that
@@ -158,8 +157,7 @@ func t05GoR24(t *testing.T) {
 	}
 	t05Has(t, t05GeneratedLoad(t), "tableFixedRefuse(report, why)", "the refusal is by name, the load's own path (§5.8 row 8)")
 	// RUN it: every ill-formed sequence must land `text_ill_formed` through the
-	// generated load, a valid wide pair must read, and slack past the used units
-	// must not refuse.
+	// generated load, and slack past the used units must not refuse.
 	if out, err := t05RunProbe(t, t05IllFormedSchema, t05IllFormedProbe); err != nil {
 		t.Fatalf("t05: R24 drove the emitted runtime and it did not hold (§4.5):\n%s", out)
 	}
@@ -192,14 +190,15 @@ func t05RunProbe(t *testing.T, schema, probe string) ([]byte, error) {
 const t05IllFormedSchema = `package probe
 fixed table T {
     s string(8)
+    u string(8)
 }
 `
 
 // t05IllFormedProbe drives the emitted tableFixedTextIllFormed through the
-// generated load. The wire is a clean record patched in place: the string
-// payload at body+4, its length in code units at body+0 for the wstring at
-// body+12. Each ill-formed sequence must return -1 with Reason text_ill_formed
-// (§4.5), a valid surrogate pair must read, and slack past the used string bytes
+// generated load. The wire is a clean record patched in place: the first
+// string's payload at body+4, the second string's length at body+12. Each
+// ill-formed sequence must return -1 with Reason text_ill_formed (§4.5), and
+// slack past the used string bytes
 // is UNSPECIFIED and must not refuse (docs/SPEC-TABLES.md §3.4).
 const t05IllFormedProbe = `package probe
 
@@ -213,8 +212,8 @@ func TestIllFormed(t *testing.T) {
 	var seed T
 	seed.SLength = 3
 	copy(seed.S[:], "abc")
-	seed.WLength = 2
-	seed.W[0], seed.W[1] = 0x0041, 0x0042
+	seed.ULength = 2
+	copy(seed.U[:], "AB")
 	n := TFixedMeasure(1)
 	wire := make([]byte, n)
 	if TFixedSave([]T{seed}, wire) != n {
@@ -223,8 +222,8 @@ func TestIllFormed(t *testing.T) {
 	rec := int(n) - int(TFixedRecordBytes)
 	sBase := rec + 8
 	sPayload := sBase + 4
-	wBase := sBase + 12
-	wPayload := wBase + 4
+	uBase := sBase + 12
+	uPayload := uBase + 4
 	plan := make([]TableFixedEntry, TFixedPlan.Count)
 	load := func(b []byte) (int64, TableReport) {
 		var r TableReport
@@ -253,32 +252,6 @@ func TestIllFormed(t *testing.T) {
 		}
 	}
 
-	wideCases := []struct {
-		name  string
-		units []uint16
-		want  bool
-	}{
-		{"valid_pair", []uint16{0xD83D, 0xDE00}, false},
-		{"lone_high", []uint16{0xD83D}, true},
-		{"lone_low", []uint16{0xDE00}, true},
-		{"zero_unit", []uint16{0x0000}, true},
-		{"high_then_bmp", []uint16{0xD83D, 0x0041}, true},
-	}
-	for _, c := range wideCases {
-		w := append([]byte(nil), wire...)
-		binary.LittleEndian.PutUint32(w[wBase:], uint32(len(c.units)))
-		for i, u := range c.units {
-			binary.LittleEndian.PutUint16(w[wPayload+i*2:], u)
-		}
-		got, r := load(w)
-		if c.want && (got >= 0 || r.Reason != "text_ill_formed") {
-			t.Fatalf("wide %-15s: n=%d verdict=%v reason=%q, want text_ill_formed", c.name, got, r.Verdict, r.Reason)
-		}
-		if !c.want && got < 0 {
-			t.Fatalf("wide %-15s: valid surrogate pair refused: %q", c.name, r.Reason)
-		}
-	}
-
 	slack := append([]byte(nil), wire...)
 	for i := 3; i < 8; i++ {
 		slack[sPayload+i] = 0xFF
@@ -290,7 +263,7 @@ func TestIllFormed(t *testing.T) {
 	// THE REFUSAL IS TOTAL (§5.8): "no counter moves, nothing is decoded, and
 	// not one destination byte is written — the prefill included". The string
 	// field s is valid, so an earlier plan entry would have landed it before
-	// the wide field w refuses; the caller's storage, poisoned 0x5A, must
+	// the field u refuses; the caller's storage, poisoned 0x5A, must
 	// survive untouched.
 	poison := make([]T, 1)
 	pdst := tableFixedOverlay(unsafe.Pointer(&poison[0]), unsafe.Sizeof(poison[0]))
@@ -300,8 +273,8 @@ func TestIllFormed(t *testing.T) {
 	pw := append([]byte(nil), wire...)
 	binary.LittleEndian.PutUint32(pw[sBase:], 1)
 	pw[sPayload] = 'a'
-	binary.LittleEndian.PutUint32(pw[wBase:], 1)
-	binary.LittleEndian.PutUint16(pw[wPayload:], 0xD83D)
+	binary.LittleEndian.PutUint32(pw[uBase:], 1)
+	pw[uPayload] = 0xFF
 	var pr TableReport
 	if got := TFixedLoadTolerant(poison, pw, plan, &pr); got >= 0 || pr.Reason != "text_ill_formed" {
 		t.Fatalf("poison: n=%d reason=%q, want text_ill_formed", got, pr.Reason)

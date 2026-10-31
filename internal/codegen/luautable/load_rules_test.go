@@ -176,30 +176,4 @@ print(buffer.readstring(v.S, 0, v.SLength) .. "|" .. %s)`, report)
 		}
 	})
 
-	t.Run("clamp-wide", func(t *testing.T) {
-		t.Parallel()
-		g := generateFiles(t, map[string]string{"Box.schema": "package p\ntable Box\n{\n\tw wstring(2)\n}\n"})
-		field := ir.TableWireId("w")
-		payload := leb(6)
-		payload = append(payload, 'a', 0x00, 0x00, 0xD8, 0x00, 0xDC)
-		root := leb(1)
-		root = append(root, 33)
-		root = append(root, payload...)
-		root = append(root, 0)
-		w := wire(root, field)
-		main := fmt.Sprintf(`local inputs = require("./inputs")
-local load = require("./schema_load")
-require("./BoxTable")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.loadTolerant("Box", inputs.wire, report)
--- a wstring(N) is a buffer of UTF-16LE code units and its Length in units
--- (docs/PORT-LUAU.md, THE TYPE MAPPING): the kept units print as UTF-8
-local units = {}
-for i = 0, v.WLength - 1 do units[#units + 1] = utf8.char(buffer.readu16(v.W, i * 2)) end
-print(table.concat(units) .. "|" .. %s)`, report)
-		want := "a|0,0,0,1,0,false"
-		if got := run(t, g, main, w); got != want {
-			t.Errorf("clamp-wide:\ngot:  %s\nwant: %s", got, want)
-		}
-	})
 }

@@ -246,7 +246,7 @@ func TestMixedFixed(t *testing.T) {
 // TestGoMixedUnitShapesRoundTrip checks each other shape §3.4's rule reaches
 // against the Row layout (scalars of every width, a bool beside padding, a
 // fixed array, an enum, an optional scalar and an optional nested table,
-// bytes(N), wstring(N) with its N+1 buffer, an enum-keyed array of tables, and
+// bytes(N), an enum-keyed array of tables, and
 // a plain `type` nested by value, which a regional unit stores as its <Name>Row
 // and not as the packet struct): the same source runs in the plain and the
 // mixed unit, the saved bytes are pinned to the plain unit's, and the load

@@ -278,12 +278,6 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				nil,
 			},
 			{
-				"wstring-holds-zero",
-				`{"w": "\u0000"}`,
-				"v.W = buffer.fromstring(string.char(0, 0)); v.WLength = 1",
-				nil,
-			},
-			{
 				"bytes-past-bound",
 				`{"y": "AQIDBAU="}`,
 				"v.Y = buffer.fromstring(\"12345\"); v.YLength = 5",

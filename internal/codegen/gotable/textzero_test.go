@@ -10,7 +10,7 @@ import "testing"
 // plants \u0000 at the front, the middle and the end of a string(8), a
 // *string, a []string(8) element, a [..4]?string(8) element and a
 // map[string(8)]int32 key and an unbounded map[string]int32 key, then a
-// wstring(8), a nested table's string(8) and a map[int32]int32
+// nested table's string(8) and a map[int32]int32
 // key (one Malformed, no kind mismatch), and a timestamp, which is not text
 // storage and refuses by its own name, timestamp_not_rfc3339:
 // the read is refused, and whatever value it left measures, saves, reads
@@ -117,13 +117,12 @@ func TestTextZero(t *testing.T) {
 		{"l", "{\"l\":[\"ok\",\"%s\"]}"},
 		{"o", "{\"o\":[null,\"%s\"]}"},
 		{"m", "{\"m\":{\"ok\":1,\"%s\":2}}"},
-		{"w", "{\"w\":\"%s\"}"},
 		{"i", "{\"i\":{\"n\":\"%s\"}}"},
 		{"at", "{\"at\":\"%s\"}"},
 		{"k", "{\"k\":{\"7\":1,\"%s\":2}}"},
 		{"u", "{\"u\":{\"ok\":1,\"%s\":2}}"},
 	}
-	where := map[string]string{"s": "Root.s", "t": "Root.t", "l": "Root.l", "o": "Root.o", "m": "Root.m", "w": "Root.w", "i": "Inner.n", "k": "Root.k", "u": "Root.u"}
+	where := map[string]string{"s": "Root.s", "t": "Root.t", "l": "Root.l", "o": "Root.o", "m": "Root.m", "i": "Inner.n", "k": "Root.k", "u": "Root.u"}
 	// a timestamp is not text storage: its zero falls through to the RFC 3339
 	// parse and is refused by that name, as the pack text reader refuses it;
 	// an integer map key that decodes to U+0000 is ONE Malformed event and

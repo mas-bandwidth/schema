@@ -505,46 +505,13 @@ func measureMalformedKeyedProbe() string {
 `
 }
 
-// measureMalformedWStringSchema holds wstring values in each place the load
-// checks their UTF-16 (read.go emitReadField and emitReadArm through
-// wstring.go emitReadWString): a field, a field of a list element (v1 has no
-// bare wstring element) and a union arm. The load reports Malformed on an odd length,
-// a NUL unit or an unpaired surrogate, so the strict measure must refuse
-// those wires too (the read of w6 found an odd-byte wstring the measure
-// accepted).
-var measureMalformedWStringSchema = `package probe
-table W {
-}
-union U0 {
- n int8 | min = -128, max = 127
-}
-table Root {
- l []W
- u U0
-}
-`
-
-func measureMalformedWStringProbe() string {
-	probe := measureMalformedSeed2Probe
-	before, _, _ := strings.Cut(probe, " var docs = []string{\n")
-	end := strings.Index(probe, " // tolerant is the oracle")
-	return before + ` var docs = []string{
-  "{}",
-  "{\"a\":\"ab\"}",
-  "{\"a\":\"\\ud83c\\udf0d\",\"l\":[{\"s\":\"x\"},{\"s\":\"\\u03a9\"}],\"u\":{\"w\":\"yz\"}}",
-  "{\"l\":[{\"s\":\"abc\"},{}],\"u\":{\"w\":\"\\ud83c\\udf0d\"}}",
-  "{\"u\":{\"n\":-3}}",
- }
-` + probe[end:]
-}
-
 // measureMalformedDigests are the tolerant load's recovery digests at BASE
 // (sprint/schema-go 454596324; the wire-bool-not-0-or-1 landing moved them), one per unit: a change to the strict measure
 // that moves any of them changed what the tolerant load recovers. Seeds 4 and 1
 // moved when table floats went finite only (SPEC-TABLES §3.3, 2026-10-27): the
 // damaged wires whose float bytes became a NaN or an infinity are now refused
 // by the tolerant load, by design, instead of landed.
-var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "b96fc5b8d8564d8c", 1: "7b597995a4b1475e", 0: "63ddc043eeaf9665", 5: "7e55fc79c537f278"}
+var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "b96fc5b8d8564d8c", 1: "7b597995a4b1475e", 0: "63ddc043eeaf9665"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)
@@ -560,14 +527,10 @@ func TestGoLoadMeasureRefusesWhatTheLoadCallsMalformedRandom(t *testing.T) {
 		{4, measureMalformedSeed4Schema, measureMalformedSeed4Probe},
 		{1, measureMalformedSeed1Schema, measureMalformedSeed1Probe},
 		{0, measureMalformedKeyedSchema, measureMalformedKeyedProbe()},
-		{5, measureMalformedWStringSchema, measureMalformedWStringProbe()},
 	} {
 		name := fmt.Sprintf("seed%d", c.seed)
 		if c.seed == 0 {
 			name = "keyed"
-		}
-		if c.seed == 5 {
-			name = "wstring"
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

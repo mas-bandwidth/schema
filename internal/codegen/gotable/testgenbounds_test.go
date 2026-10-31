@@ -124,7 +124,7 @@ func TestGoTestgenBoundProbes(t *testing.T) {
 		}
 	})
 
-	// The kinds the corpus does not declare: a fixed-point range, wstring(N),
+	// The kinds the corpus does not declare: a fixed-point range,
 	// bytes(N), a plain text list (its count and an element's length), a
 	// 128-bit range, a fixed [N] count, a required field beside the probe, a
 	// guarded field, a scalar union arm, a pointer, a map and a compressed
@@ -192,8 +192,8 @@ table Var {
 
 // boundProbesDeclared counts, from the declaration alone, the probes §16.11
 // owes for every root table's own field lines: each integer range end its own
-// wire kind can step past, a bits(N) narrower than its kind, a string(N),
-// wstring(N) or bytes(N), and a [..N] or [N] count.
+// wire kind can step past, a bits(N) narrower than its kind, a string(N) or
+// bytes(N), and a [..N] or [N] count.
 func boundProbesDeclared(u *ir.Unit) []string {
 	var out []string
 	for _, f := range u.Files {

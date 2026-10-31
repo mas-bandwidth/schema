@@ -30,7 +30,7 @@ table Root {
 	}
 	seams := []seam{
 		{"unbounded-writeScalar", "func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {\n", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
-		{"unbounded-read-kind33", " if f.Kind==33 {units:=unsafe.Slice((*uint16)(storage),f.ArrayBound)", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
+		{"unbounded-read-list", " if f.List {return tableJSONReadList(in,storage,f,depth)}\n", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
 		{"unbounded-write-textbytes", "n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
 		{"unbounded-read-key", "if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
 		{"unbounded-map-store", "entry.Reset(slot);tableMapStoreKey(slot,key,k);", func(u *ir.Unit, s string) string { return unboundedTextJson(u, s, true) }},
