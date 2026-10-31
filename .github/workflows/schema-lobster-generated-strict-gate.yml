@@ -19,6 +19,7 @@ name: schema Lobster generated strict gate
 
 on:
   push:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-lobster-generated-strict-gate.mk'
       - 'make/lobster*.mk'
@@ -57,8 +58,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: schema-lobster-strict-gate-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   strict:

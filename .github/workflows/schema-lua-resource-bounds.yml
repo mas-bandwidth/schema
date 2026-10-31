@@ -22,6 +22,7 @@ on:
     - cron: '23 3 * * *'
   workflow_dispatch:
   push:
+    branches: [ main, dev, fixed-table-form ]
     paths:
       - 'make/schema-lua-resource-bounds.mk'
       - 'internal/ci/schema_lua_resource_bounds_test.go'
@@ -31,6 +32,10 @@ on:
       - 'make/schema-lua-resource-bounds.mk'
       - 'internal/ci/schema_lua_resource_bounds_test.go'
       - '.github/workflows/schema-lua-resource-bounds.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   fast:
