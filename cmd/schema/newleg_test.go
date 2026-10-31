@@ -308,7 +308,7 @@ func copyEmbeddedFiles(t *testing.T, root, tree, dir string) {
 			if !ok {
 				continue
 			}
-			for _, pattern := range strings.Fields(patterns) {
+			for _, pattern := range strings.FieldsSeq(patterns) {
 				matches, err := filepath.Glob(filepath.Join(filepath.Dir(p), filepath.FromSlash(pattern)))
 				if err != nil {
 					return err
