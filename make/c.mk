@@ -468,10 +468,10 @@ conformance-negative-control-c-absent: build/conformance-harness build/tables-ge
 		echo "NEGATIVE CONTROL FAILED: a C driver that drops its per-case absence left the harness green"; \
 		cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; \
 	fi
-	@grep -q "expected named absence" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log || \
+	@grep -q "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the dropped absence"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; }
-	@grep -m1 "expected named absence" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log
+	@grep -m1 "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log
 	@echo "negative control: a C driver that drops a per-case absence turns the harness red"
 
 test-c: conformance-negative-control-c-absent
@@ -846,7 +846,7 @@ tables-c-blob-span: build/tables-generated-c/.stamp test/c-tables/blob_span_main
 	./build/c-blob-span/span
 	./build/c-blob-span/span-asan
 
-test-c: tables-c-blob-span
+test-c: tables-c-blob-span tables-c-blob-span-negative-control tables-c-block-layout-model-negative-control tables-c-little-endian-negative-control
 
 # THE LAYOUT CONTRACT, C side (docs/SPEC-TABLES.md §19.3; docs/PORTING.md M11):
 # every block projection and row the C emitter writes carries
@@ -942,17 +942,21 @@ endef
 # references name is written in full at every appearance, with no label.
 # TestCTableWireGraphIdentity's JSON half reads the text back into a builder
 # and must save the engine's bytes; two copies of the shared node cannot.
+C_JSON_LABEL_SED := s|    if ( entry->count <= 1 ) { return table_json_write_value(out,node,f->table,depth); }|    if ( 1 ) { return table_json_write_value(out,node,f->table,depth); } /* SABOTAGED: no label */|
+C_JSON_LABEL_RED := !memcmp(saved,expected,sizeof(saved))
 .PHONY: tables-c-json-label-negative-control
 tables-c-json-label-negative-control:
-	$(call c_wire_probe_control,build/c-json-label-nc,graph_json.go,s|    if ( entry->count <= 1 ) { return table_json_write_value(out,node,f->table,depth); }|    if ( 1 ) { return table_json_write_value(out,node,f->table,depth); } /* SABOTAGED: no label */|,SABOTAGED: no label,TestCTableWireGraphIdentity,!memcmp(saved$(comma)expected$(comma)sizeof(saved)),a shared node written twice in the C text form turns TestCTableWireGraphIdentity red on the engine's bytes)
+	$(call c_wire_probe_control,build/c-json-label-nc,graph_json.go,$(C_JSON_LABEL_SED),SABOTAGED: no label,TestCTableWireGraphIdentity,$(C_JSON_LABEL_RED),a shared node written twice in the C text form turns TestCTableWireGraphIdentity red on the engine's bytes)
 
 # M19, the C map's sorted entry array: the save's ascending order (the heap sort
 # of table_sequence_order) is removed, so entries ride in insertion order.
 # TestCTableWireMaps inserts its keys out of order and must save the engine's
 # bytes.
+C_MAP_SORT_SED := s|    for(i=(int64_t)value->count/2;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|    for(i=(int64_t)value->count-1;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|
+C_MAP_SORT_RED := !memcmp(wire,expected,sizeof(expected))
 .PHONY: tables-c-map-sort-negative-control
 tables-c-map-sort-negative-control:
-	$(call c_wire_probe_control,build/c-map-sort-nc,sequence.go,s|    for(i=(int64_t)value->count/2;i>0;i--) { table_sequence_sift(order->entries$(comma)i-1$(comma)value->count$(comma)compare); }|    for(i=0;i>0;i--) { table_sequence_sift(order->entries$(comma)i-1$(comma)value->count$(comma)compare); } /* SABOTAGED: insertion order */|;s|    for(i=(int64_t)value->count-1;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|,SABOTAGED: insertion order,TestCTableWireMaps,!memcmp(wire$(comma)expected$(comma)sizeof(expected)),a C map saved in insertion order turns TestCTableWireMaps red on the engine's bytes)
+	$(call c_wire_probe_control,build/c-map-sort-nc,sequence.go,$(C_MAP_SORT_SED),SABOTAGED: insertion order,TestCTableWireMaps,$(C_MAP_SORT_RED),a C map saved in insertion order turns TestCTableWireMaps red on the engine's bytes)
 
 test-c: tables-c-json-label-negative-control tables-c-map-sort-negative-control
 
