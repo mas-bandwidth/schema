@@ -68,6 +68,7 @@ import '../../../build/tables-generated-dart/m2/M2Cook.dart' as m2cook;
 import '../../../build/tables-generated-dart/stream/StreamCook.dart' as streamcook;
 import '../../../build/tables-generated-dart/messages/MessagesCook.dart' as messagescook;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalarsCook.dart' as scalarscook;
+import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -1576,6 +1577,84 @@ int surfaceJsonHostile(String outDir) {
   return 0;
 }
 
+// ---- retain and retain-save (docs/SPEC-TABLES.md §6.6): RT1's Node loaded
+// with retention at the row's two capacities, measured and saved back. `retain`
+// prints `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
+// saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
+// what this port's own records cost, and the second load gets one byte less
+// (test/conformance/README.md). The id list's capacity is a count.
+//
+// A retain-message row's root is a plain `table` — Node in RT1 — which carries
+// no message verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
+// the form), so the driver answers ABSENT and names the reason, as the Go
+// leg's does.
+const int _retainRoomy = 1 << 20;
+
+int surfaceRetain(String outDir, bool saves) {
+  for (final f in lines) {
+    if (f[0] != 'retain' && f[0] != 'retain-message') continue;
+    if (saves && f[f.length - 1] == '-') continue;
+    if (f[0] == 'retain-message') {
+      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
+      continue;
+    }
+    if (f[2] != 'tblrt1' || f[3] != 'Node') {
+      stderr.writeln('driver: retain ${f[1]} names ${f[2]} ${f[3]}');
+      return 1;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
+    var store = tblrt1.TableRetain(_retainRoomy, ids);
+    var report = tblrt1.TableWireReport();
+    if (f[5] == 'short') {
+      tblrt1.nodeWireLoadRetain(wire, store, report);
+      if (report.malformed || report.refused) {
+        stderr.writeln('driver: ${f[1]}: capacity probe refused');
+        return 1;
+      }
+      store = tblrt1.TableRetain(store.used - 1 < 0 ? 0 : store.used - 1, ids);
+      report = tblrt1.TableWireReport();
+    }
+    final root = tblrt1.nodeWireLoadRetain(wire, store, report);
+    if (report.malformed || report.refused) {
+      stderr.writeln('driver: ${f[1]}: retaining load failed');
+      return 1;
+    }
+    final size = tblrt1.nodeWireMeasureRetain(root, store);
+    final save = tblrt1.TableWireReport();
+    final out = tblrt1.nodeWireSaveRetain(root, store, save);
+    if (size < 0 || out.length != size) {
+      stderr.writeln('driver: ${f[1]}: retaining measure and save disagree');
+      return 1;
+    }
+    // the save is a function of the value and the store: a second one writes
+    // the same bytes and loses the same records
+    final second = tblrt1.TableWireReport();
+    final again = tblrt1.nodeWireSaveRetain(root, store, second);
+    if (!_sameBytes(again, out) || second.retainLost != save.retainLost) {
+      stderr.writeln('driver: ${f[1]}: retaining save is not repeatable');
+      return 1;
+    }
+    if (saves) {
+      File('$outDir/${f[1]}').writeAsBytesSync(out);
+    } else {
+      File('$outDir/${f[1]}').writeAsStringSync(
+        '${report.retained},${report.retainLost},${report.unknown} '
+        '${save.retainLost}\n',
+      );
+    }
+  }
+  return 0;
+}
+
+bool _sameBytes(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
 int surfaceReport(String outDir) {
   for (final f in kind('report')) {
     final line = loadReport(f[2], f[3], File(f[4]).readAsBytesSync());
@@ -1856,12 +1935,13 @@ int surfaceMessage(String outDir) {
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
-    // cook-write the graphdemo and blobdemo rows (§7.6). The
+    // cook-write the graphdemo and blobdemo rows (§7.6). retain and
+    // retain-save carry RT1's retaining round trip (§6.6). The
     // accelerators and the forgery surfaces stay, and cook-reason and
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\njson-read\njson-write\njson-hostile\nreport\n'
+    'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
 
@@ -2341,6 +2421,10 @@ int run(List<String> args) {
       return surfaceWire(out);
     case 'message':
       return surfaceMessage(out);
+    case 'retain':
+      return surfaceRetain(out, false);
+    case 'retain-save':
+      return surfaceRetain(out, true);
     case 'json-read':
       return surfaceJsonRead(out);
     case 'json-write':

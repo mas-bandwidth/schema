@@ -176,6 +176,7 @@ var catalog = []Entry{
 	e("test/dart", "Dart packet tests", "make test-dart", "make test-dart"),
 	e("test/dart-ludicrous", "Dart int128 tests", "make test-dart", "make test-dart"),
 	e("test/dart-tables", "Dart table tests", "make test-dart", "make test-dart"),
+	e("test/dart-hostile", "Dart hostile-corpus runner", "make schema-dart-runs-hostile-corpus", "make schema-dart-runs-hostile-corpus"),
 	e("test/elixir", "Elixir packet tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-alloc", "Elixir allocation tests", "make test-elixir", "make test-elixir"),
 	e("test/elixir-filemodule", "Elixir file-module tests", "make test-elixir", "make test-elixir"),

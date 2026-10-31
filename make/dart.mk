@@ -104,13 +104,31 @@ generated/bench/paired/dart/.stamp: bin/schema bench/corpus/Bench.schema bench/c
 	@touch $@
 
  
+# THE TABLES BOARD UNIT, for bench/tables/dart/leg (bench/tables/README.md): the
+# VARIABLE form (form 1) of TableMixed, the board's representative corpus.
+# Committed, like every other language's generated/bench/tables/<lang>.
+generated/bench/tables/dart/.stamp: bin/schema bench/corpus/BenchTable.schema
+	@mkdir -p generated/bench/tables/dart
+	./bin/schema generate --lang dart --out generated/bench/tables/dart bench/corpus/BenchTable.schema
+	@touch $@
+
+# THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK, with no clock at all: the
+# golden, all 64 variants load clean and re-save byte-identically, and two
+# rotations (docs/PORTING.md J5).
+.PHONY: tables-dart-bench-gate
+tables-dart-bench-gate: generated/bench/tables/dart/.stamp
+	bench/tables/dart/leg build
+	bench/tables/dart/leg run --gate
+test-dart: tables-dart-bench-gate
+BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
+
 # The same corpus through the DART table backend (docs/SPEC-TABLES.md): the tables
 # corpus plus the evolution pair, generated at build time into build/ —
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -144,6 +162,8 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
+	# RT1 is the RETAIN surfaces' unit (docs/SPEC-TABLES.md §6.6).
+	./bin/schema generate --lang dart --out build/tables-generated-dart/rt1 test/tables/RT1.schema
 	# the REPORT surface's remaining readers (docs/SPEC-TABLES.md §4, §5): the
 	# pointer-presence middle P2, the id-table pair K1/K2, the arm retypes A2,
 	# and Scalars2 (beside the tree, as tables/scalars is, for its Int128.dart).
@@ -679,6 +699,45 @@ tables-dart-cookwrite-negative-control: build/conformance-dart build/conformance
 	@echo "negative control: the form-1 cook writer's union elements and wide elements each turn exactly their own cook-write rows RED"
 
 test-dart: tables-dart-cookwrite-negative-control
+
+# THE RETAIN SURFACES' NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): a copy of
+# the emitter whose retaining save re-emits NO retained record, built through
+# `go build -overlay` (under build/, never committed), regenerates RT1 into a
+# copy of the generated corpus, and the driver compiled against it must turn
+# `retain-save` red — the retained fields no longer come back to their bodies,
+# and `retain` with it where the id list's loss moves — while every other
+# surface stays green, so the red is the retention and nothing else. The run is one substituted leg (--drivers), as the harness
+# README says a substituted registry is.
+.PHONY: tables-dart-retain-negative-control
+tables-dart-retain-negative-control: build/conformance-harness build/conformance-dart
+	@rm -rf build/dart-retain-nc && mkdir -p build/dart-retain-nc
+	@sed -e 's|    if (!identical(rec.owner, owner)) continue;|    continue; // SABOTAGED: no retained record is re-emitted|' \
+		internal/codegen/darttable/retainwire.go > build/dart-retain-nc/retainwire.go.txt
+	@cmp -s internal/codegen/darttable/retainwire.go build/dart-retain-nc/retainwire.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/darttable/retainwire.go":"%s/build/dart-retain-nc/retainwire.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-retain-nc/overlay.json
+	go build -overlay build/dart-retain-nc/overlay.json -o build/dart-retain-nc/schema ./cmd/schema
+	@cp -R build/tables-generated-dart build/dart-retain-nc/generated
+	@rm -rf build/dart-retain-nc/generated/rt1
+	./build/dart-retain-nc/schema generate --lang dart --out build/dart-retain-nc/generated/rt1 test/tables/RT1.schema
+	@sed -e "s|'../../../build/tables-generated-dart/|'$(CURDIR)/build/dart-retain-nc/generated/|" \
+	     -e "s|'../../../build/|'$(CURDIR)/build/|" \
+		test/conformance/dart/main.dart > build/dart-retain-nc/main.dart
+	$(DART) compile exe -o build/dart-retain-nc/conformance-dart build/dart-retain-nc/main.dart >/dev/null
+	@echo "dart build/dart-retain-nc/conformance-dart" > build/dart-retain-nc/drivers.txt
+	@if ./build/conformance-harness run --drivers build/dart-retain-nc/drivers.txt \
+		--work build/dart-retain-nc/work > build/dart-retain-nc/log 2>&1; then \
+		cat build/dart-retain-nc/log; \
+		echo "NEGATIVE CONTROL FAILED: the Dart leg stayed green with no retained record re-emitted"; exit 1; \
+	fi
+	@grep -qE '^retain-save +FAIL' build/dart-retain-nc/log || \
+		{ cat build/dart-retain-nc/log; echo "NEGATIVE CONTROL FAILED: retain-save did not go red"; exit 1; }
+	@if grep -E '^[a-z-]+ +FAIL' build/dart-retain-nc/log | grep -vqE '^retain(-save)? '; then \
+		cat build/dart-retain-nc/log; echo "NEGATIVE CONTROL FAILED: a surface other than the two retain surfaces went red"; exit 1; \
+	fi
+	@grep -E '^retain(-save)? ' build/dart-retain-nc/log
+	@echo "negative control: a Dart retaining save that re-emits no retained record turns the retain surfaces RED and only them"
 
 # ---------------------------------------------------------------------------
 # THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
