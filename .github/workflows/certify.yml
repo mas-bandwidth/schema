@@ -199,7 +199,45 @@ jobs:
       - name: install the Lua pin
         run: make dist-lua
 
+      # THE C AND C++ FORMAT GATES' formatter, pinned, as ci-fast.yml installs
+      # it: clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
+      # names, in a venv under the runner's temp, exported as CLANG_FORMAT.
+      # `make test` runs tables-c-clean and tables-cpp-format, which refuse any
+      # other major by name; the hosted ubuntu image's own clang-format is 18.
+      - name: the pinned clang-format (C and C++ format gates)
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
+
+      # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
+      # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
+      # make/squirrel.mk), and each leg's own dist-<lang> target installs it at
+      # the sha256 it names, as ci-full.yml's pins job does. dist-squirrel builds
+      # sq from source, so it runs on both OSes. The goose pin is the
+      # goose-<version>-linux-x64 release and the luau pin is luau-ubuntu.zip:
+      # neither has a macOS build, so on macOS those two legs are not installed
+      # and are named in SCHEMA_SKIP_LEGS on the make test step below.
+      - name: install the Goose pin
+        if: runner.os == 'Linux'
+        run: make dist-goose
+
+      - name: install the Luau pin
+        if: runner.os == 'Linux'
+        run: make dist-luau
+
+      - name: install the Squirrel pin
+        run: make dist-squirrel
+
+      # SCHEMA_SKIP_LEGS on macOS only: goose and luau, whose pins are
+      # linux-x64 builds with no macOS archive (the block above). Every other
+      # leg's toolchain exists on both OSes and is never skipped.
       - name: make test
+        env:
+          SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
         run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       # The committed generated/ tree is what this repo treats as ground
@@ -272,7 +310,9 @@ jobs:
       - id: list
         name: the tables-<lang>-release targets the Makefile and make/*.mk carry
         run: |
-          targets=$(grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//' | sort -u | jq -R . | jq -sc .)
+          # and every leg's release wire-fuzz gate, from the leg list
+          # make/wire-fuzz-release.mk holds (tables-wire-fuzz-release-<leg>)
+          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; } | sort -u | jq -R . | jq -sc .)
           echo "$targets"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
@@ -345,11 +385,52 @@ jobs:
       # refuses by name without it, and dist-lua builds it from source at the
       # sha256 make/lua.mk names.
       - name: install the Lua pin
-        if: matrix.target == 'tables-lua-release'
+        if: matrix.target == 'tables-lua-release' || matrix.target == 'tables-wire-fuzz-release-lua'
         run: make dist-lua
 
+      # THE LOBSTER PIN for tables-lobster-release: its wire fuzz runs the
+      # pinned compiler (make/lobster.mk's dist-lobster, which the target's
+      # leg installs), and the linux release binary links libOpenGL and libGLX,
+      # which the hosted ubuntu image does not carry. Without them the binary
+      # fails to load and the harness reads EOF from the leg (#2370 installs
+      # the same two packages for ci-full.yml's lobster rows).
+      - name: install the Lobster pin
+        if: matrix.target == 'tables-lobster-release' || matrix.target == 'tables-wire-fuzz-release-lobster'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster
+
+      # The Squirrel leg's pinned sq (make/squirrel.mk): tables-squirrel-release's
+      # wire fuzz and controls refuse by name without it (toolchain-squirrel),
+      # and dist-squirrel builds it from source at the sha256 it names.
+      - name: install the Squirrel pin
+        if: matrix.target == 'tables-squirrel-release' || matrix.target == 'tables-wire-fuzz-release-squirrel'
+        run: make dist-squirrel
+
+      # The Goose leg's pinned compiler (make/goose.mk), linux-x64, which this
+      # ubuntu job runs: tables-goose-release runs test-goose under it.
+      - name: install the Goose pin
+        if: matrix.target == 'tables-goose-release'
+        run: make dist-goose
+
+      # The Luau leg's pinned interpreter (make/luau.mk dist-luau), for its
+      # release wire-fuzz gate: the driver runs generated Luau under it.
+      - name: install the Luau pin
+        if: matrix.target == 'tables-wire-fuzz-release-luau'
+        run: make dist-luau
+
       - name: ${{ matrix.target }}
+        if: '!startsWith(matrix.target, ''tables-wire-fuzz-release-'')'
         run: make "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
+
+      # THE RELEASE WIRE-FUZZ GATE (make/wire-fuzz-release.mk): one leg's six
+      # independent runs (both arms, seeds 1-3, at WIRE_FUZZ_RELEASE_N), side
+      # by side on every core, each a row of the table the job prints.
+      - name: ${{ matrix.target }} (both arms, seeds 1-3)
+        if: startsWith(matrix.target, 'tables-wire-fuzz-release-')
+        run: make -j"$(nproc)" "${{ matrix.target }}" RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job so the legs run concurrently instead of
@@ -479,7 +560,45 @@ jobs:
       - name: install the Lua pin
         run: make dist-lua
 
+      # THE C AND C++ FORMAT GATES' formatter, pinned, as ci-fast.yml installs
+      # it: clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
+      # names, in a venv under the runner's temp, exported as CLANG_FORMAT.
+      # `make test` runs tables-c-clean and tables-cpp-format, which refuse any
+      # other major by name; the hosted ubuntu image's own clang-format is 18.
+      - name: the pinned clang-format (C and C++ format gates)
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
+
+      # THE GOOSE, LUAU AND SQUIRREL PINS: `make test`'s toolchain gate refuses
+      # each of these legs by name without its pin (make/goose.mk, make/luau.mk,
+      # make/squirrel.mk), and each leg's own dist-<lang> target installs it at
+      # the sha256 it names, as ci-full.yml's pins job does. dist-squirrel builds
+      # sq from source, so it runs on both OSes. The goose pin is the
+      # goose-<version>-linux-x64 release and the luau pin is luau-ubuntu.zip:
+      # neither has a macOS build, so on macOS those two legs are not installed
+      # and are named in SCHEMA_SKIP_LEGS on the make test step below.
+      - name: install the Goose pin
+        if: runner.os == 'Linux'
+        run: make dist-goose
+
+      - name: install the Luau pin
+        if: runner.os == 'Linux'
+        run: make dist-luau
+
+      - name: install the Squirrel pin
+        run: make dist-squirrel
+
+      # SCHEMA_SKIP_LEGS on macOS only: goose and luau, whose pins are
+      # linux-x64 builds with no macOS archive (the block above). Every other
+      # leg's toolchain exists on both OSes and is never skipped.
       - name: make test
+        env:
+          SCHEMA_SKIP_LEGS: ${{ runner.os == 'macOS' && 'goose,luau' || '' }}
         run: make test RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node
 
       - name: inline gate — adversarial selftest
@@ -535,6 +654,32 @@ jobs:
       # hangs instead of failing.
       - name: govulncheck
         run: make vuln-strict
+
+  # THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463), the gate
+  # `make release` runs before it tags: the newest v tag's compiler and this
+  # commit's encode the same instances, and under an equal protocol id the wire
+  # bytes must be the same (the packet wire through the C++ reference, the
+  # table forms through the Go engine). Here it says, every night, whether
+  # main could be released; the release workflow refuses on the same verdict.
+  # Its own job, so a red verdict is read as this gate's and colors nothing
+  # else. Go, the runner's C++ compiler, the tags, and the serialize runtime
+  # the target fetches at its pin.
+  release-differential:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # the newest v tag and its tree are the previous side
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the previous release against this commit, wire bytes under an equal protocol id
+        env:
+          GOFLAGS: -mod=readonly
+        run: make release-differential
 
   # THE NIGHTLY NEGATIVE-CONTROL TIER (issue #563). Every negative control this
   # tree defines runs on every pull request, in ci.yml, one job per group, and

@@ -29,7 +29,7 @@ import 'BenchTable.dart' show TableWeapon;
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-const int tableBuildVersion = 0x2cbe366e67629f61;
+const int tableBuildVersion = 0xd15cf2df295a7569;
 
 // The block's magic (docs/SPEC-TABLES.md §19.1), read BYTEWISE: it is the one field
 // read without assuming the order the rest of the block is in. A consumer that

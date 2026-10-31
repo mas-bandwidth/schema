@@ -29,10 +29,10 @@ func nightlyFuzzProblems(mk, wf string) []string {
 		}
 	}
 	// THE TARGET, its budget and its corpus. The budget is a make variable
-	// passed to the harness, so a night's search length is an argument.
+	// passed as go test's -timeout, so a night's wall bound is an argument.
 	want(mk, ".PHONY: schema-squirrel-nightly-fuzz\n", "the fuzz target is not declared")
 	want(mk, "SQUIRREL_FUZZ_SECONDS ?=", "the campaign has no time-budget variable")
-	want(mk, "SCHEMA_SQUIRREL_FUZZ_SECONDS=$(SQUIRREL_FUZZ_SECONDS)", "the budget is not passed to the harness")
+	want(mk, "-timeout $(SQUIRREL_FUZZ_SECONDS)s ./internal/codegen/squirreltable", "the budget does not bound the campaign")
 	want(mk, "SCHEMA_SQUIRREL_FUZZ_CORPUS=", "the harness does not read a corpus file")
 	want(mk, "$(SCHEMAS_TABLES)", "the corpus is not drawn from the Makefile's SCHEMAS_TABLES")
 	want(mk, "Strict", "the strict-read reader kind is not driven")

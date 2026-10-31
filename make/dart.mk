@@ -1215,6 +1215,42 @@ tables-dart-finite-float-negative-control:
 
 test-dart: tables-dart-finite-float tables-dart-finite-float-negative-control
 
+# DESCRIPTORS ARE CONSTANTS (docs/PORTING.md M13): the card registry, the unit
+# view, the extent scan's tables and the retained-id set are `const`, so a read
+# allocates nothing, runs no lazy initializer and cannot write. The probe
+# requires each registry identical across reads and unmodifiable; its reversed
+# witness turns the card registry and the unit view back into finals in a copy
+# of the generated source and requires the probe red, naming both.
+.PHONY: tables-dart-descriptors
+tables-dart-descriptors:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDartDescriptorsAreConstants$$'
+	@echo 'tables Dart descriptors: every registry is const, identical across reads and unmodifiable, and the finals witness goes red'
+
+test-dart: tables-dart-descriptors
+
+# THE IDENTITY MAP (docs/PORTING.md M6, docs/SPEC-TABLES.md §3.1): a node two
+# pointers reach is one record and one object on the read, two equal nodes stay
+# two, and a cycle is refused at its OPEN entry by name. The reversed witness
+# takes the OPEN-entry test out of the generated runtime and requires the probe
+# red on the cycle alone.
+.PHONY: tables-dart-identity
+tables-dart-identity:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestWireIdentityMapDart$$'
+	@echo 'tables Dart identity map: a shared node is one record, a cycle is refused, and the blinded witness goes red'
+
+test-dart: tables-dart-identity
+
+# THE WRITER HOLDS THE MAP'S SORT (docs/PORTING.md M19, docs/SPEC-TABLES.md
+# §2.8): a map built out of key order saves and writes text exactly as the
+# ascending one does, and reads back ascending, for a string and a signed key.
+# The reversed witness leaves the entries in stored order and requires red.
+.PHONY: tables-dart-map-sort
+tables-dart-map-sort:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestMapWriterSortDart$$'
+	@echo 'tables Dart map sort: the writer sorts a map built out of order, and the unsorted witness goes red'
+
+test-dart: tables-dart-map-sort
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the

@@ -92,10 +92,11 @@ set and a pass measuring anything else would render as a pass it is not. **Fast
 mode is the diagnostic and takes any non-empty subset of the known legs**, which
 is `cpp,c,go,cs,elixir`, plus table-only `rust` asked alone: it publishes
 nothing and seals nothing, and it is where a leg that is not in a published
-pass yet is measured at all. The Elixir leg is exactly that today — it carries
-the FIXED form (form 3) and no other table wire (form 1 is deferred to
-schema#515), so its table rows are named `bench_fixed` and it is not part of a
-confirmation pass. `rust` is table-only (see below) and is never mixed with a
+pass yet is measured at all. The Elixir leg is exactly that today. This driver's
+runner measures the FIXED form (form 3), so its table rows are named
+`bench_fixed` and it is not part of a confirmation pass; the variable form
+(form 1) of the board's `TableMixed` is measured by its own runner under the
+tables board (`bench/tables/elixir/leg`), against that corpus's id. `rust` is table-only (see below) and is never mixed with a
 paired request.
 
 An interpreted leg has no compiled artifact, so what stands in place of a hashed

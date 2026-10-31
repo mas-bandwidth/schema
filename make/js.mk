@@ -329,6 +329,35 @@ tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz
 	@grep -m1 "FAILED: RenderFrame ships walk" build/js-alloc-control.log
 	@echo "negative control: one extra allocation per iteration turns every zero-floor path RED"
 
+# THE SOAK (docs/PORTING.md I9): the allocation gate's own paths for a PASS
+# COUNT (never a clock), the bytes per iteration re-measured and gated at every
+# one of sixteen samples, and the live heap's drift after a collection beside it
+# as the weaker instrument that sees retention. The default count is the release
+# act, 2^35 passes, about forty minutes on mini-m5; `make test` runs the short form.
+TABLES_JS_SOAK_ITERATIONS ?= 34359738368
+.PHONY: tables-js-soak tables-js-soak-short tables-js-soak-negative-control
+tables-js-soak: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	cd $(CURDIR) && TABLES_JS_SOAK_ITERATIONS=$(TABLES_JS_SOAK_ITERATIONS) $(NODE) --expose-gc test/js-tables/main.mjs soak
+
+tables-js-soak-short: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	$(MAKE) tables-js-soak TABLES_JS_SOAK_ITERATIONS=4194304
+
+# ITS NEGATIVE CONTROL: eight short-lived objects planted per iteration in the
+# measured loop alone (SCHEMA_JS_ALLOC_LEAK, the harness's plant, never a change
+# to generated code). Each is dropped as the next is made, so the drift line
+# must stay green while the COUNT goes red.
+tables-js-soak-negative-control: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
+	@if SCHEMA_JS_ALLOC_LEAK=1 TABLES_JS_SOAK_ITERATIONS=400000 $(NODE) --expose-gc test/js-tables/main.mjs soak \
+			> build/js-soak-negative.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a planted per-iteration allocation left the soak count green'; \
+		cat build/js-soak-negative.log; exit 1; \
+	fi
+	@grep -Fq 'soak: RenderFrame ships walk per-iteration allocation moved over its ceiling' build/js-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the soak went red, but not on the COUNT of the zero-floor path'; cat build/js-soak-negative.log; exit 1; }
+	@grep -Fq 'soak: drift OK' build/js-soak-negative.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the drift line was not green beside the red COUNT'; cat build/js-soak-negative.log; exit 1; }
+	@echo 'js tables soak negative control: a planted per-iteration allocation turns the COUNT red while the drift stays green'
+
 # THE JAVASCRIPT PORT'S RELEASE GATE (certify.yml derives the target list from
 # this file, so landing one is adding it here and nothing else). What sits
 # behind it is the expensive half of this port's own instruments:
@@ -367,8 +396,9 @@ tables-js-release: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
 	$(MAKE) tables-js-fuzz N=200000
 	$(MAKE) tables-js-alloc ITERS=2000000
 	$(MAKE) tables-js-alloc-negative-control
+	$(MAKE) tables-js-soak
 	$(MAKE) tables-js-usage
-	@echo "tables JS release gate: the fuzzer at depth, the allocation floor at scale, and the page's example"
+	@echo "tables JS release gate: the fuzzer at depth, the allocation floor at scale, the hour's soak, and the page's example"
 
 # THE REFUSAL IS SCOPED TO THE POINTERED TABLE, NOT THE UNIT. This gate was
 # written when JavaScript had no table wire at all, so it asked that a pointered
@@ -1188,6 +1218,8 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-fuzz-negative-control
 	$(MAKE) tables-js-alloc
 	$(MAKE) tables-js-alloc-negative-control
+	$(MAKE) tables-js-soak-short
+	$(MAKE) tables-js-soak-negative-control
 	$(MAKE) tables-js-runtime-home
 	$(MAKE) tables-js-runtime-home-negative-control
 	$(MAKE) tables-js-fixed-form

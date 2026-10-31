@@ -25,10 +25,10 @@ SQUIRREL_FUZZ_SCHEMAS := \
 	$(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) \
 	$(SCHEMAS_WIDE)
 
-# The budget, in seconds. Ten minutes is the card's nightly budget per port;
-# the extra minute of headroom is go test's -timeout (600s) and the harness
-# stops the campaign before it, so a slow night reports the budget rather than
-# a killed test. Nothing here is a time.Sleep: the budget bounds a search.
+# The budget, in seconds, inside the card's ten-minute nightly budget per port.
+# It is go test's -timeout: the harness reads no clock (the search is a pure
+# function of the seed and the mutant count), and a night that cannot finish in
+# the budget is killed by go test, which names the test it was running.
 SQUIRREL_FUZZ_SECONDS ?= 540
 SQUIRREL_FUZZ_MUTANTS ?= 200
 SQUIRREL_FUZZ_SEED     ?= 0x5351554952524c46
@@ -54,7 +54,8 @@ $(SQUIRREL_FUZZ_CORPUS_FILE): Makefile make/schema-squirrel-nightly-fuzz.mk
 	@echo "schema-squirrel-nightly-fuzz corpus: $$(wc -l < $@) schemas -> $@"
 
 # THE NIGHTLY CAMPAIGN. The mutation count and the seed are arguments, so a
-# finding names its full recipe; the budget is the card's time variable. All
+# finding names its full recipe; the budget is the card's time variable, passed
+# as go test's -timeout. All
 # three reader kinds run: the tolerant load (the wire differential above), the
 # strict read, and the text/JSON parse (nightly_fuzz_readers_test.go). They
 # are parallel, so the budget is the whole campaign's, not per kind.
@@ -62,10 +63,9 @@ $(SQUIRREL_FUZZ_CORPUS_FILE): Makefile make/schema-squirrel-nightly-fuzz.mk
 schema-squirrel-nightly-fuzz: schema-squirrel-nightly-fuzz-toolchain $(SQUIRREL_FUZZ_CORPUS_FILE)
 	SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SLOW=1 \
 	SCHEMA_SQUIRREL_FUZZ_CORPUS=$$PWD/$(SQUIRREL_FUZZ_CORPUS_FILE) \
-	SCHEMA_SQUIRREL_FUZZ_SECONDS=$(SQUIRREL_FUZZ_SECONDS) \
 	SCHEMA_SQUIRREL_FUZZ_MUTANTS=$(SQUIRREL_FUZZ_MUTANTS) \
 	SCHEMA_SQUIRREL_FUZZ_SEED=$(SQUIRREL_FUZZ_SEED) \
-	nice -n 19 go test -count=1 -timeout 600s ./internal/codegen/squirreltable \
+	nice -n 19 go test -count=1 -timeout $(SQUIRREL_FUZZ_SECONDS)s ./internal/codegen/squirreltable \
 		-run '^TestSquirrelNightlyFuzz($$|Strict$$|TextJSON$$)' -v
 
 # THE NEGATIVE CONTROL (STEP 5): the existing red is reused rather than

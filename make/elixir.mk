@@ -104,7 +104,11 @@ generated/bench/elixir/.stamp: bin/schema $(SCHEMAS_BENCH)
 # 128-bit kinds and an enum-keyed array (§2.4, §3); widedemo (examples-wide)
 # wstring(N) on the variable wire (§3); vocabdemo, vocab9demo and backenddemo
 # (tables/vocab, tables/vocab9, tables/backend) the message surface's three
-# connections (§3.3). The variable-class surfaces (wire,
+# connections (§3.3); streamdemo (tables/stream) a variable-length arm, a
+# pointer arm and arrays of pointers (§2.1, §2.6); tblm1/tblm2 and tbla1/tbla2
+# the union-arm evolution pairs (§4), tblk1/tblk2 the enum-kind pair,
+# tblscalars2 the second scalars version and tblrt1/tblrt2/tblrt3 the retain
+# units (§6.6). The variable-class surfaces (wire,
 # json-read, json-write, report) answer every carried instance; a construct
 # outside the class writes <case>.absent rather than a wrong answer.
 ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
@@ -113,13 +117,18 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
 	tblp1:test/tables/P1.schema \
-	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
+	tblp3:test/tables/P3.schema tblrt1:test/tables/RT1.schema jsonkeys:test/tables/JsonKeys.schema \
 	blobdemo:tables/blobs listdemo:tables/lists tblp2:test/tables/P2.schema \
 	mapdemo:tables/maps messagedemo:tables/messages scalars:tables/scalars \
 	widedemo:examples-wide \
-	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend
+	vocabdemo:tables/vocab vocab9demo:tables/vocab9 backenddemo:tables/backend \
+	streamdemo:tables/stream tblm1:test/tables/M1.schema tblm2:test/tables/M2.schema \
+	tbla1:test/tables/A1.schema tbla2:test/tables/A2.schema \
+	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
+	tblscalars2:test/tables/Scalars2.schema \
+	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -242,6 +251,49 @@ tables-elixir-emit-format-negative-control: bin/schema
 	@echo 'elixir emit-format negative control: dropping a call'"'"'s parentheses in the cook emitter reds the raw-format gate on CookRuntime.ex'
 test-elixir: tables-elixir-emit-format-negative-control
 
+# THE JSON-HOSTILE ROWS' NEGATIVE CONTROLS (docs/SPEC-TABLES.md §16.2). Each
+# sabotages the table emitter, rebuilds the corpus, runs the harness's elixir
+# leg against that build (the driver takes its modules through
+# ELIXIR_TABLES_EBIN) and requires the json-hostile surface red on EXACTLY the
+# rows its rule owns: a control that reds more has found a second defect, and
+# one that reds fewer has not found its own.
+#   dup: an enum-keyed array's repeated slot name stops counting `duplicate`
+#        (dup-key-rejected-keyed, keyed-duplicate-mixed, keyed-duplicate-slot);
+#   f32: a float32 field or element past the largest float32's rounding
+#        midpoint is stored instead of a kind mismatch (num-float32-midpoint
+#        by integer token, num-float32-overflow by decimal token).
+CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
+ELIXIR_HOSTILE_DUP_SED := -e 's|if Map.has_key?(acc, name),$$|if false and Map.has_key?(acc, name),|'
+ELIXIR_HOSTILE_DUP_ROWS := dup-key-rejected-keyed keyed-duplicate-mixed keyed-duplicate-slot
+CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
+ELIXIR_HOSTILE_F32_SED := -e 's|abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448|abs(raw) >= 3_402_823_567_797_336_616_375_393_954_581_425_684_480|' \
+	-e 's|if abs(raw) >= 3.4028235677973366e38, do: :error|if abs(raw) >= 3.4028235677973366e48, do: :error|'
+ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
+
+# $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
+define ELIXIR_HOSTILE_CONTROL
+	$(call ELIXIR_SABOTAGED_BUILD,$(1),internal/codegen/elixirtable/variableform.go,$(2))
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir > $(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(4) left the json-hostile surface green"; exit 1; \
+	fi
+	@got=$$(sed -n 's|^  elixir / json-hostile: \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \
+		want="$$(echo $(3) | tr ' ' '\n' | sort | tr '\n' ' ')"; \
+		if [ "$$got" != "$$want" ]; then \
+			echo "NEGATIVE CONTROL FAILED: $(4) reds [$$got], want exactly [$$want]"; cat $(1)/log; exit 1; \
+		fi
+endef
+
+.PHONY: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
+tables-elixir-json-hostile-dup-negative-control: build/conformance-harness
+	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP),ELIXIR_HOSTILE_DUP_SED,$(ELIXIR_HOSTILE_DUP_ROWS),an uncounted repeated enum-keyed slot)
+	@echo "elixir json-hostile dup negative control: an uncounted repeated slot reds exactly its three rows"
+
+tables-elixir-json-hostile-f32-negative-control: build/conformance-harness
+	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32),ELIXIR_HOSTILE_F32_SED,$(ELIXIR_HOSTILE_F32_ROWS),a float32 stored past its rounding midpoint)
+	@echo "elixir json-hostile f32 negative control: a stored float32 overflow reds exactly its two rows"
+
+test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
+
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
 
@@ -320,6 +372,45 @@ tables-elixir-fuzz-negative-control: build/conformance/manifest.txt
 	else \
 		echo "elixir fuzz negative control: a block reader with both extent bounds removed reds the oracle"; \
 	fi
+
+# THE RETAIN SURFACES' NEGATIVE CONTROL (docs/SPEC-TABLES.md §6.6): a copy of
+# the emitter whose retaining save finds the retained records of the ROOT body
+# only, so every record read from a nested body, an array or keyed element, a
+# union arm, a map entry or a node is left behind. The corpus regenerated by it,
+# and the driver compiled against that, must turn `retain-save` red (the bytes)
+# and `retain` with it (the save's own retain_lost), while every other surface
+# stays green, so the red is the retention and nothing else. The registry is
+# the committed one with the Elixir leg's driver pointed at the sabotaged
+# corpus, and the run is the Elixir leg alone.
+CONFORMANCE_NEGATIVE_ELIXIR_RETAIN := build/elixir-retain-negative
+ELIXIR_RETAIN_SED := -e 's|    records = Map.get(retain.by_path, path, \[\])|    records = if path == [], do: Map.get(retain.by_path, path, []), else: []|'
+
+.PHONY: tables-elixir-retain-negative-control
+tables-elixir-retain-negative-control: build/conformance-harness
+	$(call ELIXIR_SABOTAGED_BUILD,$(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN),internal/codegen/elixirtable/variableform.go,ELIXIR_RETAIN_SED)
+	@mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers/elixir
+	@for lang in c cpp cs dart go java js rust; do \
+		mkdir -p $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers/$$lang; \
+		ln -sf $(CURDIR)/test/conformance/$$lang/driver $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers/$$lang/driver; \
+	done
+	@printf '#!/bin/sh\nELIXIR_TABLES_EBIN=%s exec %s "$$@"\n' \
+		"$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/ebin" "$(CURDIR)/test/conformance/elixir/driver" \
+		> $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers/elixir/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers/elixir/driver
+	@if ./build/conformance-harness run --only elixir --drivers $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/drivers \
+		--work $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/work > $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log 2>&1; then \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; \
+		echo "NEGATIVE CONTROL FAILED: the Elixir leg stayed green with the retained records of every nested body left behind"; exit 1; \
+	fi
+	@grep -qE '^retain +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log || \
+		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: retain did not go red"; exit 1; }
+	@grep -qE '^retain-save +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log || \
+		{ cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: retain-save did not go red"; exit 1; }
+	@if grep -E '^[a-z-]+ +FAIL' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log | grep -vqE '^retain(-save)? '; then \
+		cat $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log; echo "NEGATIVE CONTROL FAILED: a surface other than the two retain surfaces went red"; exit 1; \
+	fi
+	@grep -E '^retain(-save)? ' $(CONFORMANCE_NEGATIVE_ELIXIR_RETAIN)/log
+	@echo "elixir retain negative control: a retaining save that finds the root body's records only reds the retain surfaces and only them"
 
 # THE BASE-ALIGNMENT GATE (docs/SPEC-TABLES.md §19.1, §19.2): every committed
 # block image at every lead in 0..64, and the alignment rule exactly — 0 and 64
@@ -824,6 +915,37 @@ tables-elixir-json-differential-negative-control:
 
 test-elixir: tables-elixir-json-differential tables-elixir-json-differential-negative-control
 
+# FINITE TABLE FLOATS on the Elixir leg (docs/SPEC-TABLES.md §3.3; Glenn,
+# 2026-10-27: "Tables go finite-only too, same rule as packets"): every read,
+# variable, retaining, message and fixed, refuses a NaN or an infinity on its
+# raw bits as non_finite_float, every writer refuses one, and -0 rides by its
+# bits. TestElixirFiniteFloat generates its own three units and runs a probe
+# over every float position, so no corpus is a prerequisite. It is a FUNCTIONAL
+# test (it runs elixir), so the target runs it under SCHEMA_REQUIRE_CORPUS=1 and
+# fails on any SKIP. The control sabotages the variable read's bit test at each
+# width, the retained unknown's test, the message read's, the fixed read's and
+# the variable writer's, one at a time, and each must red exactly its own rows.
+.PHONY: tables-elixir-finite-float tables-elixir-finite-float-negative-control
+tables-elixir-finite-float:
+	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloat$$' 2>&1); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloat' || { echo 'tables-elixir-finite-float: TestElixirFiniteFloat did not run'; exit 1; }
+	@echo 'tables Elixir finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides'
+
+tables-elixir-finite-float-negative-control:
+	@out=$$(SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirFiniteFloatNegativeControl$$' 2>&1); status=$$?; \
+	printf '%s\n' "$$out"; \
+	if [ $$status -ne 0 ]; then exit $$status; fi; \
+	if printf '%s\n' "$$out" | grep -q -- '--- SKIP'; then echo 'tables-elixir-finite-float-negative-control: a SKIP is a failure here'; exit 1; fi; \
+	printf '%s\n' "$$out" | grep -q -- '--- PASS: TestElixirFiniteFloatNegativeControl' || { echo 'tables-elixir-finite-float-negative-control: the control did not run'; exit 1; }
+	@echo 'tables Elixir finite floats negative control: each sabotaged refusal reds exactly its own rows'
+
+test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-control
+
 # THE VARIABLE CLASS'S REMAINING CONSTRUCTS (docs/SPEC-TABLES.md §2.3, §2.4,
 # §2.6, §2.8, §3, §3.2, §4.12): maps, union arms of every field type and
 # arrays of unions, optional fields and optional arrays, enum-keyed arrays,
@@ -964,6 +1086,25 @@ generated/bench/paired/elixir/.stamp: bin/schema bench/corpus/Bench.schema bench
 	./bin/schema generate --lang elixir --out generated/bench/paired/elixir \
 		build/paired/elixir-src/Bench.schema build/paired/elixir-src/Wrap.schema
 	@touch $@
+
+# THE TABLES BOARD UNIT, for bench/tables/elixir/leg (bench/tables/README.md):
+# the VARIABLE form (form 1) of the board's representative corpus. Committed,
+# like every other language's generated/bench/tables/<lang>. The file's
+# declaration and basename do not collide (docs/SPEC-TABLES.md §11), so no copy.
+generated/bench/tables/elixir/.stamp: bin/schema bench/corpus/BenchTable.schema make/elixir.mk
+	@mkdir -p generated/bench/tables/elixir
+	./bin/schema generate --lang elixir --out generated/bench/tables/elixir bench/corpus/BenchTable.schema
+	@touch $@
+
+# THE BENCH LEG's golden gate, with no clock: the golden, all 64 variants load
+# clean and re-save byte-identically, and two rotations (docs/PORTING.md J5).
+.PHONY: tables-elixir-bench-gate
+tables-elixir-bench-gate: generated/bench/tables/elixir/.stamp
+	$(MIX) format --check-formatted bench/tables/elixir/form1_*.exs
+	BEAM_PATH="$(BEAM_PATH)" bench/tables/elixir/leg build
+	BEAM_PATH="$(BEAM_PATH)" bench/tables/elixir/leg run --gate
+test-elixir: tables-elixir-bench-gate
+BENCH_TABLES_LEGS += generated/bench/tables/elixir/.stamp
 
 # THE PAIRED LEG's own gate, with no clock: the fixed corpus's layout compared
 # byte for byte against this build's, the file loaded clean, saved back and
@@ -1217,6 +1358,39 @@ tables-elixir-keyed-max-negative-control:
 		  cat build/elixir-keyed-max-nc/log; exit 1; }
 	@echo 'negative control: dropping the key <= max guard reds TestKeyedAccessorCoversBothEndsElixir on key past max'
 
+# THE COOK NUMBERS A BLOB BY ITS SLOT (docs/SPEC-TABLES.md §2.5, §3.1, §7.6):
+# two slots holding equal bytes are two blob nodes in a cook as on the wire.
+# The control keys the cook's blob mark by the bytes instead of the slot, which
+# makes the equal-bytes slots one node, and requires
+# TestCookNumbersABlobByItsSlotElixir to red on blob_equal_bytes alone.
+ELIXIR_COOK_BLOB_SED := -e 's|    slot = {:cook_blob, length(acc)}|    slot = {:cook_blob, v}|'
+
+.PHONY: tables-elixir-cook-blob-negative-control
+tables-elixir-cook-blob-negative-control:
+	@rm -rf build/elixir-cook-blob-nc && mkdir -p build/elixir-cook-blob-nc
+	@sed $(ELIXIR_COOK_BLOB_SED) \
+		internal/codegen/elixirtable/cookwrite.go > build/elixir-cook-blob-nc/cookwrite.go.txt
+	@cmp -s internal/codegen/elixirtable/cookwrite.go build/elixir-cook-blob-nc/cookwrite.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: ELIXIR_COOK_BLOB_SED matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/cookwrite.go":"%s/build/elixir-cook-blob-nc/cookwrite.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-cook-blob-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) ERL_FLAGS='+S 1:1 +SDcpu 1 +SDio 1' \
+			go test -overlay build/elixir-cook-blob-nc/overlay.json \
+			./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestCookNumbersABlobByItsSlotElixir$$' \
+			> build/elixir-cook-blob-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: keying the cook's blob by its bytes left TestCookNumbersABlobByItsSlotElixir green"; \
+		cat build/elixir-cook-blob-nc/log; exit 1; \
+	fi
+	@grep -q 'FAIL blob_equal_bytes: ' build/elixir-cook-blob-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: TestCookNumbersABlobByItsSlotElixir went red for another reason"; \
+		  cat build/elixir-cook-blob-nc/log; exit 1; }
+	@if grep 'FAIL ' build/elixir-cook-blob-nc/log | grep -v -q 'FAIL blob_equal_bytes'; then \
+		echo "NEGATIVE CONTROL FAILED: keying the blob by its bytes red more than blob_equal_bytes"; \
+		cat build/elixir-cook-blob-nc/log; exit 1; \
+	fi
+	@echo 'negative control: keying the cook blob by its bytes reds TestCookNumbersABlobByItsSlotElixir on blob_equal_bytes'
+
+test-elixir: tables-elixir-cook-blob-negative-control
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
 test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
 test-elixir: tables-elixir-message-batch
@@ -1264,7 +1438,7 @@ build/elixir-cards-ebin/.stamp: cards-elixir-generate test/conformance/elixir/dr
 # seed/mutant claim explicitly.
 cards-elixir-wire-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir \
+		./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-elixir-wire-fuzz.log 2>&1; \
@@ -1283,7 +1457,7 @@ test-elixir: cards-elixir-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 cards-elixir-retain-fuzz: build/conformance-harness build/elixir-cards-ebin/.stamp
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-cards-ebin \
-		./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir \
+		./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/elixir/driver wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-elixir-retain-fuzz.log 2>&1; \
@@ -1308,13 +1482,13 @@ test-elixir: cards-elixir-retain-fuzz
 # ELIXIR_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved. The absent check
 # runs before the harness status is read, so a red run still names them. The
 # --retain arm of this roster is its own gate.
-ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 35
+ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 33
 ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
 .PHONY: tables-elixir-wire-fuzz-all
 tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG)
 	@ELIXIR_WIRE_FUZZ_ABSENT=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_ABSENT_LOG) \
-		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --finite-owed tables-finite/elixir --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
+		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz --driver 'test/conformance/elixir/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-elixir-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
 		if [ ! -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) ]; then \

@@ -276,7 +276,7 @@ func emitWriteUnion(m *Module, b *strings.Builder, un *ir.Union) {
 func subtrahend(x string) string {
 	body := strings.TrimPrefix(x, "-")
 	for _, c := range body {
-		if !(c == '.' || c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+		if c != '.' && c != '_' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
 			return "(" + x + ")"
 		}
 	}

@@ -12,8 +12,8 @@ import (
 // PLACE in text storage refuses the read (`text_holds_zero: <Table>.<field>`),
 // while a string it only SKIPS stores nothing and is not the event. The rule is
 // held first in Go and carried by C, Rust, Dart, moo, Lobster, Squirrel,
-// Lua, Luau and Goose, so the two refusals state the standard's answer with
-// `carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,goose` and every other port keeps
+// Lua, Luau, Elixir and Goose, so the two refusals state the standard's answer with
+// `carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir,goose` and every other port keeps
 // its BASE counters; the skipped value is the clean §4 report with the unknown
 // key counted.
 //
@@ -40,9 +40,9 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		}
 		// both rows are carried by Squirrel too: the map-key row's unit,
 		// tables/maps, declares wide text, which its descriptors now carry
-		wantCarried := "go,c,rust,dart,moo,lobster,squirrel,lua,luau,goose"
+		wantCarried := "go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir,goose"
 		if strings.Join(row.CarriedBy, ",") != wantCarried {
-			t.Fatalf("%s: carried-by=%v; want %s: Go held the rule first, C, Rust, Dart, moo, Lobster, Squirrel, Lua, Luau and Goose carry it, and every other port keeps its behaviour", caseName, row.CarriedBy, wantCarried)
+			t.Fatalf("%s: carried-by=%v; want %s: Go held the rule first, C, Rust, Dart, moo, Lobster, Squirrel, Lua, Luau, Elixir and Goose carry it, and every other port keeps its behaviour", caseName, row.CarriedBy, wantCarried)
 		}
 		if row.Uncarried != baseCounters {
 			t.Fatalf("%s: uncarried=%q; every other port stores the zero and answers %q", caseName, row.Uncarried, baseCounters)
@@ -53,7 +53,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if got := row.VerdictFor("c"); got != "refused" {
 			t.Fatalf("%s: C owes %q, got %q", caseName, "refused", got)
 		}
-		for _, port := range []string{"rust", "lobster", "lua", "luau"} {
+		for _, port := range []string{"rust", "lobster", "lua", "luau", "elixir"} {
 			if got := row.VerdictFor(port); got != "refused" {
 				t.Fatalf("%s: %s owes %q, got %q", caseName, port, "refused", got)
 			}

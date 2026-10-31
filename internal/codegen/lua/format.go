@@ -418,7 +418,7 @@ func quoted(q, body string) string {
 func pieceEnd(body string, room int) int {
 	end, w := 0, 0
 	for end < len(body) {
-		n := 1
+		var n int
 		if body[end] == '\\' {
 			n = escapeLen(body[end:])
 		} else {

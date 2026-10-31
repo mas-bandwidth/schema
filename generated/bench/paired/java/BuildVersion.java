@@ -19,5 +19,5 @@ package bench;
 public final class BuildVersion {
     private BuildVersion() {}
 
-    public static final long value = 0x23753a84972a054eL;
+    public static final long value = 0x41d3559378bfa852L;
 }

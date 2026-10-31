@@ -6,23 +6,11 @@ conformance-dup-key-rejected-keyed	elixir-hostile-conformance-dup-key-rejected-k
 conformance-dup-key-rejected-nested	elixir-hostile-conformance-dup-key-rejected-nested	inputs/conformance-dup-key-rejected-nested.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-dup-key-rejected-scalar	elixir-hostile-conformance-dup-key-rejected-scalar	inputs/conformance-dup-key-rejected-scalar.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-dup-key-wrong-shape	elixir-hostile-conformance-dup-key-wrong-shape	inputs/conformance-dup-key-wrong-shape.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-fixed-array-elements	elixir-hostile-conformance-fixed-array-elements	inputs/conformance-fixed-array-elements.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-fixed-below-resolution	elixir-hostile-conformance-fixed-below-resolution	inputs/conformance-fixed-below-resolution.json	the text reader raises instead of returning the engine's accepted value
-conformance-fixed-huge-exponent	elixir-hostile-conformance-fixed-huge-exponent	inputs/conformance-fixed-huge-exponent.json	the text reader raises instead of returning the engine's accepted value
 conformance-int128-integral-forms	elixir-hostile-conformance-int128-integral-forms	inputs/conformance-int128-integral-forms.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-num-float32-midpoint	elixir-hostile-conformance-num-float32-midpoint	inputs/conformance-num-float32-midpoint.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-num-float32-overflow	elixir-hostile-conformance-num-float32-overflow	inputs/conformance-num-float32-overflow.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-num-float32-subnormal	elixir-hostile-conformance-num-float32-subnormal	inputs/conformance-num-float32-subnormal.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-num-float32-upper-band	elixir-hostile-conformance-num-float32-upper-band	inputs/conformance-num-float32-upper-band.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-optional-array-element-shape	elixir-hostile-conformance-optional-array-element-shape	inputs/conformance-optional-array-element-shape.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-pointer-array-element-shape	elixir-hostile-conformance-pointer-array-element-shape	inputs/conformance-pointer-array-element-shape.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-str-illformed-at-bound	elixir-hostile-conformance-str-illformed-at-bound	inputs/conformance-str-illformed-at-bound.json	the text reader decodes a different value than the engine (digest mismatch)
-conformance-uint128-over	elixir-hostile-conformance-uint128-over	inputs/conformance-uint128-over.json	the text reader decodes a different value than the engine (digest mismatch)
 conformance-union-table-arm-wrong-shape	elixir-hostile-conformance-union-table-arm-wrong-shape	inputs/conformance-union-table-arm-wrong-shape.json	the text reader decodes a different value than the engine (digest mismatch)
-fuzz-text-illformed_byte_at_bound	elixir-hostile-fuzz-text-illformed-byte-at-bound	inputs/fuzz-text-illformed_byte_at_bound.txt	the text reader decodes a different value than the engine (digest mismatch)
-fuzz-text-illformed_bytes_in_string	elixir-hostile-fuzz-text-illformed-bytes-in-string	inputs/fuzz-text-illformed_bytes_in_string.txt	the text reader decodes a different value than the engine (digest mismatch)
-fuzz-text-invalid_utf8_tail	elixir-hostile-fuzz-text-invalid-utf8-tail	inputs/fuzz-text-invalid_utf8_tail.txt	the text reader decodes a different value than the engine (digest mismatch)
 fuzz-text-surrogate_pair	elixir-hostile-fuzz-text-surrogate-pair	inputs/fuzz-text-surrogate_pair.txt	the text reader decodes a different value than the engine (digest mismatch)
 wire-count-refusal	elixir-hostile-wire-count-refusal	inputs/wire-count-refusal.bin	the variable reader accepts a collection count past the int32 storage cap the engine refuses
 wire-form-02	elixir-hostile-wire-form-02	inputs/wire-form-02.bin	the variable reader names newer_form where the engine names message_form_as_file
-wire-non-finite-float	elixir-hostile-wire-non-finite-float	inputs/wire-non-finite-float.bin	the wire reader lands a NaN float32 where the engine refuses non_finite_float; owed by the finite-tables Elixir card (docs/roadmap.sexp tables-finite/elixir)

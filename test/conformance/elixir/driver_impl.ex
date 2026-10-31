@@ -319,7 +319,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -539,7 +539,11 @@ defmodule Driver do
   # load/2, save/2, to_json/2 and from_json/2. nil when the leg has no codec.
   # a manifest unit key names its module by the unit's package, which is the
   # key itself except where the schema's package line says otherwise
-  @unit_packages %{"scalars" => "scalardemo", "widedemo" => "wide"}
+  @unit_packages %{
+    "scalars" => "scalardemo",
+    "tblscalars2" => "scalardemo2",
+    "widedemo" => "wide"
+  }
 
   # the namespace a manifest unit key names: the key itself except where the
   # schema's package line says otherwise.
@@ -557,6 +561,57 @@ defmodule Driver do
   defp run("wire", rows, outdir) do
     for [name, unit, root, wire | _] <- rows(rows, "instance") do
       answer_load_save(table_module(unit), root, wire, outdir, name)
+    end
+  end
+
+  # ---- retain and retain-save (docs/SPEC-TABLES.md §6.6): RT1's Node loaded
+  # with retention at the row's two capacities, measured and saved back. `retain`
+  # answers `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
+  # saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
+  # what this port's own records cost, and the second load gets one byte less
+  # (test/conformance/README.md). The id list's capacity is a count. A
+  # retain-message row's root is a plain `table`, which carries no message verbs
+  # (§3.3), so the driver answers ABSENT for it.
+  defp run(surface, rows, outdir) when surface in ["retain", "retain-save"] do
+    saves = surface == "retain-save"
+
+    for row <- rows(rows, "retain"), not (saves and List.last(row) == "-") do
+      retain_row(row, saves, outdir)
+    end
+
+    for [name | _] = row <- rows(rows, "retain-message"), not (saves and List.last(row) == "-") do
+      write_absent(outdir, name)
+    end
+  end
+
+  defp retain_row([name, unit, root, wire, capacity, ids | _], saves, outdir) do
+    mod = table_module(unit)
+    data = File.read!(wire)
+    roomy = 1_048_576
+    id_cap = if ids == "full", do: div(roomy, 8), else: String.to_integer(ids)
+    fresh = fn cap -> %{records: [], used: 0, cap: cap, ids: [], id_cap: id_cap} end
+    empty = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+
+    cap =
+      if capacity == "short" do
+        {:ok, _v, _r, probe} = mod.load_retain(root, data, fresh.(roomy), empty)
+        max(probe.used - 1, 0)
+      else
+        roomy
+      end
+
+    {:ok, value, report, retain} = mod.load_retain(root, data, fresh.(cap), empty)
+    size = mod.measure_retain(root, value, retain)
+    {:ok, out, save, retain} = mod.save_retain(root, value, retain, empty)
+
+    if byte_size(out) != size, do: raise("#{name}: retaining measure and save disagree")
+    {:ok, again, second, _} = mod.save_retain(root, value, retain, empty)
+    if again != out or second.retain_lost != save.retain_lost, do: raise("#{name}: retaining save is not repeatable")
+
+    if saves do
+      write(outdir, name, out)
+    else
+      write(outdir, name, "#{report.retained},#{report.retain_lost},#{report.unknown} #{save.retain_lost}\n")
     end
   end
 
@@ -624,15 +679,16 @@ defmodule Driver do
   end
 
   # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
-  # short buffer, then write both byte orders. A root this leg does not carry
-  # writes <case>.absent rather than a wrong byte.
+  # short buffer, then write both byte orders. A root the cook writer does not
+  # lay out (cook_carried?/1: one that reaches a map, which `schema cook`
+  # refuses by name, §7.2) writes <case>.absent rather than a wrong byte.
   defp cook_one(nil, _root, _wire, outdir, name) do
     write_absent(outdir, name)
     write_absent(outdir, name <> "-be")
   end
 
   defp cook_one(mod, root, wire, outdir, name) do
-    if not function_exported?(mod, :cook_from, 4) or not mod.carried?(root) do
+    if not function_exported?(mod, :cook_from, 4) or not mod.cook_carried?(root) do
       write_absent(outdir, name)
       write_absent(outdir, name <> "-be")
     else
@@ -685,7 +741,7 @@ defmodule Driver do
       json = Path.join(tree, root <> ".json")
       mod = table_module(unit)
 
-      if mod == nil or not mod.carried?(root) do
+      if mod == nil do
         write_absent(outdir, name)
       else
         case mod.from_json(root, File.read!(json)) do
@@ -693,9 +749,16 @@ defmodule Driver do
             if Map.get(report, :malformed, false) do
               write(outdir, name, "refused\n")
             else
-              {:ok, wire} = mod.save(root, value)
-              {:ok, _back, _r2} = mod.load(root, wire)
-              write(outdir, name, report_counters(report) <> ",read\n")
+              # a value the writer refuses (a float32 past its range, §3.3)
+              # answers refused
+              case mod.save(root, value) do
+                {:ok, wire} ->
+                  {:ok, _back, _r2} = mod.load(root, wire)
+                  write(outdir, name, report_counters(report) <> ",read\n")
+
+                {:error, _} ->
+                  write(outdir, name, "refused\n")
+              end
             end
 
           _ ->
@@ -714,8 +777,17 @@ defmodule Driver do
         case mod.load(root, File.read!(wire)) do
           {:ok, value, _report} ->
             case mod.save(root, value) do
-              {:ok, bytes} -> write(outdir, name, bytes)
-              _ -> write_absent(outdir, name)
+              {:ok, bytes} ->
+                write(outdir, name, bytes)
+
+              # THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob the
+              # tolerant read found named from two slots refuses the save by
+              # name, and the case answers that name beside its absence
+              {:error, :blob_shared} ->
+                File.write!(Path.join(outdir, name <> ".absent"), "blob_shared")
+
+              _ ->
+                write_absent(outdir, name)
             end
 
           _ ->
@@ -1283,9 +1355,17 @@ defmodule WireFuzz do
 
           vocab ->
             case mod.load_messages(vocab, wire) do
-              {:ok, bodies} -> message_reply(mod, vocab, bodies, false)
-              {:malformed, _count, bodies} -> message_reply(mod, vocab, bodies, true)
-              _ -> stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+              {:ok, bodies} ->
+                message_reply(mod, vocab, bodies, false)
+
+              {:malformed, _count, bodies} ->
+                message_reply(mod, vocab, bodies, true)
+
+              {:error, :non_finite_float} ->
+                stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+
+              _ ->
+                stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
             end
         end
     end
@@ -1358,6 +1438,11 @@ defmodule WireFuzz do
               stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
           end
 
+        {:error, :non_finite_float, _report} ->
+          # A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
+          # §3.3), and the refusal is the answer the oracle compares
+          stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
+
         _ ->
           stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
       end
@@ -1389,6 +1474,9 @@ defmodule WireFuzz do
             _ ->
               stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
           end
+
+        {:error, :non_finite_float, _report, _retain} ->
+          stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
         _ ->
           stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
