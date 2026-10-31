@@ -416,6 +416,10 @@ public final class FixedTableFixed {
             if (report.refused) {
                 return -1;
             }
+            // DAMAGE DISCARDS THE WHOLE LOAD (§4)
+            if (report.malformed) {
+                return -1;
+            }
             at += (int) recordSize;
         }
         // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that

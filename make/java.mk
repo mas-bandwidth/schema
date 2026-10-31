@@ -1086,6 +1086,34 @@ tables-java-finite-float-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: TestJavaFiniteFloatNegativeControl did not run to a PASS"; tail -20 build/java-finite/control.log; exit 1; }
 	@grep 'negative control: with the' build/java-finite/control.log
 
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): damage inside a
+# nested body, and every framing row whose answer is malformed
+# (docs/LAYERS/1-framing.md), makes every Java load entry point hand back no
+# usable value: load and fromJson answer null, loadRetain answers null with the
+# retention store emptied. The gate is TestDamageDiscardsTheWholeLoadJava; its
+# NEGATIVE CONTROL removes the discard from the generated load, the text read
+# and the retaining load in turn and requires the gate red on exactly that
+# entry point. Under SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure.
+.PHONY: tables-java-discard tables-java-discard-negative-control
+tables-java-discard:
+	@mkdir -p build/java-discard
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestDamageDiscardsTheWholeLoadJava$$' \
+		> build/java-discard/log 2>&1 || { tail -40 build/java-discard/log; exit 1; }
+	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJava ' build/java-discard/log || \
+		{ echo "tables-java-discard: TestDamageDiscardsTheWholeLoadJava did not run to a PASS"; tail -20 build/java-discard/log; exit 1; }
+	@echo 'tables Java: damage discards the whole load on every entry point (§4)'
+test-java: tables-java-discard
+
+tables-java-discard-negative-control:
+	@mkdir -p build/java-discard
+	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -timeout 900s -v -run '^TestDamageDiscardsTheWholeLoadJavaNegativeControl$$' \
+		> build/java-discard/control.log 2>&1 || { tail -40 build/java-discard/control.log; exit 1; }
+	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJavaNegativeControl ' build/java-discard/control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: TestDamageDiscardsTheWholeLoadJavaNegativeControl did not run to a PASS"; tail -20 build/java-discard/control.log; exit 1; }
+	@grep 'negative control: with the' build/java-discard/control.log
+
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
 # stated beside as a VALUE ORACLE, because a reader and a writer that share one

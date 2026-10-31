@@ -20,13 +20,13 @@ public final class MixedPickupEventRetain {
             return MixedPickupEventVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         MixedPickupEventVariable.Value v = new MixedPickupEventVariable.Value();
         report.rootTypeId = MixedPickupEventVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
@@ -80,6 +80,13 @@ public final class MixedPickupEventRetain {
                     MixedPickupEventVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, MixedPickupEventVariable.TYPE_ID, report);
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
+        if (report.malformed) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
         }
         return v;
     }

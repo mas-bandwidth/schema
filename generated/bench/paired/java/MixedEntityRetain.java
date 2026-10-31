@@ -71,13 +71,13 @@ public final class MixedEntityRetain {
             return MixedEntityVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         MixedEntityVariable.Value v = new MixedEntityVariable.Value();
         report.rootTypeId = MixedEntityVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
@@ -131,6 +131,13 @@ public final class MixedEntityRetain {
                     MixedEntityVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, MixedEntityVariable.TYPE_ID, report);
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
+        if (report.malformed) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
         }
         return v;
     }

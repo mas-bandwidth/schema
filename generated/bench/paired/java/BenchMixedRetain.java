@@ -22,13 +22,13 @@ public final class BenchMixedRetain {
             return BenchMixedVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         BenchMixedVariable.Value v = new BenchMixedVariable.Value();
         report.rootTypeId = BenchMixedVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
@@ -82,6 +82,13 @@ public final class BenchMixedRetain {
                     BenchMixedVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, BenchMixedVariable.TYPE_ID, report);
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
+        if (report.malformed) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
         }
         return v;
     }
