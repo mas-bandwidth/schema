@@ -128,3 +128,47 @@ func TestDamageDiscardsTheWholeLoadCPP(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }
+
+// TestPointerNamingAnOpenNodeIsRefusedCPP is the C++ reference's gate for
+// docs/SPEC-TABLES.md §3.1: no writer produces a cycle, so a pointer naming a
+// node whose descent is still open is damage and the whole load is refused.
+// The wire is a clean chain root -> 2 -> 3 with node 2's pointer turned back
+// at node 2 itself. Red if the region load or the builder load hands back the
+// cyclic graph.
+func TestPointerNamingAnOpenNodeIsRefusedCPP(t *testing.T) {
+	t.Parallel()
+	u := loadUnitFromSource(t, discardUnit)
+	m := tabletext.NewModel(u)
+	inst := m.New(m.Lookup("Graph"))
+	var r tabletext.Report
+	if !m.Read(inst, []byte(`{"a":5,"next":{"a":6,"next":{"a":7}}}`), &r) {
+		t.Fatal("the text did not place")
+	}
+	wire, err := tablewire.Encode(m, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := bytes.Index(wire, []byte{byte(ir.TableKindPointer), 3})
+	if at < 0 || bytes.Count(wire, []byte{byte(ir.TableKindPointer), 3}) != 1 {
+		t.Fatal("node 2's pointer at node 3 is not where this test expects it")
+	}
+	wire[at+1] = 2
+	var report tabletext.Report
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), wire, &report); ok || err != nil || !report.Malformed {
+		t.Fatalf("the engine does not refuse the cycle: ok=%v err=%v %+v", ok, err, report)
+	}
+	body := fmt.Sprintf(`
+    const uint8_t cyclic[] = { %s };
+    alignas( 64 ) static uint8_t region[ 1 << 16 ];
+    TableReport g; memset( &g, 0, sizeof( g ) );
+    if ( GraphLoadTolerant( region, (int64_t) sizeof( region ), cyclic, (int64_t) sizeof( cyclic ), &g ) != NULL ) { printf( "cycle: the region load handed back a cyclic graph\n" ); return 1; }
+    if ( !g.malformed ) { printf( "cycle: the region load did not say malformed\n" ); return 1; }
+    GraphBuilder builder;
+    TableReport br; memset( &br, 0, sizeof( br ) );
+    if ( GraphLoadBuilderTolerant( builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.malformed ) { printf( "cycle: the builder load did not refuse\n" ); return 1; }
+`, cppBytes(wire))
+	out, err := cppHeldRun(t, u, body)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}

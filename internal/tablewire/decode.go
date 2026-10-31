@@ -64,6 +64,9 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 		return false, refusal
 	}
 	report.NonFiniteFloat = prior
+	if err == nil && !report.Malformed && cyclic(m, inst) {
+		report.Malformed = true
+	}
 	if report.Malformed {
 		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
 		// the walk decoded, defaulted or retained before or after the damage
@@ -1744,4 +1747,19 @@ func retainedPayloadFinite(kind uint8, payload []byte) bool {
 // table and the field id it cannot name, as <Table>.0x<id>.
 func retainedFloatName(inst *tabletext.Instance, id uint64) string {
 	return fmt.Sprintf("%s.0x%016x", inst.Def.Name, id)
+}
+
+// cyclic reports whether a decoded pointered root reaches a node whose descent
+// is still OPEN (docs/SPEC-TABLES.md §3.1, §4). No writer produces one: the
+// numbering walk refuses a cycle at an open entry and a cooked region is never
+// cyclic, so a pointer naming an open node is damage and the whole load is
+// refused. A share of a CLOSED node is legal and is not this. The walk is the
+// writer's own numbering walk, so the read and the write draw the line in one
+// place.
+func cyclic(m *tabletext.Model, inst *tabletext.Instance) bool {
+	if !m.IsVariable(inst.Def.Name) {
+		return false
+	}
+	_, err := NumberPacking(m, inst)
+	return err != nil
 }

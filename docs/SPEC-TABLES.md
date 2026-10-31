@@ -5802,9 +5802,18 @@ is visited a fixed number of times, in index order, and each is consumed
 in full before the next begins, so the work is linear in the wire's bytes
 and termination needs no argument beyond the record lengths and the end
 of the stream. A pointer field's payload is a NUMBER: it is
-bounds-checked and stored, never followed. There is no traversal on the
-load path, and therefore no traversal bound — no depth cap, no visited
-set, no ordering rule on the indices. The nesting that remains is
+bounds-checked and stored, and the decode never follows it.
+**A POINTER NAMING AN OPEN NODE IS DAMAGE.** No writer produces a cyclic
+wire: the numbering walk refuses a cycle at an open entry (below), and a
+cooked region is never cyclic. So once the scan has resolved every index,
+the load walks the decoded graph from the root in the numbering's own order
+(fields in declaration order, elements in index order), and a pointer that
+reaches a node whose descent is still OPEN — a back edge, as against a second
+edge to a CLOSED node, which is a share and legal — refuses the whole load as
+`malformed` (§4). The walk visits each node once and carries one open mark per
+node on the current path, so it costs the graph's size in time and its depth
+in marks, and it follows nothing the scan has not already bounded. The
+nesting that remains is
 by-value nesting, whose depth is fixed by the SCHEMA and cannot be driven
 by data, because §2 refuses by-value cycles. §14 records the two
 traversal bounds that were weighed and rejected, and why a type id
@@ -8890,8 +8899,9 @@ tolerance is the versioning model:
   count the
   body cannot cover, a descending map key, an arm whose `L` does not frame
   its kind, a bool byte other than `0` or `1`, ill-formed text, a node table
-  that cannot be read whole, a reserved id out of place, and every case that
-  makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
+  that cannot be read whole, a pointer naming a node whose descent is still
+  open (a cycle no writer produces, §3.1), a reserved id out of place, and
+  every case that makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
   OPAQUE**, and damage inside them is not damage: an unknown field, a
   kind-mismatched field and a retained record are skipped by their own `L`
   without being decoded, so whatever their payload holds is never read as
@@ -17356,8 +17366,8 @@ union of seven arms whose Array and Object arms hold `[]*JsonValue` and
 `[]*JsonMember`. It needs a pointer per child and a node record per child. A
 ported reader would have to carry pointered units (§3.1) to read it. It can
 share a node or form a cycle, which a JSON text cannot express, so every read
-would have to refuse both. And depth would come back onto a load path that is
-a scan and has no traversal bound (§3.1). The tape has one variable edge of
+would have to refuse both. And depth would come back onto a decode that is a
+scan (§3.1). The tape has one variable edge of
 each kind. It has no pointer to a table. It cannot share a node or form a
 cycle, because nothing in it names a node. Its depth is counted by the same
 linear scan that checks it (below). Every port that carries `[]T` of a table,

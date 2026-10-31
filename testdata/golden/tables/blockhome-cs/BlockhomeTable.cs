@@ -52,7 +52,7 @@ namespace Blockhome
         public string NonFiniteFloat;
         internal string NonFiniteReason;
         public Schema.TableWire.Verdict Verdict;
-        public bool Malformed;     // damage: the whole load is refused, nothing of it is used
+        public bool Malformed;     // framing damage; decode stopped, partial result kept
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
         // a member at the end rather than a field inserted among the counters,
         // because the report is a type callers already hold. layout_newer reports

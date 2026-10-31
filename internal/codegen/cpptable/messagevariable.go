@@ -356,6 +356,16 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	}
 	g.pf("        br.remaining--;\n    }\n")
 	g.pf("    if ( !TableMessageBatchClose( br ) ) %s // damage after the last body discards the batch too (§4)\n", g.messageBatchDiscard("bodies"))
+	// A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4),
+	// in any body of the batch
+	g.pf("    for ( int64_t b = 0; b < bodies; b++ )\n    {\n")
+	g.pf("        TableNumbering cycle_walk;\n")
+	g.pf("        TableNumberingInit( cycle_walk, TableDefaultAllocator() );\n")
+	g.pf("        TableRegionCtx cycle_ctx;\n")
+	g.pf("        const bool acyclic = roots[b] == NULL || %sNumberFrom( cycle_ctx, cycle_walk, *roots[b] );\n", n)
+	g.pf("        TableNumberingShutdown( cycle_walk );\n")
+	g.pf("        if ( !acyclic ) { out->malformed = true; %s }\n", g.messageBatchDiscard("bodies"))
+	g.pf("    }\n")
 	g.pf("    *count = bodies;\n")
 	g.pf("    return true;\n}\n\n")
 

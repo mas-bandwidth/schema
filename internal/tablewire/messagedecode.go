@@ -84,6 +84,14 @@ func decodeMessagesWith(m *tabletext.Model, insts []*tabletext.Instance, data []
 		return 0, false, refusal
 	}
 	report.NonFiniteFloat = prior
+	if err == nil && !report.Malformed {
+		for i := 0; i < n && i < len(insts); i++ {
+			if cyclic(m, insts[i]) {
+				report.Malformed = true // a pointer naming an open node (§3.1)
+				break
+			}
+		}
+	}
 	if report.Malformed {
 		// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4, §3.3): no
 		// body is delivered, so the count is zero and every body the walk
