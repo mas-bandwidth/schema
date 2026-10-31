@@ -134,6 +134,27 @@ func Register(name string, fn Part) {
 	sort.Slice(parts, func(i, j int) bool { return parts[i].name < parts[j].name })
 }
 
+// A Module is a form emitted ON THE SIDE rather than into <Base>Table.goose:
+// its own modules beside the table modules (the block form's <Base>Block.goose,
+// the cook's <Base>Cook.goose — docs/SPEC-TABLES.md §19: the Table modules are
+// byte-identical with or without it). It declares into names, the unit's
+// namespace after the type and table surfaces, so a collision refuses by name.
+type Module func(u *ir.Unit, names map[string]string) (map[string][]byte, error)
+
+type module struct {
+	name string
+	fn   Module
+}
+
+var modules []module
+
+// RegisterModule joins a side form; modules run in name order after every
+// table module is written.
+func RegisterModule(name string, fn Module) {
+	modules = append(modules, module{name, fn})
+	sort.Slice(modules, func(i, j int) bool { return modules[i].name < modules[j].name })
+}
+
 // Generate returns <Base>Table.goose for every file that declares a table, a
 // table-closure union, or a packet type a table reaches, plus the runtime
 // modules; a table-free unit gets nothing, so its output is the type
@@ -168,6 +189,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			return nil, err
 		}
 		out[f.Base+"Table.goose"] = g.Assemble()
+	}
+	for _, m := range modules {
+		side, err := m.fn(u, names)
+		if err != nil {
+			return nil, fmt.Errorf("goose %s: %w", m.name, err)
+		}
+		maps.Copy(out, side)
 	}
 	gens := map[string]*goose.Gen{}
 	var surfaces []string
