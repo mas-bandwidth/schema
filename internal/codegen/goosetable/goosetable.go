@@ -94,7 +94,7 @@ var parts []part
 // unitParts are the contributions to the unit's PACKAGE MODULES: data that
 // spans every file (the table wire's registry, the message form's
 // vocabulary, the accelerators' record numbers), one module per surface,
-// <Package><Surface>.goose. Each lives at a home named for the package, so a
+// <package>_<surface>.goose. Each lives at a home named for the package, so a
 // file that sorts earlier relocates nothing (docs/PORTING.md J2), and every
 // file's modules name it rather than copy its numbers. A surface keeps its
 // own module, so a consumer that never reads it imports nothing of it (the
@@ -114,16 +114,18 @@ func RegisterUnit(name, surface string, fn Part) {
 }
 
 // PackageModule is the base of the unit's package module for surface,
-// without .goose: the package, capitalized, then the surface (tabledemo,
-// "Cook" -> TabledemoCook).
+// without .goose: the package, an underscore, then the surface (tabledemo,
+// "cook" -> tabledemo_cook). It is spelled like the runtime's own modules,
+// never like a schema file's (<Base>, <Base>Table, <Base>Cook, <Base>Block),
+// so a file named for its package cannot land on it.
 func PackageModule(u *ir.Unit, surface string) string {
 	p := goose.Namespace(u)
-	return strings.ToUpper(p[:1]) + p[1:] + surface
+	return p + "_" + surface
 }
 
 // UnitModule is the package module that holds the unit registry:
-// TabledemoUnit.
-func UnitModule(u *ir.Unit) string { return PackageModule(u, "Unit") }
+// tabledemo_unit.
+func UnitModule(u *ir.Unit) string { return PackageModule(u, "unit") }
 
 // Register joins a later form to every table module; parts run in name
 // order (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).

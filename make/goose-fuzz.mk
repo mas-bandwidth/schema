@@ -97,6 +97,7 @@ schema-goose-runs-hostile-corpus: $(GOOSE_FUZZ_SCHEMA)
 .PHONY: schema-goose-runs-hostile-corpus-negative-control
 schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@mkdir -p $(GOOSE_FUZZ_DIR)
 	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|rep.non_finite = true;|rep.non_finite = false; // SABOTAGED: a NaN lands|' \
 		sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile-plant \
 		>$(GOOSE_FUZZ_DIR)/hostile-plant.log 2>&1; then \
