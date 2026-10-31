@@ -124,58 +124,58 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # types), because a record's descriptors name the packet emitter's own enums.
 build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
 	@mkdir -p build/tables-generated-java
-	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
+	rm -rf build/tables-generated-java/examples && ./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
 	# variable-class codecs ride this stamp, and the LIST unit (tables/lists)
 	# rides it too: its SaveVariable codec is the list half of the
 	# tables-java-variable-class corpus and the soak's three case set.
-	./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
-	./bin/schema generate --lang java --out build/tables-generated-java/blobs tables/blobs
-	./bin/schema generate --lang java --out build/tables-generated-java/lists tables/lists
-	./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
-	./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
-	./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/v2 test/tables/V2.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/w1 test/tables/W1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/w2 test/tables/W2.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/r1 test/tables/R1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/r2 test/tables/R2.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/p1 test/tables/P1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/p2 test/tables/P2.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/m1 test/tables/M1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/m2 test/tables/M2.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/a1 test/tables/A1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
+	rm -rf build/tables-generated-java/pointers && ./bin/schema generate --lang java --out build/tables-generated-java/pointers tables/pointers
+	rm -rf build/tables-generated-java/blobs && ./bin/schema generate --lang java --out build/tables-generated-java/blobs tables/blobs
+	rm -rf build/tables-generated-java/lists && ./bin/schema generate --lang java --out build/tables-generated-java/lists tables/lists
+	rm -rf build/tables-generated-java/block && ./bin/schema generate --lang java --out build/tables-generated-java/block tables/block
+	rm -rf build/tables-generated-java/blockhome && ./bin/schema generate --lang java --out build/tables-generated-java/blockhome tables/blockhome
+	rm -rf build/tables-generated-java/v1 && ./bin/schema generate --lang java --out build/tables-generated-java/v1 test/tables/V1.schema
+	rm -rf build/tables-generated-java/v2 && ./bin/schema generate --lang java --out build/tables-generated-java/v2 test/tables/V2.schema
+	rm -rf build/tables-generated-java/w1 && ./bin/schema generate --lang java --out build/tables-generated-java/w1 test/tables/W1.schema
+	rm -rf build/tables-generated-java/w2 && ./bin/schema generate --lang java --out build/tables-generated-java/w2 test/tables/W2.schema
+	rm -rf build/tables-generated-java/r1 && ./bin/schema generate --lang java --out build/tables-generated-java/r1 test/tables/R1.schema
+	rm -rf build/tables-generated-java/r2 && ./bin/schema generate --lang java --out build/tables-generated-java/r2 test/tables/R2.schema
+	rm -rf build/tables-generated-java/p1 && ./bin/schema generate --lang java --out build/tables-generated-java/p1 test/tables/P1.schema
+	rm -rf build/tables-generated-java/p2 && ./bin/schema generate --lang java --out build/tables-generated-java/p2 test/tables/P2.schema
+	rm -rf build/tables-generated-java/p3 && ./bin/schema generate --lang java --out build/tables-generated-java/p3 test/tables/P3.schema
+	rm -rf build/tables-generated-java/m1 && ./bin/schema generate --lang java --out build/tables-generated-java/m1 test/tables/M1.schema
+	rm -rf build/tables-generated-java/m2 && ./bin/schema generate --lang java --out build/tables-generated-java/m2 test/tables/M2.schema
+	rm -rf build/tables-generated-java/a1 && ./bin/schema generate --lang java --out build/tables-generated-java/a1 test/tables/A1.schema
+	rm -rf build/tables-generated-java/a2 && ./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
 	# G1 declares `optional ?Wrapped`, an optional over a variable closure: every
 	# walk that follows pointer edges gates on its presence companion, so the
 	# conformance leg's tblg1.Guarded rows ride it (docs/SPEC-TABLES.md §2.3, §3.1)
-	./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	rm -rf build/tables-generated-java/g1 && ./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
+	rm -rf build/tables-generated-java/messages && ./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
 	# the VARIABLE-ARM message unit (Makefile SCHEMAS_TABLES_MESSAGES): Feed's
 	# union carries a pointer arm and an array of pointers, so it is a region
 	# and the conformance leg's stream_* and parts_* rows ride it
-	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
+	rm -rf build/tables-generated-java/stream && ./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
 	# RT1 is the RETAIN-UNKNOWN reader (docs/SPEC-TABLES.md §6.6): the
 	# conformance leg's retain and retain-save rows load RT2's wires with it
-	./bin/schema generate --lang java --out build/tables-generated-java/rt1 test/tables/RT1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
+	rm -rf build/tables-generated-java/rt1 && ./bin/schema generate --lang java --out build/tables-generated-java/rt1 test/tables/RT1.schema
+	rm -rf build/tables-generated-java/wide && ./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
 	# plan compiled from the other side's layout.
-	./bin/schema generate --lang java --out build/tables-generated-java/fx1 test/tables/FX1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/fx2 test/tables/FX2.schema
+	rm -rf build/tables-generated-java/fx1 && ./bin/schema generate --lang java --out build/tables-generated-java/fx1 test/tables/FX1.schema
+	rm -rf build/tables-generated-java/fx2 && ./bin/schema generate --lang java --out build/tables-generated-java/fx2 test/tables/FX2.schema
 	# TEXT AND AN ENUM UNDER A UNION'S SECOND ARM: the shape the compiled plan
 	# had no fixture for, and the one that catches an op borrowing the guard's
 	# own byte (test/tables/UT.schema).
-	./bin/schema generate --lang java --out build/tables-generated-java/ut test/tables/UT.schema
+	rm -rf build/tables-generated-java/ut && ./bin/schema generate --lang java --out build/tables-generated-java/ut test/tables/UT.schema
 	# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
 	# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
 	# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
 	# to agree on the text (reference-fix 12). C++ already generates the pair;
 	# this stamp did not.
-	./bin/schema generate --lang java --out build/tables-generated-java/fu1 test/tables/FU1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/fu2 test/tables/FU2.schema
+	rm -rf build/tables-generated-java/fu1 && ./bin/schema generate --lang java --out build/tables-generated-java/fu1 test/tables/FU1.schema
+	rm -rf build/tables-generated-java/fu2 && ./bin/schema generate --lang java --out build/tables-generated-java/fu2 test/tables/FU2.schema
 	# THE WIDE-KIND UNIT (docs/SPEC-TABLES.md §15): its int128, uint128 and
 	# fixed-point fields cost it the two ACCELERATORS, so the FIXED FORM is the
 	# whole of its generated table surface — and that form spells a 128-bit
@@ -183,22 +183,61 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	# Int128/UInt128 support files have to land or the package does not compile.
 	# The C, C# and Go legs have generated this unit all along; the Java leg is
 	# the one that did not, which is why nothing here said so.
-	./bin/schema generate --lang java --out build/tables-generated-java/scalars tables/scalars
+	rm -rf build/tables-generated-java/scalars && ./bin/schema generate --lang java --out build/tables-generated-java/scalars tables/scalars
 	# K1/K2 is the ENUM-AGAINST-INTEGER pair (docs/SPEC-TABLES.md §3, §4):
 	# K1 writes grade=Grade, raw=uint16; K2 reads grade=uint16, raw=Grade.
 	# Both fields produce kind_mismatch == 2 in both directions.
-	./bin/schema generate --lang java --out build/tables-generated-java/k1 test/tables/K1.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/maps tables/maps
-	./bin/schema generate --lang java --out build/tables-generated-java/arms tables/arms
+	rm -rf build/tables-generated-java/k1 && ./bin/schema generate --lang java --out build/tables-generated-java/k1 test/tables/K1.schema
+	rm -rf build/tables-generated-java/k2 && ./bin/schema generate --lang java --out build/tables-generated-java/k2 test/tables/K2.schema
+	rm -rf build/tables-generated-java/maps && ./bin/schema generate --lang java --out build/tables-generated-java/maps tables/maps
+	rm -rf build/tables-generated-java/arms && ./bin/schema generate --lang java --out build/tables-generated-java/arms tables/arms
 	# scalars2 (package scalardemo2) is the later build's view of the wide-kind
 	# unit: the conformance report rows read scalars_*.bin through it, counting
 	# the kind mismatches and raw-scale clamps of docs/SPEC-TABLES.md §15.
-	./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
-	./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
-	./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
-	./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
+	rm -rf build/tables-generated-java/scalars2 && ./bin/schema generate --lang java --out build/tables-generated-java/scalars2 test/tables/Scalars2.schema
+	rm -rf build/tables-generated-java/backend && ./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
+	rm -rf build/tables-generated-java/vocab && ./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
+	rm -rf build/tables-generated-java/vocab9 && ./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
 	@touch $@
+
+# THE GENERATED TREE IS FRESH (a stale file is not the emitter's output). Every
+# unit's directory above is emptied before its generate: `schema generate`
+# writes the files a unit has NOW and removes none, so a file a unit no longer
+# emits survives a regeneration and is compiled beside the new ones. A
+# wide-kind unit (§15) has no block form, so a list unit that gains a 128-bit
+# field stops emitting <T>Block.java, and a stale BoundedBlock.java names
+# UnitRow.blockInfo, which the regenerated UnitRow no longer has. The gate
+# replays exactly that: tables/lists, then the same unit with a 128-bit list
+# field, regenerated the way the stamp does it, must compile; and it holds
+# every generate line of the stamp's recipe to its `rm -rf` (make -n).
+JAVA_FRESH := build/java-fresh
+JAVA_FRESH_WIDE := package listdemo\n\ntable WideTail\n{\n    wides []uint128\n}\n
+.PHONY: tables-java-generated-fresh tables-java-generated-fresh-negative-control
+tables-java-generated-fresh: bin/schema
+	@rm -rf $(JAVA_FRESH) && mkdir -p $(JAVA_FRESH)/wide $(JAVA_FRESH)/classes
+	@cp tables/lists/*.schema $(JAVA_FRESH)/wide/ && printf '$(JAVA_FRESH_WIDE)' > $(JAVA_FRESH)/wide/WideTail.schema
+	./bin/schema generate --lang java --out $(JAVA_FRESH)/gen tables/lists > /dev/null
+	rm -rf $(JAVA_FRESH)/gen && ./bin/schema generate --lang java --out $(JAVA_FRESH)/gen $(JAVA_FRESH)/wide > /dev/null
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_FRESH)/classes $(JAVA_FRESH)/gen/*.java
+	@missing=$$($(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null | \
+		grep -o 'generate --lang java --out build/tables-generated-java/[a-z0-9]*' | sed 's/.* //' | \
+		while read d; do $(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null | \
+			grep -q "rm -rf $$d && " || echo $$d; done); \
+	if [ -n "$$missing" ]; then echo "tables-java-generated-fresh: generated without being emptied first: $$missing"; exit 1; fi
+	@echo 'tables-java-generated-fresh: a unit regenerated as a wide-kind unit compiles, and every unit directory is emptied before its generate'
+
+# ITS NEGATIVE CONTROL: the same two generates with the directory NOT emptied
+# between them must fail to compile on the stale block's blockInfo.
+tables-java-generated-fresh-negative-control: bin/schema
+	@rm -rf $(JAVA_FRESH)-control && mkdir -p $(JAVA_FRESH)-control/wide $(JAVA_FRESH)-control/classes
+	@cp tables/lists/*.schema $(JAVA_FRESH)-control/wide/ && printf '$(JAVA_FRESH_WIDE)' > $(JAVA_FRESH)-control/wide/WideTail.schema
+	./bin/schema generate --lang java --out $(JAVA_FRESH)-control/gen tables/lists > /dev/null
+	./bin/schema generate --lang java --out $(JAVA_FRESH)-control/gen $(JAVA_FRESH)-control/wide > /dev/null
+	@if $(JAVAC) --release 17 -nowarn -d $(JAVA_FRESH)-control/classes $(JAVA_FRESH)-control/gen/*.java > $(JAVA_FRESH)-control/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a stale generated tree compiled'; exit 1; fi
+	@grep -q 'blockInfo' $(JAVA_FRESH)-control/log || { cat $(JAVA_FRESH)-control/log; exit 1; }
+	@echo 'negative control: a unit regenerated over its stale files fails to compile on the stale block'
+test-java: tables-java-generated-fresh tables-java-generated-fresh-negative-control
 
 # The Java twin of the C++ "no serialize include path" build: a generated
 # <Table>Block.java or <Table>Cook.java must stand alone on the JDK, so nothing
@@ -1646,20 +1685,18 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # The gate runs every ENUMERATED pass and every pinned vector over BOTH
 # arms: the plain pair, and the retaining pair (--retain, §6.6), whose own
 # pinned vectors it also replays. The seeded RANDOM pass stays at N = 0: at
-# the shared SEED its first finding in each arm is DAMAGED input (both
-# reports malformed, or the oracle discarding a damaged load the leg reads
-# clean: stream_arm_first random #22918 on the plain arm, parts_count_past_bound
-# random #4485 on the retaining arm), parked under the discard-on-damage
-# ruling, and each stops its pass before it reaches the mutants behind it.
+# the shared SEED the plain arm's first finding is DAMAGED input (stream_arm_first
+# random #22918, both reports malformed), parked under the discard-on-damage
+# ruling, and it stops the pass before it reaches the mutants behind it.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
@@ -1816,6 +1853,40 @@ tables-java-keyed-count-negative-control: tables-java-wire-fuzz
 	@echo 'Java keyed-count negative control: reading the count inside L loses the kind mismatch'
 
 test-java: tables-java-keyed-count-negative-control
+
+# THE NODE-REFERENCE BOUND'S CONTROL (docs/SPEC-TABLES.md §3.1, §4): a node
+# reference ABOVE the entry count is an unreadable reference, which is damage,
+# in every occurrence that carries it. A scratch copy of the generated units
+# whose check is planted out must read pointer_index_past_numbering clean
+# (streamdemo.Feed: the first of two `parts` occurrences names node 2 of an
+# empty numbering), and the replay must go red in both arms. Its companion
+# vector, pointer_tail_unreadable_clean, holds an unreadable LEB in the CLAMPED
+# TAIL past `parts`' bound: the tail is stepped over by the field's length and
+# stays opaque, so it is no damage and the gate replays it clean.
+JAVA_NODE_INDEX_SABOTAGE := build/java-node-index-sabotage
+.PHONY: tables-java-node-index-negative-control
+tables-java-node-index-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_NODE_INDEX_SABOTAGE) && mkdir -p $(JAVA_NODE_INDEX_SABOTAGE)/generated $(JAVA_NODE_INDEX_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_NODE_INDEX_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_NODE_INDEX_SABOTAGE)/generated/*/TableVariable.java; do \
+		sed 's/report\.malformed = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED node index check' $(JAVA_NODE_INDEX_SABOTAGE)/generated/stream/TableVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java node-index sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_NODE_INDEX_SABOTAGE)/classes \
+		$(JAVA_NODE_INDEX_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@for arm in "" --retain; do \
+		if ./build/conformance-harness wire-fuzz $$arm \
+				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_NODE_INDEX_SABOTAGE)/classes TablesWireFuzz" \
+				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_numbering.bin --unit streamdemo --root Feed \
+				--failed $(JAVA_NODE_INDEX_SABOTAGE)/failed.bin > $(JAVA_NODE_INDEX_SABOTAGE)/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: a node index past the numbering, unjudged, left the $$arm replay green"; exit 1; \
+		fi; \
+		grep -q 'damaged load' $(JAVA_NODE_INDEX_SABOTAGE)/log || { cat $(JAVA_NODE_INDEX_SABOTAGE)/log; exit 1; }; \
+	done
+	@echo 'Java node-index control: an index past the numbering, unjudged, reads a damaged load clean in both arms'
+
+test-java: tables-java-node-index-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
