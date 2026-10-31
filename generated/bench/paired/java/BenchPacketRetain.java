@@ -274,7 +274,11 @@ public final class BenchPacketRetain {
             } else if (id == BenchPacketVariable.F_flag) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.flag = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.flag = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -378,28 +382,26 @@ public final class BenchPacketRetain {
                     if (ar != null) {
                         if (ar.has(2)) {
                             int ek = ar.get8();
-                            if (ek == 6) {
-                                long n = ar.leb();
-                                if (ar.fail) {
-                                } else {
-                                    if (n < 0 || n > 17) {
-                                        n = 17;
-                                        report.clamped++;
-                                    }
-                                    if (ek != 6) {
-                                        report.widened++;
-                                    }
-                                    {
-                                        for (long i = 0; i < n; i++) {
-                                            java.math.BigInteger raw =
-                                                    TableVariable.readInteger(ar, ek);
-                                            if (raw == null) break;
-                                            TableVariable.put(v.blob, (int) i, raw.intValue());
-                                        }
+                            long n = ar.count(r.limit);
+                            if (ar.fail) {
+                            } else if (!(ek == 6)) {
+                                report.kindMismatch++;
+                            } else {
+                                if (n < 0 || n > 17) {
+                                    n = 17;
+                                    report.clamped++;
+                                }
+                                if (ek != 6) {
+                                    report.widened++;
+                                }
+                                {
+                                    for (long i = 0; i < n; i++) {
+                                        java.math.BigInteger raw =
+                                                TableVariable.readInteger(ar, ek);
+                                        if (raw == null) break;
+                                        TableVariable.put(v.blob, (int) i, raw.intValue());
                                     }
                                 }
-                            } else {
-                                report.kindMismatch++;
                             }
                         }
                     }
@@ -663,12 +665,14 @@ public final class BenchPacketRetain {
                 int listMark = retain.idUsed;
                 TableVariable.Writer rec = w.sub(new byte[1 << 20]);
                 int[] pat = new int[] {at + hdr};
-                long ref = TableRetain.ref(rec, retain, id, report);
+                // the record is ONE loss however deep it fails, counted once
+                // below, so the walk itself is handed no report (§6.6)
+                long ref = TableRetain.ref(rec, retain, id, null);
                 boolean ok = ref != 0;
                 if (ok) {
                     rec.putLeb(ref);
                     rec.put8(kind);
-                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);
+                    ok = TableRetain.emit(rec, retain, null, retain.bytes, pat, kind);
                 }
                 if (ok) {
                     w.putBytes(rec.buf, 0, rec.off);

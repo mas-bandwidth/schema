@@ -159,6 +159,38 @@ public final class TableVariable {
             return v;
         }
 
+        // count reads a BOUNDED collection's COUNT, the LEB128 after its
+        // element kind, against the ENCLOSING body rather than the
+        // collection's own L, as the engine reads it (internal/tablewire
+        // arrayBody, §3, §4): a count that runs past L is still a count, judged
+        // with the kind byte and clamped to the bound, and the elements after
+        // it then find no bytes. An unbounded list's count is read inside its
+        // own L (the count refusal, §2.9).
+        public long count(int outer) {
+            int own = limit;
+            if (outer > limit) {
+                limit = outer;
+            }
+            long v = leb();
+            limit = own;
+            return v;
+        }
+
+        // unsigned reads one little-endian unsigned integer of 1, 2, 4 or 8
+        // bytes: a flags element at its WIRE width (§4's widening).
+        public long unsigned(int width) {
+            switch (width) {
+                case 1:
+                    return get8();
+                case 2:
+                    return get16();
+                case 4:
+                    return get32() & 0xffffffffL;
+                default:
+                    return get64();
+            }
+        }
+
         // leb reads one canonical unsigned LEB128. A non-minimal spelling or a
         // value past 64 bits is malformed (§3). On damage the cursor stays
         // where the spelling began, exactly as the oracle's read does, so the
@@ -1326,6 +1358,15 @@ public final class TableVariable {
         return nt;
     }
 
+    // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
+    // as the engine's scalarAt reads it (§3).
+    static boolean boolByte(int b, Report report) {
+        if (b > 1) {
+            report.malformed = true;
+        }
+        return b != 0;
+    }
+
     // resolveString resolves one *string pointer index against the numbering
     // (§3.1): 0 is null; 1 is the ROOT — a table, not a blob, so it is a kind
     // mismatch; an index past the records is malformed; and a record whose
@@ -1343,7 +1384,18 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].value;
+        // a record this reader cannot name (or a text record that was not
+        // text) reads null, counted once at the scan; a record of another
+        // type — a table, or the other blob kind — is a kind mismatch (§2.5)
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != STRING_ID) {
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.value;
     }
 
     // resolveBytes resolves one *bytes pointer index against the numbering
@@ -1361,7 +1413,18 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].bytes;
+        // a record this reader cannot name (or a text record that was not
+        // text) reads null, counted once at the scan; a record of another
+        // type — a table, or the other blob kind — is a kind mismatch (§2.5)
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != BYTES_ID) {
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.bytes;
     }
 
     // Wide values use UTF-16 code units in the public value API. Wire bytes
@@ -2610,6 +2673,16 @@ func isScalarArray(f *ir.Field) bool {
 func variableWireKind(f *ir.Field) int     { return ir.TableWireFieldKind(f) }
 func variableElemWireKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
 
+// countRead is the Java expression that reads a collection's count after its
+// element kind: a bounded collection's against the enclosing body (Reader.count,
+// as the engine's arrayBody), an unbounded list's inside its own L.
+func countRead(f *ir.Field, reader string) string {
+	if f.ArrayBound > 0 {
+		return reader + ".count(r.limit)"
+	}
+	return reader + ".leb()"
+}
+
 func varMember(f *ir.Field) string {
 	m := member(f)
 	if javaReserved[m] {
@@ -2866,7 +2939,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
 	b.WriteString("        if (v == null) { return true; }\n")
 	for _, f := range st.Fields {
+		open := openGuard(&b, st, f)
 		writeVariableGraphField(&b, f)
+		closeGuard(&b, open)
 	}
 	b.WriteString("        return true;\n    }\n\n")
 
@@ -2933,7 +3008,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	// writeFields
 	fmt.Fprintf(&b, "    public static void writeFields(TableVariable.Writer w, TableVariable.NodeGraph graph, Value v) {\n")
 	for _, f := range st.Fields {
+		open := openGuard(&b, st, f)
 		writeFieldSave(&b, u, st, f)
+		closeGuard(&b, open)
 	}
 	b.WriteString("    }\n\n")
 
@@ -3487,6 +3564,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 	fmt.Fprintf(b, "    static boolean jsonFieldsBody(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {\n")
 	for _, f := range st.Fields {
+		guarded := openGuard(b, st, f)
 		if f.Type.Optional {
 			fmt.Fprintf(b, "        if(v.%sPresent){\n", varMember(f))
 		}
@@ -3499,6 +3577,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		if f.Type.Optional {
 			b.WriteString("        }\n")
 		}
+		closeGuard(b, guarded)
 	}
 	b.WriteString("        return first;\n")
 	b.WriteString("    }\n\n")
@@ -4118,7 +4197,12 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		}
 		fmt.Fprintf(b, "                boolean selected=(%s);\n", condition.String())
 		if f.Array != ir.ArrayNone {
-			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null&&ar.has(2)&&ar.get8()==%d;}\n", variableElemWireKind(f))
+			// A FIELD RODE, so the optional is present, unless its element kind
+			// is another array's (the engine's arrayBody, §2.3, §4): a body too
+			// short for its header is inert but present, a damaged count is
+			// present, and an element kind that WIDENS to the declared one is
+			// the field's own.
+			fmt.Fprintf(b, "                if(selected){TableVariable.Reader probe=new TableVariable.Reader(r.buf,r.ids,new TableVariable.Report());probe.off=r.off;probe.limit=r.limit;TableVariable.Reader ar=probe.body();selected=ar!=null;if(ar!=null&&ar.has(2)){int pk=ar.get8();%s;selected=ar.fail||(%s);}}\n", countRead(f, "ar"), variableCompatibleKinds(variableElemWireKind(f), "pk"))
 		}
 		writeFieldRead(b, u, st, &one, retain, ordinal, overlongNone)
 		fmt.Fprintf(b, "                if(selected&&!r.fail)v.%sPresent=true;\n", m)
@@ -4137,13 +4221,15 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
 		fmt.Fprintf(b, "                    if (ar != null && ar.has(2)) {\n")
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
-		fmt.Fprintf(b, "                        if (ek == 17) {\n")
+		// the count is read with the kind byte, before either is judged:
+		// a damaged count is framing damage whatever the kind (arrayBody, §4)
+		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
+		fmt.Fprintf(b, "                        if (!ar.fail && ek != 17) { report.kindMismatch++; } else {\n")
 		// EVERY DECODED POINTER SLOT KEEPS ITS ROW (docs/SPEC-TABLES.md §2.1,
 		// §3.1, §3.3): a bad node table makes every index resolve to null, but
 		// the array still decoded its slots, so the value list stays as long
 		// as the index list and a save writes one null per slot, as the fixed
 		// struct-array read below already does.
-		fmt.Fprintf(b, "                            long n = ar.leb();\n")
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
 			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
@@ -4175,7 +4261,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                }\n")
 			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
 		}
-		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	case isStructArray(f):
@@ -4184,8 +4270,10 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
 		fmt.Fprintf(b, "                    if (ar != null && ar.has(2)) {\n")
 		fmt.Fprintf(b, "                        int ek = ar.get8();\n")
-		fmt.Fprintf(b, "                        if (ek == 13) {\n")
-		fmt.Fprintf(b, "                            long n = ar.leb();\n")
+		// the count is read with the kind byte, before either is judged:
+		// a damaged count is framing damage whatever the kind (arrayBody, §4)
+		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
+		fmt.Fprintf(b, "                        if (!ar.fail && ek != 13) { report.kindMismatch++; } else {\n")
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
 		} else {
@@ -4222,7 +4310,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		} else {
 			fmt.Fprintf(b, "                            } else { report.refused = true; }\n")
 		}
-		fmt.Fprintf(b, "                        } else { report.kindMismatch++; }\n")
+		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	case isScalarArray(f):
@@ -4266,7 +4354,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBool:
-		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { v.%s = r.get8() != 0; } else { report.malformed = true; r.fail = true; } }\n", m)
+		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { int bv = r.get8(); if (bv > 1) { report.malformed = true; } v.%s = bv != 0; } else { report.malformed = true; r.fail = true; } }\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits become
 	// a value and before the field is written (docs/SPEC-TABLES.md §3.3; Glenn,
@@ -4308,12 +4396,16 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); if (%s) { long n = ar.leb(); if (ar.fail) { } %s if (ek != %d) { report.widened++; } ", cond, countCheck, ek)
+	// The header is the element kind AND the count, read before either is
+	// judged (the engine's arrayBody, §3, §4): a damaged count is framing
+	// damage whatever the kind byte says, and only a whole header of another
+	// element kind is a kind mismatch.
+	fmt.Fprintf(b, "                if (kind == 14) { TableVariable.Reader ar = r.body(); if (ar != null) { if (ar.has(2)) { int ek = ar.get8(); long n = %s; if (ar.fail) { } else if (!(%s)) { report.kindMismatch++; } %s if (ek != %d) { report.widened++; } ", countRead(f, "ar"), cond, countCheck, ek)
 	if f.Array != ir.ArrayFixed {
 		fmt.Fprintf(b, "v.%s.clear(); ", m)
 	}
 	writeArrayElemRead(b, f, m, floatOwnerName(st, f))
-	fmt.Fprintf(b, " } } else { report.kindMismatch++; } } } }\n")
+	fmt.Fprintf(b, " } } } }\n")
 	fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 }
 
@@ -4348,7 +4440,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
-		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(1)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("1"), place("ar.get8() != 0"))
+		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(1)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("1"), place("TableVariable.boolByte(ar.get8(), report)"))
 	case ir.TInt, ir.TBits:
 		lo, hi := variableRawBounds(f)
 		clamp := ""
@@ -4370,7 +4462,9 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 		case *ir.Enum:
 			fmt.Fprintf(b, "for (long i = 0; i < n; i++) { long vref = ar.leb(); if (ar.fail) { break; } if (vref == 0) { %s; } else { long vid = ar.resolve(vref); if (!ar.fail) { %s; } } }", place("0"), place(fmt.Sprintf("%sEnum(vid, report)", m)))
 		case *ir.Flags:
-			fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { if (ar.has(8)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("8"), place("ar.get64()"))
+			// a WIDENED element kind (§4) is read at ITS width, not the
+			// declared mask's: one u8 element is one byte on the wire
+			fmt.Fprintf(b, "int ew = ek == 6 ? 1 : ek == 7 ? 2 : ek == 8 ? 4 : 8; %s{ for (long i = 0; i < n; i++) { if (ar.has(ew)) { %s; } else { report.malformed = true; ar.fail = true; break; } } }", refusePrefix("ew"), place("ar.unsigned(ew)"))
 		}
 	}
 }

@@ -192,7 +192,11 @@ public final class MixedHitEventRetain {
             } else if (id == MixedHitEventVariable.F_crit) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.crit = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.crit = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -410,12 +414,14 @@ public final class MixedHitEventRetain {
                 int listMark = retain.idUsed;
                 TableVariable.Writer rec = w.sub(new byte[1 << 20]);
                 int[] pat = new int[] {at + hdr};
-                long ref = TableRetain.ref(rec, retain, id, report);
+                // the record is ONE loss however deep it fails, counted once
+                // below, so the walk itself is handed no report (§6.6)
+                long ref = TableRetain.ref(rec, retain, id, null);
                 boolean ok = ref != 0;
                 if (ok) {
                     rec.putLeb(ref);
                     rec.put8(kind);
-                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);
+                    ok = TableRetain.emit(rec, retain, null, retain.bytes, pat, kind);
                 }
                 if (ok) {
                     w.putBytes(rec.buf, 0, rec.off);

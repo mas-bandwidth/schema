@@ -104,7 +104,11 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 					writeVariablePayload(b, u, st.Name, one, expr, "w", 0)
 				}
 				if retainedBody {
-					b.WriteString("if(w.off>body+1){")
+					// the slot's payload is leb(length) then the body, and an
+					// EMPTY body — a default element with no retained tail — is
+					// the one terminator byte, two bytes framed: elided, as the
+					// plain write elides a default slot (§2.4, §6.6)
+					b.WriteString("if(w.off>body+2){")
 				}
 				fmt.Fprintf(b, "        w.frameEntry(body,key,%s);count++;", variablePayloadStart(one, "w", "body"))
 				if retainedBody {

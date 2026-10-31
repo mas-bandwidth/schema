@@ -705,14 +705,15 @@
     {
       "name": "java-tables-more",
       "when": "pull-request",
-      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22).",
+      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22). The hostile-corpus control (docs/HOSTILE-CORPUS.md) rides here too: it flips the generated text reader's malformed check in a scratch copy, requires the corpus runner to red naming an unexplained case, then reruns the unplanted gate green; one schema generate of eight units and two javac passes, 10 s on the studio.",
       "targets": [
         "tables-java-fuzz-negative-control",
         "tables-java-json-differential-negative-control",
         "tables-java-keyed-negative-control",
         "tables-java-runtime-home-negative-control",
         "tables-java-slot-negative-control",
-        "tables-java-soak-negative-control"
+        "tables-java-soak-negative-control",
+        "schema-java-runs-hostile-corpus-negative-control"
       ],
       "java": "21"
     },
@@ -731,6 +732,15 @@
       "why": "the Java leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md §3.3, the 2026-10-27 finite rule): it removes each check from the generated code in turn (the variable read, the retained unknown, the message read, the fixed read, the variable writer, the record accessor) and requires exactly that check's lines of TestJavaFiniteFloats red and every other line green. Six javac-and-run probes over one small unit, about 2 s each on the author's machine (arm64 macOS), so well inside the rule on its own row.",
       "targets": [
         "tables-java-finite-float-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-wire-fuzz",
+      "when": "pull-request",
+      "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. Its own group so the fuzz time never crowds the java rows. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "targets": [
+        "tables-java-wire-fuzz-negative-control"
       ],
       "java": "21"
     },

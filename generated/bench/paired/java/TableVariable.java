@@ -140,6 +140,38 @@ public final class TableVariable {
             return v;
         }
 
+        // count reads a BOUNDED collection's COUNT, the LEB128 after its
+        // element kind, against the ENCLOSING body rather than the
+        // collection's own L, as the engine reads it (internal/tablewire
+        // arrayBody, §3, §4): a count that runs past L is still a count, judged
+        // with the kind byte and clamped to the bound, and the elements after
+        // it then find no bytes. An unbounded list's count is read inside its
+        // own L (the count refusal, §2.9).
+        public long count(int outer) {
+            int own = limit;
+            if (outer > limit) {
+                limit = outer;
+            }
+            long v = leb();
+            limit = own;
+            return v;
+        }
+
+        // unsigned reads one little-endian unsigned integer of 1, 2, 4 or 8
+        // bytes: a flags element at its WIRE width (§4's widening).
+        public long unsigned(int width) {
+            switch (width) {
+                case 1:
+                    return get8();
+                case 2:
+                    return get16();
+                case 4:
+                    return get32() & 0xffffffffL;
+                default:
+                    return get64();
+            }
+        }
+
         // leb reads one canonical unsigned LEB128. A non-minimal spelling or a
         // value past 64 bits is malformed (§3). On damage the cursor stays
         // where the spelling began, exactly as the oracle's read does, so the
@@ -1307,6 +1339,15 @@ public final class TableVariable {
         return nt;
     }
 
+    // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
+    // as the engine's scalarAt reads it (§3).
+    static boolean boolByte(int b, Report report) {
+        if (b > 1) {
+            report.malformed = true;
+        }
+        return b != 0;
+    }
+
     // resolveString resolves one *string pointer index against the numbering
     // (§3.1): 0 is null; 1 is the ROOT — a table, not a blob, so it is a kind
     // mismatch; an index past the records is malformed; and a record whose
@@ -1324,7 +1365,18 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].value;
+        // a record this reader cannot name (or a text record that was not
+        // text) reads null, counted once at the scan; a record of another
+        // type — a table, or the other blob kind — is a kind mismatch (§2.5)
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != STRING_ID) {
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.value;
     }
 
     // resolveBytes resolves one *bytes pointer index against the numbering
@@ -1342,7 +1394,18 @@ public final class TableVariable {
             report.malformed = true;
             return null;
         }
-        return recs[(int) (index - 2)].bytes;
+        // a record this reader cannot name (or a text record that was not
+        // text) reads null, counted once at the scan; a record of another
+        // type — a table, or the other blob kind — is a kind mismatch (§2.5)
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId == 0) {
+            return null;
+        }
+        if (rec.typeId != BYTES_ID) {
+            report.kindMismatch++;
+            return null;
+        }
+        return rec.bytes;
     }
 
     // Wide values use UTF-16 code units in the public value API. Wire bytes

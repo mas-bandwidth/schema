@@ -122,7 +122,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
@@ -147,10 +147,18 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAP
 	./bin/schema generate --lang java --out build/tables-generated-java/m2 test/tables/M2.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/a1 test/tables/A1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/a2 test/tables/A2.schema
-	# no g1: test/tables/G1.schema declares `optional ?Wrapped`, an optional over a
-	# variable closure, which this target refuses by name until
-	# sprint-out/java-carries-optional-over-a-variable-closure lands (SPEC-TABLES §2.3)
+	# G1 declares `optional ?Wrapped`, an optional over a variable closure: every
+	# walk that follows pointer edges gates on its presence companion, so the
+	# conformance leg's tblg1.Guarded rows ride it (docs/SPEC-TABLES.md §2.3, §3.1)
+	./bin/schema generate --lang java --out build/tables-generated-java/g1 test/tables/G1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/messages tables/messages
+	# the VARIABLE-ARM message unit (Makefile SCHEMAS_TABLES_MESSAGES): Feed's
+	# union carries a pointer arm and an array of pointers, so it is a region
+	# and the conformance leg's stream_* and parts_* rows ride it
+	./bin/schema generate --lang java --out build/tables-generated-java/stream tables/stream
+	# RT1 is the RETAIN-UNKNOWN reader (docs/SPEC-TABLES.md §6.6): the
+	# conformance leg's retain and retain-save rows load RT2's wires with it
+	./bin/schema generate --lang java --out build/tables-generated-java/rt1 test/tables/RT1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/wide examples-wide
 	# THE FIXED FORM's versioning pair (docs/SPEC-TABLES.md §3.4): FX1 is the
 	# old side and FX2 the new, and every edit between them lands through a
@@ -1387,7 +1395,7 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 # on this classpath and does not need to be; the tables-java-compile gate is
 # what proves it builds.
 .PHONY: build-conformance-java
-build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java
+build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
@@ -1395,6 +1403,8 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
 		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java \
 		build/tables-generated-java/messages/*.java build/tables-generated-java/wide/*.java \
+		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java \
+		build/tables-generated-java/rt1/*.java \
 		build/tables-generated-java/block/*.java build/tables-generated-java/v1/*.java \
 		build/tables-generated-java/v2/*.java build/tables-generated-java/w1/*.java \
 		build/tables-generated-java/w2/*.java build/tables-generated-java/r1/*.java \
@@ -1402,10 +1412,64 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/p2/*.java build/tables-generated-java/p3/*.java \
 		build/tables-generated-java/m1/*.java build/tables-generated-java/m2/*.java \
 		build/tables-generated-java/a1/*.java build/tables-generated-java/a2/*.java \
+		build/tables-generated-java/g1/*.java \
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
-		test/conformance/java/src/Driver.java
+		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+
+# THE JAVA LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (docs/PORTING.md
+# I15; test/conformance/README.md, "The wire-fuzz driver"). One JVM on a pipe,
+# test/conformance/java/src/TablesWireFuzz.java on the conformance classpath:
+# every manifest root the leg carries, its file form (load/loadMeasure/save),
+# its message form against the unit's own announced vocabulary, and the
+# retention arm's pair. The harness owns the mutants and the oracle
+# (internal/tablewire, the compiler's own engine).
+#
+# The gate runs every ENUMERATED pass and every pinned vector (159,457 mutants
+# over 188 seeds and 63 roots, 0 divergences, about 15 s). The seeded RANDOM
+# pass and the retention arm are OWED (roadmap java/wire-fuzz-random): both
+# still find divergences — a bounded count that runs past its collection's L,
+# a nested union arm's clamp, and the retaining save over a shared node — so
+# JAVA_WIRE_FUZZ_N stays 0 until they are closed, and raising it is the change
+# that closes the card.
+JAVA_WIRE_FUZZ_N ?= 0
+JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
+.PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control
+tables-java-wire-fuzz: build/conformance-harness build-conformance-java
+	@mkdir -p build/wire-fuzz
+	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
+		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
+
+test-java: tables-java-wire-fuzz
+
+# Its negative control (docs/PORTING.md I2, I15): a scratch copy of the
+# generated units whose LEB128 reader accepts a non-minimal spelling, compiled
+# with the same leg. The ENUMERATED canonical pass plants exactly those
+# spellings, so the differential must go red on the read report, and the
+# unplanted gate above must be green.
+JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 messages wide stream lists rt1 \
+	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9
+JAVA_WIRE_FUZZ_SABOTAGE := build/java-wire-sabotage
+tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_WIRE_FUZZ_SABOTAGE) && mkdir -p $(JAVA_WIRE_FUZZ_SABOTAGE)/generated $(JAVA_WIRE_FUZZ_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_WIRE_FUZZ_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_WIRE_FUZZ_SABOTAGE)/generated/*/TableVariable.java; do \
+		sed 's/if (i > 0 \&\& b == 0) {/if (false) { \/\/ SABOTAGED canonical LEB128/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED canonical LEB128' $(JAVA_WIRE_FUZZ_SABOTAGE)/generated/examples/TableVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java canonical LEB128 sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_WIRE_FUZZ_SABOTAGE)/classes \
+		$(JAVA_WIRE_FUZZ_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_WIRE_FUZZ_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
+			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \
+	fi
+	@grep -q 'the report differs' $(JAVA_WIRE_FUZZ_SABOTAGE)/log || { cat $(JAVA_WIRE_FUZZ_SABOTAGE)/log; exit 1; }
+	@echo 'Java wire negative control: accepting noncanonical LEB128 changes the read report'
+
+test-java: tables-java-wire-fuzz-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
@@ -1435,6 +1499,8 @@ conformance-negative-control-java-block: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/v2 test/tables/V2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/p1 test/tables/P1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/p3 test/tables/P3.schema
+	# the driver names tblrt1 directly (the retain surfaces), so RT1 is on every classpath
+	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/rt1 test/tables/RT1.schema
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/block/*Block.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/classes \
@@ -1488,6 +1554,8 @@ conformance-negative-control-java-walk: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/v2 test/tables/V2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/p1 test/tables/P1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/p3 test/tables/P3.schema
+	# the driver names tblrt1 directly (the retain surfaces), so RT1 is on every classpath
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/rt1 test/tables/RT1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k1 test/tables/K1.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/k2 test/tables/K2.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/messages tables/messages

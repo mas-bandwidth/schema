@@ -36,6 +36,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `guard/` | C++ include-guard test | `./build/schema_test_guard` | `./build/schema_test_guard` |
 | `java/` | Java packet tests | `make test-java` | `make test-java` |
 | `java-fixedform/` | Java fixed-form tests | `make test-java` | `make test-java` |
+| `java-hostile/` | Java hostile-corpus runner | `make schema-java-runs-hostile-corpus` | `make schema-java-runs-hostile-corpus` |
 | `java-ludicrous/` | Java int128 tests | `make test-java` | `make test-java` |
 | `java-tables/` | Java table tests | `make test-java` | `make test-java` |
 | `java-view/` | Java unit-view listing | `make tables-java-view` | `make tables-java-view` |
