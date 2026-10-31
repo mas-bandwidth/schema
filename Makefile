@@ -5471,6 +5471,33 @@ tables-wire-fuzz-discard-negative-control:
 	@grep -m1 "refuses the damaged load is red" $(DISCARD_NC)/log
 	@echo "negative control: comparing a damaged load's saved bytes turns the discard gate RED"
 
+# DAMAGE DISCARDS THE WHOLE LOAD in the C++ reference (docs/SPEC-TABLES.md §4):
+# the control removes the discard from a COPY of the emitter's LoadVerdict,
+# reached through a Go build overlay, so a fixed root damaged inside a nested
+# body hands back what it decoded, and the gate
+# TestDamageDiscardsTheWholeLoadCPP must go red on exactly that. Nothing
+# tracked is written to.
+CPP_DISCARD_NC := build/cpp-discard-nc
+.PHONY: tables-cpp-discard-negative-control
+tables-cpp-discard-negative-control:
+	@rm -rf $(CPP_DISCARD_NC) && mkdir -p $(CPP_DISCARD_NC)
+	@sed -e 's|if ( to->malformed ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
+		internal/codegen/cpptable/codecs.go > $(CPP_DISCARD_NC)/codecs.go.txt
+	@cmp -s internal/codegen/cpptable/codecs.go $(CPP_DISCARD_NC)/codecs.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/codecs.go":"%s/$(CPP_DISCARD_NC)/codecs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_DISCARD_NC)/overlay.json
+	@if go test -count=1 -overlay $(CPP_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(CPP_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ discard is gone and the gate stayed green"; \
+		cat $(CPP_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "fixed: LoadTolerant answered true on damage" $(CPP_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "LoadTolerant answered true" $(CPP_DISCARD_NC)/log
+	@echo "negative control: removing the C++ discard turns the whole-load gate RED"
+
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
 # ORACLE is taught the opposite reading, a nested-union arm whose L runs past

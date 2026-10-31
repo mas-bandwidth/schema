@@ -563,10 +563,10 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 // TestTheFiveAnswers holds the batch surface's stated answers (§3.3): M above
 // 256 on the write side refuses by name and writes nothing, M above the
 // caller's capacity on the read side refuses by name with the returned count
-// reading the wire's M and nothing decoded, and damage inside body k delivers
-// k - 1. Red if a leg writes consecutive batches, decodes a body before
-// refusing on capacity, leaves the returned count at the caller's capacity,
-// or returns two or three for the damaged batch.
+// reading the wire's M and nothing decoded, and damage anywhere in a batch
+// delivers no body (§4). Red if a leg writes consecutive batches, decodes a
+// body before refusing on capacity, leaves the returned count at the caller's
+// capacity, or delivers any body of the damaged batch.
 func TestTheFiveAnswers(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	login := model.Lookup("LoginRequest")
@@ -653,21 +653,24 @@ func TestTheFiveAnswers(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused {
 			t.Errorf("damage in body 2: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
-		if count != 1 {
-			t.Errorf("damage in body 2: the returned count reads %d, not one", count)
+		// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): no body
+		// is delivered, and every body is at its declared defaults
+		if count != 0 {
+			t.Errorf("damage in body 2: the returned count reads %d, not zero", count)
 		}
-		if instU64(t, out[0], "client_build") != 100 {
-			t.Error("damage in body 2: the first body did not stand")
-		}
-		if instU64(t, out[2], "client_build") != 999 {
-			t.Error("damage in body 2: the third body was read")
+		fresh := instU64(t, model.New(login), "client_build")
+		for i := range out {
+			if instU64(t, out[i], "client_build") != fresh {
+				t.Errorf("damage in body 2: body %d was handed back", i+1)
+			}
 		}
 	}
 }
 
 // TestDamageIsTerminal plants damage inside the SECOND body of three, and
-// inside a NESTED body of the second. Red if a leg reads the third body,
-// counts more than one malformed, or discards the first body.
+// inside a NESTED body of the second. DAMAGE DISCARDS THE WHOLE BATCH
+// (docs/SPEC-TABLES.md §4): red if a leg delivers any body or reads damage as
+// clean.
 func TestDamageIsTerminal(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	match := model.Lookup("MatchResult")
@@ -712,14 +715,14 @@ func TestDamageIsTerminal(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused || report.Unknown != 0 {
 			t.Errorf("%s: count=%d ok=%v err=%v report=%+v", row.name, count, ok, derr, report)
 		}
-		if count != 1 {
-			t.Errorf("%s: the returned count reads %d, not one", row.name, count)
+		if count != 0 {
+			t.Errorf("%s: the returned count reads %d, not zero", row.name, count)
 		}
-		if instU64(t, out[0], "match_id") != 10 {
-			t.Errorf("%s: the first body did not stand", row.name)
-		}
-		if instU64(t, out[2], "match_id") != 999 {
-			t.Errorf("%s: the third body was read", row.name)
+		fresh := instU64(t, model.New(match), "match_id")
+		for i := range out {
+			if instU64(t, out[i], "match_id") != fresh {
+				t.Errorf("%s: body %d was handed back", row.name, i+1)
+			}
 		}
 	}
 }
@@ -746,9 +749,9 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused {
 			t.Errorf("a pad bit that is not zero read clean: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
-		// the body before the pad stands, and the count says so
-		if count != 1 || instU64(t, inst, "quantity") != 7 {
-			t.Errorf("the body before the bad pad did not stand: count=%d", count)
+		// damage after the last body discards the batch too (§4)
+		if count != 0 || instU64(t, inst, "quantity") != instU64(t, model.New(model.Lookup("StorePurchase")), "quantity") {
+			t.Errorf("a batch with a bad pad delivered a body: count=%d", count)
 		}
 	}
 	trailing := append(append([]byte(nil), message...), 0)
@@ -768,8 +771,7 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 // TestAReferenceAtAndAboveTheEntryCount: E is 33 and a reference is six
 // bits, so 34, 35 and 63 are spellable and damage; the entry count itself is
 // the last legal slot and must resolve. Red if a leg resolves past E, refuses
-// E, discards the fields decoded before the bad reference, or reads a body
-// after it.
+// E, or hands back anything from a batch a bad reference damaged (§4).
 func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	login := model.Lookup("LoginRequest")
@@ -797,8 +799,8 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 		if derr != nil || ok || !report.Malformed || report.Refused || report.Unknown != 0 {
 			t.Errorf("reference %d: count=%d ok=%v err=%v report=%+v", past, count, ok, derr, report)
 		}
-		if instU64(t, out, "player_id") != 5 {
-			t.Errorf("reference %d: the field decoded before it did not stand", past)
+		if instU64(t, out, "player_id") != instU64(t, model.New(login), "player_id") {
+			t.Errorf("reference %d: a damaged batch handed back the field decoded before it", past)
 		}
 		if count != 0 {
 			t.Errorf("reference %d: the returned count reads %d", past, count)

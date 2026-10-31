@@ -9,7 +9,7 @@ package cpptable
 //
 // The clauses are the page's own: TableMessageReason::no_vocabulary, TableMessageReason::second_announcement and its
 // terminality, TableMessageReason::vocabulary_too_large on both bounds, the two strict announcement
-// checks, TableMessageReason::batch_too_large on both sides, damage inside body k delivering k-1,
+// checks, TableMessageReason::batch_too_large on both sides, damage anywhere delivering no body,
 // bytes after the pad, and TableMessageReason::newer_form with TableMessageReason::message_form_as_file.
 //
 // The rows are the manifest's own, read here rather than copied: every
@@ -340,9 +340,9 @@ const cppHeldBatchTooLarge = `
         { printf( "TableMessageReason::batch_too_large read: refused=%d count=%lld reason=%d malformed=%d\n", (int) r.refused, (long long) count, (int) r.reason, (int) r.malformed ); return 1; }
 `
 
-// "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
-// states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3).
+// "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (docs/SPEC-TABLES.md
+// §3.3, §4): no body is delivered, the returned count is 0, and the report
+// says malformed.
 const cppHeldDamageInsideBody = `
     TableMessageEntry entries[kTableMessageEntriesHere];
     TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
@@ -357,8 +357,8 @@ const cppHeldDamageInsideBody = `
     LoginRequest storage[3];
     int64_t count = 3;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 5, &r ) || count != 1 )
-        { printf( "damage: body 2's damage did not deliver one body: count=%lld refused=%d\n", (long long) count, (int) r.refused ); return 1; }
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, wire, 5, &r ) || count != 0 )
+        { printf( "damage: body 2's damage delivered a body: count=%lld refused=%d\n", (long long) count, (int) r.refused ); return 1; }
     if ( !r.malformed || r.refused ) { printf( "damage: one malformed did not count or it was refused: malformed=%d refused=%d\n", (int) r.malformed, (int) r.refused ); return 1; }
 `
 
@@ -381,7 +381,7 @@ const cppHeldBytesAfterPad = `
     LoginRequest storage[1];
     int64_t count = 1;
     TableReport r; memset( &r, 0, sizeof( r ) );
-    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n + 1, &r ) || count != 1 || !r.malformed || r.refused )
+    if ( LoginRequestLoadMessages( storage, &count, vocabulary, buf, n + 1, &r ) || count != 0 || !r.malformed || r.refused )
         { printf( "pad: bytes after the pad were not malformed: count=%lld malformed=%d refused=%d\n", (long long) count, (int) r.malformed, (int) r.refused ); return 1; }
 `
 
