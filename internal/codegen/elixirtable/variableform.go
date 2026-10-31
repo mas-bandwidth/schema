@@ -1348,7 +1348,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
-            {{value, report}, shared} = blob_namings(fn -> decode(desc, fields, nodes, ids) end)
+            {{value, report}, shared} =
+              with_open_marks(table, fn ->
+                blob_namings(fn -> decode(desc, fields, nodes, ids) end)
+              end)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
@@ -1696,6 +1699,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp decode_node_table(nodes, name, body, ids, idx) do
+    if open_node?(idx), do: throw(:wire_damaged), else: decode_open_node(nodes, name, body, ids, idx)
+  end
+
+  defp decode_open_node(nodes, name, body, ids, idx) do
     desc = Map.fetch!(@tables, name)
 
     # DAMAGE DISCARDS THE WHOLE LOAD (§4): a pointee record whose body cannot
@@ -1704,10 +1711,58 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {:ok, fields, []} ->
         {value, report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
         if report.malformed, do: throw(:wire_damaged)
+        close_node(idx)
         {:value, value}
 
       _ ->
         throw(:wire_damaged)
+    end
+  end
+
+  # A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no
+  # writer produces a cyclic wire, so a pointer that reaches a node whose
+  # descent is still open (on the current path from the root) refuses the
+  # whole load; a second pointer to a CLOSED node is a share and legal. The
+  # root is open for the whole read. The marks live for one load
+  # (with_open_marks/2).
+  defp with_open_marks(root, fun) do
+    Process.put(:elixir_open_nodes, {root, MapSet.new()})
+
+    try do
+      fun.()
+    after
+      Process.delete(:elixir_open_nodes)
+    end
+  end
+
+  # open_node? answers whether idx is already open (a cycle), and marks it
+  # open when it is not
+  defp open_node?(idx) do
+    case Process.get(:elixir_open_nodes) do
+      nil ->
+        false
+
+      {root, open} ->
+        if MapSet.member?(open, idx) do
+          true
+        else
+          Process.put(:elixir_open_nodes, {root, MapSet.put(open, idx)})
+          false
+        end
+    end
+  end
+
+  defp close_node(idx) do
+    case Process.get(:elixir_open_nodes) do
+      nil -> :ok
+      {root, open} -> Process.put(:elixir_open_nodes, {root, MapSet.delete(open, idx)})
+    end
+  end
+
+  defp root_named!(f) do
+    case Process.get(:elixir_open_nodes) do
+      {root, _open} -> if Map.get(f, :elem) == root, do: throw(:wire_damaged)
+      nil -> :ok
     end
   end
 
@@ -1848,13 +1903,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_payload(%{t: :pointer} = _f, payload, nodes, ids, report) do
+  defp read_payload(%{t: :pointer} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {0, _} ->
         {:cont, nil, report}
 
       {1, _} ->
-        # node index 1 is the ROOT, a table body, never a pointer's pointee
+        # node index 1 is the ROOT: under the root's own table it is a cycle
+        # (open_node?/1), under any other a kind mismatch
+        root_named!(f)
         {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
       {idx, _} ->
@@ -2300,6 +2357,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {1, after_sub} ->
         # node index 1 is the ROOT, as at a pointer field
+        root_named!(f)
         report = %{report | kind_mismatch: report.kind_mismatch + 1}
         read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
 
@@ -4522,7 +4580,10 @@ const variableRetainSource = `
             # the node directory's memo: a node a second pointer names is the
             # one value, read and retained once (§6.6, the path's first step)
             retain = Map.put(retain, :memo, %{})
-            {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
+            {value, report, retain} =
+              with_open_marks(table, fn ->
+                decode_retain(desc, fields, nodes, ids, retain, report, [])
+              end)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             # an unknown NODE RECORD whose type id this reader cannot name is an
             # excluded class (§6.6): one retain_lost, counted once at the record
@@ -5019,12 +5080,13 @@ const variableRetainSource = `
     end
   end
 
-  defp read_payload_retain(%{t: :pointer}, payload, nodes, ids, report, retain, _path) do
+  defp read_payload_retain(%{t: :pointer} = f, payload, nodes, ids, report, retain, _path) do
     case leb(payload) do
       {0, _} ->
         {:cont, nil, report, retain}
 
       {1, _} ->
+        root_named!(f)
         {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
 
       {idx, _} ->
@@ -5363,7 +5425,8 @@ const variableRetainSource = `
   defp node_table_retain(nodes, name, body, ids, idx, report, retain) do
     case retain.memo do
       %{^idx => :pending} ->
-        {:null, report, retain}
+        # a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        throw(:wire_damaged)
 
       %{^idx => value} ->
         {{:value, value}, report, retain}
@@ -5384,7 +5447,7 @@ const variableRetainSource = `
             {{:value, value}, report, %{retain | memo: Map.put(retain.memo, idx, value)}}
 
           _ ->
-            {:null, report, retain}
+            throw(:wire_damaged)
         end
     end
   end
