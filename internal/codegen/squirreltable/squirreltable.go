@@ -135,6 +135,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	m.Printf("_M.Roots <- [%s];\n", strings.Join(roots, ", "))
 	m.Printf("%s.link(_M);\n\n", desc)
+	if closureHasKeyed(m.Closure) {
+		m.Printf("// THE KEYED ACCESSOR (docs/PORTING.md M5): Keyed(table, field) refuses None\n")
+		m.Printf("// and any key past the enum's last variant by name, in every build.\n")
+		m.Printf("_M.Keyed <- function(table, field) { return %s.keyed(_M, table, field); };\n\n", desc)
+	}
 	for _, s := range surfaces {
 		if !unitCarriesSurface(u, s.Name) {
 			continue
@@ -866,4 +871,17 @@ func FloatOwner(u *ir.Unit, f *ir.Field) string {
 		}
 	}
 	return f.Name
+}
+
+// closureHasKeyed reports whether a table or type the module emits declares
+// an enum-keyed array, the field shape the Keyed accessor serves.
+func closureHasKeyed(closure []*ir.Struct) bool {
+	for _, st := range closure {
+		for _, f := range st.Fields {
+			if f.KeyEnumRef != nil {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -522,6 +522,7 @@ local guardHolds = function(fd, v) {
 // holds, refuses the record: report.malformed and the field, whole at any
 // depth (docs/SPEC-TABLES.md §2.3).
 bodyRead = function(c, r, T, table, v, report, st, nested) {
+  if (report.countRefusal) return false;
   local carried = {};
   for (;;) {
     local ref = leb(r);
@@ -592,6 +593,10 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       continue;
     }
     if (!readField(fd, r, T, table, v, report, st, nested)) return false;
+    // A COLLECTION COUNT PAST THE INT32 STORAGE CAP STOPS THE READ (docs/SPEC-TABLES.md
+    // §2.9, §6.1; the engine's CountRefusal): the caller discards the partial
+    // value, and no event after the cap is read
+    if (report.countRefusal) return false;
   }
 };
 
@@ -699,6 +704,7 @@ readField = function(fd, r, T, table, v, report, st, nested) {
     local inst = tableDesc(T, fd.table).make();
     v[fd.member] = inst;
     bodyRead(tableDesc(T, fd.table), sub, T, table, inst, report, st, true);
+    if (report.countRefusal) return false;
     if (sub.at != sub.end) {
       report.malformed = true;
       v[fd.member] = tableDesc(T, fd.table).make();
@@ -845,7 +851,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
     report.countRefusal = true;
     v[fd.member] = empty;
     r.at = end;
-    return true;
+    return false;
   }
   local ed = tableDesc(T, fd.entry);
   local arr = [];
@@ -885,6 +891,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
     // report is a delegate witness whose slots live behind _get and _set.
     local before = mapEntryCounters(report);
     if (!readMapEntry(ed, es, T, table, ent, report, st)) {
+      if (report.countRefusal) return false;
       report.malformed = true;
       break;
     }
@@ -1034,6 +1041,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
       }
       local sr = newReader(r.b, r.at, r.at + elen);
       local res = readKeyedElem(fd, fd.elem, sr, ek, T, table, out, slot, report, st);
+      if (report.countRefusal) break;
       if (res[1]) out[slot] = res[0];
       r.at += elen;
     }
@@ -1106,6 +1114,7 @@ readKeyedElem = function(fd, e, sr, ek, T, table, out, slot, report, st) {
     local d = tableDesc(T, e.table);
     local inst = d.make();
     bodyRead(d, sr, T, table, inst, report, st, true);
+    if (report.countRefusal) return [null, false];
     if (sr.at != sr.end) { report.malformed = true; inst = d.make(); }
     return [inst, true];
   }
@@ -1154,6 +1163,7 @@ readElement = function(fd, e, r, T, table, out, report, st, ek) {
     local d = tableDesc(T, e.table);
     local inst = d.make();
     bodyRead(d, sub, T, table, inst, report, st, true);
+    if (report.countRefusal) return false;
     if (sub.at != sub.end) { report.malformed = true; inst = d.make(); }
     r.at += L;
     out.append(inst);
@@ -1309,6 +1319,7 @@ readArmPayload = function(arm, sub, wireKind, T, table, inst, report, st) {
     local child = d.make();
     inst[p.member] = child;
     bodyRead(d, sub, T, table, child, report, st, true);
+    if (report.countRefusal) return false;
     if (sub.at != sub.end) {
       report.malformed = true;
       inst.Type = 0;
@@ -1482,6 +1493,7 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     foreach (n in st.nodes) {
       if (n == null || n.kind != "t") continue;
       bodyRead(n.d, newReader(n.b, n.at, n.end), T, table, n.v, report, st, true);
+      if (report.countRefusal) break;
     }
   }
   local finished = bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
