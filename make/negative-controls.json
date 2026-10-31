@@ -598,6 +598,7 @@
         "tables-rust-json-hostile-negative-control",
         "tables-rust-names-negative-control",
         "tables-rust-runtime-home-negative-control",
+        "tables-rust-guard-negative-control",
         "tables-rust-retain-negative-control",
         "tables-rust-soak-negative-control"
       ],

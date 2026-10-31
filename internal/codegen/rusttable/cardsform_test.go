@@ -46,7 +46,8 @@ func TestCardConstructsAreNotRefused(t *testing.T) {
 // every variable-class construct outside the card slice is refused at
 // generation, and the refusal names the table, the field and the construct.
 // It is the boundary the card draws: never mis-encoded, never silently
-// dropped.
+// dropped. A guarded field (an if group) left this list when the variable
+// wire learned to gate it (variableguard.go, TestGuardAndOptionalEdgesRust).
 func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	t.Parallel()
 
@@ -55,7 +56,6 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		field    *ir.Field
 		keywords []string
 	}{
-		{"guarded", &ir.Field{Name: "when", Guard: "armed", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"guarded"}},
 		{"fixed_point", &ir.Field{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, Signed: true}}, []string{"fixed-point"}},
 		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
 		{"compressed_float", &ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}}, []string{"compressed float"}},

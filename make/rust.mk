@@ -307,6 +307,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblfu1:test/tables/FU1.schema tblfu2:test/tables/FU2.schema \
 	tblw1:test/tables/W1.schema tblw2:test/tables/W2.schema \
 	tblr1:test/tables/R1.schema tblr2:test/tables/R2.schema \
+	tblg1:test/tables/G1.schema \
 	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
 	widedemo:examples-wide/Caption.schema
 
@@ -319,7 +320,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema examples-wide/Caption.schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -870,6 +871,37 @@ tables-rust-json-hostile-negative-control:
 	@grep -m1 'MISMATCH illformed-at-bound' build/rust-json-hostile-control/log
 	@grep -m1 'MISMATCH zero-map-key:' build/rust-json-hostile-control/log
 	@echo "rust json-hostile negative control: the old reader turns exactly the fifteen §16.3 refusal rows RED"
+
+# THE GUARD NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.1, §4; test/tables/G1.schema):
+# the generated guard gate is taken out of the numbering, the save and the
+# text writer, through a `go test -overlay` of
+# internal/codegen/rusttable/variableguard.go so no tracked file is edited, and
+# TestGuardAndOptionalEdgesRust must go red on the false-guard cases (the
+# witness's save, every false-guard text's `resting` key) and never on
+# guard_true_both_edges, whose guard holds: a guard that has never been turned
+# off proves nothing.
+.PHONY: tables-rust-guard-negative-control
+tables-rust-guard-negative-control:
+	@rm -rf build/rust-guard-control && mkdir -p build/rust-guard-control
+	@sed 's|walk(st.Items, nil)|walk(st.Items[:0], nil)|' \
+		internal/codegen/rusttable/variableguard.go > build/rust-guard-control/variableguard.go.txt
+	@cmp -s internal/codegen/rusttable/variableguard.go build/rust-guard-control/variableguard.go.txt && \
+		{ echo "NEGATIVE CONTROL: the guard sabotage did not apply"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variableguard.go":"%s/build/rust-guard-control/variableguard.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-guard-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+			-overlay=build/rust-guard-control/overlay.json \
+			-run TestGuardAndOptionalEdgesRust ./internal/codegen/rusttable/ > build/rust-guard-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the G1 suite stayed green with the Rust guard gate turned off"; \
+		exit 1; \
+	fi
+	@grep -q 'case guard_false_resting_set: the Rust save' build/rust-guard-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the suite went red, but not on the false-guard save"; \
+		  cat build/rust-guard-control/log; exit 1; }
+	@! grep -E 'case guard_true_both_edges:' build/rust-guard-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage turned the case whose guard holds red"; exit 1; }
+	@grep -m1 'case guard_false_resting_set: the Rust save' build/rust-guard-control/log
+	@echo "rust guard negative control: turning the guard gate off turns exactly the false-guard G1 cases RED"
 
 test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-rust-json-hostile-negative-control
 

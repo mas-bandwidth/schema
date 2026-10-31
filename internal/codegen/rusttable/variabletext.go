@@ -828,9 +828,12 @@ func emitEnumText(b *strings.Builder, e *ir.Enum) {
 func (g *gen) emitTextCount(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "#[allow(unused_variables, dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, w: &mut Jw) {\n", fn(st.Name, "json_count"), st.Name)
+	conds := guardConds(st, "v")
 	for _, f := range st.Fields {
 		x := "v." + ir.RustSnake(f.Name)
-		g.emitFieldTextCount(b, f, x, "    ")
+		// a field under a false guard has no key in the text (§4, §16.1), so
+		// it names no node either
+		guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldTextCount(b, f, x, bodyIndent) })
 	}
 	fmt.Fprintf(b, "}\n\n")
 }
@@ -891,32 +894,39 @@ func (g *gen) emitTextWrite(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        w.out.push_str(&label.to_string());\n")
 	fmt.Fprintf(b, "        sep = true;\n")
 	fmt.Fprintf(b, "    }\n")
+	conds := guardConds(st, "v")
 	for _, f := range st.Fields {
-		if f.Type.Optional {
-			inner := *f
-			inner.Type.Optional = false
-			fmt.Fprintf(b, "    if let Some(opt) = &v.%s {\n", ir.RustSnake(f.Name))
-			fmt.Fprintf(b, "        if sep { w.out.push(','); }\n")
-			fmt.Fprintf(b, "        sep = true;\n")
-			fmt.Fprintf(b, "        json_newline(&mut w.out, depth + 1);\n")
-			fmt.Fprintf(b, "        json_escape(%q, &mut w.out);\n", g.fieldKey(f))
-			fmt.Fprintf(b, "        w.out.push_str(\": \");\n")
-			g.emitTextWriteValue(b, &inner, "(*opt)", "depth + 1", "        ")
-			fmt.Fprintf(b, "    }\n")
-			continue
-		}
-		fmt.Fprintf(b, "    if sep { w.out.push(','); }\n")
-		fmt.Fprintf(b, "    sep = true;\n")
-		fmt.Fprintf(b, "    json_newline(&mut w.out, depth + 1);\n")
-		fmt.Fprintf(b, "    json_escape(%q, &mut w.out);\n", g.fieldKey(f))
-		fmt.Fprintf(b, "    w.out.push_str(\": \");\n")
-		g.emitTextWriteValue(b, f, "v."+ir.RustSnake(f.Name), "depth + 1", "    ")
+		// a field under a false guard is not written (§4, §16.1): no key
+		guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldTextWrite(b, f) })
 	}
 	fmt.Fprintf(b, "    if sep {\n")
 	fmt.Fprintf(b, "        json_newline(&mut w.out, depth);\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    w.out.push('}');\n")
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// emitFieldTextWrite emits one field's key and value in the JSON write.
+func (g *gen) emitFieldTextWrite(b *strings.Builder, f *ir.Field) {
+	if f.Type.Optional {
+		inner := *f
+		inner.Type.Optional = false
+		fmt.Fprintf(b, "    if let Some(opt) = &v.%s {\n", ir.RustSnake(f.Name))
+		fmt.Fprintf(b, "        if sep { w.out.push(','); }\n")
+		fmt.Fprintf(b, "        sep = true;\n")
+		fmt.Fprintf(b, "        json_newline(&mut w.out, depth + 1);\n")
+		fmt.Fprintf(b, "        json_escape(%q, &mut w.out);\n", g.fieldKey(f))
+		fmt.Fprintf(b, "        w.out.push_str(\": \");\n")
+		g.emitTextWriteValue(b, &inner, "(*opt)", "depth + 1", "        ")
+		fmt.Fprintf(b, "    }\n")
+		return
+	}
+	fmt.Fprintf(b, "    if sep { w.out.push(','); }\n")
+	fmt.Fprintf(b, "    sep = true;\n")
+	fmt.Fprintf(b, "    json_newline(&mut w.out, depth + 1);\n")
+	fmt.Fprintf(b, "    json_escape(%q, &mut w.out);\n", g.fieldKey(f))
+	fmt.Fprintf(b, "    w.out.push_str(\": \");\n")
+	g.emitTextWriteValue(b, f, "v."+ir.RustSnake(f.Name), "depth + 1", "    ")
 }
 
 func (g *gen) fieldKey(f *ir.Field) string {

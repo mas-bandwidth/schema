@@ -31,6 +31,7 @@ mod messagedemo;
 mod streamdemo;
 mod tabledemo;
 mod tbla2;
+mod tblg1;
 mod tblk1;
 mod tblk2;
 mod tblm1;
@@ -214,6 +215,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("tabledemo", "RootConfig"),
     ("tabledemo", "WideBlob"),
     ("tbla2", "Root"),
+    ("tblg1", "Guarded"),
     ("tblk1", "Root"),
     ("tblk2", "Root"),
     ("tblm1", "Msg"),
@@ -301,6 +303,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("tabledemo", "RootConfig") => arm!(tabledemo, root_config_load, root_config_load_retain, root_config_save, root_config_save_checked, root_config_save_retain, root_config_load_measure, wire, retain),
         ("tabledemo", "WideBlob") => arm!(tabledemo, wide_blob_load, wide_blob_load_retain, wide_blob_save, wide_blob_save_checked, wide_blob_save_retain, wide_blob_load_measure, wire, retain),
         ("tbla2", "Root") => arm!(tbla2, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
+        ("tblg1", "Guarded") => arm!(tblg1, guarded_load, guarded_load_retain, guarded_save, guarded_save_checked, guarded_save_retain, guarded_load_measure, wire, retain),
         ("tblk1", "Root") => arm!(tblk1, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
         ("tblk2", "Root") => arm!(tblk2, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
         ("tblm1", "Msg") => arm!(tblm1, msg_load, msg_load_retain, msg_save, msg_save_checked, msg_save_retain, msg_load_measure, wire, retain),

@@ -526,66 +526,74 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s — the numbering walk over one %s body (docs/SPEC-TABLES.md §3.1).\n", fn(st.Name, "number"), st.Name)
 	fmt.Fprintf(b, "#[allow(unused_variables)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, g: &mut TableNodeGraph) {\n", fn(st.Name, "number"), st.Name)
+	conds := guardConds(st, "v")
 	for _, f := range st.Fields {
-		x := "v." + ir.RustSnake(f.Name)
-		if f.Type.Optional {
-			switch classOf(f) {
-			case vPointer:
-				if f.Array != ir.ArrayNone {
-					fmt.Fprintf(b, "    if let Some(arr) = &%s { for n in arr.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }\n", x, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
-				}
-			case vTable:
-				if f.Array != ir.ArrayNone {
-					fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() { %s(e, g); } }\n", x, fn(f.Type.Name, "number"))
-				} else {
-					fmt.Fprintf(b, "    if let Some(inner) = &%s { %s(inner, g); }\n", x, fn(f.Type.Name, "number"))
-				}
-			case vUnion:
-				if f.Array != ir.ArrayNone {
-					fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() {\n", x)
-					g.emitUnionNumber(b, f, "(*e)")
-					fmt.Fprintf(b, "    } }\n")
-				} else {
-					fmt.Fprintf(b, "    if let Some(inner) = &%s {\n", x)
-					g.emitUnionNumber(b, f, "(*inner)")
-					fmt.Fprintf(b, "    }\n")
-				}
-			}
-			continue
-		}
-		switch classOf(f) {
-		case vBlob:
-			bytes := "b.as_bytes()"
-			if f.Type.Kind == ir.TBytes {
-				bytes = "&b[..]"
-			}
-			fmt.Fprintf(b, "    if let Some(b) = &%s { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); }\n", x, blobTypeConst(f), bytes)
-		case vPointer:
-			id, number := ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number")
-			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-				fmt.Fprintf(b, "    for n in %s.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } }\n", x, id, number)
-			} else {
-				fmt.Fprintf(b, "    if let Some(n) = &%s && g.visit_table(0x%016x, n.clone()) { %s(n, g); }\n", x, id, number)
-			}
-		case vTable:
-			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-				fmt.Fprintf(b, "    for e in %s.iter() { %s(e, g); }\n", x, fn(f.Type.Name, "number"))
-			} else {
-				fmt.Fprintf(b, "    %s(&%s, g);\n", fn(f.Type.Name, "number"), x)
-			}
-		case vMap:
-			g.emitMapNumber(b, f, x)
-		case vUnion:
-			if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-				fmt.Fprintf(b, "    for e in %s.iter() {\n", x)
-				g.emitUnionNumber(b, f, "(*e)")
-				fmt.Fprintf(b, "    }\n")
-			} else {
-				g.emitUnionNumber(b, f, x)
-			}
-		}
+		// a field under a false guard is not written, so it is not an edge
+		// (§3.1): the numbering does not visit what it holds
+		guardedField(b, conds[f.Name], func(b *strings.Builder) { g.emitFieldNumber(b, f) })
 	}
 	fmt.Fprintf(b, "}\n\n")
+}
+
+// emitFieldNumber emits one field's step of the numbering walk.
+func (g *gen) emitFieldNumber(b *strings.Builder, f *ir.Field) {
+	x := "v." + ir.RustSnake(f.Name)
+	if f.Type.Optional {
+		switch classOf(f) {
+		case vPointer:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    if let Some(arr) = &%s { for n in arr.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }\n", x, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
+			}
+		case vTable:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() { %s(e, g); } }\n", x, fn(f.Type.Name, "number"))
+			} else {
+				fmt.Fprintf(b, "    if let Some(inner) = &%s { %s(inner, g); }\n", x, fn(f.Type.Name, "number"))
+			}
+		case vUnion:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "    if let Some(arr) = &%s { for e in arr.iter() {\n", x)
+				g.emitUnionNumber(b, f, "(*e)")
+				fmt.Fprintf(b, "    } }\n")
+			} else {
+				fmt.Fprintf(b, "    if let Some(inner) = &%s {\n", x)
+				g.emitUnionNumber(b, f, "(*inner)")
+				fmt.Fprintf(b, "    }\n")
+			}
+		}
+		return
+	}
+	switch classOf(f) {
+	case vBlob:
+		bytes := "b.as_bytes()"
+		if f.Type.Kind == ir.TBytes {
+			bytes = "&b[..]"
+		}
+		fmt.Fprintf(b, "    if let Some(b) = &%s { g.visit_blob(%s, Rc::as_ptr(b) as *const u8 as usize, %s); }\n", x, blobTypeConst(f), bytes)
+	case vPointer:
+		id, number := ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number")
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "    for n in %s.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } }\n", x, id, number)
+		} else {
+			fmt.Fprintf(b, "    if let Some(n) = &%s && g.visit_table(0x%016x, n.clone()) { %s(n, g); }\n", x, id, number)
+		}
+	case vTable:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "    for e in %s.iter() { %s(e, g); }\n", x, fn(f.Type.Name, "number"))
+		} else {
+			fmt.Fprintf(b, "    %s(&%s, g);\n", fn(f.Type.Name, "number"), x)
+		}
+	case vMap:
+		g.emitMapNumber(b, f, x)
+	case vUnion:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "    for e in %s.iter() {\n", x)
+			g.emitUnionNumber(b, f, "(*e)")
+			fmt.Fprintf(b, "    }\n")
+		} else {
+			g.emitUnionNumber(b, f, x)
+		}
+	}
 }
 
 func blobTypeConst(f *ir.Field) string {
@@ -606,8 +614,13 @@ func (g *gen) emitVariableSaveBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// before its zero reference (docs/SPEC-TABLES.md §6.6); None on the plain path.\n")
 	fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, clippy::too_many_arguments)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, out: &mut Vec<u8>, ids: &mut IdTable, g: &TableNodeGraph, mut retain: Option<&mut TableRetain>, mut report: Option<&mut TableReport>, path: TableRetainPath) {\n", fnName, st.Name)
+	conds := guardConds(st, "v")
 	for i, f := range st.Fields {
-		g.emitVariableSaveField(b, f, i, "v."+ir.RustSnake(f.Name), "    ")
+		// a field under a false guard is not written (§4), nor anything it
+		// holds, on the plain and the retaining path alike
+		guardedField(b, conds[f.Name], func(b *strings.Builder) {
+			g.emitVariableSaveField(b, f, i, "v."+ir.RustSnake(f.Name), bodyIndent)
+		})
 	}
 	fmt.Fprintf(b, "}\n\n")
 }

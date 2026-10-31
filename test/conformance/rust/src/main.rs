@@ -925,6 +925,11 @@ macro_rules! with_root {
                 use tabledemo::{wide_blob_from_json_bytes as $from_json, wide_blob_load as $load, wide_blob_save_checked as $save, wide_blob_to_json_checked as $to_json};
                 Some($body)
             }
+            ("tblg1", "Guarded") => {
+                #[allow(unused_imports)]
+                use tblg1::{guarded_from_json_bytes as $from_json, guarded_load as $load, guarded_save_checked as $save, guarded_to_json_checked as $to_json};
+                Some($body)
+            }
             ("streamdemo", "Feed") => {
                 #[allow(unused_imports)]
                 use streamdemo::{feed_from_json_bytes as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json};
@@ -1151,7 +1156,15 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
         if saves && f.last().is_some_and(|v| v == "-") {
             continue;
         }
-        if f[0] == "retain-message" || f[2] != "tblrt1" || f[3] != "Node" {
+        if f[0] == "retain-message" {
+            // A retain-message row's root is a plain `table` (RT1's `Node`),
+            // which carries no message verbs (docs/SPEC-TABLES.md §3.3: "a
+            // plain `table T` may not" ride the form): ABSENT, with the reason,
+            // as the Go driver answers it.
+            spill(out, &format!("{}.absent", f[1]), b"plain table: \xc2\xa73.3");
+            continue;
+        }
+        if f[2] != "tblrt1" || f[3] != "Node" {
             spill_absent(out, &f[1]);
             continue;
         }
