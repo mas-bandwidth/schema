@@ -128,6 +128,11 @@ func cookCollect(st *ir.Struct, seen map[string]bool, out *[]*ir.Struct) {
 }
 
 func cookCollectField(f *ir.Field, seen map[string]bool, out *[]*ir.Struct) {
+	if f != nil && f.IsMap() {
+		// a map's generated { key, value } entry is laid like any record (§2.8)
+		cookCollect(f.MapEntry, seen, out)
+		return
+	}
 	if f == nil || f.Type.Kind != ir.TNamed {
 		return
 	}
@@ -170,6 +175,12 @@ func cookWriteWalk(st *ir.Struct, seen map[string]bool, variable bool) bool {
 		if cookFieldBlocked(f, variable) {
 			return true
 		}
+		if variable && f.IsMap() {
+			if cookWriteWalk(f.MapEntry, seen, variable) {
+				return true
+			}
+			continue
+		}
 		if f.Type.Kind != ir.TNamed {
 			continue
 		}
@@ -199,17 +210,25 @@ func cookWriteWalk(st *ir.Struct, seen map[string]bool, variable bool) bool {
 
 // cookFieldBlocked is the construct this cook writer does not place. On the
 // variable form (docs/SPEC-TABLES.md §7.6), every construct the variable wire
-// carries except maps and unbounded lists is placed; on the fixed form, only
-// the initial fixed subset is placed.
+// carries is placed, a map's entries and a list's elements in the holder's
+// node extent (docs/PORTING.md M19); on the fixed form, only the initial fixed
+// subset is placed.
 func cookFieldBlocked(f *ir.Field, variable bool) bool {
 	if f == nil {
 		return true
 	}
 	if variable {
 		switch {
-		case f.IsMap(), f.IsList(), f.Type.Kind == ir.TMap, f.Type.Kind == ir.TWString:
+		case f.IsMap():
+			// the entry is walked as a record (cookWriteWalk)
+			return false
+		case f.Type.Kind == ir.TMap:
 			return true
-		case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+		case f.Type.Kind == ir.TWString && (f.Type.Pointer || f.Type.Unbounded || f.Array != ir.ArrayNone):
+			return true
+		case f.IsList() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+			return true
+		case f.Array != ir.ArrayNone && f.Array != ir.ArrayList && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
 			return true
 		}
 		if f.Type.Kind == ir.TNamed {
@@ -228,7 +247,7 @@ func cookFieldBlocked(f *ir.Field, variable bool) bool {
 			}
 		}
 		switch f.Type.Kind {
-		case ir.TBool, ir.TInt, ir.TFixed, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes, ir.TBits:
+		case ir.TBool, ir.TInt, ir.TFixed, ir.TFloat32, ir.TFloat64, ir.TString, ir.TWString, ir.TBytes, ir.TBits:
 			return false
 		}
 		return true
@@ -277,6 +296,13 @@ func cookStructLiteral(u *ir.Unit, st *ir.Struct, variable bool) string {
 		ml.Size, ml.Align, data, 64+data+16, alignCook, jsId(ir.TableTypeId(st.WireName())))
 	if variable {
 		fmt.Fprintf(&b, ", make: () => new %s()", st.Name)
+		if cookRecordHasExtent(st) {
+			// THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §6.2; docs/PORTING.md
+			// M19): the node aligns to ir.CookNodeAlign and its extent begins at
+			// ir.CookExtentStart, the one rule the reference and the tool share
+			fmt.Fprintf(&b, ", ext: true, nodeAlign: %d, extentStart: %d",
+				ir.CookNodeAlign(u, st), ir.CookExtentStart(u, st))
+		}
 	}
 	b.WriteString(",\n      fields: [\n")
 	for i := range ml.Fields {
@@ -309,6 +335,28 @@ func cookFieldLiteral(u *ir.Unit, f *ir.Field, offset int64, variable bool) stri
 		}
 	}
 	pieces := ir.FieldPieces(u, f, offset)
+	if variable && f.IsMap() {
+		// a MAP's sixteen-byte holder; its entries ride in the node extent,
+		// ascending by key (§2.8)
+		ml := ir.RecordLayout(u, f.MapEntry)
+		ks := 0
+		if ir.MapKeyField(f).Type.Kind == ir.TString {
+			ks = 1
+		}
+		return fmt.Sprintf("{k:\"map\",n:%s,at:%d,size:%d,align:%d,t:%s,ks:%d}",
+			qn, pieces[0].Offset, ml.Size, max(ml.Align, 1), strconv.Quote(f.MapEntry.Name), ks)
+	}
+	if variable && f.IsList() {
+		// a LIST's sixteen-byte holder; its elements ride in the node extent (§2.9)
+		size, align := ir.ListElementLayout(u, f)
+		return fmt.Sprintf("{k:\"list\",n:%s,at:%d,size:%d,align:%d,elem:%s}",
+			qn, pieces[0].Offset, size, max(align, 1), cookElemLiteral(u, f, variable))
+	}
+	if variable && f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone {
+		// char16_t[N+1]: the used CODE UNITS, each a two-byte scalar in the
+		// cook's byte order, then a zero tail, and the unit count beside it
+		return fmt.Sprintf("{k:\"wstr\",n:%s,at:%d,lenAt:%d,cap:%d}", qn, pieces[0].Offset, pieces[1].Offset, f.Type.Size)
+	}
 	if f.KeyEnum != "" || f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		stride := cookElemStride(u, f)
 		countAt := int64(-1)
@@ -590,6 +638,10 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
       if (view !== null) { view.setUint8(base + fd.presentAt, 1); }
     }
     if (fd.k === "arr") { return writeArray(view, base, fd, parent, le, ctx); }
+    // a LIST's or a MAP's holder is written by the extent's carve, which
+    // places the array it points at (§2.8, §2.9)
+    if (fd.k === "list" || fd.k === "map") { return true; }
+    if (fd.k === "wstr") { return writeWide(view, base, fd, parent, le); }
     if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
     if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
     if (fd.k === "ptr") { return writeRef(view, base + fd.at, ptrIndex(ctx, parent[fd.n]), le, ctx); }
@@ -633,9 +685,21 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
         return writeRef(view, at, ptrIndex(ctx, value), le, ctx);
       case "union":
         return writeUnion(view, at, fd, value, le, ctx);
+      case "list": case "map":
+        return true;
       default:
         return false;
     }
+  }
+  // char16_t[N+1]: a JavaScript string IS its UTF-16 code units, each written
+  // as a two-byte scalar in the cook's byte order, the unit count beside them
+  function writeWide(view, base, fd, parent, le) {
+    const s = parent[fd.n];
+    if (typeof s !== "string" || s.length > fd.cap) { return false; }
+    if (view !== null) {
+      for (let i = 0; i < s.length; i++) { view.setUint16(base + fd.at + 2 * i, s.charCodeAt(i), le); }
+    }
+    return putWidth(view, base + fd.lenAt, 4, s.length, true, le);
   }
   function holeValue(fd) {
     switch (fd.k) {
@@ -759,6 +823,109 @@ const cookEngineVariable = `  function alignUp(n, a) {
     if (a <= 1) { return n; }
     return Math.floor((n + a - 1) / a) * a;
   }
+  // ---- THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6;
+  // docs/PORTING.md M19; the layout tla/NodeExtent.tla models and
+  // internal/tablecook/extent.go writes). A record's lists and maps lay their
+  // arrays after the record's own storage: field by field in declaration
+  // order, each holder's WHOLE array at the running offset rounded to its
+  // element's alignment, then, element by element, the arrays those elements
+  // hold by value — PRE-ORDER. The holder takes the self-relative delta to its
+  // array (zero when empty) and the count. With view null the same walk
+  // measures: one walk, two halves, so they cannot drift. at is the value's
+  // own offset, base the extent's, and cur.at the running offset inside it.
+  function carveRecord(view, at, base, cur, value, layout, le, ctx) {
+    if (layout === undefined || !layout.ext) { return true; }
+    if (value === null || typeof value !== "object") { return false; }
+    for (let i = 0; i < layout.fields.length; i++) {
+      const fd = layout.fields[i];
+      if (fd.k === "ptr" || fd.k === "sblob" || fd.k === "bblob") { continue; }
+      const v = value[fd.n];
+      if (fd.presentAt !== undefined && v === null) { continue; }
+      if (!carveValue(view, at + fd.at, base, cur, fd, v, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function carveValue(view, at, base, cur, fd, v, le, ctx) {
+    switch (fd.k) {
+      case "list": case "map":
+        return carveHolder(view, at, base, cur, fd, v, le, ctx);
+      case "rec":
+        return carveRecord(view, at, base, cur, v, layouts[fd.t], le, ctx);
+      case "arr": {
+        const e = fd.elem;
+        if (e.k !== "rec" && e.k !== "union" && e.k !== "list" && e.k !== "map") { return true; }
+        if (e.k === "rec" && !layouts[e.t].ext) { return true; }
+        // a slot past a counted array's live elements holds the
+        // value-initialized element, which holds no list and no map
+        const n = fd.countFrom === "len" ? (Array.isArray(v) ? v.length : 0) : fd.bound;
+        for (let i = 0; i < n; i++) {
+          if (!carveValue(view, at + i * fd.stride, base, cur, e, v[i], le, ctx)) { return false; }
+        }
+        return true;
+      }
+      case "union": {
+        if (!fd.var || v === null || v === undefined || typeof v !== "object") { return true; }
+        for (let i = 0; i < fd.arm.length; i++) {
+          const arm = fd.arm[i];
+          if (arm.an !== v.arm) { continue; }
+          if (arm.v || arm.k === "ptr" || arm.k === "sblob" || arm.k === "bblob") { return true; }
+          return carveValue(view, at + fd.armAt + arm.at, base, cur, arm, v.value, le, ctx);
+        }
+        return true;
+      }
+      default:
+        return true;
+    }
+  }
+  // A holder's elements in the order its array lays them: a list's as it holds
+  // them, a map's entries ASCENDING BY KEY (§2.8). THE WRITER HOLDS THE SORT:
+  // TableVariableMapEntries orders the entries a Map holds in whatever order,
+  // so a Map built out of key order cooks the same bytes, and under the
+  // cook's entry cache the numbering, the measure and the write all see the
+  // same entry objects.
+  function holderElements(fd, v) {
+    if (fd.k === "map") {
+      if (!(v instanceof Map)) { return null; }
+      return TableVariableMapEntries({ c: layouts[fd.t], ks: fd.ks === 1 }, v);
+    }
+    return Array.isArray(v) ? v : null;
+  }
+  function carveHolder(view, slot, base, cur, fd, v, le, ctx) {
+    const elems = holderElements(fd, v);
+    if (elems === null) { return false; }
+    const n = elems.length;
+    cur.at = alignUp(cur.at, fd.align);
+    const array = base + cur.at;
+    cur.at += n * fd.size;
+    if (view !== null) {
+      view.setBigInt64(slot, n > 0 ? BigInt(array - slot) : 0n, le);
+      view.setInt32(slot + 8, n, le);
+    }
+    if (fd.k === "map") {
+      const entry = layouts[fd.t];
+      for (let i = 0; i < n; i++) {
+        if (!writeStruct(view, array + i * fd.size, entry, elems[i], le, ctx)) { return false; }
+      }
+      for (let i = 0; i < n; i++) {
+        if (!carveRecord(view, array + i * fd.size, base, cur, elems[i], entry, le, ctx)) { return false; }
+      }
+      return true;
+    }
+    for (let i = 0; i < n; i++) {
+      if (!writeValue(view, array + i * fd.size, fd.elem, elems[i], le, ctx)) { return false; }
+    }
+    for (let i = 0; i < n; i++) {
+      if (!carveValue(view, array + i * fd.size, base, cur, fd.elem, elems[i], le, ctx)) { return false; }
+    }
+    return true;
+  }
+  // the save's entry cache (TableVariableEntryCache), held for one whole
+  // measure or write so every walk sees one sorted entry object per map
+  function withEntries(f) {
+    const outer = TableVariableEntryCache;
+    TableVariableEntryCache = new Map();
+    try { return f(); } finally { TableVariableEntryCache = outer; }
+  }
   function blobSize(entry) {
     return 8 + entry.len + (entry.string ? 1 : 0);
   }
@@ -780,18 +947,29 @@ const cookEngineVariable = `  function alignUp(n, a) {
         entries.push({ typeId: child.typeId, v: n.v, blob: false, layout: child, offset: 0 });
       }
     }
+    const ctx = { entries, nodes, nonFinite: false };
+    // a record node that holds a list or a map is its storage rounded to
+    // ir.CookExtentStart, then its extent, at ir.CookNodeAlign (§2.8, §6.2)
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      e.extent = 0;
+      if (!e.blob && e.layout.ext) {
+        const cur = { at: 0 };
+        if (!carveRecord(null, 0, 0, cur, e.v, e.layout, true, ctx)) { return { reason: ctx.nonFinite ? "non_finite_float" : "invalid_value" }; }
+        e.extent = cur.at;
+      }
+    }
     let data = 0, align = 8;
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      const alignment = e.blob ? 8 : e.layout.align;
-      const size = e.blob ? blobSize(e) : e.layout.size;
+      const alignment = e.blob ? 8 : (e.layout.ext ? e.layout.nodeAlign : e.layout.align);
+      const size = e.blob ? blobSize(e) : (e.layout.ext ? e.layout.extentStart + e.extent : e.layout.size);
       if (alignment > align) { align = alignment; }
       data = alignUp(data, alignment);
       e.offset = data;
       data += size;
     }
     data = alignUp(data, align);
-    const ctx = { entries, nodes, nonFinite: false };
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: ctx.nonFinite ? "non_finite_float" : "invalid_value" }; }
@@ -799,15 +977,22 @@ const cookEngineVariable = `  function alignUp(n, a) {
     return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
   }
   function variableMeasure(name, value) {
-    const reg = region(name, value);
-    return reg.reason === null ? reg.total : -1;
+    return withEntries(() => {
+      const reg = region(name, value);
+      return reg.reason === null ? reg.total : -1;
+    });
   }
   function variableReason(name, value) {
-    const reg = region(name, value);
-    if (reg.reason !== null) { return [-1, reg.reason]; }
-    return [reg.total, null];
+    return withEntries(() => {
+      const reg = region(name, value);
+      if (reg.reason !== null) { return [-1, reg.reason]; }
+      return [reg.total, null];
+    });
   }
   function variableFrom(name, value, buffer, order) {
+    return withEntries(() => cookFrom(name, value, buffer, order));
+  }
+  function cookFrom(name, value, buffer, order) {
     if (order !== 1 && order !== 2) { return false; }
     const reg = region(name, value);
     if (reg.reason !== null) { return false; }
@@ -830,7 +1015,10 @@ const cookEngineVariable = `  function alignUp(n, a) {
           const src = e.body instanceof Uint8Array ? e.body : Uint8Array.from(e.body);
           new Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
         }
-      } else if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
+      } else {
+        if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
+        if (e.layout.ext && !carveRecord(view, at, at + e.layout.extentStart, { at: 0 }, e.v, e.layout, le, reg.ctx)) { return false; }
+      }
     }
     const dir = 64 + reg.data;
     for (let i = 0; i < reg.entries.length; i++) {
@@ -841,3 +1029,51 @@ const cookEngineVariable = `  function alignUp(n, a) {
     return true;
   }
 `
+
+// cookRecordHasExtent reports a record with a list or a map reachable BY VALUE
+// (docs/SPEC-TABLES.md §2.8, §2.9): the records whose node is their storage
+// PLUS an extent, the tool's recordHasExtent (internal/tablecook/extent.go).
+// A pointee and a byte buffer are nodes of their own, so neither is reached.
+func cookRecordHasExtent(st *ir.Struct) bool {
+	return cookStructExtent(st, map[*ir.Struct]bool{}, map[*ir.Union]bool{})
+}
+
+func cookStructExtent(st *ir.Struct, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
+	if st == nil || seenS[st] {
+		return false
+	}
+	seenS[st] = true
+	for _, f := range st.Fields {
+		if cookFieldExtent(f, seenS, seenU) {
+			return true
+		}
+	}
+	return false
+}
+
+func cookFieldExtent(f *ir.Field, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
+	if f.IsMap() || f.IsList() {
+		return true
+	}
+	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return cookStructExtent(ref, seenS, seenU)
+	case *ir.Union:
+		if seenU[ref] {
+			return false
+		}
+		seenU[ref] = true
+		for _, v := range ref.Variants {
+			if v.F != nil && cookFieldExtent(v.F, seenS, seenU) {
+				return true
+			}
+			if v.Ref != nil && cookStructExtent(v.Ref, seenS, seenU) {
+				return true
+			}
+		}
+	}
+	return false
+}
