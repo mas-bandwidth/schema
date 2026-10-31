@@ -3,9 +3,11 @@
     {
       "name": "base-1",
       "when": "pull-request",
-      "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, float-NaN and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
+      "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, C++ finite-float read and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
         "check-enum-bound-negative-control",
+        "tables-cpp-bench-gate-negative-control",
+        "tables-cpp-release-flags-negative-control",
         "generated-tree-negative-controls",
         "tables-c-runtime-home-negative-control",
         "tables-c-slot-negative-control",
@@ -24,6 +26,7 @@
         "tables-block-race-negative-control",
         "tables-c-accessor-negative-control",
         "tables-cpp-names-negative-control",
+        "tables-cpp-text-differential-negative-control",
         "tables-fixedform-run-copy-negative-control",
         "tables-json-list-walk-negative-controls",
         "tables-json-map-walk-negative-controls",
@@ -44,6 +47,7 @@
         "tables-c-ref-ordinal-negative-control",
         "tables-c-two-units-negative-controls",
         "tables-clamp-limits-negative-control",
+        "tables-cpp-runtime-home-bytes-negative-control",
         "tables-cpp-runtime-home-negative-control",
         "tables-doctags-negative-controls",
         "tables-fixed-twin-negative-control",
@@ -939,6 +943,14 @@
         "schema-dart-generated-strict-analyze-nested-default-negative-control"
       ],
       "dart": "3.13.2"
+    },
+    {
+      "name": "base-cpp-clean",
+      "when": "pull-request",
+      "why": "the C++ warnings gate's control (docs/PORTING.md J4): the packet emitter is rebuilt under an overlay that writes one placement-new with a C-style cast, the examples corpus is generated with it, and tables-cpp-clean's warnings engine (clang++ -Weverything less the c++98-compat family) must go red naming -Wold-style-cast in ArmDefaults.h while its guard, the unsabotaged output under its own census, stays green. One overlay build of cmd/schema and 20 small translation units: a few seconds on the author's machine; the job is its own row because the controls beside it are Go-cache heavy and this one wants only clang++.",
+      "targets": [
+        "tables-cpp-warnings-negative-control"
+      ]
     }
   ],
   "excluded": [
@@ -985,6 +997,10 @@
     {
       "target": "schema-shared-hostile-corpus-negative-control",
       "reason": "the hostile-corpus card's own planted-bad-pattern control: .github/workflows/schema-shared-hostile-corpus.yml runs it on its schedule and on dispatch, beside the drift gate that job runs on every push and pull request, so this leg would run it a second time."
+    },
+    {
+      "target": "tables-cpp-format-negative-control",
+      "reason": "the C++ format gate's drift control (docs/PORTING.md J4): the emitter writes one struct brace K&R and tables-cpp-format's engine must go red naming Types.h. It needs the pinned clang-format (make/c.mk CLANG_FORMAT_PIN), which the base rows do not install, so it refuses by name where the pin does not resolve and runs in the leg that does: ci-fast.yml's `fixed form and versioning rows` step for the cpp leg, beside tables-cpp-clean itself, as the Java drift control rides test-java."
     }
   ]
 }
