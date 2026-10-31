@@ -645,7 +645,7 @@ jobs:
       # every versioning row (make/goose-versioning.mk).
       - name: the Goose leg reads the reference's fixed-form bytes, and reads backward over every versioning row
         if: matrix.group == 'versioning'
-        run: make dist-goose test-goose tables-goose-versioning
+        run: make dist-goose test-goose tables-goose-versioning tables-goose-message-form
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would

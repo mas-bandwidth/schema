@@ -14,7 +14,7 @@
 # data that spans every file, so their bytes grow with the unit; each is held
 # to its HOME instead: present under the package's name in both trees whenever
 # either tree has one, and the only module that declares its unit-wide data
-# (TableUnit, CookRecords, BlockRecords, MessageVocabulary). Each module that
+# (TableUnit, CookRecords, BlockRecords, MessageAnnouncement). Each module that
 # moved is named; one is red.
 set -u
 
@@ -42,7 +42,7 @@ pkg=$(sed -n 's/^package \([A-Za-z0-9_]*\).*/\1/p' tables/examples/*.schema | he
 P=${pkg}_
 # the package modules (internal/codegen/goosetable PackageModule), each with the
 # declaration that is unit-wide data and may live nowhere else
-homes="unit:TableUnit cook:CookRecords block:BlockRecords message:MessageVocabulary"
+homes="unit:TableUnit cook:CookRecords block:BlockRecords message:MessageAnnouncement"
 ishome() {
 	for h in $homes; do [ "$1" = "$P${h%%:*}.goose" ] && return 0; done
 	return 1
