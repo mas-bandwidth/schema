@@ -5107,12 +5107,24 @@ const variableRetainSource = `
   defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
     retain = retain_reset(retain, path, f.ordinal, nil)
 
-    with {_len, <<ek, rest::binary>>} <- leb(payload),
-         true <- ek == f.elem_kind,
-         {n, pairs} <- leb(rest) do
-      read_keyed_retain(f, pairs, n, nodes, ids, %{}, report, retain, path)
-    else
-      _ -> {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+    # the header rules are the plain read's (read_payload, :keyed): a body
+    # too short for a header is inert, another element kind is a kind
+    # mismatch, and a count that cannot be read is damage (§3, §4)
+    case leb(payload) do
+      {_len, body} when byte_size(body) < 2 ->
+        {:cont, %{}, report, retain}
+
+      {_len, <<ek, _::binary>>} when ek != f.elem_kind ->
+        {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+
+      {_len, <<_ek, rest::binary>>} ->
+        case leb(rest) do
+          {n, pairs} -> read_keyed_retain(f, pairs, n, nodes, ids, %{}, report, retain, path)
+          :error -> {:cont, %{}, %{report | malformed: true}, retain}
+        end
+
+      :error ->
+        {:cont, %{}, %{report | malformed: true}, retain}
     end
   end
 
