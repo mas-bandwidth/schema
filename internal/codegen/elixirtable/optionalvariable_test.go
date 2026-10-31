@@ -3,6 +3,7 @@ package elixirtable
 import (
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -268,3 +269,56 @@ table Holder
     tail    int32
 }
 `
+
+// TestNestedBodyEndingEarlyIsDamageElixir pins a wire fuzzer finding (pass
+// reference, tblp1.Chain): a by-value nested body whose zero terminator is not
+// its last byte is DAMAGE (docs/SPEC-TABLES.md §3: a body ends at its
+// terminator or it is damage), and a read that meets damage reports it. The
+// leg read this mutant clean. The VALUE a damaged read returns is undefined
+// (the discard-on-damage ruling), so only the report is held.
+//
+// THE REVERSED WITNESS disables the early-terminator check and the probe must
+// go red.
+func TestNestedBodyEndingEarlyIsDamageElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, filepath.Join(root, "test", "tables", "P1.schema"))
+	// chain_value with the nested body's first reference turned into the zero
+	// reference: the body ends at its first byte, twelve bytes inside its L
+	const mutant = "01010c05636861696e020d0d000407000000040c037469700000861b638ebaadbcc409484f69ad9b4bbfea0ce83094fde47cf3a4484419abd7560400000000000000"
+	probe := fmt.Sprintf(`
+case Tblp1.Table.load("Chain", Base.decode16!(%q, case: :lower)) do
+  {:ok, _v, r} ->
+    if not r.malformed do
+      IO.puts(:stderr, "FAIL: a nested body ending early read clean: " <> inspect(r))
+      System.halt(1)
+    end
+
+  {:error, _reason, _r} ->
+    :ok
+end
+IO.puts("ok")
+`, mutant)
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir reader misses a nested body that ends early: %v\n%s", err, out)
+	}
+	const check = "if ends_early?(sub, ids) do"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), check)
+		planted[name] = []byte(strings.ReplaceAll(string(data), check, "if false do"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no early-terminator check in the generated reader")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the reader without its early-terminator check still passed: the probe does not see the rule\n%s", out)
+	}
+}
