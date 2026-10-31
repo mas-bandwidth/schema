@@ -437,6 +437,42 @@
       ]
     },
     {
+      "name": "base-c-proof",
+      "when": "pull-request",
+      "why": "the C leg's 3.0.0 proof controls that rebuild the compiler under one overlay each and compile one small C unit (docs/PORTING.md M11, M17, I12): the layout model moved under the block unit's static asserts, the blob span denied, and the documented keyed accessor renamed under docs/USAGE.md's example. Go and the host C compiler only.",
+      "targets": [
+        "tables-c-block-layout-model-negative-control",
+        "tables-c-blob-span-negative-control",
+        "tables-c-usage-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-probes",
+      "when": "pull-request",
+      "why": "the C wire probes' controls (docs/PORTING.md M14, M19): each runs one compiler/tablescwire_test.go probe under `go test -overlay` with one C emitter line sabotaged (the `&node` label dropped; the map save's sort removed), so each pays one compiler test build. Kept apart from base-c-proof so neither job carries both test builds and three compiler builds.",
+      "targets": [
+        "tables-c-json-label-negative-control",
+        "tables-c-map-sort-negative-control"
+      ]
+    },
+    {
+      "name": "base-c-absent",
+      "when": "pull-request",
+      "why": "the C driver's per-case absence control (docs/PORTING.md I4): a complete C conformance driver rebuilt from a sabotaged main.c and one harness run of the C leg. Alone for the reason base-c-foreign is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "conformance-negative-control-c-absent"
+      ]
+    },
+    {
+      "name": "base-c-format",
+      "when": "pull-request",
+      "clang_format": "pin",
+      "why": "the C format gate's drift control (docs/PORTING.md J4): one K&R struct brace planted in the C packet emitter under an overlay, the examples corpus generated with it, and tables-c-clean's engine (make/checks/c-clean-format.sh) must go red naming Types.h. It needs the pinned clang-format, which this row alone installs.",
+      "targets": [
+        "tables-c-format-negative-control"
+      ]
+    },
+    {
       "name": "base-c-finite",
       "when": "pull-request",
       "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS), so well inside the rule on its own row.",
