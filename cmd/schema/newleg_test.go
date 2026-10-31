@@ -177,7 +177,8 @@ func TestNewLegLuaYieldsABuildingTestingSkeleton(t *testing.T) {
 	// internal/ imports (docs/SPEC-TABLES.md §8.4), so it comes along.
 	for _, dir := range []string{"cmd", "compiler", "internal", "ir", filepath.Join("tables", "goruntime")} {
 		copyScaffoldTree(t, filepath.Join(root, dir), filepath.Join(tree, dir), func(rel string) bool {
-			return strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")
+			// the Luau emitters embed their runtime modules (go:embed runtime/*.luau)
+			return (strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")) || strings.HasSuffix(rel, ".luau")
 		})
 	}
 	copyScaffoldTree(t, filepath.Join(root, "make"), filepath.Join(tree, "make"), func(string) bool { return true })

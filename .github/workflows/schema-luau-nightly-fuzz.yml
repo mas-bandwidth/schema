@@ -1,0 +1,64 @@
+name: schema luau nightly fuzz
+
+# THE NIGHTLY LANE (make/schema-luau-nightly-fuzz.mk): the seeded,
+# coverage-guided mutation fuzzer (the native host tools/luaufuzzhost, built
+# by the target from the pinned Luau source) over the Luau port's generated
+# load, strict-read and text readers.
+# The ten-minute budget runs ONLY here, on a schedule and on dispatch. Every
+# push and pull request to the merge branches (and a dispatch) replays every
+# saved input, including after reader/runtime changes. It is one pass over the
+# corpus and uses no time budget. The planted-pattern control
+# (luau-nightly-fuzz-negative-control) runs on every merge in ci-full's
+# negative-controls luau row (make/negative-controls.json).
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+
+jobs:
+  replay:
+    # Fleet only: a fork pull request has no fleet runner and is skipped
+    # before it can reach one.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Luau 0.741 (pinned release)
+        run: make dist-luau
+      - name: replay every saved input
+        run: make luau-nightly-fuzz-replay
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Luau 0.741 (pinned release)
+        run: make dist-luau
+      - name: ten minutes per reader port
+        run: make luau-nightly-fuzz LUAU_FUZZ_TIME=600
+      # A red night keeps its inputs: every finding's .bin and .meta (the raw
+      # input first, the minimised one over it) and the fuzz log, for a
+      # person to commit under testdata/luau-nightly-fuzz/ with its fix card.
+      - name: keep the findings
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: luau-nightly-fuzz-findings
+          path: |
+            build/luau-nightly-fuzz/findings/
+            build/luau-nightly-fuzz/fuzz.log
+          if-no-files-found: ignore
+          retention-days: 30

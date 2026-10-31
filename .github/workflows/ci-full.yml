@@ -345,6 +345,16 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # THE LUAU PIN for the test rows below: internal/codegen/luau,
+      # internal/codegen/luautable, the compiler's Luau testgen gate and the
+      # Luau lanes under internal/ci run generated Luau under the pinned
+      # interpreter and fail, never skip, without it
+      # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
+      # does, the sha256 refused before anything is unpacked.
+      - name: install the Luau pin
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        run: make dist-luau
+
       - name: go vet
         if: matrix.group == 'unit-rest'
         run: go vet ./...
@@ -548,6 +558,18 @@ jobs:
         run: |
           make tables-elixir-versioning \
             ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
+
+      # THE SAME SUITE ON THE LUAU LEG (§5.7 step 6). Its probes are generated
+      # Luau, one per row per column, run under the pinned interpreter, which
+      # this row installs as make/luau.mk's dist-luau does (the sha256 refused
+      # before anything is unpacked). The corpus is the one the steps above
+      # already built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus a
+      # failure rather than a silent skip. A few seconds of probes.
+      - name: the Luau leg reads backward over every versioning row
+        if: matrix.group == 'versioning'
+        run: |
+          make dist-luau
+          make tables-luau-versioning
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
@@ -868,6 +890,13 @@ jobs:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # THE LUAU PIN, installed exactly as make/luau.mk's dist-luau does: the
+      # same release archive, the same sha256 refused before it is unpacked,
+      # and the same dist/luau-<version>/ layout the leg's LUAU default names.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
 
       # One step per toolchain, each keyed on the row's field for it. The
       # version is the leg's to name, and it is the same pin the leg's
@@ -1857,6 +1886,12 @@ jobs:
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
+
+      # THE LUAU PIN, as make/luau.mk's dist-luau installs it (sha256 refused
+      # before unpacking), at the version the group's field names.
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
 
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and
