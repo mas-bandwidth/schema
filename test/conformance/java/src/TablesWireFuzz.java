@@ -98,7 +98,7 @@ public final class TablesWireFuzz {
     // 1, the measure is -1, and the value is saved whatever the report says. The
     // class is declared (§2.2) and the emitter names it: a `fixed table` carries
     // <Root>Fixed, or <Root>Block where its record is past the fixed form's
-    // ceiling (§3.4), and a plain `table` carries neither (§2.7 derives the
+    // ceiling (§3.4), and a variable table carries neither (§2.7 derives the
     // block form for the fixed class alone).
     private static final class FileCodec extends Codec {
         final boolean fixed;

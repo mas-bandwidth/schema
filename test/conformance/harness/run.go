@@ -185,10 +185,6 @@ func deriveManifest(m *Manifest, path string) error {
 		// the wire and the two capacities and nothing about the counters or the
 		// bytes it owes (docs/SPEC-TABLES.md §6.6). `short` and `full` travel as
 		// the RULES they are, because a record's byte cost is the port's own.
-		kind, who := "retain", rc.Unit
-		if rc.Message {
-			kind, who = "retain-message", rc.Connection+" "+rc.Unit
-		}
 		ids := "full"
 		if rc.Ids >= 0 {
 			ids = strconv.Itoa(rc.Ids)
@@ -197,7 +193,7 @@ func deriveManifest(m *Manifest, path string) error {
 		if rc.Short {
 			capacity = "short"
 		}
-		fmt.Fprintf(&b, "%s %s %s %s %s %s %s\n", kind, rc.Name, who, rc.Root, rc.Wire, capacity, ids)
+		fmt.Fprintf(&b, "retain %s %s %s %s %s %s\n", rc.Name, rc.Unit, rc.Root, rc.Wire, capacity, ids)
 	}
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
@@ -287,7 +283,13 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// against the connection's announced table and write it back. The
 		// expectation is the message golden itself, exactly as the wire
 		// surface's is the wire golden.
+		// A ROW OVER A VARIABLE TABLE IS A NAMED REFUSAL (§3.3): it carries
+		// no expected bytes, and scoreAnswer holds the leg to the reason.
 		for _, msg := range m.Messages {
+			if msg.Refused() {
+				out = append(out, expectation{msg.Name, nil})
+				continue
+			}
 			want, err := os.ReadFile(msg.MessageWire)
 			if err != nil {
 				return nil, err
@@ -305,20 +307,14 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 	case "retain-save":
 		// AND THE BYTES THE PAIR WRITES BACK, which a counter cannot see: a
 		// dropped record moves a field out of a body and every reference behind
-		// it. A row that does not save is not a case here. A MESSAGE row's
-		// saves are FILES, one a body, back to back in body order, because a
-		// form-2 SaveRetain refuses by name (§3.3).
+		// it. A row that does not save is not a case here.
 		for _, rc := range m.Retains {
-			if len(rc.Saves) == 0 {
+			if rc.Saves == "" {
 				continue
 			}
-			var want []byte
-			for _, path := range rc.Saves {
-				bytes, err := os.ReadFile(path)
-				if err != nil {
-					return nil, err
-				}
-				want = append(want, bytes...)
+			want, err := os.ReadFile(rc.Saves)
+			if err != nil {
+				return nil, err
 			}
 			out = append(out, expectation{rc.Name, want})
 		}
@@ -624,6 +620,26 @@ func runResults(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, dr
 // Instance for a case that carries no marker.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
+	if surface == "message" && e.want == nil {
+		// THE NAMED REFUSAL ROW (docs/SPEC-TABLES.md §3.3): a message row over
+		// a variable table, which no leg carries, and every leg names why.
+		if _, err := os.Stat(answer); err == nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
+			return
+		}
+		reason, err := os.ReadFile(answer + ".absent")
+		if err != nil {
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, VariableMessageRefusal))
+			return
+		}
+		if string(reason) != VariableMessageRefusal {
+			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), VariableMessageRefusal))
+			return
+		}
+		r.missing++
+		r.named++
+		return
+	}
 	if goWireRefusal := inst.WireRefusal(lang); surface == "wire" && goWireRefusal != "" {
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))

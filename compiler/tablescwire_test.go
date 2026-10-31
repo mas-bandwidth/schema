@@ -605,7 +605,7 @@ static int tail_intact(const uint8_t * bytes,int64_t used,int64_t capacity) {
 static int exercise(Counts * counts) {
  const char * source="{\"first\":{\"&node\":1,\"value\":9},\"second\":{\"&node\":1},\"children\":[{\"entries\":{\"-2\":{\"&node\":1},\"9\":{\"value\":17}}}],\"rows\":{\"z\":{\"value\":3},\"a\":{\"value\":4}}}";
  TableAllocator a={allocate,release,counts}; RootBuilder b,copy; TableReport report={0};
- TableCtx ctx; uint8_t wire[2048],cook[4096],messages[4096];const Root * batch[2]; char text[1024]; int64_t n,m,result; int ok=0,have_copy=0;
+ TableCtx ctx; uint8_t wire[2048],cook[4096]; char text[1024]; int64_t n,m,result; int ok=0,have_copy=0;
  if(!root_builder_init_with_allocator(&b,a))goto done;
  if(!root_from_json_tolerant(&b,source,(int64_t)strlen(source),&report))goto done;
  ctx.arena=&b.arena;
@@ -623,10 +623,6 @@ static int exercise(Counts * counts) {
   if(!tail_intact(cook,m,sizeof(cook)))abort();
   if(!result){uint64_t magic=table_cook_read64(cook);if(magic==UINT64_C(0x4b4f4f434d484353)||magic==UINT64_C(0x5343484d434f4f4b))abort();goto done;}
  }}
- batch[0]=(const Root *)(const void *)b.region;batch[1]=batch[0];
- m=root_measure_messages_with_allocator(batch,2,&report,a);if(m<=0||m>4096)goto done;
- memset(messages,0xa5,sizeof(messages));result=root_save_messages_with_allocator(batch,2,messages,m,&report,a);
- if(!tail_intact(messages,m,sizeof(messages))){abort();}if(result!=m)goto done;
  have_copy=1;if(!root_builder_init_with_allocator(&copy,a))goto done;
  if(!root_load_builder_tolerant(&copy,wire,n,&report) || !root_builder_lock(&copy))goto done;
  if(node_at(NULL,&((const Root *)(const void *)copy.region)->first)!=node_at(NULL,&((const Root *)(const void *)copy.region)->second))goto done;

@@ -52,43 +52,6 @@ stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_
 # are the two guards reverted and a counter added on the load path.
 pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin
 
-# A NODE RECORD OF A TYPE NO POINTER BELOW THIS ROOT NAMES (§3.1, §6.5, §3.3).
-# The message form is what makes this reachable: a connection's table announces
-# every table's name id whether or not a pointer names it, so a mutated node
-# record can claim a type the closure HAS and the root can never point at. In
-# graphdemo that type is Layer, which Scene nests by value and nothing points
-# at. The reference gives such a record no region storage and skips its body,
-# counting one unknown, which is §3.1's rule for a type id this reader cannot
-# name. The engine placed it, decoded it, and counted what was inside: four
-# unknown against the reference's two, and a region sixteen bytes wider. The fix
-# is ir.PointerReachable, in the engine's node table and in the fuzzer's own
-# region arithmetic.
-#
-# THE BYTES ARE THE SECOND ROUND'S. The message form's bodies moved to a packed
-# bit stream that a word at a time fills, so the wire the first vector pinned is
-# not a wire any more: those bytes decoded to a different shape and the vector
-# went quiet. This one is derived against the current stream, a mutant of
-# graph_tree_message that the reader with ir.PointerReachable and the reader
-# without answer differently: 1 unknown against 3 unknown and 1 kind_mismatch.
-# It is the input tables-wire-fuzz-node-type-negative-control replays.
-message_node_type_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_node_type_unpointed.bin message
-
-# A RECORD'S FRAMING IS ITS TYPE ID'S AND ITS PLACEMENT IS THE ROOT'S (§2.5,
-# §3.1, §3.3), which are two questions, and this vector is the red that
-# separated them. The two RESERVED BLOB IDS say a thirty-two bit length, an
-# align and the bytes wherever they appear, because §3.3's tail announces both
-# ids whether or not a root names them; ir.PointerReachableBlobs answers only
-# whether this root can PLACE such a node. The oracle asked only the second
-# question, so with no blob edge under graphdemo's Scene it framed a blob
-# record as a TABLE BODY and read its bytes as fields, where the reference read
-# the length and refused a record whose 3,739,746,528 bytes run past a 66 byte
-# batch. The first vector for this class stopped reproducing when the second
-# round moved the bodies to bits; this one is derived against the bit stream,
-# found by the random pass at mutant 280820 of seed 24845619678 over
-# graph_tree_message. It is the input
-# tables-wire-fuzz-blob-node-negative-control replays.
-message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/message_blob_node_unpointed.bin message
-
 # ILL-FORMED TEXT ON A MESSAGE BODY (§3, §3.3; schema#620). §3's one content
 # rule holds over a form-`2` body unchanged in what it rejects, and §3.3 says
 # so: a kind `12` payload that is not well-formed UTF-8 is DAMAGE, terminal for
@@ -107,35 +70,6 @@ message_blob_node_unpointed graphdemo Scene testdata/wire/tables/fuzz-vectors/me
 # controls are the four in `make tables-message-form-negative-control`, two per
 # engine, each of which parts the leg from the oracle on this vector's name.
 message_ill_formed_text backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin message
-
-# ILL-FORMED TEXT IN A *string BLOB RECORD ON A MESSAGE BODY (§3, §3.1, §3.3;
-# schema#632). §3.1 states kinds `12` and `33`'s content rule MET AT A NODE, "A
-# TEXT blob's CONTENT is refused on the same terms", and §3.3 says a form-`2`
-# body's content rules are §3's, unchanged in what they reject: a `*string`
-# blob whose bytes are not well-formed UTF-8 is DAMAGE, terminal for the batch
-# here because a bit stream has no place to resume. NEITHER ENGINE CARRIED IT
-# at the message site, where both carried it at the file site, so a record no
-# reader should place loaded into both, agreeing, and agreeing wrongly, which
-# is the one shape a differential fuzzer cannot see on its own. It became a red
-# the moment one engine was repaired, and this vector is what holds the two
-# together from here.
-#
-# The bytes are `blob_str8` re-encoded as a batch of one, with the fourth byte
-# of `note`'s eight byte payload replaced by 0xFF, a lead byte UTF-8 never
-# spells. Nothing else moves: the record's length, its align and the `*bytes`
-# record beside it are the encoder's own, so what the two readers answer
-# differently is the content rule and nothing else. The `*bytes` record is the
-# vector's own control: it carries bytes no UTF-8 rule would accept and is
-# never checked, because a `*bytes` blob is bytes and never text.
-message_blob_ill_formed_text blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_ill_formed_text.bin message
-
-# AND THE ZERO BYTE, which §3.1 names in the same sentence: a `*string` blob
-# "whose bytes are not well-formed UTF-8 or which carries a zero byte". The
-# bytes are the vector above's with 0x00 in place of the 0xFF, so the two
-# separate the two halves of one check: a reader that rejected only the
-# ill-formed sequence, or only the interior zero, goes red on one of them and
-# not the other.
-message_blob_zero_byte blobdemo Catalog testdata/wire/tables/fuzz-vectors/message_blob_zero_byte.bin message
 
 # A list's wire elements widen while its region uses the declared width.
 # Before schema#713, C++ LoadMeasure omitted this extent, then Load reported

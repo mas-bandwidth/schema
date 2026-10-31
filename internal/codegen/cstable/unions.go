@@ -58,7 +58,9 @@ func (g *tableGen) unionArmsValue(un *ir.Union) string {
 	b.WriteString(", Arms = new TableUnionArmInfo[] { new TableUnionArmInfo()")
 	for _, v := range un.Variants {
 		b.WriteString(", new TableUnionArmInfo { ")
-		fmt.Fprintf(&b, "MessageSlot = %d, ", ir.TableVocabularySlots(g.unit)[ir.TableArmEntry(v).Key()])
+		if g.messageUnions()[un.Name] {
+			fmt.Fprintf(&b, "MessageSlot = %d, ", ir.TableVocabularySlots(g.unit)[ir.TableArmEntry(v).Key()])
+		}
 		if !v.Void() {
 			row := &tableGen{unit: g.unit, owner: unionOwner(un), arm: true, outside: g.outside}
 			row.emitTableFieldDescriptor(v.F, "")

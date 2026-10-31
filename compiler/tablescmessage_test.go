@@ -2,13 +2,11 @@ package compiler
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const cMessageSchema = `package probe
@@ -112,62 +110,6 @@ int main(void) {
 }`)
 }
 
-func TestCTableMessageGraph(t *testing.T) {
-	u := unitFromSource(t, `package probe
-table Node { n int32
-next *Node
-items []int16 }
-table Item { samples []uint8 }
-union Action { number uint32
-blob *bytes
-vertex *Node }
-table Root { vertex *Node
-aliases [..3]*Node
-blob *bytes
-title *string
-numbers []uint8
-zeroes []int32 | min = 0, max = 0
-entries map[int32]Item
-action Action }
-`)
-	text := `{"vertex":{"&node":1,"n":7,"items":[2,3]},"aliases":[{"&node":1},null],"blob":"AAEC","title":"hi","numbers":[1,2],"zeroes":[0,0],"entries":{"7":{"samples":[4,5]},"2":{"samples":[9]}},"action":{"vertex":{"n":11}}}`
-	m := tabletext.NewModel(u)
-	v := m.New(m.Lookup("Root"))
-	var report tabletext.Report
-	if !m.Read(v, []byte(text), &report) || !report.Silent() {
-		t.Fatalf("fixture: %+v", report)
-	}
-	values := []*tabletext.Instance{v, m.New(m.Lookup("Root"))}
-	expected, err := tablewire.EncodeMessages(m, values)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var bytes strings.Builder
-	for _, v := range expected {
-		fmt.Fprintf(&bytes, "0x%02x,", v)
-	}
-	source := fmt.Sprintf(`#include "ProbeTable.h"
-#include <stdio.h>
-#define CHECK(x) do {if(!(x)){fprintf(stderr,"line %%d: %%s\n",__LINE__,#x);return 1;}} while(0)
-static const uint8_t expected[]={%s};
-int main(void){
- RootBuilder a,b;const Root * roots[2],*loaded[2];uint8_t buffer[4096],*region;int64_t n,storage,count,attribution;
- TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary vocabulary=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};TableRefuseReason reason=99;
- CHECK(root_builder_init(&a));CHECK(root_builder_init(&b));CHECK(root_from_json_tolerant(&a,%q,%d,&report));CHECK(!report.malformed&&!report.clamped&&!report.unknown);
- CHECK(root_builder_root(&b)!=NULL);CHECK(root_builder_lock(&a));CHECK(root_builder_lock(&b));roots[0]=(const Root *)(const void *)a.region;roots[1]=(const Root *)(const void *)b.region;
- n=root_measure_messages(roots,2,&report);CHECK(n==sizeof(expected));CHECK(root_save_messages(roots,2,buffer,n,&report)==n);CHECK(!memcmp(buffer,expected,sizeof(expected)));
- CHECK(announce_read(&vocabulary,kTableAnnounce,kTableAnnounceBytes,&report));
- storage=root_load_measure_messages_ex(&vocabulary,expected,sizeof(expected),&attribution,&reason);CHECK(storage>attribution&&reason==99);
- region=(uint8_t *)malloc((size_t)storage+8);CHECK(region!=NULL);memset(region,0xa5,(size_t)storage+8);
- count=2;CHECK(root_load_messages_tolerant(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&!report.malformed&&!report.refused&&!report.unknown&&!report.clamped&&!report.kind_mismatch);
- CHECK(region[storage]==0xa5);CHECK(node_at(NULL,&loaded[0]->vertex)==node_at(NULL,&loaded[0]->aliases[0]));
- CHECK(root_save_messages(loaded,2,buffer,n,&report)==n);CHECK(!memcmp(buffer,expected,sizeof(expected)));
- count=1;CHECK(!root_load_messages_tolerant(loaded,&count,region,storage,&vocabulary,expected,sizeof(expected),&report));CHECK(count==2&&report.reason==SCHEMA_TABLE_BATCH_TOO_LARGE);
- root_builder_shutdown(&a);root_builder_shutdown(&b);free(region);return 0;
-}`, bytes.String(), text, len(text))
-	runCTableWireProbe(t, u, source)
-}
-
 func TestCTableMessageEvolution(t *testing.T) {
 	sender := unitFromSource(t, `package probe
 type Item { value int8 }
@@ -238,42 +180,6 @@ int main(void){
 	runCTableWireProbe(t, receiver, source)
 }
 
-func TestCTableMessageZeroWidthListCapacity(t *testing.T) {
-	u := unitFromSource(t, `package probe
- table Root { items []int32 | min=0,max=0 }
- `)
-	slot := ir.TableVocabularySlots(u)[ir.TableFieldEntry(u.Tables["Root"].Fields[0]).Key()]
-	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
- int main(void){
- TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};TableRefuseReason reason=99;
- uint8_t wire[64];TableBitWriter w=table_bit_writer(wire,sizeof(wire));
- if(!announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report))return 1;
- table_bit_put(&w,2,8);table_bit_put(&w,0,8);table_bit_put(&w,%d,kTableMessageRefBitsHere);table_bit_put(&w,UINT32_MAX,32);table_bit_put(&w,0,kTableMessageRefBitsHere);table_bit_align_write(&w);
- if(root_load_measure_messages_ex(&v,wire,w.bits/8,NULL,&reason)!=-1||reason!=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH)return 2;
- if(report.malformed||report.refused)return 3;
- return 0;
- }`, slot))
-}
-
-func TestCTableMessagePartialRoot(t *testing.T) {
-	u := unitFromSource(t, `package probe
-fixed table Node { x uint32 }
-table Root { vertex *Node
-value uint64 }
-`)
-	slot := ir.TableVocabularySlots(u)[ir.TableFieldEntry(u.Tables["Root"].Fields[1]).Key()]
-	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
- int main(void){
- TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);TableReport report={0};
- uint8_t wire[64],*region;TableBitWriter w=table_bit_writer(wire,sizeof(wire));int64_t need,count=1;const Root * root=NULL;
- if(!announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report))return 1;
- table_bit_put(&w,2,8);table_bit_put(&w,0,8);table_bit_put(&w,%d,kTableMessageRefBitsHere);table_bit_put(&w,99,32);table_bit_align_write(&w);
- need=root_load_measure_messages(&v,wire,w.bits/8);if(need<=0)return 2;region=(uint8_t *)malloc((size_t)need);if(!region)return 3;
- if(root_load_messages_tolerant(&root,&count,region,need,&v,wire,w.bits/8,&report)||count!=0||root==NULL||!report.malformed||report.refused||root->value!=0){free(region);return 4;}
- free(region);return 0;
- }`, slot))
-}
-
 func TestCTableAnnouncementFailureClearsEntries(t *testing.T) {
 	u := unitFromSource(t, "package probe\ntable Root { a int32\nb string(8)\nc bool }\n")
 	runCTableWireProbe(t, u, `#include "ProbeTable.h"
@@ -285,39 +191,4 @@ func TestCTableAnnouncementFailureClearsEntries(t *testing.T) {
  {TableMessageEntry full[kTableMessageEntriesHere];int64_t at;size_t j;int failures=0;for(at=0;at<n;at++){memset(full,0,sizeof(full));v=table_vocabulary(full,kTableMessageEntriesHere);report=(TableReport){0};wire[at]^=0x80;
  if(!announce_read(&v,wire,n,&report)){failures++;for(j=0;j<sizeof(full);j++)if(((uint8_t *)full)[j])return 5;}wire[at]^=0x80;}if(!failures)return 6;}return 0;
  }`)
-}
-
-// A sizing scan follows announced framing even when a reserved transport id
-// occurs in a root body. Typed decoding still rejects that body as damage.
-// This is schema#749: C LoadMeasure used to stop at the reserved id (192)
-// while C++ / the oracle sized the batch (960).
-func TestCTableMessageMeasureReservedFraming(t *testing.T) {
-	paths, err := filepath.Glob("../tables/pointers/*.schema")
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := New().Load(paths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	runCTableWireProbe(t, u, `#include "GraphTable.h"
-#include <stdio.h>
-static const uint8_t wire[]={
- 0x02,0x0c,0x01,0x00,0xa5,0x01,0x00,0x00,0x00,0xeb,0x04,0x00,0x00,0x00,0x28,0x01,
- 0x61,0xcf,0x00,0xd6,0x11,0x00,0x00,0x00,0x10,0x66,0x70,0x00,0x74,0x6f,0x70,0x21,
- 0x44,0x03,0x33,0x48,0x6c,0x65,0x66,0x74,0xc0,0x0c,0x16,0x72,0x69,0x67,0x68,0x74,
- 0x00,0xcc,0xad,0x1b,0x6d,0x69,0x64,0x00,0x45,0x00,0x74,0x72,0x65,0x65,0x95,0xc0,
- 0x90,0xc5,0xeb,0x00
-};
-int main(void){
- TableMessageEntry entries[kTableMessageEntriesHere];TableVocabulary v=table_vocabulary(entries,kTableMessageEntriesHere);
- TableReport report={0};const Scene * roots[256]={0};int64_t count=256,need;uint8_t * region;
- if(!announce_read(&v,kTableAnnounce,kTableAnnounceBytes,&report))return 1;
- need=scene_load_measure_messages(&v,wire,sizeof(wire));
- if(need!=960){fprintf(stderr,"reserved framing extent %lld want 960\n",(long long)need);return 2;}
- region=(uint8_t *)malloc((size_t)need);if(!region)return 3;
- if(scene_load_messages_tolerant(roots,&count,region,need,&v,wire,sizeof(wire),&report)||!report.malformed){free(region);return 4;}
- free(region);return 0;
-}
-`)
 }

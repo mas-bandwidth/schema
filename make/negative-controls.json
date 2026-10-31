@@ -41,6 +41,7 @@
       "why": "the C two-units control and the generated C tree it builds (23 s), the doc/tags family (17 s), the projection's wire-law and variant-order controls, the C ref-ordinal rewind, and the small refusers: clamps, JSON, was, retention, runtime homes, zero-cost, block, python packet and toolchain: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
         "build-version-elemkind-negative-control",
+        "message-form-fixed-only-lock-negative-control",
         "projection-variant-order-negative-control",
         "projection-wire-law-negative-control",
         "tables-block-const-negative-control",
@@ -58,7 +59,6 @@
         "tables-json-negative-control",
         "tables-py-packet-negative-control",
         "tables-retain-fixed-class-negative-control",
-        "tables-retain-message-form-negative-control",
         "tables-runtime-home-negative-control",
         "tables-slot-negative-control",
         "tables-view-containment-negative-control",
@@ -414,12 +414,10 @@
     {
       "name": "message-form",
       "when": "pull-request",
-      "why": "the message form's blades: the count, the emitter, the text content rule, the blob one, and the form-2 retain capture. The one control of this family that drives 49 sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured 16 s over 5 controls.",
+      "why": "the message form's blades: the count, the emitter and the text content rule. The one control of this family that drives the sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured under 16 s over 3 controls.",
       "targets": [
-        "tables-message-form-blob-negative-control",
         "tables-message-form-count-negative-control",
         "tables-message-form-emitter-negative-control",
-        "tables-message-form-retain-negative-control",
         "tables-message-form-text-negative-control"
       ]
     },
@@ -486,11 +484,10 @@
     {
       "name": "wire-fuzz",
       "when": "pull-request",
-      "why": "the tolerant-wire oracle, nested-arm trailing and node-type controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
+      "why": "the tolerant-wire oracle and nested-arm trailing controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
         "tables-wire-fuzz-discard-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
-        "tables-wire-fuzz-node-type-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]
     },
@@ -499,7 +496,6 @@
       "when": "pull-request",
       "why": "the tolerant-wire oracles for the message form's text and blob records, and the retain one. Measured 3 s over 3 controls.",
       "targets": [
-        "tables-wire-fuzz-message-blob-oracle-negative-control",
         "tables-wire-fuzz-message-text-oracle-negative-control",
         "tables-wire-fuzz-retain-oracle-negative-control"
       ]
@@ -537,14 +533,6 @@
       ]
     },
     {
-      "name": "wire-fuzz-blob-node",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine and 58 s on the runner.",
-      "targets": [
-        "tables-wire-fuzz-blob-node-negative-control"
-      ]
-    },
-    {
       "name": "wire-fuzz-wide-text",
       "when": "pull-request",
       "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 28 s on the author's machine and 75 s on the runner.",
@@ -561,14 +549,6 @@
       ]
     },
     {
-      "name": "wire-fuzz-message-blob",
-      "when": "pull-request",
-      "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 22 s on the author's machine.",
-      "targets": [
-        "tables-wire-fuzz-message-blob-leg-negative-control"
-      ]
-    },
-    {
       "name": "wire-fuzz-retain-class",
       "when": "pull-request",
       "why": "one control per job. Each of these rebuilds the compiler under a source overlay and then runs the fuzzer over the sabotaged wire, which is 55 s to 75 s on the runner, so two of them in one job miss the owner's rule. Measured 29 s on the author's machine.",
@@ -579,9 +559,8 @@
     {
       "name": "moo-tables",
       "when": "pull-request",
-      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), the message form's capture call planted out of table_message.moo (retain_message_tail's counters move), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
+      "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",
       "targets": [
-        "tables-moo-retain-message-negative-control",
         "tables-moo-retain-negative-control",
         "tables-moo-retain-refusal-negative-control"
       ],
@@ -633,7 +612,6 @@
       "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds).",
       "targets": [
         "tables-cs-pack-negative-control",
-        "tables-cs-message-blob-endian-negative-control",
         "tables-cs-fixedform-arm-negative-control",
         "tables-cs-json-differential-negative-control",
         "tables-cs-byte-order-negative-control"

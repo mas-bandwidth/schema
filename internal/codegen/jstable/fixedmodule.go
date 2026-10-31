@@ -48,13 +48,22 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 		}
 	}
 
+	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): its
+	// body codecs ride the closure of the DECLARED fixed roots, and a variable
+	// table, even one with a fixed form here, has no message form.
+	messageSeen := map[string]bool{}
+	var messageClosure []*ir.Struct
+	for _, st := range jsMessageUnitRoots(u) {
+		fixedCollectTypes(st, messageSeen, &messageClosure)
+	}
+
 	homeWritten := false
 	for _, f := range u.Files {
 		if len(f.Tables) == 0 && f.Base != home {
 			continue
 		}
 		g := &fixedModule{unit: u, file: f, base: f.Base, home: f.Base == home, homeBase: home,
-			wide: wide, imports: map[string]map[string]bool{}, lineage: lineage}
+			wide: wide, imports: map[string]map[string]bool{}, lineage: lineage, messageClosure: messageClosure}
 		g.emit(closure, roots[f.Base], f.Tables)
 		if g.home {
 			homeWritten = true
@@ -63,7 +72,7 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 	}
 	if !homeWritten {
 		g := &fixedModule{unit: u, base: home, home: true, homeBase: home,
-			wide: wide, imports: map[string]map[string]bool{}, lineage: lineage}
+			wide: wide, imports: map[string]map[string]bool{}, lineage: lineage, messageClosure: messageClosure}
 		g.emit(closure, nil, nil)
 		out[home+"Table.js"] = g.assemble()
 	}
@@ -79,8 +88,11 @@ type fixedModule struct {
 	wide     []string
 	lineage  map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	imports  map[string]map[string]bool
-	gen      fixedGen
-	body     strings.Builder
+	// messageClosure is the closure of the unit's message roots, the members
+	// the message form's body codecs ride
+	messageClosure []*ir.Struct
+	gen            fixedGen
+	body           strings.Builder
 }
 
 func (g *fixedModule) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
@@ -104,10 +116,11 @@ func (g *fixedModule) needHome(symbols ...string) { g.need(g.homeBase+"Table", s
 func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
-		// THE MESSAGE FORM IS A FIXED TABLE'S (§3.3), so its announcement
+		// THE MESSAGE FORM IS FIXED TABLES ONLY (§3.3), so its announcement
 		// surface lands in the home beside the fixed runtime and only for a
-		// unit with a fixed root. A plain `table` unit emits none of it.
-		if len(jsFixedUnitRoots(g.unit)) > 0 {
+		// unit with a fixed table root. A unit of variable tables emits none
+		// of it.
+		if len(jsMessageUnitRoots(g.unit)) > 0 {
 			g.pf("%s", messageAnnouncementRuntime(g.unit))
 			// THE MESSAGE FORM'S BATCH BODY CODEC (§3.3): the bit writer and
 			// reader and the scalar/skip walk, beside the announcement surface,
@@ -154,14 +167,12 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitDecodeBody(st)
 		}
 		g.pf("%s", g.gen.body.String())
-		// THE MESSAGE FORM'S BODY VERBS RIDE THE WHOLE CLOSURE, not just the
-		// roots (docs/SPEC-TABLES.md §3.3): a root's body may hold a `type` by
-		// value, whose own body verbs ride beside it. Only the batch verbs are a
-		// root's, emitted in its own module below.
-		if len(jsFixedUnitRoots(g.unit)) > 0 {
-			for _, st := range closure {
-				g.emitMessageBody(st)
-			}
+		// THE MESSAGE FORM'S BODY VERBS RIDE THE MESSAGE ROOTS' WHOLE CLOSURE,
+		// not just the roots (docs/SPEC-TABLES.md §3.3): a root's body may hold
+		// a `type` by value, whose own body verbs ride beside it. Only the batch
+		// verbs are a root's, emitted in its own module below.
+		for _, st := range g.messageClosure {
+			g.emitMessageBody(st)
 		}
 		// Cook write lives in the home beside the classes it names
 		// (docs/SPEC-TABLES.md §7.6). A file that only declares a root imports
@@ -177,7 +188,9 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 	}
 	for _, st := range roots {
 		g.emitRoot(st)
-		g.emitMessageBatch(st)
+		if st.FixedDeclared {
+			g.emitMessageBatch(st)
+		}
 	}
 }
 

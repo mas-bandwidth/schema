@@ -296,16 +296,15 @@ accelerators are read on the reading tier's terms (docs/SPEC-TABLES.md §7,
 the base's placement as an argument (`base_offset`, the Elixir leg's `lead`),
 the cook's `Open` is the header and the base alone (O(1)) and `Check` runs
 `cook-check`'s two passes, and `Cook` writes either byte order (`order` 1 or
-2). One row is named and left: a `retain-message` batch another build wrote,
-because `announceRead` counts the announced entries but resolves the
-receiver's own vocabulary rather than the sender's (§3.3).
+2). The message form is fixed tables only (§3.3): `loadMessages`,
+`measureMessages` and `saveMessages` refuse a root outside the unit's
+`MessageRoots`, which lists fixed tables alone, and the conformance driver
+answers the `graph_tree` row over the variable `Scene` with the named refusal.
 
 Owed and named, each a `port/lua/open/*` roadmap entry: the cross-build
-announcement read above (`retain-message-cross-build`); the message form's
-refusal of a plain `table` root (`message-form-plain-table`: `loadMessages`
-does not check `MessageRoots`, so `graph_tree` on the plain `Scene` answers
-bytes where the Go reference answers absent, and the refusal needs a reason
-name SPEC-TABLES §11 does not yet give); the labelled bench board
+announcement read (`retain-message-cross-build`: `announceRead` counts the
+announced entries but resolves the receiver's own vocabulary rather than the
+sender's, §3.3); the labelled bench board
 (`bench-board`: the leg and its gate are in, a measured sitting is not); and a
 union arm named `tag`, whose payload shares the discriminator's key
 (`arm-named-tag`, found by the M18 gate).

@@ -242,64 +242,57 @@
       "row": "surface message",
       "lang": "dart",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))"
     },
     {
       "row": "surface message",
       "lang": "elixir",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))"
     },
     {
       "row": "surface message",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))"
     },
     {
       "row": "surface message",
       "lang": "goose",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (goose)",
-      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "surface message",
       "lang": "java",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-java-block (CI full / negative controls (java))"
     },
     {
       "row": "surface message",
       "lang": "js",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))"
     },
     {
       "row": "surface message",
       "lang": "lobster",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))"
     },
     {
       "row": "surface message",
@@ -329,19 +322,17 @@
       "row": "surface message",
       "lang": "rust",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))"
     },
     {
       "row": "surface message",
       "lang": "squirrel",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. message/login_default",
+      "gate": "make conformance: 13 case(s) pass, e.g. message/graph_tree",
       "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))"
     },
     {
       "row": "surface report",
@@ -557,7 +548,7 @@
       "row": "surface retain",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (CI full / negative controls (base-conformance-cpp))"
     },
@@ -565,7 +556,7 @@
       "row": "surface retain",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (CI full / negative controls (base-c-conformance))"
     },
@@ -573,7 +564,7 @@
       "row": "surface retain",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (CI full / negative controls (cs-1))"
     },
@@ -583,8 +574,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))"
     },
     {
       "row": "surface retain",
@@ -592,8 +582,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))"
     },
     {
       "row": "surface retain",
@@ -601,8 +590,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))"
     },
     {
       "row": "surface retain",
@@ -610,8 +598,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (goose)",
-      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "surface retain",
@@ -619,8 +606,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-java-block (CI full / negative controls (java))"
     },
     {
       "row": "surface retain",
@@ -628,8 +614,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))"
     },
     {
       "row": "surface retain",
@@ -637,8 +622,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))"
     },
     {
       "row": "surface retain",
@@ -646,8 +630,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-lua (CI full / negative controls (lua))"
     },
     {
       "row": "surface retain",
@@ -655,14 +638,13 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau))"
     },
     {
       "row": "surface retain",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 9 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -672,8 +654,7 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))"
     },
     {
       "row": "surface retain",
@@ -681,14 +662,13 @@
       "status": "proven",
       "gate": "make conformance: 8 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))"
     },
     {
       "row": "surface retain-save",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 3 case(s) pass, e.g. retain-save/retain_ids_short",
+      "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (CI full / negative controls (base-conformance-cpp))"
     },
@@ -696,7 +676,7 @@
       "row": "surface retain-save",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 3 case(s) pass, e.g. retain-save/retain_ids_short",
+      "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (CI full / negative controls (base-c-conformance))"
     },
@@ -704,7 +684,7 @@
       "row": "surface retain-save",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 3 case(s) pass, e.g. retain-save/retain_ids_short",
+      "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (CI full / negative controls (cs-1))"
     },
@@ -714,8 +694,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))"
     },
     {
       "row": "surface retain-save",
@@ -723,8 +702,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))"
     },
     {
       "row": "surface retain-save",
@@ -732,8 +710,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))"
     },
     {
       "row": "surface retain-save",
@@ -741,8 +718,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (goose)",
-      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "surface retain-save",
@@ -750,8 +726,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-java-block (CI full / negative controls (java))"
     },
     {
       "row": "surface retain-save",
@@ -759,8 +734,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))"
     },
     {
       "row": "surface retain-save",
@@ -768,8 +742,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))"
     },
     {
       "row": "surface retain-save",
@@ -777,8 +750,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-lua (CI full / negative controls (lua))"
     },
     {
       "row": "surface retain-save",
@@ -786,14 +758,13 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau))"
     },
     {
       "row": "surface retain-save",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 3 case(s) pass, e.g. retain-save/retain_ids_short",
+      "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -803,8 +774,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))"
     },
     {
       "row": "surface retain-save",
@@ -812,8 +782,7 @@
       "status": "proven",
       "gate": "make conformance: 2 case(s) pass, e.g. retain-save/retain_ids_short",
       "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))"
     },
     {
       "row": "surface json-read",
@@ -3099,51 +3068,44 @@
       "row": "cases graphdemo",
       "lang": "dart",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "elixir",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "go",
       "status": "proven",
-      "gate": "make conformance: 52 case(s) pass, e.g. cook/Album",
+      "gate": "make conformance: 53 case(s) pass, e.g. cook/Album",
       "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))"
     },
     {
       "row": "cases graphdemo",
       "lang": "goose",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "36 case(s) answered absent with no ruling: cook-write/graph_deep, cook-write/graph_empty, cook-write/graph_shared and 33 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "java",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "js",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "lobster",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
@@ -3168,14 +3130,12 @@
       "row": "cases graphdemo",
       "lang": "rust",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
       "row": "cases graphdemo",
       "lang": "squirrel",
       "status": "red",
-      "ruling": "message-form-fixed-only",
       "why": "10 case(s) answered absent with no ruling: framing/node_bytes_left_over, framing/node_clean, framing/node_count_disagrees and 7 more"
     },
     {
@@ -5530,7 +5490,7 @@
       "row": "cases tblrt1",
       "lang": "cpp",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (cpp)",
       "control": "conformance-negative-control-cpp (CI full / negative controls (base-conformance-cpp))"
     },
@@ -5538,7 +5498,7 @@
       "row": "cases tblrt1",
       "lang": "c",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (c)",
       "control": "conformance-negative-control-c (CI full / negative controls (base-c-conformance))"
     },
@@ -5546,7 +5506,7 @@
       "row": "cases tblrt1",
       "lang": "cs",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (cs)",
       "control": "conformance-negative-control-cs (CI full / negative controls (cs-1))"
     },
@@ -5556,8 +5516,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (dart)",
-      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-dart-absent (CI full / negative controls (dart-conformance))"
     },
     {
       "row": "cases tblrt1",
@@ -5565,8 +5524,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (elixir)",
-      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-elixir-arm (CI full / negative controls (elixir-conformance-arm))"
     },
     {
       "row": "cases tblrt1",
@@ -5574,8 +5532,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (go)",
-      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-go (CI full / negative controls (base-conformance-2))"
     },
     {
       "row": "cases tblrt1",
@@ -5583,8 +5540,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (goose)",
-      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-goose (CI full / negative controls (goose-conformance))"
     },
     {
       "row": "cases tblrt1",
@@ -5592,8 +5548,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (java)",
-      "control": "conformance-negative-control-java-block (CI full / negative controls (java))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-java-block (CI full / negative controls (java))"
     },
     {
       "row": "cases tblrt1",
@@ -5601,8 +5556,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (js)",
-      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-js-absent (CI full / negative controls (js-proof))"
     },
     {
       "row": "cases tblrt1",
@@ -5610,8 +5564,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (lobster)",
-      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-lobster (CI full / negative controls (lobster-conformance))"
     },
     {
       "row": "cases tblrt1",
@@ -5619,8 +5572,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (lua)",
-      "control": "conformance-negative-control-lua (CI full / negative controls (lua))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-lua (CI full / negative controls (lua))"
     },
     {
       "row": "cases tblrt1",
@@ -5628,14 +5580,13 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (luau)",
-      "control": "conformance-negative-control-luau (CI full / negative controls (luau))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-luau (CI full / negative controls (luau))"
     },
     {
       "row": "cases tblrt1",
       "lang": "moo",
       "status": "proven",
-      "gate": "make conformance: 12 case(s) pass, e.g. retain/retain_enum_variant",
+      "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (moo)",
       "control": "conformance-negative-control-moo (CI full / negative controls (moo-conformance))"
     },
@@ -5645,8 +5596,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (rust)",
-      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-rust-walk (CI full / negative controls (rust))"
     },
     {
       "row": "cases tblrt1",
@@ -5654,8 +5604,7 @@
       "status": "proven",
       "gate": "make conformance: 10 case(s) pass, e.g. retain/retain_enum_variant",
       "job": "CI full / conformance (squirrel)",
-      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))",
-      "ruling": "message-form-fixed-only"
+      "control": "conformance-negative-control-squirrel (CI full / negative controls (squirrel))"
     },
     {
       "row": "cases listdemo",
@@ -6627,7 +6576,7 @@
       "row": "porting M17",
       "lang": "java",
       "status": "n/a",
-      "cites": "docs/PORTING.md: \"a managed backend allocates inside its runtime and says so\"",
+      "cites": "docs/SPEC-TABLES.md: \"Other backends allocate inside their runtime and say so\"",
       "why": "not applicable by design, by the clause it cites"
     },
     {
@@ -8151,8 +8100,10 @@
     {
       "row": "porting I15",
       "lang": "java",
-      "status": "red",
-      "why": "❌ #492 — `tables-java-wire-fuzz` runs every root over the enumerated passes and the pinned vectors (0 divergences, 160,540 mutants), replays `…"
+      "status": "proven",
+      "gate": "tables-java-wire-fuzz",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "tables-java-wire-fuzz-negative-control (CI full / negative controls (java-wire-fuzz))"
     },
     {
       "row": "porting I15",

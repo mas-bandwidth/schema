@@ -76,7 +76,6 @@ static partial class Program
         public Func<byte[], byte[], Report, object> MessageLoad;
         public Func<object, long> MessageMeasure;
         public Func<object, byte[], long> MessageSave;
-        public Func<byte[], long> MessageLoadMeasure;
         public byte[] Announcement;
         public Func<byte[],RetainAnswer> Retain;
         public string Unit;
@@ -602,6 +601,9 @@ static partial class Program
         {
             string[] connection = lines.Find(c => c[0] == "connection" && c[1] == f[2]);
             Codec codec = Find(connection[2], f[3]);
+            // only a fixed table rides the message form: a variable root has no message codec
+            if (f[5] == "-" || (codec != null && codec.MessageLoad == null))
+            { File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); continue; }
             if (codec == null) { SpillAbsent(outDir, f[1]); continue; }
             var report = new Report();
             object value = codec.MessageLoad(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[5]), report);
@@ -1316,399 +1318,113 @@ static partial class Program
         }
         {
             Codec c = Find("tblg1", "Guarded");
-            c.Announcement = Tblg1.Schema.Announce().ToArray();
             c.CookMeasure = value => Tblg1.Schema.GuardedCookMeasure((Tblg1.Guarded)value);
             c.Cook = (value, bytes, big) => Tblg1.Schema.GuardedCook((Tblg1.Guarded)value, bytes, big ? Tblg1.TableByteOrder.Big : Tblg1.TableByteOrder.Little);
-            var ownVocabulary = new Tblg1.TableVocabulary(); Tblg1.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblg1.TableReport());
-            c.MessageLoadMeasure = bytes => Tblg1.Schema.GuardedLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblg1.TableVocabulary(); var inner = new Tblg1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblg1.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Tblg1.Guarded[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblg1.Guarded(); }
-                if (!inner.Refused && !inner.Malformed) { Tblg1.Schema.GuardedLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Tblg1.Schema.GuardedMeasureMessages(new Tblg1.Guarded[] { (Tblg1.Guarded)value });
-            c.MessageSave = (value, bytes) => Tblg1.Schema.GuardedSaveMessages(new Tblg1.Guarded[] { (Tblg1.Guarded)value }, bytes);
         }
         {
             Codec c = Find("streamdemo", "Feed");
-            c.Announcement = Streamdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Streamdemo.Schema.FeedCookMeasure((Streamdemo.Feed)value);
             c.Cook = (value, bytes, big) => Streamdemo.Schema.FeedCook((Streamdemo.Feed)value, bytes, big ? Streamdemo.TableByteOrder.Big : Streamdemo.TableByteOrder.Little);
-            var ownVocabulary = new Streamdemo.TableVocabulary(); Streamdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Streamdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Streamdemo.Schema.FeedLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Streamdemo.TableVocabulary(); var inner = new Streamdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Streamdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Streamdemo.Feed[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Streamdemo.Feed(); }
-                if (!inner.Refused && !inner.Malformed) { Streamdemo.Schema.FeedLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Streamdemo.Schema.FeedMeasureMessages(new Streamdemo.Feed[] { (Streamdemo.Feed)value });
-            c.MessageSave = (value, bytes) => Streamdemo.Schema.FeedSaveMessages(new Streamdemo.Feed[] { (Streamdemo.Feed)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "EdgeRow");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.EdgeRowCookMeasure((Mapdemo.EdgeRow)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.EdgeRowCook((Mapdemo.EdgeRow)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.EdgeRowLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.EdgeRow[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.EdgeRow(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.EdgeRowLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.EdgeRowMeasureMessages(new Mapdemo.EdgeRow[] { (Mapdemo.EdgeRow)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.EdgeRowSaveMessages(new Mapdemo.EdgeRow[] { (Mapdemo.EdgeRow)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "WideRow");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.WideRowCookMeasure((Mapdemo.WideRow)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.WideRowCook((Mapdemo.WideRow)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.WideRowLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.WideRow[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.WideRow(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.WideRowLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.WideRowMeasureMessages(new Mapdemo.WideRow[] { (Mapdemo.WideRow)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.WideRowSaveMessages(new Mapdemo.WideRow[] { (Mapdemo.WideRow)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Row");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.RowCookMeasure((Mapdemo.Row)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.RowCook((Mapdemo.Row)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.RowLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Row[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Row(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.RowLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.RowMeasureMessages(new Mapdemo.Row[] { (Mapdemo.Row)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.RowSaveMessages(new Mapdemo.Row[] { (Mapdemo.Row)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Trails");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.TrailsCookMeasure((Mapdemo.Trails)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.TrailsCook((Mapdemo.Trails)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.TrailsLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Trails[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Trails(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.TrailsLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.TrailsMeasureMessages(new Mapdemo.Trails[] { (Mapdemo.Trails)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.TrailsSaveMessages(new Mapdemo.Trails[] { (Mapdemo.Trails)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Crews");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.CrewsCookMeasure((Mapdemo.Crews)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.CrewsCook((Mapdemo.Crews)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.CrewsLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Crews[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Crews(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.CrewsLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.CrewsMeasureMessages(new Mapdemo.Crews[] { (Mapdemo.Crews)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.CrewsSaveMessages(new Mapdemo.Crews[] { (Mapdemo.Crews)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Pairs");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.PairsCookMeasure((Mapdemo.Pairs)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.PairsCook((Mapdemo.Pairs)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.PairsLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Pairs[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Pairs(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.PairsLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.PairsMeasureMessages(new Mapdemo.Pairs[] { (Mapdemo.Pairs)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.PairsSaveMessages(new Mapdemo.Pairs[] { (Mapdemo.Pairs)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Chunks");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.ChunksCookMeasure((Mapdemo.Chunks)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.ChunksCook((Mapdemo.Chunks)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.ChunksLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Chunks[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Chunks(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.ChunksLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.ChunksMeasureMessages(new Mapdemo.Chunks[] { (Mapdemo.Chunks)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.ChunksSaveMessages(new Mapdemo.Chunks[] { (Mapdemo.Chunks)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Docs");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.DocsCookMeasure((Mapdemo.Docs)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.DocsCook((Mapdemo.Docs)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.DocsLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Docs[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Docs(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.DocsLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.DocsMeasureMessages(new Mapdemo.Docs[] { (Mapdemo.Docs)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.DocsSaveMessages(new Mapdemo.Docs[] { (Mapdemo.Docs)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Spans");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.SpansCookMeasure((Mapdemo.Spans)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.SpansCook((Mapdemo.Spans)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.SpansLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Spans[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Spans(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.SpansLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.SpansMeasureMessages(new Mapdemo.Spans[] { (Mapdemo.Spans)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.SpansSaveMessages(new Mapdemo.Spans[] { (Mapdemo.Spans)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Slots");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.SlotsCookMeasure((Mapdemo.Slots)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.SlotsCook((Mapdemo.Slots)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.SlotsLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Slots[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Slots(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.SlotsLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.SlotsMeasureMessages(new Mapdemo.Slots[] { (Mapdemo.Slots)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.SlotsSaveMessages(new Mapdemo.Slots[] { (Mapdemo.Slots)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Runs");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.RunsCookMeasure((Mapdemo.Runs)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.RunsCook((Mapdemo.Runs)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.RunsLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Runs[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Runs(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.RunsLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.RunsMeasureMessages(new Mapdemo.Runs[] { (Mapdemo.Runs)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.RunsSaveMessages(new Mapdemo.Runs[] { (Mapdemo.Runs)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Cells");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.CellsCookMeasure((Mapdemo.Cells)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.CellsCook((Mapdemo.Cells)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.CellsLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Cells[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Cells(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.CellsLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.CellsMeasureMessages(new Mapdemo.Cells[] { (Mapdemo.Cells)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.CellsSaveMessages(new Mapdemo.Cells[] { (Mapdemo.Cells)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Text");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.TextCookMeasure((Mapdemo.Text)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.TextCook((Mapdemo.Text)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.TextLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Text[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Text(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.TextLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.TextMeasureMessages(new Mapdemo.Text[] { (Mapdemo.Text)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.TextSaveMessages(new Mapdemo.Text[] { (Mapdemo.Text)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Depth");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.DepthCookMeasure((Mapdemo.Depth)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.DepthCook((Mapdemo.Depth)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.DepthLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Depth[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Depth(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.DepthLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.DepthMeasureMessages(new Mapdemo.Depth[] { (Mapdemo.Depth)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.DepthSaveMessages(new Mapdemo.Depth[] { (Mapdemo.Depth)value }, bytes);
         }
         {
             Codec c = Find("mapdemo", "Fleet");
-            c.Announcement = Mapdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Mapdemo.Schema.FleetCookMeasure((Mapdemo.Fleet)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.FleetCook((Mapdemo.Fleet)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
-            var ownVocabulary = new Mapdemo.TableVocabulary(); Mapdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Mapdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Mapdemo.Schema.FleetLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Mapdemo.TableVocabulary(); var inner = new Mapdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Mapdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Mapdemo.Fleet[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Mapdemo.Fleet(); }
-                if (!inner.Refused && !inner.Malformed) { Mapdemo.Schema.FleetLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Mapdemo.Schema.FleetMeasureMessages(new Mapdemo.Fleet[] { (Mapdemo.Fleet)value });
-            c.MessageSave = (value, bytes) => Mapdemo.Schema.FleetSaveMessages(new Mapdemo.Fleet[] { (Mapdemo.Fleet)value }, bytes);
         }
         {
             Codec c = Find("listdemo", "Album");
-            c.Announcement = Listdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Listdemo.Schema.AlbumCookMeasure((Listdemo.Album)value);
             c.Cook = (value, bytes, big) => Listdemo.Schema.AlbumCook((Listdemo.Album)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
-            var ownVocabulary = new Listdemo.TableVocabulary(); Listdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Listdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Listdemo.Schema.AlbumLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Listdemo.TableVocabulary(); var inner = new Listdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Listdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Listdemo.Album[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Listdemo.Album(); }
-                if (!inner.Refused && !inner.Malformed) { Listdemo.Schema.AlbumLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Listdemo.Schema.AlbumMeasureMessages(new Listdemo.Album[] { (Listdemo.Album)value });
-            c.MessageSave = (value, bytes) => Listdemo.Schema.AlbumSaveMessages(new Listdemo.Album[] { (Listdemo.Album)value }, bytes);
         }
         {
             Codec c = Find("listdemo", "Army");
-            c.Announcement = Listdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Listdemo.Schema.ArmyCookMeasure((Listdemo.Army)value);
             c.Cook = (value, bytes, big) => Listdemo.Schema.ArmyCook((Listdemo.Army)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
-            var ownVocabulary = new Listdemo.TableVocabulary(); Listdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Listdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Listdemo.Schema.ArmyLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Listdemo.TableVocabulary(); var inner = new Listdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Listdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Listdemo.Army[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Listdemo.Army(); }
-                if (!inner.Refused && !inner.Malformed) { Listdemo.Schema.ArmyLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Listdemo.Schema.ArmyMeasureMessages(new Listdemo.Army[] { (Listdemo.Army)value });
-            c.MessageSave = (value, bytes) => Listdemo.Schema.ArmySaveMessages(new Listdemo.Army[] { (Listdemo.Army)value }, bytes);
         }
         {
             Codec c = Find("listdemo", "Sheet");
-            c.Announcement = Listdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Listdemo.Schema.SheetCookMeasure((Listdemo.Sheet)value);
             c.Cook = (value, bytes, big) => Listdemo.Schema.SheetCook((Listdemo.Sheet)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
-            var ownVocabulary = new Listdemo.TableVocabulary(); Listdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Listdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Listdemo.Schema.SheetLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Listdemo.TableVocabulary(); var inner = new Listdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Listdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Listdemo.Sheet[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Listdemo.Sheet(); }
-                if (!inner.Refused && !inner.Malformed) { Listdemo.Schema.SheetLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Listdemo.Schema.SheetMeasureMessages(new Listdemo.Sheet[] { (Listdemo.Sheet)value });
-            c.MessageSave = (value, bytes) => Listdemo.Schema.SheetSaveMessages(new Listdemo.Sheet[] { (Listdemo.Sheet)value }, bytes);
         }
         {
             Codec c = Find("listdemo", "Mixed");
-            c.Announcement = Listdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Listdemo.Schema.MixedCookMeasure((Listdemo.Mixed)value);
             c.Cook = (value, bytes, big) => Listdemo.Schema.MixedCook((Listdemo.Mixed)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
-            var ownVocabulary = new Listdemo.TableVocabulary(); Listdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Listdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Listdemo.Schema.MixedLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Listdemo.TableVocabulary(); var inner = new Listdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Listdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Listdemo.Mixed[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Listdemo.Mixed(); }
-                if (!inner.Refused && !inner.Malformed) { Listdemo.Schema.MixedLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Listdemo.Schema.MixedMeasureMessages(new Listdemo.Mixed[] { (Listdemo.Mixed)value });
-            c.MessageSave = (value, bytes) => Listdemo.Schema.MixedSaveMessages(new Listdemo.Mixed[] { (Listdemo.Mixed)value }, bytes);
         }
         {
             Codec c = Find("listdemo", "Save");
-            c.Announcement = Listdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Listdemo.Schema.SaveCookMeasure((Listdemo.Save)value);
             c.Cook = (value, bytes, big) => Listdemo.Schema.SaveCook((Listdemo.Save)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
-            var ownVocabulary = new Listdemo.TableVocabulary(); Listdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Listdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Listdemo.Schema.SaveLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Listdemo.TableVocabulary(); var inner = new Listdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Listdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Listdemo.Save[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Listdemo.Save(); }
-                if (!inner.Refused && !inner.Malformed) { Listdemo.Schema.SaveLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Listdemo.Schema.SaveMeasureMessages(new Listdemo.Save[] { (Listdemo.Save)value });
-            c.MessageSave = (value, bytes) => Listdemo.Schema.SaveSaveMessages(new Listdemo.Save[] { (Listdemo.Save)value }, bytes);
         }
         {
             Codec c = Find("tblw2", "Ship");
@@ -1729,21 +1445,8 @@ static partial class Program
         }
         {
             Codec c = Find("tblw2", "Fleet");
-            c.Announcement = Tblw2.Schema.Announce().ToArray();
             c.CookMeasure = value => Tblw2.Schema.FleetCookMeasure((Tblw2.Fleet)value);
             c.Cook = (value, bytes, big) => Tblw2.Schema.FleetCook((Tblw2.Fleet)value, bytes, big ? Tblw2.TableByteOrder.Big : Tblw2.TableByteOrder.Little);
-            var ownVocabulary = new Tblw2.TableVocabulary(); Tblw2.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblw2.TableReport());
-            c.MessageLoadMeasure = bytes => Tblw2.Schema.FleetLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblw2.TableVocabulary(); var inner = new Tblw2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblw2.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Tblw2.Fleet[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblw2.Fleet(); }
-                if (!inner.Refused && !inner.Malformed) { Tblw2.Schema.FleetLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Tblw2.Schema.FleetMeasureMessages(new Tblw2.Fleet[] { (Tblw2.Fleet)value });
-            c.MessageSave = (value, bytes) => Tblw2.Schema.FleetSaveMessages(new Tblw2.Fleet[] { (Tblw2.Fleet)value }, bytes);
         }
         {
             Codec c = Find("tblw1", "Vessel");
@@ -1764,111 +1467,33 @@ static partial class Program
         }
         {
             Codec c = Find("tblw1", "Fleet");
-            c.Announcement = Tblw1.Schema.Announce().ToArray();
             c.CookMeasure = value => Tblw1.Schema.FleetCookMeasure((Tblw1.Fleet)value);
             c.Cook = (value, bytes, big) => Tblw1.Schema.FleetCook((Tblw1.Fleet)value, bytes, big ? Tblw1.TableByteOrder.Big : Tblw1.TableByteOrder.Little);
-            var ownVocabulary = new Tblw1.TableVocabulary(); Tblw1.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblw1.TableReport());
-            c.MessageLoadMeasure = bytes => Tblw1.Schema.FleetLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblw1.TableVocabulary(); var inner = new Tblw1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblw1.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Tblw1.Fleet[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblw1.Fleet(); }
-                if (!inner.Refused && !inner.Malformed) { Tblw1.Schema.FleetLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Tblw1.Schema.FleetMeasureMessages(new Tblw1.Fleet[] { (Tblw1.Fleet)value });
-            c.MessageSave = (value, bytes) => Tblw1.Schema.FleetSaveMessages(new Tblw1.Fleet[] { (Tblw1.Fleet)value }, bytes);
         }
         {
             Codec c = Find("tblp2", "Chain");
-            c.Announcement = Tblp2.Schema.Announce().ToArray();
             c.CookMeasure = value => Tblp2.Schema.ChainCookMeasure((Tblp2.Chain)value);
             c.Cook = (value, bytes, big) => Tblp2.Schema.ChainCook((Tblp2.Chain)value, bytes, big ? Tblp2.TableByteOrder.Big : Tblp2.TableByteOrder.Little);
-            var ownVocabulary = new Tblp2.TableVocabulary(); Tblp2.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblp2.TableReport());
-            c.MessageLoadMeasure = bytes => Tblp2.Schema.ChainLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblp2.TableVocabulary(); var inner = new Tblp2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblp2.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Tblp2.Chain[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblp2.Chain(); }
-                if (!inner.Refused && !inner.Malformed) { Tblp2.Schema.ChainLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Tblp2.Schema.ChainMeasureMessages(new Tblp2.Chain[] { (Tblp2.Chain)value });
-            c.MessageSave = (value, bytes) => Tblp2.Schema.ChainSaveMessages(new Tblp2.Chain[] { (Tblp2.Chain)value }, bytes);
         }
         {
             Codec c = Find("blobdemo", "Catalog");
-            c.Announcement = Blobdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Blobdemo.Schema.CatalogCookMeasure((Blobdemo.Catalog)value);
             c.Cook = (value, bytes, big) => Blobdemo.Schema.CatalogCook((Blobdemo.Catalog)value, bytes, big ? Blobdemo.TableByteOrder.Big : Blobdemo.TableByteOrder.Little);
-            var ownVocabulary = new Blobdemo.TableVocabulary(); Blobdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Blobdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Blobdemo.Schema.CatalogLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Blobdemo.TableVocabulary(); var inner = new Blobdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Blobdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Blobdemo.Catalog[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Blobdemo.Catalog(); }
-                if (!inner.Refused && !inner.Malformed) { Blobdemo.Schema.CatalogLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Blobdemo.Schema.CatalogMeasureMessages(new Blobdemo.Catalog[] { (Blobdemo.Catalog)value });
-            c.MessageSave = (value, bytes) => Blobdemo.Schema.CatalogSaveMessages(new Blobdemo.Catalog[] { (Blobdemo.Catalog)value }, bytes);
         }
         {
             Codec c = Find("graphdemo", "Album");
-            c.Announcement = Graphdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Graphdemo.Schema.AlbumCookMeasure((Graphdemo.Album)value);
             c.Cook = (value, bytes, big) => Graphdemo.Schema.AlbumCook((Graphdemo.Album)value, bytes, big ? Graphdemo.TableByteOrder.Big : Graphdemo.TableByteOrder.Little);
-            var ownVocabulary = new Graphdemo.TableVocabulary(); Graphdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Graphdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Graphdemo.Schema.AlbumLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Graphdemo.TableVocabulary(); var inner = new Graphdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Graphdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Graphdemo.Album[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Graphdemo.Album(); }
-                if (!inner.Refused && !inner.Malformed) { Graphdemo.Schema.AlbumLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Graphdemo.Schema.AlbumMeasureMessages(new Graphdemo.Album[] { (Graphdemo.Album)value });
-            c.MessageSave = (value, bytes) => Graphdemo.Schema.AlbumSaveMessages(new Graphdemo.Album[] { (Graphdemo.Album)value }, bytes);
         }
         {
             Codec c = Find("graphdemo", "Depot");
-            c.Announcement = Graphdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Graphdemo.Schema.DepotCookMeasure((Graphdemo.Depot)value);
             c.Cook = (value, bytes, big) => Graphdemo.Schema.DepotCook((Graphdemo.Depot)value, bytes, big ? Graphdemo.TableByteOrder.Big : Graphdemo.TableByteOrder.Little);
-            var ownVocabulary = new Graphdemo.TableVocabulary(); Graphdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Graphdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Graphdemo.Schema.DepotLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Graphdemo.TableVocabulary(); var inner = new Graphdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Graphdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Graphdemo.Depot[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Graphdemo.Depot(); }
-                if (!inner.Refused && !inner.Malformed) { Graphdemo.Schema.DepotLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Graphdemo.Schema.DepotMeasureMessages(new Graphdemo.Depot[] { (Graphdemo.Depot)value });
-            c.MessageSave = (value, bytes) => Graphdemo.Schema.DepotSaveMessages(new Graphdemo.Depot[] { (Graphdemo.Depot)value }, bytes);
         }
         {
             Codec c = Find("graphdemo", "Scene");
-            c.Announcement = Graphdemo.Schema.Announce().ToArray();
             c.CookMeasure = value => Graphdemo.Schema.SceneCookMeasure((Graphdemo.Scene)value);
             c.Cook = (value, bytes, big) => Graphdemo.Schema.SceneCook((Graphdemo.Scene)value, bytes, big ? Graphdemo.TableByteOrder.Big : Graphdemo.TableByteOrder.Little);
-            var ownVocabulary = new Graphdemo.TableVocabulary(); Graphdemo.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Graphdemo.TableReport());
-            c.MessageLoadMeasure = bytes => Graphdemo.Schema.SceneLoadMeasure(ownVocabulary, bytes);
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Graphdemo.TableVocabulary(); var inner = new Graphdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Graphdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Graphdemo.Scene[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Graphdemo.Scene(); }
-                if (!inner.Refused && !inner.Malformed) { Graphdemo.Schema.SceneLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Graphdemo.Schema.SceneMeasureMessages(new Graphdemo.Scene[] { (Graphdemo.Scene)value });
-            c.MessageSave = (value, bytes) => Graphdemo.Schema.SceneSaveMessages(new Graphdemo.Scene[] { (Graphdemo.Scene)value }, bytes);
         }
         {
             Codec c = Find("widedemo", "Stamp");
@@ -2484,6 +2109,8 @@ static partial class Program
             byte form = input.ReadByte(), retain = input.ReadByte();
             Codec found=Find(unit,root);
             roster[i] = retain == 0 || found?.Retain!=null?found:null;
+            // a variable root has no message form, so no form-2 binding
+            if (form == 2 && roster[i]?.MessageLoad == null) { roster[i] = null; }
             retaining[i]=retain!=0;
             forms[i] = form;
             output.Write((byte)(roster[i] != null ? 1 : 0));
@@ -2507,10 +2134,10 @@ static partial class Program
             }
             Report report = new Report();
             bool message = forms[index] == 2;
-            long need = message ? (codec.MessageLoadMeasure == null ? -1 : codec.MessageLoadMeasure(bytes)) : codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
+            long need = message || codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
             builderLoaded = null;
             object value = message ? codec.MessageLoad(codec.Announcement, bytes, report) : codec.PartialLoad(bytes, report);
-            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : (message ? codec.MessageLoadMeasure == null : codec.LoadMeasure == null) || need >= 0;
+            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : message || codec.LoadMeasure == null || need >= 0;
             output.Write((byte)(loaded ? 1 : 0));
             output.Write(report.Unknown); output.Write(report.KindMismatch); output.Write(report.Widened);
             output.Write(report.Clamped); output.Write(report.Duplicate);
