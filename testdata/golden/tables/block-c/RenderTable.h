@@ -4214,9 +4214,14 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_messages_tolerant(blockdem
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_camera_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_camera_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_camera_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_camera_load_messages( blockdemo_render_camera_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -5103,9 +5108,14 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_messages_tolerant(blockdemo_
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_ship_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_ship_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_ship_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_ship_load_messages( blockdemo_render_ship_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -5916,9 +5926,14 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_messages_tolerant(blockdem
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_turret_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_turret_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_turret_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_turret_load_messages( blockdemo_render_turret_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -6585,9 +6600,14 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_messages_tolerant(blockde
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_missile_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_missile_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_missile_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_missile_load_messages( blockdemo_render_missile_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -7260,9 +7280,14 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages_tolerant(bl
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_dynamic_prop_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_dynamic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_dynamic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_messages( blockdemo_render_dynamic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -7973,9 +7998,14 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages_tolerant(blo
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_static_prop_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_static_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_static_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_static_prop_load_messages( blockdemo_render_static_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -8731,9 +8761,14 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages_tolerant(b
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_cosmetic_prop_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_cosmetic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_cosmetic_prop_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_messages( blockdemo_render_cosmetic_prop_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -9357,9 +9392,14 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_messages_tolerant(blockdemo
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_laser_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_laser_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_laser_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_laser_load_messages( blockdemo_render_laser_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -10060,9 +10100,14 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages_tolerant(block
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_explosion_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_explosion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_explosion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages( blockdemo_render_explosion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -11572,9 +11617,14 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_messages_tolerant(blockdemo
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_frame_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_frame_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_frame_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_frame_load_messages( blockdemo_render_frame_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -12056,9 +12106,14 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages_tolerant(blockde
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_vector3_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_vector3_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_vector3_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_vector3_load_messages( blockdemo_render_vector3_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
@@ -12633,9 +12688,14 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages_tolerant(bloc
  *count=0;
  return 0;
  }
+ /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
+ if(!ok){for(i=0;i<bodies;i++)blockdemo_render_quaternion_reset(values+i);
+ *count=0;
+ return 0;
+ }
  return ok;
 }
-/* The PLAIN render_quaternion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
+/* The PLAIN render_quaternion_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */
 static SCHEMA_UNUSED int blockdemo_render_quaternion_load_messages( blockdemo_render_quaternion_t * values, int64_t * count, const blockdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored;
