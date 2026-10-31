@@ -19,9 +19,8 @@ func cppRuntimeNames() []Name {
 		names []string
 	}{
 		{what: "a blob, bytes or string field's storage and its views (docs/SPEC-TABLES.md §2.5, §2.12)", names: []string{
-			"TableBlobMeasureThunk", "TableBlobMessageMeasureThunk", "TableBlobMessageSaveThunk",
-			"TableBlobSaveThunk", "TableBlobStorage", "TableBytesSlot", "TableBytesViewOf", "TableStringSlot",
-			"TableStringViewOf", "kTableBlobHeader", "kTableBlobMaxLength",
+			"TableBlobMeasureThunk", "TableBlobSaveThunk", "TableBlobStorage", "TableBytesSlot", "TableBytesViewOf",
+			"TableStringSlot", "TableStringViewOf", "kTableBlobHeader", "kTableBlobMaxLength",
 		}},
 		{what: "a bound of the text form's JSON walk (§16)", names: []string{
 			"kTableJsonDecimalBand",
@@ -87,25 +86,18 @@ func cppRuntimeNames() []Name {
 		{what: "the message form's runtime: batches, entries, quantization and the skip walk (docs/SPEC-TABLES.md §3.3)", names: []string{
 			"TableMessageArmEntry", "TableMessageBatch", "TableMessageBatchBegin", "TableMessageBatchBytes",
 			"TableMessageBatchEnd", "TableMessageDequantize", "TableMessageElementRunBits", "TableMessageFixedKind",
-			"TableMessageIntegerKind", "TableMessageNameEntry", "TableMessageNodeTableMeasure",
-			"TableMessageNodeTableOpen", "TableMessageNodeTableSave", "TableMessageQuantization",
-			"TableMessageQuantize", "TableMessageRefuseBatch", "TableMessageReserved", "TableMessageRetainBody",
-			"TableMessageRetainCapture", "TableMessageRetainContent", "TableMessageRetainElement",
-			"TableMessageRetainElementMinimum", "TableMessageRetainElements", "TableMessageRetainFramed",
-			"TableMessageRetainId", "TableMessageRetainIn", "TableMessageRetainOpaque", "TableMessageRetainPayload",
-			"TableMessageRetainRef", "TableMessageRetainScalar", "TableMessageRetainSigned",
-			"TableMessageRetainWidth", "TableMessageRetainWord", "TableMessageSkipElement", "TableMessageSkipRun",
+			"TableMessageIntegerKind", "TableMessageNameEntry", "TableMessageQuantization", "TableMessageQuantize",
+			"TableMessageRefuseBatch", "TableMessageReserved", "TableMessageSkipElement", "TableMessageSkipRun",
 			"TableMessageSkipVariant",
 		}},
 		{what: "the pointered cook's node numbering, node thunks and the pack map (docs/SPEC-TABLES.md §7.6)", names: []string{
-			"TableDeclRef", "TableNodeMessageMeasure", "TableNodeMessageMeasureThunk", "TableNodeMessageSave",
-			"TableNodeMessageSaveThunk", "TableNodeScanBegin", "TableNodeScanNext", "TableNodeScanOpen",
+			"TableDeclRef", "TableNodeScanBegin", "TableNodeScanNext", "TableNodeScanOpen",
 			"TableNodeScanWhole", "TableNodeTableMeasure", "TableNodeTableMeasureRetain", "TableNodeTablePayload",
 			"TableNodeTablePayloadRetain", "TableNodeTableSave", "TableNodeTableSaveRetain", "TableNumberingAppend",
 			"TableNumberingIndex", "TableNumberingInit", "TableNumberingShutdown", "TablePackMapClose",
 			"TablePackMapFind", "TablePackMapGrow", "TablePackMapInit", "TablePackMapReach", "TablePackMapReset",
 			"TablePackMapShutdown", "TablePackMapSlot", "kTableNodeAbsent", "kTableNodeIndexNull",
-			"kTableNodeIndexRoot", "kTableNodeRefused", "kTableNodeTableFieldId", "kTableNodeTableFieldSlot",
+			"kTableNodeIndexRoot", "kTableNodeRefused", "kTableNodeTableFieldId",
 		}},
 		{what: "the pointered root's region context a blob view resolves through (docs/SPEC-TABLES.md §6.3)", names: []string{
 			"TableRegionCtx",

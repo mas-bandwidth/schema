@@ -409,36 +409,11 @@ var messageTextSabotages = map[string][]edit{
 
 	// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS AS A KIND 12 PAYLOAD
 	// (docs/SPEC-TABLES.md §3.1), and a form-2 body's content rules are §3's
-	// (§3.3). One blade an engine: take the call out of the message site and
-	// the record a file reader refuses is placed by a message reader.
-	//
-	// THE ORACLE's, held by TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule
-	// and by the pinned vectors message_blob_ill_formed_text and
-	// message_blob_zero_byte.
+	// (§3.3). Take the call out of the oracle's message site and the record a
+	// file reader refuses is placed by a message reader. Held by
+	// TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule.
 	"message-blob-accepts-ill-formed": {{
 		old: "\t\t\tif kind == ir.TString && !textValid(rec.blob) {\n",
 		new: "\t\t\tif false && !textValid(rec.blob) { // SABOTAGED: the blob content rule is gone\n",
 	}},
-
-	// AND THE C++ EMITTER's, held by test/tables/message_blob_main.cpp and by
-	// the same two vectors.
-	"message-emitter-blob-accepts-ill-formed": {{
-		old: "\t\tg.pf(\"            if ( type_id == kTableStringTypeId && !TableUtf8Valid( r.buffer + r.offset / 8, length ) ) { out->malformed = true; return false; }\\n\")\n",
-		new: "\t\tg.pf(\"            // SABOTAGED: the blob content rule is gone\\n\")\n",
-	}},
 }
-
-// THE MESSAGE FORM'S RETENTION (docs/SPEC-TABLES.md §3.3, §6.6). The unknown
-// arm of a retaining message body SKIPS the entry and then re-reads the bits
-// it delimited, which is the whole of the form-2 capture. Take the second half
-// away and the skip is all that is left: the read is unchanged to the byte,
-// every counter but the two retention ones stands, and nothing about the batch
-// says a field was lost. What goes red is the pinned batch's own row.
-var messageRetainSabotages = map[string][]edit{
-	"message-retain-no-capture": {{
-		old: "\t\tg.pf(\"                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)\\n\")\n",
-		new: "\t\tg.pf(\"                (void) unknown_at; // SABOTAGED: the message path never enters the resolving walk\\n\")\n",
-	}},
-}
-
-func init() { maps.Copy(sabotages, messageRetainSabotages) }

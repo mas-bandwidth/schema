@@ -166,12 +166,6 @@ type tableGen struct {
 	// unionField is the union FIELD whose arms are being emitted, which is
 	// what an arm's own descent takes its ordinal from.
 	unionField *ir.Field
-	// retainGate is the condition under which a nested MESSAGE read captures
-	// into the caller's store at all, and empty where it always does. A bit
-	// stream has to be walked past, so an element this build is dropping is
-	// decoded into a scratch where a file's reader steps over it by its
-	// length, and nothing in that body is a field of this region (§6.6, §3.3).
-	retainGate string
 	// elemCache names the stack array in scope that holds the SIZING LOOP's
 	// per-element measured lengths, and elemCacheSlots is how many it has. An
 	// array of TABLE elements is framed twice — the parent's body length needs
@@ -301,11 +295,6 @@ func (g *tableGen) knownOrdinal(id uint64) int {
 // is the whole of it (§3).
 func (g *tableGen) hdrBytes(id uint64) string {
 	return "TableLebBytes( " + g.wireRef(id) + " ) + 1"
-}
-
-// slotOf is one id's message-form slot as a C++ literal.
-func (g *tableGen) slotOf(id uint64) string {
-	return strconv.FormatUint(g.slots[ir.TableVocabularyEntry{Id: id}.Key()], 10)
 }
 
 func (g *tableGen) pf(format string, args ...any) {
@@ -698,7 +687,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	widenRuntime := widen.runtime()
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
-	messageForm := tableMessageForm(u, anyVariable)
+	messageForm := tableMessageForm(u)
 	// the fixed form's 128-bit stores name serialize.h's types, so they ride
 	// only in a unit that carries 128-bit storage and includes it
 	fixed128 := ""
@@ -1883,11 +1872,6 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u, anyExtent))
-			// the node table on the MESSAGE wire (docs/SPEC-TABLES.md §3.3),
-			// spelled in terms of the numbering the arena runtime declares
-			h.WriteString("\n")
-			nodeGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_MESSAGE_NODES"
-			h.WriteString("#ifndef " + nodeGuard + "\n#define " + nodeGuard + "\n\nnamespace " + u.Package + " {\n\n" + cppMessageNodeRuntime + "} // namespace " + u.Package + "\n\n#endif // " + nodeGuard + "\n")
 			// RETAIN-UNKNOWN's runtime (docs/SPEC-TABLES.md §6.6). It names the
 			// region's node directory, so it follows the arena runtime that
 			// declares one, and only a unit with a VARIABLE-LENGTH table
