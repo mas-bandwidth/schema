@@ -36,7 +36,7 @@ import (
 
 func init() {
 	RegisterModule("block_form", generateBlockModules)
-	RegisterUnit("block_form", "Block", emitBlockPackage)
+	RegisterUnit("block_form", "block", emitBlockPackage)
 }
 
 // blockRecordKey separates a table's PROJECTION from the same table laid out
@@ -74,7 +74,7 @@ func blockRecordIndex(blocks *ir.BlockUnit) (keys []string, index map[string]int
 	return keys, index, rowIndex
 }
 
-// emitBlockPackage writes the unit's block data into <Package>Block.goose
+// emitBlockPackage writes the unit's block data into <package>_block.goose
 // (PackageModule; docs/PORTING.md J2): the descriptors, every row record's
 // accessors, and each table's projection's place in BlockRecords. It is named
 // for the package, so a file that sorts earlier moves no byte of any file's
@@ -103,7 +103,7 @@ func emitBlockPackage(g *goose.Gen) error {
 
 // generateBlockModules writes <Base>Block.goose for every file that declares a
 // table with a block form: each table's handle. The unit's descriptors and
-// every row record's accessors live in <Package>Block.goose (emitBlockPackage).
+// every row record's accessors live in <package>_block.goose (emitBlockPackage).
 func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	blocks := ir.Blocks(u)
@@ -127,7 +127,7 @@ func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byt
 		g.Suffix, g.Kind = "Block", "block form"
 		g.Import(accelModule)
 		g.Import(cookPackage(u)) // BuildVersion
-		g.Import(PackageModule(u, "Block"))
+		g.Import(PackageModule(u, "block"))
 		for _, bl := range mine {
 			emitBlockHandle(g, u, bl)
 		}
