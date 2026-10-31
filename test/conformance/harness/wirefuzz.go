@@ -607,15 +607,34 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int
 			}
 			return ""
 		}
+		if ans.report.Malformed && reply.report.Malformed {
+			// DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31): a leg that
+			// meets damage and hands back no root has given the answer the
+			// rule asks for.
+			return ""
+		}
 		return "the leg returned no root — its LoadMeasure sized a region its Load then refused"
 	}
 	if ans.measureRefused {
 		return "the leg loaded a wire whose container framing requires refusal"
 	}
-	if reply.report != ans.report {
+	// DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31: "failing to read
+	// something means the whole read is undefined"): on a mutant the oracle
+	// reads as damaged, the refusal is the whole of what a leg owes. The
+	// counters, the retention report and the value the leg would save are
+	// all undefined there, so none is compared; only the region bounds
+	// below, which are the framing's and not the value's, still hold. A form
+	// refusal is the same: nothing was decoded, so the verdict is compared
+	// and the saved defaults are not.
+	discarded := ans.report.Malformed || ans.report.Refused
+	if ans.report.Malformed {
+		if !reply.report.Malformed {
+			return fmt.Sprintf("the oracle discards a damaged load (malformed); the leg says %s", reply.report)
+		}
+	} else if reply.report != ans.report {
 		return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)
 	}
-	if root.retain && (reply.retained != ans.retained || reply.retainLost != ans.retainLost) {
+	if !discarded && root.retain && (reply.retained != ans.retained || reply.retainLost != ans.retainLost) {
 		// THE RETENTION REPORT (docs/SPEC-TABLES.md §6.6): `retained` counts the
 		// fields whose bytes were kept and `retain_lost` every unknown the load
 		// or the save could not keep. Two engines that keep different fields, or
@@ -624,13 +643,13 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int
 		return fmt.Sprintf("the retention report differs: the leg says retained=%d retain_lost=%d, the oracle says retained=%d retain_lost=%d",
 			reply.retained, reply.retainLost, ans.retained, ans.retainLost)
 	}
-	if reply.saveFail != ans.encFail {
+	if !discarded && reply.saveFail != ans.encFail {
 		if reply.saveFail {
 			return fmt.Sprintf("the leg refused to save the value it loaded; the oracle encoded %d bytes", len(ans.encoded))
 		}
 		return fmt.Sprintf("the oracle refused to encode the value it decoded; the leg saved %d bytes", len(reply.saved))
 	}
-	if !reply.saveFail && !bytes.Equal(reply.saved, ans.encoded) {
+	if !discarded && !reply.saveFail && !bytes.Equal(reply.saved, ans.encoded) {
 		at := 0
 		for at < len(reply.saved) && at < len(ans.encoded) && reply.saved[at] == ans.encoded[at] {
 			at++
