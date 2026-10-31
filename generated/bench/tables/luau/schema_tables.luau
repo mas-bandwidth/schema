@@ -38,7 +38,6 @@ export type FieldDescriptor = {
 	-- unbounded TEXT fact.
 	unbounded: boolean?,
 	min: number?,
-	wide: boolean?,
 	f32: boolean?,
 	res: number?,
 	vs: { { any } }?,

@@ -192,55 +192,6 @@ pub fn text_valid(b: &[u8]) -> bool {
     std::str::from_utf8(b).is_ok() && !b.contains(&0)
 }
 
-/// WIDE TEXT ON THE WIRE (docs/SPEC-TABLES.md §3, kind 33; SPEC.md §4.12): a
-/// payload of L BYTES is L / 2 UTF-16 code units, little-endian. None is
-/// damage, the oracle's (internal/tablewire decode.go): an odd L is not a
-/// wstring at any length, and the content rule is paired surrogates with no
-/// zero unit among the used units. The bound is the reader's, applied after.
-pub fn table_wide_units(b: &[u8]) -> Option<Vec<u16>> {
-    if b.len() & 1 != 0 { return None; }
-    let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
-    let mut i = 0;
-    while i < units.len() {
-        let u = units[i];
-        if u == 0 || (0xDC00..=0xDFFF).contains(&u) { return None; }
-        if (0xD800..=0xDBFF).contains(&u) {
-            if i + 1 >= units.len() || !(0xDC00..=0xDFFF).contains(&units[i + 1]) { return None; }
-            i += 2;
-            continue;
-        }
-        i += 1;
-    }
-    Some(units)
-}
-
-/// A CLAMP NEVER SPLITS A PAIR (docs/SPEC-TABLES.md §3): the longest prefix
-/// of at most the bound's units that does not end on a pair's high half.
-pub fn table_wide_boundary(units: &[u16], bound: usize) -> usize {
-    if units.len() <= bound { return units.len(); }
-    let mut keep = bound;
-    if keep > 0 && (0xD800..=0xDBFF).contains(&units[keep - 1]) { keep -= 1; }
-    keep
-}
-
-/// THE WRITER'S BOUND (docs/SPEC-TABLES.md §3, SPEC.md §4.12): a value over
-/// the bound's code units is the save's refusal, recorded BY NAME (at is
-/// <owner>.<field>) for <root>_save_checked; the units that ride are the
-/// longest prefix that fits without splitting a pair.
-pub fn table_wide_fit(ids: &mut IdTable, units: &[u16], bound: usize, at: &str) -> usize {
-    if units.len() <= bound { return units.len(); }
-    if ids.refused.is_none() {
-        ids.refused = Some(format!("{at}: wstring({bound}) holds {} code units, over its bound (docs/SPEC-TABLES.md §3)", units.len()));
-    }
-    table_wide_boundary(units, bound)
-}
-
-/// The units, little-endian, with no length of their own: the caller's L
-/// frames them (docs/SPEC-TABLES.md §3, kind 33 and an arm's payload).
-pub fn table_wide_put(dst: &mut Vec<u8>, units: &[u16]) {
-    for u in units { dst.extend_from_slice(&u.to_le_bytes()); }
-}
-
 /// The id table a save builds in FIRST-USE order (docs/SPEC-TABLES.md §3): one
 /// entry per distinct id, referenced by position from 1. id_ref returns the
 /// position, appending the id when it has not been named yet.
@@ -681,7 +632,7 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         17 | 30 => {
             leb_read(bounded, off).is_some() && *off <= end
         }
-        12 | 13 | 14 | 16 | 31 | 32 | 33 => {
+        12 | 13 | 14 | 16 | 31 | 32 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
             if *off > end || n > end - *off { return false; }
@@ -900,7 +851,7 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         4 | 8 | 10 | 22 | 27 => w(c, 4),
         5 | 9 | 11 | 23 | 28 | 36 => w(c, 8),
         18 | 19 | 24 | 29 => w(c, 16),
-        12 | 31 | 32 | 33 => {
+        12 | 31 | 32 => {
             let Some(n) = c.leb() else { return false; };
             let n = n as usize;
             if c.off + n > c.buf.len() {
@@ -1489,25 +1440,6 @@ pub fn json_clamp(s: String, n: usize, clamped: &mut u64) -> String {
     }
     *clamped += 1;
     s[..end].to_string()
-}
-
-/// A JSON string as wstring(N) code units (docs/SPEC-TABLES.md §16.2's wstring
-/// row): transcoded at the boundary, and clamped at N CODE UNITS with a pair
-/// never split; once a character does not fit nothing after it is kept, and
-/// the clamp counts once (the oracle's tabletext scanWString).
-#[allow(dead_code)]
-pub fn json_wide_clamp(s: &str, n: usize, clamped: &mut u64) -> Vec<u16> {
-    let mut out: Vec<u16> = Vec::new();
-    let mut buf = [0u16; 2];
-    for c in s.chars() {
-        let units = c.encode_utf16(&mut buf);
-        if out.len() + units.len() > n {
-            *clamped += 1;
-            break;
-        }
-        out.extend_from_slice(units);
-    }
-    out
 }
 
 pub const JSON_B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -2421,19 +2353,6 @@ impl TableRegionWriter<'_> {
         }
         self.data[at as usize..at as usize + bytes.len()].copy_from_slice(bytes);
         self.put(length_at, bytes.len() as u64, 4);
-    }
-
-    /// wstring(N): the used CODE UNITS, each a two-byte scalar in the cook's
-    /// byte order, and the int32 used length in units (§7.2).
-    pub fn put_units(&mut self, at: i64, units: &[u16], bound: usize, length_at: i64) {
-        if units.len() > bound {
-            self.ok = false;
-            return;
-        }
-        for (i, u) in units.iter().enumerate() {
-            self.put(at + 2 * i as i64, *u as u64, 2);
-        }
-        self.put(length_at, units.len() as u64, 4);
     }
 
     /// A reference slot to a table node: the SELF-RELATIVE delta from the

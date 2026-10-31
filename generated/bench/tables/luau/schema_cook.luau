@@ -114,11 +114,7 @@ field_pieces = function(fd: any): { any }
 	elseif s == "ptr" or s == "sblob" or s == "bblob" or s == "text" then
 		out[1] = { size = 8, align = 8 }
 	elseif s == "str" then
-		if fd.wide then
-			out[1] = { size = ((fd.bound or 0) + 1) * 2, align = 2 }
-		else
-			out[1] = { size = (fd.bound or 0) + 1, align = 1 }
-		end
+		out[1] = { size = (fd.bound or 0) + 1, align = 1 }
 		out[2] = { size = 4, align = 4 }
 	elseif s == "bytes" then
 		out[1] = { size = fd.bound or 0, align = 1 }
@@ -230,15 +226,6 @@ end
 -- element, whose buffer's own length is the used length.
 local function used_bytes(holder: any, fd: any, x: any, slot: string?): (buffer?, number, number)
 	if typeof(x) ~= "buffer" then return nil, 0, 0 end
-	if fd.wide then
-		local units
-		if slot ~= nil and holder ~= nil and holder[slot .. "Length"] ~= nil then
-			units = holder[slot .. "Length"]
-		else
-			units = math.floor(buffer.len(x) / 2)
-		end
-		return x, units * 2, units
-	end
 	local n = buffer.len(x)
 	if slot ~= nil and holder ~= nil and holder[slot .. "Length"] ~= nil then n = holder[slot .. "Length"] end
 	return x, n, n

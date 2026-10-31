@@ -70,9 +70,6 @@ public final class TableFixed {
     /** a text entry's flavour: UTF-8 bytes. */
     public static final byte textUtf8 = 1;
 
-    /** a text entry's flavour: UTF-16 code units, two bytes each. */
-    public static final byte textWide = 2;
-
     /** a dest-row flavour: bytes(N) as an ARRAY of u8, not a TEXT. */
     public static final byte textBytes = 3;
 
@@ -503,10 +500,10 @@ public final class TableFixed {
 
         /**
          * ILL-FORMED TEXT IN THE USED UNITS (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11): a kind 12
-         * payload that is not well-formed UTF-8 or carries a zero byte, or a kind 33 payload with
-         * an unpaired surrogate or a zero unit, refuses the read BY NAME rather than landing the
-         * field's default -- the verdict the packet reader gives, this form having no length to
-         * continue past. The content check reads the USED units only, never the slack.
+         * payload that is not well-formed UTF-8 or carries a zero byte refuses the read BY NAME
+         * rather than landing the field's default -- the verdict the packet reader gives, this form
+         * having no length to continue past. The content check reads the USED units only, never the
+         * slack.
          */
         textIllFormed,
 
@@ -637,35 +634,10 @@ public final class TableFixed {
      * THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §3.4; docs/
      * FIXED-FORM-ALGORITHM.md §4.5 fix 11): the used units alone are held -- never the slack -- and
      * ill-formed text REFUSES BY NAME rather than landing a default. flavour textUtf8 checks
-     * well-formed UTF-8 with no zero byte among the used bytes; textWide checks paired surrogates
-     * with no zero unit, an ODD length being damage; any other flavour (a bytes(N), which this form
-     * never runs through the text op) is not text and is always well.
+     * well-formed UTF-8 with no zero byte among the used bytes; any other flavour (a bytes(N),
+     * which this form never runs through the text op) is not text and is always well.
      */
     public static boolean textOk(int flavour, byte[] src, int at, int len) {
-        if (flavour == textWide) {
-            if ((len & 1) != 0) {
-                return false;
-            }
-            for (int i = 0; i < len; i += 2) {
-                final int u = get16(src, at + i);
-                if (u == 0) {
-                    return false;
-                }
-                if (u >= 0xD800 && u <= 0xDBFF) {
-                    if (i + 2 >= len) {
-                        return false;
-                    }
-                    final int lo = get16(src, at + i + 2);
-                    if (lo < 0xDC00 || lo > 0xDFFF) {
-                        return false;
-                    }
-                    i += 2;
-                } else if (u >= 0xDC00 && u <= 0xDFFF) {
-                    return false;
-                }
-            }
-            return true;
-        }
         for (int i = 0; i < len; ) {
             final int b0 = src[at + i] & 0xFF;
             if (b0 == 0) {
@@ -812,8 +784,7 @@ public final class TableFixed {
                     }
                 case opText:
                     {
-                        final int unit = (p.meta == textWide) ? 2 : 1;
-                        final int cap = p.size / unit;
+                        final int cap = p.size;
                         if (p.src + 4 + p.size > srcLength) {
                             report.malformed = true;
                             return;
@@ -827,10 +798,10 @@ public final class TableFixed {
                             report.clamped++;
                         }
                         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE
-                        // (§4.5 fix 11): UTF-8 validity over v bytes, wide code
-                        // units over v units -- never the slack -- and a violation
+                        // (§4.5 fix 11): UTF-8 validity over v bytes -- never the
+                        // slack -- and a violation
                         // REFUSES BY NAME with nothing decoded past it.
-                        if (!textOk(p.meta, src, srcAt + p.src + 4, v * unit)) {
+                        if (!textOk(p.meta, src, srcAt + p.src + 4, v)) {
                             report.refuse(Reason.textIllFormed);
                             return;
                         }
@@ -1079,9 +1050,9 @@ public final class TableFixed {
     }
 
     // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-    // the no-payload variant 32, wstring 33, and the ONE kind this form's
-    // layout adds, the optional wrapper 35. 31 is §3's body framing escape and
-    // 34 is reserved: neither is a kind a declaration spells. A KIND OUTSIDE
+    // the no-payload variant 32, and the ONE kind this form's layout adds, the
+    // optional wrapper 35. 31 is §3's body framing escape, 33 is retired and 34
+    // is reserved: none is a kind a declaration spells. A KIND OUTSIDE
     // THIS SET IS A REFUSAL, not a leaf to step over — a fixed form's kind set
     // is CLOSED, so an unknown kind means a NEWER FORM BYTE and a different
     // form, which is not this reader's to guess at.
@@ -1089,7 +1060,7 @@ public final class TableFixed {
         if (kind >= 1 && kind <= 30) {
             return true;
         }
-        return kind == 32 || kind == 33 || kind == 35;
+        return kind == 32 || kind == 35;
     }
 
     // A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire
@@ -1342,18 +1313,6 @@ public final class TableFixed {
                         return 0;
                     }
                     if (size < 4) {
-                        c.fail(Reason.layoutSizeMismatch);
-                        return 0;
-                    }
-                    break;
-                }
-            case 33:
-                { // wstring(N): the length in CODE UNITS, then 2N bytes
-                    if (kids != 0) {
-                        c.fail(Reason.layoutKindInvalid);
-                        return 0;
-                    }
-                    if (size < 4 || ((size - 4) % 2) != 0) {
                         c.fail(Reason.layoutSizeMismatch);
                         return 0;
                     }
@@ -2017,7 +1976,6 @@ public final class TableFixed {
                     break;
                 }
             case 12:
-            case 33:
                 { // text: the length, then min( their units, my units )
                     final int units = Math.min(mySize - 4, theirSize - 4);
                     // THE FLAVOUR RIDES IN meta AND THE ARM ORDINAL STAYS IN arg.
@@ -2025,7 +1983,7 @@ public final class TableFixed {
                     // other field in it and the guard compares arg, so a flavour
                     // written over arg is a text field under the SECOND arm that
                     // never lands and never counts.
-                    final byte meta = flavour != 0 ? flavour : (myKind == 33 ? textWide : textUtf8);
+                    final byte meta = flavour != 0 ? flavour : textUtf8;
                     c.push(theirAt, at, units, auxAt, guard, opText, arg, (byte) 0, (byte) 0, meta);
                     break;
                 }

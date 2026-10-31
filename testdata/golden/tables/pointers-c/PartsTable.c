@@ -318,7 +318,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_is_enum( const graphdemo_table_fie
 
 static SCHEMA_UNUSED char graphdemo_table_json_shape( const graphdemo_table_field_info_t * f )
 {
-    if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
+    if ( f->kind == 12 ) { return 's'; }           /* string */
     if ( graphdemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( graphdemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
     if ( f->sequence==2 ) { return 'o'; }
@@ -554,50 +554,6 @@ static SCHEMA_UNUSED void graphdemo_table_json_write_string( graphdemo_table_jso
     }
     graphdemo_table_json_put( out, '"' );
 }
-
-static SCHEMA_UNUSED int32_t graphdemo_table_json_encode_utf8( uint32_t code, char * unit );
-
-static SCHEMA_UNUSED void graphdemo_table_json_write_w_string( graphdemo_table_json_out_t * out, const uint16_t * s, int32_t length )
-{
-    static const char hex[] = "0123456789abcdef";
-    graphdemo_table_json_put( out, '"' );
-    for ( int32_t i = 0; i < length; i++ )
-    {
-        uint32_t code = (uint32_t) (uint16_t) s[i];
-        if ( code >= 0xd800 && code <= 0xdbff && i + 1 < length )
-        {
-            const uint32_t low = (uint32_t) (uint16_t) s[i + 1];
-            if ( low >= 0xdc00 && low <= 0xdfff )
-            {
-                code = 0x10000 + ( ( code - 0xd800 ) << 10 ) + ( low - 0xdc00 );
-                i++;
-            }
-        }
-        if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; } // an unpaired surrogate
-        switch ( code )
-        {
-            case '"':  graphdemo_table_json_raw( out, "\\\"", 2 ); continue;
-            case '\\': graphdemo_table_json_raw( out, "\\\\", 2 ); continue;
-            case '\b': graphdemo_table_json_raw( out, "\\b", 2 ); continue;
-            case '\f': graphdemo_table_json_raw( out, "\\f", 2 ); continue;
-            case '\n': graphdemo_table_json_raw( out, "\\n", 2 ); continue;
-            case '\r': graphdemo_table_json_raw( out, "\\r", 2 ); continue;
-            case '\t': graphdemo_table_json_raw( out, "\\t", 2 ); continue;
-            default: break;
-        }
-        if ( code < 0x20 )
-        {
-            char escape[6] = { '\\', 'u', '0', '0', hex[ code >> 4 ], hex[ code & 0xf ] };
-            graphdemo_table_json_raw( out, escape, 6 );
-            continue;
-        }
-        char encoded[4];
-        const int32_t encoded_length = graphdemo_table_json_encode_utf8( code, encoded );
-        graphdemo_table_json_raw( out, encoded, encoded_length );
-    }
-    graphdemo_table_json_put( out, '"' );
-}
-
 
 static SCHEMA_UNUSED void graphdemo_table_json_write_unsigned( graphdemo_table_json_out_t * out, uint64_t value )
 {
@@ -852,9 +808,6 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_field( graphdemo_table_json_
     if(f->sequence==2) { return graphdemo_table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
-    if ( f->kind == 33 ) {
-        graphdemo_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, graphdemo_table_json_count( base, f ) ); return 1;
-    }
     if ( f->kind == 12 )
     {
         graphdemo_table_json_write_string( out, (const char *) storage, graphdemo_table_json_count( base, f ) );
@@ -1259,79 +1212,6 @@ static SCHEMA_UNUSED int graphdemo_table_json_scan_text( graphdemo_table_json_in
 {
     return graphdemo_table_json_scan_string_as( in, out, capacity, length, 1 );
 }
-
-
-static SCHEMA_UNUSED uint32_t graphdemo_table_json_decode_utf8( const char * unit, int32_t unit_length )
-{
-    const unsigned char lead = (unsigned char) unit[0];
-    if ( unit_length == 1 ) { return lead; }
-    uint32_t code = lead & ( unit_length == 2 ? 0x1fu : ( unit_length == 3 ? 0x0fu : 0x07u ) );
-    for ( int32_t i = 1; i < unit_length; i++ )
-    {
-        code = ( code << 6 ) | (uint32_t) ( (unsigned char) unit[i] & 0x3f );
-    }
-    return code;
-}
-
-// Scan one JSON string into a caller buffer of UTF-16 CODE UNITS: the wstring
-// row of §16.2, the text TRANSCODED at the boundary. It shares
-// table_json_scan_unit with the narrow scan, so the escape grammar and the
-// lone-surrogate rule are one grammar, and appends ONE CODE POINT AT A TIME —
-// one unit below U+10000 and a surrogate PAIR above it. A string longer than
-// the field is therefore clamped at N code units with a pair never split, and
-// a high surrogate left without its low half is dropped with it, which is the
-// same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
-static SCHEMA_UNUSED int graphdemo_table_json_scan_w_string( graphdemo_table_json_in_t * in, uint16_t * out, int32_t capacity, int32_t * length )
-{
-    if ( graphdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
-    in->pos++;
-    int32_t placed = 0;
-    int clamped = 0;
-    for ( ;; )
-    {
-        char unit[4];
-        int32_t unit_length = 0;
-        if ( !graphdemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
-        if ( unit_length == 0 ) { break; }
-        const uint32_t code = graphdemo_table_json_decode_utf8( unit, unit_length );
-        if ( code == 0 ) { in->bad = 1; return 0; } /* a wstring value is text storage: text_holds_zero (§16.3) */
-        uint16_t units[2];
-        int32_t units_length = 1;
-        if ( code < 0x10000 )
-        {
-            units[0] = (uint16_t) code;
-        }
-        else
-        {
-            const uint32_t rest = code - 0x10000;
-            units[0] = (uint16_t) ( 0xd800 + ( rest >> 10 ) );
-            units[1] = (uint16_t) ( 0xdc00 + ( rest & 0x3ff ) );
-            units_length = 2;
-        }
-        if ( out == NULL )
-        {
-            placed += units_length;
-        }
-        else if ( !clamped && placed + units_length <= capacity )
-        {
-            for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
-            placed += units_length;
-        }
-        else
-        {
-            // A CLAMP IS A PREFIX, the narrow scan's own rule: once one code
-            // point does not fit, the scan stops placing. A pair is placed
-            // whole or not at all, so no clamp can leave an unpaired
-            // surrogate in storage.
-            clamped = 1;
-        }
-    }
-    if ( clamped ) { in->report->clamped++; }
-    if ( length != NULL ) { *length = placed; }
-    return 1;
-}
-
-
 
 /* Scan one number, to JSON's OWN grammar (RFC 8259 §6) and not to a run of
    number-ish characters:
@@ -2007,12 +1887,6 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_field( graphdemo_table_json_i
     if(f->sequence==2) { return graphdemo_table_json_read_map(in,storage,f,depth); }
 #endif
 #endif
-    if ( f->kind == 33 ) {
-        int32_t length = 0;
-        if ( !graphdemo_table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
-        ((uint16_t *)(void *)storage)[length] = 0;
-        graphdemo_table_json_set_count( base, f, length ); return 1;
-    }
     if ( f->kind == 12 )
     {
         int32_t length = 0;

@@ -692,7 +692,7 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 		}
 		w.put(at+int64(f.CookCountOffset), uint64(used), 4)
 	}
-	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
+	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes") {
 		width := f.CookElemSize
 		for i := range used {
 			v := tableJSONGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)

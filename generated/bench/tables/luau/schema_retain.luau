@@ -84,7 +84,7 @@ local function skip(r: any, kind: number): boolean
 		r.at = r.at + w
 		return true
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r); if r.bad then return false end
 		if r.at + n > r.e then return false end
 		r.at = r.at + n
@@ -196,7 +196,7 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		r.at = r.at + w
 		return true
 	end
-	if kind == 12 or kind == 31 or kind == 33 then
+	if kind == 12 or kind == 31 then
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		o_leb(out, n)
 		o_raw(out, r.b, r.at, n)
@@ -273,7 +273,7 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 	return false
 end
 
--- THE ARM PAYLOAD (§3's arm payload table): a string, wstring or text is its
+-- THE ARM PAYLOAD (§3's arm payload table): a string or text is its
 -- bytes with no length of its own, bytes and an array are an array body, and
 -- a table is a body's fields.
 resolve_arm = function(r: any, ids: { any }, kind: number, out: any, depth: number): boolean
@@ -284,7 +284,7 @@ resolve_arm = function(r: any, ids: { any }, kind: number, out: any, depth: numb
 		o_raw(out, r.b, r.at, w)
 		r.at = r.at + w
 		return true
-	elseif kind == 12 or kind == 31 or kind == 33 then
+	elseif kind == 12 or kind == 31 then
 		local n = r.e - r.at
 		o_leb(out, n)
 		o_raw(out, r.b, r.at, n)
@@ -807,7 +807,7 @@ local function save_skip(r: any, kind: number): boolean
 	if w > 0 then
 		r.at = r.at + w
 		return true
-	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = save_leb_read(r)
 		r.at = r.at + n
 		return true
@@ -938,7 +938,7 @@ save_parse_arm = function(r: any, kind: number, ids: { any }): any
 		return { kind = "keyed", node = save_parse_keyed(r, ids) }
 	elseif kind == 15 then
 		return { kind = "union", node = save_parse_union(r, ids) }
-	elseif kind == 12 or kind == 31 or kind == 33 then
+	elseif kind == 12 or kind == 31 then
 		local n = r.at <= #r.s and (#r.s - r.at + 1) or 0
 		return { kind = "raw", b = save_take(r, n) }
 	elseif kind == 30 then
@@ -1154,7 +1154,7 @@ save_res_arm = function(cx: any, c: any, kind: number): string
 		return save_res_keyed(cx, c)
 	elseif kind == 15 then
 		return save_res_union(cx, c)
-	elseif kind == 12 or kind == 31 or kind == 33 then
+	elseif kind == 12 or kind == 31 then
 		local n = r_leb(c)
 		if c.bad then return "" end
 		return res_take(c, n)

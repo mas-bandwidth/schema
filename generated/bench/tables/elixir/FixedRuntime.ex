@@ -408,16 +408,6 @@ defmodule Benchtable.FixedRuntime do
     if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
   end
 
-  @doc """
-  A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or a
-  REFUSAL BY NAME (`text_ill_formed`), on the same present-flag rule.
-  """
-  def wtext(used, default, m), do: wtext(used, default, m, true)
-
-  def wtext(used, _default, m, present) do
-    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
-  end
-
   # ---------------------------------------------------------------------------
   # THE WRITE's ONE HELPER: a value's bytes onto the zeroed template
   # ---------------------------------------------------------------------------
@@ -631,11 +621,11 @@ defmodule Benchtable.FixedRuntime do
   def id_at(layout, i), do: elem(elem(layout.entries, i), 0)
 
   # THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-  # the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-  # adds, the optional wrapper 35. 31 is §3's body framing escape and 34 is
-  # reserved: neither is a kind a declaration spells.
+  # the no-payload variant 32, and the ONE kind this form's layout adds, the
+  # optional wrapper 35. 31 is §3's body framing escape, 33 is retired and 34
+  # is reserved: none is a kind a declaration spells.
   defp known_kind?(kind) when kind >= 1 and kind <= 30, do: true
-  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35
+  defp known_kind?(kind), do: kind == 32 or kind == 35
 
   # A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
   # ONE exception, stated here rather than left to be found: a bits(N) field
@@ -825,15 +815,6 @@ defmodule Benchtable.FixedRuntime do
     cond do
       children != 0 -> {:error, :layout_kind_invalid}
       size < 4 -> {:error, :layout_size_mismatch}
-      true -> :ok
-    end
-  end
-
-  # wstring(N): the length in CODE UNITS, then 2N bytes
-  defp check_composite(33, size, children, _facts) do
-    cond do
-      children != 0 -> {:error, :layout_kind_invalid}
-      size < 4 or rem(size - 4, 2) != 0 -> {:error, :layout_size_mismatch}
       true -> :ok
     end
   end
@@ -1222,7 +1203,7 @@ defmodule Benchtable.FixedRuntime do
       30 ->
         compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
 
-      k when k == 12 or k == 33 ->
+      12 ->
         units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)
         entry = {:text, their_at, at, aux_at, units, elem(row, 4)}
         {guarded(acc, guard, tag, entry), report}
@@ -1630,8 +1611,7 @@ defmodule Benchtable.FixedRuntime do
   end
 
   defp step([{:text, src, dst, aux, size, flavour} | rest], body, writes, report) do
-    unit = if flavour == 2, do: 2, else: 1
-    cap = div(size, unit)
+    cap = size
 
     case body do
       <<_::binary-size(^src), raw::little-signed-32, take::binary-size(^size), _::binary>> ->
@@ -1641,7 +1621,7 @@ defmodule Benchtable.FixedRuntime do
         # over nothing else: the slack carries no meaning, and reading a whole
         # declared bound to check bytes that mean nothing is the cost this form
         # exists to avoid.
-        if text_ok?(flavour, binary_part(take, 0, v * unit)) do
+        if text_ok?(flavour, binary_part(take, 0, v)) do
           step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
         else
           # A PAYLOAD THAT IS NOT THE TEXT ITS KIND SAYS IT IS is a REFUSAL BY
@@ -1731,15 +1711,14 @@ defmodule Benchtable.FixedRuntime do
   end
 
   # ---------------------------------------------------------------------------
-  # THE CONTENT RULE: what a string(N) and a wstring(N) are allowed to be
+  # THE CONTENT RULE: what a string(N) is allowed to be
   # ---------------------------------------------------------------------------
   #
   # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
   # ill-formed as. These sit AFTER every `step/4` clause so the compiler sees
   # one function, not a helper splitting the clauses.
   #
-  # UTF-8 IS ONE WALK, the same shape as the UTF-16 walk below: eight ASCII
-  # bytes per clause when they sit in 1..127, then four, then one, then a
+  # UTF-8 IS ONE WALK: eight ASCII bytes per clause when they sit in 1..127, then four, then one, then a
   # codepoint, and a zero is not a character. Hostile falls through. The
   # previous check was String.valid?/1 (one codepoint per call) plus a second
   # BIF for the NUL; this does both in one match.
@@ -1760,28 +1739,7 @@ defmodule Benchtable.FixedRuntime do
   defp text_ok?(1, <<c, rest::binary>>) when c >= 1 and c <= 127, do: text_ok?(1, rest)
   defp text_ok?(1, <<c::utf8, rest::binary>>) when c > 0, do: text_ok?(1, rest)
   defp text_ok?(1, _), do: false
-  defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
   defp text_ok?(_, _), do: true
-
-  # PAIRED UTF-16 WITH NO ZERO UNIT, read as the wire it came from: the units
-  # ride little-endian and land as a raw copy, so this walks them as they lie.
-  defp utf16_ok?(<<>>), do: true
-  defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false
-
-  defp utf16_ok?(<<u::little-unsigned-16, rest::binary>>) when u >= 0xD800 and u <= 0xDBFF do
-    case rest do
-      <<low::little-unsigned-16, more::binary>> when low >= 0xDC00 and low <= 0xDFFF ->
-        utf16_ok?(more)
-
-      # A HIGH SURROGATE WITH NOTHING BEHIND IT, or with something that is not a
-      # low surrogate, is half a character and not a character.
-      _ ->
-        false
-    end
-  end
-
-  defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
-  defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
 
   defp leaf(body, src, size, true) do
     case body do

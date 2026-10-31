@@ -48,7 +48,6 @@ class FieldDescriptor:
     array:string = ""
     bound:int = 0
     min:int = 0
-    wide:bool = false
     f32:bool = false
     franged:bool = false
     flo:float = 0.0

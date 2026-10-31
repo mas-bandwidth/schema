@@ -665,7 +665,6 @@ final class TableWireReader {
       case 16:
       case 31:
       case 32:
-      case 33:
         final sl = readLeb();
         if (sl == null) return false;
         if (!has(sl)) return false;
@@ -1279,7 +1278,6 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
     case 12:
     case 31:
     case 32:
-    case 33:
       final len = r.readLeb();
       if (len == null || !r.has(len)) return null;
       final out = <int>[];
@@ -1431,7 +1429,6 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
     case 12:
     case 31:
     case 32:
-    case 33:
       final start = c.at;
       var len = 0;
       var shift = 0;
@@ -1667,23 +1664,6 @@ List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
     out[j + 1] = x;
   }
   return out;
-}
-
-// _wideValid reports whether a run of UTF-16 code units is well-formed: every
-// high surrogate followed by a low one, no low surrogate alone, no NUL
-// (docs/SPEC-TABLES.md §3, kind 33).
-bool _wideValid(List<int> u) {
-  for (var i = 0; i < u.length; i++) {
-    final c = u[i];
-    if (c == 0) return false;
-    if (c >= 0xD800 && c <= 0xDBFF) {
-      if (i + 1 >= u.length || u[i + 1] < 0xDC00 || u[i + 1] > 0xDFFF) return false;
-      i++;
-    } else if (c >= 0xDC00 && c <= 0xDFFF) {
-      return false;
-    }
-  }
-  return true;
 }
 
 // _kindWidth is a fixed-width kind's payload size in bytes (docs/SPEC-TABLES.md §3).
@@ -4703,7 +4683,7 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 }
 
 // _jsonText is the ZERO RULE (§16.3, text_holds_zero), one helper for every
-// place the read stores text: a string(N) or wstring(N) value, a *string
+// place the read stores text: a string(N) value, a *string
 // value, a text-list element, a map key. A stored string that decodes to
 // U+0000 refuses the read, because no wire carries a zero in text. A string
 // the read only SKIPS (an unknown key's value) never reaches here.
@@ -5431,23 +5411,6 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r) {
   }
   r.kindMismatch++;
   return null;
-}
-
-// _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
-// clamped at its bound in CODE UNITS and never through a surrogate pair.
-String _jsonWStringField(dynamic val, int bound, TableTextReport r) {
-  if (val is! String) {
-    r.kindMismatch++;
-    return '';
-  }
-  if (_jsonText(val).length <= bound) return val;
-  var keep = bound;
-  if (keep > 0) {
-    final u = val.codeUnitAt(keep - 1);
-    if (u >= 0xD800 && u <= 0xDBFF) keep--;
-  }
-  r.clamped++;
-  return val.substring(0, keep);
 }
 
 List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f) {

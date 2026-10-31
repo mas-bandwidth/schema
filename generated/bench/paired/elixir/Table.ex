@@ -1757,20 +1757,6 @@ defmodule Bench.Table do
     end
   end
 
-  # wstring(N) on the variable wire (docs/SPEC-TABLES.md §3): kind 33, L the
-  # UTF-16LE byte count, the code units; an empty one elides.
-  defp emit_field(%{t: :wstring} = f, value, idx_map, ids, order, acc) do
-    v = Map.get(value, f.name, f.default)
-
-    if v == nil or (v == "" and not Map.get(f, :optional, false)) do
-      {idx_map, ids, order, acc}
-    else
-      {ref, ids, order} = intern(ids, order, f.id)
-      units = utf16(v)
-      {idx_map, ids, order, [acc, leb_encode(ref), <<33>>, leb_encode(byte_size(units)), units]}
-    end
-  end
-
   defp emit_field(%{t: :map} = f, value, idx_map, ids, order, acc) do
     # SPEC-TABLES §2.8: map storage is the same kind-14/element-13 framing
     # as a list of entry tables, with ascending key order fixed by the writer.
@@ -1929,8 +1915,6 @@ defmodule Bench.Table do
   end
 
   defp pad_fixed(_f, elements), do: elements
-
-  defp utf16(v), do: :unicode.characters_to_binary(v, :utf8, {:utf16, :little})
 
   defp keyed_elem(%{elem_kind: 13} = item, v, idx_map, ids, order) do
     {_idx, ids2, order2, body} =
@@ -2676,28 +2660,6 @@ defmodule Bench.Table do
     end
   end
 
-  # wstring(N) (docs/SPEC-TABLES.md §3): L UTF-16LE bytes; past N code units
-  # clamps, and bytes that are not UTF-16 read empty and count malformed.
-  defp read_payload(%{t: :wstring} = f, payload, _nodes, _ids, report) do
-    case leb(payload) do
-      {len, rest} when byte_size(rest) >= len and rem(len, 2) == 0 ->
-        {raw, report} =
-          if div(len, 2) > f.size do
-            {binary_part(rest, 0, f.size * 2), %{report | clamped: report.clamped + 1}}
-          else
-            {binary_part(rest, 0, len), report}
-          end
-
-        case :unicode.characters_to_binary(raw, {:utf16, :little}, :utf8) do
-          s when is_binary(s) -> {:cont, s, report}
-          _ -> {:cont, "", %{report | malformed: true}}
-        end
-
-      _ ->
-        {:cont, "", %{report | malformed: true}}
-    end
-  end
-
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} ->
@@ -2795,7 +2757,7 @@ defmodule Bench.Table do
   defp read_arm_payload(a, name, inner, framed, nodes, ids, report) do
     # the length-framed kinds read their own L, so they take the framed bytes;
     # every other arm reads its payload exactly as a field does
-    payload = if a.arm_kind in [12, 13, 14, 16, 33], do: framed, else: inner
+    payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
     case read_payload(a, payload, nodes, ids, report) do
       {:cont, v, report} -> {:cont, {name, v}, report}
@@ -3212,7 +3174,7 @@ defmodule Bench.Table do
   defp slice(bin, kind) when kind in [5, 9, 11, 23, 28], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
-  defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32, 33], do: body(bin)
+  defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32], do: body(bin)
 
   defp slice(bin, 15) do
     case leb(bin) do
@@ -3633,7 +3595,6 @@ defmodule Bench.Table do
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
   defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
   defp json_field(%{t: :union} = f, sel, depth), do: json_arm(f.elem, sel, depth)
-  defp json_field(%{t: :wstring}, v, _depth), do: ["\"", json_escape(v), "\""]
 
   defp json_field(%{t: :keyed} = f, slots, depth) do
     slots = slots || %{}
@@ -4011,27 +3972,6 @@ defmodule Bench.Table do
 
   # a union field reads one arm object (docs/SPEC-TABLES.md §2.6, §16.2)
   defp json_read_field(%{t: :union} = f, raw, report), do: json_read_arm(f.elem, raw, report)
-
-  # wstring(N) (docs/SPEC-TABLES.md §3, §16.2): the text is UTF-8; past N
-  # UTF-16 code units it clamps and counts.
-  defp json_read_field(%{t: :wstring} = f, raw, report) when is_binary(raw) do
-    report = json_text_zero(f, raw, report)
-    units = utf16(raw)
-
-    if div(byte_size(units), 2) > f.size do
-      cut = binary_part(units, 0, f.size * 2)
-
-      {:unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
-       %{report | clamped: report.clamped + 1}}
-    else
-      {raw, report}
-    end
-  end
-
-  defp json_read_field(%{t: :wstring} = f, raw, report) do
-    json_skip_value(raw)
-    {Map.get(f, :default, ""), %{report | kind_mismatch: report.kind_mismatch + 1}}
-  end
 
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2, §16.2) is an object
   # keyed by variant name; a name the key enum does not have counts unknown.
@@ -6799,7 +6739,7 @@ defmodule Bench.Table do
       n != nil and byte_size(payload) >= n ->
         {:ok, n}
 
-      kind in [12, 31, 32, 33] ->
+      kind in [12, 31, 32] ->
         case leb(payload) do
           {len, rest} when byte_size(rest) >= len ->
             {:ok, byte_size(payload) - byte_size(rest) + len}

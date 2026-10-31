@@ -1081,7 +1081,7 @@ defmodule Benchtable.BenchTableFixed do
     # first and owns the ragged tail, so a `rest` that is not a whole number
     # of records passes this and the split reports `malformed`.
     # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
-    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all
+    # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
     # left at zero.
@@ -1328,7 +1328,7 @@ defmodule Benchtable.BenchTableFixed do
     # first and owns the ragged tail, so a `rest` that is not a whole number
     # of records passes this and the split reports `malformed`.
     # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
-    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all
+    # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
     # left at zero.
@@ -1647,7 +1647,7 @@ defmodule Benchtable.BenchTableFixed do
     # first and owns the ragged tail, so a `rest` that is not a whole number
     # of records passes this and the split reports `malformed`.
     # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
-    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all
+    # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
     # left at zero.

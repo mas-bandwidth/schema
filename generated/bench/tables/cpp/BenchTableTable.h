@@ -824,7 +824,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
+            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1130,7 +1130,7 @@ static const int64_t kTableMessageRefBitsHere = 7;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 77;
+static const int64_t kTableMessageEntriesHere = 76;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1450,7 +1450,7 @@ inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
     // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1583,13 +1583,13 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         return false; // a packing outside the closed set
     }
     // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
-    // and a wide string are bounded by the int32 storage cap the checker
+    // is bounded by the int32 storage cap the checker
     // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
     // the 32-bit count an unbounded array announces (§2.9), which is the
     // widest count this form spells. A larger bound is a shape no conforming
     // declaration can produce, and a reader that carried it would do its
     // length arithmetic in a range that overflows.
-    if ( kind == 12 || kind == 33 )
+    if ( kind == 12 )
     {
         if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
         f.max = (int64_t) v;
@@ -1608,12 +1608,11 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( at >= size ) { return false; }
         f.elem_kind = in[ at++ ];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
-        // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
-        // announcement, rather than at the skip that would meet it (§3.3): no
-        // declaration this language accepts is an array of string(N) or of
-        // wstring(N), so a shape announcing one is one rule's business and not
-        // two.
-        if ( f.elem_kind == 12 || f.elem_kind == 33 ) { return false; }
+        // AND AN ELEMENT KIND OF 12 IS REFUSED HERE, at the announcement,
+        // rather than at the skip that would meet it (§3.3): no declaration
+        // this language accepts is an array of string(N), so a shape
+        // announcing one is one rule's business and not two.
+        if ( f.elem_kind == 12 ) { return false; }
         return true;
     }
     return true;
@@ -1642,7 +1641,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 77 entries and 934 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 76 entries and 925 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1655,12 +1654,12 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // The order is the COOK PROJECTION's (§20.2): each record in the order the
 // projection renders it and each record's fields in the order the projection
 // renders them, then each enum's variants and each union's arms. Then comes
-// the tail the projection does not name: the reserved node-table id, the three
-// blob type ids as bytes, string and wstring, and every table's own name id in
+// the tail the projection does not name: the reserved node-table id, the two
+// blob type ids as bytes and string, and every table's own name id in
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 934;
+static const int64_t kTableAnnounceBytes = 925;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -1671,7 +1670,7 @@ static const int64_t kTableAnnounceBytes = 934;
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x01, 0x01, 0x09, 0x69, 0x75, 0x5a, 0x29, 0xdf, 0xf2, 0x5c, 0xd1, 0x02,
-    0x0e, 0xfe, 0x06, 0x06, 0xfb, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e,
+    0x0e, 0xf5, 0x06, 0x06, 0xf2, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e,
     0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
     0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd,
     0xfc, 0x23, 0x07, 0x01, 0x0c, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37,
@@ -1742,12 +1741,12 @@ inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2, 0x0d, 0x65, 0xb7, 0xec,
     0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00,
-    0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b,
-    0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72,
-    0x61, 0x31, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x00,
-    0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x00, 0x00, 0xfe, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xa8, 0xcb, 0xc6,
+    0x96, 0x35, 0x72, 0x61, 0x31, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4,
+    0x9a, 0x43, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x00,
+    0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00,
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
@@ -2103,13 +2102,6 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
-        case 33:
-        {
-            // the length, NO align, then SIXTEEN bits a code unit (§3.3)
-            uint64_t n = 0;
-            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
-            return r.skip( (int64_t) n * 16 );
-        }
         case 31:
         {
             // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
@@ -2355,7 +2347,6 @@ enum : uint8_t
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
-    kTableFixedTextWide  = 2,
     kTableFixedTextBytes = 3,
 };
 
@@ -2643,21 +2634,17 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            else if ( (uint32_t) v > p.size ) { v = (int32_t) p.size; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
-                // unit longer than the bound for exactly this. A store, not a
+                // byte longer than the bound for exactly this. A store, not a
                 // call: memset of a runtime length is a call.
-                uint8_t * end = dst + p.aux + (uint32_t) v * unit;
-                end[0] = 0;
-                if ( unit == 2 ) { end[1] = 0; }
+                dst[p.aux + (uint32_t) v] = 0;
             }
             break;
         }
@@ -2829,10 +2816,8 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else if ( p.op == kTableFixedText )
         {
-            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+            if ( v < 0 || (uint32_t) v > p.size ) { why = length_over_bound; return true; }
         }
     }
     return false;
@@ -2894,10 +2879,9 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedCount: lands[1] = e.dst + 4u; break;
         case kTableFixedText:
         {
-            const uint32_t unit = ( e.meta == kTableFixedTextWide ) ? 2u : 1u;
             lands[1] = e.dst + 4u;
             lands[2] = e.aux;
-            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : unit );
+            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : 1u );
             break;
         }
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
@@ -3111,15 +3095,15 @@ inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
 inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-// reserved: neither is a kind a declaration spells, so neither is ever an
-// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
+// the no-payload variant 32, and the ONE kind this form's layout adds, the
+// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// reserved: none is a kind a declaration spells, so none is ever an entry's
+// kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
 inline bool TableFixedKnownKind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return true; }
-    return kind == 32u || kind == 33u || kind == 35u;
+    return kind == 32u || kind == 35u;
 }
 
 // TableFixedCheckEntry validates the subtree rooted at i and answers how many
@@ -3216,12 +3200,6 @@ inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t dep
         {
             if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
             if ( e.size < 4u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
-            break;
-        }
-        case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-        {
-            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
             break;
         }
         // Every kind of the closed set is either a leaf above or a case here,
@@ -3650,7 +3628,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             TableFixedPush( c, e );
             break;
         }
-        case 12: case 33: // text
+        case 12: // text
         {
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
@@ -4153,18 +4131,6 @@ inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, i
     memcpy( at, source, (size_t) n );
 }
 
-// A WIDE TEXT buffer piece (docs/SPEC-TABLES.md §7.2): the USED code units,
-// each a TWO-BYTE SCALAR in the cook's byte order. A record is written piece
-// by piece and never memcpy'd, and a swap has to know where every scalar
-// begins — a char16_t is one, so the units go one store each rather than as
-// bytes. The tail is already zero, as the narrow twin's is, so the terminating
-// zero unit at index used costs nothing here.
-inline void table_cook_units( uint8_t * at, const char16_t * source, int64_t used, int64_t capacity, TableByteOrder order )
-{
-    if ( used <= 0 ) { return; }
-    const int64_t n = used < capacity ? used : capacity;
-    for ( int64_t i = 0; i < n; i++ ) { table_cook_put( at + i * 2, (uint64_t) (uint16_t) source[i], 2, order ); }
-}
 
 } // namespace benchtable
 

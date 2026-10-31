@@ -146,7 +146,6 @@ namespace Benchtable
         public Func<UInt128, TableReport, UInt128> ClampWide;
         public Func<object, int, UInt128> GetWide;
         public Action<object, int, UInt128> SetWide;
-        public Func<object, char[]> GetChars;
         public byte[] DefaultBytes;
         public Action<object> ResetField;
         public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
@@ -506,7 +505,6 @@ namespace Benchtable
         public readonly Action<T, double> SetDouble;
         public readonly Action<T, UInt128> SetWide;
         public readonly TableFixedSetBytes<T> SetBytes;
-        public readonly TableFixedSetBytes<T> SetChars;
         public readonly Action<T, ulong, TableReport> SetRawReport;
         public readonly Action<T> Reset; // declared default into this slot, and nowhere else
 
@@ -515,7 +513,6 @@ namespace Benchtable
             Action<T, double> setDouble = null,
             Action<T, UInt128> setWide = null,
             TableFixedSetBytes<T> setBytes = null,
-            TableFixedSetBytes<T> setChars = null,
             Action<T, ulong, TableReport> setRawReport = null,
             Action<T> reset = null)
         {
@@ -523,7 +520,6 @@ namespace Benchtable
             SetDouble = setDouble;
             SetWide = setWide;
             SetBytes = setBytes;
-            SetChars = setChars;
             SetRawReport = setRawReport;
             Reset = reset;
         }
@@ -734,19 +730,6 @@ namespace Benchtable
             }
 
 
-            static void WriteChars(ref Out o, ReadOnlySpan<char> text)
-            {
-                o.Put((byte)'"');
-                for (int i = 0; i < text.Length; i++)
-                {
-                    int code = text[i];
-                    if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.Length && text[i + 1] >= 0xdc00 && text[i + 1] <= 0xdfff)
-                    { code = 0x10000 + ((code - 0xd800) << 10) + text[++i] - 0xdc00; }
-                    else if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
-                    if (!WriteEscape(ref o, code)) { WriteUtf8(ref o, code); }
-                }
-                o.Put((byte)'"');
-            }
             static void WriteWide(ref Out o, UInt128 raw, TableFieldInfo f)
             {
                 if (f.WideSigned && unchecked((Int128)raw) < 0) { o.Put((byte)'-'); raw = unchecked(0 - raw); }
@@ -898,7 +881,7 @@ namespace Benchtable
             {
                 if (f.Map) { return 'o'; }
                 if (f.Kind == 17 && !f.IsArray) { return f.BlobKind != 0 ? 's' : 'o'; }
-                if (f.Kind == 12 || f.Kind == 33) { return 's'; }          // string
+                if (f.Kind == 12) { return 's'; }          // string
                 if (IsBytes(f)) { return 's'; }            // bytes: base64
                 if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
                 if (f.IsArray) { return 'a'; }
@@ -1419,10 +1402,6 @@ namespace Benchtable
             static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
             {
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
-                if (f.Kind == 33)
-                {
-                    WriteChars(ref o, f.GetChars(value).AsSpan(0, Count(value, f))); return true;
-                }
                 if (f.Kind == 12)
                 {
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
@@ -1596,7 +1575,7 @@ namespace Benchtable
                 if (f.BlobKind == 12)
                 {
                     In probe = input;
-                    if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+                    if (!ScanText(text, ref probe, Span<byte>.Empty, false, out int size, true)) { input = probe; return false; }
                     byte[] data = new byte[size];
                     if (!ScanString(text, ref input, data, true, out _)) { return false; }
                     f.SetChild(owner, index, new TableBlob(data)); return true;
@@ -1866,7 +1845,7 @@ namespace Benchtable
             // string without keeping it, and counts no clamp for what it dropped —
             // C++'s NULL destination.
             static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
-            { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length); }
+            { return ScanText(text, ref input, destination, keep, out length); }
             // The body of a bytes field's base64 string, as the JSON layer reads it
             // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
             // below 0x20, a backslash that begins no escape, a byte that is not UTF-8
@@ -1905,13 +1884,13 @@ namespace Benchtable
                     return true;
                 }
                 In probe = input;
-                if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+                if (!ScanText(text, ref probe, Span<byte>.Empty, false, out int size, true)) { input = probe; return false; }
                 byte[] decoded = new byte[size];
-                if (!ScanText(text, ref input, decoded, Span<char>.Empty, false, true, out int used)) { return false; }
+                if (!ScanText(text, ref input, decoded, true, out int used)) { return false; }
                 body = new ReadOnlySpan<byte>(decoded, 0, used);
                 return true;
             }
-            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false)
+            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool measure = false)
             {
                 length = 0;
                 if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1996,17 +1975,6 @@ namespace Benchtable
                     {
                         if (placed > int.MaxValue - unitLength) { input.Bad = true; return false; }
                         placed += unitLength;
-                    }
-                    else if (keep && wide)
-                    {
-                        int code = Utf8(unit.Slice(0, unitLength), 0, out _);
-                        int n = code > 0xffff ? 2 : 1;
-                        if (!clamped && placed + n <= chars.Length)
-                        {
-                            if (n == 1) { chars[placed++] = (char)code; }
-                            else { code -= 0x10000; chars[placed++] = (char)(0xd800 | (code >> 10)); chars[placed++] = (char)(0xdc00 | (code & 1023)); }
-                        }
-                        else { clamped = true; }
                     }
                     else if (keep)
                     {
@@ -2558,11 +2526,6 @@ namespace Benchtable
             static bool ReadField(ReadOnlySpan<byte> text, ref In input, object value, TableFieldInfo f, int depth)
             {
                 if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
-                if (f.Kind == 33)
-                {
-                    if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used)) { return false; }
-                    f.SetCount(value, used); return true;
-                }
                 if (f.Kind == 12)
                 {
                     byte[] storage = f.GetBuffer(value);
@@ -3172,7 +3135,6 @@ namespace Benchtable
                         case 16:
                         case 31:
                         case 32:
-                        case 33:
                             return Slice(out _);
                         case 15:
                             if (!Var(out ulong arm)) { return false; }
@@ -3614,7 +3576,7 @@ namespace Benchtable
 
             static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
             static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-            static bool MessageKind(byte kind) { return kind <= 33 || kind == 36; }
+            static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
             static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
             static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
             static int ValueBits(byte kind, TableMessageShape s)
@@ -3653,14 +3615,14 @@ namespace Benchtable
                     }
                     else if (shape.Packing != 0) { return false; }
                 }
-                else if (kind == 12 || kind == 33)
+                else if (kind == 12)
                 { if (!r.Var(out shape.Max) || shape.Max > int.MaxValue) { return false; } }
                 else if (kind == 14 || kind == 16)
                 {
                     if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
                     if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
                     shape.Elem = r.Byte();
-                    if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33) { return false; }
+                    if (!MessageKind(shape.Elem) || shape.Elem == 12) { return false; }
                     // An entry carries its own shape and one element shape. The C++
                     // announcement reader does not recursively parse nested arrays.
                     if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
@@ -3785,11 +3747,10 @@ namespace Benchtable
                         MessageElement(ref w, value, f, i, shape.Inner, graph, indexBits);
                     }
                 }
-                else if (f.Kind == 12 || f.Kind == 33)
+                else if (f.Kind == 12)
                 {
                     int count = Count(value, f); w.Put((uint)count, BitCount(shape.Max));
-                    if (f.Kind == 12) { w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count)); }
-                    else { for (int i = 0; i < count; i++) { w.Put(f.GetChars(value)[i], 16); } }
+                    w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count));
                 }
                 else { MessageElement(ref w, value, f, 0, shape, graph, indexBits); }
             }
@@ -3904,7 +3865,6 @@ namespace Benchtable
                     case 13: return MessageSkipBody(ref r, d, depth + 1);
                     case 17: return d.IndexBits > 0 && r.Skip(d.IndexBits);
                     case 12:
-                    case 33:
                         if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
                         return r.Skip((long)length * (kind == 12 ? 8 : 16));
                     case 31:
@@ -4021,31 +3981,13 @@ namespace Benchtable
                     if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
                     r.At += (long)n * 8; return true;
                 }
-                if (kind == 12 || kind == 33)
+                if (kind == 12)
                 {
-                    if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
-                    long bits = (long)length * (kind == 12 ? 8 : 16);
+                    if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align()) { return false; }
+                    long bits = (long)length * 8;
                     if (bits > r.End - r.At) { return false; }
-                    if (kind == 12)
-                    {
-                        ReadOnlySpan<byte> text = r.Bytes.Slice((int)(r.At / 8), (int)length); r.At += bits;
-                        return ReadText(text, value, f, d.Report);
-                    }
-                    BitReader check = r;
-                    for (int i = 0; i < (int)length; i++)
-                    {
-                        check.Get(16, out UInt128 raw); uint c = (uint)raw;
-                        if (c == 0 || c >= 0xdc00 && c <= 0xdfff) { return false; }
-                        if (c >= 0xd800 && c <= 0xdbff)
-                        { if (++i == (int)length || !check.Get(16, out UInt128 low) || low < 0xdc00 || low > 0xdfff) { return false; } }
-                    }
-                    int keep = Math.Min((int)length, f.ArrayBound);
-                    if (length > (uint)f.ArrayBound) { d.Report.Clamped++; }
-                    char last = default;
-                    for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last = (char)(uint)raw; if (value != null) { f.GetChars(value)[i] = last; } }
-                    if (keep > 0 && keep < (int)length && char.IsHighSurrogate(last)) { keep--; }
-                    if (value != null) { f.SetCount(value, keep); }
-                    r = check; return true;
+                    ReadOnlySpan<byte> text = r.Bytes.Slice((int)(r.At / 8), (int)length); r.At += bits;
+                    return ReadText(text, value, f, d.Report);
                 }
                 if (f.IsArray)
                 {
@@ -4422,8 +4364,6 @@ namespace Benchtable
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
                 if (f.Kind == 12)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
-                if (f.Kind == 33)
-                { for (int i = 0; i < live; i++) { w.Put(at + i * 2L, f.GetChars(value)[i], 2); } return true; }
                 int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
                 if (f.GetBuffer != null)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
@@ -4677,7 +4617,7 @@ namespace Benchtable
             {
                 if (f == null) { return 0; }
                 if (f.IsArray) { return ArraySize(value, f, ref ids, elemCache); }
-                if (f.Kind == 12 || f.Kind == 33) { return Count(value, f) * (f.Kind == 33 ? 2L : 1L); }
+                if (f.Kind == 12) { return Count(value, f); }
                 return ElementSize(value, f, 0, ref ids, false);
             }
             static long ElementSize(object value, TableFieldInfo f, int i, ref Ids ids, bool framed)
@@ -4736,7 +4676,7 @@ namespace Benchtable
                     TableFieldInfo f = type.Fields[i];
                     if (!Rides(value, f)) { continue; }
                     n += VarSize(ids.Reference(f.Id)) + 1;
-                    if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                    if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                     {
                         scoped Span<long> elemCache = default;
                         if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
@@ -4820,7 +4760,6 @@ namespace Benchtable
                         }
                     }
                 }
-                else if (f.Kind == 33) { char[] chars = f.GetChars(value); int count = Count(value, f); for (int i = 0; i < count; i++) { w.Fixed(chars[i], 2); } }
                 else if (f.Kind == 12) { w.Raw(f.GetBuffer(value).AsSpan(0, Count(value, f))); }
                 else { WriteElement(ref w, value, f, 0, ref ids, false); }
             }
@@ -4840,7 +4779,7 @@ namespace Benchtable
                         elemCache = rootElemSizes.Slice(elemOffset, take);
                         elemOffset += take;
                     }
-                    if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                    if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                     { w.Var((ulong)(rootPayloadSizes.IsEmpty ? PayloadSize(value, f, ref ids) : rootPayloadSizes[i])); }
                     WritePayload(ref w, value, f, ref ids, elemCache);
                 }
@@ -4859,7 +4798,7 @@ namespace Benchtable
                 payload = 0;
                 if (!Rides(value, f)) { return 0; }
                 long n = VarSize(ids.Reference(f.Id)) + 1;
-                if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                 {
                     payload = PayloadSize(value, f, ref ids, elemCache);
                     n += VarSize((ulong)payload) + payload;
@@ -4878,7 +4817,7 @@ namespace Benchtable
             {
                 if (!Rides(value, f)) { return; }
                 w.Header(ids.Reference(f.Id), Kind(f));
-                if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                 {
                     long payload = cachedPayload >= 0 ? cachedPayload : PayloadSize(value, f, ref ids);
                     w.Var((ulong)payload);
@@ -5087,8 +5026,7 @@ namespace Benchtable
             static void ZeroField(object value, TableFieldInfo f)
             {
                 if (f.Dynamic) { f.ResetField(value); return; }
-                if (f.GetChars != null) { Array.Clear(f.GetChars(value), 0, f.ArrayBound); }
-                else if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
+                if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
                 else
                 {
                     int n = f.IsArray ? f.ArrayBound : 1;
@@ -5157,10 +5095,10 @@ namespace Benchtable
                     f.SetChild(value, 0, r.Graph == null ? null : r.Graph.Resolve(indexValue, f, report));
                     return true;
                 }
-                if (kind == 12 || kind == 33)
+                if (kind == 12)
                 {
                     ResetArm(value, f);
-                    return kind == 33 ? ReadChars(r.Buffer, value, f, report) : ReadText(r.Buffer, value, f, report);
+                    return ReadText(r.Buffer, value, f, report);
                 }
                 if (kind == 14)
                 {
@@ -5196,31 +5134,6 @@ namespace Benchtable
                 if (value != null) { text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
                 return true;
             }
-            static bool ReadChars(ReadOnlySpan<byte> text, object value, TableFieldInfo f, TableReport report)
-            {
-                if ((text.Length & 1) != 0) { return Damage(report); }
-                for (int i = 0; i < text.Length; i += 2)
-                {
-                    int c = text[i] | text[i + 1] << 8;
-                    if (c == 0 || (c >= 0xdc00 && c <= 0xdfff)) { return Damage(report); }
-                    if (c >= 0xd800 && c <= 0xdbff)
-                    {
-                        if (i + 3 >= text.Length) { return Damage(report); }
-                        int low = text[i + 2] | text[i + 3] << 8;
-                        if (low < 0xdc00 || low > 0xdfff) { return Damage(report); }
-                        i += 2;
-                    }
-                }
-                int keep = text.Length / 2;
-                if (keep > f.ArrayBound)
-                {
-                    keep = f.ArrayBound; report.Clamped++;
-                    if (keep > 0 && (text[keep * 2 - 1] & 0xfc) == 0xd8) { keep--; }
-                }
-                char[] storage = f.GetChars(value);
-                for (int i = 0; i < keep; i++) { storage[i] = (char)(text[i * 2] | text[i * 2 + 1] << 8); }
-                f.SetCount(value, keep); return true;
-            }
             internal static bool TextValid(ReadOnlySpan<byte> text)
             {
                 for (int i = 0; i < text.Length;)
@@ -5244,10 +5157,10 @@ namespace Benchtable
             {
                 placed = true;
                 if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
-                if (kind == 12 || kind == 33)
+                if (kind == 12)
                 {
                     if (!r.Slice(out Reader text)) { return Damage(report); }
-                    if (!(kind == 33 ? ReadChars(text.Buffer, value, f, report) : ReadText(text.Buffer, value, f, report)))
+                    if (!ReadText(text.Buffer, value, f, report))
                     { f.ResetField(value); }
                     return true;
                 }
@@ -5469,7 +5382,6 @@ namespace Benchtable
 
             // Arg on a Text entry
             public const byte TextUtf8 = 1;
-            public const byte TextWide = 2;
             public const byte TextBytes = 3;
 
             public const int EntryBytes = 17;
@@ -5576,7 +5488,7 @@ namespace Benchtable
             private static bool KnownKind(byte kind)
             {
                 if (kind >= 1 && kind <= 30) return true;
-                return kind == 32 || kind == 33 || kind == 35;
+                return kind == 32 || kind == 35;
             }
 
             private ref struct Checker
@@ -5666,10 +5578,6 @@ namespace Benchtable
                     case 12: // string
                         if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
                         if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
-                        break;
-                    case 33: // wstring
-                        if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
-                        if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
                         break;
                     default:
                         c.Fail("layout_kind_unknown");
@@ -6115,7 +6023,6 @@ namespace Benchtable
                             break;
                         }
                     case 12:
-                    case 33: // Text / WString
                         {
                             uint units = Math.Min(me.Size - 4u, te.Size - 4u);
                             TableFixedEntry e = new TableFixedEntry(
@@ -6617,11 +6524,9 @@ namespace Benchtable
                             }
                         case Text:
                             {
-                                uint unit = (p.Meta == TextWide) ? 2u : 1u;
-                                uint cap = p.Size / unit;
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                                else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                                else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
                                 ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                                 // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING
                                 // ELSE, and a violation REFUSES BY NAME, the verdict the
@@ -6634,14 +6539,7 @@ namespace Benchtable
                                     return "text_ill_formed";
                                 }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
-                                if (p.Meta == TextWide)
-                                {
-                                    slots[(int)p.Aux].SetChars?.Invoke(dst, textBytes, v);
-                                }
-                                else
-                                {
-                                    slots[(int)p.Aux].SetBytes?.Invoke(dst, textBytes, v);
-                                }
+                                slots[(int)p.Aux].SetBytes?.Invoke(dst, textBytes, v);
                                 break;
                             }
                         case Ordinal:
@@ -6742,10 +6640,9 @@ namespace Benchtable
 
             // TextIllFormed reports whether a text payload's USED units are the text
             // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-            // with no zero byte for string, paired non-zero UTF-16 code units for
-            // wstring. bytes(N) carries no text rule at all, and slack past the used
-            // units is unspecified and never a refusal (docs/SPEC-TABLES.md §3.4).
-            // The used argument is the clamped length in the flavour's own units.
+            // with no zero byte for string. bytes(N) carries no text rule at all, and
+            // slack past the used bytes is unspecified and never a refusal
+            // (docs/SPEC-TABLES.md §3.4). The used argument is the clamped length.
             public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
             {
                 switch (meta)
@@ -6774,23 +6671,6 @@ namespace Benchtable
                                 if (continuations == 2 && (code_point < 0x800 || (code_point >= 0xD800 && code_point <= 0xDFFF))) { return true; }
                                 if (continuations == 3 && (code_point < 0x10000 || code_point > 0x10FFFF)) { return true; }
                                 i += 1 + continuations;
-                            }
-                            break;
-                        }
-                    case TextWide:
-                        {
-                            for (uint i = 0; i < used; i++)
-                            {
-                                uint u = (uint)(p[(int)i * 2] | (p[(int)i * 2 + 1] << 8));
-                                if (u == 0) { return true; }
-                                if (u >= 0xD800 && u <= 0xDBFF)
-                                {
-                                    if (i + 1 >= used) { return true; }
-                                    uint lo = (uint)(p[(int)(i + 1) * 2] | (p[(int)(i + 1) * 2 + 1] << 8));
-                                    if (lo < 0xDC00 || lo > 0xDFFF) { return true; }
-                                    i++;
-                                }
-                                else if (u >= 0xDC00 && u <= 0xDFFF) { return true; }
                             }
                             break;
                         }
@@ -8638,14 +8518,6 @@ namespace Benchtable
             }
         }
 
-        private static void TableEntityFixedSetChars(TableEntity t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void TableEntityFixedResetSlot(TableEntity t, uint slot)
         {
             switch (slot)
@@ -8769,25 +8641,16 @@ namespace Benchtable
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
                                 return "text_ill_formed";
                             }
                             TableEntityFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                TableEntityFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                TableEntityFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            TableEntityFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -9223,14 +9086,6 @@ namespace Benchtable
             }
         }
 
-        private static void TableStatFixedSetChars(TableStat t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void TableStatFixedResetSlot(TableStat t, uint slot)
         {
             switch (slot)
@@ -9342,25 +9197,16 @@ namespace Benchtable
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
                                 return "text_ill_formed";
                             }
                             TableStatFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                TableStatFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                TableStatFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            TableStatFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -10526,14 +10372,6 @@ namespace Benchtable
             }
         }
 
-        private static void TableMixedFixedSetChars(TableMixed t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void TableMixedFixedResetSlot(TableMixed t, uint slot)
         {
             switch (slot)
@@ -10953,25 +10791,16 @@ namespace Benchtable
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
                                 return "text_ill_formed";
                             }
                             TableMixedFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                TableMixedFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                TableMixedFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            TableMixedFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:

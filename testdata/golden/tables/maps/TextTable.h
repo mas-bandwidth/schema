@@ -616,7 +616,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 76;
+    static const int32_t kCapacity = 74;
     static const int32_t kBuckets = 256;
 
     uint64_t ids[ kCapacity ];
@@ -871,7 +871,7 @@ struct TableReader
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
+            case 12: case 13: case 14: case 16: case 31: case 32: // 31 is the ESCAPE, 32 the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1013,59 +1013,6 @@ inline int64_t TableUtf8Clamp( const uint8_t * bytes, uint64_t length, int64_t b
     if ( length <= (uint64_t) bound ) { return (int64_t) length; }
     int64_t cut = bound;
     while ( cut > 0 && ( bytes[cut] & 0xC0 ) == 0x80 ) { cut--; }
-    return cut;
-}
-
-// ONE CODE UNIT off the wire: two bytes LITTLE-ENDIAN, this wire's order for
-// every fixed-width number (docs/SPEC-TABLES.md §3). No unit can exceed
-// 0xFFFF, because two bytes cannot spell one.
-inline uint16_t TableUtf16Unit( const uint8_t * bytes, int64_t index )
-{
-    return uint16_t( uint16_t( bytes[index * 2] ) | ( uint16_t( bytes[index * 2 + 1] ) << 8 ) );
-}
-
-// ILL-FORMED WIDE TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): a kind 33
-// payload carrying an UNPAIRED SURROGATE or a ZERO CODE UNIT among its units,
-// checked AS IT ARRIVES and before the reader's own bound, on the rule kind 12
-// takes for UTF-8. An ODD L is framing damage and the caller rejects it ahead
-// of this, because units is L / 2. SPEC.md §4.12 refuses the same content
-// TERMINALLY on the packet wire; here the field reads its declared default,
-// one malformed counts, and the parent reads on past L.
-inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
-{
-    int64_t i = 0;
-    while ( i < units )
-    {
-        const uint16_t unit = TableUtf16Unit( bytes, i );
-        if ( unit == 0 ) { return false; }
-        if ( unit >= 0xD800 && unit <= 0xDBFF )
-        {
-            if ( i + 1 >= units ) { return false; } // a high surrogate with no low half
-            const uint16_t low = TableUtf16Unit( bytes, i + 1 );
-            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
-            i += 2;
-            continue;
-        }
-        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first
-        i++;
-    }
-    return true;
-}
-
-// A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
-// the first bound units of a payload the check above already accepted, and
-// where the last kept unit is a HIGH SURROGATE whose low half did not fit,
-// that unit is dropped with it. So a clamp can never invent an unpaired
-// surrogate, exactly as kind 12's clamp can never invent a broken sequence.
-inline int64_t TableUtf16Clamp( const uint8_t * bytes, int64_t units, int64_t bound )
-{
-    if ( units <= bound ) { return units; }
-    int64_t cut = bound;
-    if ( cut > 0 )
-    {
-        const uint16_t last = TableUtf16Unit( bytes, cut - 1 );
-        if ( last >= 0xD800 && last <= 0xDBFF ) { cut--; }
-    }
     return cut;
 }
 
@@ -1246,13 +1193,13 @@ static const int64_t kTableMessageRefBitsHere = 7;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 75;
+static const int64_t kTableMessageEntriesHere = 72;
 
 // The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
 // pointered body names the node table through it, and the node table is the
 // ROOT body's FIRST field because a pointer index's width is settled by the
 // node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = 54;
+static const uint64_t kTableNodeTableFieldSlot = 52;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1572,7 +1519,7 @@ inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
     // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -1705,13 +1652,13 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         return false; // a packing outside the closed set
     }
     // A MAX ABOVE WHAT THE KIND CAN HOLD IS A HOSTILE WIDTH (§3.3). A string
-    // and a wide string are bounded by the int32 storage cap the checker
+    // is bounded by the int32 storage cap the checker
     // applies to every N (SPEC §4.3, §6.1), and an array and a keyed entry by
     // the 32-bit count an unbounded array announces (§2.9), which is the
     // widest count this form spells. A larger bound is a shape no conforming
     // declaration can produce, and a reader that carried it would do its
     // length arithmetic in a range that overflows.
-    if ( kind == 12 || kind == 33 )
+    if ( kind == 12 )
     {
         if ( !TableMessageLeb( in, size, at, v ) || v > (uint64_t) INT32_MAX ) { return false; }
         f.max = (int64_t) v;
@@ -1730,12 +1677,11 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( at >= size ) { return false; }
         f.elem_kind = in[ at++ ];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
-        // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
-        // announcement, rather than at the skip that would meet it (§3.3): no
-        // declaration this language accepts is an array of string(N) or of
-        // wstring(N), so a shape announcing one is one rule's business and not
-        // two.
-        if ( f.elem_kind == 12 || f.elem_kind == 33 ) { return false; }
+        // AND AN ELEMENT KIND OF 12 IS REFUSED HERE, at the announcement,
+        // rather than at the skip that would meet it (§3.3): no declaration
+        // this language accepts is an array of string(N), so a shape
+        // announcing one is one rule's business and not two.
+        if ( f.elem_kind == 12 ) { return false; }
         return true;
     }
     return true;
@@ -1764,7 +1710,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 75 entries and 901 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 72 entries and 866 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1777,12 +1723,12 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // The order is the COOK PROJECTION's (§20.2): each record in the order the
 // projection renders it and each record's fields in the order the projection
 // renders them, then each enum's variants and each union's arms. Then comes
-// the tail the projection does not name: the reserved node-table id, the three
-// blob type ids as bytes, string and wstring, and every table's own name id in
+// the tail the projection does not name: the reserved node-table id, the two
+// blob type ids as bytes and string, and every table's own name id in
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 901;
+static const int64_t kTableAnnounceBytes = 866;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -1792,8 +1738,8 @@ static const int64_t kTableAnnounceBytes = 901;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x24, 0x69, 0x6a, 0xfd, 0x26, 0xca, 0x28, 0x9f, 0x02,
-    0x0e, 0xdd, 0x06, 0x06, 0xda, 0x06, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
+    0x01, 0x01, 0x09, 0xa1, 0x8a, 0x4b, 0x32, 0x79, 0xc3, 0x52, 0xe6, 0x02,
+    0x0e, 0xba, 0x06, 0x06, 0xb7, 0x06, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
     0xc9, 0x3d, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36,
     0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x08, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd,
@@ -1805,69 +1751,66 @@ inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x0e, 0x02, 0x02, 0x11, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0e, 0x03, 0x03, 0x04, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
     0x3d, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e,
-    0x00, 0x0a, 0x06, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d,
-    0x07, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x21, 0x06,
-    0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0c, 0x10, 0x38, 0x81,
-    0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff,
-    0x0f, 0x0d, 0xe9, 0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00,
-    0x5b, 0x92, 0xde, 0x9c, 0xab, 0xea, 0xe2, 0x14, 0x0e, 0x00, 0xff, 0xff,
-    0xff, 0xff, 0x0f, 0x0d, 0x90, 0x10, 0x39, 0x5e, 0x67, 0x94, 0xd5, 0x79,
-    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea, 0x0c, 0xe8, 0x30,
-    0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x02, 0x11, 0xaf, 0x5c, 0xca, 0x21,
-    0x19, 0xaa, 0x08, 0x1a, 0x0d, 0x02, 0xfc, 0xa1, 0xce, 0xa2, 0x59, 0x64,
-    0x1f, 0x0e, 0x00, 0x03, 0x0d, 0x5d, 0xf1, 0x50, 0x95, 0xf2, 0x1f, 0x55,
-    0x70, 0x10, 0x02, 0x0d, 0xb5, 0xcc, 0x70, 0x05, 0x19, 0xc0, 0x56, 0xe7,
-    0x0f, 0x9f, 0x76, 0x48, 0x6a, 0xa7, 0xda, 0x01, 0xab, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x4f, 0x81, 0x68, 0xf2, 0xff, 0x28, 0xb7,
-    0xaf, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b,
-    0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0xac, 0x02, 0x29, 0xbe, 0xb7, 0x2b,
-    0x19, 0xea, 0x7d, 0x2b, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d,
-    0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x09, 0x00, 0x44, 0xad,
-    0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff,
-    0x0f, 0x0d, 0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c, 0x02, 0x7b, 0x0e, 0x00,
-    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x5d, 0x81, 0xb3, 0xa4, 0xc4, 0xa0,
-    0xdf, 0x63, 0x11, 0x70, 0xf0, 0xf5, 0xf0, 0xb3, 0xa1, 0x4f, 0x29, 0x0e,
-    0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xce, 0xe3, 0xda, 0x5f, 0x6c,
-    0xdc, 0xd8, 0x6d, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x74,
-    0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x00, 0x46, 0x56, 0xee,
-    0xb1, 0x6b, 0x2e, 0x8c, 0xe6, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2, 0xc5, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x16, 0x68, 0x56, 0xb2, 0x8a, 0xfc, 0x7d,
-    0x43, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea, 0x0c, 0xe8,
-    0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x04, 0x0d, 0x86, 0x1b, 0x63,
-    0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf, 0xa9, 0x8b, 0x28, 0xb5,
-    0xd4, 0x69, 0x7f, 0x04, 0x00, 0x61, 0xb0, 0x72, 0x30, 0x30, 0x48, 0x65,
-    0x7f, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea, 0x0c, 0xe8,
-    0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x10, 0x02, 0x04, 0x00, 0xbd, 0x0f, 0x47,
-    0x9c, 0x60, 0x32, 0x53, 0x75, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84, 0x1c, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0xca, 0x5c, 0x71, 0x55, 0xf6, 0xf1, 0x33,
-    0xa6, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x14, 0x6d, 0x5b,
-    0x5a, 0xad, 0x50, 0x42, 0x12, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x11, 0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda,
-    0x4f, 0x00, 0x87, 0x94, 0xb6, 0x96, 0xa7, 0x62, 0xb5, 0xa0, 0x00, 0x31,
-    0x63, 0x3e, 0xd6, 0x95, 0xbb, 0xc2, 0xd5, 0x0d, 0x07, 0xb2, 0x52, 0x16,
-    0x4e, 0x19, 0x4d, 0xfd, 0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00,
-    0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b,
-    0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0x52, 0x51, 0x2b, 0x1a, 0xc0, 0x1d,
-    0x78, 0x1f, 0x00, 0x83, 0x39, 0x21, 0xa6, 0x7b, 0x20, 0x6c, 0x81, 0x00,
-    0x51, 0x86, 0x08, 0x60, 0x00, 0x94, 0x5b, 0xc8, 0x00, 0x4a, 0x0d, 0xe3,
-    0x6f, 0xdc, 0xd0, 0x31, 0x32, 0x00, 0x52, 0x68, 0x82, 0x60, 0x73, 0xfe,
-    0x6f, 0x03, 0x00, 0xf8, 0x36, 0xa0, 0x45, 0xf0, 0x0a, 0x13, 0xe8, 0x00,
-    0xaf, 0x79, 0xa2, 0xfb, 0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68, 0x47,
-    0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x00, 0x86, 0x70, 0x33, 0xab, 0x0d, 0x20,
-    0x04, 0x14, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0, 0x00,
-    0xbb, 0xc2, 0xc8, 0x70, 0x2b, 0xdd, 0x7b, 0xea, 0x00, 0x0d, 0x4f, 0xb1,
-    0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0xa6, 0xd4, 0x21, 0x39, 0xcd, 0x15,
-    0x6b, 0xf9, 0x00, 0x76, 0xba, 0x6b, 0x24, 0xf1, 0xe3, 0x3d, 0x03, 0x00,
-    0x91, 0x0a, 0x55, 0x60, 0xf7, 0xa2, 0x07, 0xec, 0x00, 0x5e, 0xb4, 0x05,
-    0x1b, 0xfb, 0xf5, 0x92, 0x24, 0x00, 0x50, 0xb1, 0x8f, 0xa7, 0x74, 0x87,
-    0x57, 0xb4, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e, 0x96, 0x13, 0xb4, 0x00,
-    0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00,
+    0x00, 0x0a, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
+    0x0c, 0x10, 0x38, 0x81, 0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e, 0x00,
+    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xe9, 0xea, 0x71, 0x6f, 0x0f, 0x01,
+    0x82, 0xbf, 0x04, 0x00, 0x5b, 0x92, 0xde, 0x9c, 0xab, 0xea, 0xe2, 0x14,
+    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x90, 0x10, 0x39, 0x5e,
+    0x67, 0x94, 0xd5, 0x79, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d,
+    0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x02, 0x11,
+    0xaf, 0x5c, 0xca, 0x21, 0x19, 0xaa, 0x08, 0x1a, 0x0d, 0x02, 0xfc, 0xa1,
+    0xce, 0xa2, 0x59, 0x64, 0x1f, 0x0e, 0x00, 0x03, 0x0d, 0x5d, 0xf1, 0x50,
+    0x95, 0xf2, 0x1f, 0x55, 0x70, 0x10, 0x02, 0x0d, 0xb5, 0xcc, 0x70, 0x05,
+    0x19, 0xc0, 0x56, 0xe7, 0x0f, 0x9f, 0x76, 0x48, 0x6a, 0xa7, 0xda, 0x01,
+    0xab, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x4f, 0x81, 0x68,
+    0xf2, 0xff, 0x28, 0xb7, 0xaf, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0xac, 0x02,
+    0x29, 0xbe, 0xb7, 0x2b, 0x19, 0xea, 0x7d, 0x2b, 0x0e, 0x00, 0xff, 0xff,
+    0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d,
+    0x09, 0x00, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00,
+    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c,
+    0x02, 0x7b, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x5d, 0x81,
+    0xb3, 0xa4, 0xc4, 0xa0, 0xdf, 0x63, 0x11, 0x70, 0xf0, 0xf5, 0xf0, 0xb3,
+    0xa1, 0x4f, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xce,
+    0xe3, 0xda, 0x5f, 0x6c, 0xdc, 0xd8, 0x6d, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
+    0x00, 0x46, 0x56, 0xee, 0xb1, 0x6b, 0x2e, 0x8c, 0xe6, 0x0e, 0x00, 0xff,
+    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2,
+    0xc5, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x16, 0x68, 0x56,
+    0xb2, 0x8a, 0xfc, 0x7d, 0x43, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
+    0x0d, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x07, 0x00, 0xea,
+    0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x04, 0x0d, 0x86,
+    0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf, 0xa9, 0x8b,
+    0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x00, 0x61, 0xb0, 0x72, 0x30, 0x30,
+    0x48, 0x65, 0x7f, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea,
+    0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x10, 0x02, 0x04, 0x00, 0xbd,
+    0x0f, 0x47, 0x9c, 0x60, 0x32, 0x53, 0x75, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x0d, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84, 0x1c, 0x0e,
+    0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x14, 0x6d, 0x5b, 0x5a, 0xad,
+    0x50, 0x42, 0x12, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea,
+    0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0xff, 0xff, 0xff,
+    0xff, 0x0f, 0x11, 0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda, 0x4f, 0x00,
+    0x87, 0x94, 0xb6, 0x96, 0xa7, 0x62, 0xb5, 0xa0, 0x00, 0x31, 0x63, 0x3e,
+    0xd6, 0x95, 0xbb, 0xc2, 0xd5, 0x0d, 0x07, 0xb2, 0x52, 0x16, 0x4e, 0x19,
+    0x4d, 0xfd, 0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc,
+    0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0x52, 0x51, 0x2b, 0x1a, 0xc0,
+    0x1d, 0x78, 0x1f, 0x00, 0x83, 0x39, 0x21, 0xa6, 0x7b, 0x20, 0x6c, 0x81,
+    0x00, 0x51, 0x86, 0x08, 0x60, 0x00, 0x94, 0x5b, 0xc8, 0x00, 0x4a, 0x0d,
+    0xe3, 0x6f, 0xdc, 0xd0, 0x31, 0x32, 0x00, 0x52, 0x68, 0x82, 0x60, 0x73,
+    0xfe, 0x6f, 0x03, 0x00, 0xf8, 0x36, 0xa0, 0x45, 0xf0, 0x0a, 0x13, 0xe8,
+    0x00, 0xaf, 0x79, 0xa2, 0xfb, 0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68,
+    0x47, 0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x00, 0x86, 0x70, 0x33, 0xab, 0x0d,
+    0x20, 0x04, 0x14, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0,
+    0x00, 0xbb, 0xc2, 0xc8, 0x70, 0x2b, 0xdd, 0x7b, 0xea, 0x00, 0x0d, 0x4f,
+    0xb1, 0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0xa6, 0xd4, 0x21, 0x39, 0xcd,
+    0x15, 0x6b, 0xf9, 0x00, 0x76, 0xba, 0x6b, 0x24, 0xf1, 0xe3, 0x3d, 0x03,
+    0x00, 0x91, 0x0a, 0x55, 0x60, 0xf7, 0xa2, 0x07, 0xec, 0x00, 0x5e, 0xb4,
+    0x05, 0x1b, 0xfb, 0xf5, 0x92, 0x24, 0x00, 0x50, 0xb1, 0x8f, 0xa7, 0x74,
+    0x87, 0x57, 0xb4, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e, 0x96, 0x13, 0xb4,
+    0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00,
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
@@ -2222,13 +2165,6 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
             return r.skip( (int64_t) n * 8 );
-        }
-        case 33:
-        {
-            // the length, NO align, then SIXTEEN bits a code unit (§3.3)
-            uint64_t n = 0;
-            if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
-            return r.skip( (int64_t) n * 16 );
         }
         case 31:
         {
@@ -2585,7 +2521,6 @@ enum : uint8_t
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
-    kTableFixedTextWide  = 2,
     kTableFixedTextBytes = 3,
 };
 
@@ -2873,21 +2808,17 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            else if ( (uint32_t) v > p.size ) { v = (int32_t) p.size; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
-                // unit longer than the bound for exactly this. A store, not a
+                // byte longer than the bound for exactly this. A store, not a
                 // call: memset of a runtime length is a call.
-                uint8_t * end = dst + p.aux + (uint32_t) v * unit;
-                end[0] = 0;
-                if ( unit == 2 ) { end[1] = 0; }
+                dst[p.aux + (uint32_t) v] = 0;
             }
             break;
         }
@@ -3059,10 +2990,8 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         }
         else if ( p.op == kTableFixedText )
         {
-            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
-            const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+            if ( v < 0 || (uint32_t) v > p.size ) { why = length_over_bound; return true; }
         }
     }
     return false;
@@ -3124,10 +3053,9 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedCount: lands[1] = e.dst + 4u; break;
         case kTableFixedText:
         {
-            const uint32_t unit = ( e.meta == kTableFixedTextWide ) ? 2u : 1u;
             lands[1] = e.dst + 4u;
             lands[2] = e.aux;
-            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : unit );
+            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : 1u );
             break;
         }
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
@@ -3341,15 +3269,15 @@ inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
 inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-// reserved: neither is a kind a declaration spells, so neither is ever an
-// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
+// the no-payload variant 32, and the ONE kind this form's layout adds, the
+// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// reserved: none is a kind a declaration spells, so none is ever an entry's
+// kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
 inline bool TableFixedKnownKind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return true; }
-    return kind == 32u || kind == 33u || kind == 35u;
+    return kind == 32u || kind == 35u;
 }
 
 // TableFixedCheckEntry validates the subtree rooted at i and answers how many
@@ -3446,12 +3374,6 @@ inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t dep
         {
             if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
             if ( e.size < 4u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
-            break;
-        }
-        case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-        {
-            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
             break;
         }
         // Every kind of the closed set is either a leaf above or a case here,
@@ -3880,7 +3802,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             TableFixedPush( c, e );
             break;
         }
-        case 12: case 33: // text
+        case 12: // text
         {
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
@@ -5492,7 +5414,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 76;
+static const int32_t kTableRetainKnownIds = 74;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -5510,13 +5432,13 @@ inline const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
     0x7ce4fd9430e80ceaull, 0x7d015e53d7cb2c7cull, 0x7f6548303072b061ull, 0x7f69d4b5288ba9cfull,
     0x8119d921e2250c6aull, 0x816c207ba6213983ull, 0x8dc5f55c70e0f637ull, 0x8ec370bd37dc5e06ull,
     0x9b18b54fbe8e2161ull, 0xa013e119fec906fbull, 0xa0b562a796b69487ull, 0xa3a7061ff10a8138ull,
-    0xa633f1f655715ccaull, 0xab01daa76a48769full, 0xaf05dfb30c5ca3deull, 0xafb728fff268814full,
-    0xb1e5e28e4479a274ull, 0xb413964e3571a316ull, 0xb4578774a78fb150ull, 0xbc08b7f228c93506ull,
-    0xbf82010f6f71eae9ull, 0xc4bcadba8e631b86ull, 0xc5b2a72c0845a253ull, 0xc85b940060088651ull,
-    0xd5c2bb95d63e6331ull, 0xda73c178dfcf57b7ull, 0xdcdbddf89c9310a1ull, 0xde1c38d5bac1485dull,
-    0xe1185043515c812bull, 0xe68c2e6bb1ee5646ull, 0xe756c0190570ccb5ull, 0xe8130af045a036f8ull,
-    0xea7bdd2b70c8c2bbull, 0xec07a2f760550a91ull, 0xf03923dbb2943618ull, 0xf96b15cd3921d4a6ull,
-    0xfa903574575fc678ull, 0xfd4d194e1652b207ull, 0xfedcb40b5d600538ull, 0xffffffffffffffffull,
+    0xab01daa76a48769full, 0xaf05dfb30c5ca3deull, 0xafb728fff268814full, 0xb1e5e28e4479a274ull,
+    0xb413964e3571a316ull, 0xb4578774a78fb150ull, 0xbc08b7f228c93506ull, 0xbf82010f6f71eae9ull,
+    0xc4bcadba8e631b86ull, 0xc5b2a72c0845a253ull, 0xc85b940060088651ull, 0xd5c2bb95d63e6331ull,
+    0xdcdbddf89c9310a1ull, 0xde1c38d5bac1485dull, 0xe1185043515c812bull, 0xe68c2e6bb1ee5646ull,
+    0xe756c0190570ccb5ull, 0xe8130af045a036f8ull, 0xea7bdd2b70c8c2bbull, 0xec07a2f760550a91ull,
+    0xf03923dbb2943618ull, 0xf96b15cd3921d4a6ull, 0xfa903574575fc678ull, 0xfd4d194e1652b207ull,
+    0xfedcb40b5d600538ull, 0xffffffffffffffffull,
 };
 
 inline bool TableRetainNameable( uint64_t id )
@@ -5846,7 +5768,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
         default:
-            // every other content is bytes: a string, wide text, an escape, a
+            // every other content is bytes: a string, an escape, a
             // payload-free kind, a scalar under a keyed slot's own length
             TableRetainInRaw( s, s.in + s.at, length );
             s.at += length;
@@ -5883,7 +5805,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33: // L, then L bytes, nothing framed inside
+        case 12: case 31: case 32: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -6273,7 +6195,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33:
+        case 12: case 31: case 32:
         {
             uint64_t length = 0;
             if ( !TableRetainOutLebRead( s, length ) ) { return false; }
@@ -6568,7 +6490,7 @@ inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
     if ( width > 0 ) { return width; }
     switch ( kind )
     {
-        case 12: case 31: case 32: case 33: return 1;
+        case 12: case 31: case 32: return 1;
         case 13: case 14: case 16: case 15: case 30: return 8;
         default: return 1;
     }
@@ -6607,19 +6529,16 @@ inline bool TableMessageRetainRef( TableMessageRetainIn & s, uint64_t & id )
 }
 
 // ONE OPAQUE PAYLOAD's bytes: a string or a byte buffer is a length at its own
-// width, the ALIGN that buys a memcpy and the bytes; a wide string is a length
-// and then SIXTEEN bits a code unit, which is two file bytes each; and the
-// ESCAPE aligns, reads a thirty-two bit L and takes L bytes. On the file each
+// width, the ALIGN that buys a memcpy and the bytes; and the ESCAPE aligns,
+// reads a thirty-two bit L and takes L bytes. On the file each
 // is the same bytes behind a canonical LEB128 length, so the framed flag says which of
 // the two spellings this position takes.
 inline bool TableMessageRetainOpaque( TableMessageRetainIn & s, const TableMessageEntry & entry, bool framed )
 {
     uint64_t n = 0;
-    if ( entry.kind == 12 || entry.kind == 33 )
+    if ( entry.kind == 12 )
     {
-        if ( !s.r->get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
-        if ( entry.kind == 33 ) { n *= 2; }
-        else if ( !s.r->align() ) { return false; }
+        if ( !s.r->get( n, TableBitsRequired( 0, entry.max ) ) || !s.r->align() ) { return false; }
     }
     else
     {
@@ -6811,7 +6730,7 @@ inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableM
         case 14: case 16: if ( TableMessageRetainElements( s, entry, depth ) < 0 ) { return -1; } break;
         case 15: case 30: if ( TableMessageRetainPayload( s, entry, depth ) < 0 ) { return -1; } break;
         case 32: break; // nothing rides, and the outer length is what says so
-        case 12: case 31: case 33:
+        case 12: case 31:
             // a content copied whole carries no inner length: the outer one
             // frames it, which is what a keyed slot's element takes
             if ( !TableMessageRetainOpaque( s, entry, false ) ) { return -1; }
@@ -6863,7 +6782,7 @@ inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableM
         case 13: case 14: case 16:
             if ( TableMessageRetainFramed( s, entry, depth + 1 ) < 0 ) { return -1; }
             break;
-        case 12: case 31: case 33:
+        case 12: case 31:
             if ( !TableMessageRetainOpaque( s, entry, true ) ) { return -1; }
             break;
         default:
@@ -8285,7 +8204,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x9f28ca26fd6a6924ull;
+static const uint64_t BuildVersion = 0xe652c379324b8aa1ull;
 
 } // namespace mapdemo
 
@@ -8522,18 +8441,6 @@ inline void table_cook_bytes( uint8_t * at, const void * source, int64_t used, i
     memcpy( at, source, (size_t) n );
 }
 
-// A WIDE TEXT buffer piece (docs/SPEC-TABLES.md §7.2): the USED code units,
-// each a TWO-BYTE SCALAR in the cook's byte order. A record is written piece
-// by piece and never memcpy'd, and a swap has to know where every scalar
-// begins — a char16_t is one, so the units go one store each rather than as
-// bytes. The tail is already zero, as the narrow twin's is, so the terminating
-// zero unit at index used costs nothing here.
-inline void table_cook_units( uint8_t * at, const char16_t * source, int64_t used, int64_t capacity, TableByteOrder order )
-{
-    if ( used <= 0 ) { return; }
-    const int64_t n = used < capacity ? used : capacity;
-    for ( int64_t i = 0; i < n; i++ ) { table_cook_put( at + i * 2, (uint64_t) (uint16_t) source[i], 2, order ); }
-}
 
 } // namespace mapdemo
 
@@ -8598,14 +8505,6 @@ struct TextNamesEntry {
     int32_t value_length = 0;
 };
 
-// table TextWideEntry — TABLE-wire storage: relocatable, bounded, defaults in the
-// member initializers (docs/SPEC-TABLES.md)
-struct TextWideEntry {
-    uint16_t key = 0;
-    char16_t value[6 + 1] = {}; // wstring(6): max length in UTF-16 code units, used length beside it
-    int32_t value_length = 0;
-};
-
 // table TextBlobsEntry — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (docs/SPEC-TABLES.md)
 struct TextBlobsEntry {
@@ -8618,7 +8517,6 @@ struct TextBlobsEntry {
 // member initializers (docs/SPEC-TABLES.md)
 struct Text {
     TableMap<TextNamesEntry> names; // map[string(8)]string — the sorted entry array, empty until an insert
-    TableMap<TextWideEntry> wide; // map[uint16]wstring — the sorted entry array, empty until an insert
     TableMap<TextBlobsEntry> blobs; // map[int32]bytes — the sorted entry array, empty until an insert
     int32_t past = 0;
 };
@@ -8626,7 +8524,6 @@ struct Text {
 // ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ----
 
 inline void TextNamesEntryReset( TextNamesEntry & value );
-inline void TextWideEntryReset( TextWideEntry & value );
 inline void TextBlobsEntryReset( TextBlobsEntry & value );
 inline void TextReset( Text & value );
 
@@ -8634,13 +8531,6 @@ inline void TextNamesEntryReset( TextNamesEntry & value )
 {
     memset( value.key, 0, sizeof( value.key ) );
     value.key_length = 0;
-    memset( value.value, 0, sizeof( value.value ) );
-    value.value_length = 0;
-}
-
-inline void TextWideEntryReset( TextWideEntry & value )
-{
-    value.key = 0;
     memset( value.value, 0, sizeof( value.value ) );
     value.value_length = 0;
 }
@@ -8657,9 +8547,6 @@ inline void TextReset( Text & value )
     value.names.entries.value = 0; // map[string(8)]string: empty
     value.names.count = 0;
     value.names.padding = 0;
-    value.wide.entries.value = 0; // map[uint16]wstring: empty
-    value.wide.count = 0;
-    value.wide.padding = 0;
     value.blobs.entries.value = 0; // map[int32]bytes: empty
     value.blobs.count = 0;
     value.blobs.padding = 0;
@@ -8669,9 +8556,6 @@ inline void TextReset( Text & value )
 inline int64_t TextNamesEntryMeasureMessageBody( int64_t at, const TextNamesEntry & value );
 inline bool TextNamesEntrySaveMessageBody( TableBitWriter & w, const TextNamesEntry & value );
 inline bool TextNamesEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TextNamesEntry & value );
-inline int64_t TextWideEntryMeasureMessageBody( int64_t at, const TextWideEntry & value );
-inline bool TextWideEntrySaveMessageBody( TableBitWriter & w, const TextWideEntry & value );
-inline bool TextWideEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TextWideEntry & value );
 inline int64_t TextBlobsEntryMeasureMessageBody( int64_t at, const TextBlobsEntry & value );
 inline bool TextBlobsEntrySaveMessageBody( TableBitWriter & w, const TextBlobsEntry & value );
 inline bool TextBlobsEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TextBlobsEntry & value );
@@ -8724,57 +8608,6 @@ inline TextNamesEntryMessageKeyRead TextNamesEntryMessageReadKey( TableBitReader
             out.length = (int32_t) key_len;
             out.over = key_len > 8; // KEYS NEVER CLAMP: the entry is dropped whole
             r.offset += (int64_t) key_len * 8;
-            continue; // the LAST occurrence is the one §3 keeps
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
-    }
-}
-
-// TextWideEntryMessageKeyRead: the key of one entry on the message wire, before the
-// slot is chosen (docs/SPEC-TABLES.md §2.8, §3.3), and the bit the entry's
-// body ends at. Field order inside a body is not contractual, so this scans
-// the whole body by its announced shapes rather than assuming a position.
-struct TextWideEntryMessageKeyRead
-{
-    uint16_t key;
-    int64_t end;        // the bit after the entry's own zero reference
-    bool found;         // the body carried the key's id
-    bool kind_bad;      // it carried it under another kind: the MAP's event
-    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
-    bool over;          // longer than this reader's bound: the ENTRY is dropped
-    bool malformed;     // the entry's framing gave out
-};
-
-inline TextWideEntryMessageKeyRead TextWideEntryMessageReadKey( TableBitReader r, const TableVocabulary & vocabulary, int64_t index_bits )
-{
-    TextWideEntryMessageKeyRead out = { 0, 0, false, false, false, false, false };
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { out.malformed = true; return out; }
-        if ( ref == 0 ) { out.end = r.offset; return out; } // the terminator: no key field is the key's DEFAULT
-        if ( ref > (uint64_t) vocabulary.count ) { out.malformed = true; return out; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        if ( TableMessageReserved( entry.id ) ) { out.malformed = true; return out; }
-        if ( entry.id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
-        {
-            const bool kind_bad = entry.kind != 7 && !TableKindWidens( entry.kind, 7 ); // THE KEY KIND IS THE READER'S DECLARATION
-            out.kind_bad = kind_bad;
-            out.found = !kind_bad;
-            out.widened = entry.kind != 7;
-            if ( kind_bad )
-            {
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
-                continue;
-            }
-            {
-                uint64_t raw = 0;
-                const int64_t width = entry.value_bits;
-                if ( width < 0 || !r.get( raw, width ) ) { out.malformed = true; return out; }
-                int64_t decoded_wide = (int64_t) raw;
-                if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                out.key = (uint16_t) decoded_wide;
-            }
             continue; // the LAST occurrence is the one §3 keeps
         }
         if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { out.malformed = true; return out; }
@@ -8845,7 +8678,6 @@ inline TextBlobsEntryMessageKeyRead TextBlobsEntryMessageReadKey( TableBitReader
 // declared defaults without value-initialising the whole aggregate.
 
 inline void TableReset( TextNamesEntry & value ) { TextNamesEntryReset( value ); }
-inline void TableReset( TextWideEntry & value ) { TextWideEntryReset( value ); }
 inline void TableReset( TextBlobsEntry & value ) { TextBlobsEntryReset( value ); }
 inline void TableReset( Text & value ) { TextReset( value ); }
 
@@ -8860,9 +8692,6 @@ inline void TableReset( Text & value ) { TextReset( value ); }
 inline int64_t TextNamesEntryMeasureBody( TableIds & ids, const TextNamesEntry & value );
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBody( TableWriter & w, TableIds & ids, const TextNamesEntry & value );
 MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBody( TableReader & r, TextNamesEntry & value );
-inline int64_t TextWideEntryMeasureBody( TableIds & ids, const TextWideEntry & value );
-MAPDEMO_TABLE_INLINE bool TextWideEntrySaveBody( TableWriter & w, TableIds & ids, const TextWideEntry & value );
-MAPDEMO_TABLE_INLINE bool TextWideEntryLoadBody( TableReader & r, TextWideEntry & value );
 inline int64_t TextBlobsEntryMeasureBody( TableIds & ids, const TextBlobsEntry & value );
 MAPDEMO_TABLE_INLINE bool TextBlobsEntrySaveBody( TableWriter & w, TableIds & ids, const TextBlobsEntry & value );
 MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBody( TableReader & r, TextBlobsEntry & value );
@@ -8976,87 +8805,6 @@ inline TextNamesEntryKeyRead TextNamesEntryReadKey( const uint8_t * body, int64_
     }
 }
 
-// ---- TextWideEntry: the order, the key and the value (docs/SPEC-TABLES.md §2.8) ----
-//
-// The four overloads the map runtime's templates reach by argument-dependent
-// lookup. Nothing outside this file names them.
-static_assert( alignof( TextWideEntry ) <= kTableAlign, "a map entry's alignment must fit the arena's" );
-
-inline int TableEntryOrder( const TextWideEntry & a, const TextWideEntry & b )
-{
-    return TableKeyOrder( (uint64_t) a.key, (uint64_t) b.key ); // integers compare by VALUE, unsigned here
-}
-inline int TableEntryOrder( const TextWideEntry & entry, uint16_t key )
-{
-    return TableKeyOrder( (uint64_t) entry.key, (uint64_t) key );
-}
-inline uint16_t TableEntryKey( const TextWideEntry & entry ) { return entry.key; }
-inline void TableEntrySetKey( TextWideEntry & entry, uint16_t key ) { entry.key = key; }
-// THIS VALUE'S STORAGE IS A PAIR (§2.8, §4.2, §7.2): `value` beside
-// `value_length`, so the handle is the ENTRY and not one member of it.
-// Fill both; `key` belongs to the map's own order.
-inline const TextWideEntry * TableEntryFound( const TextWideEntry * entry ) { return entry; }
-inline TextWideEntry * TableEntryValue( TextWideEntry * entry ) { return entry; }
-struct TextWideEntryEach { uint16_t key; decltype( TableEntryValue( (TextWideEntry *) NULL ) ) value; };
-inline TextWideEntryEach TableEntryEach( TextWideEntry * entry ) { return TextWideEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
-inline void TableResetMapValue( TextWideEntry & value )
-{
-    memset( value.value, 0, sizeof( value.value ) );
-    value.value_length = 0;
-}
-
-// TextWideEntryReadKey: the key, before the slot is chosen (docs/SPEC-TABLES.md §2.8).
-// Field order inside a body is not contractual (§3), so this scans rather
-// than assuming a position — and this implementation writes the key first,
-// so on any wire it wrote the scan ends at the first header.
-struct TextWideEntryKeyRead
-{
-    uint16_t key;
-    bool found;         // the body carried the key's id
-    bool kind_bad;      // it carried it under another kind: the MAP's event
-    bool widened;       // under a kind the declaration WIDENS (§4): decoded exactly, the MAP counts one
-    bool over;          // longer than this reader's bound: the ENTRY is dropped
-    bool malformed;     // the entry's framing gave out
-};
-
-inline TextWideEntryKeyRead TextWideEntryReadKey( const uint8_t * body, int64_t length, const TableIdTable * ids )
-{
-    TextWideEntryKeyRead out = { 0, false, false, false, false, false };
-    TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
-    TableReader r( body, length, &scratch, ids );
-    for ( ;; )
-    {
-        uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }
-        if ( field_ref == 0 ) { out.malformed = r.offset != r.size; return out; } // the terminator consumes the entry's L
-        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.malformed = true; return out; }
-        const uint64_t field_id = ids->at( field_ref );
-        if ( !r.has( 1 ) ) { out.malformed = true; return out; }
-        uint8_t field_kind = r.get8();
-        if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
-        {
-            if ( field_kind != 7 && TableKindWidens( field_kind, 7 ) )
-            {
-                out.widened = true;
-                out.found = true;
-                uint64_t widened_v = 0;
-                if ( !TableReadUnsignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }
-                out.key = (uint16_t) widened_v;
-                continue; // the LAST occurrence is the one §3 keeps
-            }
-            out.kind_bad = field_kind != 7; // THE KEY KIND IS THE READER'S DECLARATION
-            out.found = !out.kind_bad;
-            if ( !out.kind_bad )
-            {
-                if ( !r.has( 2 ) ) { out.malformed = true; return out; }
-                out.key = (uint16_t) r.get16();
-                continue; // the LAST occurrence is the one §3 keeps
-            }
-        }
-        if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
-    }
-}
-
 // ---- TextBlobsEntry: the order, the key and the value (docs/SPEC-TABLES.md §2.8) ----
 //
 // The four overloads the map runtime's templates reach by argument-dependent
@@ -9148,10 +8896,6 @@ inline int64_t TextNamesEntryMeasureBodyRetain( TableRetainIds & ids, const Text
 MAPDEMO_TABLE_INLINE bool TextNamesEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const TextNamesEntry & value, TableRetain * retain, const TableRetainPath & path );
 MAPDEMO_TABLE_INLINE bool TextNamesEntryLoadBodyRetain( TableReader & r, TextNamesEntry & value, TableRetain * retain, const TableRetainPath & path );
 inline bool TextNamesEntryLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TextNamesEntry & value, TableRetain * retain, const TableRetainPath & path );
-inline int64_t TextWideEntryMeasureBodyRetain( TableRetainIds & ids, const TextWideEntry & value, TableRetain * retain, const TableRetainPath & path );
-MAPDEMO_TABLE_INLINE bool TextWideEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const TextWideEntry & value, TableRetain * retain, const TableRetainPath & path );
-MAPDEMO_TABLE_INLINE bool TextWideEntryLoadBodyRetain( TableReader & r, TextWideEntry & value, TableRetain * retain, const TableRetainPath & path );
-inline bool TextWideEntryLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TextWideEntry & value, TableRetain * retain, const TableRetainPath & path );
 inline int64_t TextBlobsEntryMeasureBodyRetain( TableRetainIds & ids, const TextBlobsEntry & value, TableRetain * retain, const TableRetainPath & path );
 MAPDEMO_TABLE_INLINE bool TextBlobsEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const TextBlobsEntry & value, TableRetain * retain, const TableRetainPath & path );
 MAPDEMO_TABLE_INLINE bool TextBlobsEntryLoadBodyRetain( TableReader & r, TextBlobsEntry & value, TableRetain * retain, const TableRetainPath & path );
@@ -9328,7 +9072,7 @@ inline bool TextNamesEntrySaveMessageBody( TableBitWriter & w, const TextNamesEn
     if ( value.value_length < 0 || value.value_length > 16 ) { return false; } // storage invariant
     if ( value.value_length > 0 )
     {
-        w.put( 16, kTableMessageRefBitsHere );
+        w.put( 14, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.value_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.value, value.value_length );
@@ -9404,271 +9148,6 @@ inline bool TextNamesEntryLoadMessageBody( TableBitReader & r, const TableVocabu
                     memcpy( value.value, text, (size_t) kept );
                     value.value[kept] = 0;
                     r.offset += (int64_t) n * 8;
-                    value.value_length = kept;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                break;
-        }
-    }
-}
-
-inline int64_t TextWideEntryMeasureBody( TableIds & ids, const TextWideEntry & value )
-{
-    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
-    if ( value.value_length < 0 || value.value_length > 6 ) { return -1; } // storage invariant
-    if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.value_length * 2 ) ) + ( (int64_t) value.value_length * 2 ); } // value
-    return bytes;
-}
-
-MAPDEMO_TABLE_INLINE bool TextWideEntrySaveBody( TableWriter & w, TableIds & ids, const TextWideEntry & value )
-{
-    if ( value.key != 0 )
-    {
-        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 7 ); // key
-        w.put16( uint16_t( value.key ) );
-    }
-    if ( value.value_length < 0 || value.value_length > 6 ) { return false; } // storage invariant
-    if ( value.value_length > 0 )
-    {
-        w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 33 ); // value
-        w.putleb( (uint64_t) value.value_length * 2 ); // L is a BYTE length (§3)
-        for ( int32_t i = 0; i < value.value_length; i++ ) { w.put16( (uint16_t) value.value[i] ); } // two bytes each, little-endian
-    }
-    w.put8( 0 ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-MAPDEMO_TABLE_INLINE bool TextWideEntryLoadBody( TableReader & r, TextWideEntry & value )
-{
-    TextWideEntryReset( value ); // prefill declared defaults in place, then overlay
-    for ( ;; )
-    {
-        uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
-        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-        uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
-        {
-            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
-            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
-            // table's is the ROOT body's alone, on the numbering's own
-            // rule — a second numbering cannot exist — and the BUILD
-            // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
-            r.report->malformed = true;
-            return false;
-        }
-        switch ( field_id )
-        {
-            case 0x3dc94a19365b10ecull: // key
-            {
-                if ( kind != 7 )
-                {
-                    if ( TableKindWidens( kind, 7 ) )
-                    {
-                        // WIDENED (§4): a kind that grew since the writer decodes
-                        // exactly at its own width, the value lands, one widened counts
-                        uint64_t widened_v = 0;
-                        if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
-                        uint16_t decoded_v = (uint16_t) widened_v;
-                        value.key = decoded_v;
-                        break;
-                    }
-                    // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                    break;
-                }
-                if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-                uint16_t decoded_v = uint16_t( r.get16( ) );
-                value.key = decoded_v;
-                break;
-            }
-            case 0x7ce4fd9430e80ceaull: // value
-            {
-                if ( kind != 33 )
-                {
-                    // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                    break;
-                }
-                uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the
-                // value is L / 2 code units, so an odd L is not a wstring at any length.
-                if ( ( len & 1 ) != 0 ) { r.report->malformed = true; value.value[0] = 0; value.value_length = 0; r.offset += (int64_t) len; break; }
-                const int64_t units = (int64_t) ( len / 2 );
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero
-                // code unit reads the declared default, one malformed counts, and the
-                // parent reads on past L
-                if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->malformed = true; value.value[0] = 0; value.value_length = 0; r.offset += (int64_t) len; break; }
-                int64_t keep = units;
-                if ( keep > 6 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 6 ); r.report->clamped++; } // never splitting a pair (§3)
-                for ( int64_t i = 0; i < keep; i++ ) { value.value[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
-                value.value[keep] = 0;
-                value.value_length = (int32_t) keep;
-                r.offset += (int64_t) len;
-                break;
-            }
-            default:
-            {
-                r.report->unknown++;
-                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                break;
-            }
-        }
-    }
-}
-
-// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
-// body's own bit position in the batch, because a `string(N)` ALIGNS before
-// its bytes and an align costs what the position says it costs.
-inline int64_t TextWideEntryMeasureMessageBody( int64_t at, const TextWideEntry & value )
-{
-    int64_t bits = 0;
-    if ( value.key != 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 16;
-    }
-    if ( value.value_length < 0 || value.value_length > 6 ) { return -1; } // storage invariant
-    if ( value.value_length > 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 3 + (int64_t) value.value_length * 16;
-    }
-    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
-    (void) at;
-    return bits;
-}
-
-// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the VARIABLE form put an L.
-inline bool TextWideEntrySaveMessageBody( TableBitWriter & w, const TextWideEntry & value )
-{
-    if ( value.key != 0 )
-    {
-        w.put( 14, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.key ), 16 );
-    }
-    if ( value.value_length < 0 || value.value_length > 6 ) { return false; } // storage invariant
-    if ( value.value_length > 0 )
-    {
-        w.put( 15, kTableMessageRefBitsHere );
-        w.put( (uint64_t) value.value_length, 3 );
-        for ( int32_t i = 0; i < value.value_length; i++ ) { w.put( (uint64_t) (uint16_t) value.value[i], 16 ); } // sixteen bits a unit, no align
-    }
-    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-inline bool TextWideEntryLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TextWideEntry & value )
-{
-    TextWideEntryReset( value );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0x3dc94a19365b10ecull: // key
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 7 || entry.elem_kind != 0 )
-                {
-                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 7 ) )
-                    {
-                        {
-                            const int64_t width = entry.value_bits;
-                            uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            uint16_t decoded_v = (uint16_t) decoded_wide;
-                            value.key = decoded_v;
-                        }
-                        report->widened++;
-                        break;
-                    }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    uint16_t decoded_v = (uint16_t) decoded_wide;
-                    value.key = decoded_v;
-                }
-                break;
-            }
-            case 0x7ce4fd9430e80ceaull: // value
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 33 || entry.elem_kind != 0 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 6 ) { kept = 6; report->clamped++; } else { kept = (int32_t) n; }
-                    bool high = false; // a high surrogate awaiting its low half
-                    bool ill = false;
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t unit = 0;
-                        if ( !r.get( unit, 16 ) ) { report->malformed = true; return false; }
-                        const uint16_t u = (uint16_t) unit;
-                        if ( u == 0 ) { ill = true; }
-                        if ( high ) { if ( u < 0xDC00 || u > 0xDFFF ) { ill = true; } high = false; }
-                        else if ( u >= 0xD800 && u <= 0xDBFF ) { high = true; }
-                        else if ( u >= 0xDC00 && u <= 0xDFFF ) { ill = true; }
-                        if ( (int32_t) i < kept ) { value.value[i] = (char16_t) u; }
-                    }
-                    if ( high || ill ) { report->malformed = true; return false; }
-                    if ( kept > 0 && (uint64_t) kept < n )
-                    {
-                        const char16_t last = value.value[kept - 1];
-                        if ( last >= 0xD800 && last <= 0xDBFF ) { kept--; }
-                    }
-                    value.value[kept] = 0;
                     value.value_length = kept;
                 }
                 break;
@@ -9985,7 +9464,7 @@ inline int64_t TextMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !order_names.ok ) { return -1; } // the sort could not run
         if ( order_names.count > 0 )
         {
-            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 50, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -9996,24 +9475,6 @@ inline int64_t TextMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             bytes += TableLebBytes( ref_names ) + 1 + TableLebBytes( (uint64_t) ( body_names ) ) + ( body_names );
         }
         TableMapRelease( order_names );
-    }
-    {
-        // wide: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
-        TableMapCursor<TextWideEntry> order_wide = TableMapOrder( ctx, value.wide );
-        if ( !order_wide.ok ) { return -1; } // the sort could not run
-        if ( order_wide.count > 0 )
-        {
-            const uint64_t ref_wide = ids.ref_at( 48, 0xa633f1f655715ccaull );
-            int64_t body_wide = 1 + TableLebBytes( (uint64_t) order_wide.count ); // the element kind byte and the count
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                const int64_t elem_wide = TextWideEntryMeasureBody( ids, *order_wide[i] );
-                if ( elem_wide < 0 ) { TableMapRelease( order_wide ); return -1; }
-                body_wide += TableLebBytes( (uint64_t) ( elem_wide ) ) + ( elem_wide ); // BUT THE ENTRY ALWAYS RIDES: identity here is the key
-            }
-            bytes += TableLebBytes( ref_wide ) + 1 + TableLebBytes( (uint64_t) ( body_wide ) ) + ( body_wide );
-        }
-        TableMapRelease( order_wide );
     }
     {
         // blobs: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
@@ -10033,7 +9494,7 @@ inline int64_t TextMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 55, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     return bytes;
 }
 
@@ -10046,7 +9507,7 @@ inline bool TextSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         if ( !order_names.ok ) { return false; }
         if ( order_names.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 50, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count );
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -10065,31 +9526,6 @@ inline bool TextSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
         }
         TableMapRelease( order_names );
-    }
-    {
-        TableMapCursor<TextWideEntry> order_wide = TableMapOrder( ctx, value.wide ); // wide
-        if ( !order_wide.ok ) { return false; }
-        if ( order_wide.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
-        {
-            const uint64_t ref_wide = ids.ref_at( 48, 0xa633f1f655715ccaull );
-            int64_t body_wide = 1 + TableLebBytes( (uint64_t) order_wide.count );
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                const int64_t elem_wide = TextWideEntryMeasureBody( ids, *order_wide[i] );
-                if ( elem_wide < 0 ) { TableMapRelease( order_wide ); return false; }
-                body_wide += TableLebBytes( (uint64_t) ( elem_wide ) ) + ( elem_wide );
-            }
-            w.header( ref_wide, 14 ); w.putleb( (uint64_t) body_wide );
-            w.put8( 13 ); w.putleb( (uint64_t) order_wide.count );
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                const int64_t elem_len_wide = TextWideEntryMeasureBody( ids, *order_wide[i] );
-                if ( elem_len_wide < 0 ) { TableMapRelease( order_wide ); return false; }
-                w.putleb( (uint64_t) elem_len_wide );
-                if ( !TextWideEntrySaveBody( w, ids, *order_wide[i] ) ) { TableMapRelease( order_wide ); return false; }
-            }
-        }
-        TableMapRelease( order_wide );
     }
     {
         TableMapCursor<TextBlobsEntry> order_blobs = TableMapOrder( ctx, value.blobs ); // blobs
@@ -10118,7 +9554,7 @@ inline bool TextSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     }
     if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.header( ids.ref_at( 55, 0xbf82010f6f71eae9ull ), 4 ); // past
         w.put32( uint32_t( value.past ) );
     }
     return !w.overflow;
@@ -10240,94 +9676,6 @@ inline bool TextLoadBody( TableReader & r, const TableNodeMap & nodes, Text & va
                             TextNamesEntryLoadBody( elem, *slot );
                         }
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
-                        landed = true;
-                    }
-                    TableMapFillEnd( fill );
-                }
-                r.offset = body_end; // the remaining entries skip by the map's L
-                break;
-            }
-            case 0xa633f1f655715ccaull: // wide
-            {
-                if ( kind != 14 )
-                {
-                    // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                    break;
-                }
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
-                int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
-                {
-                    uint8_t elem_kind = r.get8();
-                    uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
-                    // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
-                    // kind mismatch of §4, and nothing about a map is special-cased
-                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, count );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint16_t last_key = 0;
-                    bool landed = false;
-                    bool map_widened = false;
-                    for ( uint64_t i = 0; i < count; i++ )
-                    {
-                        uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
-                        const uint8_t * elem_body = sub.buffer + sub.offset;
-                        sub.offset += (int64_t) elem_len;
-                        TextWideEntryKeyRead read = TextWideEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
-                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
-                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
-                        // THE KEY KIND IS CHECKED FIRST: a key read under another kind
-                        // desynchronizes the rest of the scan, and the honest answer to a
-                        // body whose key is not this reader's kind is the KIND, not the
-                        // framing damage that follows from it.
-                        if ( read.kind_bad )
-                        {
-                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
-                            // to EMPTY, ONE kind_mismatch is counted for it, and the rest
-                            // is skipped. Events counted inside earlier entries stand.
-                            r.report->kind_mismatch++;
-                            TableMapFillReset( fill );
-                            break;
-                        }
-                        if ( read.malformed ) { r.report->malformed = true; break; }
-                        if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
-                        const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 )
-                        {
-                            // DESCENDING: not a body any conforming writer produced. The map
-                            // keeps the ascending prefix it has, the rest skips by the map's
-                            // L, and the PARENT reads on past the field's length (§4).
-                            r.report->malformed = true;
-                            break;
-                        }
-                        TextWideEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
-                        if ( slot == NULL ) { r.report->malformed = true; break; }
-                        {
-                            TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
-                            TextWideEntryLoadBody( elem, *slot );
-                        }
-                        last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
                     TableMapFillEnd( fill );
@@ -10489,22 +9837,6 @@ inline int64_t TextMeasureMessageBody( const Ctx & ctx, const TableNumbering & n
         TableMapRelease( order_names );
     }
     {
-        TableMapCursor<TextWideEntry> order_wide = TableMapOrder( ctx, value.wide ); // wide
-        if ( !order_wide.ok ) { return -1; } // the sort could not run
-        if ( order_wide.count > 0 )
-        {
-            bits += kTableMessageRefBitsHere;
-            bits += 32; // the count the data decides
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                const int64_t elem_wide = TextWideEntryMeasureMessageBody( at + bits, *order_wide[i] );
-                if ( elem_wide < 0 ) { TableMapRelease( order_wide ); return -1; }
-                bits += elem_wide; // BUT THE ENTRY ALWAYS RIDES: identity here is the key
-            }
-        }
-        TableMapRelease( order_wide );
-    }
-    {
         TableMapCursor<TextBlobsEntry> order_blobs = TableMapOrder( ctx, value.blobs ); // blobs
         if ( !order_blobs.ok ) { return -1; } // the sort could not run
         if ( order_blobs.count > 0 )
@@ -10542,7 +9874,7 @@ inline bool TextSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
         if ( !order_names.ok ) { return false; } // the sort could not run
         if ( order_names.count > 0 )
         {
-            w.put( 27, kTableMessageRefBitsHere );
+            w.put( 25, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_names.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -10552,25 +9884,11 @@ inline bool TextSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
         TableMapRelease( order_names );
     }
     {
-        TableMapCursor<TextWideEntry> order_wide = TableMapOrder( ctx, value.wide ); // wide
-        if ( !order_wide.ok ) { return false; } // the sort could not run
-        if ( order_wide.count > 0 )
-        {
-            w.put( 47, kTableMessageRefBitsHere );
-            w.put( (uint64_t) order_wide.count, 32 ); // the count the data decides
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                if ( !TextWideEntrySaveMessageBody( w, *order_wide[i] ) ) { TableMapRelease( order_wide ); return false; }
-            }
-        }
-        TableMapRelease( order_wide );
-    }
-    {
         TableMapCursor<TextBlobsEntry> order_blobs = TableMapOrder( ctx, value.blobs ); // blobs
         if ( !order_blobs.ok ) { return false; } // the sort could not run
         if ( order_blobs.count > 0 )
         {
-            w.put( 19, kTableMessageRefBitsHere );
+            w.put( 17, kTableMessageRefBitsHere );
             w.put( (uint64_t) order_blobs.count, 32 ); // the count the data decides
             for ( int32_t i = 0; i < order_blobs.count; i++ )
             {
@@ -10581,7 +9899,7 @@ inline bool TextSaveMessageBody( const Ctx & ctx, const TableNumbering & numberi
     }
     if ( value.past != 0 )
     {
-        w.put( 18, kTableMessageRefBitsHere );
+        w.put( 16, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.past ), 32 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -10608,19 +9926,6 @@ inline bool TextMessageExtent( TableBitReader & r, const TableVocabulary & vocab
             n += (uint64_t) entry.min;
             at = ( at + 3 ) & ~(int64_t) 3; // at alignof( TextNamesEntry )
             at += (int64_t) n * (int64_t) sizeof( TextNamesEntry ); // the whole array FIRST
-            for ( uint64_t i = 0; i < n; i++ ) // then, entry by entry in key order
-            {
-                if ( !TableMessageSkipBody( r, vocabulary, index_bits, depth + 2 ) ) { return false; }
-            }
-            continue;
-        }
-        if ( entry.id == 0xa633f1f655715ccaull && entry.kind == 14 && entry.elem_kind == 13 ) // wide
-        {
-            uint64_t n = 0;
-            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }
-            n += (uint64_t) entry.min;
-            at = ( at + 3 ) & ~(int64_t) 3; // at alignof( TextWideEntry )
-            at += (int64_t) n * (int64_t) sizeof( TextWideEntry ); // the whole array FIRST
             for ( uint64_t i = 0; i < n; i++ ) // then, entry by entry in key order
             {
                 if ( !TableMessageSkipBody( r, vocabulary, index_bits, depth + 2 ) ) { return false; }
@@ -10723,69 +10028,6 @@ inline bool TextLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                         if ( !TextNamesEntryLoadMessageBody( r, vocabulary, report, index_bits, *slot ) ) { return false; }
                         if ( r.offset != read.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends
                         last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND
-                        landed = true;
-                    }
-                    TableMapFillEnd( fill );
-                }
-                break;
-            }
-            case 0xa633f1f655715ccaull: // wide
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 13 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t count = 0;
-                    if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    count += (uint64_t) entry.min;
-                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, count );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    uint16_t last_key = 0;
-                    bool landed = false;
-                    bool map_widened = false;
-                    for ( uint64_t i = 0; i < count; i++ )
-                    {
-                        const TextWideEntryMessageKeyRead read = TextWideEntryMessageReadKey( r, vocabulary, index_bits );
-                        if ( read.malformed ) { report->malformed = true; return false; }
-                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
-                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
-                        if ( read.kind_bad )
-                        {
-                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
-                            // EMPTY, ONE kind_mismatch is counted for it, and the rest of its
-                            // entries are stepped over by their shapes
-                            report->kind_mismatch++;
-                            TableMapFillReset( fill );
-                            r.offset = read.end;
-                            for ( uint64_t j = i + 1; j < count; j++ ) { if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { report->malformed = true; return false; } }
-                            break;
-                        }
-                        if ( read.over ) { report->clamped++; r.offset = read.end; continue; } // dropped whole, one count per entry
-                        const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 ) { report->malformed = true; return false; } // DESCENDING: not a body any conforming writer produced
-                        TextWideEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset by the
-                            // decode below, so LAST WINS WHOLE, and the count excludes it.
-                            slot = TableMapFillLast( fill );
-                            report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
-                        if ( slot == NULL ) { report->malformed = true; return false; }
-                        if ( !TextWideEntryLoadMessageBody( r, vocabulary, report, index_bits, *slot ) ) { return false; }
-                        if ( r.offset != read.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends
-                        last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
                     TableMapFillEnd( fill );
@@ -10938,15 +10180,6 @@ inline bool TextWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
             if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( TextNamesEntry ), (int64_t) alignof( TextNamesEntry ), NULL, ids, reason ) ) { return false; }
             continue;
         }
-        if ( field_id == 0xa633f1f655715ccaull && field_kind == 14 ) // wide
-        {
-            uint64_t map_len = 0;
-            if ( !r.getleb( map_len ) || !r.room( map_len ) ) { return true; }
-            const uint8_t * map_body = r.buffer + r.offset;
-            r.offset += (int64_t) map_len;
-            if ( !TableMapWireExtent( map_body, (int64_t) map_len, at, (int64_t) sizeof( TextWideEntry ), (int64_t) alignof( TextWideEntry ), NULL, ids, reason ) ) { return false; }
-            continue;
-        }
         if ( field_id == 0x14e2eaab9cde925bull && field_kind == 14 ) // blobs
         {
             uint64_t map_len = 0;
@@ -10970,13 +10203,6 @@ inline bool TextExtentAt( const Ctx & ctx, const Text & value, int64_t & at )
         if ( !cursor.ok ) { return false; }
         at = ( at + 3 ) & ~(int64_t) 3; // at alignof( TextNamesEntry )
         at += (int64_t) cursor.count * (int64_t) sizeof( TextNamesEntry ); // the whole array FIRST
-        TableMapRelease( cursor );
-    }
-    {
-        TableMapCursor<TextWideEntry> cursor = TableMapOrder( ctx, value.wide );
-        if ( !cursor.ok ) { return false; }
-        at = ( at + 3 ) & ~(int64_t) 3; // at alignof( TextWideEntry )
-        at += (int64_t) cursor.count * (int64_t) sizeof( TextWideEntry ); // the whole array FIRST
         TableMapRelease( cursor );
     }
     {
@@ -11019,23 +10245,6 @@ inline bool TextExtentPack( const Ctx & ctx, const Text & src, Text & dst, uint8
         for ( int32_t i = 0; i < cursor.count; i++ )
         {
             memcpy( (void *) ( placed + i ), (const void *) cursor[i], sizeof( TextNamesEntry ) ); // trivially copyable, by construction
-        }
-        TableMapRelease( cursor );
-    }
-    {
-        TableMapCursor<TextWideEntry> cursor = TableMapOrder( ctx, src.wide );
-        if ( !cursor.ok ) { return false; }
-        at = ( at + 3 ) & ~(int64_t) 3;
-        const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( TextWideEntry );
-        if ( at + bytes > capacity ) { TableMapRelease( cursor ); return false; }
-        TextWideEntry * placed = (TextWideEntry *) ( extent + at );
-        at += bytes;
-        dst.wide.count = cursor.count;
-        dst.wide.padding = 0;
-        dst.wide.entries.value = cursor.count > 0 ? (int64_t) ( (uint8_t *) placed - (const uint8_t *) &dst.wide.entries ) : 0;
-        for ( int32_t i = 0; i < cursor.count; i++ )
-        {
-            memcpy( (void *) ( placed + i ), (const void *) cursor[i], sizeof( TextWideEntry ) ); // trivially copyable, by construction
         }
         TableMapRelease( cursor );
     }
@@ -11143,97 +10352,6 @@ inline const TextNamesEntry * TextNamesIndexFind( const TableMapIndex & index, c
     if ( !index.good ) { return map.Find( key ); } // an index that did not build is not a wrong answer
     const TextNamesEntry * entries = map.Entries();
     int32_t at = (int32_t) ( TableMapHash( (const void *) key, TableKeyLength( key, kTextNamesEntryKeyBound ) ) & (uint64_t) ( index.capacity - 1 ) );
-    for ( int32_t probe = 0; probe < index.capacity; probe++ )
-    {
-        const int32_t slot = index.slots[at];
-        if ( slot == 0 ) { return NULL; }
-        if ( TableEntryOrder( entries[slot - 1], key ) == 0 ) { return TableEntryFound( entries + slot - 1 ); }
-        at = ( at + 1 ) & ( index.capacity - 1 );
-    }
-    return NULL;
-}
-
-// ---- Text.wide: the builder's five and the side index (§2.8) ----
-
-// INSERT: the key is copied, the value is handed back at its defaults to
-// fill. A DUPLICATE key REPLACES — the value is reset and the same entry
-// handed back, key and address unchanged — so a caller that wants to know
-// writes Find first. NULL is NOT INSERTED: a key longer than the bound,
-// because a truncated key would be a merged entry, and an arena that
-// cannot carve another segment, alike.
-//
-// It is a WRAPPER: TableMapPlace owns the lookup, the reset, the
-// allocation and the key copy, and this half is the bound and the
-// const char * key's length. Nothing here mutates an entry (§2.8).
-inline TextWideEntry * TextWideInsert( TableWorker & worker, TableMap<TextWideEntry> & map, uint16_t key )
-{
-    TextWideEntry * entry = TableMapPlace( worker, map, key );
-    return entry != NULL ? TableEntryValue( entry ) : NULL;
-}
-
-// FIND on the builder: the same linear scan, O( n ) key compares over the
-// segments in insertion order. NULL when absent. The builder builds NO
-// INDEX, and that is a rule — the sort happens once, at Lock, Save or
-// Cook, and every lookup that matters runs over the sorted region.
-inline TextWideEntry * TextWideFind( TableArena & arena, TableMap<TextWideEntry> & map, uint16_t key )
-{
-    TextWideEntry * found = TableMapScan( arena, map, key );
-    return found != NULL ? TableEntryValue( found ) : NULL;
-}
-
-// ERASE: marks the entry DEAD, one bit in the segment's slot and not in the
-// entry table. False when absent. Its storage is held until the builder
-// resets and never reused mid-build, because reusing a slot would make "an
-// entry's address is stable" false for exactly one case.
-inline bool TextWideErase( TableArena & arena, TableMap<TextWideEntry> & map, uint16_t key )
-{
-    return TableMapErase( arena, map, key );
-}
-
-// EACH on the builder: INSERTION order, live entries only.
-inline TableMapEach<TextWideEntry> TextWideEach( const TableArena & arena, const TableMap<TextWideEntry> & map )
-{
-    return TableMapEachOf( arena, map );
-}
-
-// ---- the OPTIONAL INDEX: caller-owned, built at load, never stored ----
-//
-// Open addressing with linear probing over the sorted array, for a map large
-// enough that log n compares over a cold array cost more than one hash and a
-// probe. ITS HASH AND ITS LOAD FACTOR ARE NOT A CROSS-PORT CONTRACT: the
-// index is never stored, so no golden, no cook-check rule and no
-// build-version line ever names either. What a port is held to is the
-// CONTRACT of the lookup — the same value the sorted array's Find returns
-// for the same key, and no allocation past the storage the caller handed in.
-inline int64_t TextWideIndexMeasure( const TableMap<TextWideEntry> & map )
-{
-    return (int64_t) TableMapIndexSlots( map.count ) * (int64_t) sizeof( int32_t );
-}
-
-inline TableMapIndex TextWideIndex( const TableMap<TextWideEntry> & map, void * storage, int64_t bytes )
-{
-    TableMapIndex index;
-    const int32_t slots = TableMapIndexSlots( map.count );
-    if ( storage == NULL || bytes < (int64_t) slots * (int64_t) sizeof( int32_t ) ) { return index; }
-    index.slots = (int32_t *) storage;
-    index.capacity = slots;
-    for ( int32_t i = 0; i < slots; i++ ) { index.slots[i] = 0; }
-    const TextWideEntry * entries = map.Entries();
-    for ( int32_t i = 0; i < map.count; i++ ) // ONE PASS over the sorted array
-    {
-        int32_t at = (int32_t) ( TableMapHash( (uint64_t) entries[i].key ) & (uint64_t) ( slots - 1 ) );
-        while ( index.slots[at] != 0 ) { at = ( at + 1 ) & ( slots - 1 ); }
-        index.slots[at] = i + 1; // slots are ENTRY INDICES; 0 is an empty slot
-    }
-    index.good = true;
-    return index;
-}
-
-inline const TextWideEntry * TextWideIndexFind( const TableMapIndex & index, const TableMap<TextWideEntry> & map, uint16_t key )
-{
-    if ( !index.good ) { return map.Find( key ); } // an index that did not build is not a wrong answer
-    const TextWideEntry * entries = map.Entries();
-    int32_t at = (int32_t) ( TableMapHash( (uint64_t) key ) & (uint64_t) ( index.capacity - 1 ) );
     for ( int32_t probe = 0; probe < index.capacity; probe++ )
     {
         const int32_t slot = index.slots[at];
@@ -12616,248 +11734,6 @@ inline bool TextNamesEntryLoadMessageBodyRetain( TableBitReader & r, const Table
     }
 }
 
-inline int64_t TextWideEntryMeasureBodyRetain( TableRetainIds & ids, const TextWideEntry & value, TableRetain * retain, const TableRetainPath & path )
-{
-    int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.key != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + 2; } // key
-    if ( value.value_length < 0 || value.value_length > 6 ) { return -1; } // storage invariant
-    if ( value.value_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + TableLebBytes( (uint64_t) ( (int64_t) value.value_length * 2 ) ) + ( (int64_t) value.value_length * 2 ); } // value
-    bytes += TableRetainTailMeasure( retain, ids, path );
-    return bytes;
-}
-
-MAPDEMO_TABLE_INLINE bool TextWideEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const TextWideEntry & value, TableRetain * retain, const TableRetainPath & path )
-{
-    if ( value.key != 0 )
-    {
-        w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 7 ); // key
-        w.put16( uint16_t( value.key ) );
-    }
-    if ( value.value_length < 0 || value.value_length > 6 ) { return false; } // storage invariant
-    if ( value.value_length > 0 )
-    {
-        w.header( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ), 33 ); // value
-        w.putleb( (uint64_t) value.value_length * 2 ); // L is a BYTE length (§3)
-        for ( int32_t i = 0; i < value.value_length; i++ ) { w.put16( (uint16_t) value.value[i] ); } // two bytes each, little-endian
-    }
-    if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
-    w.put8( 0 ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-MAPDEMO_TABLE_INLINE bool TextWideEntryLoadBodyRetain( TableReader & r, TextWideEntry & value, TableRetain * retain, const TableRetainPath & path )
-{
-    TextWideEntryReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
-    for ( ;; )
-    {
-        uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
-        const uint64_t field_id = r.ids->at( field_ref );
-        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
-        uint8_t kind = r.get8();
-        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
-        {
-            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,
-            // IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3). The node
-            // table's is the ROOT body's alone, on the numbering's own
-            // rule — a second numbering cannot exist — and the BUILD
-            // VERSION's rides in the announcement and nowhere else. That
-            // body stops and the parent reads on past its L.
-            r.report->malformed = true;
-            return false;
-        }
-        switch ( field_id )
-        {
-            case 0x3dc94a19365b10ecull: // key
-            {
-                if ( kind != 7 )
-                {
-                    if ( TableKindWidens( kind, 7 ) )
-                    {
-                        // WIDENED (§4): a kind that grew since the writer decodes
-                        // exactly at its own width, the value lands, one widened counts
-                        uint64_t widened_v = 0;
-                        if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
-                        uint16_t decoded_v = (uint16_t) widened_v;
-                        value.key = decoded_v;
-                        break;
-                    }
-                    // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                    break;
-                }
-                if ( !r.has( 2 ) ) { r.report->malformed = true; return false; }
-                uint16_t decoded_v = uint16_t( r.get16( ) );
-                value.key = decoded_v;
-                break;
-            }
-            case 0x7ce4fd9430e80ceaull: // value
-            {
-                if ( kind != 33 )
-                {
-                    // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                    break;
-                }
-                uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }
-                // AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the
-                // value is L / 2 code units, so an odd L is not a wstring at any length.
-                if ( ( len & 1 ) != 0 ) { r.report->malformed = true; value.value[0] = 0; value.value_length = 0; r.offset += (int64_t) len; break; }
-                const int64_t units = (int64_t) ( len / 2 );
-                // ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero
-                // code unit reads the declared default, one malformed counts, and the
-                // parent reads on past L
-                if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->malformed = true; value.value[0] = 0; value.value_length = 0; r.offset += (int64_t) len; break; }
-                int64_t keep = units;
-                if ( keep > 6 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 6 ); r.report->clamped++; } // never splitting a pair (§3)
-                for ( int64_t i = 0; i < keep; i++ ) { value.value[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
-                value.value[keep] = 0;
-                value.value_length = (int32_t) keep;
-                r.offset += (int64_t) len;
-                break;
-            }
-            default:
-            {
-                r.report->unknown++;
-                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
-                break;
-            }
-        }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-// UNDER RETENTION the same body keeps the fields this build cannot name,
-// resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the
-// path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).
-// The reader's own data is exactly what it would have been with retention off.
-inline bool TextWideEntryLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, TextWideEntry & value, TableRetain * retain, const TableRetainPath & path )
-{
-    TextWideEntryReset( value );
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever
-    // an earlier occurrence of it left is discarded before the winning one is
-    // read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0x3dc94a19365b10ecull: // key
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 7 || entry.elem_kind != 0 )
-                {
-                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 7 ) )
-                    {
-                        {
-                            const int64_t width = entry.value_bits;
-                            uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                            uint16_t decoded_v = (uint16_t) decoded_wide;
-                            value.key = decoded_v;
-                        }
-                        report->widened++;
-                        break;
-                    }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 65535ull ) { decoded_wide = (int64_t) 65535ull; report->clamped++; }
-                    uint16_t decoded_v = (uint16_t) decoded_wide;
-                    value.key = decoded_v;
-                }
-                break;
-            }
-            case 0x7ce4fd9430e80ceaull: // value
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 33 || entry.elem_kind != 0 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 6 ) { kept = 6; report->clamped++; } else { kept = (int32_t) n; }
-                    bool high = false; // a high surrogate awaiting its low half
-                    bool ill = false;
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        uint64_t unit = 0;
-                        if ( !r.get( unit, 16 ) ) { report->malformed = true; return false; }
-                        const uint16_t u = (uint16_t) unit;
-                        if ( u == 0 ) { ill = true; }
-                        if ( high ) { if ( u < 0xDC00 || u > 0xDFFF ) { ill = true; } high = false; }
-                        else if ( u >= 0xD800 && u <= 0xDBFF ) { high = true; }
-                        else if ( u >= 0xDC00 && u <= 0xDFFF ) { ill = true; }
-                        if ( (int32_t) i < kept ) { value.value[i] = (char16_t) u; }
-                    }
-                    if ( high || ill ) { report->malformed = true; return false; }
-                    if ( kept > 0 && (uint64_t) kept < n )
-                    {
-                        const char16_t last = value.value[kept - 1];
-                        if ( last >= 0xD800 && last <= 0xDBFF ) { kept--; }
-                    }
-                    value.value[kept] = 0;
-                    value.value_length = kept;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-            {
-                const int64_t unknown_at = r.offset;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)
-            }
-                break;
-        }
-    }
-}
-
 inline int64_t TextBlobsEntryMeasureBodyRetain( TableRetainIds & ids, const TextBlobsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
@@ -13136,7 +12012,7 @@ inline int64_t TextMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !order_names.ok ) { return -1; } // the sort could not run
         if ( order_names.count > 0 )
         {
-            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 50, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -13149,24 +12025,6 @@ inline int64_t TextMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         TableMapRelease( order_names );
     }
     {
-        // wide: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
-        TableMapCursor<TextWideEntry> order_wide = TableMapOrder( ctx, value.wide );
-        if ( !order_wide.ok ) { return -1; } // the sort could not run
-        if ( order_wide.count > 0 )
-        {
-            const uint64_t ref_wide = ids.ref_at( 48, 0xa633f1f655715ccaull );
-            int64_t body_wide = 1 + TableLebBytes( (uint64_t) order_wide.count ); // the element kind byte and the count
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                const int64_t elem_wide = TextWideEntryMeasureBodyRetain( ids, *order_wide[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
-                if ( elem_wide < 0 ) { TableMapRelease( order_wide ); return -1; }
-                body_wide += TableLebBytes( (uint64_t) ( elem_wide ) ) + ( elem_wide ); // BUT THE ENTRY ALWAYS RIDES: identity here is the key
-            }
-            bytes += TableLebBytes( ref_wide ) + 1 + TableLebBytes( (uint64_t) ( body_wide ) ) + ( body_wide );
-        }
-        TableMapRelease( order_wide );
-    }
-    {
         // blobs: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
         TableMapCursor<TextBlobsEntry> order_blobs = TableMapOrder( ctx, value.blobs );
         if ( !order_blobs.ok ) { return -1; } // the sort could not run
@@ -13176,7 +12034,7 @@ inline int64_t TextMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             int64_t body_blobs = 1 + TableLebBytes( (uint64_t) order_blobs.count ); // the element kind byte and the count
             for ( int32_t i = 0; i < order_blobs.count; i++ )
             {
-                const int64_t elem_blobs = TextBlobsEntryMeasureBodyRetain( ids, *order_blobs[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) );
+                const int64_t elem_blobs = TextBlobsEntryMeasureBodyRetain( ids, *order_blobs[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
                 if ( elem_blobs < 0 ) { TableMapRelease( order_blobs ); return -1; }
                 body_blobs += TableLebBytes( (uint64_t) ( elem_blobs ) ) + ( elem_blobs ); // BUT THE ENTRY ALWAYS RIDES: identity here is the key
             }
@@ -13184,7 +12042,7 @@ inline int64_t TextMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         }
         TableMapRelease( order_blobs );
     }
-    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
+    if ( value.past != 0 ) { bytes += TableLebBytes( ids.ref_at( 55, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // past
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -13198,7 +12056,7 @@ inline bool TextSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !order_names.ok ) { return false; }
         if ( order_names.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
         {
-            const uint64_t ref_names = ids.ref_at( 51, 0xafb728fff268814full );
+            const uint64_t ref_names = ids.ref_at( 50, 0xafb728fff268814full );
             int64_t body_names = 1 + TableLebBytes( (uint64_t) order_names.count );
             for ( int32_t i = 0; i < order_names.count; i++ )
             {
@@ -13219,31 +12077,6 @@ inline bool TextSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         TableMapRelease( order_names );
     }
     {
-        TableMapCursor<TextWideEntry> order_wide = TableMapOrder( ctx, value.wide ); // wide
-        if ( !order_wide.ok ) { return false; }
-        if ( order_wide.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
-        {
-            const uint64_t ref_wide = ids.ref_at( 48, 0xa633f1f655715ccaull );
-            int64_t body_wide = 1 + TableLebBytes( (uint64_t) order_wide.count );
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                const int64_t elem_wide = TextWideEntryMeasureBodyRetain( ids, *order_wide[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
-                if ( elem_wide < 0 ) { TableMapRelease( order_wide ); return false; }
-                body_wide += TableLebBytes( (uint64_t) ( elem_wide ) ) + ( elem_wide );
-            }
-            w.header( ref_wide, 14 ); w.putleb( (uint64_t) body_wide );
-            w.put8( 13 ); w.putleb( (uint64_t) order_wide.count );
-            for ( int32_t i = 0; i < order_wide.count; i++ )
-            {
-                const int64_t elem_len_wide = TextWideEntryMeasureBodyRetain( ids, *order_wide[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
-                if ( elem_len_wide < 0 ) { TableMapRelease( order_wide ); return false; }
-                w.putleb( (uint64_t) elem_len_wide );
-                if ( !TextWideEntrySaveBodyRetain( w, ids, *order_wide[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) ) ) { TableMapRelease( order_wide ); return false; }
-            }
-        }
-        TableMapRelease( order_wide );
-    }
-    {
         TableMapCursor<TextBlobsEntry> order_blobs = TableMapOrder( ctx, value.blobs ); // blobs
         if ( !order_blobs.ok ) { return false; }
         if ( order_blobs.count > 0 ) // an EMPTY map elides, the by-value rule (§3)
@@ -13252,7 +12085,7 @@ inline bool TextSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             int64_t body_blobs = 1 + TableLebBytes( (uint64_t) order_blobs.count );
             for ( int32_t i = 0; i < order_blobs.count; i++ )
             {
-                const int64_t elem_blobs = TextBlobsEntryMeasureBodyRetain( ids, *order_blobs[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) );
+                const int64_t elem_blobs = TextBlobsEntryMeasureBodyRetain( ids, *order_blobs[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
                 if ( elem_blobs < 0 ) { TableMapRelease( order_blobs ); return false; }
                 body_blobs += TableLebBytes( (uint64_t) ( elem_blobs ) ) + ( elem_blobs );
             }
@@ -13260,17 +12093,17 @@ inline bool TextSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             w.put8( 13 ); w.putleb( (uint64_t) order_blobs.count );
             for ( int32_t i = 0; i < order_blobs.count; i++ )
             {
-                const int64_t elem_len_blobs = TextBlobsEntryMeasureBodyRetain( ids, *order_blobs[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) );
+                const int64_t elem_len_blobs = TextBlobsEntryMeasureBodyRetain( ids, *order_blobs[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
                 if ( elem_len_blobs < 0 ) { TableMapRelease( order_blobs ); return false; }
                 w.putleb( (uint64_t) elem_len_blobs );
-                if ( !TextBlobsEntrySaveBodyRetain( w, ids, *order_blobs[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) ) ) { TableMapRelease( order_blobs ); return false; }
+                if ( !TextBlobsEntrySaveBodyRetain( w, ids, *order_blobs[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) ) ) { TableMapRelease( order_blobs ); return false; }
             }
         }
         TableMapRelease( order_blobs );
     }
     if ( value.past != 0 )
     {
-        w.header( ids.ref_at( 56, 0xbf82010f6f71eae9ull ), 4 ); // past
+        w.header( ids.ref_at( 55, 0xbf82010f6f71eae9ull ), 4 ); // past
         w.put32( uint32_t( value.past ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -13408,97 +12241,6 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
                 r.offset = body_end; // the remaining entries skip by the map's L
                 break;
             }
-            case 0xa633f1f655715ccaull: // wide
-            {
-                if ( kind != 14 )
-                {
-                    // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
-                    break;
-                }
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
-                int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
-                {
-                    uint8_t elem_kind = r.get8();
-                    uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
-                    // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
-                    // kind mismatch of §4, and nothing about a map is special-cased
-                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, count );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint16_t last_key = 0;
-                    bool landed = false;
-                    bool map_widened = false;
-                    for ( uint64_t i = 0; i < count; i++ )
-                    {
-                        uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }
-                        const uint8_t * elem_body = sub.buffer + sub.offset;
-                        sub.offset += (int64_t) elem_len;
-                        TextWideEntryKeyRead read = TextWideEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
-                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
-                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
-                        // THE KEY KIND IS CHECKED FIRST: a key read under another kind
-                        // desynchronizes the rest of the scan, and the honest answer to a
-                        // body whose key is not this reader's kind is the KIND, not the
-                        // framing damage that follows from it.
-                        if ( read.kind_bad )
-                        {
-                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
-                            // to EMPTY, ONE kind_mismatch is counted for it, and the rest
-                            // is skipped. Events counted inside earlier entries stand.
-                            r.report->kind_mismatch++;
-                            TableMapFillReset( fill );
-                            break;
-                        }
-                        if ( read.malformed ) { r.report->malformed = true; break; }
-                        if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
-                        const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 )
-                        {
-                            // DESCENDING: not a body any conforming writer produced. The map
-                            // keeps the ascending prefix it has, the rest skips by the map's
-                            // L, and the PARENT reads on past the field's length (§4).
-                            r.report->malformed = true;
-                            break;
-                        }
-                        TextWideEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
-                        if ( slot == NULL ) { r.report->malformed = true; break; }
-                        {
-                            TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
-                            TextWideEntryLoadBodyRetain( elem, *slot, retain, TableRetainStepInto( path, 1, (uint32_t) ( fill.map->count - 1 ) ) );
-                        }
-                        last_key = read.key; // the WIRE keys of the entries that LAND
-                        landed = true;
-                    }
-                    TableMapFillEnd( fill );
-                }
-                r.offset = body_end; // the remaining entries skip by the map's L
-                break;
-            }
             case 0x14e2eaab9cde925bull: // blobs
             {
                 if ( kind != 14 )
@@ -13522,7 +12264,7 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 2 );
+                    TableRetainDiscardField( retain, path, 1 );
                     TableMapFill<TextBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
                     if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -13580,7 +12322,7 @@ inline bool TextLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tex
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
-                            TextBlobsEntryLoadBodyRetain( elem, *slot, retain, TableRetainStepInto( path, 2, (uint32_t) ( fill.map->count - 1 ) ) );
+                            TextBlobsEntryLoadBodyRetain( elem, *slot, retain, TableRetainStepInto( path, 1, (uint32_t) ( fill.map->count - 1 ) ) );
                         }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -13728,72 +12470,6 @@ inline bool TextLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                 }
                 break;
             }
-            case 0xa633f1f655715ccaull: // wide
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 13 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t count = 0;
-                    if ( !r.get( count, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    count += (uint64_t) entry.min;
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 1 );
-                    TableMapFill<TextWideEntry> fill = TableMapFillBegin( nodes, value.wide, count );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    uint16_t last_key = 0;
-                    bool landed = false;
-                    bool map_widened = false;
-                    for ( uint64_t i = 0; i < count; i++ )
-                    {
-                        const TextWideEntryMessageKeyRead read = TextWideEntryMessageReadKey( r, vocabulary, index_bits );
-                        if ( read.malformed ) { report->malformed = true; return false; }
-                        // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
-                        if ( read.widened && !map_widened ) { map_widened = true; report->widened++; }
-                        if ( read.kind_bad )
-                        {
-                            // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets to
-                            // EMPTY, ONE kind_mismatch is counted for it, and the rest of its
-                            // entries are stepped over by their shapes
-                            report->kind_mismatch++;
-                            TableMapFillReset( fill );
-                            r.offset = read.end;
-                            for ( uint64_t j = i + 1; j < count; j++ ) { if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { report->malformed = true; return false; } }
-                            break;
-                        }
-                        if ( read.over ) { report->clamped++; r.offset = read.end; continue; } // dropped whole, one count per entry
-                        const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 ) { report->malformed = true; return false; } // DESCENDING: not a body any conforming writer produced
-                        TextWideEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset by the
-                            // decode below, so LAST WINS WHOLE, and the count excludes it.
-                            slot = TableMapFillLast( fill );
-                            report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
-                        if ( slot == NULL ) { report->malformed = true; return false; }
-                        if ( !TextWideEntryLoadMessageBodyRetain( r, vocabulary, report, index_bits, *slot, retain, TableRetainStepInto( path, 1, (uint32_t) ( fill.map->count - 1 ) ) ) ) { return false; }
-                        if ( r.offset != read.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends
-                        last_key = read.key; // the WIRE keys of the entries that LAND
-                        landed = true;
-                    }
-                    TableMapFillEnd( fill );
-                }
-                break;
-            }
             case 0x14e2eaab9cde925bull: // blobs
             {
                 // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
@@ -13811,7 +12487,7 @@ inline bool TextLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                     count += (uint64_t) entry.min;
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 2 );
+                    TableRetainDiscardField( retain, path, 1 );
                     TableMapFill<TextBlobsEntry> fill = TableMapFillBegin( nodes, value.blobs, count );
                     if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
@@ -13851,7 +12527,7 @@ inline bool TextLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
                             slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         }
                         if ( slot == NULL ) { report->malformed = true; return false; }
-                        if ( !TextBlobsEntryLoadMessageBodyRetain( r, vocabulary, report, index_bits, *slot, retain, TableRetainStepInto( path, 2, (uint32_t) ( fill.map->count - 1 ) ) ) ) { return false; }
+                        if ( !TextBlobsEntryLoadMessageBodyRetain( r, vocabulary, report, index_bits, *slot, retain, TableRetainStepInto( path, 1, (uint32_t) ( fill.map->count - 1 ) ) ) ) { return false; }
                         if ( r.offset != read.end ) { report->malformed = true; return false; } // the scan and the decode disagree about where the entry ends
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
@@ -14418,7 +13094,6 @@ inline const Text * TextOpen( const void * bytes, uint64_t length, TableRefuseRe
 // instance produce ONE artifact or the pair means nothing.
 
 inline bool TextNamesEntryCookBody( uint8_t * at, const TextNamesEntry & value, TableByteOrder order );
-inline bool TextWideEntryCookBody( uint8_t * at, const TextWideEntry & value, TableByteOrder order );
 inline bool TextBlobsEntryCookBody( uint8_t * at, const TextBlobsEntry & value, TableByteOrder order );
 template <typename Ctx> inline bool TextCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Text & value, TableByteOrder order );
 
@@ -14428,14 +13103,6 @@ inline bool TextNamesEntryCookBody( uint8_t * at, const TextNamesEntry & value, 
     table_cook_put( at + 12, (uint64_t) (uint32_t) value.key_length, 4, order );
     table_cook_bytes( at + 16, value.value, value.value_length, 17 );
     table_cook_put( at + 36, (uint64_t) (uint32_t) value.value_length, 4, order );
-    return true;
-}
-
-inline bool TextWideEntryCookBody( uint8_t * at, const TextWideEntry & value, TableByteOrder order )
-{
-    table_cook_put( at + 0, (uint64_t) value.key, 2, order );
-    table_cook_units( at + 2, value.value, value.value_length, 7, order );
-    table_cook_put( at + 16, (uint64_t) (uint32_t) value.value_length, 4, order );
     return true;
 }
 
@@ -14452,16 +13119,13 @@ template <typename Ctx> inline bool TextCookBody( const Ctx & ctx, const TableCo
     (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // names: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
-    table_cook_put( at + 16, 0, 8, order ); // wide: the array's delta, filled by the extent writer
+    table_cook_put( at + 16, 0, 8, order ); // blobs: the array's delta, filled by the extent writer
     table_cook_put( at + 24, 0, 4, order ); // and its count
-    table_cook_put( at + 32, 0, 8, order ); // blobs: the array's delta, filled by the extent writer
-    table_cook_put( at + 40, 0, 4, order ); // and its count
-    table_cook_put( at + 48, (uint64_t) value.past, 4, order );
+    table_cook_put( at + 32, (uint64_t) value.past, 4, order );
     return true;
 }
 
 template <typename Ctx> inline bool TextNamesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const TextNamesEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool TextWideEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const TextWideEntry & value, TableByteOrder order );
 template <typename Ctx> inline bool TextBlobsEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const TextBlobsEntry & value, TableByteOrder order );
 template <typename Ctx> inline bool TextCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Text & value, TableByteOrder order );
 
@@ -14469,15 +13133,6 @@ template <typename Ctx> inline bool TextCookExtent( const Ctx & ctx, const Table
 // in ASCENDING key order and a list's elements in INDEX order, each through its
 // own cook writer (§2.8, §2.9, §7.6).
 template <typename Ctx> inline bool TextNamesEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const TextNamesEntry & value, TableByteOrder order )
-{
-    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
-    return true; // no list or map below this record
-}
-
-// TextWideEntryCookExtent: TextWideEntry's arrays into the node's extent, PRE-ORDER, a map's entries
-// in ASCENDING key order and a list's elements in INDEX order, each through its
-// own cook writer (§2.8, §2.9, §7.6).
-template <typename Ctx> inline bool TextWideEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const TextWideEntry & value, TableByteOrder order )
 {
     (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
     return true; // no list or map below this record
@@ -14513,21 +13168,6 @@ template <typename Ctx> inline bool TextCookExtent( const Ctx & ctx, const Table
         }
         TableMapRelease( cursor );
     }
-    { // wide
-        TableMapCursor<TextWideEntry> cursor = TableMapOrder( ctx, value.wide );
-        if ( !cursor.ok ) { return false; }
-        at = ( at + 3 ) & ~(int64_t) 3; // at alignof( TextWideEntry )
-        uint8_t * array = extent + at;
-        at += (int64_t) cursor.count * 20; // the whole array FIRST
-        // the SIXTEEN BYTES of the slot: the self-relative delta, then the count
-        table_cook_put( record + 16, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + 16 ) ) : 0, 8, order );
-        table_cook_put( record + 24, (uint64_t) (uint32_t) cursor.count, 4, order );
-        for ( int32_t i = 0; i < cursor.count; i++ )
-        {
-            if ( !TextWideEntryCookBody( array + i * 20, *cursor[i], order ) ) { return false; }
-        }
-        TableMapRelease( cursor );
-    }
     { // blobs
         TableMapCursor<TextBlobsEntry> cursor = TableMapOrder( ctx, value.blobs );
         if ( !cursor.ok ) { return false; }
@@ -14535,8 +13175,8 @@ template <typename Ctx> inline bool TextCookExtent( const Ctx & ctx, const Table
         uint8_t * array = extent + at;
         at += (int64_t) cursor.count * 20; // the whole array FIRST
         // the SIXTEEN BYTES of the slot: the self-relative delta, then the count
-        table_cook_put( record + 32, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + 32 ) ) : 0, 8, order );
-        table_cook_put( record + 40, (uint64_t) (uint32_t) cursor.count, 4, order );
+        table_cook_put( record + 16, cursor.count > 0 ? (uint64_t) (int64_t) ( array - ( record + 16 ) ) : 0, 8, order );
+        table_cook_put( record + 24, (uint64_t) (uint32_t) cursor.count, 4, order );
         for ( int32_t i = 0; i < cursor.count; i++ )
         {
             if ( !TextBlobsEntryCookBody( array + i * 20, *cursor[i], order ) ) { return false; }
@@ -14554,14 +13194,6 @@ template <typename Ctx> inline bool TextNamesEntryCookNode( const Ctx & ctx, con
     return TextNamesEntryCookExtent( ctx, region, at + 40, extent_at, at, value, order );
 }
 
-// TextWideEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
-template <typename Ctx> inline bool TextWideEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const TextWideEntry & value, TableByteOrder order )
-{
-    if ( !TextWideEntryCookBody( at, value, order ) ) { return false; }
-    int64_t extent_at = 0;
-    return TextWideEntryCookExtent( ctx, region, at + 24, extent_at, at, value, order );
-}
-
 // TextBlobsEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
 template <typename Ctx> inline bool TextBlobsEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const TextBlobsEntry & value, TableByteOrder order )
 {
@@ -14575,7 +13207,7 @@ template <typename Ctx> inline bool TextCookNode( const Ctx & ctx, const TableCo
 {
     if ( !TextCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
-    if ( !TextCookExtent( ctx, region, at + 56, extent_at, at, value, order ) ) { return false; }
+    if ( !TextCookExtent( ctx, region, at + 40, extent_at, at, value, order ) ) { return false; }
     return extent_at == TextExtent( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
@@ -14596,7 +13228,7 @@ inline bool TextCookLayout( const Ctx & ctx, const Text & root, const TableNumbe
     region.count = numbering.count + 1;
     const int64_t root_extent = TextExtent( ctx, root );
     if ( root_extent < 0 ) { return false; }
-    int64_t offset = 56 + root_extent; // the root at zero, its extent behind it
+    int64_t offset = 40 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
@@ -14750,8 +13382,6 @@ inline bool TextCook( const TextBuilder & builder, void * out, uint64_t capacity
 // are self-relative and therefore survive a plain memcpy.
 static_assert( __is_trivially_copyable( TextNamesEntry ), "TextNamesEntry must stay relocatable" );
 static_assert( __is_standard_layout( TextNamesEntry ), "TextNamesEntry must stay standard-layout for offsetof" );
-static_assert( __is_trivially_copyable( TextWideEntry ), "TextWideEntry must stay relocatable" );
-static_assert( __is_standard_layout( TextWideEntry ), "TextWideEntry must stay standard-layout for offsetof" );
 static_assert( __is_trivially_copyable( TextBlobsEntry ), "TextBlobsEntry must stay relocatable" );
 static_assert( __is_standard_layout( TextBlobsEntry ), "TextBlobsEntry must stay standard-layout for offsetof" );
 static_assert( __is_trivially_copyable( Text ), "Text must stay relocatable" );
@@ -14768,26 +13398,20 @@ static_assert( sizeof( TextNamesEntry ) == 40, "TextNamesEntry's sizeof moved: t
 static_assert( alignof( TextNamesEntry ) == 4, "TextNamesEntry's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( TextNamesEntry, key ) == 0, "TextNamesEntry's field key moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( TextNamesEntry, value ) == 16, "TextNamesEntry's field value moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( TextWideEntry ) == 20, "TextWideEntry's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
-static_assert( alignof( TextWideEntry ) == 4, "TextWideEntry's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TextWideEntry, key ) == 0, "TextWideEntry's field key moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( TextWideEntry, value ) == 2, "TextWideEntry's field value moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( sizeof( TextBlobsEntry ) == 20, "TextBlobsEntry's sizeof moved: the build version was taken over 20, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( TextBlobsEntry ) == 4, "TextBlobsEntry's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( TextBlobsEntry, key ) == 0, "TextBlobsEntry's field key moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( TextBlobsEntry, value ) == 4, "TextBlobsEntry's field value moved: the build version was taken over offset 4 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( sizeof( Text ) == 56, "Text's sizeof moved: the build version was taken over 56, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+static_assert( sizeof( Text ) == 40, "Text's sizeof moved: the build version was taken over 40, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 static_assert( alignof( Text ) == 8, "Text's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Text, names ) == 0, "Text's field names moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Text, wide ) == 16, "Text's field wide moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Text, blobs ) == 32, "Text's field blobs moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
-static_assert( offsetof( Text, past ) == 48, "Text's field past moved: the build version was taken over offset 48 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Text, blobs ) == 16, "Text's field blobs moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
+static_assert( offsetof( Text, past ) == 32, "Text's field past moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
 
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * TextNamesEntryTableType();
-inline const TableTypeInfo * TextWideEntryTableType();
 inline const TableTypeInfo * TextBlobsEntryTableType();
 inline const TableTypeInfo * TextTableType();
 // The descriptors are CONSTANT-INITIALISED data, and a field's target is
@@ -14797,7 +13421,6 @@ inline const TableTypeInfo * TextTableType();
 // have been written race-free OR recursion-safe. The whole reflection
 // surface is therefore immutable: read it from any thread, any time.
 extern const TableTypeInfo TextNamesEntryTableInfo;
-extern const TableTypeInfo TextWideEntryTableInfo;
 extern const TableTypeInfo TextBlobsEntryTableInfo;
 extern const TableTypeInfo TextTableInfo;
 
@@ -14808,13 +13431,6 @@ inline const TableFieldInfo TextNamesEntryTableFields[] = {
 inline const TableTypeInfo TextNamesEntryTableInfo = { "TextNamesEntry", (uint32_t) sizeof( TextNamesEntry ), 2, TextNamesEntryTableFields, +[]( void * p ) { TextNamesEntryReset( *(TextNamesEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TextNamesEntryTableType() { return &TextNamesEntryTableInfo; }
 
-inline const TableFieldInfo TextWideEntryTableFields[] = {
-    { "key", "key", "uint16", 0x3dc94a19365b10ecull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TextWideEntry, key ), (uint32_t) sizeof( TextWideEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "value", "value", "wstring", 0x7ce4fd9430e80ceaull, 33, false, false, NULL, NULL, true, false, 6, (uint32_t) offsetof( TextWideEntry, value ), (uint32_t) sizeof( TextWideEntry::value ), (uint32_t) offsetof( TextWideEntry, value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-};
-inline const TableTypeInfo TextWideEntryTableInfo = { "TextWideEntry", (uint32_t) sizeof( TextWideEntry ), 2, TextWideEntryTableFields, +[]( void * p ) { TextWideEntryReset( *(TextWideEntry *) p ); }, false, TableDocNone, 0, NULL, false };
-inline const TableTypeInfo * TextWideEntryTableType() { return &TextWideEntryTableInfo; }
-
 inline const TableFieldInfo TextBlobsEntryTableFields[] = {
     { "key", "key", "int32", 0x3dc94a19365b10ecull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( TextBlobsEntry, key ), (uint32_t) sizeof( TextBlobsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
     { "value", "value", "bytes", 0x7ce4fd9430e80ceaull, 6, true, false, NULL, NULL, true, false, 10, (uint32_t) offsetof( TextBlobsEntry, value ), (uint32_t) sizeof( TextBlobsEntry::value[0] ), (uint32_t) offsetof( TextBlobsEntry, value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
@@ -14824,11 +13440,10 @@ inline const TableTypeInfo * TextBlobsEntryTableType() { return &TextBlobsEntryT
 
 inline const TableFieldInfo TextTableFields[] = {
     { "names", "names", "map[string(8)]string", 0xafb728fff268814full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Text, names ), (uint32_t) sizeof( TextNamesEntry ), (uint32_t) offsetof( Text, names.count ), 0xffffffffu, &TextNamesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<TextNamesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true },
-    { "wide", "wide", "map[uint16]wstring", 0xa633f1f655715ccaull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Text, wide ), (uint32_t) sizeof( TextWideEntry ), (uint32_t) offsetof( Text, wide.count ), 0xffffffffu, &TextWideEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<TextWideEntry> *) slot, (uint16_t) key_value ); }, "", TableDocNone, 0, NULL, true },
     { "blobs", "blobs", "map[int32]bytes", 0x14e2eaab9cde925bull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Text, blobs ), (uint32_t) sizeof( TextBlobsEntry ), (uint32_t) offsetof( Text, blobs.count ), 0xffffffffu, &TextBlobsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<TextBlobsEntry> *) slot, (int32_t) key_value ); }, "", TableDocNone, 0, NULL, true },
     { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Text, past ), (uint32_t) sizeof( Text::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
 };
-inline const TableTypeInfo TextTableInfo = { "Text", (uint32_t) sizeof( Text ), 4, TextTableFields, +[]( void * p ) { TextReset( *(Text *) p ); }, true, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo TextTableInfo = { "Text", (uint32_t) sizeof( Text ), 3, TextTableFields, +[]( void * p ) { TextReset( *(Text *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TextTableType() { return &TextTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

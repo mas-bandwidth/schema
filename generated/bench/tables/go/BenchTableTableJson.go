@@ -130,7 +130,7 @@ func tableJSONIsEnum(f *TableFieldInfo) bool { return f.VariantID != nil && f.Ar
 
 func tableJSONShape(f *TableFieldInfo) byte {
 	switch {
-	case f.Kind == 12 || f.Kind == 33: // string
+	case f.Kind == 12: // string
 		return 's'
 	case tableJSONIsBytes(f): // base64
 		return 's'
@@ -615,10 +615,6 @@ func tableJSONWriteField(out *tableJSONOut, base unsafe.Pointer, f *TableFieldIn
 	if f.List {
 		return tableJSONWriteList(out, storage, f, depth)
 	}
-	if f.Kind == 33 {
-		tableJSONWriteWString(out, unsafe.Slice((*uint16)(storage), tableJSONCount(base, f)))
-		return true
-	}
 	if f.Kind == 12 {
 		tableJSONWriteString(out, tableJSONBytes(storage, tableJSONCount(base, f)))
 		return true
@@ -819,9 +815,6 @@ func tableJSONAtDefault(base, def unsafe.Pointer, f *TableFieldInfo) bool {
 		unit := uintptr(f.ElemSize)
 		if !f.IsArray {
 			unit = 1
-			if f.Kind == 33 {
-				unit = 2
-			}
 		}
 		size = unit * uintptr(count)
 	}
@@ -985,13 +978,13 @@ func tableJSONEncodeUTF8(code uint32, unit []byte) int32 {
 // \u0000 escape can produce one; a raw control byte is already not JSON. A
 // string only skipped or measured (no destination) stores nothing, and
 // scanKey's names (object keys, enum and flag names) store nothing either.
-func (in *tableJSONIn) scanString(out []byte) (int32, bool) { return in.scanText(out, nil, false) }
+func (in *tableJSONIn) scanString(out []byte) (int32, bool) { return in.scanText(out, false) }
 
 // scanKey scans a NAME: an object key or a variant name, compared and never
 // stored, so a zero in it is not 16.3's event (it simply names nothing).
-func (in *tableJSONIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, nil, true) }
+func (in *tableJSONIn) scanKey(out []byte) (int32, bool) { return in.scanText(out, true) }
 
-func (in *tableJSONIn) scanText(out []byte, wide []uint16, name bool) (int32, bool) {
+func (in *tableJSONIn) scanText(out []byte, name bool) (int32, bool) {
 	if in.peek() != '"' {
 		in.bad = true
 		return 0, false
@@ -1063,8 +1056,8 @@ func (in *tableJSONIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 					code = 0xfffd
 				}
 				// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
-				// refuses the read (narrow and wide alike)
-				if code == 0 && !name && (out != nil || wide != nil) {
+				// refuses the read
+				if code == 0 && !name && out != nil {
 					in.zero = true
 					in.bad = true
 					return 0, false
@@ -1094,35 +1087,15 @@ func (in *tableJSONIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 			}
 			in.pos += n
 		}
-		if out == nil && wide == nil {
+		if out == nil {
 			placed += unitLength
 			continue
 		}
-		if wide != nil {
-			code, _ := utf8.DecodeRune(unit[:unitLength])
-			n := int32(1)
-			if code >= 0x10000 {
-				n = 2
-			}
-			if !clamped && placed+n <= int32(len(wide)) {
-				if n == 1 {
-					wide[placed] = uint16(code)
-				} else {
-					code -= 0x10000
-					wide[placed] = 0xd800 + uint16(code>>10)
-					wide[placed+1] = 0xdc00 + uint16(code&0x3ff)
-				}
-				placed += n
-			} else {
-				clamped = true
-			}
-		} else if out != nil {
-			if !clamped && placed+unitLength <= int32(len(out)) {
-				copy(out[placed:], unit[:unitLength])
-				placed += unitLength
-			} else {
-				clamped = true
-			}
+		if !clamped && placed+unitLength <= int32(len(out)) {
+			copy(out[placed:], unit[:unitLength])
+			placed += unitLength
+		} else {
+			clamped = true
 		}
 	}
 	if clamped {
@@ -1703,16 +1676,6 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 	}
 	if f.List {
 		return tableJSONReadList(in, storage, f, depth)
-	}
-	if f.Kind == 33 {
-		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
-		clear(units)
-		n, ok := in.scanText(nil, units, false)
-		if !ok {
-			return false
-		}
-		tableJSONSetCount(base, f, n)
-		return true
 	}
 	if f.Kind == 12 {
 		length, ok := in.scanString(tableJSONBytes(storage, f.ArrayBound))
@@ -2502,24 +2465,6 @@ func tableJSONReadWide(in *tableJSONIn, token []byte, storage unsafe.Pointer, f 
 	}
 	tableJSONWideStore(storage, f.ElemSize, raw)
 	return true
-}
-
-func tableJSONWriteWString(out *tableJSONOut, units []uint16) {
-	out.put('"')
-	for i := 0; i < len(units); i++ {
-		code := uint32(units[i])
-		if code >= 0xd800 && code <= 0xdbff && i+1 < len(units) && units[i+1] >= 0xdc00 && units[i+1] <= 0xdfff {
-			code = 0x10000 + (code-0xd800)<<10 + (uint32(units[i+1]) - 0xdc00)
-			i++
-		}
-		if code >= 0xd800 && code <= 0xdfff {
-			code = 0xfffd
-		}
-		var encoded [4]byte
-		n := tableJSONEncodeUTF8(code, encoded[:])
-		tableJSONWriteStringBody(out, encoded[:n])
-	}
-	out.put('"')
 }
 
 type tableJSONLabel struct {

@@ -20,11 +20,3 @@ def text_refusal(s:string, n:int) -> serialize_refusal:
     if not string_utf8_valid(s, n):
         return serialize_refusal_invalid_utf8
     return serialize_refusal_none
-
-// units_nonzero is "no zero code unit among s's first n UTF-16LE units", the
-// wstring(N) writer's contract (SPEC §4.12).
-def units_nonzero(s:string, n:int) -> bool:
-    for(n) i:
-        if read_uint16_le(s, i * 2) == 0:
-            return false
-    return true

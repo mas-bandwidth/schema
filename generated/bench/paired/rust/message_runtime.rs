@@ -34,9 +34,9 @@ pub const TABLE_MESSAGE_MAX_BYTES: usize = 64 * 1024;
 /// compile-time constant (§3.3). It is an ordinary form-1 FILE whose body
 /// carries the build version at kind 9 and the vocabulary at kind 14 over
 /// element kind 6, and whose trailer is those two reserved ids.
-pub const TABLE_ANNOUNCEMENT: [u8; 932] = [
+pub const TABLE_ANNOUNCEMENT: [u8; 923] = [
     0x01,0x01,0x09,0x52,0xa8,0xbf,0x78,0x93,0x55,0xd3,0x41,0x02,
-    0x0e,0xfc,0x06,0x06,0xf9,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,
+    0x0e,0xf3,0x06,0x06,0xf0,0x06,0xa8,0x28,0xf5,0x81,0xa4,0xac,
     0x38,0xaa,0x07,0x01,0x10,0x00,0x3e,0x7c,0x69,0x56,0x5c,0x00,
     0xbe,0x0d,0x04,0x01,0x10,0x00,0x03,0xee,0x29,0xb8,0xa8,0x0d,
     0xae,0x9b,0x08,0x01,0x20,0x00,0x05,0x0b,0x59,0x0a,0x65,0xb5,
@@ -109,10 +109,9 @@ pub const TABLE_ANNOUNCEMENT: [u8; 932] = [
     0x0d,0x65,0xb7,0xec,0x86,0x1c,0xa4,0xa3,0x9f,0x0d,0xff,0xff,
     0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,
     0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,
-    0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xb3,0x46,
-    0xa7,0xdc,0x9c,0x36,0xdf,0x85,0x00,0x00,0xfe,0xff,0xff,0xff,
-    0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-    0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0xb3,0x46,0xa7,0xdc,0x9c,0x36,0xdf,0x85,0x00,0x00,0xfe,
+    0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,
+    0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
 ];
 
 /// The width of a reference on a body this build WRITES: bits_required(0, n)
@@ -511,7 +510,7 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind)
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=32).contains(&kind)
 }
 
 fn integer_kind(kind: u8) -> bool {
@@ -655,7 +654,7 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
         }
         return (s, false); // a packing outside the closed set
     }
-    if kind == 12 || kind == 33 {
+    if kind == 12 {
         let (v, ok) = read_leb(bytes, at);
         if !ok || v > i32::MAX as u64 {
             return (s, false);
@@ -684,9 +683,9 @@ fn read_shape(bytes: &[u8], at: &mut usize, kind: u8) -> (TableMessageShape, boo
         if !known_kind(s.elem) {
             return (s, false);
         }
-        // an element kind of 12 or 33 is refused here, at the announcement,
-        // rather than at the skip that would meet it (§3.3)
-        if s.elem == 12 || s.elem == 33 {
+        // an element kind of 12 is refused here, at the announcement, rather
+        // than at the skip that would meet it (§3.3)
+        if s.elem == 12 {
             return (s, false);
         }
         return (s, true);
@@ -721,7 +720,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         // a nested body, an array, a keyed array, an escape, a payload-free
         // field and a wide string all frame the same way on the file, and a
         // wide string's length is its BYTE count (§3).
-        12 | 13 | 14 | 16 | 31 | 32 | 33 => {
+        12 | 13 | 14 | 16 | 31 | 32 => {
             let (n, ok) = read_leb(bytes, at);
             if !ok || *at + (n as usize) > bytes.len() {
                 return false;
@@ -1058,16 +1057,12 @@ pub fn table_message_skip(r: &mut TableBitReader, v: &TableVocabulary, e: &Table
                 None => false,
             },
         },
-        12 | 33 => {
+        12 => {
             let Some(n) = table_message_count(r, s) else { return false };
-            let mut width = 16u64;
-            if e.kind == 12 {
-                width = 8;
-                if !r.align() {
-                    return false;
-                }
+            if !r.align() {
+                return false;
             }
-            r.skip(n * width)
+            r.skip(n * 8)
         }
         31 => {
             if !r.align() {

@@ -456,17 +456,6 @@ def cw_str(c:CookWrite, at:int, value:string, used:int, bufsize:int, countoff:in
     if countoff >= 0:
         co_u32(c.o, at + countoff, n, c.big)
 
-def cw_units(c:CookWrite, at:int, units:[int], bufsize:int, countoff:int) -> void:
-    var n = length(units)
-    if n * 2 > bufsize:
-        n = bufsize / 2
-    var i = 0
-    while i < n:
-        co_u16(c.o, at + i * 2, units[i] & 0xffff, c.big)
-        i++
-    if countoff >= 0:
-        co_u32(c.o, at + countoff, n, c.big)
-
 def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
     if fd.present != "":
         // The presence slot is STORAGE like every other (§20.2): it is
@@ -490,10 +479,7 @@ def cw_field(c:CookWrite, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> 
     elif s == "union":
         cw_union(c, at, sl.cell, fd, cf)
     elif s == "str":
-        if fd.wide:
-            cw_units(c, at, sl.cell.units, cf.size, cf.count)
-        else:
-            cw_str(c, at, sl.cell.s, sl.count, cf.size, cf.count)
+        cw_str(c, at, sl.cell.s, sl.count, cf.size, cf.count)
     elif s == "text":
         cw_str(c, at, sl.cell.s, length(sl.cell.s), cf.size, cf.count)
     elif s == "bytes":
@@ -534,10 +520,7 @@ def cw_elem(c:CookWrite, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff
     elif s == "union":
         cw_union(c, at, v, e, CookField { tag: tag, arm: arm })
     elif s == "str":
-        if e.wide:
-            cw_units(c, at, v.units, vsize, countoff)
-        else:
-            cw_str(c, at, v.s, length(v.s), vsize, countoff)
+        cw_str(c, at, v.s, length(v.s), vsize, countoff)
     elif s == "text":
         cw_str(c, at, v.s, length(v.s), vsize, countoff)
     elif s == "bytes":
@@ -891,19 +874,6 @@ def cr_text(c:CookRead, at:int, countoff:int, bufsize:int) -> string:
     let n = cr_count(c, at, countoff, bufsize)
     return substring(c.data, at, n)
 
-def cr_units(c:CookRead, at:int, countoff:int, bufsize:int) -> [int]:
-    let n = cr_count(c, at, countoff, bufsize)
-    let units = []
-    var i = 0
-    while i < n:
-        let u = read_uint16_le(c.data, at + i * 2)
-        if c.big:
-            push(units, cook_bswap16(u))
-        else:
-            push(units, u)
-        i++
-    return units
-
 def cr_record(c:CookRead, base:int, rec:Record, t:CookTable) -> void:
     var i = 0
     while i < length(rec.fields) and i < length(t.fields):
@@ -935,12 +905,8 @@ def cr_field(c:CookRead, at:int, sl:Slot, cf:CookField) -> void:
     elif s == "union":
         cr_union(c, at, sl.cell, fd)
     elif s == "str":
-        if fd.wide:
-            sl.cell.units = cr_units(c, at, cf.count, cf.size)
-            sl.count = cr_count(c, at, cf.count, cf.size)
-        else:
-            sl.cell.s = cr_text(c, at, cf.count, cf.size)
-            sl.count = cr_count(c, at, cf.count, cf.size)
+        sl.cell.s = cr_text(c, at, cf.count, cf.size)
+        sl.count = cr_count(c, at, cf.count, cf.size)
     elif s == "text":
         sl.cell.s = cr_text(c, at, cf.count, cf.size)
     elif s == "bytes":
@@ -987,10 +953,7 @@ def cr_elem(c:CookRead, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff:
     elif s == "union":
         cr_union(c, at, v, e)
     elif s == "str":
-        if e.wide:
-            v.units = cr_units(c, at, countoff, vsize)
-        else:
-            v.s = cr_text(c, at, countoff, vsize)
+        v.s = cr_text(c, at, countoff, vsize)
     elif s == "text":
         v.s = cr_text(c, at, countoff, vsize)
     elif s == "bytes":

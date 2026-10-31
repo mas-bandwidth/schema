@@ -192,8 +192,7 @@ pub enum TableFixedReason {
     LayoutTooDeep,
     /// ILL-FORMED TEXT IN THE USED UNITS (docs/FIXED-FORM-ALGORITHM.md §4.5,
     /// fix 11; §5.8 row 8). A string(N)'s used bytes are well-formed UTF-8
-    /// with no zero among them and a wstring(N)'s used units are paired
-    /// UTF-16 with no zero unit (docs/SPEC-TABLES.md §3.4); a payload that is
+    /// with no zero among them (docs/SPEC-TABLES.md §3.4); a payload that is
     /// not the text its kind says it is is DAMAGE and not data, and the verdict
     /// is the packet reader's — a REFUSAL BY NAME, this form having no L to
     /// continue past. The reference zeroes the field and sets malformed
@@ -299,9 +298,8 @@ pub fn table_fixed_hash(block: &[u8]) -> u64 {
 
 // ---- THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4) ---------
 //
-// A `string(N)`'s used bytes are well-formed UTF-8 with NO ZERO among them, and
-// a `wstring(N)`'s used units are paired UTF-16 with no zero unit. A payload
-// that is not the text its kind says it is is DAMAGE and not data. `bytes(N)`
+// A `string(N)`'s used bytes are well-formed UTF-8 with NO ZERO among them. A
+// payload that is not the text its kind says it is is DAMAGE and not data. `bytes(N)`
 // has no content rule at all — it is bytes.
 //
 // The checks run over the USED LENGTH and over nothing else: the slack carries
@@ -314,33 +312,6 @@ pub fn table_utf8_valid(bytes: &[u8]) -> bool {
     // code point and this wire does not carry one, so it is checked beside the
     // encoding rather than folded into it.
     !bytes.contains(&0) && core::str::from_utf8(bytes).is_ok()
-}
-
-/// Paired UTF-16 with no zero unit among the used units.
-pub fn table_utf16_valid(units: &[u16]) -> bool {
-    let mut i = 0;
-    while i < units.len() {
-        let unit = units[i];
-        if unit == 0 {
-            return false;
-        }
-        if (0xD800..=0xDBFF).contains(&unit) {
-            // a HIGH surrogate takes its low half, and there has to be one
-            if i + 1 >= units.len() {
-                return false;
-            }
-            if !(0xDC00..=0xDFFF).contains(&units[i + 1]) {
-                return false;
-            }
-            i += 2;
-            continue;
-        }
-        if (0xDC00..=0xDFFF).contains(&unit) {
-            return false; // a LOW surrogate first
-        }
-        i += 1;
-    }
-    true
 }
 
 // ---- the little-endian loads ------------------------------------------------
@@ -703,7 +674,7 @@ fn ordinal_width(n: u32) -> bool {
 }
 
 fn known_kind(kind: u8) -> bool {
-    (1..=30).contains(&kind) || kind == 32 || kind == 33 || kind == 35
+    (1..=30).contains(&kind) || kind == 32 || kind == 35
 }
 
 fn leaf_size(kind: u8, size: u32) -> Option<bool> {
@@ -940,14 +911,6 @@ impl<'a> TableFixedBlock<'a> {
                     return Err(TableFixedReason::LayoutSizeMismatch);
                 }
             }
-            33 => {
-                if e.children != 0 {
-                    return Err(TableFixedReason::LayoutKindInvalid);
-                }
-                if e.size < 4 || !(e.size - 4).is_multiple_of(2) {
-                    return Err(TableFixedReason::LayoutSizeMismatch);
-                }
-            }
             _ => {
                 return Err(TableFixedReason::LayoutKindUnknown);
             }
@@ -1025,7 +988,7 @@ impl Compiler<'_> {
             // READER'S OWN BOUND, which a grown array makes larger than the
             // writer's whole record while the entry still reads four bytes
             TableFixedOp::Count => 4,
-            // a text entry's unit count behind its four-byte length word
+            // a text entry's byte count behind its four-byte length word
             TableFixedOp::Text => 4 + size as u64,
             // an f32 on the wire
             TableFixedOp::WidenF => 4,
@@ -1590,14 +1553,13 @@ fn compile_entry(
                 ..TableFixedEntry::default()
             });
         }
-        12 | 33 => {
-            // text: the length, clamped to MY bound in units, then the content
-            let unit = if me.kind == 33 { 2u32 } else { 1u32 };
+        12 => {
+            // text: the length, clamped to MY bound, then the content
             let bytes = me.size.saturating_sub(4).min(te.size.saturating_sub(4));
-            // THE CAP IS THE SPAN'S, IN UNITS, AND THE SPAN IS THE SHORTER OF
-            // THE TWO (§5.2 TEXT: span := min(me.size, te.size) - 4, cap :=
-            // span / unit). The READER's own bound is the wrong number here: a
-            // reader whose bound GREW copies only the writer's span, so a
+            // THE CAP IS THE SPAN'S, AND THE SPAN IS THE SHORTER OF THE TWO
+            // (§5.2 TEXT: span := min(me.size, te.size) - 4, cap := span).
+            // The READER's own bound is the wrong number here: a reader whose
+            // bound GREW copies only the writer's span, so a
             // length between the writer's bound and the reader's reads bytes
             // this entry never landed, and the clamp that should have fired and
             // counted does not.
@@ -1605,7 +1567,7 @@ fn compile_entry(
                 src: their_at,
                 dst: my_at,
                 size: bytes,
-                aux: bytes.checked_div(unit).unwrap_or(0),
+                aux: bytes,
                 guard_off: goff as u32,
                 guard_count: gcount as u8,
                 op: TableFixedOp::Text,

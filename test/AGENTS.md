@@ -54,7 +54,6 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
 | `packet-void/` | packet void-arm gates | `make test` | `make test` |
-| `packet-wide/` | packet wide-text gates | `make test` | `make test` |
 | `py-packet/` | python packet rows | `make tables-py-packet` | `make tables-py-packet` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
@@ -68,4 +67,3 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
 | `vocabgen/` | wide-vocabulary generator | `make check` | `go run ./test/vocabgen` |
-| `wide/` | wide-text C++ tests | `./build/schema_test_wide` | `./build/schema_test_wide` |

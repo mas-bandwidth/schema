@@ -203,7 +203,7 @@ _T.TableMixedDescriptor = _schema_tables.table({
 		{ id = 0xee639cad45b1994ci, name = "stats", slot = "Stats", json = "stats", o = 11, k = 14, s = "arr", array = "counted", bound = 80, min = 0, ek = 13, e = { s = "tab", t = "TableStat" } },
 		{ id = 3329809749115557776i, name = "game_event", slot = "GameEvent", json = "game_event", o = 12, k = 15, s = "union", t = "TableEvent" },
 		{ id = 6294288958393922979i, name = "loadout", slot = "Loadout", json = "loadout", o = 13, k = 14, s = "arr", array = "fixed", bound = 4, min = 0, ek = 6, e = { s = "int", kw = 1, signed = false, dom = "number" } },
-		{ id = 1415871171432867950i, name = "player_name", slot = "PlayerName", json = "player_name", o = 14, k = 12, s = "str", bound = 15, wide = false, def = "" },
+		{ id = 1415871171432867950i, name = "player_name", slot = "PlayerName", json = "player_name", o = 14, k = 12, s = "str", bound = 15, def = "" },
 		{ id = 0xcfb8a9d063b5e9e5i, name = "payload", slot = "Payload", json = "payload", o = 15, k = 14, s = "bytes", bound = 16, ek = 6, def = "" },
 		{ id = 0xdbaf7be5e24296c9i, name = "aim_x", slot = "AimX", json = "aim_x", o = 16, k = 10, s = "float", f32 = true, lo = -1.0, hi = 1.0, res = 0.01, def = 0 },
 		{ id = 0xdbaf7ae5e2429516i, name = "aim_y", slot = "AimY", json = "aim_y", o = 17, k = 10, s = "float", f32 = true, lo = -1.0, hi = 1.0, res = 0.01, def = 0 },
@@ -432,9 +432,9 @@ _T.TableMixedFixedFloor = 0
 -- the message form's announcement, form byte 2 (docs/SPEC-TABLES.md §3.3):
 -- an ordinary form-1 file carrying the build version and the vocabulary.
 _T.TableMessageAnnouncement = (function()
-	local b = buffer.create(934)
+	local b = buffer.create(925)
 	local v = {
-		1,1,9,105,117,90,41,223,242,92,209,2,14,254,6,6,251,6,164,237,202,213,154,62,
+		1,1,9,105,117,90,41,223,242,92,209,2,14,245,6,6,242,6,164,237,202,213,154,62,
 		1,165,4,1,2,0,34,208,235,150,77,172,241,251,7,1,12,0,18,103,227,120,102,253,
 		252,35,7,1,12,0,14,49,103,118,53,55,75,203,4,1,15,253,255,1,193,50,103,118,
 		53,56,75,203,4,1,15,253,255,1,168,45,103,118,53,53,75,203,4,1,15,253,255,1,
@@ -470,16 +470,16 @@ _T.TableMessageAnnouncement = (function()
 		23,146,18,65,195,59,229,53,0,49,136,222,176,47,40,200,44,0,52,179,140,188,33,218,
 		186,32,0,170,128,6,48,25,40,115,51,13,139,52,91,11,145,141,163,242,13,101,183,236,
 		134,28,164,163,159,13,255,255,255,255,255,255,255,255,0,228,79,28,79,71,192,46,47,0,
-		88,252,175,250,216,224,75,112,0,199,212,123,38,176,157,41,95,0,168,203,198,150,53,114,
-		97,49,0,142,138,248,214,89,228,154,67,0,149,156,185,105,230,168,106,41,0,0,254,255,
-		255,255,255,255,255,255,253,255,255,255,255,255,255,255,2,0,0,0,0,0,0,0,
+		88,252,175,250,216,224,75,112,0,168,203,198,150,53,114,97,49,0,142,138,248,214,89,228,
+		154,67,0,149,156,185,105,230,168,106,41,0,0,254,255,255,255,255,255,255,255,253,255,255,
+		255,255,255,255,255,2,0,0,0,0,0,0,0,
 	}
 	for i = 1, #v do buffer.writeu8(b, i - 1, v[i]) end
 	return b
 end)()
-_T.TableMessageAnnouncementLength = 934
+_T.TableMessageAnnouncementLength = 925
 _T.TableMessageRefBits = 7
-_T.TableMessageEntriesHere = 77
+_T.TableMessageEntriesHere = 76
 _T.TableMessageBuildVersion = 0xd15cf2df295a7569i
 
 -- the unit's wire ids, the ids this build names (docs/SPEC-TABLES.md §6.6)

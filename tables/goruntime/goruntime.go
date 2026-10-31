@@ -619,7 +619,6 @@ const (
 
 const (
 	TableFixedTextUTF8  uint8 = 1
-	TableFixedTextWide  uint8 = 2
 	TableFixedTextBytes uint8 = 3
 )
 
@@ -753,17 +752,17 @@ func TableFixedSignedKind(kind uint8) bool {
 }
 
 // THE CLOSED KIND SET (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
-// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-// adds, the optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing
-// escape and 34 is reserved: none of the three is a kind a declaration spells,
-// so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
+// the no-payload variant 32, and the ONE kind this form's layout adds, the
+// optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing escape, 33
+// is retired and 34 is reserved: none of the four is a kind a declaration
+// spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
 // leaf to step over — the form byte versions the kinds behind it, so a kind
 // this build does not know names a FORM this reader never saw.
 func TableFixedKindKnown(kind uint8) bool {
 	if kind >= 1 && kind <= 30 {
 		return true
 	}
-	return kind == 32 || kind == 33 || kind == 35
+	return kind == 32 || kind == 35
 }
 
 // tableFixedOrdinalWidth is the widths an ordinal — an enum's, a union tag's —
@@ -1068,21 +1067,13 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case TableFixedText:
 			v := int32(TableFixedGet32(src[p.Src:]))
-			unit := uint32(1)
-			if p.Meta == TableFixedTextWide {
-				unit = 2
-			}
-			capn := p.Size / unit
 			// tableFixedTextRefusal above already proved the used extent and
 			// content; this path only lands the validated value and live bytes.
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			TableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
-			if p.Meta != TableFixedTextBytes && uint32(v) < capn {
-				off := p.Aux + uint32(v)*unit
+			if p.Meta != TableFixedTextBytes && uint32(v) < p.Size {
+				off := p.Aux + uint32(v)
 				dst[off] = 0
-				if unit == 2 {
-					dst[off+1] = 0
-				}
 			}
 		case TableFixedOrdinal:
 			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
@@ -1199,8 +1190,7 @@ func TableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, rep
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
 // text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-// with no zero byte for string, paired non-zero UTF-16 code units for wstring.
-// bytes(N) carries no text rule at all, and slack past the used units is
+// with no zero byte for string. bytes(N) carries no text rule at all, and slack past the used units is
 // unspecified and never a refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
 // is the clamped length in the flavour's own units. THE STRING RULE IS THE
 // PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
@@ -1215,25 +1205,6 @@ func TableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 		}
 		if slices.Contains(p[:used], 0) {
 			return true
-		}
-	case TableFixedTextWide:
-		for i := uint32(0); i < used; i++ {
-			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8
-			switch {
-			case u == 0:
-				return true
-			case u >= 0xD800 && u <= 0xDBFF:
-				if i+1 >= used {
-					return true
-				}
-				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8
-				if lo < 0xDC00 || lo > 0xDFFF {
-					return true
-				}
-				i++
-			case u >= 0xDC00 && u <= 0xDFFF:
-				return true
-			}
 		}
 	}
 	return false
@@ -1275,27 +1246,6 @@ func TableFixedUTF8Ok(p []byte) bool {
 	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
 }
 
-// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
-// caller's own wstring storage: the used units are paired UTF-16 with no zero
-// unit (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
-func TableFixedUnitsIllFormed(units []uint16) bool {
-	for i := 0; i < len(units); i++ {
-		u := units[i]
-		switch {
-		case u == 0:
-			return true
-		case u >= 0xD800 && u <= 0xDBFF:
-			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
-				return true
-			}
-			i++
-		case u >= 0xDC00 && u <= 0xDFFF:
-			return true
-		}
-	}
-	return false
-}
-
 // tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
 // text entries, run before the caller's storage is touched. A count or a text
 // length past the PLAN's bound refuses by name — count_over_bound /
@@ -1327,11 +1277,7 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				return TableRefuseCountOverBound.Error()
 			}
 		case TableFixedText:
-			unit := uint32(1)
-			if p.Meta == TableFixedTextWide {
-				unit = 2
-			}
-			capn := p.Size / unit
+			capn := p.Size
 			v := int32(TableFixedGet32(src[p.Src:]))
 			if v < 0 || uint32(v) > capn {
 				return TableRefuseLengthOverBound.Error()
@@ -1594,15 +1540,7 @@ func TableFixedCheckEntry(c *TableFixedCheck, i, depth int32) int32 {
 			c.fail("layout_size_mismatch")
 			return 0
 		}
-	case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-		if e.Children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if e.Size < 4 || (e.Size-4)%2 != 0 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
+
 	default:
 		// Every kind of the closed set is either a leaf above or a case here, so
 		// this is unreachable — and it refuses rather than admits, because a
@@ -1979,10 +1917,10 @@ func TableMessageRefuse(r *TableReport, reason string) bool {
 // count, and the entry count is bounded above at 4096, so it is at most eight
 // million compares on a path that runs ONCE a connection and never again. The
 // compare is spelled inline so the emitter claims no new runtime name.
-// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..33 plus the
-// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
+// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
 // stay malformed.
-func TableMessageKnownKind(k uint8) bool { return k <= 33 || k == 36 }
+func TableMessageKnownKind(k uint8) bool { return k <= 32 || k == 36 }
 
 func TableMessageKindBits(k uint8) int64 {
 	if k == 0 || k == 32 {
@@ -2037,19 +1975,12 @@ func TableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		}
 		arm, ok := v.Entry(ref)
 		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && TableMessageSkip(r, v, indexBits, arm, depth+1)
-	case 12, 33:
+	case 12:
 		n, ok := TableMessageCount(r, s)
-		if !ok {
+		if !ok || !r.Align() {
 			return false
 		}
-		width := int64(16)
-		if s.Kind == 12 {
-			width = 8
-			if !r.Align() {
-				return false
-			}
-		}
-		return r.Skip(int64(n) * width)
+		return r.Skip(int64(n) * 8)
 	case 31:
 		if !r.Align() {
 			return false
@@ -2166,4 +2097,4 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x91fcccabacf566d0
+const Version uint64 = 0xf88a4af3943a5071

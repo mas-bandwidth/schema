@@ -382,14 +382,6 @@ public final class TableMessage {
                     }
                     return r.skipBits(n * 8L);
                 }
-            case 33:
-                {
-                    long n = r.get(TableVocabulary.bitCount(s.max));
-                    if (r.err) {
-                        return false;
-                    }
-                    return r.skipBits(n * 16L);
-                }
             case 31:
                 {
                     if (!r.align()) {

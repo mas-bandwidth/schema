@@ -1147,14 +1147,6 @@ namespace Tabledemo
             }
         }
 
-        private static void ArchiveConfigFixedSetChars(ArchiveConfig t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void ArchiveConfigFixedResetSlot(ArchiveConfig t, uint slot)
         {
             switch (slot)
@@ -1573,25 +1565,16 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0) { v = 0; if (report != null) report.Clamped++; }
-                            else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                            else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
                             if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))
                             {
                                 return "text_ill_formed";
                             }
                             ArchiveConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                ArchiveConfigFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                ArchiveConfigFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            ArchiveConfigFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:

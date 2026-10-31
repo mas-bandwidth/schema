@@ -335,7 +335,6 @@ public final class TableVariable {
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     {
                         long n = leb();
                         if (!fail && has((int) n)) {
@@ -886,7 +885,6 @@ public final class TableVariable {
             case 16:
             case 31:
             case 32:
-            case 33:
                 {
                     int e = lebEnd(buf, off, limit);
                     if (e < 0) {
@@ -1408,10 +1406,10 @@ public final class TableVariable {
         return rec.bytes;
     }
 
-    // Wide values use UTF-16 code units in the public value API. Wire bytes
-    // are always little endian, independent of the cooked region's order.
+    // Wire bytes are always little endian, independent of the cooked region's
+    // order.
     static Reader fieldPayload(Reader raw, int kind) {
-        if (kind != 12 && kind != 13 && kind != 14 && kind != 16 && kind != 33) return raw;
+        if (kind != 12 && kind != 13 && kind != 14 && kind != 16) return raw;
         int size = raw.limit - raw.off;
         Writer framed = new Writer(new byte[size + 10], new Ids(1));
         framed.putLeb(size);
@@ -1435,26 +1433,6 @@ public final class TableVariable {
         while (list.size() < at) list.add(value);
         if (at < list.size()) list.set(at, value);
         else list.add(value);
-    }
-
-    static boolean wideValid(char[] text) {
-        if (text == null) return false;
-        for (int i = 0; i < text.length; i++) {
-            char c = text[i];
-            if (c == 0 || Character.isLowSurrogate(c)) return false;
-            if (Character.isHighSurrogate(c)) {
-                if (++i == text.length || !Character.isLowSurrogate(text[i])) return false;
-            }
-        }
-        return true;
-    }
-
-    static char[] wideClamp(char[] text, int bound, Report report) {
-        if (text.length <= bound) return text;
-        int keep = bound;
-        if (keep > 0 && Character.isHighSurrogate(text[keep - 1])) keep--;
-        report.clamped++;
-        return java.util.Arrays.copyOf(text, keep);
     }
 
     // NodeTable is a load-side holder: the root body's node records, filled

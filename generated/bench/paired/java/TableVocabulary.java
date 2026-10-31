@@ -31,10 +31,10 @@ public final class TableVocabulary {
                 (byte) 0x41,
                 (byte) 0x02,
                 (byte) 0x0e,
-                (byte) 0xfc,
+                (byte) 0xf3,
                 (byte) 0x06,
                 (byte) 0x06,
-                (byte) 0xf9,
+                (byte) 0xf0,
                 (byte) 0x06,
                 (byte) 0xa8,
                 (byte) 0x28,
@@ -907,15 +907,6 @@ public final class TableVocabulary {
                 (byte) 0x4b,
                 (byte) 0x70,
                 (byte) 0x00,
-                (byte) 0xc7,
-                (byte) 0xd4,
-                (byte) 0x7b,
-                (byte) 0x26,
-                (byte) 0xb0,
-                (byte) 0x9d,
-                (byte) 0x29,
-                (byte) 0x5f,
-                (byte) 0x00,
                 (byte) 0xb3,
                 (byte) 0x46,
                 (byte) 0xa7,
@@ -1295,7 +1286,7 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        return kind <= 33;
+        return kind <= 32;
     }
 
     static int kindWidth(int kind) {
@@ -1426,7 +1417,7 @@ public final class TableVocabulary {
             }
             return null; // a packing outside the closed set
         }
-        if (kind == 12 || kind == 33) {
+        if (kind == 12) {
             long max = r.leb();
             if (r.err || max > 0x7fffffffL) {
                 return null;
@@ -1471,7 +1462,7 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            if (!knownKind(elem) || elem == 12 || elem == 33) {
+            if (!knownKind(elem) || elem == 12) {
                 return false;
             }
             e.element = shapeRead(r, elem);
@@ -1483,7 +1474,7 @@ public final class TableVocabulary {
                     return false;
                 }
                 int inner = r.u8();
-                if (!knownKind(inner) || inner == 12 || inner == 33) {
+                if (!knownKind(inner) || inner == 12) {
                     return false;
                 }
             }

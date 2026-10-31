@@ -580,7 +580,6 @@ public final class TableRetain {
             case 12:
             case 31:
             case 32:
-            case 33:
                 {
                     long n = r.leb();
                     if (!r.bad && n >= 0 && n <= r.limit - r.off) {
@@ -817,7 +816,6 @@ public final class TableRetain {
             case 12:
             case 31:
             case 32:
-            case 33:
                 {
                     long n = getLeb(b, at);
                     if (n < 0) {

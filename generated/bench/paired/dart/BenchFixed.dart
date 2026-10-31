@@ -68,7 +68,6 @@ abstract final class TableFixedOp {
 
   // the flavours a text entry lands its units under
   static const int textUtf8 = 1;
-  static const int textWide = 2;
   static const int textBytes = 3;
 }
 
@@ -408,9 +407,9 @@ final class TableFixedLayout {
   }
 
   /// THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-  /// the no-payload variant 32, wstring 33, and the ONE kind this form's
-  /// layout adds, the optional wrapper 35. 31 is §3's body framing escape and
-  /// 34 is reserved: neither is a kind a declaration spells. A KIND OUTSIDE
+  /// the no-payload variant 32, and the ONE kind this form's layout adds, the
+  /// optional wrapper 35. 31 is §3's body framing escape, 33 is retired and 34
+  /// is reserved: none is a kind a declaration spells. A KIND OUTSIDE
   /// THIS SET IS A REFUSAL, not a leaf to step over — the form byte versions
   /// the kinds too, so a kind this build does not know means a form byte this
   /// build never saw, and stepping over it would be trusting a size whose
@@ -419,7 +418,7 @@ final class TableFixedLayout {
     if (kind >= 1 && kind <= 30) {
       return true;
     }
-    return kind == 32 || kind == 33 || kind == 35;
+    return kind == 32 || kind == 35;
   }
 
   /// A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire
@@ -646,16 +645,6 @@ final class TableFixedLayout {
           return 0;
         }
         if (mySize < 4) {
-          fail(TableFixedRefusal.layoutSizeMismatch);
-          return 0;
-        }
-        break;
-      case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-        if (kids != 0) {
-          fail(TableFixedRefusal.layoutKindInvalid);
-          return 0;
-        }
-        if (mySize < 4 || (mySize - 4) % 2 != 0) {
           fail(TableFixedRefusal.layoutSizeMismatch);
           return 0;
         }
@@ -1109,10 +1098,7 @@ int tableFixedRun(
         imageView.setInt32(d, counted, Endian.little);
         break;
       case TableFixedOp.text:
-        final unit = plan[b + TableFixedLane.meta] == TableFixedOp.textWide
-            ? 2
-            : 1;
-        final cap = size ~/ unit;
+        final cap = size;
         var used = sourceView.getInt32(s, Endian.little);
         var clampFired = false;
         if (used < 0) {
@@ -1235,36 +1221,11 @@ int tableFixedRun(
 
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
-/// well-formed UTF-8 with no zero byte for string(N), paired non-zero UTF-16
-/// code units for wstring(N). bytes(N) carries no content rule at all, and
-/// the SLACK past the used units is unspecified and never a refusal. used is
-/// the clamped length in the flavour's own units; at is the first unit byte.
+/// well-formed UTF-8 with no zero byte for string(N). bytes(N) carries no
+/// content rule at all, and the SLACK past the used bytes is unspecified and
+/// never a refusal. used is the clamped length; at is the first byte.
 bool tableFixedTextIllFormed(int meta, int used, Uint8List source, int at) {
   if (meta == TableFixedOp.textBytes) {
-    return false;
-  }
-  if (meta == TableFixedOp.textWide) {
-    // UTF-16 CODE UNITS, two bytes each little-endian: a lone high surrogate,
-    // a lone low surrogate, and a zero unit are each ill-formed.
-    int unitAt(int i) => source[at + i * 2] | (source[at + i * 2 + 1] << 8);
-    for (var i = 0; i < used; i++) {
-      final u = unitAt(i);
-      if (u == 0) {
-        return true;
-      }
-      if (u >= 0xD800 && u <= 0xDBFF) {
-        if (i + 1 >= used) {
-          return true;
-        }
-        final lo = unitAt(i + 1);
-        if (lo < 0xDC00 || lo > 0xDFFF) {
-          return true;
-        }
-        i++;
-      } else if (u >= 0xDC00 && u <= 0xDFFF) {
-        return true;
-      }
-    }
     return false;
   }
   // UTF-8 over the used BYTES: the shortest form of each sequence, no
@@ -1879,7 +1840,6 @@ abstract final class TableFixedCompiler {
         );
         break;
       case 12: // string(N)
-      case 33: // wstring(N)
         // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
         // would otherwise TEXT every bound slot, and slack lengths would
         // count. The decode both paths share clamps LIVE used-lengths.
@@ -2438,7 +2398,7 @@ int tableMessageEntryEnd(Uint8List bytes, int at, int end) {
     }
     final elem = bytes[p];
     p += 1;
-    if (!tableMessageKnownKind(elem) || elem == 12 || elem == 33) {
+    if (!tableMessageKnownKind(elem) || elem == 12) {
       return -1;
     }
     p = tableMessageShapeEnd(bytes, p, end, elem);
@@ -2451,7 +2411,7 @@ int tableMessageEntryEnd(Uint8List bytes, int at, int end) {
       }
       final inner = bytes[p];
       p += 1;
-      if (!tableMessageKnownKind(inner) || inner == 12 || inner == 33) {
+      if (!tableMessageKnownKind(inner) || inner == 12) {
         return -1;
       }
     }
@@ -2497,7 +2457,7 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
     }
     return -1;
   }
-  if (kind == 12 || kind == 33) {
+  if (kind == 12) {
     final n = tableMessageLeb(bytes, at, end);
     return (!n.$3 || n.$1 < 0) ? -1 : n.$2;
   }
@@ -2516,7 +2476,7 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
-bool tableMessageKnownKind(int kind) => kind <= 33;
+bool tableMessageKnownKind(int kind) => kind <= 32;
 
 /// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
 /// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
@@ -2574,7 +2534,7 @@ int tableMessageKindWidth(int kind) {
 /// tableMessageSkipField steps over ONE unknown body field's payload by its
 /// kind (docs/SPEC-TABLES.md §3.3), the reference's Skip(kind) rule: a
 /// fixed-width scalar is its width, a reference or a union is a LEB, and a
-/// length-prefixed slice — 12, 13, 14, 16, 31, 32, 33 — is a LEB length then
+/// length-prefixed slice — 12, 13, 14, 16, 31, 32 — is a LEB length then
 /// that many bytes. Answers the offset past the payload, or -1
 /// where the bytes run out or a kind this reader cannot step is named.
 int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
@@ -2593,7 +2553,6 @@ int tableMessageSkipField(Uint8List bytes, int at, int end, int kind) {
     case 16:
     case 31:
     case 32:
-    case 33:
       final n = tableMessageLeb(bytes, at, end);
       if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) {
         return -1;
@@ -2656,7 +2615,7 @@ int tableMessageBits(int n) {
 /// (docs/SPEC-TABLES.md §3.3).
 final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
   0x01, 0x01, 0x09, 0x52, 0xa8, 0xbf, 0x78, 0x93, 0x55, 0xd3, 0x41, 0x02,
-  0x0e, 0xfc, 0x06, 0x06, 0xf9, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac,
+  0x0e, 0xf3, 0x06, 0x06, 0xf0, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac,
   0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00,
   0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d,
   0xae, 0x9b, 0x08, 0x01, 0x20, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5,
@@ -2729,12 +2688,11 @@ final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
   0x0d, 0x65, 0xb7, 0xec, 0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0xff, 0xff,
   0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47,
   0xc0, 0x2e, 0x2f, 0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70,
-  0x00, 0xc7, 0xd4, 0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xb3, 0x46,
-  0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff,
-  0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-  0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x00, 0x00, 0xfe,
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
-const int tableAnnouncementLength = 932;
+const int tableAnnouncementLength = 923;
 /// The unit's own build version, emitted beside the announcement.
 const int tableBuildVersion = 4743228924425644114;
 
@@ -2893,7 +2851,7 @@ final class TableMessageShape {
         s.bits = quantizedBits(sig, at);
         at += 12;
       }
-    } else if (kind == 12 || kind == 33) {
+    } else if (kind == 12) {
       final n = tableMessageLeb(sig, at, sig.length);
       s.max = n.$1;
       at = n.$2;
@@ -3040,10 +2998,6 @@ final class TableMessageShape {
         final n = r.bits.get(bitsRequired(0, s.max));
         if (r.bits.failed || !r.bits.align()) return false;
         return r.bits.skip(n * 8);
-      case 33:
-        final n = r.bits.get(bitsRequired(0, s.max));
-        if (r.bits.failed) return false;
-        return r.bits.skip(n * 16);
       case 31:
         if (!r.bits.align()) return false;
         final n = r.bits.get(32);
