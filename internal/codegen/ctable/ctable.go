@@ -131,6 +131,10 @@ type tableGen struct {
 	outside          bool // descriptors outside the checked table closure carry no wire ids
 	unit             *ir.Unit
 	file             *ir.File
+	// messageStructs and messageUnions are the message form's closure
+	// (messageClosure): what a fixed table holds by value.
+	messageStructs map[string]bool
+	messageUnions  map[string]bool
 	// lineage is the LOCKED LAYOUTS per fixed table, OLDEST FIRST, handed down
 	// by GenerateLineage (docs/FIXED-FORM-ALGORITHM.md §5.2). Nil is a build
 	// with no lock: a table then carries its own entry and nothing else.
@@ -649,9 +653,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out := generateBlockFiles(u, blocks, variable, targets)
 	probed := tableDefaultProbedStructs(u)
 	hasProbes := len(probed) > 0
+	messageStructs, messageUnions := messageClosure(u)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
-			includes: map[string]bool{}}
+			messageStructs: messageStructs, messageUnions: messageUnions, includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {
@@ -660,7 +665,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			}
 		}
 		cg := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
-			includes: map[string]bool{}}
+			messageStructs: messageStructs, messageUnions: messageUnions, includes: map[string]bool{}}
 		g.emitTableShapes(members)
 		if len(members) > 0 {
 			g.emitTableResetDeclarations(members)
@@ -683,18 +688,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				g.emitExtentDeclarations(members)
 			}
 			unions := g.fileWireUnions()
-			g.emitMessageSaveDeclarations(members, unions)
-			g.emitMessageReadDeclarations(members, unions)
-			g.emitMessageExtentDeclarations(members, unions)
-			for _, un := range unions {
-				g.emitMessageUnionSave(un)
-			}
-			for _, un := range unions {
-				g.emitMessageUnionRead(un)
-			}
-			for _, un := range unions {
-				g.emitMessageUnionExtent(un)
-			}
+			g.emitMessageCodecs(members, unions)
 			if g.fileWire() {
 				g.emitUnionWireDeclarations(unions)
 				for _, un := range unions {
@@ -706,9 +700,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				g.emitKeyedAccessors(st)
 				g.emitWireWrite(st)
 				g.emitWireRead(st)
-				g.emitMessageSave(st)
-				g.emitMessageRead(st)
-				g.emitMessageExtent(st)
+				if g.messageStructs[st.Name] {
+					g.emitMessageSave(st)
+					g.emitMessageRead(st)
+				}
 			}
 			g.emitFixedForm(members)
 			if g.anySequence {
@@ -758,18 +753,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			}
 		} else {
 			if unions := g.fileWireUnions(); g.fileWire() && len(unions) > 0 {
-				g.emitMessageSaveDeclarations(nil, unions)
-				g.emitMessageReadDeclarations(nil, unions)
-				g.emitMessageExtentDeclarations(nil, unions)
-				for _, un := range unions {
-					g.emitMessageUnionSave(un)
-				}
-				for _, un := range unions {
-					g.emitMessageUnionRead(un)
-				}
-				for _, un := range unions {
-					g.emitMessageUnionExtent(un)
-				}
+				g.emitMessageCodecs(nil, unions)
 				g.emitUnionWireDeclarations(unions)
 				for _, un := range unions {
 					g.emitUnionWire(un)
@@ -896,7 +880,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("\n")
 	h.WriteString(tableCookRuntime(u.Package))
 	h.WriteString(tableCookWriteRuntime)
-	h.WriteString(tableMessageForm(u, g.anyVariable, g.hasProbes))
+	h.WriteString(tableMessageForm(u, g.hasProbes))
 	if g.anyVariable {
 		h.WriteString(tableCookGraphRuntime)
 		h.WriteString(g.retainRuntime())

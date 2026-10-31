@@ -38,8 +38,7 @@ unit         <key> <schema path>...
 instance     <name> <unit> <root> <wire file> [no-text]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
-retain          <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
-retain-message  <case> <connection> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
+retain       <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
 report       <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
@@ -78,7 +77,16 @@ refusal      <forgery> <reason>
   every reference is replaced by the id it names and every length recomputed,
   and their reference bytes are expected to differ, because a file's slots are
   its own first-use order and a connection's are the unit's projection order.
-- **`retain` and `retain-message`** are RETAIN-UNKNOWN's rows
+
+  **A `<message-form wire>` of `-` is a NAMED REFUSAL row.** The message form
+  is fixed tables only (docs/SPEC-TABLES.md §3.3), so a row whose root is a
+  variable table carries no message bytes, and every leg answers it absent,
+  writing `<name>.absent` holding exactly
+  `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)`.
+  The harness checks the reason; bytes, or any other reason, are a failure. A
+  row is a refusal row exactly when its root is a variable table, which the
+  harness's own tests hold.
+- **`retain`** is RETAIN-UNKNOWN's row
   (docs/SPEC-TABLES.md §6.6): a wire loaded with retention on, the counters that
   load owes, and the file the pair writes back. `<unit>` is the READER's, which
   is the build that cannot name what the wire's writer wrote, and `<root>` is
@@ -97,16 +105,10 @@ refusal      <forgery> <reason>
   `<counters>` is the LOAD's own three, `<retained>,<retain_lost>,<unknown>`,
   and `<save lost>` is the `retain_lost` the SAVE adds, read after it: the
   report accumulates across the pair and the sum is what the safety check
-  wants. `<saves>` is the pinned save, or `-` where the row's whole expectation
-  is its counters; a row that saves more than one file lists them
-  comma-separated, in body order.
-
-  **`retain-message` IS THE FORM-2 ROW** (§3.3): the wire is a BATCH, the
-  `<connection>` names the announcement its references resolve against, and the
-  SAVES are the VARIABLE form, one a body, which is the one direction retention
-  crosses the forms, because `SaveRetain` writing form 2 refuses by name. A
-  batch takes one region and one retention buffer a body, so the saves are as
-  many files as the batch has bodies.
+  wants. `<save>` is the pinned save, or `-` where the row's whole expectation
+  is its counters. Every row is a FILE: retention is the variable form's, and
+  the message form is fixed tables only (§3.3), so no table has retention on a
+  message.
 - **`report`** is bytes read by a type that did not write them — the evolution
   class. The counters and the verdict live in `reports.txt`, keyed by `<case>`.
 - **`framing`** is one hand-built wire per rule and bound of the FRAMING layer

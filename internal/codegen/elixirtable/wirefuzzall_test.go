@@ -89,7 +89,7 @@ func TestWireFuzzAllTargetElixir(t *testing.T) {
 	if len(names) != want {
 		t.Errorf("%s names %d absent roots, ELIXIR_WIRE_FUZZ_ABSENT_COUNT pins %d", pin, len(names), want)
 	}
-	const pinnedCount = 33
+	const pinnedCount = 32
 	if want != pinnedCount {
 		t.Errorf("ELIXIR_WIRE_FUZZ_ABSENT_COUNT is %d, this test pins %d: a change in the roots the Elixir leg opens is a reviewed change to both", want, pinnedCount)
 	}

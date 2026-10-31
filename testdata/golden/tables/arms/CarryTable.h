@@ -239,7 +239,7 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
-    bool malformed = false;    // damage: the whole load is refused, nothing of it is used
+    bool malformed = false;    // framing damage; decode stopped, partial result kept
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
     // the ONE node, never a copy per slot, and the strict read refuses
@@ -953,8 +953,8 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 // text at whatever length the reader would have kept. Rejects a zero byte, a
 // truncated sequence, a bare continuation, an overlong encoding, a surrogate
 // and a code point past U+10FFFF, which is SPEC.md §4.7's rule in this wire's
-// idiom: it is damage, malformed counts, and damage discards the whole load
-// (docs/SPEC-TABLES.md §4).
+// idiom: the field reads its declared default, one malformed counts, and the
+// parent reads on past L.
 //
 // A LENGTH IS A 64-BIT NUMBER (§3), so it arrives as one: a payload length is
 // whatever the wire spelled, and narrowing it to a signed count would read
@@ -1182,12 +1182,6 @@ static const int64_t kTableMessageRefBitsHere = 6;
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
 static const int64_t kTableMessageEntriesHere = 34;
-
-// The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
-// pointered body names the node table through it, and the node table is the
-// ROOT body's FIRST field because a pointer index's width is settled by the
-// node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = 19;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -2171,25 +2165,6 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
     }
 }
 
-// TableMessageNodeTableOpen reads the node table's opening when a body has
-// one: the reserved id's reference and the count at thirty-two raw bits. A
-// body whose first reference is anything else has no node table, and the
-// reader is left where it was. False is damage: a reference past E, or bits
-// that run out.
-inline bool TableMessageNodeTableOpen( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & count )
-{
-    count = 0;
-    const int64_t at = r.offset;
-    uint64_t ref = 0;
-    if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-    if ( ref == 0 ) { r.offset = at; return true; }
-    if ( ref > (uint64_t) vocabulary.count ) { return false; }
-    if ( TableVocabularyEntryAt( vocabulary, ref ).id != kTableNodeTableFieldId ) { r.offset = at; return true; }
-    uint64_t n = 0;
-    if ( !r.get( n, 32 ) ) { return false; }
-    count = (int64_t) n;
-    return true;
-}
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
 inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
@@ -4626,20 +4601,8 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
-    // the type id's MESSAGE-FORM SLOT (docs/SPEC-TABLES.md §3.3), stored where
-    // the numbering walk stores the id itself and for the same reason: the
-    // target's type is known STATICALLY at the site that numbers it, so a
-    // form 2 save reads the slot out of the entry instead of looking an id up.
-    // Every pointer target's type id is an entry of the announcement, which is
-    // what makes the slot a compile-time fact of a POINTERED message too.
-    uint64_t type_slot;
     int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
     bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
-    // the same two over the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a bitpacked
-    // body at a bit position, its pointer indices at the width the node count
-    // settled
-    int64_t ( * message_measure )( const void * ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const void * node );
-    bool ( * message_save )( const void * ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const void * node );
 };
 
 struct TableNumbering
@@ -4728,18 +4691,6 @@ inline bool TableNodeSaveThunk( const void * ctx, const TableNumbering & numberi
 {
     return TableNodeSave( *(const Ctx *) ctx, numbering, w, ids, *(const T *) node );
 }
-
-template <typename Ctx, typename T>
-inline int64_t TableNodeMessageMeasureThunk( const void * ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const void * node )
-{
-    return TableNodeMessageMeasure( *(const Ctx *) ctx, numbering, index_bits, at, *(const T *) node );
-}
-
-template <typename Ctx, typename T>
-inline bool TableNodeMessageSaveThunk( const void * ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const void * node )
-{
-    return TableNodeMessageSave( *(const Ctx *) ctx, numbering, index_bits, w, *(const T *) node );
-}
 // ---- a BYTE BUFFER's record (docs/SPEC-TABLES.md §2.5, §3.1) ----
 //
 // A blob rides as a node record under one of two RESERVED type ids — the fold
@@ -4762,25 +4713,6 @@ inline bool TableBlobSaveThunk( const void *, const TableNumbering &, TableWrite
     const TableBlob * blob = (const TableBlob *) node;
     w.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );
     return true;
-}
-
-// and the same two on the MESSAGE FORM (§3.3): a blob record is its length at
-// thirty-two raw bits, an ALIGN, then the bytes verbatim
-template <typename Ctx>
-inline int64_t TableBlobMessageMeasureThunk( const void *, const TableNumbering &, int64_t, int64_t at, const void * node )
-{
-    const int64_t length = (int64_t) ( (const TableBlob *) node )->length;
-    return 32 + TableAlignBits( at + 32 ) + length * 8;
-}
-
-template <typename Ctx>
-inline bool TableBlobMessageSaveThunk( const void *, const TableNumbering &, int64_t, TableBitWriter & w, const void * node )
-{
-    const TableBlob * blob = (const TableBlob *) node;
-    w.put( (uint64_t) blob->length, 32 );
-    w.align();
-    w.putbytes( (const uint8_t *) ( blob + 1 ), (int64_t) blob->length );
-    return !w.overflow;
 }
 // TableNodeTableMeasure and TableNodeTableSave are the framing, and they are
 // ONE fill rule written twice — measure derives it from the graph and save
@@ -5043,56 +4975,6 @@ inline bool TableNodeScanWhole( TableNodeScan & s )
 } // namespace armdemo
 
 #endif // ARMDEMO_SCHEMA_TABLE_ARENA
-
-#ifndef ARMDEMO_SCHEMA_TABLE_MESSAGE_NODES
-#define ARMDEMO_SCHEMA_TABLE_MESSAGE_NODES
-
-namespace armdemo {
-
-// ---- the NODE TABLE on the message wire (docs/SPEC-TABLES.md §3.1, §3.3) ----
-//
-// THE NODE TABLE, WHEN A BODY HAS ONE, IS THE FIRST FIELD OF THE ROOT BODY: the
-// reserved id as a reference, the node count at THIRTY-TWO RAW BITS, then the
-// records back to back, each a type id reference and a body: a table's fields
-// end at their own zero reference, and a blob's body is a length, an align and
-// its bytes. A root
-// that reaches no node elides the field, like every other empty thing.
-//
-// Measure derives the numbering from the graph and save derives the same one,
-// and the two thunks stored at numbering time are what let one loop write a
-// table of mixed types.
-template <typename Ctx>
-inline int64_t TableMessageNodeTableMeasure( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, int64_t at )
-{
-    if ( n.count == 0 ) { return 0; } // a root that reaches no nodes writes none of them
-    int64_t bits = kTableMessageRefBitsHere + 32;
-    for ( int64_t k = 0; k < n.count; k++ )
-    {
-        bits += kTableMessageRefBitsHere;
-        const int64_t body = n.entries[k].message_measure( (const void *) &ctx, n, index_bits, at + bits, n.entries[k].node );
-        if ( body < 0 ) { return -1; }
-        bits += body;
-    }
-    return bits;
-}
-
-template <typename Ctx>
-inline bool TableMessageNodeTableSave( const Ctx & ctx, const TableNumbering & n, int64_t index_bits, TableBitWriter & w )
-{
-    if ( n.count == 0 ) { return true; }
-    w.put( kTableNodeTableFieldSlot, kTableMessageRefBitsHere );
-    w.put( (uint64_t) n.count, 32 );
-    for ( int64_t k = 0; k < n.count; k++ )
-    {
-        w.put( n.entries[k].type_slot, kTableMessageRefBitsHere );
-        if ( !n.entries[k].message_save( (const void *) &ctx, n, index_bits, w, n.entries[k].node ) ) { return false; }
-    }
-    return !w.overflow;
-}
-
-} // namespace armdemo
-
-#endif // ARMDEMO_SCHEMA_TABLE_MESSAGE_NODES
 
 #ifndef ARMDEMO_SCHEMA_TABLE_RETAIN
 #define ARMDEMO_SCHEMA_TABLE_RETAIN
@@ -6252,491 +6134,6 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     }
     return true;
 }
-
-// ---- RETENTION ON THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3) ----
-//
-// LoadRetain reads a form 2 body as it reads a file's, the resolving walk
-// replacing every reference with the id it names AGAINST THE CONNECTION'S
-// VOCABULARY instead of a trailer, and SaveRetain writing form 2 refuses by
-// name. So retention crosses the forms in ONE DIRECTION, and the record a
-// message body produces is the VARIABLE FORM'S OWN, to the byte: a retained record
-// carries the field's bytes with every reference resolved so that re-emitting
-// it into any id table is correct, and the table it is re-emitted into is a
-// file's. The capture below is therefore a TRANSCODE as well as a resolve, a
-// bitpacked value is read at the width its announced shape states and written
-// at the width the variable form spells, and from there it is the same record,
-// laid down in the same slots and read back by the same emit walk.
-//
-// THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
-// read's verdict on an unknown entry is the SKIP's, whether or not this build
-// retains, and running the skip first is what keeps that verdict exactly what
-// it was with retention off. The capture re-reads the bits the skip delimited,
-// and a capture that lands anywhere but the skip's own end drops the record. It
-// is two flat passes over one record's bits and never a walk that doubles at
-// every level, which is what the cost rule forbids.
-
-struct TableMessageRetainIn
-{
-    TableRetainIn out;               // its in/size/at/ids are unused: the input is BITS
-    TableBitReader * r;
-    const TableVocabulary * vocabulary;
-    int64_t index_bits;
-    int64_t limit = 0;               // the record's remaining resolved bytes: the bound on the walk
-};
-
-// THE ELEMENT'S OWN ENTRY, which a resolved entry carries flattened beside its
-// own: an array's and a keyed body's elements are read through it.
-inline TableMessageEntry TableMessageRetainElement( const TableMessageEntry & entry )
-{
-    TableMessageEntry e;
-    e.kind = entry.elem_kind;
-    e.packing = entry.elem_packing;
-    e.value_bits = entry.elem_value_bits;
-    e.max = entry.elem_max;
-    e.base_lo = entry.elem_base_lo;
-    e.base_hi = entry.elem_base_hi;
-    e.qmin = entry.elem_qmin;
-    e.qdelta = entry.elem_qdelta;
-    e.qcount = entry.elem_qcount;
-    return e;
-}
-
-// the kinds whose file bytes are TWO'S COMPLEMENT, which is what decides
-// whether a narrow raw value sign-extends into its storage width
-inline bool TableMessageRetainSigned( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 2: case 3: case 4: case 5: case 18:
-        case 20: case 21: case 22: case 23: case 24: return true;
-        default: return false;
-    }
-}
-
-inline int64_t TableMessageRetainWidth( uint8_t kind )
-{
-    switch ( kind )
-    {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp (§2.11)
-        case 18: case 19: case 24: case 29: return 16;
-        default: return -1;
-    }
-}
-
-// THE LEAST A RESOLVED ELEMENT CAN WEIGH, which is what bounds an announced
-// count against the caller's remaining record before one element is converted.
-// A scalar takes its storage width whatever its announced value bits, an opaque
-// takes at least its zero length, a body at least its terminator, and a union
-// or enum its id. The answer is a LOWER bound: a count that cannot fit this many
-// bytes per element cannot fit the record at all, and a zero-bit count is
-// refused here rather than walked (§6.6, THE SECURITY BOUND).
-inline int64_t TableMessageRetainElementMinimum( uint8_t kind )
-{
-    const int64_t width = TableMessageRetainWidth( kind );
-    if ( width > 0 ) { return width; }
-    switch ( kind )
-    {
-        case 12: case 31: case 32: case 33: return 1;
-        case 13: case 14: case 16: case 15: case 30: return 8;
-        default: return 1;
-    }
-}
-
-// one integer at the FILE's own width for its kind, little endian
-inline void TableMessageRetainWord( TableMessageRetainIn & s, uint64_t value, int64_t width )
-{
-    uint8_t b[8];
-    for ( int64_t i = 0; i < width; i++ ) { b[i] = uint8_t( value >> ( 8 * i ) ); }
-    TableRetainInRaw( s.out, b, width );
-}
-
-inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth );
-inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth );
-
-// ONE REFERENCE resolved against the announced vocabulary. It is the file
-// walk's own verdict read against an announcement instead of a trailer: a
-// reference of zero where an entry is required, one above the entry count, and
-// one naming a RESERVED id, which would be re-emitted into a nested body where
-// it is malformed, all DROP THE RECORD.
-inline bool TableMessageRetainId( TableMessageRetainIn & s, uint64_t ref, uint64_t & id )
-{
-    if ( ref == 0 || ref > (uint64_t) s.vocabulary->count ) { return false; }
-    const TableMessageEntry & named = TableVocabularyEntryAt( *s.vocabulary, ref );
-    if ( named.id == 0 || TableRetainReservedId( named.id ) ) { return false; }
-    id = named.id;
-    return true;
-}
-
-inline bool TableMessageRetainRef( TableMessageRetainIn & s, uint64_t & id )
-{
-    uint64_t ref = 0;
-    if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return false; }
-    return TableMessageRetainId( s, ref, id );
-}
-
-// ONE OPAQUE PAYLOAD's bytes: a string or a byte buffer is a length at its own
-// width, the ALIGN that buys a memcpy and the bytes; a wide string is a length
-// and then SIXTEEN bits a code unit, which is two file bytes each; and the
-// ESCAPE aligns, reads a thirty-two bit L and takes L bytes. On the file each
-// is the same bytes behind a canonical LEB128 length, so the framed flag says which of
-// the two spellings this position takes.
-inline bool TableMessageRetainOpaque( TableMessageRetainIn & s, const TableMessageEntry & entry, bool framed )
-{
-    uint64_t n = 0;
-    if ( entry.kind == 12 || entry.kind == 33 )
-    {
-        if ( !s.r->get( n, TableBitsRequired( 0, entry.max ) ) ) { return false; }
-        if ( entry.kind == 33 ) { n *= 2; }
-        else if ( !s.r->align() ) { return false; }
-    }
-    else
-    {
-        if ( !s.r->align() || !s.r->get( n, 32 ) ) { return false; }
-    }
-    if ( n > (uint64_t) INT32_MAX || !s.r->has( (int64_t) n * 8 ) ) { return false; }
-    if ( framed ) { TableRetainInLeb( s.out, n ); }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        uint64_t by = 0;
-        if ( !s.r->get( by, 8 ) ) { return false; }
-        const uint8_t one = uint8_t( by );
-        TableRetainInRaw( s.out, &one, 1 );
-    }
-    return true;
-}
-
-// ONE ANNOUNCED VALUE, transcoded. NO CLAMP FIRES AND NO RANGE IS APPLIED: the
-// value is the SENDER's, under an id this reader cannot name, so there is no
-// declaration to bound it by, and the walk takes no branch on a payload byte
-// (§6.6, THE SECURITY BOUND).
-inline bool TableMessageRetainScalar( TableMessageRetainIn & s, const TableMessageEntry & entry )
-{
-    const int64_t width = TableMessageRetainWidth( entry.kind );
-    if ( width < 0 ) { return false; }
-    if ( entry.kind == 1 )
-    {
-        uint64_t v = 0;
-        if ( !s.r->get( v, 1 ) ) { return false; }
-        TableMessageRetainWord( s, v, 1 );
-        return true;
-    }
-    if ( entry.kind == 10 )
-    {
-        if ( entry.packing == 2 )
-        {
-            // THE PACKET WIRE'S RULE, IN FLOAT32: the float an index names is
-            // the float a packet's reader names for it, and an index above
-            // the announced count is rejected rather than reconstructed (SPEC.md §4.3)
-            uint64_t index = 0;
-            if ( !s.r->get( index, entry.value_bits ) ) { return false; }
-            if ( index > (uint64_t) entry.qcount ) { return false; }
-            const float v = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount );
-            TableMessageRetainWord( s, table_float_to_bits( v ), 4 );
-            return true;
-        }
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, 32 ) ) { return false; }
-        TableMessageRetainWord( s, raw, 4 );
-        return true;
-    }
-    if ( entry.kind == 11 )
-    {
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, 64 ) ) { return false; }
-        TableMessageRetainWord( s, raw, 8 );
-        return true;
-    }
-    const int64_t bits = entry.value_bits;
-    if ( bits < 0 ) { return false; }
-    if ( width == 16 )
-    {
-        // a 128-bit kind reads in TWO LIMBS, and a ranged one adds the base the
-        // announcement carries in halves
-        uint64_t lo = 0, hi = 0;
-        if ( bits <= 64 )
-        {
-            if ( !s.r->get( lo, bits ) ) { return false; }
-        }
-        else if ( !s.r->get( lo, 64 ) || !s.r->get( hi, bits - 64 ) ) { return false; }
-        if ( entry.packing == 1 )
-        {
-            const uint64_t sum = lo + (uint64_t) entry.base_lo;
-            hi += (uint64_t) entry.base_hi + ( sum < lo ? 1u : 0u );
-            lo = sum;
-        }
-        TableMessageRetainWord( s, lo, 8 );
-        TableMessageRetainWord( s, hi, 8 );
-        return true;
-    }
-    uint64_t raw = 0;
-    if ( !s.r->get( raw, bits ) ) { return false; }
-    uint64_t value = raw;
-    if ( entry.packing == 1 )
-    {
-        value = raw + (uint64_t) entry.base_lo; // the domain, whole: the sum wraps into the bits below
-    }
-    else if ( TableMessageRetainSigned( entry.kind ) && bits > 0 && bits < 64 )
-    {
-        const int64_t shift = 64 - bits;
-        value = (uint64_t) ( ( (int64_t) ( raw << shift ) ) >> shift );
-    }
-    TableMessageRetainWord( s, value, width );
-    return true;
-}
-
-// one framed CONTENT: the slot, the content, and the slot filled in behind it,
-// exactly as the file capture's own framed content is.
-inline int64_t TableMessageRetainFramed( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    const int64_t slot = TableRetainInSlot( s.out );
-    const int64_t resolved = TableMessageRetainContent( s, entry, depth );
-    if ( resolved < 0 || resolved > 0xFFFFFFFFll ) { return -1; }
-    TableRetainInPatch( s.out, slot, resolved );
-    return resolved;
-}
-
-// one nested BODY: its fields, each an entry reference and the payload that
-// entry's shape frames, ending at the body's own ZERO REFERENCE.
-inline int64_t TableMessageRetainBody( TableMessageRetainIn & s, int32_t depth )
-{
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-        if ( ref == 0 )
-        {
-            // THE TERMINATOR IS A REFERENCE, and a reference in the resolved
-            // form is a fixed eight-byte id
-            TableRetainInId( s.out, 0 );
-            return 0;
-        }
-        uint64_t id = 0;
-        if ( !TableMessageRetainId( s, ref, id ) ) { return -1; }
-        const TableMessageEntry & field = TableVocabularyEntryAt( *s.vocabulary, ref );
-        TableRetainInId( s.out, id );
-        TableRetainInRaw( s.out, &field.kind, 1 );
-        if ( TableMessageRetainPayload( s, field, depth ) < 0 ) { return -1; }
-    }
-}
-
-// one array's or one keyed body's content: the element kind, the count, and the
-// elements. A KEYED SLOT IS A TRIPLE, the key reference, the element's own
-// length, and the element, and its keys resolve at EVERY element kind.
-inline int64_t TableMessageRetainElements( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( entry.elem_kind == 17 )
-    {
-        // AN ARRAY WHOSE ELEMENT KIND IS 17 (§6.6): the excluded class, caught
-        // here for a keyed body exactly as for a positional one
-        return -1;
-    }
-    uint64_t n = (uint64_t) entry.min;
-    const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
-    if ( entry.kind == 16 ) { n = 0; }
-    if ( width > 0 )
-    {
-        uint64_t raw = 0;
-        if ( !s.r->get( raw, width ) ) { return -1; }
-        n = entry.kind == 16 ? raw : raw + (uint64_t) entry.min;
-    }
-    if ( entry.kind == 14 && entry.elem_kind == 6 && !s.r->align() ) { return -1; }
-    const TableMessageEntry element = TableMessageRetainElement( entry );
-    TableRetainInRaw( s.out, &entry.elem_kind, 1 );
-    TableRetainInLeb( s.out, n ); // the count rides as the file capture spells it, and the emit reads it back
-    // A ZERO-BIT ELEMENT STILL LAYS DOWN ITS STORAGE WIDTH, so the announced
-    // count is tested against the caller's remaining record BEFORE one element
-    // is converted: a count no record can hold refuses here rather than four
-    // billion times through the loop (§6.6, THE SECURITY BOUND).
-    int64_t minimum = TableMessageRetainElementMinimum( element.kind );
-    if ( entry.kind == 16 ) { minimum += 16; } // the key id and the framed slot
-    if ( minimum > 0 && ( s.out.out_at > s.limit || n > (uint64_t) ( ( s.limit - s.out.out_at ) / minimum ) ) )
-    {
-        return -1;
-    }
-    for ( uint64_t i = 0; i < n; i++ )
-    {
-        if ( entry.kind == 16 )
-        {
-            uint64_t key = 0;
-            if ( !TableMessageRetainRef( s, key ) ) { return -1; }
-            TableRetainInId( s.out, key );
-            if ( TableMessageRetainFramed( s, element, depth + 1 ) < 0 ) { return -1; }
-            continue;
-        }
-        if ( TableMessageRetainPayload( s, element, depth ) < 0 ) { return -1; }
-    }
-    return 0;
-}
-
-inline int64_t TableMessageRetainContent( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( depth > kTableRetainWalkDepthMax || s.out.out_at > s.limit ) { return -1; }
-    const int64_t began = s.out.out_at;
-    switch ( entry.kind )
-    {
-        case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
-        case 13: if ( TableMessageRetainBody( s, depth ) < 0 ) { return -1; } break;
-        case 14: case 16: if ( TableMessageRetainElements( s, entry, depth ) < 0 ) { return -1; } break;
-        case 15: case 30: if ( TableMessageRetainPayload( s, entry, depth ) < 0 ) { return -1; } break;
-        case 32: break; // nothing rides, and the outer length is what says so
-        case 12: case 31: case 33:
-            // a content copied whole carries no inner length: the outer one
-            // frames it, which is what a keyed slot's element takes
-            if ( !TableMessageRetainOpaque( s, entry, false ) ) { return -1; }
-            break;
-        default:
-            if ( !TableMessageRetainScalar( s, entry ) ) { return -1; }
-            break;
-    }
-    return s.out.out_at - began;
-}
-
-inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableMessageEntry & entry, int32_t depth )
-{
-    if ( s.out.out_at > s.limit ) { return -1; }
-    const int64_t began = s.out.out_at;
-    switch ( entry.kind )
-    {
-        case 17: return -1; // THE NODE-INDEX CLASS, met inside a payload (§6.6)
-        case 0: return -1;  // a KIND-0 ENTRY names no payload the variable form has a kind for
-        case 32: TableRetainInLeb( s.out, 0 ); break;
-        case 30:
-        {
-            uint64_t ref = 0;
-            if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-            if ( ref == 0 )
-            {
-                // A VARIANT REFERENCE OF ZERO IS THE ENUM'S None (§3): a value,
-                // not a reference, and it rides back as one
-                TableRetainInId( s.out, 0 );
-                break;
-            }
-            uint64_t id = 0;
-            if ( !TableMessageRetainId( s, ref, id ) ) { return -1; }
-            TableRetainInId( s.out, id );
-            break;
-        }
-        case 15:
-        {
-            uint64_t ref = 0;
-            if ( !s.r->get( ref, s.vocabulary->ref_bits ) ) { return -1; }
-            if ( ref == 0 ) { TableRetainInId( s.out, 0 ); break; }
-            TableMessageEntry arm;
-            if ( !TableMessageArmEntry( *s.vocabulary, ref, arm ) || TableRetainReservedId( arm.id ) ) { return -1; }
-            TableRetainInId( s.out, arm.id );
-            TableRetainInRaw( s.out, &arm.kind, 1 );
-            if ( TableMessageRetainFramed( s, arm, depth + 1 ) < 0 ) { return -1; }
-            break;
-        }
-        case 13: case 14: case 16:
-            if ( TableMessageRetainFramed( s, entry, depth + 1 ) < 0 ) { return -1; }
-            break;
-        case 12: case 31: case 33:
-            if ( !TableMessageRetainOpaque( s, entry, true ) ) { return -1; }
-            break;
-        default:
-            if ( !TableMessageRetainScalar( s, entry ) ) { return -1; }
-            break;
-    }
-    return s.out.out_at - began;
-}
-
-// CAPTURE, the message form's load side. The entry has already been SKIPPED and
-// counted unknown exactly as it always was, and the start offset is where its payload
-// began: this re-reads those bits, and a record it cannot make changes nothing
-// else about the read. False is a retained float that is not finite, and
-// nothing else: the read is refused (§3.3).
-inline bool TableMessageRetainCapture( TableRetain * retain, TableBitReader & r, const TableVocabulary & vocabulary,
-                                       int64_t index_bits, const TableMessageEntry & entry,
-                                       const TableRetainPath & path, TableReport * report, int64_t start )
-{
-    if ( retain == NULL ) { return true; }
-    // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
-    // §3.3, §6.6): kind 10's or 11's raw bits, unless the float rides as a
-    // quantized index, which names a finite value. A NaN or an infinity
-    // refuses the read as non_finite_float, and the caller stops.
-    if ( ( entry.kind == 10 && entry.packing != 2 ) || entry.kind == 11 )
-    {
-        TableBitReader bits = r;
-        bits.offset = start;
-        uint64_t raw = 0;
-        if ( bits.get( raw, entry.kind == 10 ? 32 : 64 ) &&
-             !( entry.kind == 10 ? TableBitsFinite32( (uint32_t) raw ) : TableBitsFinite64( raw ) ) )
-        {
-            TableNonFiniteFloat( report );
-            return false;
-        }
-    }
-    if ( entry.kind == 17 )
-    {
-        // A FIELD WHOSE PAYLOAD CARRIES A NODE INDEX: kind 17 itself, the
-        // excluded class at the outer kind (§6.6)
-        report->retain_lost++;
-        return true;
-    }
-    const int64_t end = r.offset;
-    TableBitReader walk = r;
-    walk.offset = start;
-
-    TableMessageRetainIn probe;
-    probe.out.in = NULL;
-    probe.out.size = 0;
-    probe.out.at = 0;
-    probe.out.ids = NULL;
-    probe.out.out = NULL;
-    probe.out.out_at = 0;
-    probe.r = &walk;
-    probe.vocabulary = &vocabulary;
-    probe.index_bits = index_bits;
-    // THE RECORD'S REMAINING PAYLOAD BUDGET: what the caller's capacity leaves
-    // after this record's header and path, which bounds the walk before it
-    // converts a count the record could never hold (§6.6).
-    probe.limit = retain->capacity - retain->used - kTableRetainRecordHeader - 8 * (int64_t) path.depth;
-    const int64_t payload = TableMessageRetainPayload( probe, entry, 0 );
-    if ( payload < 0 || walk.offset != end )
-    {
-        // THE WALK CAN MEET WHAT THE SKIP STEPPED OVER, and its verdict changes
-        // nothing else: the record is dropped, one retain_lost counts, and
-        // malformed DOES NOT MOVE (§6.6).
-        report->retain_lost++;
-        return true;
-    }
-
-    const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
-    if ( need > 0xFFFFFFFFll || retain->used + need > retain->capacity )
-    {
-        // REFUSAL IS PER RECORD AND NEVER PARTIAL (§6.6)
-        report->retain_lost++;
-        return true;
-    }
-    uint8_t * record = retain->bytes + retain->used;
-    TableRetainWrite32( record, (uint32_t) need );
-    TableRetainWrite32( record + 4, path.node );
-    TableRetainWrite32( record + 8, (uint32_t) path.depth );
-    TableRetainWrite32( record + 12, (uint32_t) payload );
-    TableRetainWrite64( record + 16, entry.id );
-    record[24] = entry.kind;
-    record[25] = 0;
-    for ( int32_t i = 0; i < path.depth; i++ )
-    {
-        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i, path.steps[i].ordinal );
-        TableRetainWrite32( record + kTableRetainRecordHeader + 8 * i + 4, path.steps[i].index );
-    }
-    TableBitReader again = r;
-    again.offset = start;
-    TableMessageRetainIn write = probe;
-    write.r = &again;
-    write.out.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
-    write.out.out_at = 0;
-    if ( TableMessageRetainPayload( write, entry, 0 ) < 0 ) { report->retain_lost++; return true; }
-    retain->used += need;
-    retain->count++;
-    report->retained++;
-    return true;
-}
 } // namespace armdemo
 
 #endif // ARMDEMO_SCHEMA_TABLE_RETAIN
@@ -7778,23 +7175,6 @@ inline void ChainReset( Chain & value )
     value.past = 0;
 }
 
-template <typename Ctx> inline int64_t LeafMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Leaf & value );
-template <typename Ctx> inline bool LeafSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Leaf & value );
-inline bool LeafLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Leaf & value );
-inline bool LeafMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );
-template <typename Ctx> inline int64_t HolderMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Holder & value );
-template <typename Ctx> inline bool HolderSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Holder & value );
-inline bool HolderLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Holder & value );
-inline bool HolderMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );
-template <typename Ctx> inline int64_t HandMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Hand & value );
-template <typename Ctx> inline bool HandSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Hand & value );
-inline bool HandLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Hand & value );
-inline bool HandMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );
-template <typename Ctx> inline int64_t ChainMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Chain & value );
-template <typename Ctx> inline bool ChainSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Chain & value );
-inline bool ChainLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Chain & value );
-inline bool ChainMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth = 0 );
-
 // ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
 //
 // TableWorker::Alloc is a template and cannot name a member's Reset, so
@@ -7851,20 +7231,12 @@ template <typename Ctx> inline bool ChainPack( const Ctx & ctx, TablePackMap & s
 
 template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Leaf & value ) { return LeafMeasureBody( ctx, numbering, ids, value ); }
 template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Leaf & value ) { return LeafSaveBody( ctx, numbering, w, ids, value ); }
-template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Leaf & value ) { return LeafMeasureMessageBody( ctx, numbering, index_bits, at, value ); }
-template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Leaf & value ) { return LeafSaveMessageBody( ctx, numbering, index_bits, w, value ); }
 template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Holder & value ) { return HolderMeasureBody( ctx, numbering, ids, value ); }
 template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Holder & value ) { return HolderSaveBody( ctx, numbering, w, ids, value ); }
-template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Holder & value ) { return HolderMeasureMessageBody( ctx, numbering, index_bits, at, value ); }
-template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Holder & value ) { return HolderSaveMessageBody( ctx, numbering, index_bits, w, value ); }
 template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Hand & value ) { return HandMeasureBody( ctx, numbering, ids, value ); }
 template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Hand & value ) { return HandSaveBody( ctx, numbering, w, ids, value ); }
-template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Hand & value ) { return HandMeasureMessageBody( ctx, numbering, index_bits, at, value ); }
-template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Hand & value ) { return HandSaveMessageBody( ctx, numbering, index_bits, w, value ); }
 template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Chain & value ) { return ChainMeasureBody( ctx, numbering, ids, value ); }
 template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Chain & value ) { return ChainSaveBody( ctx, numbering, w, ids, value ); }
-template <typename Ctx> inline int64_t TableNodeMessageMeasure( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Chain & value ) { return ChainMeasureMessageBody( ctx, numbering, index_bits, at, value ); }
-template <typename Ctx> inline bool TableNodeMessageSave( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Chain & value ) { return ChainSaveMessageBody( ctx, numbering, index_bits, w, value ); }
 
 // ---- retain-unknown: the second family (docs/SPEC-TABLES.md §6.6) ----
 //
@@ -7876,22 +7248,18 @@ template <typename Ctx> inline int64_t LeafMeasureBodyRetain( const Ctx & ctx, c
 template <typename Ctx> inline bool LeafSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Leaf & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline bool LeafSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Leaf & value, TableRetain * retain, const TableRetainPath & path );
 inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Leaf & value, TableRetain * retain, const TableRetainPath & path );
-inline bool LeafLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Leaf & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline int64_t HolderMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Holder & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Holder & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline bool HolderSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Holder & value, TableRetain * retain, const TableRetainPath & path );
 inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Holder & value, TableRetain * retain, const TableRetainPath & path );
-inline bool HolderLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Holder & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Hand & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Hand & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline bool HandSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Hand & value, TableRetain * retain, const TableRetainPath & path );
 inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Hand & value, TableRetain * retain, const TableRetainPath & path );
-inline bool HandLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Hand & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline int64_t ChainMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Chain & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Chain & value, TableRetain * retain, const TableRetainPath & path );
 template <typename Ctx> inline bool ChainSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Chain & value, TableRetain * retain, const TableRetainPath & path );
 inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Chain & value, TableRetain * retain, const TableRetainPath & path );
-inline bool ChainLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Chain & value, TableRetain * retain, const TableRetainPath & path );
 
 template <typename Ctx>
 inline int64_t LeafMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Leaf & value )
@@ -7967,7 +7335,7 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -8007,8 +7375,8 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -8036,8 +7404,8 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -8070,156 +7438,6 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
-// body's own bit position in the batch, because a `string(N)` ALIGNS before
-// its bytes and an align costs what the position says it costs.
-template <typename Ctx>
-inline int64_t LeafMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Leaf & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    int64_t bits = 0;
-    {
-        TableListCursor<int32_t> cursor_items = TableListElements( ctx, value.items ); // items
-        if ( !cursor_items.ok ) { return -1; } // the slot and the head disagree
-        if ( cursor_items.count > 0 )
-        {
-            bits += kTableMessageRefBitsHere;
-            bits += 32;
-            bits += (int64_t) ( cursor_items.count ) * 32;
-        }
-    }
-    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
-    (void) at;
-    return bits;
-}
-
-// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the VARIABLE form put an L.
-template <typename Ctx>
-inline bool LeafSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Leaf & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    {
-        TableListCursor<int32_t> cursor_items = TableListElements( ctx, value.items ); // items
-        if ( !cursor_items.ok ) { return false; } // the slot and the head disagree
-        if ( cursor_items.count > 0 )
-        {
-            w.put( 7, kTableMessageRefBitsHere );
-            w.put( (uint64_t) ( cursor_items.count ) - 0, 32 );
-            for ( int32_t i = 0; i < cursor_items.count; i++ )
-            {
-                w.put( (uint64_t) ( cursor_items[i] ), 32 );
-            }
-        }
-    }
-    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-// LeafMessageExtent: the extent Leaf's maps command on the message wire, from
-// the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
-inline bool LeafMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )
-{
-    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-        if ( ref == 0 ) { return true; }
-        if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( entry.id == 0x3e7884bf4f412c6full && entry.kind == 14 && entry.elem_kind == 4 ) // items: an unbounded array
-        {
-            uint64_t n = 0;
-            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }
-            n += (uint64_t) entry.min;
-            if ( n > (uint64_t) INT32_MAX ) { return false; } // above the int32 storage cap (§2.9)
-            at = ( at + 3 ) & ~(int64_t) 3; // at alignof( int32_t )
-            at += (int64_t) n * (int64_t) sizeof( int32_t ); // the whole array FIRST
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
-            if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }
-            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }
-            continue;
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-inline bool LeafLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Leaf & value )
-{
-    (void) nodes; (void) index_bits;
-    LeafReset( value );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0x3e7884bf4f412c6full: // items
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 4 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    n += (uint64_t) entry.min;
-                    TableListFill<int32_t> fill = TableListFillBegin( nodes, value.items, n );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        int32_t * slot = TableListFillNext( fill );
-                        if ( slot == NULL ) { report->malformed = true; return false; } // the arena could not carve
-                        {
-                            const int64_t width_2 = entry.elem_value_bits;
-                            uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide_2 = (int64_t) raw_2;
-                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            else if ( width_2 > 0 && width_2 < 64 )
-                            {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                            }
-                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                            ( *slot ) = decoded_v_2;
-                        }
-                    }
-                    TableListFillEnd( fill );
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                break;
         }
     }
 }
@@ -8354,7 +7572,7 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -8478,8 +7696,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -8507,8 +7725,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -8541,309 +7759,6 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
-// body's own bit position in the batch, because a `string(N)` ALIGNS before
-// its bytes and an align costs what the position says it costs.
-template <typename Ctx>
-inline int64_t HolderMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Holder & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    int64_t bits = 0;
-    if ( value.carry.type != CarryType::None )
-    {
-        bits += kTableMessageRefBitsHere;
-        switch ( value.carry.type )
-        {
-            case CarryType::Leaf:
-            {
-                bits += kTableMessageRefBitsHere;
-                {
-                    const int64_t arm_bits = LeafMeasureMessageBody( ctx, numbering, index_bits, at + bits, value.carry.leaf );
-                    if ( arm_bits < 0 ) { return -1; }
-                    bits += arm_bits;
-                }
-                break;
-            }
-            case CarryType::Plain:
-            {
-                bits += kTableMessageRefBitsHere;
-                bits += 32;
-                break;
-            }
-            default: return -1; // a tag no arm names has no wire identity
-        }
-    }
-    {
-        TableListCursor<int32_t> cursor_tail = TableListElements( ctx, value.tail ); // tail
-        if ( !cursor_tail.ok ) { return -1; } // the slot and the head disagree
-        if ( cursor_tail.count > 0 )
-        {
-            bits += kTableMessageRefBitsHere;
-            bits += 32;
-            bits += (int64_t) ( cursor_tail.count ) * 32;
-        }
-    }
-    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
-    (void) at;
-    return bits;
-}
-
-// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the VARIABLE form put an L.
-template <typename Ctx>
-inline bool HolderSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Holder & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    if ( value.carry.type != CarryType::None )
-    {
-        w.put( 5, kTableMessageRefBitsHere );
-        switch ( value.carry.type )
-        {
-            case CarryType::Leaf:
-            {
-                w.put( 13, kTableMessageRefBitsHere );
-                if ( !LeafSaveMessageBody( ctx, numbering, index_bits, w, value.carry.leaf ) ) { return false; }
-                break;
-            }
-            case CarryType::Plain:
-            {
-                w.put( 14, kTableMessageRefBitsHere );
-                w.put( (uint64_t) ( value.carry.plain ), 32 );
-                break;
-            }
-            default: return false; // a tag no arm names has no wire identity
-        }
-    }
-    {
-        TableListCursor<int32_t> cursor_tail = TableListElements( ctx, value.tail ); // tail
-        if ( !cursor_tail.ok ) { return false; } // the slot and the head disagree
-        if ( cursor_tail.count > 0 )
-        {
-            w.put( 6, kTableMessageRefBitsHere );
-            w.put( (uint64_t) ( cursor_tail.count ) - 0, 32 );
-            for ( int32_t i = 0; i < cursor_tail.count; i++ )
-            {
-                w.put( (uint64_t) ( cursor_tail[i] ), 32 );
-            }
-        }
-    }
-    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-// HolderMessageExtent: the extent Holder's maps command on the message wire, from
-// the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
-inline bool HolderMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )
-{
-    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-        if ( ref == 0 ) { return true; }
-        if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( entry.id == 0xafcd9a3b099f8ef0ull && entry.kind == 15 ) // carry: a union arm that holds a map
-        {
-            uint64_t arm_ref = 0;
-            if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { return false; }
-            if ( arm_ref == 0 ) { continue; } // None: the reference is the whole payload
-            TableMessageEntry arm;
-            if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { return false; }
-            switch ( arm.id )
-            {
-                case 0x24ad84ada20208d5ull: // leaf
-                    if ( arm.kind == 13 ) { if ( !LeafMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; } }
-                    else if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } // another kind: a mismatch the load counts
-                    break;
-                default: if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } break; // an arm this reader cannot name
-            }
-            continue;
-        }
-        if ( entry.id == 0xd94c56ef0798d723ull && entry.kind == 14 && entry.elem_kind == 4 ) // tail: an unbounded array
-        {
-            uint64_t n = 0;
-            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }
-            n += (uint64_t) entry.min;
-            if ( n > (uint64_t) INT32_MAX ) { return false; } // above the int32 storage cap (§2.9)
-            at = ( at + 3 ) & ~(int64_t) 3; // at alignof( int32_t )
-            at += (int64_t) n * (int64_t) sizeof( int32_t ); // the whole array FIRST
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
-            if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }
-            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }
-            continue;
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-inline bool HolderLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Holder & value )
-{
-    (void) nodes; (void) index_bits;
-    HolderReset( value );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0xafcd9a3b099f8ef0ull: // carry
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 15 || entry.elem_kind != 0 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t arm_ref = 0;
-                    if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-                    TableMessageEntry arm;
-                    if ( arm_ref == 0 ) { value.carry.type = CarryType::None; }
-                    else if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { report->malformed = true; return false; }
-                    else
-                    {
-                        switch ( arm.id )
-                        {
-                            case 0x24ad84ada20208d5ull: // leaf
-                            {
-                                if ( arm.kind != 13 || arm.elem_kind != 0 )
-                                {
-                                    value.carry.type = CarryType::None; report->kind_mismatch++;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
-                                    break;
-                                }
-                                value.carry.type = CarryType::Leaf;
-                                if ( !LeafLoadMessageBody( r, vocabulary, report, nodes, index_bits, value.carry.leaf ) ) { return false; }
-                                break;
-                            }
-                            case 0xfd4d194e1652b207ull: // plain
-                            {
-                                if ( arm.kind != 4 || arm.elem_kind != 0 )
-                                {
-                                    if ( TableKindWidens( arm.kind, 4 ) )
-                                    {
-                                        value.carry.type = CarryType::Plain;
-                                        memset( (void *) &value.carry.plain, 0, sizeof( value.carry.plain ) ); // selection establishes the arm (§2.6)
-                                        {
-                                            const int64_t width_2 = arm.value_bits;
-                                            uint64_t raw_2 = 0;
-                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                                            int64_t decoded_wide_2 = (int64_t) raw_2;
-                                            if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
-                                            else if ( width_2 > 0 && width_2 < 64 )
-                                            {
-                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                                            }
-                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                            value.carry.plain = decoded_v_2;
-                                        }
-                                        report->widened++;
-                                        break;
-                                    }
-                                    value.carry.type = CarryType::None; report->kind_mismatch++;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
-                                    break;
-                                }
-                                value.carry.type = CarryType::Plain;
-                                {
-                                    const int64_t width_2 = arm.value_bits;
-                                    uint64_t raw_2 = 0;
-                                    if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                                    int64_t decoded_wide_2 = (int64_t) raw_2;
-                                    if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
-                                    else if ( width_2 > 0 && width_2 < 64 )
-                                    {
-                                        const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                        if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                                    }
-                                    if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                                    if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                                    int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                    value.carry.plain = decoded_v_2;
-                                }
-                                break;
-                            }
-                            default:
-                                value.carry.type = CarryType::None; report->unknown++;
-                                if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
-                                break;
-                        }
-                    }
-                }
-                break;
-            }
-            case 0xd94c56ef0798d723ull: // tail
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 4 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    n += (uint64_t) entry.min;
-                    TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, n );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        int32_t * slot = TableListFillNext( fill );
-                        if ( slot == NULL ) { report->malformed = true; return false; } // the arena could not carve
-                        {
-                            const int64_t width_2 = entry.elem_value_bits;
-                            uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide_2 = (int64_t) raw_2;
-                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            else if ( width_2 > 0 && width_2 < 64 )
-                            {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                            }
-                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                            ( *slot ) = decoded_v_2;
-                        }
-                    }
-                    TableListFillEnd( fill );
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                break;
         }
     }
 }
@@ -9009,7 +7924,7 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -9047,9 +7962,9 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
+                    // cannot cover keeps the decoded prefix, flags malformed, and
+                    // the parent continues at the next field — following fields'
+                    // bytes are never fabricated into elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -9163,334 +8078,6 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
-// body's own bit position in the batch, because a `string(N)` ALIGNS before
-// its bytes and an align costs what the position says it costs.
-template <typename Ctx>
-inline int64_t HandMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Hand & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    int64_t bits = 0;
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
-    if ( value.entries_count > 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 2;
-        for ( int32_t i = 0; i < value.entries_count; i++ )
-        {
-            if ( value.entries[i].type == CarryType::None )
-            {
-                bits += kTableMessageRefBitsHere; // a None element is the zero reference in its place
-            }
-            else
-            {
-                switch ( value.entries[i].type )
-                {
-                    case CarryType::Leaf:
-                    {
-                        bits += kTableMessageRefBitsHere;
-                        {
-                            const int64_t arm_bits_2 = LeafMeasureMessageBody( ctx, numbering, index_bits, at + bits, value.entries[i].leaf );
-                            if ( arm_bits_2 < 0 ) { return -1; }
-                            bits += arm_bits_2;
-                        }
-                        break;
-                    }
-                    case CarryType::Plain:
-                    {
-                        bits += kTableMessageRefBitsHere;
-                        bits += 32;
-                        break;
-                    }
-                    default: return -1; // a tag no arm names has no wire identity
-                }
-            }
-        }
-    }
-    if ( value.past != 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 32;
-    }
-    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
-    (void) at;
-    return bits;
-}
-
-// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the VARIABLE form put an L.
-template <typename Ctx>
-inline bool HandSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Hand & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
-    if ( value.entries_count > 0 )
-    {
-        w.put( 4, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.entries_count ) - 0, 2 );
-        for ( int32_t i = 0; i < value.entries_count; i++ )
-        {
-            if ( value.entries[i].type == CarryType::None )
-            {
-                w.put( 0, kTableMessageRefBitsHere ); // a None element is the zero reference in its place
-            }
-            else
-            {
-                switch ( value.entries[i].type )
-                {
-                    case CarryType::Leaf:
-                    {
-                        w.put( 13, kTableMessageRefBitsHere );
-                        if ( !LeafSaveMessageBody( ctx, numbering, index_bits, w, value.entries[i].leaf ) ) { return false; }
-                        break;
-                    }
-                    case CarryType::Plain:
-                    {
-                        w.put( 14, kTableMessageRefBitsHere );
-                        w.put( (uint64_t) ( value.entries[i].plain ), 32 );
-                        break;
-                    }
-                    default: return false; // a tag no arm names has no wire identity
-                }
-            }
-        }
-    }
-    if ( value.past != 0 )
-    {
-        w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.past ), 32 );
-    }
-    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-// HandMessageExtent: the extent Hand's maps command on the message wire, from
-// the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
-inline bool HandMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )
-{
-    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-        if ( ref == 0 ) { return true; }
-        if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( entry.id == 0xc5b2a72c0845a253ull && entry.kind == 15 ) // entries: a union arm that holds a map
-        {
-            uint64_t arm_ref = 0;
-            if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { return false; }
-            if ( arm_ref == 0 ) { continue; } // None: the reference is the whole payload
-            TableMessageEntry arm;
-            if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { return false; }
-            switch ( arm.id )
-            {
-                case 0x24ad84ada20208d5ull: // leaf
-                    if ( arm.kind == 13 ) { if ( !LeafMessageExtent( r, vocabulary, index_bits, at, depth + 2 ) ) { return false; } }
-                    else if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } // another kind: a mismatch the load counts
-                    break;
-                default: if ( !TableMessageSkip( r, vocabulary, index_bits, arm, depth + 1 ) ) { return false; } break; // an arm this reader cannot name
-            }
-            continue;
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-inline bool HandLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Hand & value )
-{
-    (void) nodes; (void) index_bits;
-    HandReset( value );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0xc5b2a72c0845a253ull: // entries
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 15 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = (uint64_t) entry.min;
-                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
-                    if ( count_bits > 0 )
-                    {
-                        uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
-                        n = raw + (uint64_t) entry.min;
-                    }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 2 ) { kept = 2; report->clamped++; } else { kept = (int32_t) n; }
-                    const uint64_t walk = n;
-                    for ( uint64_t i = 0; i < walk; i++ )
-                    {
-                        const bool in_bounds = (int32_t) i < kept;
-                        Carry scratch;
-                        {
-                            uint64_t arm_ref_2 = 0;
-                            if ( !r.get( arm_ref_2, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-                            TableMessageEntry arm_2;
-                            if ( arm_ref_2 == 0 ) { ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; }
-                            else if ( !TableMessageArmEntry( vocabulary, arm_ref_2, arm_2 ) ) { report->malformed = true; return false; }
-                            else
-                            {
-                                switch ( arm_2.id )
-                                {
-                                    case 0x24ad84ada20208d5ull: // leaf
-                                    {
-                                        if ( arm_2.kind != 13 || arm_2.elem_kind != 0 )
-                                        {
-                                            ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( in_bounds ? value.entries[i] : scratch ).type = CarryType::Leaf;
-                                        if ( !LeafLoadMessageBody( r, vocabulary, report, nodes, index_bits, ( in_bounds ? value.entries[i] : scratch ).leaf ) ) { return false; }
-                                        break;
-                                    }
-                                    case 0xfd4d194e1652b207ull: // plain
-                                    {
-                                        if ( arm_2.kind != 4 || arm_2.elem_kind != 0 )
-                                        {
-                                            if ( TableKindWidens( arm_2.kind, 4 ) )
-                                            {
-                                                ( in_bounds ? value.entries[i] : scratch ).type = CarryType::Plain;
-                                                memset( (void *) &( in_bounds ? value.entries[i] : scratch ).plain, 0, sizeof( ( in_bounds ? value.entries[i] : scratch ).plain ) ); // selection establishes the arm (§2.6)
-                                                {
-                                                    const int64_t width_3 = arm_2.value_bits;
-                                                    uint64_t raw_3 = 0;
-                                                    if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                                    int64_t decoded_wide_3 = (int64_t) raw_3;
-                                                    if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                                    else if ( width_3 > 0 && width_3 < 64 )
-                                                    {
-                                                        const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                                    }
-                                                    if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                                    if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                                    int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                                    ( in_bounds ? value.entries[i] : scratch ).plain = decoded_v_3;
-                                                }
-                                                report->widened++;
-                                                break;
-                                            }
-                                            ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( in_bounds ? value.entries[i] : scratch ).type = CarryType::Plain;
-                                        {
-                                            const int64_t width_3 = arm_2.value_bits;
-                                            uint64_t raw_3 = 0;
-                                            if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                            int64_t decoded_wide_3 = (int64_t) raw_3;
-                                            if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                            else if ( width_3 > 0 && width_3 < 64 )
-                                            {
-                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                            }
-                                            if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                            if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                            int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                            ( in_bounds ? value.entries[i] : scratch ).plain = decoded_v_3;
-                                        }
-                                        break;
-                                    }
-                                    default:
-                                        ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; report->unknown++;
-                                        if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                        break;
-                                }
-                            }
-                        }
-                    }
-                    value.entries_count = kept;
-                }
-                break;
-            }
-            case 0xbf82010f6f71eae9ull: // past
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 4 || entry.elem_kind != 0 )
-                {
-                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
-                    {
-                        {
-                            const int64_t width = entry.value_bits;
-                            uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            else if ( width > 0 && width < 64 )
-                            {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                            }
-                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v = (int32_t) decoded_wide;
-                            value.past = decoded_v;
-                        }
-                        report->widened++;
-                        break;
-                    }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    else if ( width > 0 && width < 64 )
-                    {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                    }
-                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                    int32_t decoded_v = (int32_t) decoded_wide;
-                    value.past = decoded_v;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                break;
         }
     }
 }
@@ -9663,7 +8250,7 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -9702,8 +8289,8 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -9818,330 +8405,6 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                 if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
-// body's own bit position in the batch, because a `string(N)` ALIGNS before
-// its bytes and an align costs what the position says it costs.
-template <typename Ctx>
-inline int64_t ChainMeasureMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, int64_t at, const Chain & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    int64_t bits = 0;
-    {
-        TableListCursor<Carry> cursor_links = TableListElements( ctx, value.links ); // links
-        if ( !cursor_links.ok ) { return -1; } // the slot and the head disagree
-        if ( cursor_links.count > 0 )
-        {
-            bits += kTableMessageRefBitsHere;
-            bits += 32;
-            for ( int32_t i = 0; i < cursor_links.count; i++ )
-            {
-                if ( cursor_links[i].type == CarryType::None )
-                {
-                    bits += kTableMessageRefBitsHere; // a None element is the zero reference in its place
-                }
-                else
-                {
-                    switch ( cursor_links[i].type )
-                    {
-                        case CarryType::Leaf:
-                        {
-                            bits += kTableMessageRefBitsHere;
-                            {
-                                const int64_t arm_bits_2 = LeafMeasureMessageBody( ctx, numbering, index_bits, at + bits, cursor_links[i].leaf );
-                                if ( arm_bits_2 < 0 ) { return -1; }
-                                bits += arm_bits_2;
-                            }
-                            break;
-                        }
-                        case CarryType::Plain:
-                        {
-                            bits += kTableMessageRefBitsHere;
-                            bits += 32;
-                            break;
-                        }
-                        default: return -1; // a tag no arm names has no wire identity
-                    }
-                }
-            }
-        }
-    }
-    if ( value.past != 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 32;
-    }
-    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
-    (void) at;
-    return bits;
-}
-
-// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the VARIABLE form put an L.
-template <typename Ctx>
-inline bool ChainSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const Chain & value )
-{
-    (void) ctx; (void) numbering; (void) index_bits;
-    {
-        TableListCursor<Carry> cursor_links = TableListElements( ctx, value.links ); // links
-        if ( !cursor_links.ok ) { return false; } // the slot and the head disagree
-        if ( cursor_links.count > 0 )
-        {
-            w.put( 1, kTableMessageRefBitsHere );
-            w.put( (uint64_t) ( cursor_links.count ) - 0, 32 );
-            for ( int32_t i = 0; i < cursor_links.count; i++ )
-            {
-                if ( cursor_links[i].type == CarryType::None )
-                {
-                    w.put( 0, kTableMessageRefBitsHere ); // a None element is the zero reference in its place
-                }
-                else
-                {
-                    switch ( cursor_links[i].type )
-                    {
-                        case CarryType::Leaf:
-                        {
-                            w.put( 13, kTableMessageRefBitsHere );
-                            if ( !LeafSaveMessageBody( ctx, numbering, index_bits, w, cursor_links[i].leaf ) ) { return false; }
-                            break;
-                        }
-                        case CarryType::Plain:
-                        {
-                            w.put( 14, kTableMessageRefBitsHere );
-                            w.put( (uint64_t) ( cursor_links[i].plain ), 32 );
-                            break;
-                        }
-                        default: return false; // a tag no arm names has no wire identity
-                    }
-                }
-            }
-        }
-    }
-    if ( value.past != 0 )
-    {
-        w.put( 2, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.past ), 32 );
-    }
-    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-// ChainMessageExtent: the extent Chain's maps command on the message wire, from
-// the FRAMING alone (docs/SPEC-TABLES.md §2.8, §3.3, §6.5).
-inline bool ChainMessageExtent( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & at, int depth )
-{
-    if ( depth > 128 ) { return false; } // message_skip_depth (docs/SPEC-TABLES.md)
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { return false; }
-        if ( ref == 0 ) { return true; }
-        if ( ref > (uint64_t) vocabulary.count ) { return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( entry.id == 0x5cc201a9f1b8274eull && entry.kind == 14 && entry.elem_kind == 15 ) // links: an unbounded array
-        {
-            uint64_t n = 0;
-            if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { return false; }
-            n += (uint64_t) entry.min;
-            if ( n > (uint64_t) INT32_MAX ) { return false; } // above the int32 storage cap (§2.9)
-            at = ( at + 7 ) & ~(int64_t) 7; // at alignof( Carry )
-            at += (int64_t) n * (int64_t) sizeof( Carry ); // the whole array FIRST
-            const int64_t run = TableMessageElementRunBits( vocabulary, entry );
-            if ( run >= 0 ) { if ( !TableMessageSkipRun( r, n, run ) ) { return false; } }
-            else { for ( uint64_t i = 0; i < n; i++ ) { if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth + 1 ) ) { return false; } } }
-            continue;
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-inline bool ChainLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Chain & value )
-{
-    (void) nodes; (void) index_bits;
-    ChainReset( value );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0x5cc201a9f1b8274eull: // links
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 15 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    n += (uint64_t) entry.min;
-                    TableListFill<Carry> fill = TableListFillBegin( nodes, value.links, n );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        Carry * slot = TableListFillNext( fill );
-                        if ( slot == NULL ) { report->malformed = true; return false; } // the arena could not carve
-                        {
-                            uint64_t arm_ref_2 = 0;
-                            if ( !r.get( arm_ref_2, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-                            TableMessageEntry arm_2;
-                            if ( arm_ref_2 == 0 ) { ( *slot ).type = CarryType::None; }
-                            else if ( !TableMessageArmEntry( vocabulary, arm_ref_2, arm_2 ) ) { report->malformed = true; return false; }
-                            else
-                            {
-                                switch ( arm_2.id )
-                                {
-                                    case 0x24ad84ada20208d5ull: // leaf
-                                    {
-                                        if ( arm_2.kind != 13 || arm_2.elem_kind != 0 )
-                                        {
-                                            ( *slot ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( *slot ).type = CarryType::Leaf;
-                                        if ( !LeafLoadMessageBody( r, vocabulary, report, nodes, index_bits, ( *slot ).leaf ) ) { return false; }
-                                        break;
-                                    }
-                                    case 0xfd4d194e1652b207ull: // plain
-                                    {
-                                        if ( arm_2.kind != 4 || arm_2.elem_kind != 0 )
-                                        {
-                                            if ( TableKindWidens( arm_2.kind, 4 ) )
-                                            {
-                                                ( *slot ).type = CarryType::Plain;
-                                                memset( (void *) &( *slot ).plain, 0, sizeof( ( *slot ).plain ) ); // selection establishes the arm (§2.6)
-                                                {
-                                                    const int64_t width_3 = arm_2.value_bits;
-                                                    uint64_t raw_3 = 0;
-                                                    if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                                    int64_t decoded_wide_3 = (int64_t) raw_3;
-                                                    if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                                    else if ( width_3 > 0 && width_3 < 64 )
-                                                    {
-                                                        const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                                    }
-                                                    if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                                    if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                                    int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                                    ( *slot ).plain = decoded_v_3;
-                                                }
-                                                report->widened++;
-                                                break;
-                                            }
-                                            ( *slot ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( *slot ).type = CarryType::Plain;
-                                        {
-                                            const int64_t width_3 = arm_2.value_bits;
-                                            uint64_t raw_3 = 0;
-                                            if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                            int64_t decoded_wide_3 = (int64_t) raw_3;
-                                            if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                            else if ( width_3 > 0 && width_3 < 64 )
-                                            {
-                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                            }
-                                            if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                            if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                            int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                            ( *slot ).plain = decoded_v_3;
-                                        }
-                                        break;
-                                    }
-                                    default:
-                                        ( *slot ).type = CarryType::None; report->unknown++;
-                                        if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                        break;
-                                }
-                            }
-                        }
-                    }
-                    TableListFillEnd( fill );
-                }
-                break;
-            }
-            case 0xbf82010f6f71eae9ull: // past
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 4 || entry.elem_kind != 0 )
-                {
-                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
-                    {
-                        {
-                            const int64_t width = entry.value_bits;
-                            uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            else if ( width > 0 && width < 64 )
-                            {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                            }
-                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v = (int32_t) decoded_wide;
-                            value.past = decoded_v;
-                        }
-                        report->widened++;
-                        break;
-                    }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    else if ( width > 0 && width < 64 )
-                    {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                    }
-                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                    int32_t decoded_v = (int32_t) decoded_wide;
-                    value.past = decoded_v;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                break;
         }
     }
 }
@@ -11168,50 +9431,6 @@ inline void LeafNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
-// LeafNodeMessageStorage: the region bytes one record commands on the message
-// wire, or -1 for a type id this build cannot name. A table's is its own
-// storage plus the extent its maps take; a byte buffer's is its header and
-// its bytes, which is the one answer the record's LENGTH decides.
-inline int64_t LeafNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t length )
-{
-    (void) length;
-    (void) extent;
-    (void) type_id;
-    return -1;
-}
-
-// LeafNodeMessageExtent: step over one TABLE record's body, tallying the extent
-// its maps take where its type has any (§2.8). A type this build cannot
-// name is stepped over by its announced shapes and takes no extent.
-inline bool LeafNodeMessageExtent( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & extent )
-{
-    extent = 0;
-    (void) type_id; // no map below any node this root can name
-    return TableMessageSkipBody( r, vocabulary, index_bits );
-}
-
-// LeafNodeMessageBody: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-inline bool LeafNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
-{
-    TableExtentCarve carve;
-    carve.at = at + LeafNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !LeafNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -11301,308 +9520,6 @@ inline int64_t LeafSave( const LeafBuilder & builder, uint8_t * buffer, int64_t 
     return LeafSaveWire( ctx, *(const Leaf *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
 }
 
-// ---- Leaf on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
-
-// LeafMessageBodyBits: one root body's bits at bit position `at` of the batch,
-// with the numbering derived from the graph, the node table FIRST, then the
-// fields, then the zero reference. Measure derives the numbering and save
-// derives the same one, and nothing passes between them (§3.1).
-template <typename Ctx>
-inline int64_t LeafMessageBodyBits( const Ctx & ctx, const Leaf & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    int64_t bits = -1;
-    if ( LeafNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-            if ( table >= 0 )
-            {
-                const int64_t body = LeafMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-                bits = body < 0 ? -1 : table + body;
-            }
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return bits;
-}
-
-template <typename Ctx>
-inline bool LeafMessageBodySave( const Ctx & ctx, const Leaf & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    bool ok = false;
-    if ( LeafNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && LeafSaveMessageBody( ctx, numbering, index_bits, w, root );
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return ok && !w.overflow;
-}
-
-// THE PRIMITIVE IS A BATCH (§3.3): a number of ROOTS in one buffer, one count
-// and one continuous bit stream, each body carrying its own numbering. A
-// root is a locked region's, `builder.AsConst()`, or a loaded one's. M above
-// 256 is a refusal by name, batch_too_large, with nothing written.
-inline int64_t LeafMeasureMessages( const Leaf * const * roots, int64_t count, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableRegionCtx ctx;
-    int64_t bits = 8; // the body count
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        const int64_t body = LeafMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
-        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
-        bits += body;
-    }
-    return 1 + ( bits + 7 ) / 8;
-}
-
-inline int64_t LeafSaveMessages( const Leaf * const * roots, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableMessageBatch batch;
-    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
-    TableRegionCtx ctx;
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        if ( !LeafMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
-        {
-            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
-            return -1;
-        }
-        batch.written++;
-    }
-    return TableMessageBatchEnd( batch ); // == LeafMeasureMessages( roots, count, report, allocator )
-}
-
-// LeafMessageRecordScan: one node record's type id and the extent its maps
-// take, or a blob's length, the reader left after the record. A type id
-// reference of 0, one past E, or one naming anything but a kind-0 entry is
-// damage, as §3.1 and §3.3 say.
-inline bool LeafMessageRecordScan( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, uint64_t & type_id, int64_t & extent, int64_t & length )
-{
-    uint64_t type_ref = 0;
-    if ( !r.get( type_ref, vocabulary.ref_bits ) ) { return false; }
-    TableMessageEntry type_entry;
-    if ( !TableMessageNameEntry( vocabulary, type_ref, type_entry ) ) { return false; }
-    type_id = type_entry.id;
-    extent = 0;
-    length = 0;
-    if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-    {
-        // A BLOB RECORD CARRIES A LENGTH AT THIRTY-TWO RAW BITS, then ALIGNS,
-        // then the bytes verbatim (§3.3)
-        uint64_t n = 0;
-        if ( !r.get( n, 32 ) || !r.align() || !r.skip( (int64_t) n * 8 ) ) { return false; }
-        length = (int64_t) n;
-        return true;
-    }
-    return LeafNodeMessageExtent( type_id, r, vocabulary, index_bits, extent );
-}
-
-// LeafMessageBodyStorage: one body's node count and data bytes from the FRAMING
-// alone, the reader left at the next body. The node table is walked record
-// by record, a table record's body stepped over by its announced shapes and
-// a blob's by its length, then the root's own fields. False is a numbering
-// that could not be sized; `complete` false is a ROOT body whose own framing
-// gave out, which the load meets as damage inside this body after the
-// bodies before it were delivered, so the batch is sized through this body
-// and no further (§3.3).
-inline bool LeafMessageBodyStorage( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & records, int64_t & data, bool & complete )
-{
-    complete = true;
-    records = 0;
-    data = 0;
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { return false; }
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !LeafMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { return false; }
-        const int64_t storage = LeafNodeMessageStorage( type_id, extent, length );
-        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
-        records++;
-    }
-    int64_t root_extent = 0;
-    if ( !LeafMessageExtent( r, vocabulary, index_bits, root_extent ) ) { complete = false; }
-    data += TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Leaf ) ) + root_extent );
-    return true;
-}
-
-// LeafLoadMeasure's MESSAGE overload: the exact region bytes ONE BATCH needs,
-// which is one measurement, one allocation and one bounds check for however
-// many bodies ride (§3.3, §6.5). It is a scan by the announced shapes and
-// reads no field value. The answer is the data bytes plus the attribution,
-// one node directory a body, and -1 for a wire it cannot size: no vocabulary,
-// another form, or framing that gives out.
-inline int64_t LeafLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, int64_t * attribution_bytes = NULL )
-{
-    TableReport ignored;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, &ignored );
-    if ( bodies < 0 ) { return -1; }
-    int64_t data = 0, attribution = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        int64_t records = 0, body_data = 0;
-        bool complete = true;
-        if ( !LeafMessageBodyStorage( br.r, vocabulary, records, body_data, complete ) ) { return -1; }
-        data += body_data;
-        attribution += ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-        if ( !complete ) { break; } // damage inside this body: the load delivers the ones before it
-    }
-    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
-    return data + attribution;
-}
-
-// LeafLoadMessageBodyInto: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-inline bool LeafLoadMessageBodyInto( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Leaf * & root_out )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !LeafMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = LeafNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        LeafNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !LeafMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Leaf ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0xa5c085b4bb73d1b5ull;
-    Leaf * root = new ( region + used ) Leaf; // lifetime only: LoadMessageBody's first act is LeafReset
-    LeafReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Leaf ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    out->unknown += unknown_records;
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !LeafNodeMessageBody( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return LeafLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );
-}
-
-// LeafLoadMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-inline bool LeafLoadMessages( const Leaf ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !LeafLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
-}
-
 // LeafLoadMeasure: the exact region bytes a wire buffer will need, and it is
 // ONE SCAN — a record's type id gives its storage size, its length gives the
 // next record — reading no field value at all, so the caller owns the
@@ -11660,8 +9577,6 @@ inline const Leaf * LeafLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -11783,9 +9698,7 @@ inline const Leaf * LeafLoadTolerant( uint8_t * region, int64_t region_bytes, co
     LeafLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
 }
 
@@ -11827,8 +9740,6 @@ inline bool LeafLoadBuilderTolerant( LeafBuilder & builder, const uint8_t * wire
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -11922,10 +9833,6 @@ inline bool LeafLoadBuilderTolerant( LeafBuilder & builder, const uint8_t * wire
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
-    if ( out->malformed ) { return false; }
-    out->malformed = malformed_before;
     return ok;
 }
 
@@ -12184,50 +10091,6 @@ inline void HolderNodeBody( uint64_t type_id, TableReader & r, const TableNodeMa
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
-// HolderNodeMessageStorage: the region bytes one record commands on the message
-// wire, or -1 for a type id this build cannot name. A table's is its own
-// storage plus the extent its maps take; a byte buffer's is its header and
-// its bytes, which is the one answer the record's LENGTH decides.
-inline int64_t HolderNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t length )
-{
-    (void) length;
-    (void) extent;
-    (void) type_id;
-    return -1;
-}
-
-// HolderNodeMessageExtent: step over one TABLE record's body, tallying the extent
-// its maps take where its type has any (§2.8). A type this build cannot
-// name is stepped over by its announced shapes and takes no extent.
-inline bool HolderNodeMessageExtent( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & extent )
-{
-    extent = 0;
-    (void) type_id; // no map below any node this root can name
-    return TableMessageSkipBody( r, vocabulary, index_bits );
-}
-
-// HolderNodeMessageBody: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-inline bool HolderNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
-{
-    TableExtentCarve carve;
-    carve.at = at + HolderNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !HolderNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -12317,308 +10180,6 @@ inline int64_t HolderSave( const HolderBuilder & builder, uint8_t * buffer, int6
     return HolderSaveWire( ctx, *(const Holder *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
 }
 
-// ---- Holder on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
-
-// HolderMessageBodyBits: one root body's bits at bit position `at` of the batch,
-// with the numbering derived from the graph, the node table FIRST, then the
-// fields, then the zero reference. Measure derives the numbering and save
-// derives the same one, and nothing passes between them (§3.1).
-template <typename Ctx>
-inline int64_t HolderMessageBodyBits( const Ctx & ctx, const Holder & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    int64_t bits = -1;
-    if ( HolderNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-            if ( table >= 0 )
-            {
-                const int64_t body = HolderMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-                bits = body < 0 ? -1 : table + body;
-            }
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return bits;
-}
-
-template <typename Ctx>
-inline bool HolderMessageBodySave( const Ctx & ctx, const Holder & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    bool ok = false;
-    if ( HolderNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && HolderSaveMessageBody( ctx, numbering, index_bits, w, root );
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return ok && !w.overflow;
-}
-
-// THE PRIMITIVE IS A BATCH (§3.3): a number of ROOTS in one buffer, one count
-// and one continuous bit stream, each body carrying its own numbering. A
-// root is a locked region's, `builder.AsConst()`, or a loaded one's. M above
-// 256 is a refusal by name, batch_too_large, with nothing written.
-inline int64_t HolderMeasureMessages( const Holder * const * roots, int64_t count, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableRegionCtx ctx;
-    int64_t bits = 8; // the body count
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        const int64_t body = HolderMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
-        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
-        bits += body;
-    }
-    return 1 + ( bits + 7 ) / 8;
-}
-
-inline int64_t HolderSaveMessages( const Holder * const * roots, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableMessageBatch batch;
-    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
-    TableRegionCtx ctx;
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        if ( !HolderMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
-        {
-            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
-            return -1;
-        }
-        batch.written++;
-    }
-    return TableMessageBatchEnd( batch ); // == HolderMeasureMessages( roots, count, report, allocator )
-}
-
-// HolderMessageRecordScan: one node record's type id and the extent its maps
-// take, or a blob's length, the reader left after the record. A type id
-// reference of 0, one past E, or one naming anything but a kind-0 entry is
-// damage, as §3.1 and §3.3 say.
-inline bool HolderMessageRecordScan( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, uint64_t & type_id, int64_t & extent, int64_t & length )
-{
-    uint64_t type_ref = 0;
-    if ( !r.get( type_ref, vocabulary.ref_bits ) ) { return false; }
-    TableMessageEntry type_entry;
-    if ( !TableMessageNameEntry( vocabulary, type_ref, type_entry ) ) { return false; }
-    type_id = type_entry.id;
-    extent = 0;
-    length = 0;
-    if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-    {
-        // A BLOB RECORD CARRIES A LENGTH AT THIRTY-TWO RAW BITS, then ALIGNS,
-        // then the bytes verbatim (§3.3)
-        uint64_t n = 0;
-        if ( !r.get( n, 32 ) || !r.align() || !r.skip( (int64_t) n * 8 ) ) { return false; }
-        length = (int64_t) n;
-        return true;
-    }
-    return HolderNodeMessageExtent( type_id, r, vocabulary, index_bits, extent );
-}
-
-// HolderMessageBodyStorage: one body's node count and data bytes from the FRAMING
-// alone, the reader left at the next body. The node table is walked record
-// by record, a table record's body stepped over by its announced shapes and
-// a blob's by its length, then the root's own fields. False is a numbering
-// that could not be sized; `complete` false is a ROOT body whose own framing
-// gave out, which the load meets as damage inside this body after the
-// bodies before it were delivered, so the batch is sized through this body
-// and no further (§3.3).
-inline bool HolderMessageBodyStorage( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & records, int64_t & data, bool & complete )
-{
-    complete = true;
-    records = 0;
-    data = 0;
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { return false; }
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !HolderMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { return false; }
-        const int64_t storage = HolderNodeMessageStorage( type_id, extent, length );
-        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
-        records++;
-    }
-    int64_t root_extent = 0;
-    if ( !HolderMessageExtent( r, vocabulary, index_bits, root_extent ) ) { complete = false; }
-    data += TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Holder ) ) + root_extent );
-    return true;
-}
-
-// HolderLoadMeasure's MESSAGE overload: the exact region bytes ONE BATCH needs,
-// which is one measurement, one allocation and one bounds check for however
-// many bodies ride (§3.3, §6.5). It is a scan by the announced shapes and
-// reads no field value. The answer is the data bytes plus the attribution,
-// one node directory a body, and -1 for a wire it cannot size: no vocabulary,
-// another form, or framing that gives out.
-inline int64_t HolderLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, int64_t * attribution_bytes = NULL )
-{
-    TableReport ignored;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, &ignored );
-    if ( bodies < 0 ) { return -1; }
-    int64_t data = 0, attribution = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        int64_t records = 0, body_data = 0;
-        bool complete = true;
-        if ( !HolderMessageBodyStorage( br.r, vocabulary, records, body_data, complete ) ) { return -1; }
-        data += body_data;
-        attribution += ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-        if ( !complete ) { break; } // damage inside this body: the load delivers the ones before it
-    }
-    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
-    return data + attribution;
-}
-
-// HolderLoadMessageBodyInto: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-inline bool HolderLoadMessageBodyInto( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Holder * & root_out )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !HolderMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = HolderNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        HolderNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !HolderMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Holder ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0xa1f526c44ead452full;
-    Holder * root = new ( region + used ) Holder; // lifetime only: LoadMessageBody's first act is HolderReset
-    HolderReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Holder ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    out->unknown += unknown_records;
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !HolderNodeMessageBody( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return HolderLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );
-}
-
-// HolderLoadMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-inline bool HolderLoadMessages( const Holder ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !HolderLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
-}
-
 // HolderLoadMeasure: the exact region bytes a wire buffer will need, and it is
 // ONE SCAN — a record's type id gives its storage size, its length gives the
 // next record — reading no field value at all, so the caller owns the
@@ -12676,8 +10237,6 @@ inline const Holder * HolderLoadTolerant( uint8_t * region, int64_t region_bytes
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -12799,9 +10358,7 @@ inline const Holder * HolderLoadTolerant( uint8_t * region, int64_t region_bytes
     HolderLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
 }
 
@@ -12843,8 +10400,6 @@ inline bool HolderLoadBuilderTolerant( HolderBuilder & builder, const uint8_t * 
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -12938,10 +10493,6 @@ inline bool HolderLoadBuilderTolerant( HolderBuilder & builder, const uint8_t * 
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
-    if ( out->malformed ) { return false; }
-    out->malformed = malformed_before;
     return ok;
 }
 
@@ -13200,50 +10751,6 @@ inline void HandNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
-// HandNodeMessageStorage: the region bytes one record commands on the message
-// wire, or -1 for a type id this build cannot name. A table's is its own
-// storage plus the extent its maps take; a byte buffer's is its header and
-// its bytes, which is the one answer the record's LENGTH decides.
-inline int64_t HandNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t length )
-{
-    (void) length;
-    (void) extent;
-    (void) type_id;
-    return -1;
-}
-
-// HandNodeMessageExtent: step over one TABLE record's body, tallying the extent
-// its maps take where its type has any (§2.8). A type this build cannot
-// name is stepped over by its announced shapes and takes no extent.
-inline bool HandNodeMessageExtent( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & extent )
-{
-    extent = 0;
-    (void) type_id; // no map below any node this root can name
-    return TableMessageSkipBody( r, vocabulary, index_bits );
-}
-
-// HandNodeMessageBody: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-inline bool HandNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
-{
-    TableExtentCarve carve;
-    carve.at = at + HandNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !HandNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -13333,308 +10840,6 @@ inline int64_t HandSave( const HandBuilder & builder, uint8_t * buffer, int64_t 
     return HandSaveWire( ctx, *(const Hand *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
 }
 
-// ---- Hand on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
-
-// HandMessageBodyBits: one root body's bits at bit position `at` of the batch,
-// with the numbering derived from the graph, the node table FIRST, then the
-// fields, then the zero reference. Measure derives the numbering and save
-// derives the same one, and nothing passes between them (§3.1).
-template <typename Ctx>
-inline int64_t HandMessageBodyBits( const Ctx & ctx, const Hand & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    int64_t bits = -1;
-    if ( HandNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-            if ( table >= 0 )
-            {
-                const int64_t body = HandMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-                bits = body < 0 ? -1 : table + body;
-            }
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return bits;
-}
-
-template <typename Ctx>
-inline bool HandMessageBodySave( const Ctx & ctx, const Hand & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    bool ok = false;
-    if ( HandNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && HandSaveMessageBody( ctx, numbering, index_bits, w, root );
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return ok && !w.overflow;
-}
-
-// THE PRIMITIVE IS A BATCH (§3.3): a number of ROOTS in one buffer, one count
-// and one continuous bit stream, each body carrying its own numbering. A
-// root is a locked region's, `builder.AsConst()`, or a loaded one's. M above
-// 256 is a refusal by name, batch_too_large, with nothing written.
-inline int64_t HandMeasureMessages( const Hand * const * roots, int64_t count, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableRegionCtx ctx;
-    int64_t bits = 8; // the body count
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        const int64_t body = HandMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
-        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
-        bits += body;
-    }
-    return 1 + ( bits + 7 ) / 8;
-}
-
-inline int64_t HandSaveMessages( const Hand * const * roots, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableMessageBatch batch;
-    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
-    TableRegionCtx ctx;
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        if ( !HandMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
-        {
-            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
-            return -1;
-        }
-        batch.written++;
-    }
-    return TableMessageBatchEnd( batch ); // == HandMeasureMessages( roots, count, report, allocator )
-}
-
-// HandMessageRecordScan: one node record's type id and the extent its maps
-// take, or a blob's length, the reader left after the record. A type id
-// reference of 0, one past E, or one naming anything but a kind-0 entry is
-// damage, as §3.1 and §3.3 say.
-inline bool HandMessageRecordScan( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, uint64_t & type_id, int64_t & extent, int64_t & length )
-{
-    uint64_t type_ref = 0;
-    if ( !r.get( type_ref, vocabulary.ref_bits ) ) { return false; }
-    TableMessageEntry type_entry;
-    if ( !TableMessageNameEntry( vocabulary, type_ref, type_entry ) ) { return false; }
-    type_id = type_entry.id;
-    extent = 0;
-    length = 0;
-    if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-    {
-        // A BLOB RECORD CARRIES A LENGTH AT THIRTY-TWO RAW BITS, then ALIGNS,
-        // then the bytes verbatim (§3.3)
-        uint64_t n = 0;
-        if ( !r.get( n, 32 ) || !r.align() || !r.skip( (int64_t) n * 8 ) ) { return false; }
-        length = (int64_t) n;
-        return true;
-    }
-    return HandNodeMessageExtent( type_id, r, vocabulary, index_bits, extent );
-}
-
-// HandMessageBodyStorage: one body's node count and data bytes from the FRAMING
-// alone, the reader left at the next body. The node table is walked record
-// by record, a table record's body stepped over by its announced shapes and
-// a blob's by its length, then the root's own fields. False is a numbering
-// that could not be sized; `complete` false is a ROOT body whose own framing
-// gave out, which the load meets as damage inside this body after the
-// bodies before it were delivered, so the batch is sized through this body
-// and no further (§3.3).
-inline bool HandMessageBodyStorage( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & records, int64_t & data, bool & complete )
-{
-    complete = true;
-    records = 0;
-    data = 0;
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { return false; }
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !HandMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { return false; }
-        const int64_t storage = HandNodeMessageStorage( type_id, extent, length );
-        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
-        records++;
-    }
-    int64_t root_extent = 0;
-    if ( !HandMessageExtent( r, vocabulary, index_bits, root_extent ) ) { complete = false; }
-    data += TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Hand ) ) + root_extent );
-    return true;
-}
-
-// HandLoadMeasure's MESSAGE overload: the exact region bytes ONE BATCH needs,
-// which is one measurement, one allocation and one bounds check for however
-// many bodies ride (§3.3, §6.5). It is a scan by the announced shapes and
-// reads no field value. The answer is the data bytes plus the attribution,
-// one node directory a body, and -1 for a wire it cannot size: no vocabulary,
-// another form, or framing that gives out.
-inline int64_t HandLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, int64_t * attribution_bytes = NULL )
-{
-    TableReport ignored;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, &ignored );
-    if ( bodies < 0 ) { return -1; }
-    int64_t data = 0, attribution = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        int64_t records = 0, body_data = 0;
-        bool complete = true;
-        if ( !HandMessageBodyStorage( br.r, vocabulary, records, body_data, complete ) ) { return -1; }
-        data += body_data;
-        attribution += ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-        if ( !complete ) { break; } // damage inside this body: the load delivers the ones before it
-    }
-    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
-    return data + attribution;
-}
-
-// HandLoadMessageBodyInto: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-inline bool HandLoadMessageBodyInto( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Hand * & root_out )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !HandMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = HandNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        HandNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !HandMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Hand ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0x58ba95d8757c67c0ull;
-    Hand * root = new ( region + used ) Hand; // lifetime only: LoadMessageBody's first act is HandReset
-    HandReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Hand ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    out->unknown += unknown_records;
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !HandNodeMessageBody( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return HandLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );
-}
-
-// HandLoadMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-inline bool HandLoadMessages( const Hand ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !HandLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
-}
-
 // HandLoadMeasure: the exact region bytes a wire buffer will need, and it is
 // ONE SCAN — a record's type id gives its storage size, its length gives the
 // next record — reading no field value at all, so the caller owns the
@@ -13692,8 +10897,6 @@ inline const Hand * HandLoadTolerant( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -13815,9 +11018,7 @@ inline const Hand * HandLoadTolerant( uint8_t * region, int64_t region_bytes, co
     HandLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
 }
 
@@ -13859,8 +11060,6 @@ inline bool HandLoadBuilderTolerant( HandBuilder & builder, const uint8_t * wire
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -13954,10 +11153,6 @@ inline bool HandLoadBuilderTolerant( HandBuilder & builder, const uint8_t * wire
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
-    if ( out->malformed ) { return false; }
-    out->malformed = malformed_before;
     return ok;
 }
 
@@ -14216,50 +11411,6 @@ inline void ChainNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
-// ChainNodeMessageStorage: the region bytes one record commands on the message
-// wire, or -1 for a type id this build cannot name. A table's is its own
-// storage plus the extent its maps take; a byte buffer's is its header and
-// its bytes, which is the one answer the record's LENGTH decides.
-inline int64_t ChainNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t length )
-{
-    (void) length;
-    (void) extent;
-    (void) type_id;
-    return -1;
-}
-
-// ChainNodeMessageExtent: step over one TABLE record's body, tallying the extent
-// its maps take where its type has any (§2.8). A type this build cannot
-// name is stepped over by its announced shapes and takes no extent.
-inline bool ChainNodeMessageExtent( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int64_t & extent )
-{
-    extent = 0;
-    (void) type_id; // no map below any node this root can name
-    return TableMessageSkipBody( r, vocabulary, index_bits );
-}
-
-// ChainNodeMessageBody: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-inline bool ChainNodeMessageBody( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at )
-{
-    TableExtentCarve carve;
-    carve.at = at + ChainNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !ChainNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -14349,308 +11500,6 @@ inline int64_t ChainSave( const ChainBuilder & builder, uint8_t * buffer, int64_
     return ChainSaveWire( ctx, *(const Chain *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );
 }
 
-// ---- Chain on the MESSAGE wire: the batch over a region (docs/SPEC-TABLES.md §3.3) ----
-
-// ChainMessageBodyBits: one root body's bits at bit position `at` of the batch,
-// with the numbering derived from the graph, the node table FIRST, then the
-// fields, then the zero reference. Measure derives the numbering and save
-// derives the same one, and nothing passes between them (§3.1).
-template <typename Ctx>
-inline int64_t ChainMessageBodyBits( const Ctx & ctx, const Chain & root, int64_t at, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    int64_t bits = -1;
-    if ( ChainNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            const int64_t table = TableMessageNodeTableMeasure( ctx, numbering, index_bits, at );
-            if ( table >= 0 )
-            {
-                const int64_t body = ChainMeasureMessageBody( ctx, numbering, index_bits, at + table, root );
-                bits = body < 0 ? -1 : table + body;
-            }
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return bits;
-}
-
-template <typename Ctx>
-inline bool ChainMessageBodySave( const Ctx & ctx, const Chain & root, TableBitWriter & w, TableAllocator allocator, TableRefuseReason * reason = NULL )
-{
-    TableNumbering numbering;
-    TableNumberingInit( numbering, allocator );
-    bool ok = false;
-    if ( ChainNumberFrom( ctx, numbering, root ) ) // a blob named twice: blob_shared (§2.5, §16.7)
-    {
-        if ( numbering.shared ) { if ( reason != NULL ) { *reason = blob_shared; } } // NEVER a bare -1: the writer names it
-        else
-        {
-            const int64_t index_bits = TableBitsRequired( 0, numbering.count + 1 );
-            ok = TableMessageNodeTableSave( ctx, numbering, index_bits, w ) && ChainSaveMessageBody( ctx, numbering, index_bits, w, root );
-        }
-    }
-    TableNumberingShutdown( numbering );
-    return ok && !w.overflow;
-}
-
-// THE PRIMITIVE IS A BATCH (§3.3): a number of ROOTS in one buffer, one count
-// and one continuous bit stream, each body carrying its own numbering. A
-// root is a locked region's, `builder.AsConst()`, or a loaded one's. M above
-// 256 is a refusal by name, batch_too_large, with nothing written.
-inline int64_t ChainMeasureMessages( const Chain * const * roots, int64_t count, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableRegionCtx ctx;
-    int64_t bits = 8; // the body count
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        const int64_t body = ChainMessageBodyBits( ctx, *roots[i], bits, allocator, &why );
-        if ( body < 0 ) { if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } return -1; } // §2.5, §16.7
-        bits += body;
-    }
-    return 1 + ( bits + 7 ) / 8;
-}
-
-inline int64_t ChainSaveMessages( const Chain * const * roots, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report, TableAllocator allocator = TableDefaultAllocator() )
-{
-    if ( roots == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
-    TableMessageBatch batch;
-    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
-    TableRegionCtx ctx;
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( roots[i] == NULL ) { return -1; }
-        TableRefuseReason why = ok;
-        if ( !ChainMessageBodySave( ctx, *roots[i], batch.w, allocator, &why ) )
-        {
-            if ( why == blob_shared && report != NULL ) { report->refuse_reason = blob_shared; } // §2.5, §16.7
-            return -1;
-        }
-        batch.written++;
-    }
-    return TableMessageBatchEnd( batch ); // == ChainMeasureMessages( roots, count, report, allocator )
-}
-
-// ChainMessageRecordScan: one node record's type id and the extent its maps
-// take, or a blob's length, the reader left after the record. A type id
-// reference of 0, one past E, or one naming anything but a kind-0 entry is
-// damage, as §3.1 and §3.3 say.
-inline bool ChainMessageRecordScan( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, uint64_t & type_id, int64_t & extent, int64_t & length )
-{
-    uint64_t type_ref = 0;
-    if ( !r.get( type_ref, vocabulary.ref_bits ) ) { return false; }
-    TableMessageEntry type_entry;
-    if ( !TableMessageNameEntry( vocabulary, type_ref, type_entry ) ) { return false; }
-    type_id = type_entry.id;
-    extent = 0;
-    length = 0;
-    if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-    {
-        // A BLOB RECORD CARRIES A LENGTH AT THIRTY-TWO RAW BITS, then ALIGNS,
-        // then the bytes verbatim (§3.3)
-        uint64_t n = 0;
-        if ( !r.get( n, 32 ) || !r.align() || !r.skip( (int64_t) n * 8 ) ) { return false; }
-        length = (int64_t) n;
-        return true;
-    }
-    return ChainNodeMessageExtent( type_id, r, vocabulary, index_bits, extent );
-}
-
-// ChainMessageBodyStorage: one body's node count and data bytes from the FRAMING
-// alone, the reader left at the next body. The node table is walked record
-// by record, a table record's body stepped over by its announced shapes and
-// a blob's by its length, then the root's own fields. False is a numbering
-// that could not be sized; `complete` false is a ROOT body whose own framing
-// gave out, which the load meets as damage inside this body after the
-// bodies before it were delivered, so the batch is sized through this body
-// and no further (§3.3).
-inline bool ChainMessageBodyStorage( TableBitReader & r, const TableVocabulary & vocabulary, int64_t & records, int64_t & data, bool & complete )
-{
-    complete = true;
-    records = 0;
-    data = 0;
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { return false; }
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !ChainMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { return false; }
-        const int64_t storage = ChainNodeMessageStorage( type_id, extent, length );
-        if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
-        records++;
-    }
-    int64_t root_extent = 0;
-    if ( !ChainMessageExtent( r, vocabulary, index_bits, root_extent ) ) { complete = false; }
-    data += TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Chain ) ) + root_extent );
-    return true;
-}
-
-// ChainLoadMeasure's MESSAGE overload: the exact region bytes ONE BATCH needs,
-// which is one measurement, one allocation and one bounds check for however
-// many bodies ride (§3.3, §6.5). It is a scan by the announced shapes and
-// reads no field value. The answer is the data bytes plus the attribution,
-// one node directory a body, and -1 for a wire it cannot size: no vocabulary,
-// another form, or framing that gives out.
-inline int64_t ChainLoadMeasure( const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, int64_t * attribution_bytes = NULL )
-{
-    TableReport ignored;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, &ignored );
-    if ( bodies < 0 ) { return -1; }
-    int64_t data = 0, attribution = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        int64_t records = 0, body_data = 0;
-        bool complete = true;
-        if ( !ChainMessageBodyStorage( br.r, vocabulary, records, body_data, complete ) ) { return -1; }
-        data += body_data;
-        attribution += ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-        if ( !complete ) { break; } // damage inside this body: the load delivers the ones before it
-    }
-    if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
-    return data + attribution;
-}
-
-// ChainLoadMessageBodyInto: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-inline bool ChainLoadMessageBodyInto( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Chain * & root_out )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !ChainMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = ChainNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        ChainNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !ChainMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Chain ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0x670377dcbe2f82b6ull;
-    Chain * root = new ( region + used ) Chain; // lifetime only: LoadMessageBody's first act is ChainReset
-    ChainReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Chain ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    out->unknown += unknown_records;
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !ChainNodeMessageBody( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return ChainLoadMessageBody( r, vocabulary, out, nodes, index_bits, *root );
-}
-
-// ChainLoadMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-inline bool ChainLoadMessages( const Chain ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !ChainLoadMessageBodyInto( br.r, vocabulary, out, region, region_bytes, used, roots[b] ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
-}
-
 // ChainLoadMeasure: the exact region bytes a wire buffer will need, and it is
 // ONE SCAN — a record's type id gives its storage size, its length gives the
 // next record — reading no field value at all, so the caller owns the
@@ -14708,8 +11557,6 @@ inline const Chain * ChainLoadTolerant( uint8_t * region, int64_t region_bytes, 
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -14831,9 +11678,7 @@ inline const Chain * ChainLoadTolerant( uint8_t * region, int64_t region_bytes, 
     ChainLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
 }
 
@@ -14875,8 +11720,6 @@ inline bool ChainLoadBuilderTolerant( ChainBuilder & builder, const uint8_t * wi
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     TableIdTable ids_table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
@@ -14970,10 +11813,6 @@ inline bool ChainLoadBuilderTolerant( ChainBuilder & builder, const uint8_t * wi
     // holds what it held when the count was met
     ok = ok && !nodes.refused;
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
-    if ( out->malformed ) { return false; }
-    out->malformed = malformed_before;
     return ok;
 }
 
@@ -15125,7 +11964,7 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -15165,8 +12004,8 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -15194,8 +12033,8 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -15228,92 +12067,6 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                 if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-// UNDER RETENTION the same body keeps the fields this build cannot name,
-// resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the
-// path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).
-// The reader's own data is exactly what it would have been with retention off.
-inline bool LeafLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Leaf & value, TableRetain * retain, const TableRetainPath & path )
-{
-    (void) nodes; (void) index_bits;
-    LeafReset( value );
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever
-    // an earlier occurrence of it left is discarded before the winning one is
-    // read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0x3e7884bf4f412c6full: // items
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 4 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    n += (uint64_t) entry.min;
-                    TableListFill<int32_t> fill = TableListFillBegin( nodes, value.items, n );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        int32_t * slot = TableListFillNext( fill );
-                        if ( slot == NULL ) { report->malformed = true; return false; } // the arena could not carve
-                        {
-                            const int64_t width_2 = entry.elem_value_bits;
-                            uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide_2 = (int64_t) raw_2;
-                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            else if ( width_2 > 0 && width_2 < 64 )
-                            {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                            }
-                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                            ( *slot ) = decoded_v_2;
-                        }
-                    }
-                    TableListFillEnd( fill );
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-            {
-                const int64_t unknown_at = r.offset;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)
-            }
-                break;
         }
     }
 }
@@ -15455,7 +12208,7 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -15580,8 +12333,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -15609,8 +12362,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -15643,185 +12396,6 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                 if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-// UNDER RETENTION the same body keeps the fields this build cannot name,
-// resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the
-// path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).
-// The reader's own data is exactly what it would have been with retention off.
-inline bool HolderLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Holder & value, TableRetain * retain, const TableRetainPath & path )
-{
-    (void) nodes; (void) index_bits;
-    HolderReset( value );
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever
-    // an earlier occurrence of it left is discarded before the winning one is
-    // read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0xafcd9a3b099f8ef0ull: // carry
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 15 || entry.elem_kind != 0 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                TableRetainDiscardField( retain, path, 0 );
-                {
-                    uint64_t arm_ref = 0;
-                    if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-                    TableMessageEntry arm;
-                    if ( arm_ref == 0 ) { value.carry.type = CarryType::None; }
-                    else if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { report->malformed = true; return false; }
-                    else
-                    {
-                        switch ( arm.id )
-                        {
-                            case 0x24ad84ada20208d5ull: // leaf
-                            {
-                                if ( arm.kind != 13 || arm.elem_kind != 0 )
-                                {
-                                    value.carry.type = CarryType::None; report->kind_mismatch++;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
-                                    break;
-                                }
-                                value.carry.type = CarryType::Leaf;
-                                if ( !LeafLoadMessageBodyRetain( r, vocabulary, report, nodes, index_bits, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
-                                break;
-                            }
-                            case 0xfd4d194e1652b207ull: // plain
-                            {
-                                if ( arm.kind != 4 || arm.elem_kind != 0 )
-                                {
-                                    if ( TableKindWidens( arm.kind, 4 ) )
-                                    {
-                                        value.carry.type = CarryType::Plain;
-                                        memset( (void *) &value.carry.plain, 0, sizeof( value.carry.plain ) ); // selection establishes the arm (§2.6)
-                                        {
-                                            const int64_t width_2 = arm.value_bits;
-                                            uint64_t raw_2 = 0;
-                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                                            int64_t decoded_wide_2 = (int64_t) raw_2;
-                                            if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
-                                            else if ( width_2 > 0 && width_2 < 64 )
-                                            {
-                                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                                            }
-                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                            value.carry.plain = decoded_v_2;
-                                        }
-                                        report->widened++;
-                                        break;
-                                    }
-                                    value.carry.type = CarryType::None; report->kind_mismatch++;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
-                                    break;
-                                }
-                                value.carry.type = CarryType::Plain;
-                                {
-                                    const int64_t width_2 = arm.value_bits;
-                                    uint64_t raw_2 = 0;
-                                    if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                                    int64_t decoded_wide_2 = (int64_t) raw_2;
-                                    if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
-                                    else if ( width_2 > 0 && width_2 < 64 )
-                                    {
-                                        const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                        if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                                    }
-                                    if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                                    if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                                    int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                                    value.carry.plain = decoded_v_2;
-                                }
-                                break;
-                            }
-                            default:
-                                value.carry.type = CarryType::None; report->unknown++; report->retain_lost++;
-                                if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->malformed = true; return false; }
-                                break;
-                        }
-                    }
-                }
-                break;
-            }
-            case 0xd94c56ef0798d723ull: // tail
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 4 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    n += (uint64_t) entry.min;
-                    TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, n );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        int32_t * slot = TableListFillNext( fill );
-                        if ( slot == NULL ) { report->malformed = true; return false; } // the arena could not carve
-                        {
-                            const int64_t width_2 = entry.elem_value_bits;
-                            uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide_2 = (int64_t) raw_2;
-                            if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            else if ( width_2 > 0 && width_2 < 64 )
-                            {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
-                                if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
-                            }
-                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v_2 = (int32_t) decoded_wide_2;
-                            ( *slot ) = decoded_v_2;
-                        }
-                    }
-                    TableListFillEnd( fill );
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-            {
-                const int64_t unknown_at = r.offset;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)
-            }
-                break;
         }
     }
 }
@@ -15994,7 +12568,7 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -16035,9 +12609,9 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                     uint64_t keep = count;
                     if ( keep > 2 ) { keep = 2; r.report->clamped++; }
                     // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
+                    // cannot cover keeps the decoded prefix, flags malformed, and
+                    // the parent continues at the next field — following fields'
+                    // bytes are never fabricated into elements
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint64_t decoded = 0;
                     for ( uint64_t i = 0; i < keep; i++ )
@@ -16151,211 +12725,6 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                 if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
                 break;
             }
-        }
-    }
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-// UNDER RETENTION the same body keeps the fields this build cannot name,
-// resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the
-// path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).
-// The reader's own data is exactly what it would have been with retention off.
-inline bool HandLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Hand & value, TableRetain * retain, const TableRetainPath & path )
-{
-    (void) nodes; (void) index_bits;
-    HandReset( value );
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever
-    // an earlier occurrence of it left is discarded before the winning one is
-    // read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0xc5b2a72c0845a253ull: // entries
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 15 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = (uint64_t) entry.min;
-                    const int64_t count_bits = TableBitsRequired( entry.min, entry.max );
-                    if ( count_bits > 0 )
-                    {
-                        uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->malformed = true; return false; }
-                        n = raw + (uint64_t) entry.min;
-                    }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->malformed = true; return false; }
-                    int32_t kept = 0;
-                    if ( n > (uint64_t) 2 ) { kept = 2; report->clamped++; } else { kept = (int32_t) n; }
-                    const uint64_t walk = n;
-                    for ( uint64_t i = 0; i < walk; i++ )
-                    {
-                        const bool in_bounds = (int32_t) i < kept;
-                        Carry scratch;
-                        {
-                            uint64_t arm_ref_2 = 0;
-                            if ( !r.get( arm_ref_2, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-                            TableMessageEntry arm_2;
-                            if ( arm_ref_2 == 0 ) { ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; }
-                            else if ( !TableMessageArmEntry( vocabulary, arm_ref_2, arm_2 ) ) { report->malformed = true; return false; }
-                            else
-                            {
-                                switch ( arm_2.id )
-                                {
-                                    case 0x24ad84ada20208d5ull: // leaf
-                                    {
-                                        if ( arm_2.kind != 13 || arm_2.elem_kind != 0 )
-                                        {
-                                            ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( in_bounds ? value.entries[i] : scratch ).type = CarryType::Leaf;
-                                        if ( !LeafLoadMessageBodyRetain( r, vocabulary, report, nodes, index_bits, ( in_bounds ? value.entries[i] : scratch ).leaf, ( in_bounds ? retain : NULL ), TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( i ) ), 0, (uint32_t) ( 0 ) ) ) ) { return false; }
-                                        break;
-                                    }
-                                    case 0xfd4d194e1652b207ull: // plain
-                                    {
-                                        if ( arm_2.kind != 4 || arm_2.elem_kind != 0 )
-                                        {
-                                            if ( TableKindWidens( arm_2.kind, 4 ) )
-                                            {
-                                                ( in_bounds ? value.entries[i] : scratch ).type = CarryType::Plain;
-                                                memset( (void *) &( in_bounds ? value.entries[i] : scratch ).plain, 0, sizeof( ( in_bounds ? value.entries[i] : scratch ).plain ) ); // selection establishes the arm (§2.6)
-                                                {
-                                                    const int64_t width_3 = arm_2.value_bits;
-                                                    uint64_t raw_3 = 0;
-                                                    if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                                    int64_t decoded_wide_3 = (int64_t) raw_3;
-                                                    if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                                    else if ( width_3 > 0 && width_3 < 64 )
-                                                    {
-                                                        const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                                    }
-                                                    if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                                    if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                                    int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                                    ( in_bounds ? value.entries[i] : scratch ).plain = decoded_v_3;
-                                                }
-                                                report->widened++;
-                                                break;
-                                            }
-                                            ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( in_bounds ? value.entries[i] : scratch ).type = CarryType::Plain;
-                                        {
-                                            const int64_t width_3 = arm_2.value_bits;
-                                            uint64_t raw_3 = 0;
-                                            if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                            int64_t decoded_wide_3 = (int64_t) raw_3;
-                                            if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                            else if ( width_3 > 0 && width_3 < 64 )
-                                            {
-                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                            }
-                                            if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                            if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                            int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                            ( in_bounds ? value.entries[i] : scratch ).plain = decoded_v_3;
-                                        }
-                                        break;
-                                    }
-                                    default:
-                                        ( in_bounds ? value.entries[i] : scratch ).type = CarryType::None; report->unknown++; report->retain_lost++;
-                                        if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                        break;
-                                }
-                            }
-                        }
-                    }
-                    value.entries_count = kept;
-                }
-                break;
-            }
-            case 0xbf82010f6f71eae9ull: // past
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 4 || entry.elem_kind != 0 )
-                {
-                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
-                    {
-                        {
-                            const int64_t width = entry.value_bits;
-                            uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            else if ( width > 0 && width < 64 )
-                            {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                            }
-                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v = (int32_t) decoded_wide;
-                            value.past = decoded_v;
-                        }
-                        report->widened++;
-                        break;
-                    }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    else if ( width > 0 && width < 64 )
-                    {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                    }
-                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                    int32_t decoded_v = (int32_t) decoded_wide;
-                    value.past = decoded_v;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-            {
-                const int64_t unknown_at = r.offset;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)
-            }
-                break;
         }
     }
 }
@@ -16535,7 +12904,7 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
             // table's is the ROOT body's alone, on the numbering's own
             // rule — a second numbering cannot exist — and the BUILD
             // VERSION's rides in the announcement and nowhere else. That
-            // is damage, and damage discards the whole load (§4).
+            // body stops and the parent reads on past its L.
             r.report->malformed = true;
             return false;
         }
@@ -16577,8 +12946,8 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                         if ( fill.refused ) { nodes.refused = true; return false; }
                         if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
                         // elements are BOUNDED by the field body: a count the length cannot
-                        // cover is damage, flags malformed, and the load is discarded
-                        // whole (§4)
+                        // cover keeps the decoded prefix, flags malformed, and the parent
+                        // continues at the next field
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         for ( uint64_t i = 0; i < count; i++ )
                         {
@@ -16697,208 +13066,6 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
     }
 }
 
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-// UNDER RETENTION the same body keeps the fields this build cannot name,
-// resolved against the CONNECTION'S VOCABULARY instead of a trailer, with the
-// path threaded at every child-body descent (docs/SPEC-TABLES.md §3.3, §6.6).
-// The reader's own data is exactly what it would have been with retention off.
-inline bool ChainLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, Chain & value, TableRetain * retain, const TableRetainPath & path )
-{
-    (void) nodes; (void) index_bits;
-    ChainReset( value );
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so whatever
-    // an earlier occurrence of it left is discarded before the winning one is
-    // read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->malformed = true; return false; }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->malformed = true; return false; }
-        switch ( entry.id )
-        {
-            case 0x5cc201a9f1b8274eull: // links
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 14 || entry.elem_kind != 15 )
-                {
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) ) { report->malformed = true; return false; }
-                    n += (uint64_t) entry.min;
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 0 );
-                    TableListFill<Carry> fill = TableListFillBegin( nodes, value.links, n );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { report->malformed = true; return false; } // the measure and the load disagree
-                    for ( uint64_t i = 0; i < n; i++ )
-                    {
-                        Carry * slot = TableListFillNext( fill );
-                        if ( slot == NULL ) { report->malformed = true; return false; } // the arena could not carve
-                        {
-                            uint64_t arm_ref_2 = 0;
-                            if ( !r.get( arm_ref_2, vocabulary.ref_bits ) ) { report->malformed = true; return false; }
-                            TableMessageEntry arm_2;
-                            if ( arm_ref_2 == 0 ) { ( *slot ).type = CarryType::None; }
-                            else if ( !TableMessageArmEntry( vocabulary, arm_ref_2, arm_2 ) ) { report->malformed = true; return false; }
-                            else
-                            {
-                                switch ( arm_2.id )
-                                {
-                                    case 0x24ad84ada20208d5ull: // leaf
-                                    {
-                                        if ( arm_2.kind != 13 || arm_2.elem_kind != 0 )
-                                        {
-                                            ( *slot ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( *slot ).type = CarryType::Leaf;
-                                        if ( !LeafLoadMessageBodyRetain( r, vocabulary, report, nodes, index_bits, ( *slot ).leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
-                                        break;
-                                    }
-                                    case 0xfd4d194e1652b207ull: // plain
-                                    {
-                                        if ( arm_2.kind != 4 || arm_2.elem_kind != 0 )
-                                        {
-                                            if ( TableKindWidens( arm_2.kind, 4 ) )
-                                            {
-                                                ( *slot ).type = CarryType::Plain;
-                                                memset( (void *) &( *slot ).plain, 0, sizeof( ( *slot ).plain ) ); // selection establishes the arm (§2.6)
-                                                {
-                                                    const int64_t width_3 = arm_2.value_bits;
-                                                    uint64_t raw_3 = 0;
-                                                    if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                                    int64_t decoded_wide_3 = (int64_t) raw_3;
-                                                    if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                                    else if ( width_3 > 0 && width_3 < 64 )
-                                                    {
-                                                        const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                        if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                                    }
-                                                    if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                                    if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                                    int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                                    ( *slot ).plain = decoded_v_3;
-                                                }
-                                                report->widened++;
-                                                break;
-                                            }
-                                            ( *slot ).type = CarryType::None; report->kind_mismatch++;
-                                            if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                            break;
-                                        }
-                                        ( *slot ).type = CarryType::Plain;
-                                        {
-                                            const int64_t width_3 = arm_2.value_bits;
-                                            uint64_t raw_3 = 0;
-                                            if ( width_3 < 0 || !r.get( raw_3, width_3 ) ) { report->malformed = true; return false; }
-                                            int64_t decoded_wide_3 = (int64_t) raw_3;
-                                            if ( arm_2.packing == 1 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
-                                            else if ( width_3 > 0 && width_3 < 64 )
-                                            {
-                                                const uint64_t sign_3 = uint64_t(1) << ( width_3 - 1 );
-                                                if ( ( raw_3 & sign_3 ) != 0 ) { decoded_wide_3 = (int64_t) ( raw_3 | ~( ( uint64_t(1) << width_3 ) - 1 ) ); }
-                                            }
-                                            if ( decoded_wide_3 < -2147483648ll ) { decoded_wide_3 = -2147483648ll; report->clamped++; }
-                                            if ( decoded_wide_3 > 2147483647ll ) { decoded_wide_3 = 2147483647ll; report->clamped++; }
-                                            int32_t decoded_v_3 = (int32_t) decoded_wide_3;
-                                            ( *slot ).plain = decoded_v_3;
-                                        }
-                                        break;
-                                    }
-                                    default:
-                                        ( *slot ).type = CarryType::None; report->unknown++; report->retain_lost++;
-                                        if ( !TableMessageSkip( r, vocabulary, index_bits, arm_2 ) ) { report->malformed = true; return false; }
-                                        break;
-                                }
-                            }
-                        }
-                    }
-                    TableListFillEnd( fill );
-                }
-                break;
-            }
-            case 0xbf82010f6f71eae9ull: // past
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 4 || entry.elem_kind != 0 )
-                {
-                    if ( entry.elem_kind == 0 && TableKindWidens( entry.kind, 4 ) )
-                    {
-                        {
-                            const int64_t width = entry.value_bits;
-                            uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                            int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            else if ( width > 0 && width < 64 )
-                            {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
-                                if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                            }
-                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                            int32_t decoded_v = (int32_t) decoded_wide;
-                            value.past = decoded_v;
-                        }
-                        report->widened++;
-                        break;
-                    }
-                    report->kind_mismatch++;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->malformed = true; return false; }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    else if ( width > 0 && width < 64 )
-                    {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
-                        if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
-                    }
-                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->clamped++; }
-                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->clamped++; }
-                    int32_t decoded_v = (int32_t) decoded_wide;
-                    value.past = decoded_v;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-            {
-                const int64_t unknown_at = r.offset;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->malformed = true; return false; }
-                if ( !TableMessageRetainCapture( retain, r, vocabulary, index_bits, entry, path, report, unknown_at ) ) { return false; } // a non-finite float (§3.3)
-            }
-                break;
-        }
-    }
-}
-
 // LeafNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
@@ -16941,8 +13108,6 @@ inline const Leaf * LeafLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -17073,183 +13238,8 @@ inline const Leaf * LeafLoadRetain( uint8_t * region, int64_t region_bytes, cons
     LeafLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
-}
-
-// LeafNodeMessageBodyRetain: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
-// index is this body's own directory position, which the batch's load fills
-// from the framing and nothing afterwards renumbers.
-inline bool LeafNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
-{
-    TableExtentCarve carve;
-    carve.at = at + LeafNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !LeafNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    (void) retain; (void) node;
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
-// LeafLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-// UNDER RETENTION the body's own retention buffer is reset here and belongs
-// to it from here on: a batch takes ONE REGION and ONE BUFFER A BODY, because
-// each body carries its own node directory inside that one region and a
-// record's first step is an index into it (docs/SPEC-TABLES.md §3.3, §6.6).
-inline bool LeafLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Leaf * & root_out, TableRetain * retain )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !LeafMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = LeafNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        LeafNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !LeafMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Leaf ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0xa5c085b4bb73d1b5ull;
-    Leaf * root = new ( region + used ) Leaf; // lifetime only: LoadMessageBody's first act is LeafReset
-    LeafReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Leaf ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    // A NODE RECORD whose type id this reader cannot name is one of the SIX
-    // EXCLUDED CLASSES (§6.6): it is a whole node, and putting one back means
-    // renumbering a graph the writer numbers from its own edges.
-    out->unknown += unknown_records;
-    out->retain_lost += unknown_records;
-    // THE BUFFER BELONGS TO THIS BODY from here on: it resets both stores and
-    // writes into neither id list, because a retained record carries its
-    // field's identity in the record itself (§6.6).
-    TableRetainReset( retain, nodes, region );
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !LeafNodeMessageBodyRetain( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return LeafLoadMessageBodyRetain( r, vocabulary, out, nodes, index_bits, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
-}
-
-// LeafLoadRetainMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-// A BATCH TAKES ONE REGION AND ONE RETENTION BUFFER A BODY (§3.3, §6.6):
-// `retains` is an array parallel to `roots`, each entry reset by this call
-// and each holding the records of the body it belongs to, which is what keeps
-// a record's first step an index into that body's own node directory. A
-// SaveRetain from `roots[k]` takes `retains[k]` and is the VARIABLE form's own
-// pair unchanged: retention writing FORM 2 refuses by name (§3.3).
-inline bool LeafLoadRetainMessages( const Leaf ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableRetain * retains, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !LeafLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
 }
 
 // LeafMeasureRetain and LeafSaveRetain: the pair, with the retained tail in
@@ -17344,20 +13334,6 @@ inline int64_t LeafSaveRetain( const Leaf * root, TableRetain * retain, uint8_t 
     return LeafSaveWireRetain( ctx, *root, retain, buffer, capacity, report );
 }
 
-// LeafSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
-// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
-// precedent and never a silent drop, and the two answers are named: a
-// caller that must carry unknowns across a rewrite writes the VARIABLE form,
-// which carries its own table and takes §6.6 unchanged, and a RELAY
-// forwards the sending endpoint's announcement and its batch bytes verbatim.
-template <typename... Args>
-inline int64_t LeafSaveRetainMessages( Args &&... )
-{
-    static_assert( sizeof...( Args ) == (size_t) -1,
-        "Leaf: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
-    return -1;
-}
-
 // HolderNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
@@ -17400,8 +13376,6 @@ inline const Holder * HolderLoadRetain( uint8_t * region, int64_t region_bytes, 
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -17532,183 +13506,8 @@ inline const Holder * HolderLoadRetain( uint8_t * region, int64_t region_bytes, 
     HolderLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
-}
-
-// HolderNodeMessageBodyRetain: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
-// index is this body's own directory position, which the batch's load fills
-// from the framing and nothing afterwards renumbers.
-inline bool HolderNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
-{
-    TableExtentCarve carve;
-    carve.at = at + HolderNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !HolderNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    (void) retain; (void) node;
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
-// HolderLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-// UNDER RETENTION the body's own retention buffer is reset here and belongs
-// to it from here on: a batch takes ONE REGION and ONE BUFFER A BODY, because
-// each body carries its own node directory inside that one region and a
-// record's first step is an index into it (docs/SPEC-TABLES.md §3.3, §6.6).
-inline bool HolderLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Holder * & root_out, TableRetain * retain )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !HolderMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = HolderNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        HolderNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !HolderMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Holder ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0xa1f526c44ead452full;
-    Holder * root = new ( region + used ) Holder; // lifetime only: LoadMessageBody's first act is HolderReset
-    HolderReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Holder ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    // A NODE RECORD whose type id this reader cannot name is one of the SIX
-    // EXCLUDED CLASSES (§6.6): it is a whole node, and putting one back means
-    // renumbering a graph the writer numbers from its own edges.
-    out->unknown += unknown_records;
-    out->retain_lost += unknown_records;
-    // THE BUFFER BELONGS TO THIS BODY from here on: it resets both stores and
-    // writes into neither id list, because a retained record carries its
-    // field's identity in the record itself (§6.6).
-    TableRetainReset( retain, nodes, region );
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !HolderNodeMessageBodyRetain( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return HolderLoadMessageBodyRetain( r, vocabulary, out, nodes, index_bits, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
-}
-
-// HolderLoadRetainMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-// A BATCH TAKES ONE REGION AND ONE RETENTION BUFFER A BODY (§3.3, §6.6):
-// `retains` is an array parallel to `roots`, each entry reset by this call
-// and each holding the records of the body it belongs to, which is what keeps
-// a record's first step an index into that body's own node directory. A
-// SaveRetain from `roots[k]` takes `retains[k]` and is the VARIABLE form's own
-// pair unchanged: retention writing FORM 2 refuses by name (§3.3).
-inline bool HolderLoadRetainMessages( const Holder ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableRetain * retains, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !HolderLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
 }
 
 // HolderMeasureRetain and HolderSaveRetain: the pair, with the retained tail in
@@ -17803,20 +13602,6 @@ inline int64_t HolderSaveRetain( const Holder * root, TableRetain * retain, uint
     return HolderSaveWireRetain( ctx, *root, retain, buffer, capacity, report );
 }
 
-// HolderSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
-// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
-// precedent and never a silent drop, and the two answers are named: a
-// caller that must carry unknowns across a rewrite writes the VARIABLE form,
-// which carries its own table and takes §6.6 unchanged, and a RELAY
-// forwards the sending endpoint's announcement and its batch bytes verbatim.
-template <typename... Args>
-inline int64_t HolderSaveRetainMessages( Args &&... )
-{
-    static_assert( sizeof...( Args ) == (size_t) -1,
-        "Holder: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
-    return -1;
-}
-
 // HandNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
@@ -17859,8 +13644,6 @@ inline const Hand * HandLoadRetain( uint8_t * region, int64_t region_bytes, cons
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -17991,183 +13774,8 @@ inline const Hand * HandLoadRetain( uint8_t * region, int64_t region_bytes, cons
     HandLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
-}
-
-// HandNodeMessageBodyRetain: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
-// index is this body's own directory position, which the batch's load fills
-// from the framing and nothing afterwards renumbers.
-inline bool HandNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
-{
-    TableExtentCarve carve;
-    carve.at = at + HandNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !HandNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    (void) retain; (void) node;
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
-// HandLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-// UNDER RETENTION the body's own retention buffer is reset here and belongs
-// to it from here on: a batch takes ONE REGION and ONE BUFFER A BODY, because
-// each body carries its own node directory inside that one region and a
-// record's first step is an index into it (docs/SPEC-TABLES.md §3.3, §6.6).
-inline bool HandLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Hand * & root_out, TableRetain * retain )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !HandMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = HandNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        HandNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !HandMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Hand ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0x58ba95d8757c67c0ull;
-    Hand * root = new ( region + used ) Hand; // lifetime only: LoadMessageBody's first act is HandReset
-    HandReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Hand ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    // A NODE RECORD whose type id this reader cannot name is one of the SIX
-    // EXCLUDED CLASSES (§6.6): it is a whole node, and putting one back means
-    // renumbering a graph the writer numbers from its own edges.
-    out->unknown += unknown_records;
-    out->retain_lost += unknown_records;
-    // THE BUFFER BELONGS TO THIS BODY from here on: it resets both stores and
-    // writes into neither id list, because a retained record carries its
-    // field's identity in the record itself (§6.6).
-    TableRetainReset( retain, nodes, region );
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !HandNodeMessageBodyRetain( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return HandLoadMessageBodyRetain( r, vocabulary, out, nodes, index_bits, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
-}
-
-// HandLoadRetainMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-// A BATCH TAKES ONE REGION AND ONE RETENTION BUFFER A BODY (§3.3, §6.6):
-// `retains` is an array parallel to `roots`, each entry reset by this call
-// and each holding the records of the body it belongs to, which is what keeps
-// a record's first step an index into that body's own node directory. A
-// SaveRetain from `roots[k]` takes `retains[k]` and is the VARIABLE form's own
-// pair unchanged: retention writing FORM 2 refuses by name (§3.3).
-inline bool HandLoadRetainMessages( const Hand ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableRetain * retains, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !HandLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
 }
 
 // HandMeasureRetain and HandSaveRetain: the pair, with the retained tail in
@@ -18262,20 +13870,6 @@ inline int64_t HandSaveRetain( const Hand * root, TableRetain * retain, uint8_t 
     return HandSaveWireRetain( ctx, *root, retain, buffer, capacity, report );
 }
 
-// HandSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
-// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
-// precedent and never a silent drop, and the two answers are named: a
-// caller that must carry unknowns across a rewrite writes the VARIABLE form,
-// which carries its own table and takes §6.6 unchanged, and a RELAY
-// forwards the sending endpoint's announcement and its batch bytes verbatim.
-template <typename... Args>
-inline int64_t HandSaveRetainMessages( Args &&... )
-{
-    static_assert( sizeof...( Args ) == (size_t) -1,
-        "Hand: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
-    return -1;
-}
-
 // ChainNodeBodyRetain: PASS TWO's half — decode one record's body into the storage it
 // already owns.
 // EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
@@ -18318,8 +13912,6 @@ inline const Chain * ChainLoadRetain( uint8_t * region, int64_t region_bytes, co
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
     const int32_t non_finite_before = out->non_finite_floats;
-    const bool malformed_before = out->malformed;
-    out->malformed = false;
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -18450,183 +14042,8 @@ inline const Chain * ChainLoadRetain( uint8_t * region, int64_t region_bytes, co
     ChainLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
-    out->malformed = malformed_before;
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { memset( region, 0, (size_t) region_bytes ); return NULL; }
     return root;
-}
-
-// ChainNodeMessageBodyRetain: PASS TWO's half, which decodes one record's body into
-// storage it already owns, its map entries carved from its own extent.
-// EACH NODE BODY IS A PATH ROOT of its own (docs/SPEC-TABLES.md §6.6): the
-// index is this body's own directory position, which the batch's load fills
-// from the framing and nothing afterwards renumbers.
-inline bool ChainNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, const TableNodeMap & nodes, int64_t index_bits, uint8_t * at, TableRetain * retain, uint32_t node )
-{
-    TableExtentCarve carve;
-    carve.at = at + ChainNodeRecordBytes( type_id );
-    carve.left = 0;
-    {
-        // the extent this record was placed with, re-read from the framing
-        TableBitReader walk = r;
-        int64_t extent = 0;
-        if ( !ChainNodeMessageExtent( type_id, walk, vocabulary, index_bits, extent ) ) { report->malformed = true; return false; }
-        carve.left = extent;
-    }
-    TableExtentCarve * const outer = nodes.carve;
-    nodes.carve = &carve;
-    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    (void) retain; (void) node;
-    report->malformed = true;
-    nodes.carve = outer;
-    return false;
-}
-
-// ChainLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
-// chunk is the node DIRECTORY, then the records in wire order, then the root
-// and the extent its maps take, so every offset a pass needs is known when
-// the pass reaches it. PASS ONE fills the numbering from the framing and
-// places every node; PASS TWO decodes each record's body into the storage it
-// owns; the ROOT's own body decodes last, so every index it carries resolves
-// against a numbering already known whole.
-// UNDER RETENTION the body's own retention buffer is reset here and belongs
-// to it from here on: a batch takes ONE REGION and ONE BUFFER A BODY, because
-// each body carries its own node directory inside that one region and a
-// record's first step is an index into it (docs/SPEC-TABLES.md §3.3, §6.6).
-inline bool ChainLoadMessageBodyIntoRetain( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * out, uint8_t * region, int64_t region_bytes, int64_t & used, const Chain * & root_out, TableRetain * retain )
-{
-    // the node table opens the body, or the body has none
-    int64_t count = 0;
-    if ( !TableMessageNodeTableOpen( r, vocabulary, count ) ) { out->malformed = true; return false; }
-    const int64_t directory_bytes = ( count + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( used + directory_bytes > region_bytes ) { out->malformed = true; return false; }
-    TableNodeDirEntry * directory = (TableNodeDirEntry *) ( region + used );
-    used += directory_bytes;
-    const int64_t index_bits = TableBitsRequired( 0, count + 1 );
-    TableNodeMap nodes;
-    nodes.base = region;
-    nodes.entries = directory;
-    nodes.count = count + 1;
-    nodes.good = false;
-    nodes.once = true; // the message read marks and counts a blob named twice (§2.5, §16.7)
-
-    // PASS ONE: the numbering from the framing, every node placed, no body read
-    const int64_t records_start = r.offset;
-    int32_t unknown_records = 0;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_id = 0;
-        int64_t extent = 0, length = 0;
-        if ( !ChainMessageRecordScan( r, vocabulary, index_bits, type_id, extent, length ) ) { out->malformed = true; return false; }
-        const int64_t storage = ChainNodeMessageStorage( type_id, extent, length );
-        directory[k + 1].type_id = type_id;
-        if ( storage <= 0 )
-        {
-            // a record whose type id this build cannot name KEEPS ITS INDEX, is
-            // counted once here and not once per pointer, and every reference
-            // to it reads null (§3.1)
-            unknown_records++;
-            directory[k + 1].offset = kTableNodeAbsent;
-            continue;
-        }
-        if ( used + storage > region_bytes ) { out->malformed = true; return false; }
-        directory[k + 1].offset = (uint64_t) used;
-        ChainNodePlace( type_id, region + used, length );
-        used += storage;
-    }
-    const int64_t fields_start = r.offset;
-    int64_t root_extent = 0;
-    {
-        TableBitReader walk = r;
-        if ( !ChainMessageExtent( walk, vocabulary, index_bits, root_extent ) ) { out->malformed = true; return false; }
-    }
-    const int64_t root_bytes = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Chain ) ) + root_extent );
-    if ( used + root_bytes > region_bytes ) { out->malformed = true; return false; }
-    directory[0].offset = (uint64_t) used;
-    directory[0].type_id = 0x670377dcbe2f82b6ull;
-    Chain * root = new ( region + used ) Chain; // lifetime only: LoadMessageBody's first act is ChainReset
-    ChainReset( *root );
-    root_out = root;
-    TableExtentCarve root_carve;
-    root_carve.at = region + used + TableAlignUp64( (int64_t) sizeof( Chain ) );
-    root_carve.left = root_extent;
-    used += root_bytes;
-    nodes.good = true;
-    // A NODE RECORD whose type id this reader cannot name is one of the SIX
-    // EXCLUDED CLASSES (§6.6): it is a whole node, and putting one back means
-    // renumbering a graph the writer numbers from its own edges.
-    out->unknown += unknown_records;
-    out->retain_lost += unknown_records;
-    // THE BUFFER BELONGS TO THIS BODY from here on: it resets both stores and
-    // writes into neither id list, because a retained record carries its
-    // field's identity in the record itself (§6.6).
-    TableRetainReset( retain, nodes, region );
-
-    // PASS TWO: each record's body into its own storage, in wire order
-    r.offset = records_start;
-    for ( int64_t k = 0; k < count; k++ )
-    {
-        uint64_t type_ref = 0;
-        if ( !r.get( type_ref, vocabulary.ref_bits ) ) { out->malformed = true; return false; }
-        const uint64_t type_id = directory[k + 1].type_id;
-        if ( type_id == kTableBytesTypeId || type_id == kTableStringTypeId )
-        {
-            uint64_t length = 0;
-            if ( !r.get( length, 32 ) || !r.align() || !r.has( (int64_t) length * 8 ) ) { out->malformed = true; return false; }
-            if ( directory[k + 1].offset != kTableNodeAbsent && length > 0 ) { memcpy( region + directory[k + 1].offset + kTableBlobHeader, r.buffer + r.offset / 8, (size_t) length ); }
-            r.offset += (int64_t) length * 8;
-            continue;
-        }
-        if ( directory[k + 1].offset == kTableNodeAbsent )
-        {
-            if ( !TableMessageSkipBody( r, vocabulary, index_bits ) ) { out->malformed = true; return false; }
-            continue;
-        }
-        if ( !ChainNodeMessageBodyRetain( type_id, r, vocabulary, out, nodes, index_bits, region + directory[k + 1].offset, retain, (uint32_t) ( k + 2 ) ) ) { return false; }
-    }
-    if ( r.offset != fields_start ) { out->malformed = true; return false; } // the two passes disagree about the table's extent
-
-    // and the ROOT's own body last
-    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
-    return ChainLoadMessageBodyRetain( r, vocabulary, out, nodes, index_bits, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
-}
-
-// ChainLoadRetainMessages: decode a BATCH into the caller's exact-sized region and
-// write each body's root into `roots`. `count` is IN and OUT: the storage the
-// caller has room for, then what it got. M above the capacity is a refusal
-// by name with count holding the wire's M; damage inside body k delivers
-// bodies 1 to k - 1 and count says k - 1 (§3.3). LOAD IS A SCAN: it follows
-// no reference, so there is no depth cap and no visited set. NULL roots
-// beyond count are not bodies.
-// A BATCH TAKES ONE REGION AND ONE RETENTION BUFFER A BODY (§3.3, §6.6):
-// `retains` is an array parallel to `roots`, each entry reset by this call
-// and each holding the records of the body it belongs to, which is what keeps
-// a record's first step an index into that body's own node directory. A
-// SaveRetain from `roots[k]` takes `retains[k]` and is the VARIABLE form's own
-// pair unchanged: retention writing FORM 2 refuses by name (§3.3).
-inline bool ChainLoadRetainMessages( const Chain ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableRetain * retains, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * out = report != NULL ? report : &ignored;
-    if ( roots == NULL || count == NULL ) { out->malformed = true; return false; }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, out );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( out ); return false; }
-    if ( region == NULL || region_bytes < 0 || ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return false; }
-    memset( region, 0, (size_t) region_bytes );
-    int64_t used = 0;
-    for ( int64_t b = 0; b < bodies; b++ )
-    {
-        roots[b] = NULL;
-        if ( !ChainLoadMessageBodyIntoRetain( br.r, vocabulary, out, region, region_bytes, used, roots[b], retains != NULL ? &retains[b] : NULL ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= b && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage or a non-finite float discards the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { memset( region, 0, (size_t) region_bytes ); for ( int64_t k = 0; k <= bodies && k < bodies; k++ ) { roots[k] = NULL; } if ( retains != NULL ) { for ( int64_t k = 0; k < bodies; k++ ) { retains[k].used = 0; retains[k].id_used = 0; retains[k].count = 0; } } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
-    return true;
 }
 
 // ChainMeasureRetain and ChainSaveRetain: the pair, with the retained tail in
@@ -18719,20 +14136,6 @@ inline int64_t ChainSaveRetain( const Chain * root, TableRetain * retain, uint8_
     if ( root == NULL || report == NULL ) { return -1; }
     TableRegionCtx ctx;
     return ChainSaveWireRetain( ctx, *root, retain, buffer, capacity, report );
-}
-
-// ChainSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME
-// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own
-// precedent and never a silent drop, and the two answers are named: a
-// caller that must carry unknowns across a rewrite writes the VARIABLE form,
-// which carries its own table and takes §6.6 unchanged, and a RELAY
-// forwards the sending endpoint's announcement and its batch bytes verbatim.
-template <typename... Args>
-inline int64_t ChainSaveRetainMessages( Args &&... )
-{
-    static_assert( sizeof...( Args ) == (size_t) -1,
-        "Chain: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim." );
-    return -1;
 }
 
 // ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ----

@@ -87,8 +87,8 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 		}
 		var report tabletext.Report
 		steps := &skipSteps{limit: limit}
-		d := &bitDecoder{m: m, v: v, report: &report, r: r, refBits: v.RefBits(), indexBits: ir.TableMessageBitsRequired(0, 1), steps: steps}
-		ok := d.root(m.New(m.Lookup("Probe")))
+		d := &bitDecoder{m: m, v: v, report: &report, r: r, refBits: v.RefBits(), steps: steps}
+		ok := d.body(m.New(m.Lookup("Probe")))
 		if steps.n >= limit {
 			t.Errorf("%s: the skip walked %d elements of a %d-byte batch before the counter stopped it", c.name, steps.n, len(data))
 			continue

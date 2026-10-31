@@ -1501,7 +1501,7 @@ tables-elixir-message-batch:
 # THE MESSAGE SURFACE ON THE HARNESS (test/conformance/README.md, "The
 # surfaces"; docs/SPEC-TABLES.md §3.3): the driver answers every manifest
 # `message` row whose root is a fixed table, byte-equal to the C++ reference's
-# golden, and writes graph_tree.absent (its root Scene is a plain `table`, which
+# golden, and writes graph_tree.absent (its root Scene is a variable table, which
 # the form refuses by name). TestMessageFormConformanceElixir's harness clause
 # runs `./build/conformance-harness run --only elixir` over the built leg; the
 # target arms SCHEMA_REQUIRE_CORPUS=1 and reds on any `--- SKIP`.

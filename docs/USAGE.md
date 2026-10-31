@@ -1850,17 +1850,10 @@ if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabula
 }
 ```
 
-**A POINTERED root takes ONE region for the whole batch**, sized by the same
-`LoadMeasure` the variable form uses, and the roots come back in an array you own:
-
-```cpp
-int64_t region_bytes = graphdemo::SceneLoadMeasure( vocabulary, wire, wire_bytes );
-std::vector<uint8_t> region( region_bytes );
-const graphdemo::Scene * roots[3];
-int64_t root_count = 3;
-graphdemo::SceneLoadMessages( roots, &root_count, region.data(), region_bytes,
-                              vocabulary, wire, wire_bytes, &report );
-```
+**The message form is fixed tables only** (docs/SPEC-TABLES.md §3.3). A
+variable table such as `graphdemo::Scene` has no `LoadMessages`,
+`SaveMessages` or `MeasureMessages`: it goes in the file form, and
+`schema pack --message` refuses it naming the table.
 
 In C the same operations use `announce_measure`, `announce`, `announce_read`,
 `<root>_measure_messages`, `<root>_save_messages` and `<root>_load_messages`.
@@ -1870,12 +1863,9 @@ and must outlive the vocabulary; the announcement buffer can be released after
 `announce_read`. Keep one vocabulary per connection direction. Its default byte
 limit is 65,536; `max_bytes` and the entry capacity are independent caller limits.
 
-Fixed roots take an array of values. Variable roots take an array of pointers to
-loaded or locked roots; reads use one caller-owned region sized by
-`<root>_load_measure_messages(vocabulary, wire, bytes)`. The `_ex` variant also
-returns attribution bytes and a refusal reason. The variable message writers
-provide `_with_allocator` variants for their temporary graph numbering. Message
-reads allocate nothing. A damaged body can return a partially decoded root, but
+The message form is fixed tables only (docs/SPEC-TABLES.md §3.3): a fixed root
+takes an array of values, and a variable table has no message functions at all.
+Message reads allocate nothing. A damaged body can return a partially decoded root, but
 the output count includes only complete bodies.
 
 **What you get.** The three backend messages measured on schema#523 go from
@@ -3860,7 +3850,7 @@ an instance a read produced must be one `Save` can write (SPEC-TABLES.md §16.3)
 
 A text channel is a pipe a wire byte cannot cross as-is — a bus body, a log
 line, a config field, a terminal. In Go every table — `fixed table` and
-plain `table` alike — has two text carriers:
+variable table alike — has two text carriers:
 
 - **Base64 of the binary wire** (`SaveText` / `LoadText`): the text is the
   wire's bytes, `encoding/base64` standard alphabet, padded, whole. It keeps
@@ -3901,7 +3891,7 @@ if err != nil { /* base64_damaged | unknown_form | wire_damaged | malformed | cl
 // A person: the JSON form, for reading, diffing or editing.
 buf := make([]byte, example.ShipConfigToJSONMeasure(&ship))
 n := example.ShipConfigToJSON(&ship, buf)
-var edited example.ShipConfigBuilder // ShipConfig is a plain table: a builder
+var edited example.ShipConfigBuilder // ShipConfig is a variable table: a builder
 if !edited.Init() { /* allocation_failed */ }
 defer edited.Shutdown()
 if !example.ShipConfigFromJSON(&edited, buf[:n], &report) {
@@ -4183,7 +4173,7 @@ read years later by whoever asks why.
 
 ### Text lists and array-root tables
 
-A plain `table` may hold a list of text directly (docs/SPEC-TABLES.md §2.13):
+A variable table may hold a list of text directly (docs/SPEC-TABLES.md §2.13):
 
 ```
 table Handover
@@ -4224,7 +4214,7 @@ field, so `HandoverReadStrict` refuses it (docs/SPEC-TABLES.md §2.13).
 ### Unbounded text in lists and map keys
 
 When no code bounds a list's elements or a map's keys, leave the bound off
-(docs/SPEC-TABLES.md §2.13.1), in a plain `table` only:
+(docs/SPEC-TABLES.md §2.13.1), in a variable table only:
 
 ```
 table Where
@@ -4244,7 +4234,7 @@ Only Go generates the construct today; every other `--lang` refuses it by name.
 
 ### A checksum on a saved file: `integrity`
 
-A plain `table` may declare that the file it is the root of carries a CRC-32C
+A variable table may declare that the file it is the root of carries a CRC-32C
 trailer (docs/SPEC-TABLES.md §2.14):
 
 ```
@@ -5179,7 +5169,7 @@ edited, ship, err := example.ShipConfigEditTextForm(doc,
 	example.TableTextFormEdit{Path: "weapons[0].damage", Text: "12"})
 ```
 
-`LoadTextForm` returns the document and the typed value (for a plain table,
+`LoadTextForm` returns the document and the typed value (for a variable table,
 the locked root of a builder of its own, as `LoadText` does). `SaveTextForm`
 writes the retained document. `EditTextForm` replaces existing scalar values:
 each edit's `Text` is one token of the form, replaced at its original span,

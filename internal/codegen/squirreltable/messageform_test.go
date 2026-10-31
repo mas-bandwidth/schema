@@ -37,7 +37,7 @@ func readMessageRows(t *testing.T, root string) (map[string]squirrelMessageConne
 				connections[f[1]] = squirrelMessageConnection{unit: f[2], file: f[4]}
 			}
 		case "message":
-			if len(f) >= 6 {
+			if len(f) >= 6 && f[5] != "-" { // a named refusal row (a variable table, §3.3) carries no message bytes
 				rows = append(rows, squirrelMessageRow{name: f[1], connection: f[2], root: f[3], file: f[4], batch: f[5]})
 			}
 		}
@@ -318,18 +318,19 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		module := squirreltable.ModuleName(u)
 		fmt.Fprintf(&script, "{ local T=dofile(%q,true).require(%q); local v={}; local ar={};\n", conn.unit+"/schema_module.nut", module)
 		fmt.Fprintf(&script, " if(!T.AnnounceRead(v,I[%q],ar)){print(%q+\":announce:\"+ar.reason+\"\\n\");} else {\n", row.name+"_ann", row.name)
+		if st := u.Tables[row.root]; st == nil || !st.FixedDeclared {
+			// a variable table carries no message verbs at all (§3.3)
+			fmt.Fprintf(&script, " print(%q+((%q in T || %q in T || %q in T) ? \":present\\n\" : \":absent\\n\")); } }\n", row.name, row.root+"LoadMessages", row.root+"SaveMessages", row.root+"MeasureMessages")
+			continue
+		}
 		batch := inputs[row.name+"_batch"]
 		count := int(batch[1]) + 1
 		constructors := make([]string, count)
 		for i := range constructors {
 			constructors[i] = "T." + row.root + "()"
 		}
-		guard, closing := "if(n>=0){\n", " } } }"
-		if st := u.Tables[row.root]; st != nil && st.FixedDeclared {
-			guard, closing = "", " } }"
-		}
-		fmt.Fprintf(&script, " local out=[%s]; local rr={}; local n=T.%sLoadMessages(out,v,I[%q],rr); if(n!=%d) print(%q+\":load:\"+n+\":\"+rr.reason+\":\"+rr.malformed+\"\\n\"); %s\n", strings.Join(constructors, ","), row.root, row.name+"_batch", count, row.name, guard)
-		fmt.Fprintf(&script, " local mr={}; local size=T.%sMeasureMessages(out,mr); local b=blob(size); local sr={}; local got=T.%sSaveMessages(out,b,sr); if(got!=size || !same(b,I[%q])) print(%q+\":save:\"+got+\":\"+size+\"\\n\"); else print(%q+\":ok\\n\");%s\n", row.root, row.root, row.name+"_batch", row.name, row.name, closing)
+		fmt.Fprintf(&script, " local out=[%s]; local rr={}; local n=T.%sLoadMessages(out,v,I[%q],rr); if(n!=%d) print(%q+\":load:\"+n+\":\"+rr.reason+\":\"+rr.malformed+\"\\n\");\n", strings.Join(constructors, ","), row.root, row.name+"_batch", count, row.name)
+		fmt.Fprintf(&script, " local mr={}; local size=T.%sMeasureMessages(out,mr); local b=blob(size); local sr={}; local got=T.%sSaveMessages(out,b,sr); if(got!=size || !same(b,I[%q])) print(%q+\":save:\"+got+\":\"+size+\"\\n\"); else print(%q+\":ok\\n\"); } }\n", row.root, row.root, row.name+"_batch", row.name, row.name)
 	}
 	for _, key := range []string{"backend_conn", "vocab_conn", "vocab9_conn", "graph_conn"} {
 		conn, ok := connections[key]
@@ -469,14 +470,21 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 		t.Fatal(err)
 	}
 	connections, rows := readMessageRows(t, root)
-	if len(rows) != 13 {
-		t.Fatalf("manifest has %d message rows, want 13", len(rows))
-	}
-	out := string(runSquirrelMessages(t, root, loadMessageUnits(t, root, connections), connections, rows, false))
+	units := loadMessageUnits(t, root, connections)
+	fixed := 0
 	for _, row := range rows {
-		if row.root == "Scene" {
-			if !strings.Contains(out, row.name+":load:-1:message_form_plain_table:Scene:false") {
-				t.Errorf("%s plain table refusal missing: %s", row.name, out)
+		if st := units[connections[row.connection].unit].Tables[row.root]; st != nil && st.FixedDeclared {
+			fixed++
+		}
+	}
+	if fixed != 12 {
+		t.Fatalf("manifest has %d message rows over a fixed root, want 12", fixed)
+	}
+	out := string(runSquirrelMessages(t, root, units, connections, rows, false))
+	for _, row := range rows {
+		if st := units[connections[row.connection].unit].Tables[row.root]; st == nil || !st.FixedDeclared {
+			if !strings.Contains(out, row.name+":absent") {
+				t.Errorf("%s: the variable table %s carries message verbs: %s", row.name, row.root, out)
 			}
 			continue
 		}
@@ -525,7 +533,7 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 	if !strings.Contains(out, "done") {
 		t.Fatal("probe did not finish")
 	}
-	t.Logf("%d manifest message rows inspected: 12 fixed-root byte comparisons, 1 named plain-table refusal", len(rows))
+	t.Logf("%d manifest message rows inspected: %d fixed-root byte comparisons", len(rows), fixed)
 }
 
 func TestSquirrelMessageFormNegativeControl(t *testing.T) {

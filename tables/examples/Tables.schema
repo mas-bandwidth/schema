@@ -86,7 +86,7 @@ fixed table LoadoutConfig
 // in size, which is *"a disqualifying thing for a fixed table. not supported.
 // only variable."* — the project owner. `has_loadout` stays as a plain field
 // carrying the same logical fact, and the guarded-branch coverage this corpus
-// owes the emitters lives on Guarded.schema's `Patrol`, a plain `table` whose
+// owes the emitters lives on Guarded.schema's `Patrol`, a variable table whose
 // driver already reads it as the variable wire.
 fixed table ProfileConfig
 {

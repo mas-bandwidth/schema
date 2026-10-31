@@ -569,18 +569,12 @@ defmodule Driver do
   # answers `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
   # saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
   # what this port's own records cost, and the second load gets one byte less
-  # (test/conformance/README.md). The id list's capacity is a count. A
-  # retain-message row's root is a plain `table`, which carries no message verbs
-  # (§3.3), so the driver answers ABSENT for it.
+  # (test/conformance/README.md). The id list's capacity is a count.
   defp run(surface, rows, outdir) when surface in ["retain", "retain-save"] do
     saves = surface == "retain-save"
 
     for row <- rows(rows, "retain"), not (saves and List.last(row) == "-") do
       retain_row(row, saves, outdir)
-    end
-
-    for [name | _] = row <- rows(rows, "retain-message"), not (saves and List.last(row) == "-") do
-      write_absent(outdir, name)
     end
   end
 
@@ -905,6 +899,9 @@ defmodule Driver do
 
     for [name, connection, root, _file, batch | _] <- rows(rows, "message") do
       case message_answer(Map.get(connections, connection), root, batch) do
+        {:refused, why} ->
+          File.write!(Path.join(outdir, name <> ".absent"), why)
+
         {:ok, bytes} ->
           write(outdir, name, bytes)
 
@@ -931,6 +928,11 @@ defmodule Driver do
        do: mod,
        else: nil
   end
+
+  # a named refusal row: the root is a variable table, and the message form is
+  # fixed tables only (docs/SPEC-TABLES.md §3.3)
+  defp message_answer(_connection, _root, "-"),
+    do: {:refused, "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"}
 
   defp message_answer(nil, _root, _batch),
     do: {:absent, "the row names no connection the manifest defines"}
