@@ -1371,6 +1371,24 @@ macro_rules! with_cook_root {
             ("streamdemo", "Feed") => { use streamdemo::{feed_load as $load, feed_cook_write as $cook}; Some($body) }
             ("messagedemo", "ToolMessage") => { use messagedemo::{tool_message_load as $load, tool_message_cook_write as $cook}; Some($body) }
             ("scalars", "SimState") => { use scalars::{sim_state_load as $load, sim_state_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Cells") => { use mapdemo::{cells_load as $load, cells_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Chunks") => { use mapdemo::{chunks_load as $load, chunks_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Crews") => { use mapdemo::{crews_load as $load, crews_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Depth") => { use mapdemo::{depth_load as $load, depth_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Docs") => { use mapdemo::{docs_load as $load, docs_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Fleet") => { use mapdemo::{fleet_load as $load, fleet_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Pairs") => { use mapdemo::{pairs_load as $load, pairs_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Slots") => { use mapdemo::{slots_load as $load, slots_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Spans") => { use mapdemo::{spans_load as $load, spans_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Text") => { use mapdemo::{text_load as $load, text_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Trails") => { use mapdemo::{trails_load as $load, trails_cook_write as $cook}; Some($body) }
+            ("mapdemo", "Runs") => { use mapdemo::{runs_load as $load, runs_cook_write as $cook}; Some($body) }
+            ("listdemo", "Save") => { use listdemo::{save_load as $load, save_cook_write as $cook}; Some($body) }
+            ("listdemo", "Mixed") => { use listdemo::{mixed_load as $load, mixed_cook_write as $cook}; Some($body) }
+            ("listdemo", "Album") => { use listdemo::{album_load as $load, album_cook_write as $cook}; Some($body) }
+            ("listdemo", "Sheet") => { use listdemo::{sheet_load as $load, sheet_cook_write as $cook}; Some($body) }
+            ("listdemo", "Army") => { use listdemo::{army_load as $load, army_cook_write as $cook}; Some($body) }
+            ("listdemo", "Unbounded") => { use listdemo::{unbounded_load as $load, unbounded_cook_write as $cook}; Some($body) }
             _ => None,
         }
     }};
