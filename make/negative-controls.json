@@ -12,7 +12,8 @@
         "tables-c-runtime-home-negative-control",
         "tables-c-slot-negative-control",
         "tables-float-nan-negative-control",
-        "tables-view-negative-controls"
+        "tables-view-negative-controls",
+        "bin-schema-embeds-negative-control"
       ]
     },
     {
@@ -1246,7 +1247,8 @@
         "tables-goose-tablewire-negative-control",
         "tables-goose-message-form-negative-control",
         "tables-goose-message-peer-negative-control",
-        "tables-goose-versioning-negative-control"
+        "tables-goose-versioning-negative-control",
+        "tables-goose-damage-negative-control"
       ]
     },
     {
