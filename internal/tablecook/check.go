@@ -4,14 +4,14 @@
 // diagnosing one, lives here, over the same reflection descriptors the runtime
 // already carries, checking the DATA against the ATTRIBUTION.
 //
-// **THE CHECK IS A SCAN OF THE ATTRIBUTION, NOT A TRAVERSAL OF THE GRAPH.** Two
+// **THE CHECK IS A SCAN OF THE ATTRIBUTION, NOT A TRAVERSAL OF THE GRAPH.** Three
 // passes, in order: the directory itself, linearly and with no state; then every
-// node, in directory order. NO REFERENCE IS EVER FOLLOWED, so no reference can
-// cause a second visit — a forged file whose references alias into a
-// legal-looking DAG costs nothing extra, and neither does a cycle. The scan also
-// reaches the nodes NOTHING POINTS AT, which no traversal from the root can.
-// The cost is O(R + P log N), with no allocation per node and no per-node state,
-// and it terminates on every input.
+// node, in directory order, recording each reference as an edge between two
+// directory entries; then the edges, which must not close a cycle. NO REFERENCE
+// IS EVER FOLLOWED through the data, so a forged file whose references alias
+// into a legal-looking DAG costs nothing extra. The scan also reaches the nodes
+// NOTHING POINTS AT, which no traversal from the root can. The cost is
+// O(R + P log N), and it terminates on every input.
 package tablecook
 
 import (
@@ -41,8 +41,9 @@ type CheckResult struct {
 // carries a sentinel entry, names a type the unit does not have, does not
 // ascend, or overlaps a node with the next; a reference that leaves the region,
 // that the directory does not name, or that it names as another type; a
-// misaligned reference; a count companion outside its declared bound; or a
-// float whose bits are a NaN or an infinity (non_finite_float, §3.3).
+// misaligned reference; a count companion outside its declared bound; a
+// float whose bits are a NaN or an infinity (non_finite_float, §3.3); or
+// references that close a cycle (data_cycle).
 func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	var res CheckResult
 	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), rootAlignmentOf(m, file))
@@ -60,6 +61,7 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 
 	s := &scan{m: m, h: h, ord: h.Order(), buf: h.Data(file), dir: dir}
 	for i, e := range dir {
+		s.cur = i
 		// a node's extent runs to the next entry's offset, or to data_length
 		// for the last (§6.3): the bound a BYTE BUFFER's length is checked
 		// against
@@ -70,6 +72,10 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 		if err := s.node(e.Offset, extent, e.TypeId, byTypeId[e.TypeId]); err != nil {
 			return res, fmt.Errorf("node %d (%s at offset %d): %w", i+1, nameOf(byTypeId, e.TypeId), e.Offset, err)
 		}
+	}
+
+	if err := s.acyclic(byTypeId); err != nil {
+		return res, err
 	}
 
 	res = CheckResult{
@@ -186,6 +192,11 @@ type scan struct {
 	buf      []byte
 	dir      []DirectoryEntry
 	pointers int
+	// cur is the directory entry under the scan, and edges every reference
+	// the scan proved, from the entry holding the slot to the entry it names:
+	// pass three's input.
+	cur   int
+	edges [][2]int32
 	// THE NODE UNDER THE SCAN, for §7.4's element-array clause: an unbounded
 	// array's slot must point inside its holder's own extent, so the walk
 	// carries where that node begins and ends, and the arrays it has already
@@ -558,6 +569,81 @@ func (s *scan) ref(at int64, f *ir.Field) error {
 	}
 	if s.dir[slot].TypeId != want {
 		return fmt.Errorf("the reference resolves to a node the directory names as type id 0x%016x, and the declaration requires %s", s.dir[slot].TypeId, wantName)
+	}
+	s.edges = append(s.edges, [2]int32{int32(s.cur), int32(slot)})
+	return nil
+}
+
+// CycleRefusal is pass three's refusal: A COOK IS NEVER CYCLIC (docs/SPEC-TABLES.md
+// §3.1, §7.4), because `Lock` refuses a data cycle and a cook is a locked
+// region written verbatim, so a cook whose references close a cycle is one no
+// writer produced. It names the cycle by its directory entries.
+type CycleRefusal struct {
+	Nodes []string
+}
+
+func (e *CycleRefusal) Error() string {
+	return fmt.Sprintf("data_cycle: the references close a cycle through %v (a cook is never cyclic, docs/SPEC-TABLES.md §7.4)", e.Nodes)
+}
+
+// acyclic is PASS THREE: a depth-first walk of the EDGES pass two recorded,
+// never of the data, iterative so a forged chain cannot exhaust the stack.
+// Every entry is entered once, so the cost is linear in nodes plus edges.
+func (s *scan) acyclic(byTypeId map[uint64]*ir.Struct) error {
+	n := len(s.dir)
+	start := make([]int32, n+1)
+	for _, e := range s.edges {
+		start[e[0]+1]++
+	}
+	for i := 0; i < n; i++ {
+		start[i+1] += start[i]
+	}
+	next := make([]int32, len(s.edges))
+	fill := append([]int32(nil), start[:n]...)
+	for _, e := range s.edges {
+		next[fill[e[0]]] = e[1]
+		fill[e[0]]++
+	}
+	const (
+		white = iota
+		grey
+		black
+	)
+	color := make([]uint8, n)
+	cursor := make([]int32, n)
+	var stack []int32
+	for root := 0; root < n; root++ {
+		if color[root] != white {
+			continue
+		}
+		color[root] = grey
+		cursor[root] = start[root]
+		stack = append(stack[:0], int32(root))
+		for len(stack) > 0 {
+			v := stack[len(stack)-1]
+			if cursor[v] == start[v+1] {
+				color[v] = black
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			w := next[cursor[v]]
+			cursor[v]++
+			switch color[w] {
+			case grey:
+				var names []string
+				for i := len(stack) - 1; i >= 0; i-- {
+					names = append(names, fmt.Sprintf("node %d (%s)", stack[i]+1, nameOf(byTypeId, s.dir[stack[i]].TypeId)))
+					if stack[i] == w {
+						break
+					}
+				}
+				return &CycleRefusal{Nodes: names}
+			case white:
+				color[w] = grey
+				cursor[w] = start[w]
+				stack = append(stack, w)
+			}
+		}
 	}
 	return nil
 }

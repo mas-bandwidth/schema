@@ -2346,14 +2346,10 @@ any other, and there is no path that forgives one.
   first header, and the rule is the scan and not the position.
 - **ASCENDING** against the key of the last entry that LANDED: the body
   decodes into the next slot.
-- **EQUAL**: a DUPLICATE. The slot that entry took is RESET to the entry's
-  defaults and the repeat decodes into it, so last wins WHOLE and an elided field of
-  the repeat reads as its default and never as the first entry's value, and
-  `duplicate` is counted (§4). The map's count excludes it. The slot it would
-  have taken is the one slack a loaded region can carry, and a region packed
-  by `Lock` never has it, because the load already merged the repeat.
-- **DESCENDING**: the body is not a map any conforming writer produced. It
-  is damage: `malformed` is set and the whole load is discarded (§4, DAMAGE
+- **EQUAL or DESCENDING**: the body is not a map any conforming writer
+  produced, because a writer puts each key down once and in ascending order
+  (Glenn, #391: "Table reads are not trusted, they will come over the
+  network."). It is damage: `malformed` is set and the whole load is discarded (§4, DAMAGE
   DISCARDS THE WHOLE LOAD). Nothing
   is sorted at load, because the region path allocates nothing and sorting
   entries that hold self-relative references would be a second pack walk.
@@ -4568,8 +4564,9 @@ the trailer is then removed and the batch is read as §3.3's. The name is the
 variable form's, `integrity_mismatch`, and a batch of a table without the key is
 read and written byte for byte as before.
 
-The cook (§7) and the block form (§19) are trusted accelerators whose
-integrity answer is a signature, and the key does not touch them.
+The cook (§7) is the trusted accelerator, whose integrity answer is a
+signature, and the key does not touch it. The block form (§19) is untrusted
+input that its `Open` validates (§19.2), and the key does not touch it either.
 
 **BASE64 TEXT carries the trailer with no rule of its own**: it is the base64
 of the binary file (§16.8), trailer included, and `LoadText` decodes it and
@@ -5009,25 +5006,19 @@ one document rather than two.
   own kind, so the arm rules below apply once per element rather than once for
   the array.
 
-  **THE HEADER AGAINST THE PARENT.** An array body's header, the element kind
-  byte and the count, is read against the ENCLOSING body's buffer and never
-  against the field's own `L`, for kind `14`, for kind `16` and for a map
-  alike: a canonical LEB128 count is up to ten bytes and an `L` of `2` is the
-  shortest body that carries a header at all, so a count whose spelling
-  continues past `L` is completed from the bytes after it. The elements stay
-  bounded by `L`: a count that crossed `L` covers no element bytes, so the
-  element kind is judged first and a foreign one is the ordinary kind
-  mismatch (above) and nothing more, and a kind that agrees with a count of
-  one or more is §4's count the body cannot cover, which is damage. A count
-  that cannot complete even in the enclosing buffer is damage too. Damage
-  discards the whole load (§4). A body of fewer than two bytes is inert (§4).
-  Wherever the header is not damage, the parent resumes at the byte after
-  `L`. **AN ARRAY ARM IS THE ONE PLACE THE BOUND IS NOT THE ENCLOSING BODY**:
-  an arm's `L` stands in for the field's own length (the arm payload table,
-  below), and the buffer an arm payload is read from is the arm's, so an
-  array arm's header is read inside the arm's `L` and a count that crosses it
-  is damage, which discards the whole load
-  (`arm_array_count_past_arm_length`). Held by the `framing` rows of
+  **THE HEADER LIES INSIDE THE BODY.** An array body's header, the element
+  kind byte and the count, is part of the body its `L` frames, for kind `14`,
+  for kind `16`, for a map and for an array arm alike, because every writer
+  writes it there. A body too short to carry it (`L` below `2`), and a count
+  whose spelling runs past `L` or does not complete, are input no writer
+  produces, and each is damage that discards the whole load (§4, INPUT NO
+  WRITER PRODUCES IS DAMAGE; Glenn, #391: "Table reads are not trusted, they
+  will come over the network."), whatever the element kind byte says. The
+  element kind is judged only on a header that lies whole inside `L`, and a
+  foreign one is then the ordinary kind mismatch (above), the parent resuming
+  at the byte after `L` (`array_L0_short`, `array_L1_short`,
+  `array_header_crosses_L_foreign_kind`, `map_L1_short`, `keyed_L1_short`,
+  `arm_array_count_past_arm_length`). Held by the `framing` rows of
   docs/LAYERS/1-framing.md and by the wire fuzzer's pinned vectors.
 
   **A LENGTH THAT RUNS PAST THE BODY CARRYING IT IS DAMAGE**, at any depth,
@@ -9127,10 +9118,12 @@ only.
 game uploaded to a server, a config a client hands back — and the posture is
 exactly the type wire's: the tolerant read of §3 must be safe on hostile bytes
 in every language, with no verifier in front of it and no "re-pack it
-server-side first". The two accelerators are the whole of the trusted class,
-and each says so where it is defined: a COOK is opened at the build version
-that wrote it and its integrity answer is a signature over the file (§7), and
-a BLOCK is both sides generated from one schema (§19). What the tolerant read
+server-side first". **THE COOK IS THE WHOLE OF THE TRUSTED CLASS** (Glenn,
+2026-10-31: "Only loading cooked data is trusted."): a cook is opened at the
+build version that wrote it and its integrity answer is a signature over the
+file (§7). A BLOCK is not in it: both sides generated from one schema settles
+the block's layout, not its bytes, so `BlockOpen` validates as an untrusted
+read (§19.2). What the tolerant read
 does on damaged input — refuse the whole load as `malformed` and return,
 never crash, never read past its buffer (§4) — is the verifier, and this
 subsection is the gate on that claim.
@@ -11362,14 +11355,22 @@ the wire, and keeps the flexibility that comes with it.
      whose counts bound a walker just as a table's do. It reads no field
      value and decodes no payload.
 
+  3. **The references as edges.** Pass two records each reference it
+     proved as an edge between two directory entries, and the edges must
+     not close a cycle: **A COOK IS NEVER CYCLIC**, because `Lock` refuses
+     a data cycle and a cook is a locked region written verbatim (§3.1), so
+     a cook whose references close one is input no writer produces (§4),
+     and the tool refuses it by name, `data_cycle`, naming the entries on
+     the cycle. The walk is over the edges and never over the data, and it
+     is iterative, so a forged chain cannot exhaust a stack.
+
   Every node is checked exactly once because the scan visits each entry
-  once, and no reference is ever FOLLOWED, so no reference can cause a
-  second visit. A forged file whose references alias into a
-  legal-looking DAG costs nothing extra, and neither does a cycle. The
-  scan also checks the nodes NOTHING POINTS AT, which no traversal from
-  the root can reach. The cost is `O(R + P log N)` — linear in the
-  region, plus one search per pointer slot — with no allocation and no
-  per-node state, and it terminates on every input.
+  once, and no reference is ever FOLLOWED through the data, so no reference
+  can cause a second visit. A forged file whose references alias into a
+  legal-looking DAG costs nothing extra. The scan also checks the nodes
+  NOTHING POINTS AT, which no traversal from the root can reach. The cost is
+  `O(R + P log N)` — linear in the region, plus one search per pointer slot,
+  plus a walk linear in nodes and edges — and it terminates on every input.
 
 - **Pack order and checking are INDEPENDENT.** The region is packed in
   pre-order (§6.3) because that is the order the wire numbers nodes in
@@ -11408,8 +11409,8 @@ the wire, and keeps the flexibility that comes with it.
   leaves the file, carries a sentinel entry, names a type the unit does not
   have, does not ascend, or overlaps a node with the next; a reference that
   leaves the region, that the directory does not name, or that it names as
-  another type; a misaligned reference; or a count companion outside its
-  declared bound.
+  another type; a misaligned reference; a count companion outside its
+  declared bound; or references that close a cycle (`data_cycle`).
 
 - **Alignment.** The header pads the data part to the region's alignment,
   so a base the allocator or `mmap` gave you is already aligned; `mmap`
@@ -15936,14 +15937,15 @@ DOES model, and that is the difference between the two constructs.
 counted, never refused — the wire's rule (§4), so a text and a wire loaded
 from the same data land the same instance.
 
-**Unknown keys** are skipped and counted in `report.unknown`. **Duplicate
-keys**: the last occurrence wins and the repeat is counted in
-`report.duplicate` (§4), but repeats are counted only for fields at an index
-below 512; a table with more fields still reads, its repeats simply stop being
-counted. Last-wins applies to a WHOLE value: a repeated
-array key replaces the array outright rather than overlaying a prefix on
-what the first occurrence left, and a repeated table or union key
-re-establishes the whole value at its defaults before placing it.
+**Unknown keys** are skipped and counted in `report.unknown`. **A REPEATED
+KEY IS DAMAGE**: no writer puts a member name down twice in one object, so an
+object that names one member twice, whether or not this reader can name it,
+is input no writer produces, and the whole read is refused (§4, INPUT NO
+WRITER PRODUCES IS DAMAGE; Glenn, #391: "Table reads are not trusted, they
+will come over the network."). Names compare whole, as decoded, so `"a"` and
+`"\u0061"` are one name. A keyed object's two names for one slot and a map
+object's two spellings of one key are the same event. A skipped value is
+opaque: the members of an unknown member's value are not compared.
 **Trailing commas** in objects and arrays are accepted on read — the
 authoring files this section exists for carry them — and never written.
 **A leading UTF-8 byte-order mark** — `EF BB BF` as a text's first three
@@ -18531,7 +18533,12 @@ beside them: that is the table wire's storage, and binding one here is the
 mistake the suffix exists to stop. A field's C# member is the PascalCase of its
 schema name, as everywhere else in that backend.
 
-- **`BlockOpen` checks once and points, and this is the WHOLE check**, in
+- **A BLOCK IS UNTRUSTED INPUT** (§4.2; Glenn, 2026-10-31: "Only loading
+  cooked data is trusted."): one schema generating both sides settles the
+  layout and not the bytes, so `BlockOpen` validates as an untrusted read.
+  The clauses below are its LAYOUT half. Its ROW-VALUE half, which value a
+  row may hold, is not yet specified on this page.
+- **`BlockOpen` checks the layout once and points**, in
   §7's own order so that one enum and one order serve both accelerators: the
   magic read bytewise, the byte order it establishes, the build version
   against this build's own, then each array's PITCH against this build's own,

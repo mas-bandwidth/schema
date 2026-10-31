@@ -146,9 +146,11 @@ what the language specifies, in a way that weakens a check.
   own engine) on the report and on the decoded value, and never to size a
   region past what the framing can justify, plain and under ASan and UBSan,
   with two negative controls that remove a check from the emitter and require
-  the fuzzer to go red (docs/SPEC-TABLES.md §4.2). The cooked and block forms
-  are the trusted class — opened at a build version, integrity by signature —
-  and their pages say so (§7.4, §19).
+  the fuzzer to go red (docs/SPEC-TABLES.md §4.2). The cooked form is the
+  whole of the trusted class — opened at a build version, integrity by
+  signature (§7.4) — and only loading cooked data is trusted (Glenn,
+  2026-10-31). The block form is untrusted input like the wire: its open
+  validates as an untrusted read (§19.2).
 
 None of that is proof. It is why we would rather hear from you.
 
