@@ -235,7 +235,7 @@ Existing targets:
 - `make cards-corpus-create` / `make cards-fuzz-fixture` — author fixtures under an explicit flag.
 - `make cards-java-test cards-java-conformance` — the Java facade (`tables/cards/java`): the same shared corpus load/save/render/parse round-trips, and the upgrade, edit, task-hash and view walks, pinned by conformance and the negative controls.
 - `make cards-conformance-go` — run the Go reference driver across all nine conformance surfaces (`load,save,render,parse,bounds,upgrade,edit,taskhash,view`).
-- `make cards-conformance-all` — run `cards-conformance-go` and every language leg's `cards-<lang>-conformance` target (`c`, `cpp`, `cs`, `rust`, `java`, `js`, `dart`, `elixir`) with `--require-surfaces load,save,render,parse,bounds,upgrade,edit,taskhash,view`, printing the 81-line leg-by-surface matrix.
+- `make cards-conformance-all` — run `cards-conformance-go` and every language leg's `cards-<lang>-conformance` target (`c`, `cpp`, `cs`, `rust`, `java`, `js`, `dart`, `elixir`, `lua`) with `--require-surfaces load,save,render,parse,bounds,upgrade,edit,taskhash,view`, printing the 90-line leg-by-surface matrix.
 
 ## Checked TLA+ models
 
@@ -586,6 +586,42 @@ Facade (`tables/cards/elixir/cards.ex`, module `Cards.Cards`):
 | View | `Cards.Cards.view()` | Walks `Cards.Table.descriptors()` in table-name and declaration order. |
 
 Make targets: `make cards-elixir-generate`, `make cards-elixir-test`, `make cards-elixir-conformance`, `make cards-elixir-conformance-negative-control`, `make cards-elixir-conformance-upgrade-negative-control`, `make cards-elixir-conformance-hash-negative-control`.
+
+### Lua
+
+Vanilla Lua 5.4 (PUC-Rio, pinned by `make dist-lua`). Generate the Lua card unit with:
+
+```sh
+./bin/schema generate --lang lua --out build/tables-generated-lua/cards tables/cards
+```
+
+The facade is `tables/cards/lua/cards.lua` (`require("cards")`, with the generated directory and the facade's directory on `package.path`). A refusal is the Lua pair `nil, err`: `err` is a `CardError` whose `class` is one of the closed classes of `tables/cards/conformance/FORMAT.md` and whose `tostring` is the message; a read that completed answers its report as the second value, and a refusal after a read carries it as `err.report`. A `*string` field (`body`, `done`, `source`, an extra's `value`) is a box `{ value = ... }`, `nil` when null; an enum is its variant name, `nil` for None.
+
+| Go name | Lua spelling | Notes |
+| --- | --- | --- |
+| `Record` | `cards.Record` (`{ wire, root, report }`) | Owns the wire and the decoded Card; a Lua string is immutable, so the wire is its own by construction. |
+| `Report` | the zeroed counters table (`cards.NewReport()`) | `retained`, `retainLost`, `widened`, `unknown`, `kindMismatch`, `clamped`, `duplicate`, `malformed`. |
+| `MaxBodyBytes` | `cards.MaxBodyBytes` (`64 << 10`) | 65,536-byte ceiling on `body`. |
+| `MaxListEntries` | `cards.MaxListEntries` (`512`) | 512-entry ceiling on each collection field. |
+| `MaxRetainBytes` / `MaxRetainIDs` | `cards.MaxRetainBytes` (`1 << 20`), `cards.MaxRetainIDs` (`4096`) | Caller-owned retention store ceilings per `Upgrade` call. |
+| `Load` | `cards.Load(wire)` | Tolerant load returning `record, report` or `nil, err`. |
+| `FromJSON` | `cards.FromJSON(text)` | Strict JSON read and checked save returning `record, report` or `nil, err`. |
+| `ToJSON` | `cards.ToJSON(record)` | Known-field JSON view returning `text, report`. |
+| `Wire` | `record:Wire()` | The owned wire bytes. |
+| `Parse` | `cards.Parse(text)` | Admitted brief text to `record, report` or `nil, err`. |
+| `Render` | `cards.Render(record)` | Informational brief text view returning `text, report`. |
+| `Upgrade` | `cards.Upgrade(wire)` | Atomic retained round trip (`retain.LoadRetain` / `retain.SaveRetain`) returning `out, report` or `nil, err`. |
+| `ReadStrict` | `cards.ReadStrict(wire)` | Refuses `unknown`, `kindMismatch`, `clamped` and `malformed`. |
+| `TaskHash` | `cards.TaskHash(record)` | Framed SHA-256 64-char hex digest over the six task fields (a pure-Lua SHA-256 in the facade). |
+| `SetNeeds` | `cards.SetNeeds(record, needs)` | Atomic `needs` replacement returning `true` or `nil, err`. |
+| `SetPaths` | `cards.SetPaths(record, paths)` | Atomic `paths` replacement. |
+| `SetTier` | `cards.SetTier(record, tier)` | Atomic `tier` replacement. |
+| `SetPriority` | `cards.SetPriority(record, priority)` | Atomic `priority` replacement. |
+| `SetColumn` | `cards.SetColumn(record, column)` | Atomic `column` replacement. |
+| `SetHolder` | `cards.SetHolder(record, holder)` | Atomic `holder` replacement. |
+| View | `view()` in `tables/cards/lua/driver.lua` | Walks `CardsTables.Tables` in table-name and declaration order; every word comes from the descriptors. |
+
+Make targets: `make cards-lua-generate`, `make cards-lua-test`, `make cards-lua-conformance`, `make cards-lua-conformance-negative-control`, `make cards-lua-conformance-upgrade-negative-control`, `make cards-lua-conformance-hash-negative-control`.
 
 ## Later sprint integration
 

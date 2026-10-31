@@ -1270,6 +1270,10 @@ local function wire_nodes(bytes, o)
   end
   if payload == nil then return {} end
   local rec = tr_reader(payload, 0, #payload)
+  -- the payload opens with the node count (save.lua writes it, load.lua reads
+  -- it first); the records follow
+  tr_leb(rec)
+  if rec.bad then return {} end
   local raw = {}
   while rec.at < rec.lim do
     local tref = tr_leb(rec)
@@ -1478,7 +1482,10 @@ local function capture(T, name, bytes, retain, report)
     local d = desc_for(T, rec.tid)
     if d ~= nil then
       capture_body(T, o.table, rec.body, 0, #rec.body, d, { node = k + 1, steps = {} }, report, retain)
-    else
+    elseif rec.tid ~= T.StringBlobTypeId and rec.tid ~= T.BytesBlobTypeId then
+      -- the unit's own blob nodes (a *string or *bytes field's payload) are
+      -- this reader's to read, not an unknown record: only a node of a type
+      -- this build cannot name is retain_lost
       report.retainLost = report.retainLost + 1
     end
   end

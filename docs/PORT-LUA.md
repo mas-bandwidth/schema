@@ -264,9 +264,19 @@ name SPEC-TABLES §11 does not yet give); a caller-owned load with its
 allocation gate and soak; the keyed accessor; frozen descriptors; one pointer
 walk shared by save and cook; the arm read through the field reader; float32
 bit surgery on the table wire; a typed save; block and cook accessors; the
-forgery fuzz; the runtime-name scan; the zero-cost gate; the USAGE example;
-the random text differential; the runtime-home control; the bench and release
-tier; and the card facade.
+forgery fuzz; the runtime-name scan; the zero-cost gate; the random text
+differential; the runtime-home control; and the labelled bench board
+(`bench-board`: the leg and its gate are in, a measured sitting is not).
+
+Closed 2026-10-29: the USAGE example (`tables-lua-usage`, docs/USAGE.md's
+`lua-table-usage` fragment run against `tables/pointers`, with a two-witness
+control); the bench leg and the release tier (`bench/tables/lua`,
+`tables-lua-bench-gate`, `tables-lua-release`, which certify.yml derives from
+the Makefile); and the card facade (`tables/cards/lua`: `cards.lua`, its driver,
+`make cards-lua-conformance` on all nine surfaces, three controls). The card
+leg found two faults in `runtime/retain.lua`, fixed there: `wire_nodes` read the
+node table's leading count as a node, and the capture counted the unit's own
+string and bytes blob nodes as `retain_lost`.
 
 ## DEEPEN
 
