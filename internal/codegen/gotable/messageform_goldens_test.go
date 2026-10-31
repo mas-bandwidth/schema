@@ -189,6 +189,16 @@ func loadUnitPaths(t *testing.T, root string, paths []string) *ir.Unit {
 // needs fails the compile by name rather than silently.
 func runGoGoldens(t *testing.T, u *ir.Unit, testSource string) {
 	t.Helper()
+	if out, err := runGoGoldensEdited(t, u, testSource, nil); err != nil {
+		t.Fatalf("generated Go goldens: %v\n%s", err, out)
+	}
+}
+
+// runGoGoldensEdited is runGoGoldens with an edit applied to the generated
+// files before they are built, and the run's output and error returned rather
+// than judged: a negative control plants a fault through it and requires red.
+func runGoGoldensEdited(t *testing.T, u *ir.Unit, testSource string, edit func(map[string][]byte)) ([]byte, error) {
+	t.Helper()
 	files, err := golang.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +218,9 @@ func runGoGoldens(t *testing.T, u *ir.Unit, testSource string) {
 			delete(files, name)
 		}
 	}
+	if edit != nil {
+		edit(files)
+	}
 	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
 	files["goldens_test.go"] = []byte(testSource)
 	dir := t.TempDir()
@@ -218,9 +231,7 @@ func runGoGoldens(t *testing.T, u *ir.Unit, testSource string) {
 	}
 	cmd := exec.Command("go", "test", "-count=1", "-timeout", "120s", ".")
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("generated Go goldens: %v\n%s", err, out)
-	}
+	return cmd.CombinedOutput()
 }
 
 func goGoldensHeader(pkg string) string {

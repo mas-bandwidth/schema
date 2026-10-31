@@ -608,7 +608,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static BLOBDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1680,7 +1680,7 @@ static const int64_t kTableAnnounceBytes = 180;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x57, 0x22, 0x5d, 0x8f, 0xcd, 0xef, 0xd0, 0xec, 0x02,
+    0x01, 0x01, 0x09, 0x95, 0xd0, 0x95, 0x81, 0x1b, 0xe1, 0x4c, 0x3d, 0x02,
     0x0e, 0x8c, 0x01, 0x06, 0x89, 0x01, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad,
     0xbc, 0xc4, 0x0c, 0x20, 0x43, 0x32, 0x67, 0x21, 0xd7, 0x96, 0x9c, 0xef,
     0x08, 0x00, 0x05, 0x4a, 0xa3, 0x30, 0x67, 0x55, 0x5b, 0x85, 0x11, 0xa5,
@@ -4436,9 +4436,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -6636,7 +6642,7 @@ namespace blobdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0xecd0efcd8f5d2257ull;
+static const uint64_t BuildVersion = 0x3d4ce11b8195d095ull;
 
 } // namespace blobdemo
 
@@ -7013,11 +7019,11 @@ inline void TableReset( Catalog & value ) { CatalogReset( value ); }
 // Asset is a pointer target.
 inline const Asset * AssetAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Asset *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Asset *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Asset * AssetAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Asset *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Asset *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Asset * AssetAt( const TableRegionCtx &, const TableRef & ref ) { return AssetAt( ref ); }
 inline const Asset * AssetAt( const TableArenaCtx & ctx, const TableRef & ref )

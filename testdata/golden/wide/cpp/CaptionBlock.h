@@ -50,7 +50,7 @@ namespace wide {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x39cdb9bf25cd122cull;
+static const uint64_t BuildVersion = 0x5485e649e5df3ea5ull;
 
 } // namespace wide
 

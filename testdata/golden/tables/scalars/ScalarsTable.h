@@ -599,7 +599,7 @@ struct TableIds
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
     }
 
     static SCALARDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -1678,7 +1678,7 @@ static const int64_t kTableAnnounceBytes = 677;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x85, 0x81, 0x82, 0xed, 0x52, 0x3e, 0xea, 0x84, 0x02,
+    0x01, 0x01, 0x09, 0x9d, 0x8e, 0x8a, 0x8a, 0x85, 0xa8, 0x58, 0x08, 0x02,
     0x0e, 0xfd, 0x04, 0x06, 0xfa, 0x04, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
     0x63, 0xaf, 0x17, 0x01, 0x20, 0x00, 0x00, 0xd0, 0x8a, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x54, 0x15, 0x02,
@@ -4026,7 +4026,7 @@ namespace scalardemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x84ea3e52ed828185ull;
+static const uint64_t BuildVersion = 0x0858a8858a8a8e9dull;
 
 } // namespace scalardemo
 
