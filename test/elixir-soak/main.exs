@@ -64,7 +64,10 @@ defmodule Soak do
     cases = cases(parse(File.read!(manifest)), budget)
 
     if cases == [] do
-      IO.puts("SOAK FAILED: no pinned case has a <Unit>.Table codec in #{manifest} (ebin #{ebin})")
+      IO.puts(
+        "SOAK FAILED: no pinned case has a <Unit>.Table codec in #{manifest} (ebin #{ebin})"
+      )
+
       System.halt(1)
     end
 
@@ -77,27 +80,18 @@ defmodule Soak do
     )
 
     parent = self()
-
     {pid, mon} =
-      spawn_monitor(fn ->
-        send(parent, {:soaked, self(), run(cases, lead, window)})
-      end)
+      spawn_monitor(fn -> send(parent, {:soaked, self(), run(parent, cases, lead, window)}) end)
 
-    {samples, ran, drift} =
-      receive do
-        {:soaked, ^pid, result} ->
-          Process.demonitor(mon, [:flush])
-          result
+    {samples, ran, drift} = collect_samples(pid, mon, [])
 
-        {:DOWN, ^mon, :process, ^pid, reason} ->
-          IO.puts("SOAK FAILED: the soaking process died: #{inspect(reason)}")
-          System.halt(1)
-      end
+    by_name = Map.new(cases, &{&1.name, &1})
 
     over =
       for {i, figures} <- samples do
         cols =
-          for {c, {w, b}} <- figures,
+          for {name, {w, b}} <- figures,
+              c <- [Map.fetch!(by_name, name)],
               w > c.words + @heap_slack + div(c.words, 10_000) or b > c.binary + @binary_slack do
             "#{c.name} #{w} words (pinned #{c.words}), #{b} binary calls (pinned #{c.binary})"
           end
@@ -159,9 +153,25 @@ defmodule Soak do
     System.halt(2)
   end
 
+  # the samples as the soaking process sends them, in order, then its end
+  defp collect_samples(pid, mon, acc) do
+    receive do
+      {:sample, ^pid, i, figures} ->
+        collect_samples(pid, mon, [{i, figures} | acc])
+
+      {:soaked, ^pid, {ran, drift}} ->
+        Process.demonitor(mon, [:flush])
+        {Enum.reverse(acc), ran, drift}
+
+      {:DOWN, ^mon, :process, ^pid, reason} ->
+        IO.puts("SOAK FAILED: the soaking process died: #{inspect(reason)}")
+        System.halt(1)
+    end
+  end
+
   # ---- the soaking process ----
 
-  defp run(cases, lead, window) do
+  defp run(parent, cases, lead, window) do
     cases = Enum.map(cases, &Map.put(&1, :ref, reference(&1)))
     pass(cases)
     spin(cases, lead)
@@ -169,26 +179,36 @@ defmodule Soak do
     live_first = used()
     binary_first = :erlang.memory(:binary)
 
-    samples =
-      for i <- 1..@samples do
-        {i, Enum.map(cases, fn c -> {c, window(c, window)} end)}
-      end
+    # each sample's figures go to the driver as they are taken, so nothing the
+    # soak itself keeps grows the live heap the drift line reads
+    for i <- 1..@samples do
+      send(parent, {:sample, self(), i, Enum.map(cases, &{&1.name, window(&1, window)})})
+    end
 
     :erlang.garbage_collect()
     drift = {used() - live_first, :erlang.memory(:binary) - binary_first}
-    {samples, lead + window * @samples, drift}
+    {lead + window * @samples, drift}
   end
 
   # ONE CASE'S WINDOW in a sample: its share of the sample's passes, run back to
-  # back and measured on its own, so the count names the case that moved
+  # back and measured on its own, so the count names the case that moved. The
+  # instrument's own cost (the trace, its tracer and the reads around it) is
+  # measured over an empty window beside it and taken off, so a window of a
+  # few iterations reads what the codec allocates and not what the window does.
   defp window(c, n) do
+    {empty_words, empty_binary} = counted(fn -> :ok end)
+    {words, binary} = counted(fn -> repeat(c, n) end)
+    {div(max(words - empty_words, 0), n), div(max(binary - empty_binary, 0), n)}
+  end
+
+  defp counted(work) do
     binary0 = binary_calls()
     :erlang.garbage_collect()
     live0 = used()
-    reclaimed = traced(fn -> repeat(c, n) end)
+    reclaimed = traced(work)
     live1 = used()
     binary1 = binary_calls()
-    {div(reclaimed + (live1 - live0), n), div(binary1 - binary0, n)}
+    {reclaimed + (live1 - live0), binary1 - binary0}
   end
 
   defp repeat(_c, 0), do: :ok
