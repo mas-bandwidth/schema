@@ -53,11 +53,10 @@ the buffer. Specifically:
   unpaired surrogate, or a zero group among the transmitted units. The rules
   are stated once in SPEC §4.7 and §4.12 and every target owes the same
   verdict, so a target that skips one is a divergence bug as well as an
-  acceptance bug. **The TABLE wire enforces the same rules and reports rather
-  than stops** (SPEC-TABLES §3, §4): a kind `12` payload that is not
-  well-formed UTF-8 or that carries a zero byte, and a kind `33` payload with
-  an unpaired surrogate or a zero unit, each leave the field at its declared
-  default, count one `malformed`, and let the parent read on past `L`. **A
+  acceptance bug. **The TABLE wire enforces the same rules** (SPEC-TABLES §3,
+  §4): a kind `12` payload that is not well-formed UTF-8 or that carries a
+  zero byte, and a kind `33` payload with an unpaired surrogate or a zero
+  unit, are damage, and damage discards the whole load as `malformed`. **A
   table reader that STORES any of them is an acceptance bug on this list**,
   exactly as a packet reader that accepts one is. In scope beside it is the
   framing: a length past a declared bound, and an odd `L` on a kind `33`

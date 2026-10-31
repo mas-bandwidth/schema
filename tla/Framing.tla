@@ -6,7 +6,8 @@
 \* `start + L`, the header read AGAINST THE PARENT buffer (N) and not against
 \* the field's own end, the element span clamped at zero when the header
 \* crossed L, and the resume point, which is `end` whatever the payload turned
-\* out to be. It is a model, not a codec: the reference, the kind byte and the
+\* out to be. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the scan
+\* ends at the first damage and nothing resumes. It is a model, not a codec: the reference, the kind byte and the
 \* element values are folded away, and only offsets remain.
 \*
 \* The byte values a reader would meet are chosen nondeterministically: every
@@ -21,17 +22,20 @@ CONSTANTS N,           \* the parent body's length in bytes
           HeaderBytes  \* the header widths an array body may carry
 ASSUME N \in Nat /\ MaxL \in Nat /\ HeaderBytes \subseteq Nat
 
-\* The three fault switches, each a reversed witness of one rule. The positive
-\* cfg holds all three FALSE; each reversed cfg turns exactly one TRUE and
+\* The four fault switches, each a reversed witness of one rule. The positive
+\* cfg holds all four FALSE; each reversed cfg turns exactly one TRUE and
 \* checks TypeOK plus the invariant that names the rule.
 CONSTANTS HeaderByChildL,  \* the header is bounded by the field's own L
                            \* (the #2400 bug: Dart, then Rust, Java, Luau,
                            \* Squirrel)
           OffByOneAtL,     \* a payload ending one byte past the buffer is
                            \* accepted
-          ResumeAtCursor   \* the walk resumes where the payload's read
+          ResumeAtCursor,  \* the walk resumes where the payload's read
                            \* stopped rather than at end
+          ResumeAfterDamage \* damage inside a field is resumed past L, the
+                            \* partial read the ruling of 2026-10-31 removed
 ASSUME HeaderByChildL \in BOOLEAN
+ASSUME ResumeAfterDamage \in BOOLEAN
 ASSUME OffByOneAtL \in BOOLEAN
 ASSUME ResumeAtCursor \in BOOLEAN
 
@@ -86,8 +90,8 @@ Field(L, H) ==
     /\ LET start == off + 1
            end == start + L
        IN IF ~LengthFits(end)
-          THEN \* L4: the length runs past the body carrying it; this body
-               \* stops, with what it decoded standing
+          THEN \* L4: the length runs past the body carrying it: damage,
+               \* and the load ends
                /\ done' = TRUE
                /\ malformed' = TRUE
                /\ fieldEnd' = end
@@ -108,15 +112,19 @@ Field(L, H) ==
                    hend == start + H
                IN IF hend > bound
                   THEN \* the count cannot complete: damage inside the field,
-                       \* the field defaults, the parent resumes past L
+                       \* and the whole load ends there (§4). The reversed
+                       \* witness resumes past L instead.
                        /\ malformed' = TRUE
-                       /\ off' = end
-                       /\ resumed' = end
                        /\ fieldEnd' = end
                        /\ cursor' = IF hend > N THEN N ELSE hend
                        /\ hdrDamage' = TRUE
                        /\ hdrEnd' = hend
-                       /\ UNCHANGED done
+                       /\ IF ResumeAfterDamage
+                          THEN /\ off' = end
+                               /\ resumed' = end
+                               /\ UNCHANGED done
+                          ELSE /\ done' = TRUE
+                               /\ UNCHANGED <<off, resumed>>
                   ELSE \* H3: the header read against the parent; the elements
                        \* bounded by L, a span clamped at zero when the header
                        \* crossed end; the parent resumes at end (L1)
@@ -160,6 +168,11 @@ NoReadPastBuffer == cursor <= N
 \* The parent resumes exactly at end after every field it did not stop on
 \* (L1): a count that crossed L does not move the resume point.
 ResumeAtEnd == ~done => resumed = fieldEnd
+
+\* DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): once the flag is
+\* set the scan is over, so no field is read after damage and nothing a later
+\* field held can stand beside it.
+DamageEndsLoad == malformed => done
 
 \* A count is damage only when the PARENT cannot complete it (H3): a header
 \* the buffer holds is read whether or not the field's own L covers it.

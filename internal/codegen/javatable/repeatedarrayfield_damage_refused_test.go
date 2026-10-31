@@ -1,26 +1,21 @@
 package javatable
 
 import (
-	"bytes"
 	"encoding/hex"
 	"path/filepath"
 	"testing"
 )
 
-// TestJavaFixRepeatedArrayFieldKeepsDecoded pins the wire-fuzzer cause JD1: a
-// top-level array field that appears twice on the wire. Go's rule is that the
-// last occurrence wins, but the elements an earlier occurrence already decoded
-// stand when the later occurrence is damaged before it reaches an element
-// (docs/SPEC-TABLES.md §3.3: fields decoded before the damage stand). The Java
-// leg cleared the array as soon as it met the field the second time, dropping
-// elements the oracle keeps, so every saved byte past the damage and every
-// report counter must match internal/tablewire's answer.
+// TestJavaFixRepeatedArrayFieldDamageRefused pins the wire-fuzzer causes JD1
+// and JD2: a top-level array field that appears twice on the wire, its later
+// occurrence damaged. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4):
+// the Java leg owes the refusal, malformed, and nothing the earlier occurrence
+// decoded is compared.
 //
-// JD1 is backenddemo.MatchResult's `players` array as the random #14791 mutant
-// (oracle report 0,1,0,0,0,true, malformed, 254 saved bytes); JD2 is
-// tabledemo.LoadoutConfig's field 0x0e with a damaged count on its second
-// occurrence (oracle report 0,0,0,0,0,true, malformed, 239 saved bytes).
-func TestJavaFixRepeatedArrayFieldKeepsDecoded(t *testing.T) {
+// JD1 is backenddemo.MatchResult's `players` array as the random #14791
+// mutant; JD2 is tabledemo.LoadoutConfig's field 0x0e with a damaged count on
+// its second occurrence.
+func TestJavaFixRepeatedArrayFieldDamageRefused(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	cases := []struct {
@@ -51,24 +46,11 @@ func TestJavaFixRepeatedArrayFieldKeepsDecoded(t *testing.T) {
 			}
 			u := unitFromDir(t, filepath.Join(repo, tc.unit))
 			oracle := goOracleLoadout(t, u, tc.root, wire)
-			t.Logf("oracle: encoded=%d report=%+v", len(oracle.encoded), oracle.report)
 			if !oracle.report.Malformed {
 				t.Fatalf("oracle did not report malformed; this mutant does not pin the cause")
 			}
-			leg := javaLoadout(t, u, tc.root, wire)
-			if !bytes.Equal(leg.saved, oracle.encoded) {
-				t.Fatalf("Java %s keeps different bytes than the oracle: leg saves %d bytes, oracle %d\nleg=%s\noracle=%s",
-					tc.root, len(leg.saved), len(oracle.encoded), hex.EncodeToString(leg.saved), hex.EncodeToString(oracle.encoded))
-			}
-			if leg.report.malformed != oracle.report.Malformed ||
-				leg.report.refused != oracle.report.Refused ||
-				leg.report.unknown != oracle.report.Unknown ||
-				leg.report.kindMismatch != oracle.report.KindMismatch ||
-				leg.report.widened != oracle.report.Widened ||
-				leg.report.clamped != oracle.report.Clamped ||
-				leg.report.duplicate != oracle.report.Duplicate {
-				t.Fatalf("Java %s reports different counters than the oracle:\nleg=%+v\noracle=%+v",
-					tc.root, leg.report, oracle.report)
+			if leg := javaLoadout(t, u, tc.root, wire); !leg.report.malformed {
+				t.Fatalf("Java %s did not refuse a damaged load: %+v", tc.root, leg.report)
 			}
 		})
 	}

@@ -243,6 +243,10 @@ func deriveManifest(m *Manifest, path string) error {
 type expectation struct {
 	name string // the file the driver writes
 	want []byte
+	// damaged says the case is DAMAGED INPUT (docs/SPEC-TABLES.md §4):
+	// the load is discarded whole, so the answer is scored on the refusal
+	// alone, the report line saying `malformed`, and nothing after it.
+	damaged bool
 }
 
 // hostileExpectations is the answer each port owes the hostile battery: the
@@ -255,7 +259,7 @@ func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
 	out := make([]expectation, 0, len(m.Hostiles))
 	var exemptions []string
 	for _, h := range m.Hostiles {
-		out = append(out, expectation{h.Name, []byte(h.VerdictFor(lang) + "\n")})
+		out = append(out, expectation{name: h.Name, want: []byte(h.VerdictFor(lang) + "\n")})
 		if !h.Carries(lang) && h.Uncarried != "" {
 			exemptions = append(exemptions, fmt.Sprintf("%s / json-hostile / %s: the row is carried by %s; %s keeps %s (docs/SPEC-TABLES.md §16.3)",
 				lang, h.Name, strings.Join(h.CarriedBy, ","), lang, h.Uncarried))
@@ -276,7 +280,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{i.Name, want})
+			out = append(out, expectation{name: i.Name, want: want})
 		}
 	case "message":
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): read the message
@@ -287,14 +291,14 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// no expected bytes, and scoreAnswer holds the leg to the reason.
 		for _, msg := range m.Messages {
 			if msg.Refused() {
-				out = append(out, expectation{msg.Name, nil})
+				out = append(out, expectation{name: msg.Name})
 				continue
 			}
 			want, err := os.ReadFile(msg.MessageWire)
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{msg.Name, want})
+			out = append(out, expectation{name: msg.Name, want: want})
 		}
 	case "retain":
 		// RETAIN-UNKNOWN's COUNTERS (docs/SPEC-TABLES.md §6.6): the load's two
@@ -302,7 +306,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// `retain_lost` behind them. The bytes are the other surface's, so each
 		// of the two is one shape.
 		for _, rc := range m.Retains {
-			out = append(out, expectation{rc.Name, []byte(rc.Load.String() + " " + strconv.Itoa(rc.SaveLost) + "\n")})
+			out = append(out, expectation{name: rc.Name, want: []byte(rc.Load.String() + " " + strconv.Itoa(rc.SaveLost) + "\n")})
 		}
 	case "retain-save":
 		// AND THE BYTES THE PAIR WRITES BACK, which a counter cannot see: a
@@ -316,7 +320,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{rc.Name, want})
+			out = append(out, expectation{name: rc.Name, want: want})
 		}
 	case "json-write":
 		for _, i := range m.Instances {
@@ -327,7 +331,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{i.Name + ".json", want})
+			out = append(out, expectation{name: i.Name + ".json", want: want})
 		}
 	case "report":
 		for _, r := range m.Reports {
@@ -335,7 +339,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if !ok {
 				return nil, fmt.Errorf("reports.txt names no case %q — run: make conformance-generate", r.Name)
 			}
-			out = append(out, expectation{r.Name, []byte(c.String() + "\n")})
+			out = append(out, expectation{name: r.Name, want: []byte(c.String() + "\n"), damaged: c.Malformed})
 		}
 	case "framing":
 		// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the report line the
@@ -350,7 +354,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				}
 				want = append(want, text...)
 			}
-			out = append(out, expectation{fc.Name, want})
+			out = append(out, expectation{name: fc.Name, want: want, damaged: fc.Damaged})
 		}
 	case "cook":
 		for _, c := range m.Cooks {
@@ -358,7 +362,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{c.Case, want})
+			out = append(out, expectation{name: c.Case, want: want})
 		}
 	case "cook-write":
 		// THE TOOL IS THE REFERENCE (§7.6): a runtime writes the cook and the
@@ -375,16 +379,16 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w — run: make conformance-generate", cw.Instance, err)
 			}
-			out = append(out, expectation{cw.Instance, little})
-			out = append(out, expectation{cw.Instance + "-be", big})
+			out = append(out, expectation{name: cw.Instance, want: little})
+			out = append(out, expectation{name: cw.Instance + "-be", want: big})
 		}
 	case "json-hostile":
 		for _, h := range m.Hostiles {
-			out = append(out, expectation{h.Name, []byte(h.Verdict() + "\n")})
+			out = append(out, expectation{name: h.Name, want: []byte(h.Verdict() + "\n")})
 		}
 	case "block":
 		for _, b := range m.Blocks {
-			out = append(out, expectation{b.Name, []byte("open\n")})
+			out = append(out, expectation{name: b.Name, want: []byte("open\n")})
 		}
 	case "block-foreign", "cook-foreign":
 		// THE FOREIGN-ORDER REFUSAL, and the expectation is a constant because
@@ -395,12 +399,12 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// depended on the host's own order could only ever be green on one.
 		if surface == "block-foreign" {
 			for _, b := range m.Blocks {
-				out = append(out, expectation{b.Name, []byte("refuse\n")})
+				out = append(out, expectation{name: b.Name, want: []byte("refuse\n")})
 			}
 			break
 		}
 		for _, c := range m.Cooks {
-			out = append(out, expectation{c.Case, []byte("refuse\n")})
+			out = append(out, expectation{name: c.Case, want: []byte("refuse\n")})
 		}
 	case "block-dump":
 		for _, b := range m.Blocks {
@@ -408,7 +412,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, expectation{b.Name, want})
+			out = append(out, expectation{name: b.Name, want: want})
 		}
 	case "cook-reason", "block-reason":
 		// THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §7, §19.2): one word
@@ -422,7 +426,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if r.Kind != kind {
 				continue
 			}
-			out = append(out, expectation{r.Forgery, []byte(r.Reason + "\n")})
+			out = append(out, expectation{name: r.Forgery, want: []byte(r.Reason + "\n")})
 		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook
@@ -436,7 +440,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			if f.Kind != kind {
 				continue
 			}
-			out = append(out, expectation{f.Name, []byte(f.Verdict + "\n")})
+			out = append(out, expectation{name: f.Name, want: []byte(f.Verdict + "\n")})
 		}
 	default:
 		return nil, fmt.Errorf("%q is not a surface", surface)
@@ -685,11 +689,34 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
 		return
 	}
+	if e.damaged {
+		if !answersDamage(got) {
+			r.failures = append(r.failures, fmt.Sprintf("%s: damaged input owes the refusal, a report line saying malformed; got %q", e.name, firstLine(got)))
+			return
+		}
+		r.pass++
+		return
+	}
 	if !bytes.Equal(got, e.want) {
 		r.failures = append(r.failures, describeDiff(e.name, e.want, got))
 		return
 	}
 	r.pass++
+}
+
+// answersDamage reports whether a leg's answer opens with a report line that
+// says `malformed`. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4):
+// the counters and any value after the line are undefined and are not read.
+func answersDamage(got []byte) bool {
+	c, err := ParseCounts(firstLine(got))
+	return err == nil && c.Malformed
+}
+
+func firstLine(b []byte) string {
+	if i := bytes.IndexByte(b, '\n'); i >= 0 {
+		return string(b[:i])
+	}
+	return string(b)
 }
 
 // absentReference is what the REFERENCE leg's absence reads as in the failure

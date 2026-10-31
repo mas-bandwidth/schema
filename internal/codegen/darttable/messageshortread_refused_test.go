@@ -1,16 +1,11 @@
 package darttable
 
-// THE DART MESSAGE READ KEEPS THE VALUES IT ALREADY LANDED WHEN A BODY RUNS
-// OUT OF BITS (docs/SPEC-TABLES.md §3.3). The Go reference reads every payload
-// into a local and stores it only after the read succeeded
-// (internal/tablewire/messagedecode.go, scalar/text/array/count), so a body
-// that runs out keeps every value it had landed; the emitted Dart assigned the
-// failed read's 0 to the field before it checked, so a repeated field was
-// zeroed and a ranged field was left at raw 0 with no base added
-// (internal/codegen/darttable/messageform_batch.go, emitMessageReadScalar,
-// emitMessageReadValue). This test loads the four representative mutants with
-// the generated Dart batch load and with the Go decode, and pins the six
-// counters and body one's saved bytes equal.
+// A DART MESSAGE BATCH WHOSE BODY RUNS OUT OF BITS IS DAMAGED, and DAMAGE
+// DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4, §3.3): the generated Dart
+// batch load owes the refusal, malformed, and delivers no body. This test loads
+// the four representative mutants with the generated Dart batch load and the
+// Go decode, and holds the Dart leg to the refusal; no counter and no saved
+// byte is compared.
 
 import (
 	"encoding/hex"
@@ -176,7 +171,7 @@ func parseShortReadDart(t *testing.T, out string) shortReadDart {
 	}, hex: hexStr}
 }
 
-func TestMessageShortReadKeepsLandedValueDart(t *testing.T) {
+func TestMessageShortReadRefusedDart(t *testing.T) {
 	t.Parallel()
 	for _, c := range shortReadCases {
 		t.Run(c.root, func(t *testing.T) {
@@ -187,7 +182,7 @@ func TestMessageShortReadKeepsLandedValueDart(t *testing.T) {
 			}
 			ann := shortReadAnnounce(t, c.announce)
 			u := shortReadUnit(t, c.unit)
-			goReport, wantSaved := shortReadOracle(t, u, c.root, ann, wire)
+			goReport, _ := shortReadOracle(t, u, c.root, ann, wire)
 			if !goReport.Malformed {
 				t.Fatalf("Go decodes %s malformed=0, want 1", c.root)
 			}
@@ -197,28 +192,8 @@ func TestMessageShortReadKeepsLandedValueDart(t *testing.T) {
 			if err != nil {
 				t.Fatalf("dart probe: %v\n%s", err, out)
 			}
-			got := parseShortReadDart(t, out)
-			want := shortReadDartReport{
-				unknown:   goReport.Unknown,
-				kind:      goReport.KindMismatch,
-				widened:   goReport.Widened,
-				clamped:   goReport.Clamped,
-				duplicate: goReport.Duplicate,
-				malformed: boolInt(goReport.Malformed),
-				refused:   boolInt(goReport.Refused),
-				count:     0,
-			}
-			if got.report != want {
-				t.Fatalf("%s Dart report %+v, want Go report %+v (docs/SPEC-TABLES.md §3.3)\n%s",
-					c.root, got.report, want, out)
-			}
-			gotSaved, err := hex.DecodeString(got.hex)
-			if err != nil {
-				t.Fatalf("dart saved hex: %v", err)
-			}
-			if string(gotSaved) != string(wantSaved) {
-				t.Fatalf("%s saved: Dart %d bytes, oracle %d bytes (docs/SPEC-TABLES.md §3.3)\n  dart   %x\n  oracle %x",
-					c.root, len(gotSaved), len(wantSaved), gotSaved, wantSaved)
+			if got := parseShortReadDart(t, out); got.report.malformed != 1 {
+				t.Fatalf("%s: the Dart batch load did not refuse a damaged batch: %+v\n%s", c.root, got.report, out)
 			}
 		})
 	}

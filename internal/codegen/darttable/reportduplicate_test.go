@@ -122,9 +122,10 @@ void main(List<String> args) {
 // §2.8 on the Dart wire reader against the Go reference,
 // internal/tablewire (*wireReader).mapField and mapKey: every one-byte
 // mutation of the map payload of a duplicate-key map wire (built with the Go leg) is loaded by
-// both, and wherever Go reads the wire, Dart's duplicate, kind_mismatch and
-// malformed answers and its landed entry count equal Go's. A body the scan
-// cannot frame stops the map with no duplicate judged on it; a key under a
+// both, and wherever Go reads the wire cleanly, Dart's duplicate,
+// kind_mismatch and malformed answers and its landed entry count equal Go's.
+// A body the scan cannot frame is damage, and DAMAGE DISCARDS THE WHOLE LOAD
+// (§4): there Dart owes malformed and nothing else is compared. A key under a
 // foreign kind empties the map with ONE kind_mismatch.
 func TestWireMapKeyScanMatchesGoDart(t *testing.T) {
 	t.Parallel()
@@ -177,6 +178,7 @@ table Root {
 		t.Fatalf("the map field does not lead the wire as the test expects: %x", wire)
 	}
 	var names, wants []string
+	var damaged []bool
 	for i := 4; i < 4+int(wire[3]); i++ {
 		for _, b := range []byte{0x00, 0x01, 0x02, 0x0c, 0x0e, 0xff} {
 			if wire[i] == b {
@@ -195,6 +197,7 @@ table Root {
 			}
 			names = append(names, name)
 			wants = append(wants, fmt.Sprintf("%s %d %d %t %d", name, ref.Duplicate, ref.KindMismatch, ref.Malformed, len(got.Fields[0].Entries)))
+			damaged = append(damaged, ref.Malformed)
 		}
 	}
 	if len(names) == 0 {
@@ -227,6 +230,12 @@ void main(List<String> args) {
 		t.Fatalf("Dart answered %d mutants, want %d\n%s", len(got), len(wants), out)
 	}
 	for i := range wants {
+		if damaged[i] {
+			if fields := strings.Fields(got[i]); len(fields) != 5 || fields[3] != "true" {
+				t.Errorf("mutant %s is damaged and Dart did not refuse it: %q", names[i], got[i])
+			}
+			continue
+		}
 		if got[i] != wants[i] {
 			t.Errorf("mutant (name duplicate kind_mismatch malformed entries): Dart %q, Go %q", got[i], wants[i])
 		}

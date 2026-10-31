@@ -3787,7 +3787,14 @@ namespace blockdemo {
 
 bool RenderCameraFromJsonTolerant( RenderCamera & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderCameraTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderCameraTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderCameraTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderCameraFromJson( RenderCamera & value, const char * text, int64_t bytes, TableReport * report )
@@ -3820,7 +3827,14 @@ int64_t RenderCameraToJson( const RenderCamera & value, char * buffer, int64_t c
 
 bool RenderShipFromJsonTolerant( RenderShip & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderShipTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderShipTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderShipTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderShipFromJson( RenderShip & value, const char * text, int64_t bytes, TableReport * report )
@@ -3853,7 +3867,14 @@ int64_t RenderShipToJson( const RenderShip & value, char * buffer, int64_t capac
 
 bool RenderTurretFromJsonTolerant( RenderTurret & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderTurretTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderTurretTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderTurretTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderTurretFromJson( RenderTurret & value, const char * text, int64_t bytes, TableReport * report )
@@ -3886,7 +3907,14 @@ int64_t RenderTurretToJson( const RenderTurret & value, char * buffer, int64_t c
 
 bool RenderMissileFromJsonTolerant( RenderMissile & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderMissileTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderMissileTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderMissileTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderMissileFromJson( RenderMissile & value, const char * text, int64_t bytes, TableReport * report )
@@ -3919,7 +3947,14 @@ int64_t RenderMissileToJson( const RenderMissile & value, char * buffer, int64_t
 
 bool RenderDynamicPropFromJsonTolerant( RenderDynamicProp & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderDynamicPropTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderDynamicPropTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderDynamicPropTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderDynamicPropFromJson( RenderDynamicProp & value, const char * text, int64_t bytes, TableReport * report )
@@ -3952,7 +3987,14 @@ int64_t RenderDynamicPropToJson( const RenderDynamicProp & value, char * buffer,
 
 bool RenderStaticPropFromJsonTolerant( RenderStaticProp & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderStaticPropTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderStaticPropTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderStaticPropTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderStaticPropFromJson( RenderStaticProp & value, const char * text, int64_t bytes, TableReport * report )
@@ -3985,7 +4027,14 @@ int64_t RenderStaticPropToJson( const RenderStaticProp & value, char * buffer, i
 
 bool RenderCosmeticPropFromJsonTolerant( RenderCosmeticProp & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderCosmeticPropTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderCosmeticPropTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderCosmeticPropTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderCosmeticPropFromJson( RenderCosmeticProp & value, const char * text, int64_t bytes, TableReport * report )
@@ -4018,7 +4067,14 @@ int64_t RenderCosmeticPropToJson( const RenderCosmeticProp & value, char * buffe
 
 bool RenderLaserFromJsonTolerant( RenderLaser & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderLaserTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderLaserTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderLaserTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderLaserFromJson( RenderLaser & value, const char * text, int64_t bytes, TableReport * report )
@@ -4051,7 +4107,14 @@ int64_t RenderLaserToJson( const RenderLaser & value, char * buffer, int64_t cap
 
 bool RenderExplosionFromJsonTolerant( RenderExplosion & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderExplosionTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderExplosionTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderExplosionTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderExplosionFromJson( RenderExplosion & value, const char * text, int64_t bytes, TableReport * report )
@@ -4084,7 +4147,14 @@ int64_t RenderExplosionToJson( const RenderExplosion & value, char * buffer, int
 
 bool RenderFrameFromJsonTolerant( RenderFrame & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderFrameTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderFrameTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderFrameTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderFrameFromJson( RenderFrame & value, const char * text, int64_t bytes, TableReport * report )
@@ -4117,7 +4187,14 @@ int64_t RenderFrameToJson( const RenderFrame & value, char * buffer, int64_t cap
 
 bool RenderVector3FromJsonTolerant( RenderVector3 & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderVector3TableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderVector3TableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderVector3TableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderVector3FromJson( RenderVector3 & value, const char * text, int64_t bytes, TableReport * report )
@@ -4150,7 +4227,14 @@ int64_t RenderVector3ToJson( const RenderVector3 & value, char * buffer, int64_t
 
 bool RenderQuaternionFromJsonTolerant( RenderQuaternion & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, RenderQuaternionTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, RenderQuaternionTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RenderQuaternionTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RenderQuaternionFromJson( RenderQuaternion & value, const char * text, int64_t bytes, TableReport * report )

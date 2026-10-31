@@ -15,13 +15,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// A map whose KEY kind is narrower than the reader's declaration is a widening
-// (docs/SPEC-TABLES.md §2.8: "A key kind the declaration's own kind WIDENS is
-// not a disagreement: it decodes exactly, the entries land, and ONE widened
-// counts for the map"). The Java map read used to accept the narrow key and
-// then break on the framing damage before counting it, reporting widened=0
-// where the oracle reports 1.
-func TestJavaFixMapWidenedCount(t *testing.T) {
+// A map whose first KEY widens and whose entry scan then runs off into framing
+// damage is damaged input, and DAMAGE DISCARDS THE WHOLE LOAD
+// (docs/SPEC-TABLES.md §4): the Java leg owes the refusal, malformed, and the
+// widened count the scan made before the damage is not compared.
+func TestJavaFixMapWidenThenDamageRefused(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "tables", "maps")
@@ -58,10 +56,7 @@ func TestJavaFixMapWidenedCount(t *testing.T) {
 	}
 	// mapdemo.Slots: the first key's kind byte is 2 (one-byte int8) under a
 	// field declared int32, and its old four-byte payload is left behind, so
-	// the entry scan runs off into framing damage. The key still WIDENS before
-	// that damage is seen, and the MAP counts it (§2.8): the oracle says
-	// widened=1 with malformed=true, and a read that breaks on the damage
-	// before counting the widening is not the oracle's answer.
+	// the entry scan runs off into framing damage.
 	mutant, err := hex.DecodeString("01010e340d02180202feffffff03100e0402040402000000050465000000001802040600000003100e0402040401000000050464000000000604050000000061b072303048657fec105b36194ac93dea0ce83094fde47c8be145c2cb04da4f8794b696a762b5a0e9ea716f0f0182bf0600000000000000")
 	if err != nil {
 		t.Fatal(err)
@@ -109,30 +104,10 @@ public final class Driver {
 	}
 	model := tabletext.NewModel(u)
 	want := new(tabletext.Report)
-	value := model.New(u.Tables["Slots"])
-	ok, err := tablewire.Decode(model, value, mutant, want)
-	if !ok || err != nil {
-		t.Fatalf("oracle decode: ok=%v err=%v report=%+v", ok, err, want)
+	if _, err := tablewire.Decode(model, model.New(u.Tables["Slots"]), mutant, want); err != nil || !want.Malformed {
+		t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, want)
 	}
-	gotFields := strings.Split(javaReport, ",")
-	if len(gotFields) != 7 {
-		t.Fatalf("java report shape: %q", javaReport)
-	}
-	wantFields := []string{
-		fmt.Sprintf("%d", want.Unknown),
-		fmt.Sprintf("%d", want.KindMismatch),
-		fmt.Sprintf("%d", want.Widened),
-		fmt.Sprintf("%d", want.Clamped),
-		fmt.Sprintf("%d", want.Duplicate),
-		fmt.Sprintf("%t", want.Malformed),
-		fmt.Sprintf("%t", want.Refused),
-	}
-	for i := range wantFields {
-		if gotFields[i] != wantFields[i] {
-			t.Errorf("report field %d: java=%s oracle=%s (java report %q, oracle %+v)", i, gotFields[i], wantFields[i], javaReport, want)
-		}
-	}
-	if want.Widened != 1 || !want.Malformed {
-		t.Fatalf("test setup: oracle report %+v, want widened=1 and malformed", want)
+	if gotFields := strings.Split(javaReport, ","); len(gotFields) != 7 || gotFields[5] != "true" {
+		t.Errorf("Java Slots did not refuse a damaged load: %q", javaReport)
 	}
 }

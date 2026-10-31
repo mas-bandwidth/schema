@@ -226,7 +226,7 @@ var runPatternExceptions = []runPatternException{
 	{"make/moo-text.mk:28", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it"},
 	{"make/moo-text.mk:32", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it"},
 	{"make/moo-tables.mk:18", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them"},
-	{"Makefile:5644", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"Makefile:5696", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 	{"make/js.mk:1497", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion"},
 }
 

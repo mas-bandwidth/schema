@@ -4342,7 +4342,14 @@ namespace armdemo {
 
 bool NodeFromJsonTolerant( Node & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, NodeTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, NodeTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; NodeTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool NodeFromJson( Node & value, const char * text, int64_t bytes, TableReport * report )
@@ -4377,7 +4384,14 @@ bool RingFromJsonTolerant( RingBuilder & builder, const char * text, int64_t byt
 {
     Ring * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, RingTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, RingTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RingTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RingFromJson( RingBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4414,7 +4428,14 @@ bool RackFromJsonTolerant( RackBuilder & builder, const char * text, int64_t byt
 {
     Rack * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, RackTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, RackTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; RackTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool RackFromJson( RackBuilder & builder, const char * text, int64_t bytes, TableReport * report )
@@ -4451,7 +4472,14 @@ bool TrayFromJsonTolerant( TrayBuilder & builder, const char * text, int64_t byt
 {
     Tray * root = builder.GetRoot();
     if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, TrayTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonReadGraph( builder.main, root, TrayTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; TrayTableType()->reset( root ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool TrayFromJson( TrayBuilder & builder, const char * text, int64_t bytes, TableReport * report )
