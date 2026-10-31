@@ -322,3 +322,56 @@ IO.puts("ok")
 		t.Fatalf("the reader without its early-terminator check still passed: the probe does not see the rule\n%s", out)
 	}
 }
+
+// TestReservedNodeIdInANestedBodyIsDamageElixir pins a wire fuzzer finding
+// (pass entry, tblp1.Chain): the reserved node-table id
+// 0xFFFFFFFFFFFFFFFF belongs to a variable ROOT's body alone (docs/SPEC-TABLES.md
+// §3.1); named inside a nested body it is a second numbering, which cannot
+// exist, so it is DAMAGE the report names, never an unknown field skipped. The
+// value a damaged read returns is undefined (the discard-on-damage ruling).
+//
+// THE REVERSED WITNESS lets a nested body carry the id again, and the probe
+// must go red.
+func TestReservedNodeIdInANestedBodyIsDamageElixir(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the Elixir toolchain")
+	elixirBin := elixirBinary(t)
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, filepath.Join(root, "test", "tables", "P1.schema"))
+	// chain_value with the nested body's third id-table entry turned into the
+	// reserved node id
+	const mutant = "01010c05636861696e020d0d030407000000040c037469700000861b638ebaadbcc409484f69ad9b4bbffffffffffffffffff3a4484419abd7560400000000000000"
+	probe := fmt.Sprintf(`
+case Tblp1.Table.load("Chain", Base.decode16!(%q, case: :lower)) do
+  {:ok, _v, r} ->
+    if not r.malformed do
+      IO.puts(:stderr, "FAIL: the node id in a nested body read clean: " <> inspect(r))
+      System.halt(1)
+    end
+
+  {:error, _reason, _r} ->
+    :ok
+end
+IO.puts("ok")
+`, mutant)
+	files := generateElixir(t, u)
+	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the Elixir reader takes the node id in a nested body for an unknown field: %v\n%s", err, out)
+	}
+	const check = "(id == @node_id and transport == :nested)"
+	planted := map[string][]byte{}
+	k := 0
+	for name, data := range files {
+		k += strings.Count(string(data), check)
+		planted[name] = []byte(strings.ReplaceAll(string(data), check, "(false and transport == :nested)"))
+	}
+	if k == 0 {
+		t.Fatal("the witness found no nested node-id check in the generated reader")
+	}
+	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
+		t.Fatalf("the reader without its nested node-id check still passed: the probe does not see the rule\n%s", out)
+	}
+}
