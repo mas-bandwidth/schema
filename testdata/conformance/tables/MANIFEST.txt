@@ -157,6 +157,12 @@ instance stream_arm_first     streamdemo  Feed        testdata/wire/tables/strea
 # declaration-order position: the arm names x, parts names y then x again, so
 # the walk numbers x, y as 2, 3 and one node is named from an arm and a slot.
 instance stream_arm_pointer   streamdemo  Feed        testdata/wire/tables/stream_arm_pointer.bin
+# A UNION ARM NAMED `tag` (tables/stream Frame): the arm's payload is the arm's
+# own, and the discriminator beside it is the arm's index. A value
+# representation that keys the discriminator and the payload by name in one
+# place lets the arm named like the discriminator overwrite it. The wire is the
+# TOOL's (`schema pack` of the text), 49 bytes.
+instance stream_arm_tag       streamdemo  Feed        testdata/wire/tables/stream_arm_tag.bin
 
 # THE BYTE BUFFER corpus (§2.5): a blob at its used size, pointed at. blob_small
 # carries every field once; blob_empty holds a present blob and string of length
@@ -441,6 +447,7 @@ cook-write stream_header          testdata/conformance/tables/cook-write/stream_
 cook-write stream_parts           testdata/conformance/tables/cook-write/stream_parts.cook testdata/conformance/tables/cook-write/stream_parts-be.cook
 cook-write stream_arm_first       testdata/conformance/tables/cook-write/stream_arm_first.cook testdata/conformance/tables/cook-write/stream_arm_first-be.cook
 cook-write stream_arm_pointer     testdata/conformance/tables/cook-write/stream_arm_pointer.cook testdata/conformance/tables/cook-write/stream_arm_pointer-be.cook
+cook-write stream_arm_tag         testdata/conformance/tables/cook-write/stream_arm_tag.cook testdata/conformance/tables/cook-write/stream_arm_tag-be.cook
 cook-write blob_small             testdata/conformance/tables/cook-write/blob_small.cook testdata/conformance/tables/cook-write/blob_small-be.cook
 cook-write blob_empty             testdata/conformance/tables/cook-write/blob_empty.cook testdata/conformance/tables/cook-write/blob_empty-be.cook
 cook-write blob_large             testdata/conformance/tables/cook-write/blob_large.cook testdata/conformance/tables/cook-write/blob_large-be.cook
