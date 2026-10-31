@@ -91,6 +91,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// form and not an accelerator, so it rides unconditionally the way form 1
 	// does in C++ — there is no cargo feature over it, because a wire a
 	// consumer can be handed is not something they opt into.
+	var vplan *vmsgPlan
 	if fixed {
 		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
 		// THE MESSAGE FORM (§3.3) is a fixed table's, so its announcement rides
@@ -99,6 +100,14 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		// it, owns TableReport, and the message runtime then emits none.
 		_, variable := out[VariableRuntimeModule+".rs"]
 		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u, !variable)
+		// THE MESSAGE FORM OVER A POINTERED ROOT (§3.1, §3.3, messagevariable.go)
+		// rides the variable form's storage, so it needs both runtimes.
+		if variable {
+			vplan = variableMessagePlan(u, newVariableClass(u))
+			if vplan != nil {
+				out[VariableMessageRuntimeModule+".rs"] = variableMessageRuntimeModule(u, vplan)
+			}
+		}
 	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 	// THE VIEW (docs/SPEC-TABLES.md §8): every table's and every type's
@@ -125,6 +134,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		if fixed {
 			if body := g.messageModule(); body != nil {
 				out[strings.ToLower(f.Base)+"_message.rs"] = body
+			}
+			if vplan != nil {
+				if body := g.variableMessageModule(vplan); body != nil {
+					out[strings.ToLower(f.Base)+"_vmessage.rs"] = body
+				}
 			}
 		}
 	}
