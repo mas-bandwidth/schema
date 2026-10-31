@@ -1811,7 +1811,11 @@ def trailer(data:string) -> [int], int, bool:
     if size < 9:
         return [], 0, false
     let count = read_int64_le(data, size - 8)
-    if count < 0 or count > size / 8:
+    // THE ENTRY COUNT IS BOUNDED AT 4096 (§3, the distinctness check;
+    // docs/LAYERS/1-framing.md F6): a count above it is malformed whatever
+    // the buffer would hold, and at or below it the entries are proved
+    // distinct below
+    if count < 0 or count > 4096 or count > size / 8:
         return [], 0, false
     let span = count * 8 + 8
     if span + 1 > size:
