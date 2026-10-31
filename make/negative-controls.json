@@ -1526,6 +1526,7 @@
         "bench-luau-gate-negative-control",
         "conformance-negative-control-luau",
         "conformance-negative-control-luau-emitter",
+        "conformance-negative-control-luau-framing",
         "conformance-negative-control-luau-walk",
         "luau-ludicrous-negative-control",
         "luau-nightly-fuzz-negative-control",
@@ -1550,7 +1551,8 @@
         "tables-luau-usage-negative-control",
         "tables-luau-versioning-negative-control",
         "tables-luau-wire-fuzz-negative-control",
-        "tables-luau-wire-fuzz-vectors-negative-control"
+        "tables-luau-wire-fuzz-vectors-negative-control",
+        "tables-luau-damage-discard-negative-control"
       ],
       "luau": "0.741"
     },

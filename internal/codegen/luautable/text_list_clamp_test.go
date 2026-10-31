@@ -12,9 +12,8 @@ import (
 // TestLuauTextListClampAndMalformedLoadLikeGo pins the text-list tolerant load
 // to the Go reference engine (docs/SPEC-TABLES.md §2.13): an element past M
 // clamps at a code point boundary and counts clamped; an element that is not
-// UTF-8 counts malformed. For each wire the Luau load must return a value (not
-// nil) with the Go engine's six counters and verdict, and save of it must give
-// the Go engine's bytes. Every expectation is computed here from
+// UTF-8 is malformed and discards the whole value. Sound input keeps the Go
+// engine's counters and saved bytes. Every expectation is computed here from
 // internal/tabletext and internal/tablewire, never typed by hand.
 func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 	t.Parallel()

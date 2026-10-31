@@ -181,4 +181,13 @@ tables-luau-arms-negative-control: toolchain-luau
 	SCHEMA_SLOW=1 go test ./internal/codegen/luautable/ -run '^TestLuauArmFieldLineNegativeControl$$' -count=1 -timeout 600s
 
 test-luau: tables-luau-arms tables-luau-arms-negative-control
-test-luau: conformance-negative-control-luau conformance-negative-control-luau-emitter conformance-negative-control-luau-walk
+test-luau: conformance-negative-control-luau conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing
+
+# §4: damage refuses the entire file/retaining load and message batch.
+.PHONY: tables-luau-damage-discard tables-luau-damage-discard-negative-control
+tables-luau-damage-discard: toolchain-luau
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run 'TestLuauDamageDiscardsFileAndRetainingLoads|TestLuauDamagePreservesStrictDiagnostics|TestLuauMessageFormDamageRefusesTheBatch' -count=1
+tables-luau-damage-discard-negative-control: toolchain-luau
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run '^TestLuauDamageDiscardNegativeControls$$' -count=1
+
+test-luau: tables-luau-damage-discard tables-luau-damage-discard-negative-control
