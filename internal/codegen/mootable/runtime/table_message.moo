@@ -378,7 +378,7 @@ local function fixedKind(k: number): boolean
 end
 
 local function knownKind(k: number): boolean
-	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or (k >= 30 and k <= 33)
+	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or (k >= 30 and k <= 33) or k == 36
 end
 
 -- the compressed float's derivation (ir.TableMessageQuantization): the step
@@ -491,7 +491,7 @@ readShape = function(b: buffer, at: number, e: number, kind: number): (any, numb
 		end
 		s.elem = buffer.readu8(b, at)
 		at += 1
-		if not knownKind(s.elem) or s.elem == 12 or s.elem == 33 then
+		if not knownKind(s.elem) then
 			return s, nil
 		end
 		local inner, next = readShape(b, at, e, s.elem)
@@ -509,7 +509,7 @@ end
 local function valueBits(kind: number, s: any): number
 	if kind == 1 then
 		return 1
-	elseif kind == 11 then
+	elseif kind == 11 or kind == 36 then
 		return 64
 	elseif kind == 10 then
 		return if s.packing == 2 then s.bits else 32
@@ -764,9 +764,8 @@ function MS.unit(bytes: string): buffer
 	homeBytes = bytes
 	if not announceRead(v, buffer.fromstring(bytes), rep) then
 		-- a unit whose closure announces a kind the message form does not
-		-- spell (a timestamp, kind 36; a text list's element kind 12): the Go
-		-- engine refuses that announcement too, and this build's writer has no
-		-- vocabulary to write with, which writeBatch names
+		-- spell: the Go engine refuses that announcement too, and this build's
+		-- writer has no vocabulary to write with, which writeBatch names
 		return buffer.fromstring(bytes)
 	end
 	home = v
