@@ -159,12 +159,23 @@ func TestMooTypeWireWriteNegativeControl(t *testing.T) {
 	writeFile(t, dir, "Types.moo", types)
 	writeFile(t, dir, "main.moo", expandMacros(t, wireProbe))
 	lines := moorun.HexLines(t, moorun.Run(t, dir, "main.moo", nil))
-	golden, err := os.ReadFile(repo("testdata", "wire", "shipcreate_flags.bin"))
-	if err != nil {
-		t.Fatal(err)
+	if len(lines) != len(wireGoldenNames) {
+		t.Fatalf("negative control: the probe produced %d wire lines, want %d", len(lines), len(wireGoldenNames))
 	}
-	if len(lines) == 0 || bytes.Equal(lines[0], golden) {
-		t.Fatalf("negative control: the doubled bool still wrote the golden bytes")
+	// EXACTLY ITS ROWS: the one golden that writes a ShipCreate goes red, and
+	// every other golden still matches the C++ reference byte for byte.
+	var red []string
+	for i, name := range wireGoldenNames {
+		golden, err := os.ReadFile(repo("testdata", "wire", name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(lines[i], golden) {
+			red = append(red, name)
+		}
+	}
+	if strings.Join(red, ",") != "shipcreate_flags" {
+		t.Fatalf("negative control: the doubled bool redded %v, want exactly [shipcreate_flags]", red)
 	}
 }
 
