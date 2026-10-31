@@ -365,10 +365,10 @@ public final class MixedHitEventRetain {
             w.put8(4);
             w.put32(v.hitKind);
         }
-        if (v.crit) {
+        if (v.crit != false) {
             w.putLeb(w.ref(MixedHitEventVariable.F_crit));
             w.put8(1);
-            w.put8(1);
+            w.put8(v.crit ? 1 : 0);
         }
     }
 
