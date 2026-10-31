@@ -76,6 +76,12 @@ func usage() {
              a LoadMeasure inside the framing's bound, for every mutant
              (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
              the enumerated passes run whatever N is.
+  cook-differential
+             cook every cook-write row's wire with the tool's engine and
+             with the C++ reference driver (--driver, default its committed
+             leg), in both byte orders, and require the same bytes; the
+             committed cook-write files are not read (docs/SPEC-TABLES.md
+             §2.8, §2.9, §7.6).
 
 flags:
   --manifest <path>   the conformance manifest
@@ -101,7 +107,8 @@ flags:
   --ports             leave the reference leg out of the matrix (matrix only)
   --results <path>    write every case's verdict as JSON, the input of
                       "go run ./tools/matrix proof" (run only)
-  --driver <cmd>      the leg to fuzz (wire-fuzz only)
+  --driver <cmd>      the leg to fuzz (wire-fuzz), or the reference driver
+                      (cook-differential)
   --seed <S> --n <N>  the random pass (wire-fuzz only)
   --replay <file> --unit <key> --root <table> [--message]
                       run one saved mutant alone (wire-fuzz only)
@@ -225,6 +232,14 @@ func main() {
 	case "wire-fuzz":
 		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, finiteOwed: *finiteOwed}); err != nil {
 			fatalf("%v", err)
+		}
+	case "cook-differential":
+		ok, err := cookDifferential(os.Stdout, m, *manifest, *driver, *work)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if !ok {
+			os.Exit(1)
 		}
 	case "run":
 		var opts runOptions
