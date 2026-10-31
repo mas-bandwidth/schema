@@ -1215,7 +1215,7 @@
         "tables-goose-message-form-negative-control",
         "tables-goose-message-peer-negative-control",
         "tables-goose-versioning-negative-control",
-      "tables-goose-damage-negative-control"
+        "tables-goose-damage-negative-control"
       ]
     },
     {
