@@ -567,15 +567,15 @@ static class Held
 
     // "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1. The returned count
     // states k - 1, ONE malformed counts, and nothing at or after body k is
-    // read." M is three: body 1 empty, body 2's first reference 0xF above the
-    // announced entry count, body 3 empty. A reference is four bits, low bit
-    // first, so byte 0 holds body 1's low nibble and body 2's high nibble.
+    // read." M is three: body 1 empty, body 2's first reference 1, field a,
+    // whose 32 bits run out after four, body 3 never read. The announced entry
+    // count is 3, so a reference is two bits, low bit first.
     static void DamageInsideBody()
     {
         const string row = "damage_inside_body";
         var vocab = Open();
         if (!vocab.Announced) { Fail(row, "announce"); return; }
-        byte[] wire = new byte[]{2, 2, 0xF0, 0x00};
+        byte[] wire = new byte[]{2, 2, 0x04};
         Root[] storage = Bodies(3);
         var report = new TableReport();
         Schema.RootLoadMessages(storage, wire, vocab, report, out int count);

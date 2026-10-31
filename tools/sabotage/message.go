@@ -11,11 +11,11 @@ func init() {
 }
 
 var messageSabotages = map[string][]edit{
-	// THE TAIL IS UNCONDITIONAL: a unit with no pointer announces the
-	// node-table id all the same. Take it out and every slot after it moves.
-	"message-tail-without-node-table": {{
-		old: "\tname(TableNodeWireId)\n",
-		new: "\t// SABOTAGED: the tail's node-table id is gone\n",
+	// THE VOCABULARY IS THE MESSAGE CLOSURE'S: announce the whole unit and a
+	// variable table's fields and every table's name id take slots.
+	"message-vocabulary-whole-unit": {{
+		old: "\tclosure := TableMessageClosure(u)\n",
+		new: "\tclosure := TableClosure(u) // SABOTAGED: the whole unit is announced\n",
 	}},
 
 	// THE ORDER IS THE COOK PROJECTION'S, and the committed announcement pins
@@ -169,12 +169,6 @@ var messageSabotages = map[string][]edit{
 	"message-mask-sixty-four": {{
 		old: "Bits: int64(fl.WireBits)",
 		new: "Bits: 64 + 0*int64(fl.WireBits) /* SABOTAGED: the file's width */",
-	}},
-
-	// AN UNBOUNDED ARRAY AND A MAP ARE ANNOUNCED AS RANGED 0 TO 2^32 - 1.
-	"message-list-count-sixteen": {{
-		old: "const TableMessageListMax = int64(0xFFFFFFFF)\n",
-		new: "const TableMessageListMax = int64(0xFFFF) // SABOTAGED: a sixteen-bit count\n",
 	}},
 
 	// A HOSTILE SHAPE IS A HOSTILE WIDTH: bits above 128 are refused.

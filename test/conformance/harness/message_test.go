@@ -151,62 +151,60 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 			}
 			seen[e.Key()] = i
 		}
-		if nodeTable != 1 {
-			t.Errorf("%s: the node-table id takes %d slots, not one", c.Key, nodeTable)
+		if nodeTable != 0 {
+			t.Errorf("%s: the node-table id takes %d slots; no body can carry it, so the vocabulary names it nowhere", c.Key, nodeTable)
 		}
 	}
 }
 
-// TestTheTailIsUnconditional holds §3.3's stated choice: a unit with no
-// pointer announces the reserved node-table id and the three blob type ids all
-// the same, so an ordinary edit only ever grows the tail at its END and never
-// moves a slot a generated field header carries as a literal.
-func TestTheTailIsUnconditional(t *testing.T) {
+// TestTheVocabularyIsTheMessageClosure: the announcement names what a fixed
+// table can carry and nothing else (docs/SPEC-TABLES.md §3.3; Glenn,
+// 2026-10-31). Every entry is a field or arm of the message closure or a
+// variant of an enum it reaches, and no entry is the node-table id, a blob id,
+// a table's name id or a field only a variable table declares.
+func TestTheVocabularyIsTheMessageClosure(t *testing.T) {
 	m, _, u := corpus(t)
 	for _, c := range m.Connections {
 		unit, err := u.get(c.Unit)
 		if err != nil {
 			t.Fatal(err)
 		}
-		entries := ir.TableVocabulary(unit)
-		var tables []uint64
-		for name := range ir.TableClosure(unit) {
-			// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S and
-			// its name is on no wire, so the tail never names it (§2.8, §20.2).
-			// The vocabulary skips it by `MapEntryOf`, and so does this: no
-			// connection unit carried a map until the retain rows landed one.
-			if st := unit.Tables[name]; st != nil && st.MapEntryOf != "" {
+		closure := ir.TableMessageClosure(unit)
+		if len(closure) == 0 {
+			t.Fatalf("%s: the connection's unit has no fixed table", c.Key)
+		}
+		forbidden := map[uint64]string{
+			ir.TableNodeWireId:    "the node-table id",
+			ir.BytesWireTypeId:   "the bytes blob id",
+			ir.StringWireTypeId:  "the string blob id",
+			ir.WstringWireTypeId: "the wstring blob id",
+		}
+		for name, st := range unit.Tables {
+			forbidden[ir.TableWireId(st.WireName())] = "the name id of table " + name
+		}
+		inClosure := map[uint64]bool{}
+		for name := range closure {
+			st := unit.Tables[name]
+			if st == nil {
+				st = unit.Structs[name]
+			}
+			for _, f := range st.Fields {
+				inClosure[ir.TableFieldWireId(f)] = true
+			}
+		}
+		for name, st := range unit.Tables {
+			if closure[name] {
 				continue
 			}
-			if unit.Tables[name] != nil {
-				// the id is the table's WIRE name, so a `was` rename moves no slot
-				tables = append(tables, ir.TableWireId(unit.Tables[name].WireName()))
+			for _, f := range st.Fields {
+				if id := ir.TableFieldWireId(f); !inClosure[id] {
+					forbidden[id] = "the field " + name + "." + f.Name + ", which only a variable table declares"
+				}
 			}
 		}
-		// the tail is the last 4 + one-per-table entries, in the fixed order
-		want := len(tables) + 4
-		if len(entries) < want {
-			t.Fatalf("%s: %d entries cannot hold a tail of %d", c.Key, len(entries), want)
-		}
-		tail := entries[len(entries)-want:]
-		if tail[0].Id != ir.TableNodeWireId || tail[1].Id != ir.BytesWireTypeId ||
-			tail[2].Id != ir.StringWireTypeId || tail[3].Id != ir.WstringWireTypeId {
-			t.Errorf("%s: the tail does not open with the node-table id and bytes, string, wstring", c.Key)
-		}
-		for i, e := range tail {
-			if e.Kind != 0 {
-				t.Errorf("%s: tail entry %d is announced at kind %d, not 0", c.Key, i, e.Kind)
-			}
-		}
-		// and the table name ids beyond them are the projection's sorted
-		// record order, which is what makes the tail grow only at its end
-		have := map[uint64]bool{}
-		for _, e := range tail[4:] {
-			have[e.Id] = true
-		}
-		for _, id := range tables {
-			if !have[id] {
-				t.Errorf("%s: the tail names no table id %016x", c.Key, id)
+		for i, e := range ir.TableVocabulary(unit) {
+			if why, bad := forbidden[e.Id]; bad {
+				t.Errorf("%s: slot %d announces %s", c.Key, i+1, why)
 			}
 		}
 	}
@@ -275,24 +273,24 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 func TestTheCostRows(t *testing.T) {
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
-	if got := len(wireBytes(t, c.Wire)); got != 361 {
-		t.Errorf("the announcement is %d bytes, the page prints 361", got)
+	if got := len(wireBytes(t, c.Wire)); got != 280 {
+		t.Errorf("the announcement is %d bytes, the page prints 280", got)
 	}
-	if got := len(vocabulary.Entries()); got != 33 {
-		t.Errorf("the vocabulary has %d entries, the page prints 33", got)
+	if got := len(vocabulary.Entries()); got != 24 {
+		t.Errorf("the vocabulary has %d entries, the page prints 24", got)
 	}
-	if got := vocabulary.RefBits(); got != 6 {
-		t.Errorf("a reference is %d bits, the page prints 6", got)
+	if got := vocabulary.RefBits(); got != 5 {
+		t.Errorf("a reference is %d bits, the page prints 5", got)
 	}
 	rows := []struct {
 		name          string
 		file, message int
 	}{
-		{"login_full", 106, 52},
+		{"login_full", 106, 51},
 		{"login_default", 10, 3},
-		{"match_full", 273, 148},
-		{"match_default", 43, 11},
-		{"store_full", 104, 43},
+		{"match_full", 273, 142},
+		{"match_default", 43, 10},
+		{"store_full", 104, 41},
 		{"store_default", 10, 3},
 	}
 	byName := map[string]Message{}
@@ -323,14 +321,14 @@ func TestTheCostRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(batch) != 244 {
-		t.Errorf("the three as one batch under an envelope are %d bytes, the page prints 244", len(batch))
+	if len(batch) != 237 {
+		t.Errorf("the three as one batch under an envelope are %d bytes, the page prints 237", len(batch))
 	}
 	pinned := wireBytes(t, "testdata/wire/tables/backend_round_message.bin")
 	if string(pinned) != string(batch) {
 		t.Errorf("the engine's batch differs from the pinned backend_round_message at byte %d", firstDifference(pinned, batch))
 	}
-	for i, want := range []int{54, 150, 45} {
+	for i, want := range []int{54, 144, 44} {
 		one, err := tablewire.EncodeMessage(model, envelopes[i])
 		if err != nil {
 			t.Fatal(err)
@@ -347,8 +345,8 @@ func TestTheCostRows(t *testing.T) {
 		}
 		bare += len(one)
 	}
-	if bare != 243 {
-		t.Errorf("the three bare as three batches of one are %d bytes, the page prints 243", bare)
+	if bare != 234 {
+		t.Errorf("the three bare as three batches of one are %d bytes, the page prints 234", bare)
 	}
 	// and the batch reads back as three envelopes, each arm its message
 	out := []*tabletext.Instance{model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope"))}
@@ -397,12 +395,11 @@ func TestTheBatch(t *testing.T) {
 	if batch[0] != ir.TableWireMessageForm || batch[1] != 2 {
 		t.Errorf("the batch does not open with the form byte and a count of three carried as M - 1")
 	}
-	// THE BODIES ARE ONE CONTINUOUS BIT STREAM: login's 400 bits and match's
-	// 1162 as the page sizes them alone, and store's 323 (its align now
-	// costing four bits where alone it cost six), 1885 bits after the count,
-	// 238 bytes whole
-	if bits := 8 + 8 + 400 + 1162 + 323; (bits+7)/8 != len(batch) || len(batch) != 238 {
-		t.Errorf("the batch is %d bytes and the page's bit arithmetic says %d", len(batch), (bits+7)/8)
+	// THE BODIES ARE ONE CONTINUOUS BIT STREAM: 230 bytes whole, under the
+	// 51 + 142 + 41 the three cost as batches of one, because the form byte and
+	// the count are not repeated and an align moves with the body's position
+	if len(batch) != 230 {
+		t.Errorf("the batch is %d bytes, the pinned arithmetic says 230", len(batch))
 	}
 	// and it reads back as three bodies, each its own root
 	insts := []*tabletext.Instance{model.New(model.Lookup("LoginRequest")), model.New(model.Lookup("MatchResult")), model.New(model.Lookup("StorePurchase"))}
@@ -433,8 +430,8 @@ func TestTheBatch(t *testing.T) {
 	if wide[1] != 255 {
 		t.Errorf("a batch of 256 carries a count byte of %d, not 255", wide[1])
 	}
-	// each body is a reference, 32 bits and a terminator: 44 bits
-	if want := 1 + (8+256*44+7)/8; len(wide) != want {
+	// each body is a reference, 32 bits and a terminator: 42 bits
+	if want := 1 + (8+256*42+7)/8; len(wide) != want {
 		t.Errorf("a batch of 256 is %d bytes, the arithmetic says %d", len(wide), want)
 	}
 	pinned := wireBytes(t, "testdata/wire/tables/backend_batch_256_message.bin")
@@ -529,25 +526,25 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 	// A VOCABULARY PAST A BOUND, refused before an entry is touched: the bound
 	// is two numbers
 	{
-		bounded := tablewire.Vocabulary{MaxEntries: 32}
+		bounded := tablewire.Vocabulary{MaxEntries: 23}
 		var report tabletext.Report
 		derr := bounded.AnnounceRead(announcement, &report)
 		refusal("vocabulary_too_large (entries)", derr, tablewire.ReasonVocabularyTooLarge, report)
 		if bounded.Announced() || len(bounded.Entries()) != 0 {
 			t.Error("vocabulary_too_large: an entry was touched")
 		}
-		exact := tablewire.Vocabulary{MaxEntries: 33}
+		exact := tablewire.Vocabulary{MaxEntries: 24}
 		if err := exact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !exact.Announced() {
 			t.Errorf("the entry bound's own value must be accepted: %v", err)
 		}
-		bytesBound := tablewire.Vocabulary{MaxBytes: 317}
+		bytesBound := tablewire.Vocabulary{MaxBytes: 236}
 		var bytesReport tabletext.Report
 		derr = bytesBound.AnnounceRead(announcement, &bytesReport)
 		refusal("vocabulary_too_large (bytes)", derr, tablewire.ReasonVocabularyTooLarge, bytesReport)
 		if bytesBound.Announced() {
 			t.Error("vocabulary_too_large: the byte bound set a vocabulary")
 		}
-		bytesExact := tablewire.Vocabulary{MaxBytes: 318}
+		bytesExact := tablewire.Vocabulary{MaxBytes: 237}
 		if err := bytesExact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !bytesExact.Announced() {
 			t.Errorf("the byte bound's own value must be accepted: %v", err)
 		}
@@ -639,10 +636,10 @@ func TestTheFiveAnswers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// body 1 spans bits 8..51 of the stream; body 2's reference begins at
-		// bit 52: plant 63, the largest six bits spell and thirty past E
+		// body 1 spans bits 8..49 of the stream; body 2's reference begins at
+		// bit 50: plant 31, the largest five bits spell and seven past E
 		damaged := append([]byte(nil), batch...)
-		setBits(damaged, 1, 52, 6, 63)
+		setBits(damaged, 1, 50, 5, 31)
 		pinned := wireBytes(t, "testdata/wire/tables/backend_batch_damaged_second_message.bin")
 		if string(pinned) != string(damaged) {
 			t.Errorf("the damaged batch differs from the pinned one at byte %d", firstDifference(pinned, damaged))
@@ -688,10 +685,10 @@ func TestDamageIsTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// each body: match_id (6 + 64), players (6, no count), ten rows of which
-	// the first carries score (6 + 17) and a terminator (6) and nine are
-	// terminators alone (6 each), then the body's terminator (6): 165 bits
-	const bodyBits = 6 + 64 + 6 + (6 + 17 + 6) + 9*6 + 6
+	// each body: match_id (5 + 64), players (5, no count), ten rows of which
+	// the first carries score (5 + 17) and a terminator (5) and nine are
+	// terminators alone (5 each), then the body's terminator (5): 151 bits
+	const bodyBits = 5 + 64 + 5 + (5 + 17 + 5) + 9*5 + 5
 	if want := 1 + (8+3*bodyBits+7)/8; len(batch) != want {
 		t.Fatalf("the batch is %d bytes, the arithmetic says %d", len(batch), want)
 	}
@@ -701,11 +698,11 @@ func TestDamageIsTerminal(t *testing.T) {
 		pinned string
 	}{
 		{"the second body's match_id reference", 8 + bodyBits, "testdata/wire/tables/match_batch_damaged_second_message.bin"},
-		{"the second body's first PlayerRow's score reference", 8 + bodyBits + 6 + 64 + 6, "testdata/wire/tables/match_batch_damaged_nested_message.bin"},
+		{"the second body's first PlayerRow's score reference", 8 + bodyBits + 5 + 64 + 5, "testdata/wire/tables/match_batch_damaged_nested_message.bin"},
 	}
 	for _, row := range rows {
 		damaged := append([]byte(nil), batch...)
-		setBits(damaged, 1, row.at, 6, 63)
+		setBits(damaged, 1, row.at, 5, 31)
 		if pinned := wireBytes(t, row.pinned); string(pinned) != string(damaged) {
 			t.Errorf("%s: the damaged batch differs from the pinned one at byte %d", row.name, firstDifference(pinned, damaged))
 		}
@@ -736,34 +733,34 @@ func TestDamageIsTerminal(t *testing.T) {
 // if a leg reads either clean.
 func TestThePadAndWhatFollowsIt(t *testing.T) {
 	_, model, vocabulary := backend(t)
-	message := wireBytes(t, "testdata/wire/tables/store_full_message.bin")
-	if len(message) != 43 {
-		t.Fatalf("store_full is %d bytes, not 43", len(message))
+	message := wireBytes(t, "testdata/wire/tables/login_full_message.bin")
+	if len(message) != 51 {
+		t.Fatalf("login_full is %d bytes, not 51", len(message))
 	}
-	// 341 bits: the last byte carries five bits of body and three of pad
+	// 404 bits: the last byte carries four bits of body and four of pad
 	badPad := append([]byte(nil), message...)
 	badPad[len(badPad)-1] |= 0x80
-	if pinned := wireBytes(t, "testdata/wire/tables/store_full_bad_pad_message.bin"); string(pinned) != string(badPad) {
+	if pinned := wireBytes(t, "testdata/wire/tables/login_full_bad_pad_message.bin"); string(pinned) != string(badPad) {
 		t.Errorf("the bad-pad wire differs from the pinned one at byte %d", firstDifference(pinned, badPad))
 	}
 	{
-		inst := model.New(model.Lookup("StorePurchase"))
+		inst := model.New(model.Lookup("LoginRequest"))
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, badPad, vocabulary, &report)
 		if derr != nil || ok || !report.Malformed || report.Refused {
 			t.Errorf("a pad bit that is not zero read clean: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
 		// damage after the last body discards the batch too (§4)
-		if count != 0 || instU64(t, inst, "quantity") != instU64(t, model.New(model.Lookup("StorePurchase")), "quantity") {
+		if count != 0 || instU64(t, inst, "client_build") != instU64(t, model.New(model.Lookup("LoginRequest")), "client_build") {
 			t.Errorf("a batch with a bad pad delivered a body: count=%d", count)
 		}
 	}
 	trailing := append(append([]byte(nil), message...), 0)
-	if pinned := wireBytes(t, "testdata/wire/tables/store_full_trailing_byte_message.bin"); string(pinned) != string(trailing) {
+	if pinned := wireBytes(t, "testdata/wire/tables/login_full_trailing_byte_message.bin"); string(pinned) != string(trailing) {
 		t.Errorf("the trailing-byte wire differs from the pinned one at byte %d", firstDifference(pinned, trailing))
 	}
 	{
-		inst := model.New(model.Lookup("StorePurchase"))
+		inst := model.New(model.Lookup("LoginRequest"))
 		var report tabletext.Report
 		_, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, trailing, vocabulary, &report)
 		if derr != nil || ok || !report.Malformed || report.Refused {
@@ -772,8 +769,8 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 	}
 }
 
-// TestAReferenceAtAndAboveTheEntryCount: E is 33 and a reference is six
-// bits, so 34, 35 and 63 are spellable and damage; the entry count itself is
+// TestAReferenceAtAndAboveTheEntryCount: E is 24 and a reference is five
+// bits, so 25, 26 and 31 are spellable and damage; the entry count itself is
 // the last legal slot and must resolve. Red if a leg resolves past E, refuses
 // E, or hands back anything from a batch a bad reference damaged (§4).
 func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
@@ -785,14 +782,14 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// player_id: a reference and a u64, so the terminator sits at bit 78
-	if want := 1 + (8+6+64+6+7)/8; len(one) != want {
+	// player_id: a reference and a u64, so the terminator sits at bit 77
+	if want := 1 + (8+5+64+5+7)/8; len(one) != want {
 		t.Fatalf("the vector is %d bytes, the arithmetic says %d", len(one), want)
 	}
-	for _, past := range []uint64{34, 35, 63} {
+	for _, past := range []uint64{25, 26, 31} {
 		damaged := append([]byte(nil), one...)
-		setBits(damaged, 1, 78, 6, past)
-		if past == 63 {
+		setBits(damaged, 1, 77, 5, past)
+		if past == 31 {
 			if pinned := wireBytes(t, "testdata/wire/tables/message_reference_past_table.bin"); string(pinned) != string(damaged) {
 				t.Errorf("the reference-past-table wire differs from the pinned one at byte %d", firstDifference(pinned, damaged))
 			}
@@ -810,9 +807,9 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 			t.Errorf("reference %d: the returned count reads %d", past, count)
 		}
 	}
-	// the entry count itself, 33, names StorePurchase's own type id, a kind-0
-	// entry no field of LoginRequest carries: §4's ordinary unknown, and then
-	// a terminator at bit 84
+	// the entry count itself, 24, names the Payload union's last arm, a kind-13
+	// entry no field of LoginRequest carries: §4's ordinary unknown, whose
+	// nested body is its terminator alone, and then the body's terminator
 	last := wireBytes(t, "testdata/wire/tables/message_reference_last_slot.bin")
 	out := model.New(login)
 	var report tabletext.Report
@@ -893,8 +890,8 @@ func TestAWideVocabulary(t *testing.T) {
 		low, wide string
 		lowBytes  int
 	}{
-		{"vocab_conn", 144, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
-		{"vocab9_conn", 284, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
+		{"vocab_conn", 130, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
+		{"vocab9_conn", 260, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {

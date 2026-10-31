@@ -278,11 +278,12 @@ int main(void)
     TableVocabulary v = table_vocabulary(entries, kTableMessageEntriesHere);
     TableReport ar; memset(&ar, 0, sizeof(ar));
     CHECK(announce_read(&v, ann, (int64_t)sizeof(ann), &ar));
-    /* M is three: body 1's reference is 0, body 2's first reference is 0xF,
-       above the announced entry count E = 8, and body 3 is never read. A
-       reference is four bits, low bit first, so byte 1 holds body 1's low
-       nibble and body 2's high nibble. */
-    uint8_t wire[] = { 2, 2, 0xF0 };
+    /* M is three: body 1's reference is 0, body 2's first reference is 1,
+       field a, whose 32 bits run out after four, and body 3 is never read.
+       The announced entry count E is 3, so a reference is two bits, low bit
+       first: bits 0-1 of byte 2 are body 1's terminator, bits 2-3 body 2's
+       reference. */
+    uint8_t wire[] = { 2, 2, 0x04 };
     Root storage[3]; int i;
     for(i = 0; i < 3; i++) { root_reset(storage + i); storage[i].a = 7; }
     int64_t count = 3;

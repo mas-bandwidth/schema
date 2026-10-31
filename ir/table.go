@@ -552,6 +552,71 @@ func TableClosure(u *Unit) map[string]bool {
 	return closure
 }
 
+// TableMessageClosure is the set of structs the MESSAGE FORM can reach: every
+// `fixed table` declaration plus every struct one reaches BY VALUE (nested
+// fixed tables and types, array elements, union payloads), transitively. The
+// message form is fixed tables only (docs/SPEC-TABLES.md §3.3), and a fixed
+// table's closure holds no pointer, map or variable table (§2.2), so a
+// variable table and anything only it reaches is outside the set.
+func TableMessageClosure(u *Unit) map[string]bool {
+	closure := map[string]bool{}
+	seenUnion := map[*Union]bool{}
+	var walk func(name string)
+	var walkUnion func(un *Union)
+	walkUnion = func(un *Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != TNamed || v.F.Type.Pointer {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *Struct:
+				walk(ref.Name)
+			case *Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	walk = func(name string) {
+		if closure[name] {
+			return
+		}
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil || (st.IsTable && !st.FixedDeclared) {
+			return
+		}
+		closure[name] = true
+		for _, f := range st.Fields {
+			if f.IsMap() || f.Type.Kind != TNamed || f.Type.Pointer {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *Struct:
+				walk(ref.Name)
+			case *Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	names := make([]string, 0, len(u.Tables))
+	for name, st := range u.Tables {
+		if st.FixedDeclared {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		walk(name)
+	}
+	return closure
+}
+
 // DartMemberName is the one true mapping from a schema field name to its Dart
 // member spelling: lower_snake_case -> lowerCamelCase, the first-letter-lowered
 // form of [GoExportName]. The checker's claim over the Dart backend's table

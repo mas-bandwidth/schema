@@ -153,21 +153,21 @@ static void pin_message_vector( const char * name, const T & value,
 
 static void test_message_form_goldens()
 {
-    // THE ANNOUNCEMENT: 33 entries and 361 bytes, an ordinary form 1 FILE
+    // THE ANNOUNCEMENT: 24 entries and 280 bytes, an ordinary form 1 FILE
     // (docs/SPEC-TABLES.md §3.3)
     {
         static uint8_t announcement[4096];
         const int64_t bytes = backenddemo::Announce( announcement, sizeof( announcement ) );
-        CHECK( bytes == 361 );
+        CHECK( bytes == 280 );
         CHECK( announcement[0] == 1 );
         pin_table_golden( "backend_conn", announcement, bytes );
         // and a buffer one byte short is refused rather than half-written
         CHECK( backenddemo::Announce( announcement, bytes - 1 ) == -1 );
         VOCABULARY( backenddemo, vocabulary );
         CHECK( backenddemo::AnnounceRead( vocabulary, announcement, bytes, NULL ) );
-        CHECK( vocabulary.count == 33 );
-        CHECK( vocabulary.ref_bits == 6 ); // bits_required( 0, 33 )
-        CHECK( backenddemo::kTableMessageRefBitsHere == 6 );
+        CHECK( vocabulary.count == 24 );
+        CHECK( vocabulary.ref_bits == 5 ); // bits_required( 0, 24 )
+        CHECK( backenddemo::kTableMessageRefBitsHere == 5 );
     }
 
     {
@@ -176,7 +176,7 @@ static void test_message_form_goldens()
         pin_message_vector( "login_full", value,
                             backenddemo::LoginRequestMeasure, backenddemo::LoginRequestSave,
                             backenddemo::LoginRequestMeasureMessages, backenddemo::LoginRequestSaveMessages,
-                            106, 52 );
+                            106, 51 );
     }
     {
         static backenddemo::LoginRequest value; // untouched: everything elides
@@ -191,14 +191,14 @@ static void test_message_form_goldens()
         pin_message_vector( "match_full", value,
                             backenddemo::MatchResultMeasure, backenddemo::MatchResultSave,
                             backenddemo::MatchResultMeasureMessages, backenddemo::MatchResultSaveMessages,
-                            273, 148 );
+                            273, 142 );
     }
     {
         static backenddemo::MatchResult value;
         pin_message_vector( "match_default", value,
                             backenddemo::MatchResultMeasure, backenddemo::MatchResultSave,
                             backenddemo::MatchResultMeasureMessages, backenddemo::MatchResultSaveMessages,
-                            43, 11 );
+                            43, 10 );
     }
     {
         static backenddemo::StorePurchase value;
@@ -206,7 +206,7 @@ static void test_message_form_goldens()
         pin_message_vector( "store_full", value,
                             backenddemo::StorePurchaseMeasure, backenddemo::StorePurchaseSave,
                             backenddemo::StorePurchaseMeasureMessages, backenddemo::StorePurchaseSaveMessages,
-                            104, 43 );
+                            104, 41 );
     }
     {
         static backenddemo::StorePurchase value;
@@ -222,7 +222,7 @@ static void test_message_form_goldens()
 // A batch is of ONE root, so the three messages ride as three bodies of one
 // root holding a union of them: the ENVELOPE. One form byte, one count of
 // three, and the three envelopes back to back with no alignment between them,
-// which is 244 bytes against 249 for the three envelopes sent alone and 243
+// which is 237 bytes against 242 for the three envelopes sent alone and 234
 // for the three messages sent BARE as three batches of one. Red if a leg
 // aligns between bodies, writes a terminator the batch does not carry, sizes
 // a batch as the sum of its bodies alone, or accepts a count of zero.
@@ -248,32 +248,32 @@ static void test_message_form_batch()
     build_backend_store( store );
     backenddemo::TableReport report;
 
-    // the three BARE, as three batches of one: 52 + 148 + 43
+    // the three BARE, as three batches of one: 51 + 142 + 41
     const int64_t bare = backenddemo::LoginRequestMeasureMessages( &login, 1, &report )
                        + backenddemo::MatchResultMeasureMessages( &match, 1, &report )
                        + backenddemo::StorePurchaseMeasureMessages( &store, 1, &report );
-    CHECK( bare == 243 );
+    CHECK( bare == 234 );
 
-    // the three ENVELOPED, as three batches of one: 54 + 150 + 45, eighteen
-    // bits an envelope over the bare message and the align moved
+    // the three ENVELOPED, as three batches of one: 54 + 144 + 44, three
+    // references an envelope over the bare message, and the pad moved
     static backenddemo::Envelope three[3];
     build_backend_envelopes( three );
     CHECK( backenddemo::EnvelopeMeasureMessages( &three[0], 1, &report ) == 54 );
-    CHECK( backenddemo::EnvelopeMeasureMessages( &three[1], 1, &report ) == 150 );
-    CHECK( backenddemo::EnvelopeMeasureMessages( &three[2], 1, &report ) == 45 );
+    CHECK( backenddemo::EnvelopeMeasureMessages( &three[1], 1, &report ) == 144 );
+    CHECK( backenddemo::EnvelopeMeasureMessages( &three[2], 1, &report ) == 44 );
 
     // and as ONE BATCH: measured as one bit stream, then written as one
     int64_t bits = 8;
     bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[0] );
-    CHECK( bits == 422 ); // the login envelope ends at bit 430 of the batch, the form byte's eight aside
+    CHECK( bits == 417 ); // the login envelope ends at bit 425 of the batch, the form byte's eight aside
     bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[1] );
-    CHECK( bits == 1602 ); // the match envelope ends at 1610
+    CHECK( bits == 1552 ); // the match envelope ends at 1560
     bits += backenddemo::EnvelopeMeasureMessageBody( bits, three[2] );
-    CHECK( bits == 1939 ); // 1947 bits whole, the form byte counted as eight of them, and five bits of pad
-    CHECK( backenddemo::TableMessageBatchBytes( bits - 8 ) == 244 );
+    CHECK( bits == 1885 ); // 1893 bits whole, the form byte counted as eight of them, and three bits of pad
+    CHECK( backenddemo::TableMessageBatchBytes( bits - 8 ) == 237 );
     static uint8_t batch[1024];
     const int64_t wrote = backenddemo::EnvelopeSaveMessages( three, 3, batch, sizeof( batch ), &report );
-    CHECK( wrote == 244 && wrote == backenddemo::EnvelopeMeasureMessages( three, 3, &report ) );
+    CHECK( wrote == 237 && wrote == backenddemo::EnvelopeMeasureMessages( three, 3, &report ) );
     CHECK( batch[0] == 2 && batch[1] == 2 ); // the form byte, and a count of three carried as M - 1
     pin_table_golden( "backend_round_message", batch, wrote );
 
@@ -307,8 +307,8 @@ static void test_message_form_batch()
     const int64_t wide_bytes = backenddemo::LoginRequestSaveMessages( many, 256, wide, sizeof( wide ), &report );
     CHECK( wide_bytes > 0 && wide_bytes == backenddemo::LoginRequestMeasureMessages( many, 256, &report ) );
     CHECK( wide[1] == 255 ); // M - 1
-    // each body is a reference, 32 bits and a terminator: 44 bits, 256 of them, plus the count
-    CHECK( wide_bytes == 1 + ( 8 + 256 * 44 + 7 ) / 8 );
+    // each body is a reference, 32 bits and a terminator: 42 bits, 256 of them, plus the count
+    CHECK( wide_bytes == 1 + ( 8 + 256 * 42 + 7 ) / 8 );
     pin_table_golden( "backend_batch_256_message", wide, wide_bytes );
     static backenddemo::LoginRequest back[256];
     int64_t wide_count = 256;
@@ -406,7 +406,7 @@ static void test_message_form_reload()
     // announcement carries under the reserved id, and what a refusal names.
     CHECK( vocabulary.announced );
     CHECK( vocabulary.build_version == backenddemo::BuildVersion );
-    CHECK( vocabulary.count == 33 );
+    CHECK( vocabulary.count == 24 );
 
     reload_message_golden<backenddemo::LoginRequest>( "login_full", vocabulary,
         backenddemo::LoginRequestLoadMessages, backenddemo::LoginRequestMeasureMessages, backenddemo::LoginRequestSaveMessages, backenddemo::LoginRequestReset );
@@ -469,14 +469,14 @@ static void test_message_form_reload()
 
 static void test_message_form_wide_vocabulary()
 {
-    // vocabdemo: 130 field names, the tail, and ten table ids: 144 entries, 8 bits
+    // vocabdemo: 130 field names, 130 entries, 8 bits
     {
         VOCABULARY( vocabdemo, vocabulary );
         static uint8_t announcement[16384];
         const int64_t announced = vocabdemo::Announce( announcement, sizeof( announcement ) );
         CHECK( announced == vocabdemo::AnnounceMeasure() );
         CHECK( vocabdemo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
-        CHECK( vocabulary.count == 144 && vocabulary.ref_bits == 8 );
+        CHECK( vocabulary.count == 130 && vocabulary.ref_bits == 8 );
         CHECK( vocabdemo::kTableMessageRefBitsHere == 8 );
         pin_table_golden( "vocab_conn", announcement, announced );
 
@@ -527,14 +527,14 @@ static void test_message_form_wide_vocabulary()
         CHECK( low_bytes == 1 + ( 8 + 8 + 32 + 8 + 7 ) / 8 );
         pin_table_golden( "vocab_low_message", low_message, low_bytes );
     }
-    // vocab9demo: 260 field names, the tail, and twenty table ids: 284 entries, 9 bits
+    // vocab9demo: 260 field names, 260 entries, 9 bits
     {
         VOCABULARY( vocab9demo, vocabulary );
         static uint8_t announcement[16384];
         const int64_t announced = vocab9demo::Announce( announcement, sizeof( announcement ) );
         CHECK( announced == vocab9demo::AnnounceMeasure() );
         CHECK( vocab9demo::AnnounceRead( vocabulary, announcement, announced, NULL ) );
-        CHECK( vocabulary.count == 284 && vocabulary.ref_bits == 9 );
+        CHECK( vocabulary.count == 260 && vocabulary.ref_bits == 9 );
         CHECK( vocab9demo::kTableMessageRefBitsHere == 9 );
         pin_table_golden( "vocab9_conn", announcement, announced );
 
@@ -704,28 +704,28 @@ static void test_message_form_refusals()
     // caller declared for its resolved storage, and the vocabulary's bytes
     // read off the field's own L before an entry is touched.
     {
-        VOCABULARY_AT( backenddemo, vocabulary, 32 ); // one below what this unit announces
+        VOCABULARY_AT( backenddemo, vocabulary, 23 ); // one below what this unit announces
         backenddemo::TableReport report;
         CHECK( !backenddemo::AnnounceRead( vocabulary, announcement, announced, &report ) );
         CHECK( report.refused && report.reason == backenddemo::vocabulary_too_large );
         CHECK( !report.malformed && !vocabulary.announced );
         CHECK( vocabulary.count == 0 );
         // and exactly at the bound it is read, which is the unit's own count
-        VOCABULARY_AT( backenddemo, exact, 33 );
-        CHECK( backenddemo::kTableMessageEntriesHere == 33 );
+        VOCABULARY_AT( backenddemo, exact, 24 );
+        CHECK( backenddemo::kTableMessageEntriesHere == 24 );
         CHECK( backenddemo::AnnounceRead( exact, announcement, announced, NULL ) );
-        // the BYTE bound: the unit's vocabulary is 318 bytes of entries
+        // the BYTE bound: the unit's vocabulary is 237 bytes of entries
         VOCABULARY( backenddemo, bytes_bound );
-        bytes_bound.max_bytes = 317;
+        bytes_bound.max_bytes = 236;
         backenddemo::TableReport bytes_report;
         CHECK( !backenddemo::AnnounceRead( bytes_bound, announcement, announced, &bytes_report ) );
         CHECK( bytes_report.refused && bytes_report.reason == backenddemo::vocabulary_too_large && !bytes_bound.announced );
         VOCABULARY( backenddemo, bytes_exact );
-        bytes_exact.max_bytes = 318;
+        bytes_exact.max_bytes = 237;
         CHECK( backenddemo::AnnounceRead( bytes_exact, announcement, announced, NULL ) );
         int64_t field_bytes = 0;
         announcement_vocabulary( announcement, field_bytes );
-        CHECK( field_bytes == 318 );
+        CHECK( field_bytes == 237 );
     }
 
     // A REFUSED ANNOUNCEMENT SETS NO VOCABULARY, so every message on that
@@ -802,13 +802,13 @@ static void test_message_form_five_answers()
         static uint8_t batch[256];
         backenddemo::TableReport report;
         const int64_t bytes = backenddemo::LoginRequestSaveMessages( three, 3, batch, sizeof( batch ), &report );
-        CHECK( bytes == 1 + ( 8 + 3 * 44 + 7 ) / 8 );
-        // body 1 spans bits 8..51 of the stream; body 2's reference begins at
-        // bit 52. Plant a reference of 63, the largest six bits spell and
-        // thirty past E, in place of body 2's field reference.
+        CHECK( bytes == 1 + ( 8 + 3 * 42 + 7 ) / 8 );
+        // body 1 spans bits 8..49 of the stream; body 2's reference begins at
+        // bit 50. Plant a reference of 31, the largest five bits spell and
+        // seven past E, in place of body 2's field reference.
         static uint8_t damaged[256];
         memcpy( damaged, batch, (size_t) bytes );
-        for ( int64_t bit = 52; bit < 58; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+        for ( int64_t bit = 50; bit < 55; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
         pin_table_golden( "backend_batch_damaged_second_message", damaged, bytes );
         static backenddemo::LoginRequest out[3];
         for ( int32_t i = 0; i < 3; i++ ) { backenddemo::LoginRequestReset( out[i] ); out[i].client_build = 999; }
@@ -838,18 +838,18 @@ static void test_message_form_damage_terminal()
     backenddemo::TableReport report;
     const int64_t bytes = backenddemo::MatchResultSaveMessages( three, 3, batch, sizeof( batch ), &report );
     CHECK( bytes > 0 );
-    // each body: match_id (6 + 64), players (6, no count), ten rows of which
-    // the first carries score (6 + 17) and a terminator (6) and nine are
-    // terminators alone (6 each), then the body's terminator (6): 165 bits
-    const int64_t body_bits = 6 + 64 + 6 + ( 6 + 17 + 6 ) + 9 * 6 + 6;
+    // each body: match_id (5 + 64), players (5, no count), ten rows of which
+    // the first carries score (5 + 17) and a terminator (5) and nine are
+    // terminators alone (5 each), then the body's terminator (5): 151 bits
+    const int64_t body_bits = 5 + 64 + 5 + ( 5 + 17 + 5 ) + 9 * 5 + 5;
     CHECK( bytes == 1 + ( 8 + 3 * body_bits + 7 ) / 8 );
 
-    // inside the SECOND body: its match_id reference becomes 63, thirty past E
+    // inside the SECOND body: its match_id reference becomes 31, seven past E
     {
         static uint8_t damaged[1024];
         memcpy( damaged, batch, (size_t) bytes );
         const int64_t at = 8 + body_bits;
-        for ( int64_t bit = at; bit < at + 6; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+        for ( int64_t bit = at; bit < at + 5; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
         pin_table_golden( "match_batch_damaged_second_message", damaged, bytes );
         static backenddemo::MatchResult out[3];
         for ( int32_t i = 0; i < 3; i++ ) { backenddemo::MatchResultReset( out[i] ); out[i].match_id = 999; }
@@ -863,8 +863,8 @@ static void test_message_form_damage_terminal()
     {
         static uint8_t damaged[1024];
         memcpy( damaged, batch, (size_t) bytes );
-        const int64_t at = 8 + body_bits + 6 + 64 + 6; // past match_id and the players reference
-        for ( int64_t bit = at; bit < at + 6; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+        const int64_t at = 8 + body_bits + 5 + 64 + 5; // past match_id and the players reference
+        for ( int64_t bit = at; bit < at + 5; bit++ ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
         pin_table_golden( "match_batch_damaged_nested_message", damaged, bytes );
         static backenddemo::MatchResult out[3];
         for ( int32_t i = 0; i < 3; i++ ) { backenddemo::MatchResultReset( out[i] ); out[i].match_id = 999; }
@@ -882,24 +882,24 @@ static void test_message_form_damage_terminal()
 static void test_message_form_pad()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
-    static backenddemo::StorePurchase value;
-    build_backend_store( value );
+    static backenddemo::LoginRequest value;
+    build_backend_login( value );
     static uint8_t message[256];
     backenddemo::TableReport report;
-    const int64_t bytes = backenddemo::StorePurchaseSaveMessages( &value, 1, message, sizeof( message ), &report );
-    CHECK( bytes == 43 ); // 341 bits: the last byte carries five bits of body and three of pad
+    const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
+    CHECK( bytes == 51 ); // 404 bits: the last byte carries four bits of body and four of pad
     // a pad bit that is not zero
     {
         static uint8_t bad_pad[256];
         memcpy( bad_pad, message, (size_t) bytes );
         bad_pad[bytes - 1] = (uint8_t) ( bad_pad[bytes - 1] | 0x80 );
-        pin_table_golden( "store_full_bad_pad_message", bad_pad, bytes );
-        backenddemo::StorePurchase out;
+        pin_table_golden( "login_full_bad_pad_message", bad_pad, bytes );
+        backenddemo::LoginRequest out;
         int64_t count = 1;
         backenddemo::TableReport pad;
-        CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
+        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
         CHECK( pad.malformed && !pad.refused );
-        CHECK( out.quantity == 7 ); // the body decoded before the pad stands, and the count says so
+        CHECK( out.client_build == 140233 ); // the body decoded before the pad stands, and the count says so
         CHECK( count == 1 );
     }
     // a byte after the pad
@@ -907,11 +907,11 @@ static void test_message_form_pad()
         static uint8_t trailing[256];
         memcpy( trailing, message, (size_t) bytes );
         trailing[bytes] = 0;
-        pin_table_golden( "store_full_trailing_byte_message", trailing, bytes + 1 );
-        backenddemo::StorePurchase out;
+        pin_table_golden( "login_full_trailing_byte_message", trailing, bytes + 1 );
+        backenddemo::LoginRequest out;
         int64_t count = 1;
         backenddemo::TableReport extra;
-        CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, trailing, bytes + 1, &extra ) );
+        CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, trailing, bytes + 1, &extra ) );
         CHECK( extra.malformed && !extra.refused );
     }
 }
@@ -1139,7 +1139,7 @@ static void test_message_form_announcement_check()
         CHECK( backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
         CHECK( vocabulary.announced );
         CHECK( vocabulary.build_version == 0x8877665544332211ull );
-        CHECK( vocabulary.count == 33 );
+        CHECK( vocabulary.count == 24 );
         CHECK( report.unknown == 1 );
         CHECK( !report.refused && !report.malformed );
         pin_table_golden( "announce_unknown_field", forged, bytes );
@@ -1231,25 +1231,29 @@ static void test_message_form_reserved_ids()
         {
             int64_t at = 0;
             memcpy( body + at, version_field, 10 ); at += 10;
-            // the unit's vocabulary field with ONE MORE entry appended: the
-            // planted id at kind 0, nine bytes, so the field's two lengths grow
-            // by nine
+            // the unit's vocabulary field with the planted id appended at kind
+            // 0, nine bytes an entry. The node-table id is planted TWICE: one
+            // is the most a vocabulary may carry, and this unit's carries none
+            const int64_t planted_count = i == 2 ? 2 : 1;
             memcpy( body + at, vocabulary_field, (size_t) field_bytes );
             const int64_t n = ( (int64_t) ( body[at + 5] & 0x7F ) ) | ( (int64_t) body[at + 6] << 7 );
-            const int64_t inner = 1 + 2 + n + 9;
+            const int64_t inner = 1 + 2 + n + 9 * planted_count;
             body[at + 2] = (uint8_t) ( 0x80 | ( inner & 0x7F ) );
             body[at + 3] = (uint8_t) ( inner >> 7 );
-            body[at + 5] = (uint8_t) ( 0x80 | ( ( n + 9 ) & 0x7F ) );
-            body[at + 6] = (uint8_t) ( ( n + 9 ) >> 7 );
+            body[at + 5] = (uint8_t) ( 0x80 | ( ( n + 9 * planted_count ) & 0x7F ) );
+            body[at + 6] = (uint8_t) ( ( n + 9 * planted_count ) >> 7 );
             at += field_bytes;
-            for ( int b = 0; b < 8; b++ ) { body[at++] = (uint8_t) ( planted[i] >> ( 8 * b ) ); }
-            body[at++] = 0; // kind 0
+            for ( int64_t k = 0; k < planted_count; k++ )
+            {
+                for ( int b = 0; b < 8; b++ ) { body[at++] = (uint8_t) ( planted[i] >> ( 8 * b ) ); }
+                body[at++] = 0; // kind 0
+            }
             body[at++] = 0; // the terminator
             const int64_t bytes = forge_announcement( forged, sizeof( forged ), body, at, ids, 2 );
-            // the forged announcement carries ONE MORE entry than this unit,
-            // so the receiver declares room for it and the malformed rule is
+            // the forged announcement carries more entries than this unit, so
+            // the receiver declares room for them and the malformed rule is
             // what refuses rather than the capacity
-            VOCABULARY_AT( backenddemo, vocabulary, backenddemo::kTableMessageEntriesHere + 1 );
+            VOCABULARY_AT( backenddemo, vocabulary, backenddemo::kTableMessageEntriesHere + 2 );
             backenddemo::TableReport report;
             CHECK( !backenddemo::AnnounceRead( vocabulary, forged, bytes, &report ) );
             CHECK( report.malformed && !report.refused && !vocabulary.announced );
@@ -1263,7 +1267,7 @@ static void test_message_form_reserved_ids()
 
 // ---- A REFERENCE AT AND ABOVE THE ENTRY COUNT (§3.3) ------------------------
 //
-// E is 33 and a reference is six bits, so 34, 35 and 63 are spellable and
+// E is 24 and a reference is five bits, so 25, 26 and 31 are spellable and
 // damage. The entry count ITSELF is the last legal slot and must resolve. The
 // fields decoded before a bad reference stand, and nothing after it is read.
 
@@ -1276,17 +1280,17 @@ static void test_message_form_reference_bound()
     static uint8_t message[64];
     backenddemo::TableReport report;
     const int64_t bytes = backenddemo::LoginRequestSaveMessages( &value, 1, message, sizeof( message ), &report );
-    // player_id: reference (6) and u64 (64), then the terminator at bit 78 of
-    // the stream: 8 + 6 + 64 = 78
-    CHECK( bytes == 1 + ( 8 + 6 + 64 + 6 + 7 ) / 8 );
-    const uint64_t past[3] = { 34, 35, 63 };
+    // player_id: reference (5) and u64 (64), then the terminator at bit 77 of
+    // the stream: 8 + 5 + 64 = 77
+    CHECK( bytes == 1 + ( 8 + 5 + 64 + 5 + 7 ) / 8 );
+    const uint64_t past[3] = { 25, 26, 31 };
     for ( int i = 0; i < 3; i++ )
     {
         static uint8_t damaged[64];
         memcpy( damaged, message, (size_t) bytes );
-        for ( int b = 0; b < 6; b++ )
+        for ( int b = 0; b < 5; b++ )
         {
-            const int64_t bit = 78 + b;
+            const int64_t bit = 77 + b;
             if ( ( past[i] >> b ) & 1 ) { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
             else { damaged[ 1 + bit / 8 ] = (uint8_t) ( damaged[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
         }
@@ -1300,21 +1304,23 @@ static void test_message_form_reference_bound()
         CHECK( count == 0 );
         if ( i == 2 ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }
-    // the entry count itself, 33, is the LAST LEGAL SLOT and must resolve: it
-    // names StorePurchase's own type id, a kind-0 entry no field of
-    // LoginRequest carries, so it is §4's ordinary unknown
+    // the entry count itself, 24, is the LAST LEGAL SLOT and must resolve: it
+    // names the Payload union's last arm, a kind-13 entry no field of
+    // LoginRequest carries, so it is §4's ordinary unknown, and its payload
+    // is a nested body that is its terminator alone
     {
         static uint8_t last[64];
         memcpy( last, message, (size_t) bytes );
-        for ( int b = 0; b < 6; b++ )
+        for ( int b = 0; b < 5; b++ )
         {
-            const int64_t bit = 78 + b;
-            if ( ( 33u >> b ) & 1 ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
+            const int64_t bit = 77 + b;
+            if ( ( 24u >> b ) & 1 ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] | ( 1 << ( bit % 8 ) ) ); }
             else { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
         }
-        // then a terminator at bit 84, and the pad from 90 stays zero
-        const int64_t last_bytes = 1 + ( 84 + 6 + 7 ) / 8;
-        for ( int64_t bit = 84; bit < last_bytes * 8 - 8; bit++ ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
+        // then the nested body's terminator at bit 82, the body's at 87, and
+        // the pad from 92 stays zero
+        const int64_t last_bytes = 1 + ( 87 + 5 + 7 ) / 8;
+        for ( int64_t bit = 82; bit < last_bytes * 8 - 8; bit++ ) { last[ 1 + bit / 8 ] = (uint8_t) ( last[ 1 + bit / 8 ] & ~( 1 << ( bit % 8 ) ) ); }
         backenddemo::LoginRequest out;
         backenddemo::LoginRequestReset( out );
         int64_t count = 1;

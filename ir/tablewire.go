@@ -333,10 +333,14 @@ const (
 // the order §3.3 settles: the COOK PROJECTION's order (§20.2), each record in
 // the order the projection renders it and each record's fields in the order
 // the projection renders them, then each enum's variants and each union's arms
-// in that same order, then the TAIL the projection does not name: the
-// reserved node-table id, the three blob type ids as `bytes`, `string`,
-// `wstring`, and every table's own name id in the projection's sorted record
-// order.
+// in that same order.
+//
+// THE VOCABULARY IS THE MESSAGE CLOSURE'S AND NOTHING ELSE
+// ([TableMessageClosure]): the message form is fixed tables only (§3.3), so a
+// name a fixed table cannot reach by value is a name no body can carry. A
+// variable table's fields, every table's name id, the node-table id and the
+// blob ids are not announced, and nor is an enum variant or a union arm that
+// only a variable table reaches.
 //
 // An ENTRY IS A TRIPLE, an id beside a kind beside a shape, and a triple
 // already placed is never placed twice. ONE NAME MAY TAKE TWO SLOTS: a unit
@@ -348,11 +352,6 @@ const (
 // in its trailer and never in a message body, so they take no slot. Slot 1 is
 // the first entry of the closure, counted from 1, which is the returned
 // slice's index 0.
-//
-// The tail is UNCONDITIONAL: a unit with no pointer announces the node-table
-// id and the three blob ids anyway, so that an ordinary edit only ever grows
-// the tail at its end and never reshuffles a slot a generated field header
-// carries as a constant.
 func TableVocabulary(u *Unit) []TableVocabularyEntry {
 	var entries []TableVocabularyEntry
 	seen := map[string]bool{}
@@ -366,7 +365,7 @@ func TableVocabulary(u *Unit) []TableVocabularyEntry {
 	}
 	name := func(id uint64) { place(TableVocabularyEntry{Id: id}) }
 
-	closure := TableClosure(u)
+	closure := TableMessageClosure(u)
 	names := make([]string, 0, len(closure))
 	for member := range closure {
 		names = append(names, member)
@@ -421,25 +420,6 @@ func TableVocabulary(u *Unit) []TableVocabularyEntry {
 		}
 	}
 
-	name(TableNodeWireId)
-	name(BytesWireTypeId)
-	name(StringWireTypeId)
-	name(WstringWireTypeId)
-	for _, member := range names {
-		// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S, and
-		// its name is generated: it is reached only through the map that
-		// generates it, never through a pointer, so its name id is on no wire
-		// and hashing it here would let a `was` rename of the holder move a
-		// slot (§2.8, §20.2).
-		if st := memberStruct(u, member); st == nil || st.MapEntryOf != "" {
-			continue
-		}
-		if u.Tables[member] == nil {
-			continue // a `type` in the closure is nested by value and never pointed at
-		}
-		// The id is the table's WIRE name, so a `was` rename moves no slot (§5).
-		name(TableWireId(u.Tables[member].WireName()))
-	}
 	return entries
 }
 

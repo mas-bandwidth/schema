@@ -156,15 +156,15 @@ func TestMessageFormBatchElixir(t *testing.T) {
 
     # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
     # (docs/SPEC-TABLES.md §3.3, §4): the reference pins a three-body
-    # LoginRequest batch with body 2's field reference planted at 63, thirty
+    # LoginRequest batch with body 2's field reference planted at 31, seven
     # past E, and no body is delivered.
     {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("backend_batch_damaged_second_message.bin")), 3)
 
     # "A LENGTH, COUNT OR INDEX WHOSE PAYLOAD RUNS PAST THE BATCH" and "the
     # trailing pad to the byte boundary is not zero" (§3.3).
-    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("store_full_bad_pad_message.bin")))
+    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("login_full_bad_pad_message.bin")))
     # "BYTES AFTER THE PAD ARE MALFORMED" (§3.3).
-    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("store_full_trailing_byte_message.bin")))
+    {:malformed, 0, []} = M.load_messages(vocab, File.read!(golden("login_full_trailing_byte_message.bin")))
 
     # "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does
     # not know is a REFUSAL by name and never damage." (docs/SPEC-TABLES.md §3.3)

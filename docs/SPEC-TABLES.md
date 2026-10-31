@@ -6239,7 +6239,7 @@ count. Reference `k` names the vocabulary's `k`th entry, counted from `1`.
 Reference `0` names no entry and is the body terminator, the enum's `None` and
 the union's empty arm, the three places on this wire where "no id" is a value.
 A reference above `E` is damage (below). For the `backenddemo` unit below,
-`E` is 33 and a reference is 6 bits.
+`E` is 24 and a reference is 5 bits.
 
 **A PAYLOAD IS WHAT THE PACKET WIRE WRITES FOR THAT DECLARATION** (SPEC.md
 §4.3), and every row below that departs from it says so, because each departure
@@ -6267,10 +6267,10 @@ would leave every stored ordinal meaning a different variant on the two builds,
 read in silence, which is the one class this wire exists to make impossible. So
 a variant and an arm ride by NAME, at a reference's width, and a name this
 reader cannot place is §4's ordinary `unknown`. **That is a residual over the
-packet wire and it is named as one, and the number is THREE BITS on a
-four-variant enum under `backenddemo`'s six-bit reference**: such an enum is
+packet wire and it is named as one, and the number is TWO BITS on a
+four-variant enum under `backenddemo`'s five-bit reference**: such an enum is
 ranged over `[0, 4]`, because `None` is a value, so the
-packet wire spends THREE bits on it and this wire spends six. That is the price
+packet wire spends THREE bits on it and this wire spends five. That is the price
 of evolution paid where evolution actually happens, and §15 names the shape that
 would remove those bits and the reason it is not taken here.
 
@@ -6286,8 +6286,8 @@ recoverable, because the very next bit's meaning is what is in doubt. It is
 damage, which discards the batch like all damage (§4). **The reserved-id rule
 outranks this one**: a reserved id anywhere but its own transport is malformed
 (below, §3.1), so an ENUM's reference naming the node-table id refuses on that
-rule and never reaches the kind-`0` test, even though the node-table id is
-announced at kind `0`.
+rule and never reaches the kind-`0` test, even where an announcement carries
+the node-table id at kind `0`.
 
 **A POINTER, A MAP, AN UNBOUNDED ARRAY AND A BYTE BUFFER AT ITS USED SIZE NEVER
 RIDE A BODY**, because a fixed table holds none of them (§2.2). The vocabulary is
@@ -6398,7 +6398,7 @@ and that is its integer.
 
   | kind | shape | what it means |
   |---|---|---|
-  | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: a table's name id, one of the three blob type ids and an enum VARIANT name, which are referenced as values and carry no payload at all, and the reserved node-table id, which the unit's vocabulary carries and no message body references |
+  | `0` | nothing | A NAME WHOSE FRAMING IS NOT AN ENTRY'S TO GIVE: an enum VARIANT name, which is referenced as a value and carries no payload at all |
   | `1` bool | nothing | one bit |
   | `2`–`9`, `18`, `19` integers | `packing (u8)`, then its facts | `0` RAW, nothing more, the kind's storage width in raw bits, two's complement for the signed kinds. `1` RANGED, then `bits`, then `base`, encoded by the KIND'S SIGNEDNESS (below): zigzag LEB128 for the signed kinds `2`–`5`, unsigned LEB128 for the unsigned kinds `6`–`9`, both canonical on §3's rule, and sixteen bytes little-endian for `18` and `19`. The value is `base` plus the offset those `bits` spell. A `bits(N)` field is RANGED with `base` `0` and `bits` N, and a `flags` mask is RANGED with `base` `0` and `bits` the mask's own declared width W. Neither spells a kind of its own, because both are a width and a base and that is what RANGED already is |
   | `10` f32 | `packing (u8)`, then its facts | `0` RAW, thirty-two bits. `2` QUANTIZED, then `min`, `max` and `res`, four bytes each, IEEE-754 float32, which are the three facts SPEC.md §4.3's compressed-float rule takes: the step count, the width and the value all derive from them by that rule and by nothing else (below) |
@@ -6503,29 +6503,29 @@ The build version and the vocabulary are the announcement's own transport, they
 appear in its trailer and never in a message body, so they take no slot and no
 reference names them. Slot `1` is the first entry of the closure.
 
-**THE VOCABULARY IS THE UNIT'S WHOLE CLOSURE, IN THE COOK PROJECTION'S ORDER.**
-A peer announces every entry its unit's table closure CAN put on this wire, not
+**THE VOCABULARY IS THE UNIT'S MESSAGE CLOSURE, IN THE COOK PROJECTION'S
+ORDER.** The message closure is every `fixed table` and every record one
+reaches BY VALUE (nested fixed tables and types, array elements, union
+payloads). A peer announces every entry that closure CAN put on this wire, not
 the entries one message happens to use:
 
-- **every field name** of every record in the closure, a generated map entry's
-  `key` and `value` included (§2.8), each with the kind and shape its
-  declaration gives it,
-- **every enum variant name** and **every union arm name** in the closure, a
-  variant at kind `0` and an arm at its own arm kind and shape,
-- **the reserved node-table id**, **the three BLOB type ids**
-  `fnv1a64( "bytes" )`, `fnv1a64( "string" )` and `fnv1a64( "wstring" )`
-  (§3.1, all three), and **the NAME id of EVERY table in the closure**, whether
-  or not a pointer names it today, each at kind `0`.
+- **every field name** of every record in the message closure, each with the
+  kind and shape its declaration gives it,
+- **every enum variant name** and **every union arm name** the message closure
+  reaches, a variant at kind `0` and an arm at its own arm kind and shape.
+
+**NOTHING ELSE IS ANNOUNCED** (Glenn, 2026-10-31, "yes obviously remove
+this"): a variable table's fields, every table's name id, the reserved
+node-table id, the three blob type ids, and an enum variant or union arm that
+only a variable table reaches take no slot, because no body can carry them. A
+unit with no `fixed table` announces an empty vocabulary.
 
 **THE ORDER IS THE COOK PROJECTION'S** (§20.2, §20.7), which is already
 compiler-settled, already total over the closure and already printable and
 diffable by `schema build-version --facts`: each record in the order the
 projection renders it and each record's fields in the order the projection
 renders them, then each enum's variants and each union's arms in that same
-order. **Then comes the TAIL, which the projection does not name**, in this
-fixed order: the reserved node-table id, then the three blob type ids as
-`bytes`, `string`, `wstring`, then every table's own name id in the projection's
-sorted record order. **A TRIPLE already placed is never placed twice**, so a
+order. **A TRIPLE already placed is never placed twice**, so a
 field name three records share at one kind and shape takes the slot its first
 appearance gave it, and the same name at a SECOND kind or shape takes a second
 slot. Two entries that agree on all three parts are malformed, and both engines
@@ -6589,21 +6589,11 @@ well as about work, and this is where that memory lives.
   the announced bits, the range base, the array's own bounds, and the
   quantized facts SPEC.md §4.3's rule leaves behind rather than the two it
   consumes. It is **96 bytes** in the C++ reference, so the `backenddemo`
-  unit's 33 entries are **3,168 bytes** and the 4096-entry default is 393 KiB
+  unit's 24 entries are **2,304 bytes** and the 4096-entry default is 393 KiB
   for a receiver that asks for it.
 - **PER FIELD ON THE READ PATH THAT IS ONE ARRAY INDEX**: no parse, no LEB128,
   and no branch on the announcement's format. A reference resolves to an entry
   by subscript and the decode reads the widths off it.
-
-**THE TAIL IS UNCONDITIONAL, AND THAT IS A CHOICE.** A unit with no pointer
-announces it anyway, because the alternative reshuffles slots for an ordinary
-edit: if only pointer targets carried a type id, adding a `*T` would insert one
-entry into the middle of the sorted run and move every slot after it. Neither is
-a wire break, since the build version moves with any such edit, but both make a
-slot number a thing that drifts under edits that have nothing to do with it, and
-a slot number is a compile-time constant this form asks a generated field header
-to carry. **Four entries and one entry a table is the price of a tail that only
-ever grows at its end**, and it is stated rather than optimized away.
 
 **THE VOCABULARY IS PER CONNECTION AND PER DIRECTION.** Each peer announces its
 own unit's, and its own bodies resolve against it. A peer holds two vocabularies
@@ -7244,8 +7234,8 @@ WIRE, and a wire is allowed to spend CPU to buy bandwidth. The two rules coexist
 because they price different things, and neither is an exception to the other.
 
 **WHERE THE ARITHMETIC BELOW SAYS THE RULE IS NOT MET, IT SAYS SO.** Two of the
-three messages sit within three bytes of proto3 rather than under it, the
-batch of three is fourteen percent under, and the cause is named rather than
+three messages sit within two bytes of proto3 rather than under it, the
+batch of three is seventeen percent under, and the cause is named rather than
 averaged away.
 
 ---
@@ -7253,13 +7243,13 @@ averaged away.
 #### THE ARITHMETIC, worked from the wire model
 
 The three backend messages of schema#523, hand-sized from the model above, and
-the ENVELOPE that carries the three as one batch. `E` is 33 for the
-`backenddemo` unit, so a reference is 6 bits: 28 entries are the three
-messages' own and five are the envelope's, and those five are what take the
-reference from five bits to six, because `bits_required(0, 28)` is five and
-`bits_required(0, 33)` is six. That is the vocabulary being the UNIT's rather
-than the message's, paid by every message the unit carries, and it is stated
-here rather than hidden in the rows. Each message is written as its own batch
+the ENVELOPE that carries the three as one batch. `E` is 24 for the
+`backenddemo` unit, so a reference is 5 bits: 20 entries are the three
+messages' own and four are the envelope's, and `bits_required(0, 20)` and
+`bits_required(0, 24)` are both five, so the envelope does not move the width.
+The vocabulary is the unit's message closure rather than the message's, paid by
+every message the unit carries, and it is stated here rather than hidden in the
+rows. Each message is written as its own batch
 of one unless the row says otherwise.
 
 **`LoginRequest`, every field non-default**, a 32-byte `session_token`:
@@ -7267,18 +7257,19 @@ of one unless the row says otherwise.
 ```
   form byte                                    8      cumulative     8
   body count, 1 body                           8                    16
-  player_id      reference                     6                    22
-                 uint64, bare                  64                   86
-  session_token  reference                     6                    92
-                 length in bits_required(0,32) 6                    98
-                 align to the byte boundary    6                   104
-                 32 bytes                      256                 360
-  client_build   reference                     6                   366
-                 uint32, bare                  32                  398
-  region         reference                     6                   404
-                 variant name reference        6                   410
-  terminator     reference 0                   6                   416
-                                                     416 bits = 52 bytes
+  player_id      reference                     5                    21
+                 uint64, bare                  64                   85
+  session_token  reference                     5                    90
+                 length in bits_required(0,32) 6                    96
+                 align to the byte boundary    0                    96
+                 32 bytes                      256                 352
+  client_build   reference                     5                   357
+                 uint32, bare                  32                  389
+  region         reference                     5                   394
+                 variant name reference        5                   399
+  terminator     reference 0                   5                   404
+  zero pad to the byte boundary                4                   408
+                                                     408 bits = 51 bytes
 ```
 
 **`MatchResult`, every field non-default**, ten `PlayerRow`s with placements 1
@@ -7286,34 +7277,34 @@ through 10, so the row at placement `1` elides it at its declared default:
 
 ```
   form byte and count                          16     cumulative    16
-  match_id       reference and uint64          70                   86
-  players        reference                     6                    92
-                 [10] is min == max, no count  0                    92
-                 9 rows at 109 bits each      981                 1073
-                   player_id  6 + 64  =  70
-                   score      6 + 17  =  23   (bits_required(0,100000))
-                   placement  6 +  4  =  10   (bits_required(1,10))
-                   terminator            =   6
-                 1 row eliding placement       99                 1172
-  terminator                                   6                 1178
-                                                    1178 bits = 148 bytes
+  match_id       reference and uint64          69                   85
+  players        reference                     5                    90
+                 [10] is min == max, no count  0                    90
+                 9 rows at 105 bits each      945                 1035
+                   player_id  5 + 64  =  69
+                   score      5 + 17  =  22   (bits_required(0,100000))
+                   placement  5 +  4  =   9   (bits_required(1,10))
+                   terminator            =   5
+                 1 row eliding placement       96                 1131
+  terminator                                   5                 1136
+                                                    1136 bits = 142 bytes
 ```
 
 **`StorePurchase`, every field non-default**, a 21-byte `sku`:
 
 ```
   form byte and count                          16     cumulative    16
-  player_id      reference and uint64          70                   86
-  sku            reference                     6                    92
-                 length in bits_required(0,32) 6                    98
-                 align                         6                   104
-                 21 bytes                     168                  272
-  quantity       reference                     6                   278
-                 bits_required(1,99)           7                   285
-  price_minor    reference and uint32          38                  323
-  currency       reference and variant name    12                  335
-  terminator                                   6                   341
-                                                     341 bits = 43 bytes
+  player_id      reference and uint64          69                   85
+  sku            reference                     5                    90
+                 length in bits_required(0,32) 6                    96
+                 align                         0                    96
+                 21 bytes                     168                  264
+  quantity       reference                     5                   269
+                 bits_required(1,99)           7                   276
+  price_minor    reference and uint32          37                  313
+  currency       reference and variant name    10                  323
+  terminator                                   5                   328
+                                                     328 bits = 41 bytes
 ```
 
 **THE THREE AS ONE BATCH, UNDER AN ENVELOPE**, which is the primitive rather
@@ -7336,10 +7327,10 @@ fixed table Envelope
 }
 ```
 
-What the envelope costs on this wire is EIGHTEEN BITS A BODY, a reference for
+What the envelope costs on this wire is FIFTEEN BITS A BODY, a reference for
 the field, a reference naming the arm, and the envelope's own terminator, and
-FIVE ENTRIES in the vocabulary: `payload` at kind `15`, the three arms at kind
-`13`, and `Envelope`'s name id in the tail. The batch is one form byte, one
+FOUR ENTRIES in the vocabulary: `payload` at kind `15` and the three arms at
+kind `13`. The batch is one form byte, one
 count of three, and the three envelopes back to back with no alignment between
 them, each message's body sitting inside its arm exactly as the rows above
 spell it from its first field to its terminator, with its `align` recomputed
@@ -7349,33 +7340,33 @@ from where the batch puts it:
   form byte                                    8      cumulative     8
   body count, 3 bodies                         8                    16
   envelope 1
-  payload        reference                     6                    22
-                 arm reference, login          6                    28
-  login          player_id to terminator      396                  424
-                 (400 above, its align now 2 bits where alone it cost 6)
-  terminator     reference 0                   6                   430
+  payload        reference                     5                    21
+                 arm reference, login          5                    26
+  login          player_id to terminator      394                  420
+                 (388 above, its align now 6 bits where alone it cost 0)
+  terminator     reference 0                   5                   425
   envelope 2
-  payload        reference                     6                   436
-                 arm reference, match          6                   442
-  match          match_id to terminator      1162                 1604
-                 (1162 above, no align in it)
-  terminator     reference 0                   6                  1610
+  payload        reference                     5                   430
+                 arm reference, match          5                   435
+  match          match_id to terminator      1120                 1555
+                 (1120 above, no align in it)
+  terminator     reference 0                   5                  1560
   envelope 3
-  payload        reference                     6                  1616
-                 arm reference, purchase       6                  1622
-  purchase       player_id to terminator      319                 1941
-                 (325 above, its align now 0 bits where alone it cost 6)
-  terminator     reference 0                   6                  1947
-  zero pad to the byte boundary                5                  1952
-                                                    1952 bits = 244 bytes
+  payload        reference                     5                  1565
+                 arm reference, purchase       5                  1570
+  purchase       player_id to terminator      318                 1888
+                 (312 above, its align now 6 bits where alone it cost 0)
+  terminator     reference 0                   5                  1893
+  zero pad to the byte boundary                3                  1896
+                                                    1896 bits = 237 bytes
 ```
 
-**244 bytes, against 249 for the three envelopes sent alone**, 54, 150 and 45
-as three batches of one, which is 430, 1196 and 355 bits by the same rows, and
-against 243 for the three messages sent BARE as three batches of one. The
-batch saves the two form bytes and two counts it does not repeat and the align
-it moves, and the envelope costs 54 bits for the three, so a batch of three
-under an envelope is one byte over three bare messages and five under three
+**237 bytes, against 242 for the three envelopes sent alone**, 54, 144 and 44
+as three batches of one, which is 425, 1151 and 349 bits by the same rows, and
+against 234 for the three messages sent BARE as three batches of one. The
+batch saves the two form bytes and two counts it does not repeat, and the
+envelope costs 45 bits for the three and moves two aligns, so a batch of three
+under an envelope is three bytes over three bare messages and five under three
 enveloped ones. That is what an envelope is worth stating: the batch is not
 the sum of its bodies, and the union that makes a mixed batch possible is not
 free either.
@@ -7391,13 +7382,13 @@ over the same values.
 
   | instance | packet wire | variable form | byte body | **bitpacked body** | proto3 |
   |---|---:|---:|---:|---:|---:|
-  | `LoginRequest`, full | 46 | 106 | 58 | **52** | 49 |
-  | `MatchResult`, full | 115 | 273 | 225 | **148** | 189 |
-  | `StorePurchase`, full | 36 | 104 | 48 | **43** | 40 |
+  | `LoginRequest`, full | 46 | 106 | 58 | **51** | 49 |
+  | `MatchResult`, full | 115 | 273 | 225 | **142** | 189 |
+  | `StorePurchase`, full | 36 | 104 | 48 | **41** | 40 |
   | `LoginRequest`, defaults | 14 | 10 | 2 | **3** | 0 |
-  | `MatchResult`, defaults | 115 | 43 | 27 | **11** | 40 |
+  | `MatchResult`, defaults | 115 | 43 | 27 | **10** | 40 |
   | `StorePurchase`, defaults | 15 | 10 | 2 | **3** | 2 |
-  | the three full, one batch under `Envelope` | 196 | 550 | 350 | **244** | 285 |
+  | the three full, one batch under `Envelope` | 196 | 550 | 350 | **237** | 285 |
 
 **THE BATCH ROW IS THREE ENVELOPES IN EVERY COLUMN**, so the columns compare
 one thing. On the PACKET WIRE an envelope is a `type` holding a union of three,
@@ -7415,49 +7406,48 @@ embedded message, one byte under 128 and two above: 49, 189 and 40 become 51,
 
 **WHAT THE TABLE SAYS, and it says three things.**
 
-- **AGAINST THE BYTE BODY, the form takes 10%, 34% and 10% off the three
-  messages and 59% off `MatchResult` at its defaults**, and the largest win is
+- **AGAINST THE BYTE BODY, the form takes 12%, 37% and 15% off the three
+  messages and 63% off `MatchResult` at its defaults**, and the largest win is
   where the structure is: ten rows of three small fields cost 225 bytes of kind
-  bytes and lengths and cost 148 bitpacked. `LoginRequest` and `StorePurchase`
+  bytes and lengths and cost 142 bitpacked. `LoginRequest` and `StorePurchase`
   at their defaults GROW by one byte, from 2 to 3, because a batch pays a count
   the byte body did not.
-- **AGAINST proto3, the batch is 14% under and `MatchResult` is 22% under, and
-  the two BLOB-SHAPED messages are OVER, `LoginRequest` and `StorePurchase` by
-  three bytes each.** The cause is named rather than averaged away:
+- **AGAINST proto3, the batch is 17% under and `MatchResult` is 25% under, and
+  the two BLOB-SHAPED messages are OVER, `LoginRequest` by two bytes and
+  `StorePurchase` by one.** The cause is named rather than averaged away:
   `player_id`, `client_build` and `price_minor` are declared BARE, so this wire
   writes 64, 32 and 32 raw bits where proto3 writes a varint whose value happens
   to be small, and a message that is one opaque payload plus a few scalars has
   nothing else to win with. The form's fixed cost, one form byte and one count a
-  batch, is what tips them, and the envelope's five entries cost each of them a
-  bit a reference. **Three things close it and none is built here.**
+  batch, is what tips them. **Three things close it and none is built here.**
   Declaring the range a field actually holds is the schema's own answer and
   costs nothing new: `client_build uint32 | max = 65535` alone takes
-  `LoginRequest` from 52 to 50 bytes, sixteen bits down from thirty-two, one
-  byte over proto3's 49, and `price_minor uint32 | max = 9999`, a price cap of
-  99.99 in minor units, takes `StorePurchase` from 43 to 41, fourteen bits down
-  from thirty-two, one byte over proto3's 40. The BATCH closes the rest, because
+  `LoginRequest` from 51 to 49 bytes, sixteen bits down from thirty-two, level
+  with proto3's 49, and `price_minor uint32 | max = 9999`, a price cap of
+  99.99 in minor units, takes `StorePurchase` from 41 to 39, fourteen bits down
+  from thirty-two, one byte under proto3's 40. The BATCH closes the rest, because
   the form byte and the count are paid once for however many bodies ride and
   the batch of three is already under. And a variable-width encoding for BARE
   integer kinds on this form is the third, a divergence from the packet wire
   that wants a measurement before it wants a page (§15).
-- **AGAINST THE PACKET WIRE the residual is 6, 33 and 7 bytes**, and it is
+- **AGAINST THE PACKET WIRE the residual is 5, 27 and 5 bytes**, and it is
   exactly what the design statement says it is. On `MatchResult` it is ten rows
-  of three references and a terminator, 30 of the 33 bytes, which is the price of
+  of three references and a terminator, 24 of the 27 bytes, which is the price of
   naming a field inside an array of tables and is what the batch-level passes
   and the column door (#554, SPEC.md §4.11) are aimed at. On the DEFAULTS rows
-  the sign flips: `MatchResult` is 11 bytes against the packet wire's 115,
+  the sign flips: `MatchResult` is 10 bytes against the packet wire's 115,
   because elision beats a positional wire outright whenever a message is sparse.
 
-**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 33 entries and
-318 bytes of entry records: 138 bytes for the thirteen field names with their
-kinds and shapes, 99 for the eight variant names at kind `0` and the three arm
-names at kind `13`, and 81 for the tail's nine. The announcement file is **361
-bytes**: one form byte, a body of 336 bytes carrying the build version and the
+**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 24 entries and
+237 bytes of entry records: 138 bytes for the thirteen field names with their
+kinds and shapes, and 99 for the eight variant names at kind `0` and the three
+arm names at kind `13`. The announcement file is **280 bytes**: one form byte,
+a body of 255 bytes carrying the build version and the
 vocabulary array, and a trailer of two entries and its count. **An entry
 averages ten bytes rather than the eight a bare id would cost**, and those two
 bytes are what pay for there being no kind byte and no length on any body.
-Against proto3 the batch of three saves 41 bytes a round, so **the announcement
-pays for itself in the ninth round** and every round after it is profit. **The unit's whole vocabulary
+Against proto3 the batch of three saves 48 bytes a round, so **the announcement
+pays for itself in the sixth round** and every round after it is profit. **The unit's whole message closure
 is what is paid for**, not the part a connection uses, which is the cost of
 ruling out the re-announcement state machine and the drifting slot: a unit of 500
 entries announces about 5 KB once.
@@ -7702,7 +7692,7 @@ fixed table Envelope
 
 - **The unit is `backenddemo`, at `tables/backend`**, and the connection is
   `backend_conn`, whose announcement is `testdata/wire/tables/backend_conn.bin`,
-  **33 entries and 361 bytes**. The three messages are the measurement's,
+  **24 entries and 280 bytes**. The three messages are the measurement's,
   field for field, and `Payload` and `Envelope` are the unit's own addition
   beyond it, the one root the batch vector rides under.
 - **Six FILE-form vectors**, `login_full`, `login_default`, `match_full`,
@@ -7713,8 +7703,8 @@ fixed table Envelope
   byte, because the value is the same.
 - **One BATCH vector**, `backend_round`, carrying `login_full`, `match_full` and
   `store_full` in that order as the arms of three `Envelope` bodies in one
-  batch, whose 244 bytes are the pin that a batch is not the sum of its bodies,
-  beside the three envelopes as three batches of one at 54, 150 and 45.
+  batch, whose 237 bytes are the pin that a batch is not the sum of its bodies,
+  beside the three envelopes as three batches of one at 54, 144 and 44.
 - **Three more vectors carry the rules a value alone cannot reach**: a wide
   vocabulary, a two-peer pair for per-direction independence, and a connection
   carrying a second announcement. The `graphdemo` row over the variable root

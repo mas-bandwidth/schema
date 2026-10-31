@@ -5852,7 +5852,7 @@ endef
 
 # one line a row: the sabotage, the engine file, the harness test
 MESSAGE_FORM_CONTROLS := \
-	message-tail-without-node-table:ir/tablewire.go:TestTheTailIsUnconditional \
+	message-vocabulary-whole-unit:ir/tablewire.go:TestTheVocabularyIsTheMessageClosure \
 	message-order-reversed:ir/tablewire.go:TestTheAnnouncementIsTheUnitsOwn \
 	message-slot-off-by-one:internal/tablewire/messageencode.go:TestTheTwoFormsRoundTrip \
 	message-count-sixteen-bits:internal/tablewire/messageencode.go:TestTheCostRows \
@@ -5877,7 +5877,6 @@ MESSAGE_FORM_CONTROLS := \
 	message-no-byte-bound:internal/tablewire/message.go:TestTheTwoBounds \
 	message-reserved-in-vocabulary-accepted:internal/tablewire/message.go:TestTheThreeReservedIdsWhereTheyDoNotBelong \
 	message-mask-sixty-four:ir/tablemessage.go:TestTheMasksWidth \
-	message-list-count-sixteen:ir/tablemessage.go:TestTheCountsTheDataDecide \
 	message-bits-unbounded:ir/tablemessage.go:TestAHostileShape \
 	message-reference-eight-bits:ir/tablemessage.go:TestAWideVocabulary \
 	message-base-zigzag-unsigned:ir/tablemessage.go:TestTheBasesTwoEncodings \

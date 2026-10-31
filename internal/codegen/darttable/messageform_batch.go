@@ -88,11 +88,12 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 }
 
 // emitMessageBody emits <T>SaveMessageBody and <T>LoadMessageBody for one
-// struct of the closure, in the home beside the fixed write/decode bodies. A
-// variable table gets none: the message form is fixed tables only
-// (docs/SPEC-TABLES.md §3.3), even where its fields would fit a fixed layout.
+// struct of the message closure, in the home beside the fixed write/decode
+// bodies. A variable table, and a type only a variable table reaches, gets
+// none: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3), and
+// the announcement names nothing outside that closure.
 func (g *fixedModule) emitMessageBody(st *ir.Struct) {
-	if st.IsMapEntry() || (st.IsTable && !st.FixedDeclared) {
+	if st.IsMapEntry() || !ir.TableMessageClosure(g.unit)[st.Name] {
 		return
 	}
 	// A `type`'s class and its in-place reset live in the packet emitter's own

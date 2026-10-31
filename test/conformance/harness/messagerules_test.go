@@ -259,8 +259,8 @@ func TestTheWideStringsWidth(t *testing.T) {
 	if err != nil || !v.Announced() || report.Malformed {
 		t.Fatalf("the announcement with a kind-33 entry was refused: %v %+v", err, report)
 	}
-	if v.RefBits() != 6 {
-		t.Fatalf("34 entries take %d bits, not six", v.RefBits())
+	if v.RefBits() != 5 {
+		t.Fatalf("25 entries take %d bits, not five", v.RefBits())
 	}
 	playerID := slotOf(t, v, ir.TableWireId("player_id"), ir.TableKindU64)
 	body := &bitw{}
@@ -286,40 +286,6 @@ func TestTheWideStringsWidth(t *testing.T) {
 	}
 }
 
-// TestTheCountsTheDataDecide: an unbounded array and a map are announced with
-// a thirty-two bit count, because the announcement is the whole unit's
-// vocabulary (§3.3). No body carries them: they are a variable table's, and
-// the message form is fixed tables only. Red if the announcement sizes either
-// count from a declaration.
-func TestTheCountsTheDataDecide(t *testing.T) {
-	unit := tempUnit(t, `package countsdemo
-
-fixed table Row
-{
-    id uint32 = 0
-}
-
-table Ledger
-{
-    rows  []Row
-    index map[uint32]Row
-    data  *bytes
-}
-`)
-	model := tabletext.NewModel(unit)
-	v := vocabularyOf(t, unit)
-	ledger := model.Lookup("Ledger")
-	// THE ANNOUNCED SHAPES: min 0 and max 2^32 - 1, a thirty-two bit count
-	for _, name := range []string{"rows", "index"} {
-		f := fieldOf(t, model.New(ledger), name).Def
-		entry := ir.TableFieldEntry(f)
-		got := v.Entries()[slotOf(t, v, entry.Id, entry.Kind)-1]
-		if got.Kind != ir.TableKindArray || got.Shape.Min != 0 || got.Shape.Max != ir.TableMessageListMax || ir.TableMessageCountBits(got.Shape) != 32 {
-			t.Errorf("%s is announced at kind %d over [%d, %d], not a thirty-two bit count", name, got.Kind, got.Shape.Min, got.Shape.Max)
-		}
-	}
-}
-
 // TestAReferenceOfTheWrongSort: an enum reference naming a field-name entry,
 // and a union arm reference naming a kind-0 entry. Each malformed, terminal
 // for the batch. The reserved-id rule outranks the wrong-sort rule: an enum
@@ -336,13 +302,11 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	model := tabletext.NewModel(bunit)
 	region := slotOf(t, v, ir.TableWireId("region"), ir.TableKindEnum)
 	playerID := slotOf(t, v, ir.TableWireId("player_id"), ir.TableKindU64)
-	nodeTable := slotOf(t, v, ir.TableNodeWireId, 0)
 	for _, row := range []struct {
 		name    string
 		variant uint64
 	}{
 		{"an enum reference naming a field-name entry", playerID},
-		{"an enum reference naming the node-table id", nodeTable},
 	} {
 		body := &bitw{}
 		body.put(region, v.RefBits())
@@ -407,7 +371,17 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	entry := ir.TableFieldEntry(unionField)
 	arm := &bitw{}
 	arm.put(slotOf(t, mv, entry.Id, entry.Kind), mv.RefBits())
-	arm.put(slotOf(t, mv, ir.TableWireId("ToolMessage"), 0), mv.RefBits()) // a table's name id: kind 0, framing nothing
+	variant := uint64(0)
+	for i, e := range mv.Entries() {
+		if e.Kind == 0 {
+			variant = uint64(i + 1) // an enum variant's name: kind 0, framing nothing
+			break
+		}
+	}
+	if variant == 0 {
+		t.Fatal("the messagedemo vocabulary names no kind-0 entry")
+	}
+	arm.put(variant, mv.RefBits())
 	arm.put(0, mv.RefBits())
 	_, ok, report, derr := decodeOne(t, mm, "ToolMessage", mv, batchOf(arm))
 	if derr != nil || ok || !report.Malformed || report.Unknown != 0 || report.KindMismatch != 0 {
@@ -786,7 +760,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 		t.Errorf("the tolerant wire differs from the pinned announce_unknown_field at byte %d", firstDifference(pinned, tolerant))
 	}
 	v, report, err := readAnnouncement(tolerant)
-	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 33 {
+	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 24 {
 		t.Errorf("the tolerant row did not set the vocabulary: err=%v announced=%v version=%016x entries=%d", err, v.Announced(), v.BuildVersion(), len(v.Entries()))
 	}
 	if report.Unknown != 1 || report.Malformed || report.Refused {
