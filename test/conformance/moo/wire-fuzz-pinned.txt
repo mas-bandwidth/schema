@@ -1,3 +1,6 @@
 # THE MUTANTS THE MOO WIRE-FUZZ LEG DIVERGED ON, each fixed in the moo table
 # runtime and replayed alone by make/moo-fuzz.mk tables-moo-wire-fuzz-pinned:
 # <mutant file> <unit> <root> [message|retain]
+# a batch damaged inside body one: the fields decoded before the damage stand
+# (table_message.moo LoadMessages answers the partial body third)
+test/conformance/moo/wire-fuzz-pinned/login_partial_body.bin backenddemo LoginRequest message
