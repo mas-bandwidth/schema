@@ -214,7 +214,7 @@ const tableRegionWriteSource = `
         if (pointer == IntPtr.Zero) { return -1; }
         NativeValue value = new NativeValue((byte*)pointer, 0) { Mutable = mutable };
         RegionIds ids = new RegionIds(vocabulary) { RootType = type };
-        if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator); if (!ids.Graph.Valid) { return -1; } }
+        if (type.Variable) { ids.Graph = RegionNumber(value, type, allocator, true); if (!ids.Graph.Valid) { return -1; } }
         try
         {
             if (!RegionCollect(value, type, ref ids) || !RegionCollectNodes(ref ids)) { return -1; }
