@@ -164,10 +164,10 @@ tables-goose-runtime-home-negative-control:
 
 # THE UNIT MODULE'S CONTROL: the file-order rule put back for the unit's own
 # module. A copy of internal/codegen/goosetable/goosetable.go whose
-# PackageModule is named for the file that sorts first (ir.ProtocolIdHome) rather than the
-# package, built through `go build -overlay`; the gate must go red naming the
+# PackageModule names the registry's module for the file that sorts first
+# (ir.ProtocolIdHome) rather than the package, built through `go build -overlay`; the gate must go red naming the
 # registry's file-order homes, and no table module.
-GOOSE_GATES_SED_UNIT_HOME := s|^	p := goose.Namespace(u)$$|	p := ir.ProtocolIdHome(u) // SABOTAGED: the file-order rule|
+GOOSE_GATES_SED_UNIT_HOME := s|^	p := goose.Namespace(u)$$|	p := goose.Namespace(u); if surface == "Unit" { p = ir.ProtocolIdHome(u) } // SABOTAGED: the file-order rule|
 .PHONY: tables-goose-unit-home-negative-control
 tables-goose-unit-home-negative-control:
 	@mkdir -p $(GOOSE_GATES_DIR)
