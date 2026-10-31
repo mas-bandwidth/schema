@@ -126,6 +126,27 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 	seen := map[string]bool{}
 	var walk func(string)
+	var walkUnion func(*ir.Union)
+	seenUnion := map[*ir.Union]bool{}
+	// a union's set arm rides in its holder's node: the arm's by-value table
+	// body and its pointer target are members of the same region (§3.1, §7.6),
+	// and so is whatever an arm that is itself a union holds, however deep
+	walkUnion = func(un *ir.Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, arm := range un.Variants {
+			if arm.Void() {
+				continue
+			}
+			if t := tableRef(arm.F); t != nil {
+				walk(t.Name)
+			} else if inner := unionRef(arm.F); inner != nil {
+				walkUnion(inner)
+			}
+		}
+	}
 	walk = func(n string) {
 		if seen[n] {
 			return
@@ -144,17 +165,7 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 			case *ir.Struct:
 				walk(ref.Name)
 			case *ir.Union:
-				// a union's SET arm rides in its holder's node: the arm's
-				// by-value table body and its pointer target are members of
-				// the same region (§3.1, §7.6)
-				for _, arm := range ref.Variants {
-					if arm.Void() {
-						continue
-					}
-					if t := tableRef(arm.F); t != nil {
-						walk(t.Name)
-					}
-				}
+				walkUnion(ref)
 			}
 		}
 	}
@@ -243,6 +254,11 @@ type cookGen struct {
 	// form1 is set while a fixed root's FORM-1 cook writer is emitted
 	// (cookwrite_form1.go): the variable walk over the wire library's class
 	form1 bool
+	// form1Unions queues the unions the form-1 cook writes as ARRAY ELEMENTS
+	// (§2.6, §3): each gets one element writer, `_cook<Union>`, in the
+	// namespace the record writers share with every declared type name
+	form1Unions     []*ir.Union
+	form1UnionsSeen map[*ir.Union]bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
 }

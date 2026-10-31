@@ -64,7 +64,19 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 	total := cookHeaderBytes + data + 16
 	g.need(g.homeBase+"Fixed.dart", st.Name)
 	g.pf("  // The fixed cook's extent is constant; every storage slot is written (§7.6).\n")
-	g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
+	if fixedHoldsFloat(st, map[string]bool{}) {
+		// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the measure
+		// refuses a NaN or an infinity with -1, as the cook itself does.
+		head := fmt.Sprintf("  static int cookMeasure(%s value) =>", st.Name)
+		expr := fmt.Sprintf("_cook%s(value, null, 64, Endian.little) ? %d : -1;", st.Name, total)
+		if len(head)+1+len(expr) <= 80 {
+			g.pf("%s %s\n\n", head, expr)
+		} else {
+			g.pf("%s\n      %s\n\n", head, expr)
+		}
+	} else {
+		g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
+	}
 	g.pf("  // Capacity and value validation precede every output write (§7.6).\n")
 	g.pf("  static bool cook(\n    %s value,\n    Uint8List output,\n    Endian order, {\n    TableCookWriteReport? report,\n  }) {\n", st.Name)
 	g.pf("    if (report != null) report.reason = 'ok';\n")
@@ -148,9 +160,13 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		if bound > 0 {
 			stride = pieces[0].Size / bound
 		}
-		// Typed float arrays already hold the transmitted 32-bit cells. Reading
-		// them as doubles would quiet signalling NaNs before narrowing can help.
+		// Typed float arrays already hold the transmitted 32-bit cells, and
+		// each is held finite first (docs/SPEC-TABLES.md §3.3): a NaN or an
+		// infinity refuses the cook, measure and write alike.
 		if f.Type.Kind == ir.TFloat32 {
+			g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
+			g.cookRefuseUnless(ind+"  ", expr+"[i].isFinite", "false")
+			g.pf("%s}\n", ind)
 			g.pf("%sif (out != null) {\n", ind)
 			rawLine := fmt.Sprintf("%s  final raw = ByteData.view(%s.buffer, %s.offsetInBytes, %s.lengthInBytes);", ind, expr, expr, expr)
 			if len(rawLine) <= 80 {
@@ -203,9 +219,25 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 		}
 		return
 	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an
+		// infinity refuses the cook, measure and write alike, before its slot
+		// is touched.
+		g.cookRefuseUnless(ind, expr+".isFinite", "false")
+	}
 	g.pf("%sif (out != null) {\n", ind)
 	g.emitCookScalarStore(f, expr, at, width, ind+"  ")
 	g.pf("%s}\n", ind)
+}
+
+// cookRefuseUnless writes `if (!<cond>) return <ret>;` the way dart format
+// does: one line while it fits eighty columns, the condition alone past it.
+func (g *cookGen) cookRefuseUnless(ind, cond, ret string) {
+	if line := fmt.Sprintf("%sif (!%s) return %s;", ind, cond, ret); len(line) <= 80 {
+		g.pf("%s\n", line)
+		return
+	}
+	g.pf("%sif (!%s)\n%s  return %s;\n", ind, cond, ind, ret)
 }
 
 // emitCookScalarStore is emitCookFixedScalar's store with no null test on
@@ -387,6 +419,11 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		g.emitCookVariableRecord(r)
 		g.emitCookVariableExtent(r)
 		g.emitCookVariableCarve(r)
+	}
+	if !g.form1 && len(g.form1Unions) > 0 {
+		// the element writers of the unions a list of unions queued (§2.6);
+		// a fixed root's form-1 class drains its own queue after this
+		g.emitCookForm1UnionWriters()
 	}
 	g.trimBlank()
 }
@@ -680,6 +717,13 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				g.pf("%s  final start = point;\n", ind)
 			}
 			g.pf("%s  point += n * %d;\n", ind, size)
+			if write && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && tableRef(f) == nil {
+				// a cooked float element is finite (docs/SPEC-TABLES.md §3.3):
+				// measure and write refuse a NaN or an infinity alike
+				g.pf("%s  for (var i = 0; i < n; i++) {\n", ind)
+				g.cookRefuseUnless(ind+"    ", "l[i].isFinite", "-1")
+				g.pf("%s  }\n", ind)
+			}
 			if write {
 				g.pf("%s  if (out != null) {\n", ind)
 				g.pf("%s    final array = %s + start;\n", ind, base)
@@ -688,6 +732,11 @@ func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bo
 				g.pf("%s    for (var i = 0; i < n; i++) {\n", ind)
 				if ref := tableRef(f); ref != nil {
 					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, ref.Name, size)
+				} else if un := unionRef(f); un != nil {
+					// a LIST OF UNIONS (§2.6): each element is the union's own
+					// storage, written where it lies by the union's element writer
+					g.queueForm1Union(un)
+					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, un.Name, size)
 				} else {
 					// inside the `if (out != null)` above: out is promoted
 					g.emitCookScalarStore(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
@@ -818,6 +867,17 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 				g.pf("%s  final e = i < %s.length\n%s      ? %s[i]\n%s      : wire.%s();\n", ind, expr, ind, expr, ind, ref.Name)
 			}
 			g.pf("%s  if (!_cook%s(e, c, at + %d + i * %d)) return false;\n", ind, ref.Name, offset, stride)
+		case unionRef(f) != nil:
+			// an element that is a union: its own storage, a dead slot being
+			// the zero storage the region already holds (§2.6)
+			g.pf("%s  if (i >= %s.length) break;\n", ind, expr)
+			g.emitCookForm1UnionElement(unionRef(f), expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
+		case isWide(f):
+			// a wide element (§3, §15): a dead slot is the raw zero, which
+			// the zero-filled region already holds, so only live ones write
+			g.pf("%s  if (i >= %s.length) break;\n", ind, expr)
+			g.pf("%s  final e = %s[i];\n", ind, expr)
+			g.emitCookElementWide(f, "e", offset, stride, ind+"  ")
 		default:
 			zero := "0"
 			switch f.Type.Kind {
@@ -840,6 +900,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			g.emitCookRef(ind+"  ", fmt.Sprintf("at + %d + i * %d", offset, stride), expr+"[i]")
 		case ref != nil:
 			g.pf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;\n", ind, ref.Name, expr, offset, stride)
+		case unionRef(f) != nil:
+			g.emitCookForm1UnionElement(unionRef(f), expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
+		case isWide(f):
+			g.pf("%s  final e = %s[i];\n", ind, expr)
+			g.emitCookElementWide(f, "e", offset, stride, ind+"  ")
 		default:
 			g.emitCookFixedScalar(f, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
@@ -859,7 +924,7 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, text)
 		g.pf("%s  }\n%s}\n", ind, ind)
 	case isWide(f):
-		g.emitCookVariableWide(f, expr, offset, ind)
+		g.emitCookVariableWide(f, expr, fmt.Sprintf("at + %d", offset), fmt.Sprintf("at + %d", offset+8), int64(ir.TableKindWidth(wideKind(f))), ind)
 	default:
 		g.emitCookFixedScalar(f, expr, fmt.Sprintf("at + %d", offset), pieces[0].Size, ind)
 	}
@@ -869,9 +934,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 // §3, §15) at its kind's width, byte-identical to the Go reference leg
 // (internal/codegen/gotable/cookwrite.go): a 128-bit value as its low 64-bit
 // half first and then the high half, each word in the target byte order, and a
-// narrower fixed-point value as its width bytes in that same order.
-func (g *cookGen) emitCookVariableWide(f *ir.Field, expr string, offset int64, ind string) {
-	width := int64(ir.TableKindWidth(wideKind(f)))
+// narrower fixed-point value as its width bytes in that same order. addr is
+// the slot's address expression and addr8 the same plus eight (the high word
+// of a 128-bit value), so an array element (`at + 8 + i * 4`) rides the same
+// write as a field.
+func (g *cookGen) emitCookVariableWide(f *ir.Field, expr, addr, addr8 string, width int64, ind string) {
 	g.pf("%sif (out != null) {\n", ind)
 	if width == 16 {
 		// toSigned(64) re-spells the 64-bit half as Dart's signed int, so a
@@ -882,15 +949,39 @@ func (g *cookGen) emitCookVariableWide(f *ir.Field, expr string, offset int64, i
 		// first on a big-endian one (internal/codegen/gotable/cookwrite.go).
 		g.pf("%s  final wLow = %s.toSigned(64).toInt();\n", ind, expr)
 		g.pf("%s  final wHigh = (%s >> 64).toSigned(64).toInt();\n", ind, expr)
-		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wLow : wHigh,\n%s    order,\n%s  );\n", ind, ind, offset, ind, ind, ind)
-		g.pf("%s  out.setUint64(\n%s    at + %d,\n%s    order == Endian.little ? wHigh : wLow,\n%s    order,\n%s  );\n", ind, ind, offset+8, ind, ind, ind)
+		g.emitDartCall(ind+"  ", "out.setUint64", addr, "order == Endian.little ? wLow : wHigh", "order")
+		g.emitDartCall(ind+"  ", "out.setUint64", addr8, "order == Endian.little ? wHigh : wLow", "order")
 	} else {
-		g.pf("%s  for (var i = 0; i < %d; i++) {\n", ind, width)
-		g.pf("%s    var shift = order == Endian.little ? i : %d - 1 - i;\n", ind, width)
-		g.pf("%s    out.setUint8(at + %d + i, (%s >> (shift * 8)).toUnsigned(8).toInt());\n", ind, offset, expr)
+		// the byte index is `b`, never `i`: an array element's addr already
+		// reads the element index i
+		g.pf("%s  for (var b = 0; b < %d; b++) {\n", ind, width)
+		g.pf("%s    var shift = order == Endian.little ? b : %d - 1 - b;\n", ind, width)
+		g.emitDartCall(ind+"    ", "out.setUint8", addr+" + b", fmt.Sprintf("(%s >> (shift * 8)).toUnsigned(8).toInt()", expr))
 		g.pf("%s  }\n", ind)
 	}
 	g.pf("%s}\n", ind)
+}
+
+// emitDartCall writes one call statement in the spelling `dart format`
+// writes: on one line when it fits in 80 columns, else one argument a line
+// with a trailing comma.
+func (g *cookGen) emitDartCall(ind, callee string, args ...string) {
+	if one := fmt.Sprintf("%s%s(%s);", ind, callee, strings.Join(args, ", ")); len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s(\n", ind, callee)
+	for _, a := range args {
+		g.pf("%s  %s,\n", ind, a)
+	}
+	g.pf("%s);\n", ind)
+}
+
+// emitCookElementWide writes element i of an array of a wide kind at its
+// stride, the element's raw BigInt in `expr` (§3, §15, §7.2).
+func (g *cookGen) emitCookElementWide(f *ir.Field, expr string, offset, stride int64, ind string) {
+	addr := fmt.Sprintf("at + %d + i * %d", offset, stride)
+	g.emitCookVariableWide(f, expr, addr, addr+" + 8", stride, ind)
 }
 
 const dartCookWriteReport = `
@@ -938,20 +1029,14 @@ final class TableCookGraph {
 `
 
 const dartCookFloat32Writer = `
-  static final Float32List _cookFloat32 = Float32List(2);
+  static final Float32List _cookFloat32 = Float32List(1);
   static final Uint32List _cook32Words = _cookFloat32.buffer.asUint32List();
-  static final Float64List _cookFloat64 = _cookFloat32.buffer.asFloat64List();
-  static final Uint64List _cook64Words = _cookFloat32.buffer.asUint64List();
 
+  // A cooked float is finite (docs/SPEC-TABLES.md §3.3): the writer refused a
+  // NaN or an infinity before it reaches here, so this is the ordinary
+  // narrowing, exact for every finite float32 value.
   static int float32Bits(double value) {
-    if (!value.isNaN) {
-      _cookFloat32[0] = value;
-      return _cook32Words[0];
-    }
-    _cookFloat64[0] = value;
-    final bits = _cook64Words[0];
-    var mantissa = (bits >>> 29) & 0x7fffff;
-    if (mantissa == 0) mantissa = 0x400000;
-    return ((bits >>> 63) << 31) | 0x7f800000 | mantissa;
+    _cookFloat32[0] = value;
+    return _cook32Words[0];
   }
 `

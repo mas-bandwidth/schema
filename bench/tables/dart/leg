@@ -1,0 +1,44 @@
+#!/bin/sh
+# THE DART LEG of the tables bench (bench/tables/README.md): the VARIABLE form,
+# form byte 1, over the board's TableMixed corpus. Run from the repository root.
+#
+#   leg build        dart compile exe bench/tables/dart/table_form1_main.dart
+#   leg run [args]   run the executable
+#
+# The AOT executable is the form that ships, so it is the form timed. The
+# FIXED form's leg for bench/paired is the other runner in this directory
+# (table_main.dart) and is built and run by that driver, not by this script.
+# DART overrides the SDK, as make/dart.mk's does.
+set -e
+
+BIN=build/schema_tables_bench_dart
+SRC=bench/tables/dart/table_form1_main.dart
+GEN=generated/bench/tables/dart
+
+if [ -z "$DART" ]; then
+    if [ -x dist/dart-sdk-3.13.2/bin/dart ]; then
+        DART=dist/dart-sdk-3.13.2/bin/dart
+    else
+        DART=dart
+    fi
+fi
+
+case "$1" in
+build)
+    if [ ! -f "$GEN/BenchTableWire.dart" ]; then
+        echo "missing $GEN — run \`make generate\`" >&2
+        exit 2
+    fi
+    command -v "$DART" > /dev/null 2>&1 || { echo "no dart toolchain" >&2; exit 2; }
+    mkdir -p build
+    "$DART" compile exe -o "$BIN" "$SRC" > /dev/null
+    ;;
+run)
+    shift
+    exec "./$BIN" "$@"
+    ;;
+*)
+    echo "usage: $0 build | run [args...]" >&2
+    exit 1
+    ;;
+esac
