@@ -1420,12 +1420,24 @@ defmodule WireFuzz do
   end
 
   # the plain arm (docs/SPEC-TABLES.md §4.2): load, report, save.
+  # the report a LoadMeasure refusal answers: the load's own refusal, which
+  # names a newer form or says malformed
+  defp measure_refusal(mod, root, wire) do
+    case mod.load(root, wire) do
+      {:error, :newer_form, report} -> Map.put(report, :refused, true)
+      {:error, _reason, report} -> %{report | malformed: true}
+      _ -> %{malformed: true}
+    end
+  end
+
   defp answer_plain(mod, r, wire) do
     measure = mod.load_measure(r.root, wire)
 
     if measure < 0 do
-      # LoadMeasure refused the framing: no root, an empty report, nothing saved
-      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
+      # LoadMeasure refused the framing: no root and nothing saved, and the
+      # refusal is DAMAGE, which discards the whole load (Glenn, 2026-10-31):
+      # the report says malformed, or names the form a newer writer used
+      stdout_write(header(0, measure_refusal(mod, r.root, wire), measure) <> <<-1::little-signed-64>>)
     else
       case mod.load(r.root, wire) do
         {:ok, value, report} ->
@@ -1453,7 +1465,7 @@ defmodule WireFuzz do
           # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
           # damage discards the whole load): its report, malformed among it,
           # is the answer the oracle compares
-          stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
+          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)
       end
     end
   end
@@ -1471,7 +1483,7 @@ defmodule WireFuzz do
 
     if measure < 0 do
       # LoadMeasure refused the framing: no root, an empty report, nothing saved
-      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
+      stdout_write(header(0, measure_refusal(mod, r.root, wire), measure) <> <<-1::little-signed-64>>)
     else
       case mod.load_retain(r.root, wire, retain, report) do
         {:ok, value, report, retain} ->

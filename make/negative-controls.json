@@ -1196,6 +1196,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-wire-fuzz-refusal",
+      "when": "pull-request",
+      "why": "the Elixir wire-fuzz driver's refusal control (docs/PORTING.md I15, the discard rule of #2447): a driver that answers a refused load with an empty report must red tables-elixir-wire-fuzz-refusal on the fixed root's empty buffer. It compiles one sabotaged driver over a copy of the built corpus, which is why it is a group of its own.",
+      "targets": [
+        "tables-elixir-wire-fuzz-refusal-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-hostile",
       "when": "pull-request",
       "why": "the Elixir json-hostile rows' two controls (docs/SPEC-TABLES.md §16.2): an uncounted repeated enum-keyed slot and a float32 stored past its rounding midpoint, each required to red exactly its own rows of the json-hostile surface. Each is a sabotaged corpus compile, about 60 s on the studio.",

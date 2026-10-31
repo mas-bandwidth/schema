@@ -614,7 +614,7 @@ func TestCyclicWireLoadTerminatesElixir(t *testing.T) {
 task = Task.async(fn -> Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower)) end)
 
 case Task.yield(task, 10_000) do
-  {:ok, {:error, :malformed, %{malformed: true}}} ->
+  {:ok, {:error, :malformed, %%{malformed: true}}} ->
     :ok
 
   other ->

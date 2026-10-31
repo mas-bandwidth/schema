@@ -1741,6 +1741,56 @@ tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/
 
 test-elixir: tables-elixir-wire-fuzz-all
 
+# THE WIRE-FUZZ DRIVER's REFUSAL ANSWERS (docs/PORTING.md I15, the discard rule
+# of #2447): a load that meets damage refuses and its report says malformed, and
+# a form this reader does not know is refused by name. The gate replays an empty
+# buffer and a newer form byte through the harness against a variable root
+# (graphdemo.Scene) and a fixed one (tabledemo.WideBlob), each answered by the
+# leg's own driver; ELIXIR_WIRE_FUZZ_REFUSAL_EBIN lets the control point it at a
+# sabotaged driver.
+ELIXIR_WIRE_FUZZ_REFUSAL_DIR  := build/elixir-wire-fuzz-refusal
+ELIXIR_WIRE_FUZZ_REFUSAL_EBIN ?= $(CURDIR)/build/elixir-tables-ebin
+
+.PHONY: tables-elixir-wire-fuzz-refusal tables-elixir-wire-fuzz-refusal-negative-control
+tables-elixir-wire-fuzz-refusal: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@mkdir -p $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)
+	@printf '' > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/empty.bin
+	@printf '\002' > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/newer-form.bin
+	@for mutant in empty newer-form; do \
+		for root in graphdemo:Scene tabledemo:WideBlob; do \
+			ELIXIR_TABLES_EBIN=$(ELIXIR_WIRE_FUZZ_REFUSAL_EBIN) ./build/conformance-harness wire-fuzz \
+				--driver 'test/conformance/elixir/driver wire-fuzz' \
+				--replay $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/$$mutant.bin --unit $${root%%:*} --root $${root#*:} \
+				> $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/$$mutant-$${root%%:*}.log 2>&1 || \
+				{ cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/$$mutant-$${root%%:*}.log; \
+				  echo "tables-elixir-wire-fuzz-refusal: the $$mutant buffer under $$root is not answered as the oracle refuses it"; exit 1; }; \
+		done; \
+	done
+	@echo "tables-elixir-wire-fuzz-refusal: an empty buffer and a newer form are refused as the oracle refuses them, on a variable and a fixed root"
+
+# ITS CONTROL: the driver answers a refused load with an EMPTY report (the
+# answer it gave before the discard rule), compiled over a copy of the corpus;
+# the gate must go red on the fixed root's empty buffer.
+tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@rm -rf $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control && mkdir -p $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin
+	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin/
+	@sed 's|          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)|          stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>) # SABOTAGED|' \
+		test/conformance/elixir/driver_impl.ex > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex
+	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex || \
+		{ echo "NEGATIVE CONTROL: the driver sabotage did not apply"; exit 1; }
+	@$(ELIXIRC) --ignore-module-conflict -o $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex > /dev/null 2>&1
+	@if $(MAKE) --no-print-directory tables-elixir-wire-fuzz-refusal \
+			ELIXIR_WIRE_FUZZ_REFUSAL_EBIN=$(CURDIR)/$(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin \
+			> $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log 2>&1; then \
+		cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; \
+		echo "NEGATIVE CONTROL FAILED: a driver that drops the refused load's report left the refusal gate green"; exit 1; \
+	fi
+	@grep -q 'the empty buffer under tabledemo:WideBlob' $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log || \
+		{ cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the fixed root's empty buffer"; exit 1; }
+	@echo "elixir wire-fuzz refusal negative control: a driver that drops a refused load's report reds the gate on tabledemo.WideBlob"
+
+test-elixir: tables-elixir-wire-fuzz-refusal tables-elixir-wire-fuzz-refusal-negative-control
+
 # cards-elixir-test compiles the facade (tables/cards/elixir/cards.ex) against
 # the generated codec ebin and runs the ExUnit tests (cards_test.exs). The
 # facade is the owning layer over Cards.Table, ported from tables/cards/cards.go.
