@@ -94,3 +94,6 @@ tables-squirrel-descriptor-layout-agreement: toolchain-squirrel
 tables-squirrel-slot-negative-control: toolchain-squirrel
 	sh test/slowgate/proof $@ 'TestSquirrelDescriptorLayoutNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelDescriptorLayoutNegativeControl$$' -count=1
 test-squirrel: tables-squirrel-descriptor-layout-agreement tables-squirrel-slot-negative-control
+
+# The registered M18 proof runs through the normal language test entry.
+test-squirrel: tables-squirrel-arms tables-squirrel-arms-negative-control
