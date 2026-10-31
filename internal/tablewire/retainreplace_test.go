@@ -11,10 +11,9 @@ import (
 
 // retainReplacedListWire writes the shape THIS CARD pins: a root `Node` whose
 // `items` LIST OF UNIONS occurs TWICE. The first occurrence carries `n`
-// elements, and the arm at index `k` is a body whose unknown field is retained
-// but whose framing is damaged (its terminator ends before the last byte of its
-// L), so only the arm handle still names that body. The second occurrence
-// replaces the first whole, carrying `n2` elements.
+// elements, and the arm at index `k` is a well-framed body whose unknown field
+// is retained. The second occurrence replaces the first whole, carrying `n2`
+// elements.
 //
 // docs/SPEC-TABLES.md §6.6: a later occurrence supersedes the earlier one, so
 // an arm the first occurrence built past the second's count dies with it and
@@ -36,7 +35,6 @@ func retainReplacedListWire(k, n2 int) []byte {
 			b.field("future", ir.TableKindI32)
 			b.body = binary.LittleEndian.AppendUint32(b.body, 7)
 			b.end()
-			b.body = append(b.body, 0xAA, 0xBB)
 			b.closeLen(armAt)
 		} else {
 			b.leb(0)
@@ -108,7 +106,7 @@ func TestRetainOracleForgetsEveryArmOfAReplacedList(t *testing.T) {
 				t.Fatal("the load refused a well-framed file")
 			}
 			if report.Retained != 1 {
-				t.Fatalf("load: retained=%d, want 1: the damaged arm's unknown field should still be retained", report.Retained)
+				t.Fatalf("load: retained=%d, want 1: the arm's unknown field is retained", report.Retained)
 			}
 			var save tabletext.Report
 			if _, err := tablewire.EncodeRetain(m, inst, &retain, &save); err != nil {

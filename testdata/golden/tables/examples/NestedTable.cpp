@@ -4244,7 +4244,14 @@ namespace tabledemo {
 
 bool ArchiveConfigFromJsonTolerant( ArchiveConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    return TableJsonRead( &value, ArchiveConfigTableType(), text, bytes, report );
+    TableReport ignored;
+    TableReport * to = report != NULL ? report : &ignored;
+    const bool malformed_before = to->malformed;
+    to->malformed = false;
+    const bool ok = TableJsonRead( &value, ArchiveConfigTableType(), text, bytes, to );
+    if ( !ok || to->malformed ) { to->malformed = true; ArchiveConfigTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    to->malformed = malformed_before;
+    return true;
 }
 
 bool ArchiveConfigFromJson( ArchiveConfig & value, const char * text, int64_t bytes, TableReport * report )

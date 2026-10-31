@@ -169,6 +169,9 @@ var cookWriteCarried = []cookWriteUnit{
 		{"Trails", []string{"map_trails"}},
 		{"Runs", []string{"map_runs"}},
 	}},
+	{"../../../tables/widelist", "widelist", "widelistdemo", []cookWriteRoot{
+		{"Wide", []string{"widelist_wide"}},
+	}},
 	{"../../../tables/lists", "listdemo", "listdemo", []cookWriteRoot{
 		{"Save", []string{"list_tables", "list_scalars", "list_empty", "list_erased"}},
 		{"Mixed", []string{"list_mixed"}},
@@ -178,7 +181,7 @@ var cookWriteCarried = []cookWriteUnit{
 		{"Unbounded", []string{"list_migrates"}},
 	}},
 	{"../../../tables/stream", "streamdemo", "streamdemo", []cookWriteRoot{
-		{"Feed", []string{"stream_chain", "stream_header", "stream_parts", "stream_arm_first", "stream_arm_pointer"}},
+		{"Feed", []string{"stream_chain", "stream_header", "stream_parts", "stream_arm_first", "stream_arm_pointer", "stream_arm_tag"}},
 	}},
 	{"../../../test/tables/M1.schema", "tblm1", "tblm1", []cookWriteRoot{
 		{"Msg", []string{"m1_open"}},

@@ -478,6 +478,15 @@ func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, s
 			binary.LittleEndian.Uint32(reply[13:]), binary.LittleEndian.Uint32(reply[17:]), reply[21] != 0, reply[22] != 0,
 			binary.LittleEndian.Uint32(reply[31:]), binary.LittleEndian.Uint32(reply[35:]))
 		want, encoded := oracleSeed(t, units[s.unit].unit, s.root, wire, retain)
+		if counts := strings.Split(strings.Fields(want)[0], ","); counts[5] == "true" {
+			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
+			// leg owes the refusal, and no counter, retention report or
+			// saved byte is compared
+			if reply[21] == 0 {
+				t.Errorf("%s (%s.%s, retain=%t): the oracle discards a damaged load and the leg reports %s", s.name, s.unit, s.root, retain, leg)
+			}
+			continue
+		}
 		if retain && s.retainedAtLeast > 0 {
 			var kept int
 			_, after, _ := strings.Cut(want, "retained=")

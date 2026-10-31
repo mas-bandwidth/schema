@@ -28,6 +28,7 @@ public final class MixedStatRetain {
         retain.idUsed = 0;
         retain.nodeKeys.clear();
         MixedStatVariable.Value v = new MixedStatVariable.Value();
+        report.rootTypeId = MixedStatVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {

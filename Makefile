@@ -80,6 +80,11 @@ toolchain_probe = $(if $(4),$(4),command -v $(3)) >/dev/null 2>&1 || { \
 # the layout model or the build version silently NOT rebuild the compiler every
 # gate below then measures.
 GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
+# and every file the compiler embeds (go:embed): the runtimes the scripting
+# targets copy beside their output. Without them an edit to a runtime left
+# bin/schema stale and every generate re-emitted the old runtime.
+# bin-schema-embeds checks it against `go list`'s own EmbedFiles.
+EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go')
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 # the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side
@@ -100,6 +105,8 @@ SCHEMAS_TABLES_SCALARS := $(wildcard tables/scalars/*.schema)
 SCHEMAS_TABLES_MAPS := $(wildcard tables/maps/*.schema)
 # the UNBOUNDED ARRAY corpus (docs/SPEC-TABLES.md §2.9)
 SCHEMAS_TABLES_LISTS := $(wildcard tables/lists/*.schema)
+# the COOK NODE ALIGNMENT case (docs/SPEC-TABLES.md §6.2): 128-bit list elements
+SCHEMAS_TABLES_WIDELIST := $(wildcard tables/widelist/*.schema)
 # the UNION-ARM TRAVERSAL corpus (docs/SPEC-TABLES.md §2.6, §2.9, §3.1)
 SCHEMAS_TABLES_ARMS := $(wildcard tables/arms/*.schema)
 # the MESSAGE FORM's corpora (docs/SPEC-TABLES.md §3.3): the three backend
@@ -132,8 +139,38 @@ all: bin/schema
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
-bin/schema: $(GO_SOURCES)
+bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+
+# bin-schema-embeds: for one embedded file of every package that embeds
+# (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
+# newer mtime on that file makes bin/schema out of date. `make -q` asks
+# without building; the last step rebuilds once.
+.PHONY: bin-schema-embeds
+bin-schema-embeds: bin/schema
+	@n=0; for f in $$(go list -deps -f '{{$$d := .Dir}}{{range .EmbedFiles}}{{$$d}}/{{.}}{{"\n"}}{{break}}{{end}}' ./cmd/schema); do \
+		n=$$((n+1)); touch "$$f"; \
+		if $(MAKE) --no-print-directory -q bin/schema; then \
+			echo "bin-schema-embeds FAILED: touching $$f left bin/schema up to date"; exit 1; fi; \
+		touch -r "$$f" bin/schema; \
+	done; \
+	test $$n -gt 0 || { echo "bin-schema-embeds FAILED: go list named no embedded file"; exit 1; }; \
+	echo "bin-schema-embeds: $$n embedding package(s), a newer file in each rebuilds bin/schema"
+	@$(MAKE) --no-print-directory bin/schema
+
+test: bin-schema-embeds
+
+# Its control: with EMBED_SOURCES emptied on the command line, a touched
+# runtime leaves bin/schema up to date and bin-schema-embeds must go red.
+.PHONY: bin-schema-embeds-negative-control
+bin-schema-embeds-negative-control: bin/schema
+	@mkdir -p build
+	@if $(MAKE) --no-print-directory bin-schema-embeds EMBED_SOURCES= > build/bin-schema-embeds-control.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: with no embedded file a prerequisite, bin-schema-embeds stayed green"; cat build/bin-schema-embeds-control.log; exit 1; fi
+	@grep -q 'bin-schema-embeds FAILED: touching .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: bin-schema-embeds went red for another reason"; cat build/bin-schema-embeds-control.log; exit 1; }
+	@$(MAKE) --no-print-directory bin/schema
+	@echo "negative control: without the embedded files as prerequisites, a touched runtime leaves bin/schema stale and bin-schema-embeds goes RED"
 
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)
@@ -333,6 +370,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
+	$(1) generate --lang cpp --out $(2)/widelist tables/widelist
 	$(1) generate --lang cpp --out $(2)/arms tables/arms
 	$(1) generate --lang cpp --out $(2)/scalars2 test/tables/Scalars2.schema
 	$(1) generate --lang cpp --out $(2)/backend tables/backend
@@ -357,7 +395,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING)
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING)
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -4616,6 +4654,44 @@ tables-tool-cook-differential-negative-control: build/conformance-cpp
 		{ echo "NEGATIVE CONTROL FAILED: a row that carries no map went red too"; exit 1; }
 	@echo "negative control: slack after a map's entry array turns the tool/reference differential RED on $$(grep -c '^DIFFERS' $(TOOL_COOK_DIFF)-control/log) map-bearing cooks and on nothing else"
 
+# THE NODE'S ALIGNMENT IS ITS ARRAYS' TOO (docs/SPEC-TABLES.md §2.8, §7.2): a
+# node with an extent aligns to the greater of its record's alignment and the
+# greatest its extent's arrays can ask for, and the extent begins at sizeof
+# rounded to the greater of eight and that. Both halves live in ir (CookNodeAlign,
+# CookExtentStart), which the tool and the C++ reference share, so the
+# differential cannot see them; the tool's own cook-check can, which holds every
+# array to its element's alignment in the region and every node to its node
+# alignment. Each control takes one half away from the tool through go test
+# -overlay, and the tool's cook of widelist_wide must go red on cook-check's
+# alignment clause, and no other row may.
+.PHONY: tables-tool-cook-node-align-negative-control
+tables-tool-cook-node-align-negative-control:
+	@rm -rf build/node-align-control && mkdir -p build/node-align-control
+	@set -e; for half in start node; do \
+		case $$half in \
+		start) sed -e 's@^	a := max(RegionAlignFloor, CookExtentAlign(u, st))$$@	a := RegionAlignFloor // SABOTAGED: the extent begins at the floor alone@' \
+			ir/tablelist.go > build/node-align-control/$$half.go.txt ;; \
+		node) sed -e 's@^	return max(RecordLayout(u, st).Align, CookExtentAlign(u, st))$$@	return RecordLayout(u, st).Align // SABOTAGED: the node aligns to its record alone@' \
+			ir/tablelist.go > build/node-align-control/$$half.go.txt ;; \
+		esac; \
+		[ "$$(grep -c 'SABOTAGED' build/node-align-control/$$half.go.txt)" = 1 ] || \
+			{ echo "NEGATIVE CONTROL FAILED: the $$half sabotage did not apply once"; exit 1; }; \
+		printf '{"Replace":{"%s/ir/tablelist.go":"%s/build/node-align-control/%s.go.txt"}}\n' \
+			"$(CURDIR)" "$(CURDIR)" "$$half" > build/node-align-control/$$half.json; \
+		if go test -count=1 -overlay=build/node-align-control/$$half.json \
+				-run 'TestCookWriteFixturesAreTheToolsBytes' ./test/conformance/harness/ > build/node-align-control/$$half.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$half half taken away left the tool's cook of widelist_wide GREEN"; exit 1; \
+		fi; \
+		grep -q -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/widelist_wide' build/node-align-control/$$half.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on widelist_wide"; cat build/node-align-control/$$half.log; exit 1; }; \
+		grep -q 'not aligned to 16' build/node-align-control/$$half.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the $$half control went red, but not on cook-check's alignment clause"; cat build/node-align-control/$$half.log; exit 1; }; \
+		if grep -- '--- FAIL: TestCookWriteFixturesAreTheToolsBytes/' build/node-align-control/$$half.log | grep -v -q '/widelist_wide '; then \
+			echo "NEGATIVE CONTROL FAILED: the $$half control went red on a row that holds no sixteen-aligned array"; exit 1; \
+		fi; \
+		echo "negative control ($$half): the tool's cook of widelist_wide goes RED and no other row does"; \
+	done
+
 # AN ALLOCATION IS PLANTED IN Load: the gate's operator new counter sees it on
 # the reading path, and the allocation audit goes red.
 .PHONY: tables-lists-allocation-negative-control
@@ -5166,12 +5242,12 @@ clean:
 # of the two minutes, and sharding per language leg, the way the type wire's
 # nine legs already are, is what the numbers say to do if that stops holding;
 # it is not needed at this size.
-CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
+CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/widelist -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
 	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -I$(SERIALIZE)
-CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
+CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) $(wildcard build/tables-generated/widelist/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
 	build/tables-generated/scalars/ScalarsTable.cpp build/tables-generated/scalars2/Scalars2Table.cpp \
@@ -5551,6 +5627,58 @@ tables-wire-fuzz-discard-negative-control:
 	@grep -m1 "refuses the damaged load is red" $(DISCARD_NC)/log
 	@echo "negative control: comparing a damaged load's saved bytes turns the discard gate RED"
 
+# DAMAGE DISCARDS THE WHOLE LOAD in the C++ reference (docs/SPEC-TABLES.md §4):
+# the control removes the discard from a COPY of the emitter's LoadVerdict,
+# reached through a Go build overlay, so a fixed root damaged inside a nested
+# body hands back what it decoded, and the gate
+# TestDamageDiscardsTheWholeLoadCPP must go red on exactly that. Nothing
+# tracked is written to.
+CPP_DISCARD_NC := build/cpp-discard-nc
+.PHONY: tables-cpp-discard-negative-control
+tables-cpp-discard-negative-control:
+	@rm -rf $(CPP_DISCARD_NC) && mkdir -p $(CPP_DISCARD_NC)
+	@sed -e 's|if ( to->malformed ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
+		internal/codegen/cpptable/codecs.go > $(CPP_DISCARD_NC)/codecs.go.txt
+	@cmp -s internal/codegen/cpptable/codecs.go $(CPP_DISCARD_NC)/codecs.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/codecs.go":"%s/$(CPP_DISCARD_NC)/codecs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_DISCARD_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(CPP_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ discard is gone and the gate stayed green"; \
+		cat $(CPP_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "fixed: LoadTolerant answered true on damage" $(CPP_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "LoadTolerant answered true" $(CPP_DISCARD_NC)/log
+	@echo "negative control: removing the C++ discard turns the whole-load gate RED"
+
+# The REGION twin of tables-cpp-discard-negative-control: the discard is
+# removed from a COPY of the variable-class LoadTolerant in pointers.go, so a
+# variable root damaged inside a nested body hands back its region root, and
+# TestDamageDiscardsTheWholeLoadCPP must go red on exactly that.
+CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
+.PHONY: tables-cpp-region-discard-negative-control
+tables-cpp-region-discard-negative-control:
+	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
+	@sed -e 's|if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; }|if ( false ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the region discard is gone|' \
+		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(CPP_REGION_DISCARD_NC)/pointers.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_REGION_DISCARD_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_REGION_DISCARD_NC)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(CPP_REGION_DISCARD_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ region discard is gone and the gate stayed green"; \
+		cat $(CPP_REGION_DISCARD_NC)/log; exit 1; \
+	fi
+	@grep -q "variable: LoadTolerant handed back a root on damage" $(CPP_REGION_DISCARD_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
+	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
+	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
+
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
 # ORACLE is taught the opposite reading, a nested-union arm whose L runs past
@@ -5886,7 +6014,7 @@ endef
 # it, and requires the clean output to pass.
 .PHONY: message-form-fixed-only-lock-negative-control
 message-form-fixed-only-lock-negative-control:
-	go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
+	SCHEMA_SLOW=1 go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
 
 .PHONY: tables-message-form-text-negative-control
 tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp

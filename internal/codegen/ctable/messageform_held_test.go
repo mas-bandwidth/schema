@@ -266,9 +266,9 @@ int main(void)
 }
 `
 
-// "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
-// states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3).
+// "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (docs/SPEC-TABLES.md
+// §3.3, §4): no body is delivered, the returned count is 0, every body's
+// storage is at its declared defaults, and the report says malformed.
 const cMsgDamageInsideBodyProbe = cMsgShared + `
 int main(void)
 {
@@ -284,11 +284,12 @@ int main(void)
        nibble and body 2's high nibble. */
     uint8_t wire[] = { 2, 2, 0xF0 };
     Root storage[3]; int i;
-    for(i = 0; i < 3; i++) root_reset(storage + i);
+    for(i = 0; i < 3; i++) { root_reset(storage + i); storage[i].a = 7; }
     int64_t count = 3;
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 1);
+    CHECK(count == 0);
+    for(i = 0; i < 3; i++) CHECK(storage[i].a == 0);
     CHECK(report.malformed && !report.refused);
     return 0;
 }
@@ -307,11 +308,11 @@ int main(void)
     TableReport ar; memset(&ar, 0, sizeof(ar));
     CHECK(announce_read(&v, ann, (int64_t)sizeof(ann), &ar));
     uint8_t wire[] = { 2, 0, 0, 0 }; /* a valid one-body batch, one byte over */
-    Root storage[1]; root_reset(storage);
+    Root storage[1]; root_reset(storage); storage[0].a = 7;
     int64_t count = 1;
     TableReport report; memset(&report, 0, sizeof(report));
     CHECK(!root_load_messages_tolerant(storage, &count, &v, wire, (int64_t)sizeof(wire), &report));
-    CHECK(count == 1 && report.malformed && !report.refused);
+    CHECK(count == 0 && storage[0].a == 0 && report.malformed && !report.refused);
     return 0;
 }
 `

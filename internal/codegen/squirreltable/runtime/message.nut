@@ -658,7 +658,12 @@ _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   local walked=readBatch(T,v,r,d,storage,count,bytes,report);
   // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
   // §3.3), outranking every other verdict: no body of it is delivered
-  if(r.nonFinite!=null)return refuse(report,"non_finite_float: "+r.nonFinite);
+  // Damage discards every body, including bodies decoded before the stop.
+  if(walked!=count || r.nonFinite!=null) {
+    for(local i=0;i<count;i++)storage[i]=d.make();
+    if(r.nonFinite!=null)return refuse(report,"non_finite_float: "+r.nonFinite);
+    return 0;
+  }
   return walked;
 };
 readBatch = function(T, v, r, d, storage, count, bytes, report) {

@@ -34,6 +34,11 @@
 # `dart / json-write` alone, on the shared-node rows (graph_shared,
 # list_shared).
 #
+# framing: the id table's 4096-entry maximum (docs/LAYERS/1-framing.md F6) is
+# taken out of the reader's open() (tools/sabotage table-dart-id-table-cap), so a
+# table of 4097 entries reads as clean. The matrix must go red on
+# `dart / framing` alone, on frame_entries_4097.
+#
 # block: the block Open's pitch check (internal/codegen/darttable/block.go,
 # tools/sabotage table-dart-block-pitch) is taken out, so the forged image
 # block_pitch opens where it must refuse. The matrix must go red on
@@ -52,6 +57,7 @@ case "$mode" in
     wire) sabotage=table-dart-wire-widen; marker='SABOTAGED: the widened count is gone' ;;
     mapheader) sabotage=table-dart-map-header-bounded; marker='SABOTAGED: the map header is bounded by L' ;;
     block) sabotage=table-dart-block-pitch; marker='SABOTAGED: the pitch check is gone' ;;
+    framing) sabotage=table-dart-id-table-cap; marker='SABOTAGED: the 4096-entry id-table maximum is gone' ;;
     absent) ;;
     *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -100,6 +106,7 @@ emitter=textform.go
 [ "$mode" = wire ] && emitter=wireform.go
 [ "$mode" = mapheader ] && emitter=wireunion.go
 [ "$mode" = block ] && emitter=block.go
+[ "$mode" = framing ] && emitter=wireform.go
 go run ./tools/sabotage -name "$sabotage" -out "$out/emitter.gotext" "internal/codegen/darttable/$emitter"
 printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/emitter.gotext"}}\n' "$root" "$emitter" "$root" "$out" > "$out/overlay.json"
 go build -overlay="$out/overlay.json" -o "$out/schema" ./cmd/schema
@@ -168,9 +175,10 @@ case "$mode" in
     zero) red=json-hostile ;;
     share) red=json-write ;;
     block) red=forgery ;;
+    framing) red=framing ;;
 esac
 grep -Eq "^$red +FAIL " "$out/log" || { cat "$out/log"; exit 1; }
-for surface in wire message report json-read json-write json-hostile cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason; do
+for surface in wire message report framing json-read json-write json-hostile cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason; do
     [ "$surface" = "$red" ] && continue
     # the refusal's NAME is a row of the same rule: block-reason holds the
     # reason block_pitch must give, so it goes red beside the forgery battery
@@ -185,6 +193,10 @@ if grep '^  dart / ' "$out/log" | grep -Ev "$allowed" >/dev/null; then
 fi
 if [ "$mode" = share ]; then
     grep -q '^  dart / json-write.*graph_shared' "$out/log" || { cat "$out/log"; echo "share control did not turn graph_shared red" >&2; exit 1; }
+fi
+if [ "$mode" = framing ]; then
+    rows=$(grep '^  dart / framing' "$out/log" | grep -Eo 'frame_[a-z0-9_]+' | sort -u | tr '\n' ' ')
+    [ "$rows" = "frame_entries_4097 " ] || { cat "$out/log"; echo "framing control turned red on '$rows', want frame_entries_4097" >&2; exit 1; }
 fi
 if [ "$mode" = zero ]; then
     rows=$(grep '^  dart / json-hostile' "$out/log" | grep -Eo 'str-zero-escape-[a-z-]+' | sort -u | tr '\n' ' ')

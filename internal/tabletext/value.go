@@ -281,6 +281,15 @@ func (m *Model) New(st *ir.Struct) *Instance {
 	return inst
 }
 
+// Clear returns every field of an instance to its declared defaults, as
+// [Model.New] built them. A load that meets damage discards what it read
+// (docs/SPEC-TABLES.md §4), and this is how the engine discards it.
+func (m *Model) Clear(inst *Instance) {
+	for i := range inst.Fields {
+		m.reset(&inst.Fields[i])
+	}
+}
+
 // reset returns one field to its declared defaults, mirroring the generated
 // struct's member initializers exactly: a scalar takes its specified default,
 // and an ARRAY's slots take the value-initialized element — zero for a scalar

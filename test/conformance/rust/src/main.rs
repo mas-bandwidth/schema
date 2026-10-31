@@ -947,6 +947,26 @@ macro_rules! with_root {
                 use streamdemo::{feed_from_json_bytes as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json};
                 Some($body)
             }
+            ("listdemo", "Ints") => {
+                #[allow(unused_imports)]
+                use listdemo::{ints_from_json_bytes as $from_json, ints_load as $load, ints_save_checked as $save, ints_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Bounded") => {
+                #[allow(unused_imports)]
+                use listdemo::{bounded_from_json_bytes as $from_json, bounded_load as $load, bounded_save_checked as $save, bounded_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("listdemo", "Squad") => {
+                #[allow(unused_imports)]
+                use listdemo::{squad_from_json_bytes as $from_json, squad_load as $load, squad_save_checked as $save, squad_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("graphdemo", "ListNode") => {
+                #[allow(unused_imports)]
+                use graphdemo::{list_node_from_json_bytes as $from_json, list_node_load as $load, list_node_save_checked as $save, list_node_to_json_checked as $to_json};
+                Some($body)
+            }
             ("listdemo", "Album") => {
                 #[allow(unused_imports)]
                 use listdemo::{album_from_json_bytes as $from_json, album_load as $load, album_save_checked as $save, album_to_json_checked as $to_json};
@@ -1152,6 +1172,40 @@ fn surface_report(manifest: &Manifest, out: &str) {
                 "{},{},{},{},{},{},{}\n",
                 report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
             )
+        });
+        match answer {
+            Some(text) => spill(out, &f[1], text.as_bytes()),
+            None => spill_absent(out, &f[1]),
+        }
+    }
+}
+
+// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+// `report` surface prints it, then the §16 text of the value the read left,
+// unless the row says `no-value` or the read was refused. A derived line is
+// `framing <case> <unit> <root> <wire> [no-value]`. A damaged read owes the
+// refusal alone (§4, DAMAGE DISCARDS THE WHOLE LOAD), so its value is not
+// written.
+fn surface_framing(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("framing") {
+        let data = slurp(&f[4]);
+        let no_value = f.len() > 5 && f[5] == "no-value";
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+            let mut report = Default::default();
+            let value = load(&data, &mut report);
+            let malformed = report.malformed || (value.is_none() && !report.refused);
+            let verdict = if report.refused { "refused" } else { "read" };
+            let mut text = format!(
+                "{},{},{},{},{},{},{}\n",
+                report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
+            );
+            if let (Some(v), false, false, false) = (value, report.refused, malformed, no_value) {
+                match to_json(&v) {
+                    Some(body) => text.push_str(&body),
+                    None => fail(&format!("{}: ToJson refused the value", f[1])),
+                }
+            }
+            text
         });
         match answer {
             Some(text) => spill(out, &f[1], text.as_bytes()),
@@ -1447,7 +1501,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason"
+            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason"
         );
         return;
     }
@@ -1459,6 +1513,7 @@ fn main() {
     match surface {
         "wire" => surface_wire(&manifest, out),
         "report" => surface_report(&manifest, out),
+        "framing" => surface_framing(&manifest, out),
         "retain" => surface_retain(&manifest, out, false),
         "retain-save" => surface_retain(&manifest, out, true),
         "json-read" => surface_json_read(&manifest, out),
