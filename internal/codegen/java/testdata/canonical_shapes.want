@@ -71,4 +71,24 @@ class T {
             in.skipValue();
         }
     }
+
+    private static TableCookInfo armFields() {
+        TableCookFieldInfo[] fields = new TableCookFieldInfo[1];
+        fields[0] =
+                TableCookFieldInfo.of(
+                                "debuff",
+                                "debuff",
+                                4,
+                                4,
+                                4,
+                                false,
+                                1,
+                                false,
+                                -1,
+                                -1,
+                                TableCookStorage.RECORD,
+                                () -> DebuffRow.cookInfo())
+                        .arm(2);
+        return null;
+    }
 }

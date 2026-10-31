@@ -865,9 +865,26 @@
     {
       "name": "java-wire-fuzz",
       "when": "pull-request",
-      "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. Its own group so the fuzz time never crowds the java rows. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm\u2019s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind\u2019s count inside the map\u2019s own L and requires the plain arm to go red on listdemo.Army. Its own group so the fuzz time never crowds the java rows. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
       "targets": [
-        "tables-java-wire-fuzz-negative-control"
+        "tables-java-wire-fuzz-negative-control",
+        "tables-java-retain-fuzz-negative-control",
+        "tables-java-map-count-negative-control",
+        "tables-java-keyed-count-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-proof",
+      "when": "pull-request",
+      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse), the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), and a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer). Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
+      "targets": [
+        "tables-java-layout-contract-negative-control",
+        "tables-java-order-negative-control",
+        "tables-java-order-le-negative-control",
+        "tables-java-usage-negative-control",
+        "tables-java-release-negative-control",
+        "conformance-java-absent-negative-control"
       ],
       "java": "21"
     },
