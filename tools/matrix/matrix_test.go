@@ -18,7 +18,11 @@ func TestMatrixDocMatchesManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Render(m)
+	p, err := LoadProof(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := RenderPage(m, p)
 	got, err := os.ReadFile(filepath.Join(root, pagePath))
 	if err != nil {
 		t.Fatalf("%s is missing: run `go run ./tools/matrix write` (%v)", pagePath, err)

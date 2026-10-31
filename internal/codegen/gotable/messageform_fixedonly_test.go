@@ -1,7 +1,6 @@
 package gotable
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,30 +37,19 @@ fixed table Tight { n int32 }
 	if table == "" {
 		t.Fatal("the unit emitted no table module")
 	}
-	for _, violation := range fixedOnlyViolations(table) {
-		t.Error(violation)
-	}
-	compileTightCaller(t, files)
-}
-
-// fixedOnlyViolations names every way the unit's table source breaks §3.3's
-// fixed-only rule over the Loose (plain) and Tight (fixed) roots: a message
-// verb on the plain root, or one missing from the fixed root.
-func fixedOnlyViolations(table string) []string {
-	var violations []string
 	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
 		// "a plain `table T` may not" (docs/SPEC-TABLES.md §3.3).
 		if strings.Contains(table, "Loose"+verb) {
-			violations = append(violations, fmt.Sprintf("a plain table root carries Loose%s (docs/SPEC-TABLES.md §3.3: \"a plain `table T` may not\")", verb))
+			t.Errorf("a plain table root carries Loose%s (docs/SPEC-TABLES.md §3.3: \"a plain `table T` may not\")", verb)
 		}
 	}
 	for _, verb := range []string{"MeasureMessages", "SaveMessages", "LoadMessages", "LoadRetainMessages"} {
 		// "`fixed table T` may ride here" (docs/SPEC-TABLES.md §3.3).
 		if !strings.Contains(table, "Tight"+verb) {
-			violations = append(violations, fmt.Sprintf("a fixed table root lacks Tight%s (docs/SPEC-TABLES.md §3.3: \"`fixed table T` may ride here\")", verb))
+			t.Errorf("a fixed table root lacks Tight%s (docs/SPEC-TABLES.md §3.3: \"`fixed table T` may ride here\")", verb)
 		}
 	}
-	return violations
+	compileTightCaller(t, files)
 }
 
 // compileTightCaller compiles a caller that names the fixed root's four message

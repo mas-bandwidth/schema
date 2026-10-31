@@ -6260,6 +6260,7 @@ include make/checks/schema-shared-hostile-corpus.mk
 .PHONY: conformance
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
+		--results build/conformance/results.json \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
 # THE PUBLISHED MATRIX (issue #581): docs/MATRIX.md is generated from the one
@@ -6925,132 +6926,93 @@ include make/checks/reference-review.mk
 # and skips a commit already carrying one; .github/workflows/promotion-tag.yml
 # runs it on every push to main. release tags one commit on main vX.Y.Z and
 # refuses a version that does not parse, is not greater than the newest v tag,
-# or names a commit off main, and before any of that runs the previous-release
-# differential below and refuses on its difference; .github/workflows/release.yml
-# runs it when dispatched. Without PUSH=1 both print the decision and write nothing.
+# or names a commit off main; .github/workflows/release.yml runs it when
+# dispatched. Without PUSH=1 both print the decision and write nothing.
 # VERSION above defaults to `git describe`, which is never a release number:
 # release reads VERSION only when it was given on the command line or in the
 # environment, so a bare `make release` refuses on the grammar.
 RELEASE_VERSION = $(if $(filter command line environment,$(origin VERSION)),$(VERSION))
 RELEASE_COMMIT ?= HEAD
-# the ref whose ancestry is main; the release gate's own test names HEAD
-RELEASE_MAIN ?= origin/main
 .PHONY: promotion-tag release
 promotion-tag:
 	go run ./tools/releasetag promotion-tag -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
 
-release: release-differential
-	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) -main $(RELEASE_MAIN) $(if $(PUSH),-push)
+# THE RELEASE LOCK (Glenn, 2026-10-31: "We need to prove this before v3.0.0
+# not just hope that it's correct and complete"). release refuses, before any
+# tag is made, unless PROOF names the proof report the ci-full `proof` job
+# wrote AT THE COMMIT BEING RELEASED and that report is green: no red cell and
+# docs/proof.json in step with the results (tools/matrix VerifyRelease). The
+# refusal names the red cells. release.yml downloads the report from the
+# ci-full run on the commit; a release with no report refuses by name.
+MATRIX_GOFLAGS ?=
+release:
+	go run $(MATRIX_GOFLAGS) ./tools/matrix release-check -report '$(PROOF)' -commit $$(git rev-parse '$(RELEASE_COMMIT)^{commit}')
+	go run ./tools/releasetag release -version '$(RELEASE_VERSION)' -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
 
-# THE PREVIOUS-RELEASE DIFFERENTIAL (docs/VERSIONING.md, #463): the WIRE bytes
-# the newest v tag's compiler and RELEASE_COMMIT's encode for the same
-# instances, compared under an equal protocol id. The packet wire through the
-# C++ reference (the packet drivers, compiled against each side's generated
-# C++, one driver source on both), the table forms through the Go engine each
-# compiler carries (`schema pack` over every MANIFEST instance with text). A
-# differing byte refuses, naming the unit, the instance and the byte; a unit
-# whose id moved is listed, not compared. `release` runs it first and tags
-# nothing on a difference; certify.yml runs it nightly. RELEASE_DIFFERENTIAL_PREV
-# names another previous release, and RELEASE_DIFFERENTIAL_FLAGS adds flags
-# (the release gate's own test hands it prebuilt compilers). It needs the tags
-# and their trees (a full clone), Go, a C++ compiler and the serialize C++
-# runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
-RELEASE_DIFFERENTIAL_PREV ?=
-RELEASE_DIFFERENTIAL_FLAGS ?=
-RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
-.PHONY: release-differential release-differential-negative-control
-release-differential: $(SERIALIZE_RUNTIME)/serialize.h
-	go run ./tools/releasediff $(if $(RELEASE_DIFFERENTIAL_PREV),-prev $(RELEASE_DIFFERENTIAL_PREV)) -rev $(RELEASE_COMMIT) -serialize $(SERIALIZE_RUNTIME) -j $(RELEASE_DIFFERENTIAL_JOBS) $(RELEASE_DIFFERENTIAL_FLAGS)
+# release-proof-refusal holds the lock at the make level: `make release`
+# handed a RED proof report at HEAD must refuse FROM THE PROOF GATE, naming a
+# red cell, and never reach the tagger. The version is deliberately not a
+# version, so a lock that let the release through would still tag nothing:
+# the tagger refuses on its grammar, and that refusal is what this check
+# tells apart from the lock's. Its control, release-proof-gate-negative-control,
+# runs it with VerifyRelease sabotaged to pass a red report and requires it red.
+RELEASE_PROOF_CHECK := build/release-proof
+.PHONY: release-proof-refusal release-proof-gate-negative-control
+release-proof-refusal:
+	@mkdir -p $(RELEASE_PROOF_CHECK)
+	@printf '{"commit":"%s","cells":2,"red":[{"row":"surface wire","lang":"goose","status":"red","why":"held for this check"}]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_PROOF_CHECK)/red.json
+	@if $(MAKE) --no-print-directory release VERSION=not-a-version RELEASE_COMMIT=HEAD PROOF=$(RELEASE_PROOF_CHECK)/red.json MATRIX_GOFLAGS='$(MATRIX_GOFLAGS)' > $(RELEASE_PROOF_CHECK)/out.txt 2>&1; then \
+		echo "release-proof-refusal FAILED: make release went through with a red proof"; cat $(RELEASE_PROOF_CHECK)/out.txt; exit 1; fi
+	@grep -q 'release REFUSES: the proof at .* surface wire / goose' $(RELEASE_PROOF_CHECK)/out.txt || \
+		{ echo "release-proof-refusal FAILED: make release refused, but not from the proof gate naming the red cell"; cat $(RELEASE_PROOF_CHECK)/out.txt; exit 1; }
+	@! grep -q 'tools/releasetag' $(RELEASE_PROOF_CHECK)/out.txt || \
+		{ echo "release-proof-refusal FAILED: the tagger ran after a red proof"; cat $(RELEASE_PROOF_CHECK)/out.txt; exit 1; }
+	@echo "release-proof-refusal: make release refuses a red proof at the commit, naming the cell, before the tagger runs"
 
-# THE RELEASE REFUSES ON IT (release-refuses-on-differential). Two dry runs of
-# `make release` itself, against a version past every tag, with main taken as
-# HEAD so the branch under test is "on main": the clean compiler against itself
-# must reach the tag decision, and the clean compiler against one whose Go
-# engine writes a true bool as 2 under an unchanged protocol id must stop at
-# the differential, naming the difference, with no tag decision printed.
-RELEASE_GATE_TEST ?= build/release-gate-test
-# the same Makefile this test was read from, so its control can hand it a copy
-RELEASE_GATE_MAKE = $(MAKE) --no-print-directory -f $(firstword $(MAKEFILE_LIST)) release VERSION=v99999.0.0 RELEASE_COMMIT=HEAD RELEASE_MAIN=HEAD
-.PHONY: release-refuses-on-differential release-refuses-on-differential-negative-control
-release-refuses-on-differential:
-	@rm -rf $(RELEASE_GATE_TEST) && mkdir -p $(RELEASE_GATE_TEST)
-	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
-	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
-	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
-	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
-	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
-		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
-	@grep -q '^release: would tag v99999.0.0 ' $(RELEASE_GATE_TEST)/guard.out || \
-		{ echo "FAILED: make release with no difference printed no tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
-	@if $(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-table -corpus . -work $(RELEASE_GATE_TEST)/red" > $(RELEASE_GATE_TEST)/red.out 2>&1; then \
-		echo "FAILED: make release went through a wire difference under an unchanged protocol id"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; \
-	fi
-	@grep -q '^DIFFERENCE under an equal protocol id: table variable form, ' $(RELEASE_GATE_TEST)/red.out || \
-		{ echo "FAILED: make release refused, but not on the differential's difference"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; }
-	@! grep -q 'would tag\|tagged and pushed' $(RELEASE_GATE_TEST)/red.out || \
-		{ echo "FAILED: make release reached a tag decision past a difference"; cat $(RELEASE_GATE_TEST)/red.out; exit 1; }
-	@echo "release gate: make release reaches its tag decision with no difference, and stops at the differential, tagging nothing, on a wire difference under an unchanged protocol id"
+release-proof-gate-negative-control:
+	@rm -rf $(RELEASE_PROOF_CHECK)-control && mkdir -p $(RELEASE_PROOF_CHECK)-control
+	go run ./tools/sabotage -name release-proof-gate -out $(RELEASE_PROOF_CHECK)-control/proof.gotext tools/matrix/proof.go
+	@printf '{"Replace":{"%s/tools/matrix/proof.go":"%s/$(RELEASE_PROOF_CHECK)-control/proof.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_PROOF_CHECK)-control/overlay.json
+	@if $(MAKE) --no-print-directory release-proof-refusal MATRIX_GOFLAGS=-overlay=$(CURDIR)/$(RELEASE_PROOF_CHECK)-control/overlay.json > $(RELEASE_PROOF_CHECK)-control/red.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a lock that passes a red proof left release-proof-refusal green"; cat $(RELEASE_PROOF_CHECK)-control/red.out; exit 1; fi
+	@grep -q 'release-proof-refusal FAILED' $(RELEASE_PROOF_CHECK)-control/red.out || \
+		{ echo "NEGATIVE CONTROL FAILED: release-proof-refusal went red for another reason"; cat $(RELEASE_PROOF_CHECK)-control/red.out; exit 1; }
+	@echo "negative control: with VerifyRelease sabotaged to pass red cells, make release lets a red proof through and release-proof-refusal goes RED"
 
-# ITS NEGATIVE CONTROL: the test, green on this Makefile, then the same test
-# over a copy whose `release` no longer runs the differential first, which
-# must go RED on the release that went through the difference.
-RELEASE_GATE_CONTROL := build/release-gate-control
-release-refuses-on-differential-negative-control: release-refuses-on-differential
-	@rm -rf $(RELEASE_GATE_CONTROL) && mkdir -p $(RELEASE_GATE_CONTROL)
-	@sed 's/^release: release-differential$$/release: # SABOTAGED: the differential is not run first/' Makefile > $(RELEASE_GATE_CONTROL)/Makefile
-	@! cmp -s Makefile $(RELEASE_GATE_CONTROL)/Makefile || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage no longer matches release's prerequisite line"; exit 1; }
-	@if $(MAKE) --no-print-directory -f $(RELEASE_GATE_CONTROL)/Makefile release-refuses-on-differential RELEASE_GATE_TEST=$(RELEASE_GATE_CONTROL)/test > $(RELEASE_GATE_CONTROL)/red.out 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a release that never runs the differential left release-refuses-on-differential green"; cat $(RELEASE_GATE_CONTROL)/red.out; exit 1; \
-	fi
-	@grep -q 'FAILED: make release went through a wire difference under an unchanged protocol id' $(RELEASE_GATE_CONTROL)/red.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on the release that went through the difference"; cat $(RELEASE_GATE_CONTROL)/red.out; exit 1; }
-	@echo "negative control: a release that does not run the differential first turns release-refuses-on-differential RED on the release that went through the difference"
+# THE PROOF TABLE (docs/MATRIX.md, "Proof: the 3.0.0 gate"; tools/matrix
+# proof). `proof` runs the conformance matrix, then computes the table from
+# its per-case results and fails, printing the red list, while any cell is red
+# or docs/proof.json is not what the results compute. `proof-write`
+# regenerates docs/proof.json and the page from the same results.
+.PHONY: proof proof-write proof-negative-control
+proof: conformance
+	go run ./tools/matrix proof -results build/conformance/results.json
 
-# ITS NEGATIVE CONTROL: one compiler built from this tree, and two built from
-# it under an overlay each (tools/sabotage): release-differential-union-tag
-# moves every union arm's tag by one in the C++ packet writer, and
-# release-differential-table-bool writes a true bool as 2 in the Go engine's
-# variable form. Neither moves a protocol id. The guard leg runs the clean
-# compiler against itself and must pass having compared both wires; each red
-# leg must refuse on its own wire, naming the unit, the instance and the byte,
-# and on no other wire.
-RELEASE_DIFFERENTIAL_CONTROL := build/release-differential-control
-RELEASE_DIFFERENTIAL_RUN = go run ./tools/releasediff -prev clean -old-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -corpus . -serialize $(SERIALIZE) -j $(RELEASE_DIFFERENTIAL_JOBS)
-release-differential-negative-control:
-	@rm -rf $(RELEASE_DIFFERENTIAL_CONTROL) && mkdir -p $(RELEASE_DIFFERENTIAL_CONTROL)
-	go build -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean ./cmd/schema
-	go run ./tools/sabotage -name release-differential-union-tag -out $(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext internal/codegen/cpp/functions.go
-	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json
-	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-packet ./cmd/schema
-	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext internal/tablewire/encode.go
-	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/table.json
-	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/table.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-table ./cmd/schema
-	@for s in packet table; do \
-		test "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean id examples)" = "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s id examples)" || \
-			{ echo "NEGATIVE CONTROL FAILED: the $$s sabotage moved the protocol id, so the gate would list the unit rather than compare it"; exit 1; }; \
-	done
-	@$(RELEASE_DIFFERENTIAL_RUN) -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean -work $(RELEASE_DIFFERENTIAL_CONTROL)/guard > $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out 2>&1 || \
-		{ echo "NEGATIVE CONTROL FAILED: the clean compiler against itself did not pass"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out; exit 1; }
-	@grep -q '^  compared     packet wire, driver examples ' $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out && \
-		grep -q '^  compared     table forms: [1-9][0-9]* variable-form and [1-9][0-9]* message-form' $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the guard leg did not compare both wires, so a green verdict would mean nothing"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/guard.out; exit 1; }
-	@for s in packet table; do \
-		if $(RELEASE_DIFFERENTIAL_RUN) -new-bin $(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s -work $(RELEASE_DIFFERENTIAL_CONTROL)/$$s > $(RELEASE_DIFFERENTIAL_CONTROL)/$$s.out 2>&1; then \
-			echo "NEGATIVE CONTROL FAILED: the $$s sabotage moved wire bytes under an unchanged protocol id and left the differential green"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/$$s.out; exit 1; \
-		fi; \
-	done
-	@grep -q '^DIFFERENCE under an equal protocol id: packet wire, unit [a-zA-Z0-9/. +]*, instance [a-z_0-9/-]*\.bin first differs at byte [0-9]*' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the union-tag sabotage went red, but naming no instance and its byte"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out; exit 1; }
-	@grep -q '^DIFFERENCE under an equal protocol id: packet wire, unit examples' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the union-tag sabotage left the examples driver unnamed"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out; exit 1; }
-	@! grep '^DIFFERENCE' $(RELEASE_DIFFERENTIAL_CONTROL)/packet.out | grep -v ': packet wire, ' || \
-		{ echo "NEGATIVE CONTROL FAILED: a C++ packet sabotage was named on a table form"; exit 1; }
-	@grep -q '^DIFFERENCE under an equal protocol id: table variable form, unit [a-z0-9]*, instance [a-z_0-9]*: first differs at byte [0-9]*' $(RELEASE_DIFFERENTIAL_CONTROL)/table.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the table-bool sabotage went red, but not naming a variable-form instance and its byte"; cat $(RELEASE_DIFFERENTIAL_CONTROL)/table.out; exit 1; }
-	@! grep '^DIFFERENCE' $(RELEASE_DIFFERENTIAL_CONTROL)/table.out | grep -v ': table variable form, ' || \
-		{ echo "NEGATIVE CONTROL FAILED: a variable-form sabotage was named on another wire"; exit 1; }
-	@echo "negative control: a union tag moved in the C++ packet writer, and a true bool written as 2 in the Go engine's variable form, each under an unchanged protocol id, turn the previous-release differential RED on that wire alone, naming the unit, the instance and the byte"
+proof-write: conformance
+	go run ./tools/matrix proof -results build/conformance/results.json -write
+
+# THE PROOF GATE'S NEGATIVE CONTROL, end to end: the Go leg runs the real
+# harness twice through a substituted registry, once as it is and once through
+# a driver that deletes its answer for one wire case (root_full) after
+# answering. The clean run's `surface wire / go` cell must be proven and the
+# sabotaged run's must be red NAMING wire/root_full.
+PROOF_CONTROL := build/proof-control
+proof-negative-control: build/conformance-harness build/conformance-go table-base64-go
+	@rm -rf $(PROOF_CONTROL) && mkdir -p $(PROOF_CONTROL)
+	@printf '#!/bin/sh\ntest/conformance/go/driver "$$@" || exit $$?\nif [ "$$2" = wire ]; then rm -f "$$3/root_full"; fi\n' > $(PROOF_CONTROL)/deleting-driver
+	@chmod +x $(PROOF_CONTROL)/deleting-driver
+	@echo "go test/conformance/go/driver" > $(PROOF_CONTROL)/clean.txt
+	@echo "go $(PROOF_CONTROL)/deleting-driver" > $(PROOF_CONTROL)/sabotaged.txt
+	@./build/conformance-harness run --drivers $(PROOF_CONTROL)/clean.txt --work $(PROOF_CONTROL)/clean-work --results $(PROOF_CONTROL)/clean.json > $(PROOF_CONTROL)/clean.out 2>&1 || \
+		{ echo "proof-negative-control: the clean Go leg failed"; cat $(PROOF_CONTROL)/clean.out; exit 1; }
+	@go run ./tools/matrix proof -results $(PROOF_CONTROL)/clean.json -cell 'surface wire/go' || \
+		{ echo "NEGATIVE CONTROL FAILED: the clean Go leg's surface wire cell is not proven"; exit 1; }
+	@./build/conformance-harness run --drivers $(PROOF_CONTROL)/sabotaged.txt --work $(PROOF_CONTROL)/sabotaged-work --results $(PROOF_CONTROL)/sabotaged.json > $(PROOF_CONTROL)/sabotaged.out 2>&1 || true
+	@if go run ./tools/matrix proof -results $(PROOF_CONTROL)/sabotaged.json -cell 'surface wire/go' > $(PROOF_CONTROL)/cell.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: with go's wire/root_full answer deleted, the cell stayed proven"; cat $(PROOF_CONTROL)/cell.out; exit 1; fi
+	@grep -q 'red .*wire/root_full' $(PROOF_CONTROL)/cell.out || \
+		{ echo "NEGATIVE CONTROL FAILED: the cell went red without naming wire/root_full"; cat $(PROOF_CONTROL)/cell.out; exit 1; }
+	@echo "negative control: deleting the Go leg's wire/root_full answer turns 'surface wire / go' RED, naming the case"
 
 # THE BUILD VERSION'S FORM GATE (docs/VERSIONING.md, "The release policy"):
 # `release` refuses a PATCH release whose commit's ir.BuildVersionForm differs
@@ -7127,6 +7089,8 @@ tables-wire-text-total-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the missing clamp"; \
 		  cat build/tablewire-no-total.log; exit 1; }
 	@echo "negative control: removing the engine's total clamp turns the text-total test RED"
+
+test: release-proof-refusal
 
 .PHONY: slow-gate-scan
 slow-gate-scan:
