@@ -696,7 +696,8 @@ public final class FixedTableVariable {
             }
             in.p++;
             if ("value".equals(key)) {
-                if (seenField[0]) {
+                boolean repeated = seenField[0];
+                if (repeated) {
                     in.rep.duplicate++;
                 }
                 seenField[0] = true;
@@ -704,6 +705,9 @@ public final class FixedTableVariable {
                     in.skipValue();
                     in.rep.kindMismatch++;
                 } else {
+                    if (repeated && in.peek() != 'n') {
+                        v.value = new BenchMixedVariable.Value();
+                    }
                     if (in.peek() == '{') {
                         BenchMixedVariable.jsonReadFields(in, v.value);
                     } else {

@@ -140,11 +140,15 @@ func variablePayloadStart(f *ir.Field, w, start string) string {
 	return "0"
 }
 
+// THE HEADER IS READ AGAINST THE PARENT (docs/SPEC-TABLES.md §2.9, §3.2, §4): the
+// count is read against the enclosing body, as the engine reads every array
+// header, and only the elements are bounded by the field's L. A foreign element
+// kind whose count is spelled past L is the ordinary kind mismatch, not damage.
 func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	one := variableElement(f)
 	kind := ir.TableWireElemKind(f)
-	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.leb();if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;for(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.malformed=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
+	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!(%s)){report.kindMismatch++;}else{if(ek!=%d)report.widened++;for(long i=0;Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.malformed=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
 	for i := range f.KeyEnumRef.Variants {
 		fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}

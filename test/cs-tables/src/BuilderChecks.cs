@@ -47,6 +47,14 @@ static partial class Program
                 G.TableArena.SetReference(ref tail->Next,next); tail=next;
             }
             G.TableBlobSlot blob=builder.AllocString(100000); Check(blob.Pointer!=IntPtr.Zero && blob.Length==100000 && blob.Data[100000]==0,"large blob spans slabs and terminates");
+            // a node larger than a slab takes its own span (docs/PORTING.md M17): the
+            // nodes allocated after it never land inside its bytes
+            if(blob.Pointer!=IntPtr.Zero)
+            {
+                new Span<byte>(blob.Data,100000).Fill(0x5a);
+                for(int i=0;i<4096;i++) { builder.Alloc<G.ListNodeRow>()->Value=i; }
+                Check(new ReadOnlySpan<byte>(blob.Data,100000).IndexOfAnyExcept((byte)0x5a)<0,"large blob keeps its bytes after later allocations");
+            }
             G.TableBlobSlot wide=builder.AllocWString(35000); Check(wide.Pointer!=IntPtr.Zero && wide.Length==35000 && wide.Bytes.Length==70000 && wide.Data[70000]==0 && wide.Data[70001]==0,"wide blob allocation uses code units and terminates");
             var workers=new G.TableWorker[4]; var held=new IntPtr[4];
             for(int i=0;i<workers.Length;i++) { workers[i]=builder.CreateWorker(); }
