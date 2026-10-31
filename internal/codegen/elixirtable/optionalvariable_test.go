@@ -3,6 +3,7 @@ package elixirtable
 import (
 	"encoding/hex"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -395,8 +396,26 @@ func TestPointerToAnotherTablesRecordIsAKindMismatchElixir(t *testing.T) {
 	}
 	dir := filepath.Join(root, "tables", "pointers")
 	u := loadUnit(t, filepath.Join(dir, "Graph.schema"), filepath.Join(dir, "Marks.schema"), filepath.Join(dir, "Parts.schema"))
-	// graph_tree with one pointer's node index moved to a record of another table
-	const mutant = "01010c0474726565020402000000031106041104051107060c4d06070e080401000000010c0161091103000707080402000000000a0d0b0c03746f700c11050d1106000a080b0c046c656674000a090b0c057269676874000e0d0f04030000000b0c036d69640000861b638ebaadbcc437ea08982cc662bb030c9a5fcc128f0a95b31e51efb8255be84db4487b6d5feeffffffffffffffffa99fa6a599c80ef6ea0ce83094fde47c28f025a0ba6c31e51d434c78a3907eb93d62cb8fecfcf739b01c04a2ad70b0"
+	// graph_tree with one pointer's node index (byte 16) moved from record 2 to
+	// record 6, a record of another table; the oracle answers the mutant here
+	wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "graph_tree.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wire) < 17 || wire[14] != 0x03 || wire[15] != 0x11 || wire[16] != 0x02 {
+		t.Fatalf("graph_tree.bin no longer opens with the pointer this probe moves: %x", wire[:min(len(wire), 20)])
+	}
+	mutantBytes := append([]byte{}, wire...)
+	mutantBytes[16] = 0x06
+	m := tabletext.NewModel(u)
+	var orep tabletext.Report
+	if _, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), mutantBytes, &orep); err != nil {
+		t.Fatal(err)
+	}
+	if orep.KindMismatch != 1 || orep.Malformed || orep.Unknown != 0 {
+		t.Fatalf("the oracle does not answer the probe as one kind mismatch on well-framed input: %+v", orep)
+	}
+	mutant := hex.EncodeToString(mutantBytes)
 	probe := fmt.Sprintf(`
 {:ok, _v, r} = Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower))
 if {r.unknown, r.kind_mismatch, r.widened, r.clamped, r.malformed} != {0, 1, 0, 0, false} do
