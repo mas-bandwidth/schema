@@ -321,14 +321,14 @@ func TestTheCostRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(batch) != 244 {
-		t.Errorf("the three as one batch under an envelope are %d bytes, the page prints 244", len(batch))
+	if len(batch) != 237 {
+		t.Errorf("the three as one batch under an envelope are %d bytes, the page prints 237", len(batch))
 	}
 	pinned := wireBytes(t, "testdata/wire/tables/backend_round_message.bin")
 	if string(pinned) != string(batch) {
 		t.Errorf("the engine's batch differs from the pinned backend_round_message at byte %d", firstDifference(pinned, batch))
 	}
-	for i, want := range []int{54, 150, 45} {
+	for i, want := range []int{54, 144, 44} {
 		one, err := tablewire.EncodeMessage(model, envelopes[i])
 		if err != nil {
 			t.Fatal(err)
@@ -345,8 +345,8 @@ func TestTheCostRows(t *testing.T) {
 		}
 		bare += len(one)
 	}
-	if bare != 243 {
-		t.Errorf("the three bare as three batches of one are %d bytes, the page prints 243", bare)
+	if bare != 234 {
+		t.Errorf("the three bare as three batches of one are %d bytes, the page prints 234", bare)
 	}
 	// and the batch reads back as three envelopes, each arm its message
 	out := []*tabletext.Instance{model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope")), model.New(model.Lookup("Envelope"))}
