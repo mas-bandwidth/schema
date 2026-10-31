@@ -213,6 +213,14 @@
       ]
     },
     {
+      "name": "base-c-skip-timestamp",
+      "when": "pull-request",
+      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and the pinned root_full mutant replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job.",
+      "targets": [
+        "tables-c-skip-timestamp-kind-negative-control"
+      ]
+    },
+    {
       "name": "base-c-foreign",
       "when": "pull-request",
       "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
