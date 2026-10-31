@@ -6,20 +6,16 @@ import (
 )
 
 // THE ORACLE'S ANSWER ON A MAP WHOSE HEADER CROSSES ITS L, pinned so the side
-// every leg is compared against cannot drift. A red of the Dart wire fuzzer
-// on ci-full run 41205503830 (seed 24845619678, corpus seed list_of_maps,
-// random pass #5292); the leg was wrong and the oracle right, by
-// docs/SPEC-TABLES.md §2.8 and §3.
+// every leg is compared against cannot drift. The vector is a Dart wire-fuzz
+// mutant (ci-full run 41205503830, seed 24845619678, corpus seed list_of_maps,
+// random pass #5292).
 //
 // The second Squad's roster arrives as `02 0e 02 | 0e 83`: kind 14, L = 2,
-// then an element kind of 14 where a map declares 13, and a count LEB128 whose
-// first byte continues past the L. Every reader takes an array's header from
-// the ENCLOSING body (internal/tablewire mapField), so the count reads, the
-// element kind is judged, and the map is the ordinary array kind mismatch:
-// one kind_mismatch, and the parent reads on past the L. A leg that bounded
-// the header by the L found the count truncated, called it framing damage,
-// and reported kind_mismatch 0.
-func TestWireFuzzMapHeaderCrossingItsLengthIsAKindMismatch(t *testing.T) {
+// then an element kind and a count LEB128 whose first byte continues past the
+// L. A header lies inside its body's L (docs/SPEC-TABLES.md §3), because no
+// writer spells one across it, so the crossing is damage and the whole load is
+// refused (§4), whatever the element kind says.
+func TestWireFuzzMapHeaderCrossingItsLengthIsDamage(t *testing.T) {
 	_, _, units := corpus(t)
 	root, err := newWireRoot(units, "listdemo", "Army", false, false)
 	if err != nil {
@@ -33,7 +29,7 @@ func TestWireFuzzMapHeaderCrossingItsLengthIsAKindMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if answer.report != (Counts{Unknown: 7, KindMismatch: 1, Duplicate: 1, Malformed: true}) {
-		t.Fatalf("map header across L: the oracle says %s, want 7,1,0,0,1,true", answer.report)
+	if !answer.report.Malformed {
+		t.Fatalf("map header across L: the oracle says %s, want malformed", answer.report)
 	}
 }

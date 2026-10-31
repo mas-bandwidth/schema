@@ -2380,9 +2380,9 @@ any other, and there is no path that forgives one.
   inside the entry: the value reads its default, the entry stays, and the
   count is the field's. A map header whose ELEMENT kind is not `13` is the
   ordinary array kind mismatch of §4, and the header itself, the element kind
-  byte and the count, is read against the ENCLOSING body and never against the
-  map's own `L`, exactly as every array's is (§3, THE HEADER AGAINST THE
-  PARENT). **A wrong key kind that also
+  byte and the count, lies inside the map's own `L`, exactly as every array's
+  does: a map body too short to carry it, or a count spelled past `L`, is
+  damage (§3, THE HEADER LIES INSIDE THE BODY). **A wrong key kind that also
   DESYNCHRONIZES the scan — a `string(N)` key read where an integer is
   declared takes the length bytes for the value's — is that same one
   `kind_mismatch` and nothing more** while the scan stays in step by `L`: the
@@ -3040,19 +3040,12 @@ clamp against their own declared ranges exactly as they always did, and a
 is the same event that reader raises for any oversized array and is the price
 of adding a bound.
 
-**A body TOO SHORT TO CARRY ITS OWN HEADER is INERT**, §4's rule unchanged: no
-element is decoded, no counter fires, and the field keeps the value it has.
-This includes an earlier successfully decoded occurrence of the same field.
-The extent scan bounds the count header by the field's `L`; a header incomplete
-within that bound reserves no elements. The decoding cursor reads the count
-against the enclosing value buffer, so a continuation byte beyond `L` can
-complete that header. This does not extend the element body: element reads
-remain bounded by `L`. The pinned `list_count_cross_length.bin` exercises this
-boundary: region measurement succeeds, the region decode reports damage, and
-the builder refuses the completed count if it exceeds the storage cap. A count
-header that cannot complete even in the enclosing buffer is damage, not
-inertness: `malformed` counts and the whole load is discarded (§4; §3, THE
-HEADER AGAINST THE PARENT; `array_header_incomplete_at_end`).
+**A body TOO SHORT TO CARRY ITS OWN HEADER, and a count whose spelling runs
+past the field's `L`, are damage**, §3's rule unchanged (THE HEADER LIES
+INSIDE THE BODY): no writer produces either, `malformed` counts and the whole
+load is discarded (§4), on every path, the builder's included, before any
+count cap is consulted (`list_count_cross_length.bin`,
+`array_header_incomplete_at_end`).
 
 **How a reader without the field skips it**: by `L`, under §3's second skip
 rule, counting `unknown`. **How a FIXED-class reader meets one**: it does not
@@ -5935,10 +5928,10 @@ again is reaching an entry still open — the cycle refusal, above.
 ### 3.2 Enum-keyed arrays on the wire: slots by name
 
 An enum-keyed array (§2.4) rides as **kind `16`, its own kind**, and its
-body opens as an array's does, `element kind (u8)` and then the count, read
-against the ENCLOSING body and never against the field's own `L` (§3, THE
-HEADER AGAINST THE PARENT): a count whose spelling crosses `L` is completed
-from the parent, and the triples stay bounded by `L`.
+body opens as an array's does, `element kind (u8)` and then the count, inside
+the field's own `L` (§3, THE HEADER LIES INSIDE THE BODY): a body too short to
+carry them, or a count spelled past `L`, is damage, and the triples are bounded
+by `L`.
 Kind `16` exists so that the keyed and the positional spellings cannot be
 mistaken for one another: they are different encodings, a reader meeting
 the wrong one reports a kind mismatch instead of decoding a body under the
@@ -8853,24 +8846,12 @@ tolerance is the versioning model:
   clamp, a duplicate key, an inert short array body; the load succeeds and
   the report counts them. Array elements decode **inside their field's body
   bounds**, so no value is ever read from a neighbor's bytes.
-  A REPEATED array field wins whole, on §3's last-wins rule: after an
-  accepted counted-array occurrence, slots beyond its live count are
-  restored to the value-initialized element (§7.2), and an element of an
-  ARRAY OF UNIONS (§2.6) keeps no arm an earlier occurrence decoded. An
-  implementation need only reset the previously live slots: entry reset
-  already established the unused tail, so a short repeated field does not
-  require a walk over the declared maximum.
+  After an accepted counted array, slots beyond its live count hold the
+  value-initialized element (§7.2).
   An ARRAY body too short to carry its own header, which is the element kind
-  byte and the count and so fewer than two bytes, is **INERT**: no element is
-  decoded, no counter fires, and the field keeps the value it has. On a first
-  occurrence that value is the declared default; under a repeat it is whatever
-  the earlier occurrence left, so **a repeat that arrives this short replaces
-  nothing**. The framing is not damaged — the length agrees with the enclosing
-  body and the walk continues past it — so this is not `malformed`, and there
-  is nothing else to count either: the reader never saw an element kind to
-  mismatch or a count to clamp. An OPTIONAL array in this shape still reads
-  PRESENT (§2.3), because the field rode — presence is the one thing a body
-  this short does state.
+  byte and the count and so fewer than two bytes, is damage: every writer
+  writes the header, an empty array included, so no writer produces it (§3,
+  THE HEADER LIES INSIDE THE BODY).
 
 Every event lands in the **read report**. The wire-tolerance counters are
 `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
@@ -10795,12 +10776,6 @@ refusal by name is a compile error rather than an answer a driver writes.
   last depth the cap admits still riding. Red if the walk is not one pass each
   way: a leg that measures a content by walking it and then walks it again to
   write it doubles at every level, and this row does not return.
-- **a body-holding field written TWICE with DISJOINT parts**, an enum-keyed
-  array whose two occurrences carry different slots, and a list whose second
-  occurrence is INERT. Both sets of records survive to the save and the writer
-  reads both back. Red if a leg discards at the field on either, which loses
-  the records under the parts the second occurrence never touched, and loses
-  them with no counter moving to say so.
 - **the resolution half read back**: a retained field of kind `13` whose body
   carries an enum's variant reference, a union's arm, an enum-keyed body's
   keys, a nested table body and an array of table bodies, every value read

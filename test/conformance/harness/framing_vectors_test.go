@@ -241,9 +241,9 @@ var framingVectors = []framingVector{
 	{name: "nested_damage_midway", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(6, 13, 9, 7, 10), f32(1.5), b(7, 37, 0), gradeSilver, b(0))},
 
 	// ---------------------------------------------------------------- C. arrays
-	// H2: L = 0 and L = 1 are inert.
-	{name: "array_L0_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 0), gradeSilver, b(0))},
-	{name: "array_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 1, 30), gradeSilver, b(0))},
+	// H2: L = 0 and L = 1 cannot carry the header, which no writer produces.
+	{name: "array_L0_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 0), gradeSilver, b(0))},
+	{name: "array_L1_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 1, 30), gradeSilver, b(0))},
 	// H1: L = 2 is the empty array.
 	{name: "array_L2_empty", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 2, 30, 0, 0)},
 	// H6: the count at the bound, and one past it.
@@ -258,9 +258,8 @@ var framingVectors = []framingVector{
 	// H3, H5, H6: the same on a bounded array: count = 2 + 1·128 = 130, past
 	// the bound of 4, so clamped counts too.
 	{name: "array_header_crosses_L_bounded", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 30, 0x82), gradeSilver, b(0))},
-	// H3, H4: the crossed header under a foreign element kind is a kind
-	// mismatch and nothing else.
-	{name: "array_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 4, 0x82), gradeSilver, b(0))},
+	// H3: the crossed header is damage whatever the element kind says.
+	{name: "array_header_crosses_L_foreign_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(8, 14, 2, 4, 0x82), gradeSilver, b(0))},
 	// H4: the element kind inside L.
 	{name: "array_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 4, 1, 2, 0)},
 	// F10 at a count: `80 00`.
@@ -275,9 +274,10 @@ var framingVectors = []framingVector{
 	{name: "array_elem_L_past_body", unit: "listdemo", root: "Bounded", ids: boundedIds, body: cat(b(1, 14, 18, 13, 2), unitElem(5), b(9, 2, 4), i32(6), b(0), tag42, b(0))},
 
 	// ---------------------------------------------------------------- D. maps
-	// H3, H4 (the #2400 class): element kind 14 where a map declares 13, the
-	// count's second byte being the parent's next reference (ref 5, `name`).
-	{name: "map_header_crosses_L_kind_mismatch", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 2, 14, 0x83), name50, b(0))},
+	// H3 (the #2400 class): element kind 14 where a map declares 13, the
+	// count's second byte being the parent's next reference (ref 5, `name`):
+	// the crossing is damage before the element kind is judged.
+	{name: "map_header_crosses_L_foreign_kind", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 2, 14, 0x83), name50, b(0))},
 	// H3, H5: the crossed header under the right element kind: count = 5 +
 	// 5·128 = 645 over no entry bytes.
 	{name: "map_header_crosses_L", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 2, 13, 0x85), name50, b(0))},
@@ -291,12 +291,12 @@ var framingVectors = []framingVector{
 	// H5 at a map: a count of two over one entry.
 	{name: "map_count_over_length", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 17, 13, 2), squadEntry(2, 20), name50, b(0))},
 	// H2 at a map.
-	{name: "map_L1_inert", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 1, 13), name50, b(0))},
+	{name: "map_L1_short", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 1, 13), name50, b(0))},
 	// THE KNOWN WITNESS, verbatim: the Dart wire-fuzz mutant #2400 fixed (ci-full
 	// run 41205503830, seed 24845619678, corpus seed list_of_maps, random pass
 	// #5292), the second Squad's roster arriving as `02 0e 02 | 0e 83`. The
 	// row's report is the oracle's pinned answer, which
-	// TestWireFuzzMapHeaderCrossingItsLengthIsAKindMismatch holds; the rest of
+	// TestWireFuzzMapHeaderCrossingItsLengthIsDamage holds; the rest of
 	// the mutant's damage is the random pass's, so the row owes the report
 	// alone.
 	{name: "map_header_crosses_L_dart_mutant", unit: "listdemo", root: "Army", raw: mustHex("01010e580d022a020e200d020e030602040d0705041401000000000e030609040d0705045a0000000000060432000000002a020e020e830603040d0705041500000000000e030608040d0705045b0000000000060433000000000704080000000026a9020c9b014878424f4f300d39841cec105b36094ac93dea0ce83094fde47c74a279448ee2e5b1861b638ebaadbc90e9ea716f0f0182bf0700000000000000")},
@@ -304,9 +304,8 @@ var framingVectors = []framingVector{
 	// ---------------------------------------------------------------- E. enum-keyed arrays
 	// H3, H5 at kind 16: count = 2 + 1·128 = 130 over no triple bytes.
 	{name: "keyed_header_crosses_L", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 4, 0x82), gradeSilver, b(0))},
-	// H3, H4 at kind 16 (the class Java, Luau and Squirrel get wrong): element
-	// kind 30 where int32 is declared.
-	{name: "keyed_header_crosses_L_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 30, 0x82), gradeSilver, b(0))},
+	// H3 at kind 16: the crossed header is damage whatever the element kind.
+	{name: "keyed_header_crosses_L_foreign_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 2, 30, 0x82), gradeSilver, b(0))},
 	// H7: a key reference of 0 after one landed slot.
 	{name: "keyed_key_zero", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 2, 4), i32(7), b(0, 4), i32(0), b(0))},
 	// §3.2: a key this reader cannot name skips by its L and counts unknown;
@@ -323,7 +322,7 @@ var framingVectors = []framingVector{
 	// §3.2: a slot key this reader cannot name, twice.
 	{name: "keyed_repeat_unknown_slot", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 16, 4), i32(7), b(16, 4), i32(3), b(0))},
 	// H2 at kind 16.
-	{name: "keyed_L1_inert", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 1, 4), gradeSilver, b(0))},
+	{name: "keyed_L1_short", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 1, 4), gradeSilver, b(0))},
 
 	// ---------------------------------------------------------------- U. union arms
 	// H9: a fixed-width arm whose L is not its width.

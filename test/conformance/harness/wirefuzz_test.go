@@ -63,7 +63,7 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
 	_, _, units := corpus(t)
 	for _, tc := range []struct{ name, table string }{
-		{"list_count_cap", "Save"}, {"list_count_cross_length", "Album"},
+		{"list_count_cap", "Save"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, err := newWireRoot(units, "listdemo", tc.table, false, false)

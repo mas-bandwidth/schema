@@ -266,12 +266,8 @@ func (r *wireReader) sub(n int) *wireReader {
 }
 
 // subTo spans from the cursor to `end`, the last byte of the body the cursor
-// is inside. A BODY'S HEADER IS READ AGAINST THE PARENT BUFFER and not against
-// the body's own L, because a canonical LEB128 is up to ten bytes and an `L` of
-// 2 is the shortest body that carries one at all (§3). A count spelled wide
-// enough therefore leaves the cursor PAST the end it was framed by. That body
-// covers no elements, which is the answer the reference gives it, so the span
-// is empty rather than negative.
+// is inside. Its header was read inside that body (§3), so the cursor is at or
+// before `end`.
 func (r *wireReader) subTo(end int) *wireReader {
 	return r.sub(end - r.off)
 }
@@ -679,10 +675,17 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	}
 	bodyLen := int(n)
 	end := r.off + bodyLen
-	if bodyLen >= 2 {
+	// THE HEADER LIES INSIDE THE MAP'S L (docs/SPEC-TABLES.md §3): a body too
+	// short to carry the element kind and the count, and a count whose
+	// spelling runs past L, are damage, because no writer produces either.
+	if bodyLen < 2 {
+		r.report.Malformed = true
+		return false
+	}
+	{
 		elemKind := r.u8()
 		count, good := r.leb()
-		if !good {
+		if !good || r.off > end {
 			r.report.Malformed = true
 			return false
 		}
@@ -693,14 +696,6 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			r.off = end
 			return true
 		}
-		// Commit a replacement only after its array header is readable and
-		// compatible. A skipped repeat preserves the earlier occurrence, as
-		// for every other skipped field (§4 and the C++ map reader).
-		r.rt.forgetMap(fv)
-		for i := range fv.Entries {
-			r.rt.forget(fv.Entries[i].Tab)
-		}
-		fv.Entries = nil
 		if count > uint64(math.MaxInt32) {
 			r.off = end
 			return r.collectionCap()
@@ -796,10 +791,9 @@ func (r *wireReader) collectionCap() bool {
 
 // mapKey is the KEY SCAN (docs/SPEC-TABLES.md §2.8): the reader does not
 // assume where the key sits, so before an entry's body decodes it scans that
-// body's field headers for the key's id and reads the key. Where the body
-// carries the id more than once the scan reads the occurrence §3's
-// repeated-field rule keeps, the last one; a body with no key field at all has
-// the key's declared default.
+// body's field headers for the key's id and reads the key. A body carrying
+// the key's id twice is damage (§3); a body with no key field at all has the
+// key's declared default.
 //
 // THE KEY KIND IS THE READER'S DECLARATION, never the first entry's: a key
 // under another kind desynchronizes the rest of the scan, and the honest
@@ -904,21 +898,19 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		return false, false
 	}
 	end := r.off + bodyLen
-	// A body too short for its own header — the element kind byte and the
-	// count, so fewer than two bytes — is INERT (§4): the field keeps the value
-	// it has, a repeat under this id replaces nothing, no counter is raised,
-	// and the walk continues past the length.
-	if bodyLen >= 2 {
+	// THE HEADER LIES INSIDE THE BODY'S L (docs/SPEC-TABLES.md §3, §4;
+	// tla/Framing.tla, HeaderInsideBody): the element kind byte and the count.
+	// A body too short to carry them, and a count whose spelling runs past L or
+	// cannot complete, are damage, because no writer produces either.
+	if bodyLen < 2 {
+		r.report.Malformed = true
+		return false, false
+	}
+	{
 		decoded := 0
 		ek := r.u8()
 		count, good := r.leb()
-		if !good {
-			// A DAMAGED COUNT is framing damage inside the body's own length.
-			// A FIELD rode, so an optional is still PRESENT and the array
-			// keeps its declared default (§2.3, §4); an ARM whose payload is
-			// damaged inside its `L` is that arm's own framing damage, so the
-			// union reads None and the parent reads on past `L` (§3) — which
-			// is what `selected` false says to the caller.
+		if !good || r.off > end {
 			r.report.Malformed = true
 			return false, false
 		}
@@ -937,16 +929,6 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			// however many elements it holds
 			r.report.Widened++
 		}
-		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-		// records under this field go with the value it is about to lose. An
-		// occurrence that turned back above — inert, damaged, or of another
-		// element kind — left the field standing, and its records stand with
-		// it. A COLLECTION takes its discard here rather than at the field for
-		// exactly that reason.
-		for i := range fv.Elems {
-			r.rt.forget(fv.Elems[i].Tab)
-		}
-		r.rt.forgetFieldArms(fv)
 		keep := int(count)
 		switch {
 		case f.Array == ir.ArrayList:
@@ -1009,9 +991,8 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 		}
 	}
 	if f.Type.Optional {
-		// the field rode with its own element kind (or a body too short to
-		// carry one), so it is PRESENT (§2.3); the element-kind mismatch above
-		// returned before this line
+		// the field rode with its own element kind, so it is PRESENT (§2.3);
+		// the element-kind mismatch above returned before this line
 		fv.Present = true
 	}
 	r.off = end // excess elements and slack skip via the length
@@ -1173,13 +1154,14 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 		return false
 	}
 	end := r.off + bodyLen
+	// the header lies inside L, as for every array body (§3, §4)
 	if bodyLen < 2 {
 		r.report.Malformed = true
 		return false
 	}
 	elemKind := r.u8()
 	count, good := r.leb()
-	if !good {
+	if !good || r.off > end {
 		r.report.Malformed = true
 		return false
 	}

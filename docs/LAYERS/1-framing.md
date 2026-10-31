@@ -27,10 +27,10 @@ What holds the layer:
 - **The surface** — `framing`, which runs the same vectors through every leg's
   driver (`test/conformance/README.md`, "The surfaces").
 - **The model** — `tla/Framing.tla`, a layout model of the record scan with
-  offsets, `L` and the header read against the parent, in which damage ends
-  the load (invariant `DamageEndsLoad`), checked with TLC on a small instance
-  and reversed by four witnesses, `ResumeAfterDamage` among them
-  (`tla/README.md`, "tla/Framing").
+  offsets, `L`, the header inside its body and each field's reference, in
+  which damage ends the load (invariants `DamageEndsLoad`, `HeaderInsideBody`,
+  `OneIdOncePerBody`), checked with TLC on a small instance and reversed by
+  five witnesses (`tla/README.md`, "tla/Framing").
 
 The reference a leg is compared against is the engine, and the engine is
 compared against this page: a disagreement between the two is either an engine
@@ -226,25 +226,22 @@ field's `L`.** §3, payload table, kind `14`: "`L`, then the array body:
 reference`, `L`, `L` bytes of element." A map "rides as kind `14` with element
 kind `13`, an array of one generated `{ key, value }` table" (§3).
 
-**H2. A body too short to carry its header, fewer than two bytes, is inert:
-nothing decoded, nothing counted, the field keeps the value it has.** §4: "An
-ARRAY body too short to carry its own header, which is the element kind byte
-and the count and so fewer than two bytes, is INERT: no element is decoded,
-no counter fires, and the field keeps the value it has ... The framing is not
-damaged — the length agrees with the enclosing body and the walk continues
-past it — so this is not `malformed`." §2.9 restates it for `[]T`: "A body TOO
-SHORT TO CARRY ITS OWN HEADER is INERT, §4's rule unchanged."
+**H2. A body too short to carry its header, fewer than two bytes, is damage
+(D3).** §4: "An ARRAY body too short to carry its own header, which is the
+element kind byte and the count and so fewer than two bytes, is damage: every
+writer writes the header, an empty array included, so no writer produces it."
+For kind `14`, kind `16` and a map alike (`array_L0_short`, `array_L1_short`,
+`keyed_L1_short`, `map_L1_short`).
 
-**H3. The header is read against the enclosing buffer, not against the body's
-own `L`; the elements stay bounded by `L`.** §2.9: "The decoding cursor reads
-the count against the enclosing value buffer, so a continuation byte beyond
-`L` can complete that header. This does not extend the element body: element
-reads remain bounded by `L`." This is the #2400 rule, and §3, THE HEADER
-AGAINST THE PARENT, states it for kind `14`, kind `16` and a map alike (N3).
-It decides whether a header is evolution (H4) or damage (H5, D1). The engine
-applies it to a map's and a keyed array's header
-(`internal/tablewire` `mapField`, `keyed`), and PR #2400 and #2418 hold Dart
-and Rust to it.
+**H3. The header lies inside the body's `L`; a count whose spelling runs past
+`L`, or does not complete, is damage (D3).** §3, THE HEADER LIES INSIDE THE
+BODY: "A body too short to carry it (`L` below `2`), and a count whose
+spelling runs past `L` or does not complete, are input no writer produces,
+and each is damage that discards the whole load ... whatever the element kind
+byte says." For kind `14`, kind `16`, a map and an array arm alike
+(`array_header_crosses_L_*`, `map_header_crosses_L*`,
+`keyed_header_crosses_L*`, `arm_array_count_past_arm_length`). The engine
+applies it in `internal/tablewire` `arrayBody`, `mapField` and `keyed`.
 
 **H4. An element kind the reader does not declare is a kind mismatch for the
 field: counted once, the field skipped whole by its `L`, the field at its
@@ -253,9 +250,8 @@ kind it declares against the one in the body and, when they differ, skips the
 field and counts a kind mismatch (§4) ... the array reads empty, one
 `kind_mismatch` counts, and the field is skipped whole by its `L`." §2.8: "A
 map header whose ELEMENT kind is not `13` is the ordinary array kind mismatch
-of §4." The header is judged before any element is read, so a count that
-crossed the `L` (H3) under a foreign element kind is this event and nothing
-else.
+of §4." The element kind is judged only on a header that lies whole inside
+`L` (H3).
 
 **H5. Elements decode inside the field's body bounds, and a count the body
 cannot cover is damage (D1).** §4: "Array elements decode inside their field's
@@ -395,17 +391,15 @@ the refusal alone (D1).
 - **N2. An `L` past its carrying body.** Settled: §3 states "A LENGTH THAT
   RUNS PAST THE BODY CARRYING IT IS DAMAGE", at any depth, the root included
   (L4).
-- **N3. The header-against-parent rule for kinds `14` and `16` and maps.**
-  Settled: §3, THE HEADER AGAINST THE PARENT, states it for kind `14`, kind
-  `16` and a map alike, and §2.8 and §3.2 cite it (H3). Java, Luau and
-  Squirrel are owed the rule where it decides between a kind mismatch and
-  damage.
+- **N3. Where a header is read, for kinds `14` and `16` and maps.** Settled
+  (Glenn, 2026-10-31, the strike list): the header lies inside the body's `L`
+  and a crossing is damage (H3), which retires the header-against-parent
+  reading.
 - **N4. An array ARM's header is bounded by the arm's `L`.** Settled: §3
   states it as the one place the bound is not the enclosing body, and a count
   that crosses it is damage (H10).
-- **N5. A count header that cannot complete even in the enclosing buffer.**
-  Settled: §2.9 and §3 call it damage, not inertness (D1); inertness is for a
-  body of fewer than two bytes alone (H2).
+- **N5. A count header that does not complete inside `L`.** Settled: damage
+  (H3), and a body of fewer than two bytes is damage too (H2).
 - **N6. An empty buffer.** Settled: §3 says a buffer of no bytes has no form
   byte to read and is malformed, never refused (F5); `frame_empty_buffer` is a
   refusal row.

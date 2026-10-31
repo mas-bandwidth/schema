@@ -6,7 +6,6 @@ package tablewire_test
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -421,10 +420,10 @@ func TestListFileRegionMeasureUsesFraming(t *testing.T) {
 	}
 }
 
-// The value pass reads a count against its enclosing buffer; the extent pass
-// stops at the field's L. This pinned mutant therefore measures a small region
-// but reaches an oversized count only while decoding into that region.
-func TestListCountCrossesLength(t *testing.T) {
+// A COUNT WHOSE SPELLING RUNS PAST THE FIELD'S L is input no writer produces
+// (docs/SPEC-TABLES.md §3, §4): every read refuses it as damage, the builder
+// read before any count cap is consulted.
+func TestListCountCrossingLengthIsDamage(t *testing.T) {
 	m := listModel(t, `package listdemo
  fixed table Photo { width uint32
  height uint32 }
@@ -445,10 +444,9 @@ func TestListCountCrossesLength(t *testing.T) {
 	if err != nil || ok || report != (tabletext.Report{Malformed: true}) {
 		t.Fatalf("region: %v %v %+v", ok, err, report)
 	}
-	report = tabletext.Report{Unknown: 3}
+	report = tabletext.Report{}
 	ok, err = tablewire.Decode(m, m.New(root), wire, &report)
-	var capRefusal *tablewire.CountRefusal
-	if ok || !errors.As(err, &capRefusal) || report != (tabletext.Report{Unknown: 3}) {
+	if ok || err != nil || !report.Malformed {
 		t.Fatalf("builder: %v %v %+v", ok, err, report)
 	}
 }
