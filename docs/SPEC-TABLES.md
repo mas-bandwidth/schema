@@ -15127,13 +15127,6 @@ inspects everything in the schema built:
 - **SEVERAL LAYOUTS PER STREAM ON THE FIXED FORM** (§3.4): a peer announcing
   several layouts per stream is a named follow-on — the fixed form announces
   one layout per stream — and Go does not carry it.
-- **UNBOUNDED TEXT IN THE MESSAGE FORM** (§2.13.1, §3.3). A message body
-  sizes a string's length field by its declared bound, so an unbounded element
-  or key needs a length encoding of its own there before the form can carry
-  it; until then the message form emits nothing for a table whose closure
-  holds one. internal/baseline judges both capacity-growth halves — a `size=`
-  vanishing on a text value line and `keybound=` moving to `0` — as capacity
-  GROWTH (§18). Still owed: every port but Go (§2.12's rule).
 - **THE UNIT REGISTRY IN THE SIX REMAINING PORTS** (§8.3, §8.7). C++, C and Go
   emit the registry; the remaining six ports do not in this tree, so an enum
   VARIANT's, a flags BIT's and a record-naming ARM's `doc` and `tags` reach
