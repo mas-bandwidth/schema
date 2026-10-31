@@ -649,6 +649,16 @@ struct TableIds
     // the reference an id takes: the file's own first-use entry, appended on
     // first use. The MESSAGE form names no id at all: its references are
     // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
+    //
+    // ids and chain are left unset by the constructor on purpose: a save
+    // builds one TableIds, and only the entries below count are ever read,
+    // because a bucket's chain links only entries this function appended.
+    // gcc cannot see that invariant through the chain and calls the reads
+    // maybe-uninitialized, so the warning is off for this function alone.
+#if defined( __GNUC__ ) && !defined( __clang__ )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
     MAPDEMO_TABLE_INLINE uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
@@ -660,6 +670,9 @@ struct TableIds
         ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
+#if defined( __GNUC__ ) && !defined( __clang__ )
+#pragma GCC diagnostic pop
+#endif
 
     // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
     // header, union arm header or blob header names. A REPEAT answers from
@@ -1792,7 +1805,7 @@ static const int64_t kTableAnnounceBytes = 901;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xdc, 0xde, 0x7b, 0x79, 0x38, 0x68, 0x8e, 0x1c, 0x02,
+    0x01, 0x01, 0x09, 0x24, 0x69, 0x6a, 0xfd, 0x26, 0xca, 0x28, 0x9f, 0x02,
     0x0e, 0xdd, 0x06, 0x06, 0xda, 0x06, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
     0xc9, 0x3d, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
     0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36,
@@ -4747,9 +4760,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7460,7 +7479,8 @@ template <typename Entry> struct TableMapEach
         }
         auto operator*() const { return TableEntryEach( segment->entries + index ); }
         Iterator & operator++() { index++; Skip(); return *this; }
-        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
+        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
+        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 
@@ -8005,7 +8025,8 @@ template <typename T> struct TableListEach
         }
         Element * operator*() const { return segment->elements + index; }
         Iterator & operator++() { index++; Skip(); return *this; }
-        bool operator==( const Iterator & other ) const { return segment == other.segment && index == other.index; }
+        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
+        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
     };
 
@@ -8277,7 +8298,7 @@ namespace mapdemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x1c8e6838797bdedcull;
+static const uint64_t BuildVersion = 0x9f28ca26fd6a6924ull;
 
 } // namespace mapdemo
 
@@ -9025,11 +9046,11 @@ inline void TableReset( Fleet & value ) { FleetReset( value ); }
 // ShipConfig is a pointer target.
 inline const ShipConfig * ShipConfigAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const ShipConfig *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const ShipConfig *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline ShipConfig * ShipConfigAt( TableRef & ref )
 {
-    return ref.value != 0 ? (ShipConfig *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (ShipConfig *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const ShipConfig * ShipConfigAt( const TableRegionCtx &, const TableRef & ref ) { return ShipConfigAt( ref ); }
 inline const ShipConfig * ShipConfigAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -9056,11 +9077,11 @@ inline ShipConfig * ShipConfigEmplace( TableWorker & worker, TableRef & slot )
 // Item is a pointer target.
 inline const Item * ItemAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Item *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Item *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Item * ItemAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Item *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Item *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Item * ItemAt( const TableRegionCtx &, const TableRef & ref ) { return ItemAt( ref ); }
 inline const Item * ItemAt( const TableArenaCtx & ctx, const TableRef & ref )

@@ -754,16 +754,16 @@ var csHeldRuntimeUnits = []csHeldUnit{
 type csHeldConn struct{ key, pkg, wire, version string }
 
 var csHeldConns = []csHeldConn{
-	{"backend_conn", "backenddemo", "backend_conn.bin", "0xb26d9d6c050117f0"},
-	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0xd9664a7639d9a134"},
-	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x49d0eb14999f0285"},
+	{"backend_conn", "backenddemo", "backend_conn.bin", "0x16d0630a084485ae"},
+	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0x40062c876abfc027"},
+	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x3a923c7d0da66dd8"},
 }
 
 // csHeldRuntimeConns are the two `connection` rows of MANIFEST.txt the main
 // build cannot carry (csHeldRuntimeUnits), each with its announcement wire and
 // the build version the row pins.
 var csHeldRuntimeConns = []csHeldConn{
-	{"graph_conn", "graphdemo", "graph_conn.bin", "0xa6069b3ec0d99c3c"},
+	{"graph_conn", "graphdemo", "graph_conn.bin", "0xfdaabe4726d81d5c"},
 	{"retain_conn", "tblr2", "retain_conn.bin", "0x59185ac86252d03a"},
 }
 

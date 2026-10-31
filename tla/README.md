@@ -222,3 +222,73 @@ the card conformance check (`the-card-corpus-is-a-language-neutral-conformance-s
 and each language stream's own upgrade and edit tests; the eight language
 streams cite this model from their upgrade and edit functions as the contract
 they implement.
+
+# tla/Framing
+
+A bounded LAYOUT model of the table wire's record scan
+(docs/LAYERS/1-framing.md; docs/SPEC-TABLES.md §3, §4, §2.9): one parent body
+of `N` bytes walked by a cursor, one length-framed field at a time, carrying
+the arithmetic the readers carry — the field's start, its end `start + L`, the
+header read AGAINST THE PARENT buffer rather than the field's own end, the
+element span clamped at zero when the header crossed `L`, and the resume point.
+It is a model, not a codec: the reference, the kind byte and the element
+values are folded away and only offsets remain, which is what a layout model
+is for (Glenn, 2026-10-29: the bugs live in the mapping to memory).
+
+## The finite instance
+
+`N = 6`, `MaxL = 7`, `HeaderBytes = {1, 2, 3}`. Every field chooses every `L`
+in `0..MaxL` and every header width (the element kind byte plus a count of one
+or more LEB128 bytes), so TLC walks every placement of a header against every
+`L` and every buffer end, including `L` exactly at the buffer, one past it, a
+header that crosses `L` inside the buffer, and one that crosses the buffer.
+
+## Actions
+
+| action | the rule |
+|---|---|
+| `Terminator` | the zero reference ends the body (F3, R1) |
+| `Truncated` | no byte left for a reference: damage on this body (L2) |
+| `Field(L, H)` | one length-framed array field: `L` past the body stops it (L4); fewer than two bytes is inert (H2); a count the parent cannot complete is damage inside the field, resumed past `L`; otherwise the header is read against the parent, the elements are bounded by `L`, and the parent resumes at `end` (H3, L1) |
+| `Finished` | stutter once the scan is done |
+
+## Properties
+
+- **TypeOK** — every offset bounded by `N + MaxL + 1`.
+- **NoReadPastBuffer** — no field's read reaches past the buffer (L4, H5).
+- **ResumeAtEnd** — after every field the parent did not stop on, it resumed
+  exactly at `start + L` (L1): a count that crossed `L` moves no resume point.
+- **HeaderAgainstParent** — a count is damage only when the PARENT cannot
+  complete it (H3): a header the buffer holds is read whether or not the
+  field's own `L` covers it.
+
+## Reversed witnesses
+
+Each reversed cfg turns exactly one fault switch TRUE and checks TypeOK plus
+the one invariant that names the rule; only that invariant may fail.
+
+| cfg | switch | invariant violated | the bug it is |
+|---|---|---|---|
+| `MCFramingHeaderByChildL.cfg` | `HeaderByChildL` | `HeaderAgainstParent` | the header bounded by the field's own `L`: #2400 (Dart), #2418 (Rust); Java, Luau and Squirrel today (docs/LAYERS/1-framing.md N3) |
+| `MCFramingOffByOneAtL.cfg` | `OffByOneAtL` | `NoReadPastBuffer` | a payload ending one byte past the buffer accepted, and read |
+| `MCFramingResumeAtCursor.cfg` | `ResumeAtCursor` | `ResumeAtEnd` | resuming where the header's read stopped instead of at `end`, so a crossed count desynchronizes the parent |
+
+## Running
+
+From this directory, on a Linux bench, with `/opt/tla/tla2tools.jar`:
+
+```
+nice -n 19 timeout 180s java -Xmx2g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCFraming.cfg -metadir "$JOB/tlc-MCFraming" Framing
+```
+
+Repeat for each of the four cfgs. The positive cfg must exit 0 with exhaustive
+completion; each reversed cfg must report its named invariant violation. The
+runs are recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+A model checked here does not prove any reader. The concrete proof is the
+`framing` conformance surface, which runs the hand-built vectors of
+docs/LAYERS/1-framing.md through every leg, and the engine's oracle check
+beside it.
