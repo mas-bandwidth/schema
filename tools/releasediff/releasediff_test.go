@@ -255,6 +255,9 @@ func TestJudgeComparesWireBytesUnderAnEqualId(t *testing.T) {
 
 	var out bytes.Buffer
 	r.Print(&out, "v1.0.0", "HEAD")
+	if !strings.Contains(out.String(), "  note         "+TableFormsNote+"\n") {
+		t.Errorf("printed report does not carry the table-forms note:\n%s", out.String())
+	}
 	if !strings.Contains(out.String(), "DIFFERENCE under an equal protocol id: "+want[0]) || !strings.Contains(out.String(), "REFUSED, 2 encoding(s)") {
 		t.Errorf("printed report does not refuse by name:\n%s", out.String())
 	}
