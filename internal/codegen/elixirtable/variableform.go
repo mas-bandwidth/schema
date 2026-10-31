@@ -1352,13 +1352,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
+            Process.delete(:elixir_back_edge)
             {{value, report}, shared} = blob_namings(fn -> decode(desc, fields, nodes, ids) end)
+            back_edge = Process.delete(:elixir_back_edge) == true
             report = merge_report(report, node_events(nodes, ids))
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
             report = Map.put(report, :blob_shared, shared)
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+
+            if back_edge do
+              {:error, :malformed, reasoned(%{report | malformed: true}, :malformed)}
+            else
+              {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+            end
         end
     end
   catch
@@ -1708,6 +1715,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # so the record's unknown, kind mismatch, widened, clamped and malformed are
   # counted here and nowhere else.
   defp node_events(nodes, ids) do
+    Process.put(:elixir_node_events_pass, true)
+
+    try do
+      node_events_pass(nodes, ids)
+    after
+      Process.delete(:elixir_node_events_pass)
+    end
+  end
+
+  defp node_events_pass(nodes, ids) do
     nodes
     |> Enum.with_index(2)
     |> Enum.reduce(empty_report(), fn
@@ -1730,14 +1747,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end)
   end
 
-  # A LOAD TERMINATES ON ANY INPUT (docs/SPEC-TABLES.md §3.1): a wire's
-  # pointers can close a cycle, which a BEAM term cannot hold, so a pointer to
-  # a record whose value is still being read resolves to nothing and the walk
-  # ends there.
+  # A BACK EDGE IS DAMAGE: no conforming writer produces a cyclic wire (the
+  # pack walk refuses a reference to an OPEN entry, docs/SPEC-TABLES.md §3.1),
+  # and damage discards the whole load. A pointer to a record whose value is
+  # still being read from the root marks the load, which then refuses as
+  # malformed; a record already closed is a share and reads again. The walk
+  # ends at the back edge either way, so a load terminates on any input.
   defp decode_node_table(nodes, name, body, ids, idx) do
     open = Process.get(:elixir_open_nodes, MapSet.new())
 
     if MapSet.member?(open, idx) do
+      if not Process.get(:elixir_node_events_pass, false),
+        do: Process.put(:elixir_back_edge, true)
+
       :null
     else
       Process.put(:elixir_open_nodes, MapSet.put(open, idx))
@@ -5481,7 +5503,8 @@ const variableRetainSource = `
   defp node_table_retain(nodes, name, body, ids, idx, report, retain) do
     case retain.memo do
       %{^idx => :pending} ->
-        {:null, report, retain}
+        # a back edge: damage, so the load is malformed (decode_node_table)
+        {:null, %{report | malformed: true}, retain}
 
       %{^idx => value} ->
         {{:value, value}, report, retain}

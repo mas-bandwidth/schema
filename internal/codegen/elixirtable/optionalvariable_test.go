@@ -580,11 +580,11 @@ IO.puts("ok")
 
 // TestCyclicWireLoadTerminatesElixir pins a wire fuzzer stall (pass index,
 // graphdemo.Scene): a ListNode record whose `next` names its own record is a
-// cycle, and a load terminates on any input (docs/SPEC-TABLES.md §3.1: "Load
-// itself is safe on any input: it scans, it terminates, it fabricates
-// nothing"). The engine reads it clean; the leg recursed without end. The
-// probe requires the load to return within ten seconds with the oracle's own
-// report.
+// BACK EDGE, a pointer to a node still open in the pre-order walk. No
+// conforming writer produces one (the pack walk refuses a reference to an OPEN
+// entry, docs/SPEC-TABLES.md §3.1), so it is damage, and damage discards the
+// whole load: the load returns, within ten seconds, refused as malformed. The
+// leg used to recurse without end.
 //
 // THE REVERSED WITNESS takes the open-record check out and the probe must go
 // red (the load does not return).
@@ -610,23 +610,12 @@ func TestCyclicWireLoadTerminatesElixir(t *testing.T) {
 	}
 	mutantBytes := append([]byte{}, wire...)
 	mutantBytes[at+2] = 0x02
-	m := tabletext.NewModel(u)
-	var orep tabletext.Report
-	if _, err := tablewire.Decode(m, m.New(m.Lookup("Scene")), mutantBytes, &orep); err != nil {
-		t.Fatal(err)
-	}
-	if orep.Malformed || orep.Unknown != 0 || orep.KindMismatch != 0 {
-		t.Fatalf("the oracle does not read the cyclic probe clean: %+v", orep)
-	}
 	probe := fmt.Sprintf(`
 task = Task.async(fn -> Graphdemo.Table.load("Scene", Base.decode16!(%q, case: :lower)) end)
 
 case Task.yield(task, 10_000) do
-  {:ok, {:ok, _v, r}} ->
-    if {r.unknown, r.kind_mismatch, r.widened, r.clamped, r.malformed} != {0, 0, 0, 0, false} do
-      IO.puts(:stderr, "FAIL: the cyclic wire's report: " <> inspect(r))
-      System.halt(1)
-    end
+  {:ok, {:error, :malformed, %{malformed: true}}} ->
+    :ok
 
   other ->
     IO.puts(:stderr, "FAIL: the cyclic wire's load did not return: " <> inspect(other))
@@ -637,7 +626,7 @@ IO.puts("ok")
 `, hex.EncodeToString(mutantBytes))
 	files := generateElixir(t, u)
 	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
-		t.Fatalf("the Elixir load does not terminate on a cyclic wire: %v\n%s", err, out)
+		t.Fatalf("the Elixir load does not refuse a cyclic wire as malformed: %v\n%s", err, out)
 	}
 	const check = "if MapSet.member?(open, idx) do"
 	planted := map[string][]byte{}
