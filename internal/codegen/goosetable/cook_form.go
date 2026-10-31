@@ -6,13 +6,15 @@
 // enumeration plus its own root's two layout facts, exactly as the C and C++
 // legs spell it (internal/codegen/ctable/cook.go).
 //
-// THE COOK HOME, the first file of the unit in declaration order that
-// declares a table, carries what the unit has once: BuildVersion (§20), the
-// cook records (CookRecords: every record of the table closure at the layout
-// ir.RecordLayout computes, the one model the build version digests), and
-// every closure record's typed accessors, <Row>Row<Field>(b, at) — a cooked
-// record IS the blittable row the block form reads (§19.2), so one set of
-// accessors serves both accelerators, and the block modules import it.
+// THE COOK'S PACKAGE MODULE, <Package>Cook.goose (PackageModule; docs/PORTING.md
+// J2), carries what the unit has once: BuildVersion (§20), the cook records
+// (CookRecords: every record of the table closure at the layout
+// ir.RecordLayout computes, the one model the build version digests), each
+// table's place in them (<Name>CookRecord), and every closure record's typed
+// accessors, <Row>Row<Field>(b, at) — a cooked record IS the blittable row the
+// block form reads (§19.2), so one set of accessors serves both accelerators,
+// and the block modules import it. It is named for the package, so a file
+// that sorts earlier moves no byte of any file's <Base>Cook.goose.
 //
 // A REGION IS A VIEW: schema_rt::cook_region gives an opened cook's data part,
 // the root at its offset zero, and a pointer slot is followed by one add
@@ -35,18 +37,51 @@ const cookModule = "cook_form"
 
 func init() {
 	RegisterModule("cook_form", generateCookModules)
+	RegisterUnit("cook_form", "Cook", emitCookPackage)
 }
 
-// cookHome is the basename of the file whose <Base>Cook.goose carries the
-// unit's BuildVersion, records and accessors: the first file that declares a
-// table.
-func cookHome(u *ir.Unit) string {
+// cookPackage is the unit's cook package module, <Package>Cook, or "" for a
+// unit that declares no table and so has no cook.
+func cookPackage(u *ir.Unit) string {
 	for _, f := range u.Files {
 		if len(f.Tables) > 0 {
-			return f.Base
+			return PackageModule(u, "Cook")
 		}
 	}
 	return ""
+}
+
+// emitCookPackage writes the unit's cook data into <Package>Cook.goose: the
+// build version, the records, the accessors and the record writers, then each
+// table's place in the records.
+func emitCookPackage(g *goose.Gen) error {
+	u := g.Unit
+	if cookPackage(u) == "" {
+		return nil
+	}
+	records := cookRecords(u)
+	index := map[string]int64{}
+	for i, st := range records {
+		index[st.Name] = int64(i)
+	}
+	recordIndex := func(st *ir.Struct) int64 {
+		if i, ok := index[st.Name]; ok {
+			return i
+		}
+		return -1
+	}
+	g.Import(accelModule)
+	g.Import(cookModule)
+	emitCookHome(g, u, records, recordIndex)
+	g.Pf("// ---- each table's cook record: its place in CookRecords ----\n")
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			g.Declare(st.Name + "CookRecord")
+			g.Pf("let %sCookRecord: i64 = %d;\n", st.Name, index[st.Name])
+		}
+	}
+	g.Pf("\n")
+	return nil
 }
 
 // cookRecords is every record of the table closure, sorted by name: the
@@ -68,23 +103,12 @@ func cookRecords(u *ir.Unit) []*ir.Struct {
 
 func generateCookModules(u *ir.Unit, names map[string]string) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	home := cookHome(u)
+	home := cookPackage(u)
 	if home == "" {
 		return out, nil
 	}
 	if err := sideModuleRefusal(u, "Cook"); err != nil {
 		return nil, err
-	}
-	records := cookRecords(u)
-	index := map[string]int64{}
-	for i, st := range records {
-		index[st.Name] = int64(i)
-	}
-	recordIndex := func(st *ir.Struct) int64 {
-		if i, ok := index[st.Name]; ok {
-			return i
-		}
-		return -1
 	}
 	for _, f := range u.Files {
 		if len(f.Tables) == 0 {
@@ -94,12 +118,9 @@ func generateCookModules(u *ir.Unit, names map[string]string) (map[string][]byte
 		g.Suffix, g.Kind = "Cook", "cooked form"
 		g.Import(accelModule)
 		g.Import(cookModule)
-		g.Import(home + "Cook")
-		if f.Base == home {
-			emitCookHome(g, u, records, recordIndex)
-		}
+		g.Import(home)
 		for _, st := range f.Tables {
-			emitCookOpen(g, u, st, index[st.Name])
+			emitCookOpen(g, u, st)
 			emitCookRoot(g, u, st)
 		}
 		if err := g.Err(); err != nil {
@@ -157,18 +178,16 @@ func emitCookHome(g *goose.Gen, u *ir.Unit, records []*ir.Struct, recordIndex fu
 
 // emitCookOpen is one table's Open: match the header and point (§7). It is
 // O(1) in the file's size — the header and nothing per node.
-func emitCookOpen(g *goose.Gen, u *ir.Unit, st *ir.Struct, record int64) {
+func emitCookOpen(g *goose.Gen, u *ir.Unit, st *ir.Struct) {
 	rt := goose.RuntimeNamespace
 	ml := ir.RecordLayout(u, st)
 	n := st.Name
 	g.Declare(n + "CookOpenReason")
 	g.Declare(n + "CookOpen")
-	g.Declare(n + "CookRecord")
 	g.Pf("// %s's cook: match the header and POINT (docs/SPEC-TABLES.md §7). On a\n", n)
 	g.Pf("// match the root is at offset zero of schema_rt::cook_region(b); on any\n")
 	g.Pf("// refusal the caller falls back to the wire. `lead` is the buffer's address\n")
 	g.Pf("// modulo sixty-four, below zero for no buffer. It answers schema_rt::TableRefuse*.\n")
-	g.Pf("let %sCookRecord: i64 = %d;\n", n, record)
 	g.Pf("fn %sCookOpenReason(b: const u8[:], lead: i64) -> i64 { return %s::cook_check(b, lead, %d, %d, BuildVersion); }\n", n, rt, ml.Size, ml.Align)
 	g.Pf("fn %sCookOpen(b: const u8[:], lead: i64) -> bool { return %sCookOpenReason(b, lead) == %s::TableRefuseOk; }\n\n", n, n, rt)
 }

@@ -1,6 +1,6 @@
 // THE COOK'S WRITE SIDE (docs/SPEC-TABLES.md §7.6) for Goose, from the TYPED
 // records: every FIXED root's <Name>CookMeasure and <Name>Cook, and, in the
-// cook home, every closure record's <Row>CookPut — the record written PIECE BY
+// cook's package module, every closure record's <Row>CookPut — the record written PIECE BY
 // PIECE at the offsets ir.RecordLayout gives, in the byte order the call
 // names, never copied as a struct (§7.6: a swap has to know where every
 // scalar begins, and every byte no field covers is zero). Beside each record's
@@ -130,7 +130,7 @@ func elemTypeOf(slot string) string {
 }
 
 // emitCookWrite writes <Row>CookPut and <Row>CookFromLoaded for every record
-// of the closure the fixed writer carries, into the cook home.
+// of the closure the fixed writer carries, into the cook's package module.
 func emitCookWrite(g *goose.Gen, u *ir.Unit, records []*ir.Struct) {
 	rt := goose.RuntimeNamespace
 	g.Pf("// ---- the typed write side (docs/SPEC-TABLES.md §7.6) ----\n")

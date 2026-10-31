@@ -36,6 +36,7 @@ import (
 
 func init() {
 	RegisterModule("block_form", generateBlockModules)
+	RegisterUnit("block_form", "Block", emitBlockPackage)
 }
 
 // blockRecordKey separates a table's PROJECTION from the same table laid out
@@ -48,30 +49,10 @@ func blockRecordKey(name string, projection bool) string {
 	return "row " + name
 }
 
-// generateBlockModules writes <Base>Block.goose for every file that declares a
-// table with a block form. The unit's descriptors and every row record's
-// accessors live in the HOME, the first such file in declaration order (the Go
-// backend's rule, docs/SPEC-TABLES.md §19.2): one namespace, emitted once.
-func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byte, error) {
-	out := map[string][]byte{}
-	blocks := ir.Blocks(u)
-	if blocks == nil || len(blocks.Tables) == 0 {
-		return out, nil
-	}
-	if err := sideModuleRefusal(u, "Block"); err != nil {
-		return nil, err
-	}
-	var home *ir.File
-	for _, f := range u.Files {
-		for _, st := range f.Tables {
-			if blocks.Block(st.Name) != nil && home == nil {
-				home = f
-			}
-		}
-	}
-	// the unit's record array: every row record, then every projection, each
-	// sorted, so an index is a fact of the declaration and not of file order
-	keys := []string{}
+// blockRecordIndex is the unit's block record array: every row record, then
+// every projection, each sorted, so an index is a fact of the declaration and
+// not of file order.
+func blockRecordIndex(blocks *ir.BlockUnit) (keys []string, index map[string]int64, rowIndex func(*ir.Struct) int64) {
 	for _, name := range blocks.Order {
 		keys = append(keys, blockRecordKey(name, false))
 	}
@@ -80,15 +61,57 @@ func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byt
 	for _, bl := range tables {
 		keys = append(keys, blockRecordKey(bl.Table.Name, true))
 	}
-	index := map[string]int64{}
+	index = map[string]int64{}
 	for i, k := range keys {
 		index[k] = int64(i)
 	}
-	rowIndex := func(st *ir.Struct) int64 {
+	rowIndex = func(st *ir.Struct) int64 {
 		if i, ok := index[blockRecordKey(st.Name, false)]; ok {
 			return i
 		}
 		return -1
+	}
+	return keys, index, rowIndex
+}
+
+// emitBlockPackage writes the unit's block data into <Package>Block.goose
+// (PackageModule; docs/PORTING.md J2): the descriptors, every row record's
+// accessors, and each table's projection's place in BlockRecords. It is named
+// for the package, so a file that sorts earlier moves no byte of any file's
+// <Base>Block.goose.
+func emitBlockPackage(g *goose.Gen) error {
+	u := g.Unit
+	blocks := ir.Blocks(u)
+	if blocks == nil || len(blocks.Tables) == 0 {
+		return nil
+	}
+	keys, index, rowIndex := blockRecordIndex(blocks)
+	g.Import(accelModule)
+	g.Import(cookPackage(u)) // BuildVersion and the row accessors
+	emitBlockRecords(g, u, blocks, keys, rowIndex)
+	g.Pf("// ---- each table's projection: its place in BlockRecords ----\n")
+	tables := append([]*ir.BlockLayout(nil), blocks.Tables...)
+	sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })
+	for _, bl := range tables {
+		n := bl.Table.Name
+		g.Declare(n + "BlockRecord")
+		g.Pf("let %sBlockRecord: i64 = %d;\n", n, index[blockRecordKey(n, true)])
+	}
+	g.Pf("\n")
+	return nil
+}
+
+// generateBlockModules writes <Base>Block.goose for every file that declares a
+// table with a block form: each table's handle. The unit's descriptors and
+// every row record's accessors live in <Package>Block.goose (emitBlockPackage).
+func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byte, error) {
+	out := map[string][]byte{}
+	blocks := ir.Blocks(u)
+	if blocks == nil || len(blocks.Tables) == 0 {
+		return out, nil
+	}
+	if err := sideModuleRefusal(u, "Block"); err != nil {
+		return nil, err
 	}
 	for _, f := range u.Files {
 		var mine []*ir.BlockLayout
@@ -103,13 +126,10 @@ func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byt
 		g := goose.NewGen(u, f, names)
 		g.Suffix, g.Kind = "Block", "block form"
 		g.Import(accelModule)
-		g.Import(cookHome(u) + "Cook") // BuildVersion
-		g.Import(home.Base + "Block")
-		if f == home {
-			emitBlockRecords(g, u, blocks, keys, rowIndex)
-		}
+		g.Import(cookPackage(u)) // BuildVersion
+		g.Import(PackageModule(u, "Block"))
 		for _, bl := range mine {
-			emitBlockHandle(g, u, bl, index)
+			emitBlockHandle(g, u, bl)
 		}
 		if err := g.Err(); err != nil {
 			return nil, err
@@ -180,7 +200,7 @@ func emitBlockRecords(g *goose.Gen, u *ir.Unit, blocks *ir.BlockUnit, keys []str
 // emitBlockHandle is one table's block: its constants, Open (§19.2), Begin
 // (§19.1), BlockBytes, and per out-of-line array the count, the pitch and the
 // row offset READ OUT OF THE INSTANCE (M7).
-func emitBlockHandle(g *goose.Gen, u *ir.Unit, bl *ir.BlockLayout, index map[string]int64) {
+func emitBlockHandle(g *goose.Gen, u *ir.Unit, bl *ir.BlockLayout) {
 	rt := goose.RuntimeNamespace
 	n := bl.Table.Name
 	p := bl.Projection.Size
@@ -192,8 +212,6 @@ func emitBlockHandle(g *goose.Gen, u *ir.Unit, bl *ir.BlockLayout, index map[str
 	g.Pf("// The storage a producer allocates, sized from the declared maxima (§19.1).\n")
 	g.Pf("let %s: i64 = %d;\n", decl(n+"BlockMaxBytes"), bl.MaxBytes)
 	g.Pf("let %s: i64 = %d;\n", decl(n+"BlockProjectionBytes"), p)
-	g.Pf("// %s's projection in BlockRecords.\n", n)
-	g.Pf("let %s: i64 = %d;\n", decl(n+"BlockRecord"), index[blockRecordKey(n, true)])
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		g.Pf("// %s: this build's constants, asserted against, never indexed with (§19.2)\n", a.Field.Name)
@@ -282,7 +300,7 @@ func emitBlockHandle(g *goose.Gen, u *ir.Unit, bl *ir.BlockLayout, index map[str
 		// THE PRODUCER'S TYPED ROW (§19.1): the generated record, written into
 		// row i where it lies, field by field at the offsets of the one layout
 		// model — a block row IS the record a cook lays out (§19.2), so the
-		// cook home's <Row>CookPut is the writer, in this build's order
+		// the cook package module's <Row>CookPut is the writer, in this build's order
 		if ok, _ := cookWritable(u, a.Elem, map[string]bool{}); ok && ir.RecordLayout(u, a.Elem).Size == a.Stride {
 			g.Pf("fn %s(b: u8[:], i: i64, v: const %s&) -> bool { return %sCookPut(v, b, %s(b, i), false); }\n",
 				decl(n+"Block"+field+"Put"), g.TypeRef(a.Elem.Name, a.Elem.IsTable), a.Elem.Name, n+"Block"+field+"At")
