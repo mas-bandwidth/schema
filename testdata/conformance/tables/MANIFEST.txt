@@ -721,11 +721,11 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # THE NUL ESCAPE INTO BOUNDED TEXT (§16.3): a \u0000 escape that would land
 # U+0000 in a bounded string(N) field is refused as text_holds_zero, naming the
 # field. A zero in a value the read only SKIPS is not the event, and \u0001
-# reads clean. Go, C and Lua carry the refusal; every other port stores the zero
-# as text and keeps the counters its reader gives until its port, as the
-# str-zero-escape rows below say.
-json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,lua uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,lua uncarried=0,0,0,0,0,false,read
+# reads clean. The ports that carry the str-zero-escape rows below carry this
+# refusal; every other port stores the zero as text and keeps the counters its
+# reader gives until its port.
+json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir uncarried=0,0,0,0,0,false,read
 # THE ZERO RULE IN THE TEXT (§16.3): "A JSON string the read would PLACE in text
 # storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
 # false, the report is Malformed, and Reason reads text_holds_zero:
