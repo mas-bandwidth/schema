@@ -1400,7 +1400,7 @@ public final class TableVariable {
         }
         NodeRecord[] recs = report.nodeRecs;
         if (Long.compareUnsigned(index - 2, recs == null ? 0 : recs.length) >= 0) { // a reference is unsigned
-            report.malformed = true;
+            report.malformed = true; // a reference above the entry count is damage
             return;
         }
         NodeRecord rec = recs[(int) (index - 2)];

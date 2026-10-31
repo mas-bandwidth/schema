@@ -1830,7 +1830,7 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_NODE_INDEX_SABOTAGE) && mkdir -p $(JAVA_NODE_INDEX_SABOTAGE)/generated $(JAVA_NODE_INDEX_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_NODE_INDEX_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_NODE_INDEX_SABOTAGE)/generated/*/TableVariable.java; do \
-		sed 's/if (Long\.compareUnsigned(index - 2, recs == null ? 0 : recs\.length) >= 0) {/if (false) { \/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed 's/report\.malformed = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED node index check' $(JAVA_NODE_INDEX_SABOTAGE)/generated/stream/TableVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java node-index sabotage did not apply'; exit 1; }
