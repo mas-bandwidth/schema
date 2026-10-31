@@ -12,7 +12,8 @@
         "tables-c-runtime-home-negative-control",
         "tables-c-slot-negative-control",
         "tables-float-nan-negative-control",
-        "tables-view-negative-controls"
+        "tables-view-negative-controls",
+        "bin-schema-embeds-negative-control"
       ]
     },
     {
