@@ -79,8 +79,10 @@ func cookWriteFieldsCarried(st *ir.Struct) bool {
 
 func cookWriteFieldCarried(f *ir.Field, seen map[*ir.Union]bool) bool {
 	switch {
-	case f.IsMap(), f.IsList(), f.Type.TextUnbounded():
+	case f.Type.TextUnbounded():
 		return false
+	case f.IsMap():
+		return f.MapEntry != nil && cookWriteFieldsCarried(f.MapEntry)
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) && !f.Type.Pointer &&
 		(f.Array != ir.ArrayNone || f.KeyEnum != ""):
 		return false
@@ -107,6 +109,9 @@ func cookWriteReached(st *ir.Struct) []string {
 	walk = func(f *ir.Field) {
 		if f == nil {
 			return
+		}
+		if f.IsMap() && f.MapEntry != nil {
+			out = append(out, f.MapEntry.Name)
 		}
 		if ref, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Blob() {
 			out = append(out, ref.Name)
@@ -204,6 +209,11 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 			g.emitCookUnionWriter(b, un)
 		}
 	}
+	for _, n := range names {
+		if st := vStruct(g.unit, n); cw[n] && cookHasExtent(st) {
+			g.emitCookCarver(b, st)
+		}
+	}
 	var targets []*ir.Struct
 	for _, st := range g.pointerTargets(names) {
 		if cw[st.Name] {
@@ -227,10 +237,31 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	} else {
 		b.WriteString("fn cook_record_layout(type_id: u64) -> Option<(i64, i64)> {\n    match type_id {\n")
 		for _, st := range targets {
-			ml := ir.RecordLayout(g.unit, st)
-			fmt.Fprintf(b, "        0x%016x => Some((%d, %d)),\n", ir.TableWireId(st.WireName()), ml.Size, ml.Align)
+			fmt.Fprintf(b, "        0x%016x => Some((%d, %d)),\n", ir.TableWireId(st.WireName()), cookRecordBytes(g.unit, st), cookNodeAlign(g.unit, st))
 		}
 		b.WriteString("        _ => None,\n    }\n}\n\n")
+	}
+	b.WriteString("/// One table node's EXTENT, the bytes its lists and maps take behind its\n")
+	b.WriteString("/// record (§2.8, §2.9), by its type id: what the layout reserves.\n")
+	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(dead_code, unused_variables)]\n")
+	var extentTargets []*ir.Struct
+	for _, st := range targets {
+		if cookHasExtent(st) {
+			extentTargets = append(extentTargets, st)
+		}
+	}
+	if len(extentTargets) == 0 {
+		b.WriteString("fn cook_record_extent(_type_id: u64, _node: &Rc<dyn Any>) -> i64 {\n    0 // no node of this graph holds a list or a map\n}\n\n")
+	} else {
+		b.WriteString("fn cook_record_extent(type_id: u64, node: &Rc<dyn Any>) -> i64 {\n    match type_id {\n")
+	}
+	for _, st := range extentTargets {
+		fmt.Fprintf(b, "        0x%016x => match node.downcast_ref::<%s>() {\n", ir.TableWireId(st.WireName()), st.Name)
+		fmt.Fprintf(b, "            Some(v) => {\n                let mut c = TableCarve { extent_at: 0, at: 0 };\n                %s(v, &mut c, None, 0);\n                c.at\n            }\n", fn(st.Name, "cook_carve"))
+		b.WriteString("            None => 0,\n        },\n")
+	}
+	if len(extentTargets) > 0 {
+		b.WriteString("        _ => 0,\n    }\n}\n\n")
 	}
 	b.WriteString("/// One table node's cooked record, by its type id (§7.2).\n")
 	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(dead_code, unused_variables)]\n")
@@ -240,7 +271,15 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 		b.WriteString("fn cook_record_write(type_id: u64, node: &Rc<dyn Any>, w: &mut TableRegionWriter, at: i64) {\n    match type_id {\n")
 		for _, st := range targets {
 			fmt.Fprintf(b, "        0x%016x => match node.downcast_ref::<%s>() {\n", ir.TableWireId(st.WireName()), st.Name)
-			fmt.Fprintf(b, "            Some(v) => %s(v, w, at),\n", fn(st.Name, "cook_body"))
+			if cookHasExtent(st) {
+				fmt.Fprintf(b, "            Some(v) => {\n                %s(v, w, at);\n", fn(st.Name, "cook_body"))
+				b.WriteString("                // THE EXTENT WRITTEN IS THE EXTENT MEASURED (§2.8, §2.9)\n")
+				fmt.Fprintf(b, "                let mut m = TableCarve { extent_at: 0, at: 0 };\n                %s(v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
+				fmt.Fprintf(b, "                let mut c = TableCarve { extent_at: at + %d, at: 0 };\n                %s(v, &mut c, Some(&mut *w), at);\n", cookRecordBytes(g.unit, st), fn(st.Name, "cook_carve"))
+				b.WriteString("                if c.at != m.at {\n                    w.fail();\n                }\n            }\n")
+			} else {
+				fmt.Fprintf(b, "            Some(v) => %s(v, w, at),\n", fn(st.Name, "cook_body"))
+			}
 			b.WriteString("            None => w.fail(),\n        },\n")
 		}
 		b.WriteString("        _ => w.fail(),\n    }\n}\n\n")
@@ -343,6 +382,12 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 	pieces := ir.FieldPieces(g.unit, f, off)
 	value := pieces[0]
 	switch {
+	case f.IsMap(), f.IsList():
+		// THE SLOT IS THE CARVE'S (docs/SPEC-TABLES.md §2.8, §2.9): its
+		// sixteen bytes point into the holder's node extent, which only the
+		// carve knows; an empty container leaves them zero, the null reference
+		// and the zero count
+		return
 	case f.Type.Blob():
 		fmt.Fprintf(b, "%sw.ref_blob(%s, %s.as_ref().map(|b| Rc::as_ptr(b) as *const u8 as usize));\n", ind, cookAt(base, value.Offset), x)
 		return
@@ -467,8 +512,18 @@ func (g *gen) emitCookRootWriter(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    if order != 1 && order != 2 {\n        return Err(String::from(\"invalid_value\"));\n    }\n")
 	b.WriteString("    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
-	fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d, %d, cook_record_layout, order)?;\n", ml.Size, ml.Align)
-	fmt.Fprintf(b, "    %s(v, &mut w, 0);\n", fn(st.Name, "cook_body"))
+	rb := cookRecordBytes(g.unit, st)
+	if cookHasExtent(st) {
+		fmt.Fprintf(b, "    let mut m = TableCarve { extent_at: 0, at: 0 };\n    %s(v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
+		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d + m.at, %d, cook_record_layout, cook_record_extent, order)?;\n", rb, cookNodeAlign(g.unit, st))
+		fmt.Fprintf(b, "    %s(v, &mut w, 0);\n", fn(st.Name, "cook_body"))
+		b.WriteString("    // THE ROOT'S EXTENT, and the extent written is the extent measured (§2.8, §2.9)\n")
+		fmt.Fprintf(b, "    let mut c = TableCarve { extent_at: %d, at: 0 };\n    %s(v, &mut c, Some(&mut w), 0);\n", rb, fn(st.Name, "cook_carve"))
+		b.WriteString("    if c.at != m.at {\n        w.fail();\n    }\n")
+	} else {
+		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d, %d, cook_record_layout, cook_record_extent, order)?;\n", rb, ml.Align)
+		fmt.Fprintf(b, "    %s(v, &mut w, 0);\n", fn(st.Name, "cook_body"))
+	}
 	b.WriteString("    for k in 0..g.records.len() {\n")
 	b.WriteString("        let at = w.offsets[k + 1];\n")
 	b.WriteString("        match &g.records[k] {\n")
@@ -503,8 +558,10 @@ fn table_region_up(v: i64, a: i64) -> i64 {
     (v + a - 1) / a * a
 }
 
-/// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base,
-/// then every node of the numbering in index order at its own alignment — a
+/// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base
+/// (root_size is its record and its extent), then every node of the numbering
+/// in index order at its own alignment — a table node its record and its
+/// extent, a
 /// blob at eight, its u32 length, four zero bytes, its bytes and a *string
 /// blob's terminator — and the data part rounded to the region's alignment,
 /// the greatest record alignment, never below eight.
@@ -514,6 +571,7 @@ pub fn table_region_layout(
     root_size: i64,
     root_align: i64,
     layout: fn(u64) -> Option<(i64, i64)>,
+    extent: fn(u64, &Rc<dyn Any>) -> i64,
     order: u64,
 ) -> Result<TableRegionWriter<'_>, String> {
     let mut align = root_align.max(8);
@@ -530,14 +588,16 @@ pub fn table_region_layout(
                 offsets.push(offset);
                 offset += 8 + blob.len() as i64 + if *type_id == STRING_TYPE_ID { 1 } else { 0 };
             }
-            TableNodeRecord::Table(type_id, _) => {
+            TableNodeRecord::Table(type_id, node) => {
                 let Some((size, a)) = layout(*type_id) else {
                     return Err(String::from("invalid_value"));
                 };
                 align = align.max(a);
                 offset = table_region_up(offset, a);
                 offsets.push(offset);
-                offset += size;
+                // a NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map
+                // rides in its extent (§2.8, §2.9): the record, then the extent
+                offset += size + extent(*type_id, node);
             }
         }
     }
