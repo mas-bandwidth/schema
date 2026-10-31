@@ -102,27 +102,7 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 }
 `
 
-// tableWidenF32Runtime is the FLOAT RUNG, kind 10 into kind 11, and it is
-// emitted only where kind 11 is declared: the file wire's widened scalar and
-// the message form's f32-shaped entry into an f64 field (messageload.go) are
-// its two call sites, and both are behind a declared f64.
-const tableWidenF32Runtime = `
-// f32 into f64, exact: a NaN's payload is data and rides on the bits, since
-// the hardware conversion would set the quiet bit (§4)
-inline double TableWidenF32( uint32_t bits )
-{
-    if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-    {
-        const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-        const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-        const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-        double d; memcpy( &d, &nan_bits, 8 ); return d;
-    }
-    float f; memcpy( &f, &bits, 4 ); return (double) f;
-}
-`
-
-// widenCensus is the unit-level census of the four widening helpers
+// widenCensus is the unit-level census of the three widening helpers
 // (docs/SPEC-TABLES.md §2.2, §3, §4). It is UNIT-LEVEL and not per-file for
 // the reason §794's two are: the primitives block sits behind ONE
 // package-scoped guard, so whichever <Base>Table.h a translation unit includes
@@ -143,7 +123,6 @@ inline double TableWidenF32( uint32_t bits )
 // that keeps a helper it does not call; the cost of a subset would be a unit
 // that does not compile, which is why it is taken this way round.
 type widenCensus struct {
-	f32      bool // TableWidenF32: a declared kind 11, the float rung's top
 	signed   bool // TableReadSignedAt: a declared kind 3, 4, 5 or 18
 	unsigned bool // TableReadUnsignedAt: a declared kind 7, 8, 9 or 19
 	width    bool // TableKindWidth: an arm on any ladder, or a list
@@ -176,7 +155,8 @@ func unitWidenCensus(u *ir.Unit, closure map[string]bool, anyList bool) widenCen
 			}
 			switch {
 			case kind == tkF64:
-				c.f32 = true
+				// the float rung is the ordinary conversion behind the finite
+				// test (§3.3, §4): it needs no helper of its own
 			case ir.TableKindSigned(kind):
 				c.signed = true
 			default:
@@ -217,7 +197,7 @@ func unitWidenCensus(u *ir.Unit, closure map[string]bool, anyList bool) widenCen
 }
 
 // runtime composes the widening runtime this unit carries: the ladder
-// predicate always, and each of the four helpers where the census could not
+// predicate always, and each of the three helpers where the census could not
 // rule its call sites out.
 func (c widenCensus) runtime() string {
 	out := tableWidensRuntime
@@ -229,9 +209,6 @@ func (c widenCensus) runtime() string {
 	}
 	if c.unsigned {
 		out += tableReadUnsignedAtRuntime
-	}
-	if c.f32 {
-		out += tableWidenF32Runtime
 	}
 	return out
 }
@@ -278,8 +255,13 @@ func widenableElement(f *ir.Field) bool {
 // payload, which is framing damage on the body carrying it.
 func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue, ind, rdr, onTrunc string) {
 	if declared == tkF64 {
+		// THE FLOAT RUNG: every finite float32 is exactly a float64, so the
+		// ordinary conversion is the widening, and a NaN or an infinity never
+		// reaches it — it is refused on its raw bits first (§3.3, §4)
 		g.pf("%sif ( !%s.has( 4 ) ) { %s }\n", ind, rdr, onTrunc)
-		g.pf("%s%s = TableWidenF32( %s.get32() );\n", ind, lvalue, rdr)
+		g.pf("%s{\n%s    const uint32_t widened_bits = %s.get32();\n", ind, ind, rdr)
+		g.pf("%s    if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }\n", ind)
+		g.pf("%s    else { %s = (double) table_bits_to_float( widened_bits ); }\n%s}\n", ind, lvalue, ind)
 		return
 	}
 	width := tableKindWidth(declared)

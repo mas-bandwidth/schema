@@ -249,11 +249,48 @@ struct TableReport
     // the plain names and ReadStrict on every refusal and ok otherwise.
     // unknown, widened and retained alone leave it ok.
     TableRefuseReason refuse_reason = ok;
+    // THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+    // an infinity is refused on its raw bits by every read, the tolerant one
+    // included, so a read that moves this refuses as non_finite_float and
+    // lands nothing. It is a count only so a read can tell its own refusal
+    // from a caller's report that already held one.
+    int32_t non_finite_floats = 0;
     // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
     // the hash and nothing else. Zero on every other path, and it stays LAST on
     // the report (§5.2, §5.9 #15).
     uint64_t layout_hash = 0;
 };
+
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the rule of 2026-10-27, the
+// packet wire's own): a NaN or an infinity, whatever its
+// sign or payload, has an all-ones exponent, and that is the whole test. Every
+// read runs it on the RAW BITS, before they become a float and before the
+// field is written; every writer runs it on the bits of the value it was
+// handed. -0 and the subnormals are finite and ride bit-exact.
+inline bool TableBitsFinite32( uint32_t bits ) { return ( bits & 0x7F800000u ) != 0x7F800000u; }
+inline bool TableBitsFinite64( uint64_t bits ) { return ( bits & 0x7FF0000000000000ull ) != 0x7FF0000000000000ull; }
+
+// TableNonFiniteFloat is a read meeting one: the read is REFUSED by name,
+// non_finite_float, and the caller that started it lands nothing.
+inline void TableNonFiniteFloat( TableReport * report )
+{
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    report->non_finite_floats++;
+}
+
+// TableNonFiniteRefused is the load's own end: true when the walk met a
+// non-finite float since before, with the refusal stamped again over
+// whatever the walk met after it, because it outranks any damage (§3.3).
+inline bool TableNonFiniteRefused( TableReport * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return false; }
+    report->refused = true;
+    report->reason = non_finite_float;
+    report->refuse_reason = non_finite_float;
+    return true;
+}
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 //
 // Static field descriptors for every type in the table closure: name, wire
@@ -2262,6 +2299,10 @@ inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+// the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
+// never written, and measure answers -1 for it as save answers false
+inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
+inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_double_to_bits( d ) ); }
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every

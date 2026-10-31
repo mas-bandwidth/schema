@@ -3238,7 +3238,6 @@ static void test_golden_reload()
     reload_table_golden( "scalars_full", scalardemo::SimStateLoad, scalardemo::SimStateSave );
     reload_table_golden( "scalars_default", scalardemo::SimStateLoad, scalardemo::SimStateSave );
     reload_table_golden( "scalars_edges", scalardemo::SimStateLoad, scalardemo::SimStateSave );
-    reload_table_golden( "floats_nan", tblf1::FloatsLoad, tblf1::FloatsSave );
     reload_table_golden( "v2_seams", tblv2::CfgLoad, tblv2::CfgSave );
     reload_table_golden( "chain_value", tblp1::ChainLoad, tblp1::ChainSave );
     reload_table_golden( "chain_value_empty", tblp1::ChainLoad, tblp1::ChainSave );
@@ -3508,15 +3507,16 @@ static void test_golden_wire()
         pin_table_golden( "scalars_edges", buffer, wrote );
     }
     {
-        // THE FLOAT BIT-PATTERN PIN (docs/SPEC-TABLES.md §3, schema#480): a
-        // signalling NaN and a NaN with a nonzero payload, at both widths and
-        // as array elements. Nothing canonicalizes a float on the way to the
-        // wire, so these 32 bits are what the file holds.
+        // THE FLOAT PIN IS FROZEN (docs/SPEC-TABLES.md §3.3): a signalling NaN
+        // and a NaN with a nonzero payload, at both widths and as array
+        // elements, are not values of the type, so the writer REFUSES the
+        // instance testdata/wire/tables/floats_nan.bin was written from, and
+        // that file stays as committed — the shared must-refuse vector every
+        // leg's read refuses (test/tables/floatnan_main.cpp holds the reads).
         static tblf1::Floats f;
         build_golden_floats_nan( f );
-        int64_t wrote = tblf1::FloatsSave( f, buffer, sizeof( buffer ) );
-        CHECK( wrote > 0 && wrote == tblf1::FloatsMeasure( f ) );
-        pin_table_golden( "floats_nan", buffer, wrote );
+        CHECK( tblf1::FloatsMeasure( f ) == -1 );
+        CHECK( tblf1::FloatsSave( f, buffer, sizeof( buffer ) ) == -1 );
     }
 }
 
