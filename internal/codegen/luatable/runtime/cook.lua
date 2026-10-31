@@ -53,53 +53,31 @@ end
 -- base. Lua strings have no caller-supplied base, so the last clause is the
 -- null buffer alone.
 local function open_header(T, name, bytes)
-  if type(bytes) ~= "string" or bytes == nil then
-    return refuse("unaligned_base")
-  end
+  if type(bytes) ~= "string" or bytes == nil then return refuse("unaligned_base") end
   local n = #bytes
-  if n < HEADER_BYTES then
-    return refuse("truncated")
-  end
+  if n < HEADER_BYTES then return refuse("truncated") end
   local magic = string.unpack("<I8", bytes, 1)
   if magic ~= MAGIC then
-    if string.unpack(">I8", bytes, 1) == MAGIC then
-      return refuse("foreign_order")
-    end
+    if string.unpack(">I8", bytes, 1) == MAGIC then return refuse("foreign_order") end
     return refuse("not_a_cook")
   end
-  if u64(bytes, 16) ~= 1 then
-    return refuse("not_a_cook")
-  end
+  if u64(bytes, 16) ~= 1 then return refuse("not_a_cook") end
   local build = u64(bytes, 8)
-  if build ~= T.BuildVersion then
-    return refuse("wrong_build_version")
-  end
-  if u64(bytes, 48) ~= 0 or u64(bytes, 56) ~= 0 then
-    return refuse("reserved_not_zero")
-  end
+  if build ~= T.BuildVersion then return refuse("wrong_build_version") end
+  if u64(bytes, 48) ~= 0 or u64(bytes, 56) ~= 0 then return refuse("reserved_not_zero") end
   local data_length = u64(bytes, 24)
   local attrib_length = u64(bytes, 32)
   local alignment = u64(bytes, 40)
   local root = T.Tables[name]
-  if root == nil then
-    return refuse("bad_layout")
-  end
+  if root == nil then return refuse("bad_layout") end
   if alignment < 8 or alignment > MAX_ALIGN or (alignment & (alignment - 1)) ~= 0 or alignment % root.align ~= 0 then
     return refuse("bad_alignment")
   end
   local data_offset = align_up(HEADER_BYTES, alignment)
-  if n < data_offset then
-    return refuse("truncated")
-  end
-  if data_length < 0 or attrib_length < 0 or data_length > n - data_offset then
-    return refuse("truncated")
-  end
-  if attrib_length ~= n - data_offset - data_length then
-    return refuse("truncated")
-  end
-  if data_length < root.size then
-    return refuse("truncated")
-  end
+  if n < data_offset then return refuse("truncated") end
+  if data_length < 0 or attrib_length < 0 or data_length > n - data_offset then return refuse("truncated") end
+  if attrib_length ~= n - data_offset - data_length then return refuse("truncated") end
+  if data_length < root.size then return refuse("truncated") end
   return {
     T = T,
     name = name,
@@ -116,12 +94,8 @@ end
 -- id, both u64 and both in the producer's order.
 local function directory(h)
   local n = h.attrib_length
-  if n == 0 then
-    return nil, "bad_layout"
-  end
-  if n % 16 ~= 0 then
-    return nil, "bad_layout"
-  end
+  if n == 0 then return nil, "bad_layout" end
+  if n % 16 ~= 0 then return nil, "bad_layout" end
   local out = {}
   for i = 0, n / 16 - 1 do
     local at = h.attrib_offset + i * 16
@@ -142,9 +116,7 @@ local function check_directory(h, dir)
   end
   local prev_end = 0
   for i, e in ipairs(dir) do
-    if e.offset == NOT_MATERIALIZED then
-      return "bad_layout"
-    end
+    if e.offset == NOT_MATERIALIZED then return "bad_layout" end
     local st = by_id[e.type_id]
     local size, align
     if st ~= nil then
@@ -154,18 +126,10 @@ local function check_directory(h, dir)
     else
       return "bad_layout"
     end
-    if i == 1 and (e.offset ~= 0 or st == nil) then
-      return "bad_layout"
-    end
-    if e.offset < prev_end then
-      return "bad_layout"
-    end
-    if e.offset % align ~= 0 then
-      return "bad_layout"
-    end
-    if e.offset + size > h.data_length then
-      return "bad_layout"
-    end
+    if i == 1 and (e.offset ~= 0 or st == nil) then return "bad_layout" end
+    if e.offset < prev_end then return "bad_layout" end
+    if e.offset % align ~= 0 then return "bad_layout" end
+    if e.offset + size > h.data_length then return "bad_layout" end
     prev_end = e.offset + size
   end
   return nil
@@ -176,7 +140,12 @@ end
 -- element-array and map-slot clauses; arrays remembers what is already placed
 -- in that node so no two overlap. All reset per node.
 local function new_scan(h, dir)
-  return { h = h, data = string.sub(h.bytes, h.data_offset + 1, h.data_offset + h.data_length), dir = dir, by_offset = nil }
+  return {
+    h = h,
+    data = string.sub(h.bytes, h.data_offset + 1, h.data_offset + h.data_length),
+    dir = dir,
+    by_offset = nil,
+  }
 end
 
 local function index_offsets(s)
@@ -190,45 +159,27 @@ local function index_offsets(s)
 end
 
 local function array_extent(at, delta, count, size, base, extent)
-  if base < 0 or extent < base or at < base or at > extent or count < 0 or size <= 0 then
-    return nil
-  end
-  if delta < base - at or delta > extent - at then
-    return nil
-  end
+  if base < 0 or extent < base or at < base or at > extent or count < 0 or size <= 0 then return nil end
+  if delta < base - at or delta > extent - at then return nil end
   local start = at + delta
-  if count > (extent - start) // size then
-    return nil
-  end
+  if count > (extent - start) // size then return nil end
   return start, start + count * size
 end
 
 local function placed_array(s, at, size, align)
   local delta = u64(s.data, at)
   local count = i32(s.data, at + 8)
-  if count < 0 then
-    return nil
-  end
+  if count < 0 then return nil end
   if delta == 0 then
-    if count ~= 0 then
-      return nil
-    end
+    if count ~= 0 then return nil end
     return 0, 0
   end
-  if count == 0 then
-    return nil
-  end
+  if count == 0 then return nil end
   local start, finish = array_extent(at, delta, count, size, s.base, s.extent)
-  if start == nil then
-    return nil
-  end
-  if start % align ~= 0 then
-    return nil
-  end
+  if start == nil then return nil end
+  if start % align ~= 0 then return nil end
   for _, other in ipairs(s.arrays) do
-    if start < other.finish and other.start < finish then
-      return nil
-    end
+    if start < other.finish and other.start < finish then return nil end
   end
   s.arrays[#s.arrays + 1] = { start = start, finish = finish }
   return start, count
@@ -236,9 +187,7 @@ end
 
 local function companion(s, at, bound)
   local n = i32(s.data, at)
-  if n < 0 or n > bound then
-    return false
-  end
+  if n < 0 or n > bound then return false end
   return true
 end
 
@@ -250,15 +199,11 @@ local record, field, element, ref, key_order
 -- inside the region, pass one having proved both.
 ref = function(s, at, f)
   local delta = u64(s.data, at)
-  if delta == 0 then
-    return true
-  end
+  if delta == 0 then return true end
   local target = at + delta
   local by_offset = index_offsets(s)
   local slot = by_offset[target]
-  if slot == nil then
-    return false
-  end
+  if slot == nil then return false end
   local want
   if f.shape == "string_blob" then
     want = s.h.T.StringBlobTypeId
@@ -276,9 +221,7 @@ end
 -- walked.
 local function union(s, at, f)
   local un = s.h.T.Unions[f.target]
-  if un == nil then
-    return false
-  end
+  if un == nil then return false end
   local tag
   if un.tag == 1 then
     tag = string.unpack("<I1", s.data, at + 1)
@@ -289,20 +232,12 @@ local function union(s, at, f)
   else
     tag = string.unpack("<I8", s.data, at + 1)
   end
-  if tag == 0 then
-    return true
-  end
-  if tag > #un.arms then
-    return false
-  end
+  if tag == 0 then return true end
+  if tag > #un.arms then return false end
   local arm = un.arms[tag]
-  if arm.field == nil then
-    return true
-  end
+  if arm.field == nil then return true end
   local armAt = at + un.arm_offset
-  if arm.field.shape == "table" then
-    return record(s, armAt, s.h.T.Tables[arm.field.target])
-  end
+  if arm.field.shape == "table" then return record(s, armAt, s.h.T.Tables[arm.field.target]) end
   return field(s, armAt, arm.field)
 end
 
@@ -310,9 +245,7 @@ end
 -- storage; a float is tested for finiteness and any other scalar steers
 -- nothing.
 element = function(s, at, elem)
-  if elem == nil then
-    return true
-  end
+  if elem == nil then return true end
   if elem.shape == "float" then
     -- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the check is the cook's
     -- strict validator (§7), and it refuses a NaN or an infinity on its raw
@@ -323,7 +256,10 @@ element = function(s, at, elem)
     else
       bad = string.unpack("<i8", s.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000
     end
-    if bad then s.nonFinite = true; return false end
+    if bad then
+      s.nonFinite = true
+      return false
+    end
     return true
   end
   if elem.shape == "pointer" or elem.shape == "string_blob" or elem.shape == "bytes_blob" then
@@ -341,9 +277,7 @@ end
 local function slots(s, at, f, n)
   local step = f.elem_step
   for i = 0, n - 1 do
-    if not element(s, at + i * step, f.elem) then
-      return false
-    end
+    if not element(s, at + i * step, f.elem) then return false end
   end
   return true
 end
@@ -355,45 +289,33 @@ end
 -- a cook's Find is a binary search over them.
 local function list(s, at, f)
   local start, count = placed_array(s, at, f.elem_size, f.elem_align)
-  if start == nil or count == 0 then
-    return start ~= nil
-  end
+  if start == nil or count == 0 then return start ~= nil end
   return slots(s, start, f, count)
 end
 
 local function map_slot(s, at, f)
   local entry = s.h.T.Tables[f.entry]
-  if entry == nil then
-    return false
-  end
+  if entry == nil then return false end
   local start, count = placed_array(s, at, entry.size, entry.align)
-  if start == nil or count == 0 then
-    return start ~= nil
-  end
+  if start == nil or count == 0 then return start ~= nil end
   for i = 0, count - 1 do
-    if not record(s, start + i * entry.size, entry) then
-      return false
-    end
+    if not record(s, start + i * entry.size, entry) then return false end
   end
   local key
   for _, fl in ipairs(entry.fields) do
     if fl.name == f.key_field.name then key = fl end
   end
-  if key == nil then
-    return false
-  end
+  if key == nil then return false end
   for i = 1, count - 1 do
     local order = key_order(s, key, entry, start + (i - 1) * entry.size, start + i * entry.size)
-    if order == nil or order >= 0 then
-      return false
-    end
+    if order == nil or order >= 0 then return false end
   end
   return true
 end
 
 -- key_order compares two stored map keys: a bounded string by its used bytes,
 -- an integer at its own signedness.
-local function used_bytes(s, key, entry, at)
+local function used_bytes(s, key, _entry, at)
   at = at + key.at
   local n = i32(s.data, at + key.companion)
   if n < 0 then n = 0 end
@@ -447,9 +369,7 @@ end
 -- one FIELD (§7.4): map slot, pointer slot, count companion, bounded or
 -- keyed array, element array, or a scalar that steers nothing.
 field = function(s, at, f)
-  if f == nil then
-    return true
-  end
+  if f == nil then return true end
   local shape = f.shape
   if shape == "map" then
     return map_slot(s, at, f)
@@ -457,9 +377,7 @@ field = function(s, at, f)
     return ref(s, at, f)
   end
   if shape == "array" then
-    if f.list then
-      return list(s, at, f)
-    end
+    if f.list then return list(s, at, f) end
     local n = f.bound
     if f.fixed or f.keyed ~= nil then
       if not slots(s, at, f, n) then return false end
@@ -469,9 +387,7 @@ field = function(s, at, f)
     end
     return true
   end
-  if shape == "string" or shape == "bytes" or shape == "wstring" then
-    return companion(s, at + f.companion, f.bound)
-  end
+  if shape == "string" or shape == "bytes" or shape == "wstring" then return companion(s, at + f.companion, f.bound) end
   return element(s, at, f)
 end
 
@@ -479,13 +395,9 @@ end
 -- its own offset (§7.4's "the companions of fixed-size tables and plain types
 -- nested by value").
 record = function(s, base, st)
-  if st == nil then
-    return false
-  end
+  if st == nil then return false end
   for _, f in ipairs(st.fields) do
-    if not field(s, base + f.at, f) then
-      return false
-    end
+    if not field(s, base + f.at, f) then return false end
   end
   return true
 end
@@ -497,9 +409,7 @@ local function node(s, base, extent, type_id, st)
   if st == nil then
     local length = u32(s.data, base)
     local need = BLOB_HEADER + length
-    if type_id == s.h.T.StringBlobTypeId then
-      need = need + 1
-    end
+    if type_id == s.h.T.StringBlobTypeId then need = need + 1 end
     return need <= extent
   end
   s.base, s.extent, s.arrays = base, base + extent, {}
@@ -516,9 +426,7 @@ local function scan(h, dir)
   end
   for i, e in ipairs(dir) do
     local extent = h.data_length - e.offset
-    if i < #dir then
-      extent = dir[i + 1].offset - e.offset
-    end
+    if i < #dir then extent = dir[i + 1].offset - e.offset end
     if not node(s, e.offset, extent, e.type_id, by_id[e.type_id]) then
       if s.nonFinite then return "non_finite_float" end
       return "bad_layout"
@@ -541,16 +449,12 @@ end
 -- reference's null base, unaligned_base, which open_header answers first.
 function C.Open(T, name, bytes, base_offset)
   local h, why = open_header(T, name, bytes)
-  if h == nil then
-    return nil, why
-  end
+  if h == nil then return nil, why end
   -- THE ALIGNMENT OF THE BASE: the header pads the data part to the region's
   -- alignment, and the alignment divides 64, so the derived data offset
   -- carries the property from the file's base to the region's. A base that is
   -- not aligned is the CALLER's placement, not the file's.
-  if (base_offset or 0) % h.alignment ~= 0 then
-    return nil, "unaligned_base"
-  end
+  if (base_offset or 0) % h.alignment ~= 0 then return nil, "unaligned_base" end
   h.root = T.Tables[name]
   return h
 end
@@ -562,21 +466,13 @@ end
 -- runs it.
 function C.Check(T, name, bytes, base_offset)
   local h, why = C.Open(T, name, bytes, base_offset)
-  if h == nil then
-    return nil, why
-  end
+  if h == nil then return nil, why end
   local dir, dw = directory(h)
-  if dir == nil then
-    return nil, dw
-  end
+  if dir == nil then return nil, dw end
   local cw = check_directory(h, dir)
-  if cw ~= nil then
-    return nil, cw
-  end
+  if cw ~= nil then return nil, cw end
   local sw = scan(h, dir)
-  if sw ~= nil then
-    return nil, sw
-  end
+  if sw ~= nil then return nil, sw end
   h.dir = dir
   return h
 end

@@ -122,7 +122,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			}
 		}
 		m.Body.WriteString("return _M\n")
-		out[f.Base+"."+ext] = assemble(m, f.Base == home)
+		out[f.Base+"."+ext] = Format(assemble(m, f.Base == home))
 	}
 	maps.Copy(out, rt)
 	return out, nil
@@ -352,11 +352,11 @@ func emitStorageField(m *Module, f *ir.Field) {
 		elem := ZeroValue(m, f.Type)
 		if isTableValue(elem) {
 			// a fresh table per element: never one table aliased N times
-			m.Printf("    %s = build(%d, function() return %s end),\n", k, f.ArrayBound, elem)
-			m.Helper("build", "local function build(n, make)\n  local t = {}\n  for i = 1, n do t[i] = make() end\n  return t\nend\n")
+			m.Printf("    %s = build(%d, function()\n      return %s\n    end),\n", k, f.ArrayBound, elem)
+			m.Helper("build", "local function build(n, make)\n  local t = {}\n  for i = 1, n do\n    t[i] = make()\n  end\n  return t\nend\n")
 		} else {
 			m.Printf("    %s = fill(%d, %s),\n", k, f.ArrayBound, elem)
-			m.Helper("fill", "local function fill(n, v)\n  local t = {}\n  for i = 1, n do t[i] = v end\n  return t\nend\n")
+			m.Helper("fill", "local function fill(n, v)\n  local t = {}\n  for i = 1, n do\n    t[i] = v\n  end\n  return t\nend\n")
 		}
 		if f.Array == ir.ArrayCounted {
 			// a [A..B] count is born at A (SPEC §4.6); [..N] is born empty

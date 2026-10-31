@@ -556,7 +556,10 @@ func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 // carries the same frame check but a different elseif line).
 const luaFuzzControlAnchor = `  elseif s == "string" then
     local n = r_leb(r)
-    if r.bad or not fits(r, n) then report.malformed = true; return false end`
+    if r.bad or not fits(r, n) then
+      report.malformed = true
+      return false
+    end`
 
 // TestLuaWireFuzzNegativeControl patches the emitted load in memory — one
 // anchor, matched exactly once — so a string frame length past the body stops
@@ -565,7 +568,7 @@ const luaFuzzControlAnchor = `  elseif s == "string" then
 func TestLuaWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, luaFuzzCost)
-	sabotaged := strings.Replace(luaFuzzControlAnchor, "report.malformed = true; return false", "return false", 1)
+	sabotaged := strings.Replace(luaFuzzControlAnchor, "report.malformed = true\n", "", 1)
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luaFuzzControlAnchor); n != 1 {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage anchor appears %d times in load.lua, want 1", n)

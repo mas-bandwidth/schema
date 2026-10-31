@@ -110,10 +110,29 @@
         "conformance-negative-control-go",
         "conformance-negative-control-go-walk",
         "tables-go-wire-fuzz-negative-control",
-        "conformance-negative-control-lua",
-        "packet-finite-lua-negative-control",
         "conformance-go-rows-negative-control"
       ]
+    },
+    {
+      "name": "lua-format",
+      "when": "pull-request",
+      "why": "the Lua format gate's control: one generated module with its first one-line early-out spelled as a block must fail the pinned StyLua's --check by name, and the unplanted copy pass. It needs only bin/schema's Lua build and the sha256-pinned StyLua the target fetches itself (make dist-stylua), no interpreter.",
+      "targets": [
+        "tables-lua-format-negative-control"
+      ]
+    },
+    {
+      "name": "lua",
+      "when": "pull-request",
+      "why": "the Lua port's controls on the pinned PUC-Rio 5.4.8 the row builds with make dist-lua: the two emitter sabotages through go build -overlay (the load report's counter, red on exactly lua / report and retain; the text walk's key match, red on exactly lua / json-read and json-hostile with json-write and wire green), the nightly fuzz lane's planted missing length bound (red in 4000 seeded iterations, its saved input red on replay and green on the clean tree), and the resource-bounds raised depth cap (the deep-nesting shape stops refusing as text_limit). They share bin/schema, build/schema-lua and the interpreter, and nothing else in the leg needs them.",
+      "targets": [
+        "conformance-negative-control-lua",
+        "packet-finite-lua-negative-control",
+        "conformance-negative-control-lua-walk",
+        "schema-lua-fuzz-negative-control",
+        "schema-lua-resource-bounds-negative-control"
+      ],
+      "lua": "5.4.8"
     },
     {
       "name": "base-conformance-cpp",
@@ -834,12 +853,11 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The Lua generated-luacheck plant is here because its checker is fleet software and its corpus build is the one part of that lens that spends seconds; the lens itself runs on the card's own push workflow. The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
-        "schema-go-generated-golangci-lint-gate-negative-control-ratchet",
-        "tables-lua-luacheck-negative-control"
+        "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
       ]
     },
     {
@@ -946,16 +964,12 @@
       "reason": "the Lua leg's finite-float reversed witness (docs/SPEC-TABLES.md §3.3) is the Go test TestLuaFiniteFloatNegativeControl in internal/codegen/luatable, which ci-full.yml's go-test job runs under the pinned Lua 5.4.8 (make dist-lua) on every pull request, as part of go test ./...; the shared negative-control leg has no Lua toolchain to run it a second time."
     },
     {
-      "target": "schema-lua-fuzz-negative-control",
-      "reason": "the planted-bad-pattern control for the Lua port's nightly fuzz lane. It runs on the lane's own fast job (push and pull request) in .github/workflows/schema-lua-nightly-fuzz.yml (make schema-lua-fuzz-negative-control), and that job builds the port's pinned Lua 5.4.8 with make dist-lua from www.lua.org at the sha256 make/lua.mk names; the shared negative-control leg has no Lua toolchain to run it. The friction target's oracle needs the generated Lua readers and the seeded mutation run, so it stays on the lane's own bench rather than the base row."
-    },
-    {
       "target": "schema-lua-version-differential-negative-control",
       "reason": "the card's own workflow (.github/workflows/schema-lua-version-differential.yml) runs the four-interpreter differential on the nightly schedule and on workflow_dispatch, and its negative-control job runs this plant there. The shared leg carries no Lua toolchain; running it here too would need the four interpreters on a runner and prove the same gate a second time."
     },
     {
-      "target": "schema-lua-resource-bounds-negative-control",
-      "reason": "the Lua port's own workflow (.github/workflows/schema-lua-resource-bounds.yml) runs this planted-pattern control on its fast job on push and pull request (path-filtered to the lane's make file, test file and workflow), and that job builds the pinned Lua 5.4.8 with make dist-lua; the shared negative-control leg has no Lua toolchain to run it."
+      "target": "tables-lua-luacheck-negative-control",
+      "reason": "the Lua luacheck lens's own planted dead local. .github/workflows/schema-lua-generated-luacheck-gate.yml runs the lens and this control on every push and pull request on the fleet runner that carries the pinned luacheck 1.2.0 (make/schema-lua-generated-luacheck-gate.mk probes it by version); the shared leg's hosted runners carry no luacheck, so running it here would only prove the tool missing."
     }
   ]
 }

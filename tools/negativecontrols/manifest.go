@@ -58,6 +58,10 @@ type Group struct {
 	Java   string `json:"java,omitempty"`
 	OTP    string `json:"otp,omitempty"`
 	Elixir string `json:"elixir,omitempty"`
+	// Lua is the pinned PUC-Rio interpreter's version: a row that names it
+	// builds it with `make dist-lua` (make/lua.mk holds the pin and its
+	// sha256) before its controls run.
+	Lua string `json:"lua,omitempty"`
 }
 
 // Exclusion is a control the leg does not run, and why. An exclusion is a
@@ -184,6 +188,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		Java   string `json:"java"`
 		OTP    string `json:"otp"`
 		Elixir string `json:"elixir"`
+		Lua    string `json:"lua"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -202,6 +207,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			Java:   g.Java,
 			OTP:    g.OTP,
 			Elixir: g.Elixir,
+			Lua:    g.Lua,
 		})
 	}
 	return json.Marshal(struct {

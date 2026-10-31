@@ -60,9 +60,7 @@ check_value = function(T, where, d, v, elem)
   elseif s == "int" or s == "flags" then
     if math.type(v) ~= "integer" or not (elem or v == d.default) then return fail(where, "integer at its default") end
   elseif s == "float" then
-    if math.type(v) ~= "float" or not (elem or v == d.default) then
-      return fail(where, "float at its default")
-    end
+    if math.type(v) ~= "float" or not (elem or v == d.default) then return fail(where, "float at its default") end
   elseif s == "string" or s == "bytes" then
     if type(v) ~= "string" or not (elem or v == d.default) then return fail(where, "byte string at its default") end
   elseif s == "wstring" then
@@ -127,9 +125,7 @@ end
 -- D.list_layout returns the element size and alignment of an array/list field
 -- (ir.ListElementLayout) from its descriptor.
 function D.list_layout(T, f)
-  if f.elem_size ~= nil and f.elem_align ~= nil then
-    return f.elem_size, f.elem_align
-  end
+  if f.elem_size ~= nil and f.elem_align ~= nil then return f.elem_size, f.elem_align end
   local e = f.elem
   if e == nil then return 0, 1 end
   if e.shape == "table" and T ~= nil and T.Tables ~= nil then
@@ -153,7 +149,7 @@ function D.pointer_reachable(T, root)
   if start == nil then return nodes, false, false end
   local visited = {}
   local visit_struct, visit_field, visit_elem
-  visit_elem = function(e, parent_f)
+  visit_elem = function(e, _parent_f)
     if e == nil then return end
     local s = e.shape
     if s == "pointer" then
@@ -231,8 +227,7 @@ local function deprecated_value(T, d, val, where, seen)
   elseif s == "map" then
     if type(val) ~= "table" then return nil end
     for k, x in pairs(val) do
-      local hit = deprecated_value(T, d.key_field, k, where, seen) or
-        deprecated_value(T, d.value_field, x, where, seen)
+      local hit = deprecated_value(T, d.key_field, k, where, seen) or deprecated_value(T, d.value_field, x, where, seen)
       if hit then return hit end
     end
   elseif s == "table" or s == "pointer" then

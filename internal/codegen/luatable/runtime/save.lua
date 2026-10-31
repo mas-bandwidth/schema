@@ -18,7 +18,7 @@ local load = require("load")
 local D = require("descriptor")
 local crc32c = load.crc32c
 
-local NODE_TABLE_ID = -1         -- 0xffffffffffffffff
+local NODE_TABLE_ID = -1 -- 0xffffffffffffffff
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 local MAX64 = 0xffffffffffffffff
@@ -45,19 +45,32 @@ local function w_leb(w, v)
   repeat
     local b = v & 0x7f
     v = v >> 7
-    if v ~= 0 then out[#out + 1] = string.char(b | 0x80) else out[#out + 1] = string.char(b) end
+    if v ~= 0 then
+      out[#out + 1] = string.char(b | 0x80)
+    else
+      out[#out + 1] = string.char(b)
+    end
   until v == 0
   w_raw(w, table.concat(out))
 end
 
-local function w_u64(w, v) w_raw(w, string.pack("<i8", v)) end
-local function w_f64(w, v) w_raw(w, string.pack("<d", v)) end
+local function w_u64(w, v)
+  w_raw(w, string.pack("<i8", v))
+end
+local function w_f64(w, v)
+  w_raw(w, string.pack("<d", v))
+end
 
 local function w_int(w, width, signed, v)
-  if width == 1 then w_u8(w, v)
-  elseif width == 2 then w_raw(w, signed and string.pack("<i2", v) or string.pack("<I2", v))
-  elseif width == 4 then w_raw(w, signed and string.pack("<i4", v) or string.pack("<I4", v))
-  else w_u64(w, v) end
+  if width == 1 then
+    w_u8(w, v)
+  elseif width == 2 then
+    w_raw(w, signed and string.pack("<i2", v) or string.pack("<I2", v))
+  elseif width == 4 then
+    w_raw(w, signed and string.pack("<i4", v) or string.pack("<I4", v))
+  else
+    w_u64(w, v)
+  end
 end
 
 -- A FLOAT RIDES AS THE BIT PATTERN OF A FINITE VALUE (docs/SPEC-TABLES.md
@@ -170,7 +183,9 @@ local function map_entries(cache, fd, x)
   if got ~= nil then return got end
   local kf = fd.key_field
   local keys = {}
-  for key in pairs(x) do keys[#keys + 1] = key end
+  for key in pairs(x) do
+    keys[#keys + 1] = key
+  end
   table.sort(keys, function(a, b)
     if kf.shape == "string" then return bytes_less(a, b) end
     if kf.signed or kf.width < 8 then return a < b end
@@ -179,7 +194,9 @@ local function map_entries(cache, fd, x)
   local keyname = kf.name
   local valname = fd.value_field.name
   got = {}
-  for i, key in ipairs(keys) do got[i] = { [keyname] = key, [valname] = x[key] } end
+  for i, key in ipairs(keys) do
+    got[i] = { [keyname] = key, [valname] = x[key] }
+  end
   cache[x] = got
   return got
 end
@@ -209,14 +226,18 @@ edge_value = function(T, fd, val, holder, name, out, cache)
   elseif s == "array" then
     local n = count_of(fd, val)
     local e = fd.elem
-    for i = 1, n do edge_value(T, e, val[i], val, i, out, cache) end
+    for i = 1, n do
+      edge_value(T, e, val[i], val, i, out, cache)
+    end
   elseif s == "union" then
     edge_union(T, T.Unions[fd.target], val, out, cache)
   elseif s == "map" then
     -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
     -- entries in ascending key order, each descended before the next
     local d = T.Tables[fd.entry]
-    for _, kv in ipairs(map_entries(cache, fd, val)) do edges(T, d, kv, out, cache) end
+    for _, kv in ipairs(map_entries(cache, fd, val)) do
+      edges(T, d, kv, out, cache)
+    end
   end
 end
 
@@ -253,7 +274,9 @@ number_nodes = function(T, desc, root)
   local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
   while #stack > 0 do
     local top = stack[#stack]
-    if top.i >= #top.edges then open[top.v] = nil; stack[#stack] = nil
+    if top.i >= #top.edges then
+      open[top.v] = nil
+      stack[#stack] = nil
     else
       local e = top.edges[top.i + 1]
       top.i = top.i + 1
@@ -318,8 +341,11 @@ local function at_default(fd, v)
     local es = e.shape
     if es == "table" then return false end
     local def = 0
-    if es == "bool" or es == "enum" or es == "pointer" or es == "string_blob" or es == "bytes_blob" then def = false
-    elseif es == "string" or es == "bytes" then def = "" end
+    if es == "bool" or es == "enum" or es == "pointer" or es == "string_blob" or es == "bytes_blob" then
+      def = false
+    elseif es == "string" or es == "bytes" then
+      def = ""
+    end
     for i = 1, n do
       local e1 = x[i]
       if es == "union" then
@@ -330,14 +356,18 @@ local function at_default(fd, v)
         if e1 == nil then e1 = def end
         if es == "float" then
           if not same_float(e.f32, e1, def) then return false end
-        elseif e1 ~= def then return false end
+        elseif e1 ~= def then
+          return false
+        end
       end
     end
     return true
   end
   if s == "map" then
     local n = 0
-    for _ in pairs(x or {}) do n = n + 1 end
+    for _ in pairs(x or {}) do
+      n = n + 1
+    end
     return n == 0
   end
   if s == "wstring" then return x == nil or #x == 0 end
@@ -354,7 +384,9 @@ local function at_default(fd, v)
 end
 
 local function id_ref(ids, id)
-  for i, v in ipairs(ids.list) do if v == id then return i end end
+  for i, v in ipairs(ids.list) do
+    if v == id then return i end
+  end
   ids.list[#ids.list + 1] = id
   return #ids.list
 end
@@ -362,7 +394,9 @@ end
 -- AN ENUM-KEYED ELEMENT (§2.4, §3.2): its payload is bare — the key's L
 -- frames it — and a zero element does not ride, so the pair is absent.
 local function id_rollback(ids, keep)
-  for i = #ids.list, keep + 1, -1 do ids.list[i] = nil end
+  for i = #ids.list, keep + 1, -1 do
+    ids.list[i] = nil
+  end
 end
 
 local function write_keyed_one(T, ids, nodes, e, val, w)
@@ -383,11 +417,18 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     w_raw(w, val)
   elseif s == "wstring" then
     if val == nil or #val == 0 then return true, false end
-    for i = 1, #val do w_raw(w, string.pack("<I2", val[i])) end
+    for i = 1, #val do
+      w_raw(w, string.pack("<I2", val[i]))
+    end
   elseif s == "enum" then
     if val == nil or val == false then return true, false end
     local vref = 0
-    for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end
+    for _, var in ipairs(e.variants) do
+      if var[1] == val then
+        vref = id_ref(ids, var[2])
+        break
+      end
+    end
     if vref == 0 then return false end
     w_leb(w, vref)
   elseif s == "pointer" then
@@ -404,7 +445,9 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
     if not write_union(T, ids, nodes, u, val, w) then return false end
   elseif s == "bytes" then
     if val == nil or #val == 0 then return true, false end
-    w_u8(w, 6); w_leb(w, #val); w_raw(w, val)
+    w_u8(w, 6)
+    w_leb(w, #val)
+    w_raw(w, val)
   else
     return false
   end
@@ -420,11 +463,15 @@ write_field = function(T, ids, nodes, fd, v, w)
   local s = fd.shape
   if s == "bool" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 1); w_u8(w, x and 1 or 0)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 1)
+      w_u8(w, x and 1 or 0)
     end
   elseif s == "int" or s == "flags" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, fd.kind)
+      w_int(w, fd.width, fd.signed, x or 0)
     end
   elseif s == "wide" then
     -- int128/uint128 and fixed128/ufixed128: sixteen bytes, the low 64-bit
@@ -433,58 +480,88 @@ write_field = function(T, ids, nodes, fd, v, w)
     -- FIXED-POINT).
     if (fd.optional or fd.required) or not at_default(fd, v) then
       local q = x or { lo = 0, hi = 0 }
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
-      w_raw(w, string.pack("<i8", q.lo)); w_raw(w, string.pack("<i8", q.hi))
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, fd.kind)
+      w_raw(w, string.pack("<i8", q.lo))
+      w_raw(w, string.pack("<i8", q.hi))
     end
   elseif s == "float" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, fd.kind)
       if not w_float(w, fd.f32, x) then return false end
     end
   elseif s == "string" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 12); w_leb(w, #x); w_raw(w, x)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 12)
+      w_leb(w, #x)
+      w_raw(w, x)
     end
   elseif s == "wstring" then
     -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
     -- little-endian, L their byte count; it rides when it holds a unit
     if (fd.optional or fd.required) or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_leb(w, #x * 2)
-      for i = 1, #x do w_raw(w, string.pack("<I2", x[i])) end
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, fd.kind)
+      w_leb(w, #x * 2)
+      for i = 1, #x do
+        w_raw(w, string.pack("<I2", x[i]))
+      end
     end
   elseif s == "bytes" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 14)
       local body = W()
-      w_u8(body, 6); w_leb(body, #x); w_raw(body, x)
-      w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+      w_u8(body, 6)
+      w_leb(body, #x)
+      w_raw(body, x)
+      w_leb(w, body.n)
+      w_raw(w, table.concat(body.parts))
     end
   elseif s == "enum" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
       local ref = id_ref(ids, fd.id)
       local vref = 0
       if x ~= nil then
-        for _, var in ipairs(fd.variants) do if var[1] == x then vref = id_ref(ids, var[2]); break end end
+        for _, var in ipairs(fd.variants) do
+          if var[1] == x then
+            vref = id_ref(ids, var[2])
+            break
+          end
+        end
       end
       if vref == 0 and x ~= nil then return false end
-      w_leb(w, ref); w_u8(w, 30); w_leb(w, vref)
+      w_leb(w, ref)
+      w_u8(w, 30)
+      w_leb(w, vref)
     end
   elseif s == "pointer" then
     -- null is elided (§3.1); false is null where nil cannot be held (a map
     -- entry's value, as a sequence's element)
-    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
+    if x ~= nil and x ~= false then
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 17)
+      w_leb(w, nodes.index[x])
+    end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
     -- node's own box, never its content and never the slot that names it.
     -- A required blob rides even at nil, as the null node (§2.3, gotable
     -- write.go's pointer case).
-    if (x ~= nil and x ~= false) or fd.required then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
+    if (x ~= nil and x ~= false) or fd.required then
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 17)
+      w_leb(w, nodes.index[x] or 0)
+    end
   elseif s == "union" then
     local tag = x and x.tag or 0
     if tag ~= 0 or fd.required then
       local u = T.Unions[fd.target]
       if u == nil then return false end
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 15)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 15)
       if not write_union(T, ids, nodes, u, x, w) then return false end
     end
   elseif s == "table" then
@@ -494,8 +571,14 @@ write_field = function(T, ids, nodes, fd, v, w)
     local body = W()
     local ok = write_body(T, ids, nodes, d, x, body)
     if not ok then return false end
-    if not fd.required and not fd.optional and body.n <= 1 then ids.list[mark + 1] = nil; return true end
-    w_leb(w, ref); w_u8(w, 13); w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+    if not fd.required and not fd.optional and body.n <= 1 then
+      ids.list[mark + 1] = nil
+      return true
+    end
+    w_leb(w, ref)
+    w_u8(w, 13)
+    w_leb(w, body.n)
+    w_raw(w, table.concat(body.parts))
   elseif s == "array" then
     if fd.keyed ~= nil then
       local mark = #ids.list
@@ -513,14 +596,22 @@ write_field = function(T, ids, nodes, fd, v, w)
         if rides then
           count = count + 1
           w_leb(entries, keyref)
-          w_leb(entries, eb.n); w_raw(entries, table.concat(eb.parts))
+          w_leb(entries, eb.n)
+          w_raw(entries, table.concat(eb.parts))
         else
           id_rollback(ids, emark)
         end
       end
-      if count == 0 and not fd.optional and not fd.required then id_rollback(ids, mark); return true end
-      w_leb(outer, count); w_raw(outer, table.concat(entries.parts))
-      w_leb(w, ref); w_u8(w, fd.kind); w_leb(w, outer.n); w_raw(w, table.concat(outer.parts))
+      if count == 0 and not fd.optional and not fd.required then
+        id_rollback(ids, mark)
+        return true
+      end
+      w_leb(outer, count)
+      w_raw(outer, table.concat(entries.parts))
+      w_leb(w, ref)
+      w_u8(w, fd.kind)
+      w_leb(w, outer.n)
+      w_raw(w, table.concat(outer.parts))
     else
       if not fd.required and not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
@@ -533,9 +624,7 @@ write_field = function(T, ids, nodes, fd, v, w)
       if fd.elem.shape == "table" then
         local ep = T.Tables[fd.elem.target]
         local vf = ep and ep.fields[1]
-        if vf ~= nil and vf.shape == "string" and (fd.elem_kind == 12 or fd.total ~= nil) then
-          textvf = vf
-        end
+        if vf ~= nil and vf.shape == "string" and (fd.elem_kind == 12 or fd.total ~= nil) then textvf = vf end
       end
       if textvf ~= nil then
         local spent = 0
@@ -552,36 +641,46 @@ write_field = function(T, ids, nodes, fd, v, w)
         end
         if fd.total ~= nil and fd.total > 0 and spent > fd.total then return false end
       end
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 14)
       local body = W()
-      w_u8(body, fd.elem_kind); w_leb(body, n)
+      w_u8(body, fd.elem_kind)
+      w_leb(body, n)
       if fd.elem_kind == 12 and textvf ~= nil then
         for i = 1, n do
           local text = (x[i] ~= nil and x[i][textvf.name]) or ""
-          w_leb(body, #text); w_raw(body, text)
+          w_leb(body, #text)
+          w_raw(body, text)
         end
       else
         for i = 1, n do
           if not write_element(T, ids, nodes, fd.elem, x[i], body) then return false end
         end
       end
-      w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+      w_leb(w, body.n)
+      w_raw(w, table.concat(body.parts))
     end
   elseif s == "map" then
     local n = 0
-    for _ in pairs(x or {}) do n = n + 1 end
+    for _ in pairs(x or {}) do
+      n = n + 1
+    end
     if n == 0 and not fd.optional and not fd.required then return true end
-    w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
+    w_leb(w, id_ref(ids, fd.id))
+    w_u8(w, 14)
     local body = W()
-    w_u8(body, fd.elem_kind or 13); w_leb(body, n)
+    w_u8(body, fd.elem_kind or 13)
+    w_leb(body, n)
     local entry = T.Tables[fd.entry]
     for _, kv in ipairs(map_entries(nodes.entries, fd, x)) do
       local eb = W()
       local ok = write_body(T, ids, nodes, entry, kv, eb)
       if not ok then return false end
-      w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
+      w_leb(body, eb.n)
+      w_raw(body, table.concat(eb.parts))
     end
-    w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+    w_leb(w, body.n)
+    w_raw(w, table.concat(body.parts))
   else
     -- a shape the save does not carry refuses (jstable TableVariableWriteField)
     return false
@@ -592,34 +691,56 @@ end
 -- ONE ARRAY ELEMENT (§2.4, §3).
 write_element = function(T, ids, nodes, e, val, body)
   local s = e.shape
-  if s == "bool" then w_u8(body, val and 1 or 0)
-  elseif s == "int" or s == "flags" then w_int(body, e.width, e.signed, val or 0)
+  if s == "bool" then
+    w_u8(body, val and 1 or 0)
+  elseif s == "int" or s == "flags" then
+    w_int(body, e.width, e.signed, val or 0)
   elseif s == "wide" then
     local q = val or { lo = 0, hi = 0 }
-    w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
-  elseif s == "float" then if not w_float(body, e.f32, val or 0.0) then return false end
+    w_raw(body, string.pack("<i8", q.lo))
+    w_raw(body, string.pack("<i8", q.hi))
+  elseif s == "float" then
+    if not w_float(body, e.f32, val or 0.0) then return false end
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(e.variants) do
+        if var[1] == val then
+          vref = id_ref(ids, var[2])
+          break
+        end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
-  elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
+  elseif s == "pointer" then
+    w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
   elseif s == "table" then
     local d = T.Tables[e.target]
     local eb = W()
     if not write_body(T, ids, nodes, d, val, eb) then return false end
-    w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
+    w_leb(body, eb.n)
+    w_raw(body, table.concat(eb.parts))
   elseif s == "union" then
     local u = T.Unions[e.target]
     if u == nil then return false end
     if not write_union(T, ids, nodes, u, val, body) then return false end
-  elseif s == "string" then val = val or ""; w_leb(body, #val); w_raw(body, val)
+  elseif s == "string" then
+    val = val or ""
+    w_leb(body, #val)
+    w_raw(body, val)
   elseif s == "wstring" then
     val = val or {}
     local parts = {}
-    for i = 1, #val do parts[#parts + 1] = string.pack("<I2", val[i]) end
-    w_leb(body, #table.concat(parts)); w_raw(body, table.concat(parts))
-  elseif s == "bytes" then val = val or ""; w_leb(body, #val); w_raw(body, val)
+    for i = 1, #val do
+      parts[#parts + 1] = string.pack("<I2", val[i])
+    end
+    w_leb(body, #table.concat(parts))
+    w_raw(body, table.concat(parts))
+  elseif s == "bytes" then
+    val = val or ""
+    w_leb(body, #val)
+    w_raw(body, val)
   else
     -- a blob element (the checker refuses an array of byte buffers, §15) or
     -- any shape the save does not carry refuses
@@ -644,18 +765,25 @@ local write_union_at
 
 write_union = function(T, ids, nodes, u, val, w)
   local tag = type(val) == "table" and val.tag or 0
-  if tag == 0 then w_leb(w, 0); return true end
+  if tag == 0 then
+    w_leb(w, 0)
+    return true
+  end
   local arm = u.arms[tag]
   if arm == nil then return false end
   local f = arm.field
   if f == nil then
-    w_leb(w, id_ref(ids, arm.id)); w_u8(w, 32); w_leb(w, 0)
+    w_leb(w, id_ref(ids, arm.id))
+    w_u8(w, 32)
+    w_leb(w, 0)
     return true
   end
-  w_leb(w, id_ref(ids, arm.id)); w_u8(w, f.kind)
+  w_leb(w, id_ref(ids, arm.id))
+  w_u8(w, f.kind)
   local body = W()
   if not write_union_at(T, ids, nodes, f, val[arm.name], body) then return false end
-  w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+  w_leb(w, body.n)
+  w_raw(w, table.concat(body.parts))
   return true
 end
 
@@ -663,23 +791,40 @@ end
 -- reached at the arm's position (edge_union, §3.1, §6.3).
 write_union_at = function(T, ids, nodes, f, val, body)
   local s = f.shape
-  if s == "bool" then w_u8(body, val and 1 or 0)
-  elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
+  if s == "bool" then
+    w_u8(body, val and 1 or 0)
+  elseif s == "int" or s == "flags" then
+    w_int(body, f.width, f.signed, val or 0)
   elseif s == "wide" then
     local q = val or { lo = 0, hi = 0 }
-    w_raw(body, string.pack("<i8", q.lo)); w_raw(body, string.pack("<i8", q.hi))
-  elseif s == "float" then if not w_float(body, f.f32, val) then return false end
-  elseif s == "string" then w_raw(body, val)
+    w_raw(body, string.pack("<i8", q.lo))
+    w_raw(body, string.pack("<i8", q.hi))
+  elseif s == "float" then
+    if not w_float(body, f.f32, val) then return false end
+  elseif s == "string" then
+    w_raw(body, val)
   elseif s == "wstring" then
-    for i = 1, #val do w_raw(body, string.pack("<I2", val[i])) end
+    for i = 1, #val do
+      w_raw(body, string.pack("<I2", val[i]))
+    end
   elseif s == "bytes" then
-    w_u8(body, 6); w_leb(body, #val); w_raw(body, val)
+    w_u8(body, 6)
+    w_leb(body, #val)
+    w_raw(body, val)
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(f.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(f.variants) do
+        if var[1] == val then
+          vref = id_ref(ids, var[2])
+          break
+        end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
-  elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
+  elseif s == "pointer" then
+    w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
   elseif s == "table" then
     local d = T.Tables[f.target]
     if not write_body(T, ids, nodes, d, val, body) then return false end
@@ -688,12 +833,19 @@ write_union_at = function(T, ids, nodes, f, val, body)
     if not write_union(T, ids, nodes, inner, val, body) then return false end
   elseif s == "array" then
     local n = count_of(f, val)
-    w_u8(body, f.elem_kind); w_leb(body, n)
-    for i = 1, n do if not write_element(T, ids, nodes, f.elem, val[i], body) then return false end end
+    w_u8(body, f.elem_kind)
+    w_leb(body, n)
+    for i = 1, n do
+      if not write_element(T, ids, nodes, f.elem, val[i], body) then return false end
+    end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- AN ARM'S BLOB IS THE SAME NODE (§2.6): its index is the box's identity,
     -- as the slot's is (§3.1, §6.3).
-    if val == nil or val == false then w_leb(body, 0) else w_leb(body, nodes.index[val] or 0) end
+    if val == nil or val == false then
+      w_leb(body, 0)
+    else
+      w_leb(body, nodes.index[val] or 0)
+    end
   else
     -- a map arm, or any shape the save does not carry, refuses
     return false
@@ -727,26 +879,29 @@ function S.Save(T, name, v)
     for _, n in ipairs(nodes.list) do
       w_leb(sub, id_ref(ids, n.typeId))
       if n.codec == nil then
-        w_leb(sub, #n.body); w_raw(sub, n.body)
+        w_leb(sub, #n.body)
+        w_raw(sub, n.body)
       else
         local body = W()
         if not write_body(T, ids, nodes, n.codec, n.v, body) then return nil, D.refuse_non_finite(T, name, v) end
-        w_leb(sub, body.n); w_raw(sub, table.concat(body.parts))
+        w_leb(sub, body.n)
+        w_raw(sub, table.concat(body.parts))
       end
     end
-    w_leb(idx, sub.n); w_raw(idx, table.concat(sub.parts))
+    w_leb(idx, sub.n)
+    w_raw(idx, table.concat(sub.parts))
   end
   w_u8(idx, 0)
-  for _, id in ipairs(ids.list) do w_u64(idx, id) end
+  for _, id in ipairs(ids.list) do
+    w_u64(idx, id)
+  end
   w_u64(idx, #ids.list)
   local out = table.concat(idx.parts)
   -- THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4): a declaring
   -- root's file ends with the little-endian CRC-32C of every byte before it,
   -- after the id table and so the last four bytes. Measure is Save's length,
   -- so it carries the four bytes with it.
-  if desc.integrity ~= nil then
-    out = out .. string.pack("<I4", crc32c(out))
-  end
+  if desc.integrity ~= nil then out = out .. string.pack("<I4", crc32c(out)) end
   return out
 end
 

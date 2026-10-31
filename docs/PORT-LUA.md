@@ -237,8 +237,8 @@ the carry-across record (the sprint retired per-technique issues).
 | schema-lua-json-text-form | the JSON text form, both ways (§16) | `luatable/runtime/json.lua` |
 | schema-lua-base64-text | base64 text over a text channel | `luatable/runtime/text.lua` |
 | schema-lua-refusals-by-name | refusals at compile time and at read time, the claimed names | `luatable/runtime/refusal.lua`, `internal/tablenames/lua.go`, `compiler/tableslua_test.go` |
-| schema-lua-conformance-leg | `make conformance` and CI: `test/conformance/lua/main.lua`, the CI step keyed on `ci.json`'s `lua` field | `test/conformance/lua/main.lua`, `make/checks/lua-conformance.mk` |
-| schema-lua-fuzz-differential | the wire fuzzer drives the Lua load against the Go engine | `test/conformance/lua/wirefuzz.lua`, `make/checks/lua-fuzz.mk` |
+| schema-lua-conformance-leg | `make conformance` and CI: `test/conformance/lua/main.lua`, the CI step keyed on `ci.json`'s `lua` field | `test/conformance/lua/main.lua`, `make/lua-conformance.mk` |
+| schema-lua-fuzz-differential | the wire fuzzer drives the Lua load against the Go engine | `test/conformance/lua/wirefuzz.lua`, `make/lua-fuzz.mk` |
 
 The conformance driver answers all eighteen surfaces. The block and cooked
 accelerators are read on the reading tier's terms (docs/SPEC-TABLES.md §7,

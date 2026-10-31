@@ -26,7 +26,7 @@ local counters = {
   { key = "kindMismatch", name = "kind_mismatch" },
 }
 
-local function refuse(name, field)
+local function refuse(name, _field)
   error(name, 0)
 end
 
@@ -49,7 +49,9 @@ local function instrument(T, report, first)
   local descs = {}
   for name, d in pairs(T.Tables) do
     local fields = {}
-    for i, f in ipairs(d.fields) do fields[i] = field(f) end
+    for i, f in ipairs(d.fields) do
+      fields[i] = field(f)
+    end
     descs[name] = setmetatable({}, {
       __index = function(_, k)
         if k == "fields" then return fields end
@@ -65,11 +67,13 @@ local function instrument(T, report, first)
     end,
   })
   local seen = {}
-  for _, c in ipairs(counters) do seen[c.key] = true end
+  for _, c in ipairs(counters) do
+    seen[c.key] = true
+  end
   seen.malformed = true
   local wrapped = setmetatable({}, {
     __index = report,
-    __newindex = function(t, k, v)
+    __newindex = function(_t, k, v)
       local before = report[k]
       if seen[k] and v ~= before and first[k] == nil then first[k] = current end
       report[k] = v
@@ -97,12 +101,8 @@ function R.ReadStrict(T, name, bytes, integrity)
   -- and only a root with a compiled layout reads it. Every other byte is the
   -- one strict reason unknown_form, as TableReport.Err() answers for
   -- previous_form, newer_form and message_form_as_file alike.
-  if form ~= nil and form == 3 and fixed ~= nil then
-    return T.ReadFixed(name, bytes)
-  end
-  if form ~= nil and form ~= 1 then
-    refuse("unknown_form", "form " .. string.format("%d", form))
-  end
+  if form ~= nil and form == 3 and fixed ~= nil then return T.ReadFixed(name, bytes) end
+  if form ~= nil and form ~= 1 then refuse("unknown_form", "form " .. string.format("%d", form)) end
 
   -- THE REQUIRED CHECK IS THE DESCRIPTOR'S (§2.14): a declaring root's check
   -- rides in T.Tables[name].integrity, so a caller need not pass it. The
@@ -122,9 +122,17 @@ function R.ReadStrict(T, name, bytes, integrity)
   end
 
   local report = {
-    malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0, blobShared = 0,
-    missingRequired = 0, wireDamaged = false, reason = "",
+    malformed = false,
+    refused = 0,
+    unknown = 0,
+    kindMismatch = 0,
+    clamped = 0,
+    widened = 0,
+    duplicate = 0,
+    blobShared = 0,
+    missingRequired = 0,
+    wireDamaged = false,
+    reason = "",
   }
   local first = {}
   local proxied, wrapped = instrument(T, report, first)

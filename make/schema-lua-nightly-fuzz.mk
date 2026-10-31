@@ -121,8 +121,8 @@ schema-lua-fuzz-negative-control: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED
 	nc=build/lua-fuzz-negative-control; \
 	rm -rf $$nc && mkdir -p $$nc/generated $$nc/findings $(LUA_FUZZ_REGRESS); \
 	cp -r $(LUA_FUZZ_GENERATED)/. $$nc/generated/; \
-	sed -i 's/if #bytes < 9 then report.malformed = true; report.wireDamaged = true; return nil end/if false then report.malformed = true; report.wireDamaged = true; return nil end/' $$nc/generated/examples/load.lua; \
-	grep -q 'if false then report.malformed = true; report.wireDamaged = true; return nil end' $$nc/generated/examples/load.lua || \
+	sed -i 's/^  if #bytes < 9 then$$/  if false then -- lua-fuzz-plant/' $$nc/generated/examples/load.lua; \
+	grep -q '^  if false then -- lua-fuzz-plant$$' $$nc/generated/examples/load.lua || \
 		{ echo "negative control: the plant did not land"; exit 1; }; \
 	if ! $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $$nc/generated \
 		--corpus $(LUA_FUZZ_CORPUS) --iterations 4000 --seed 7 \

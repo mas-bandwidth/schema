@@ -26,7 +26,10 @@ local function align_up(n, a)
   return (n + a - 1) & ~(a - 1)
 end
 
-local function max(a, b) if a > b then return a end return b end
+local function max(a, b)
+  if a > b then return a end
+  return b
+end
 
 -- THE WRITER (docs/PORT-LUA.md, BYTE BUFFERS): chunks placed by absolute
 -- offset, joined once, with zeroes for every byte no field wrote (§7.2).
@@ -48,10 +51,14 @@ end
 local ORD = "<"
 
 local function put_uint(w, at, v, width)
-  if width == 1 then put(w, at, string.char(v & 0xff))
-  elseif width == 2 then put(w, at, string.pack(ORD .. "I2", v & 0xffff))
-  elseif width == 4 then put(w, at, string.pack(ORD .. "I4", v & 0xffffffff))
-  elseif width == 8 then put(w, at, string.pack(ORD .. "i8", v))
+  if width == 1 then
+    put(w, at, string.char(v & 0xff))
+  elseif width == 2 then
+    put(w, at, string.pack(ORD .. "I2", v & 0xffff))
+  elseif width == 4 then
+    put(w, at, string.pack(ORD .. "I4", v & 0xffffffff))
+  elseif width == 8 then
+    put(w, at, string.pack(ORD .. "i8", v))
   elseif width == 16 then
     local hi = v < 0 and -1 or 0
     if ORD == ">" then
@@ -71,14 +78,20 @@ end
 -- putWide).
 local function put_wide(w, at, x, width)
   local lo, hi = 0, 0
-  if type(x) == "table" then lo, hi = x.lo or 0, x.hi or 0 end
+  if type(x) == "table" then
+    lo, hi = x.lo or 0, x.hi or 0
+  end
   local le = (string.pack("<i8", lo) .. string.pack("<i8", hi)):sub(1, width)
   if ORD == ">" then le = le:reverse() end
   put(w, at, le)
 end
 
-local function put_f32(w, at, v) put(w, at, string.pack(ORD .. "f", v)) end
-local function put_f64(w, at, v) put(w, at, string.pack(ORD .. "d", v)) end
+local function put_f32(w, at, v)
+  put(w, at, string.pack(ORD .. "f", v))
+end
+local function put_f64(w, at, v)
+  put(w, at, string.pack(ORD .. "d", v))
+end
 
 -- THE NUMBERING (§3.1, internal/tablewire/nodes.go): the depth-first pre-order
 -- over pointer edges, the root first at index one. It is the save's walk
@@ -115,7 +128,9 @@ local function map_entries(cache, fd, x)
   if got ~= nil then return got end
   local kf = fd.key_field
   local keys = {}
-  for key in pairs(x) do keys[#keys + 1] = key end
+  for key in pairs(x) do
+    keys[#keys + 1] = key
+  end
   table.sort(keys, function(a, b)
     if kf.shape == "string" then return bytes_less(a, b) end
     if kf.signed or kf.width < 8 then return a < b end
@@ -124,7 +139,9 @@ local function map_entries(cache, fd, x)
   local keyname = kf.name
   local valname = fd.value_field.name
   got = {}
-  for i, key in ipairs(keys) do got[i] = { [keyname] = key, [valname] = x[key] } end
+  for i, key in ipairs(keys) do
+    got[i] = { [keyname] = key, [valname] = x[key] }
+  end
   cache[x] = got
   return got
 end
@@ -153,12 +170,16 @@ edge_value = function(T, fd, val, holder, name, out, cache)
   elseif s == "array" then
     local n = count_of(fd, val)
     local e = fd.elem
-    for i = 1, n do edge_value(T, e, val[i], val, i, out, cache) end
+    for i = 1, n do
+      edge_value(T, e, val[i], val, i, out, cache)
+    end
   elseif s == "union" then
     edge_union(T, T.Unions[fd.target], val, out, cache)
   elseif s == "map" then
     local d = T.Tables[fd.entry]
-    for _, kv in ipairs(map_entries(cache, fd, val)) do edges(T, d, kv, out, cache) end
+    for _, kv in ipairs(map_entries(cache, fd, val)) do
+      edges(T, d, kv, out, cache)
+    end
   end
 end
 
@@ -185,7 +206,9 @@ local function number_nodes(T, desc, root)
   local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
   while #stack > 0 do
     local top = stack[#stack]
-    if top.i >= #top.edges then open[top.v] = nil; stack[#stack] = nil
+    if top.i >= #top.edges then
+      open[top.v] = nil
+      stack[#stack] = nil
     else
       local e = top.edges[top.i + 1]
       top.i = top.i + 1
@@ -210,7 +233,9 @@ local function number_nodes(T, desc, root)
     end
   end
   local entries = { { typeId = desc.type_id, desc = desc, v = root } }
-  for _, n in ipairs(nodes.list) do entries[#entries + 1] = n end
+  for _, n in ipairs(nodes.list) do
+    entries[#entries + 1] = n
+  end
   return entries, nodes.index
 end
 
@@ -254,14 +279,22 @@ local function field_value(T, f, v)
     local d = T.Tables[f.target]
     if d and T["New" .. d.name] then return T["New" .. d.name]() end
     return {}
-  elseif s == "union" then return { tag = 0 }
-  elseif s == "wstring" then return {}
-  elseif s == "array" or s == "map" then return x or {}
-  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then return nil
-  elseif s == "string" or s == "bytes" then return f.default or ""
-  elseif s == "enum" then return f.default
-  elseif s == "bool" then return f.default == true
-  elseif s == "int" or s == "flags" or s == "float" then return f.default or 0
+  elseif s == "union" then
+    return { tag = 0 }
+  elseif s == "wstring" then
+    return {}
+  elseif s == "array" or s == "map" then
+    return x or {}
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+    return nil
+  elseif s == "string" or s == "bytes" then
+    return f.default or ""
+  elseif s == "enum" then
+    return f.default
+  elseif s == "bool" then
+    return f.default == true
+  elseif s == "int" or s == "flags" or s == "float" then
+    return f.default or 0
   end
   return x
 end
@@ -274,7 +307,8 @@ write_record = function(T, desc, v, base, w, index)
   for _, f in ipairs(desc.fields) do
     local at = base + f.at
     local s = f.shape
-    if s == "map" then return nil
+    if s == "map" then
+      return nil
     elseif not (s == "array" and f.list) then
       -- The extent writer places unbounded arrays, not the record writer.
       local x = field_value(T, f, v)
@@ -292,7 +326,8 @@ end
 -- pointer, array, nested record or union (§7.2).
 write_field_value = function(T, f, x, at, w, index)
   local s = f.shape
-  if s == "map" then return nil
+  if s == "map" then
+    return nil
   elseif s == "pointer" then
     return write_ref(T, f, x, at, w, index)
   elseif s == "string_blob" or s == "bytes_blob" then
@@ -314,7 +349,9 @@ write_field_value = function(T, f, x, at, w, index)
   elseif s == "wstring" then
     local units = x or {}
     local n = math.min(#units, f.bound or #units)
-    for i = 1, n do put(w, at + (i - 1) * 2, string.pack(ORD .. "I2", units[i] & 0xffff)) end
+    for i = 1, n do
+      put(w, at + (i - 1) * 2, string.pack(ORD .. "I2", units[i] & 0xffff))
+    end
     put_uint(w, at + (f.companion or 0), n, 4)
     return true
   elseif s == "bool" then
@@ -351,7 +388,12 @@ write_field_value = function(T, f, x, at, w, index)
   elseif s == "enum" then
     local v = 0
     if x ~= nil and x ~= false then
-      for i, var in ipairs(f.variants) do if var[1] == x then v = i; break end end
+      for i, var in ipairs(f.variants) do
+        if var[1] == x then
+          v = i
+          break
+        end
+      end
     end
     put_uint(w, at, v, enum_width(f))
     return true
@@ -387,7 +429,7 @@ end
 -- write_ref writes one self-relative reference slot (§7.2, §6.3): zero is
 -- null, anything else is target - slot, and a target the numbering does not
 -- carry refuses (§7.6).
-write_ref = function(T, f, x, at, w, index)
+write_ref = function(_T, _f, x, at, w, index)
   if x == nil or x == false then
     put_uint(w, at, 0, 8)
     return true
@@ -437,7 +479,8 @@ present_offset = function(T, f)
   elseif s == "bytes" then
     cur = align_up(at + (f.bound or 0), 4) + 4
   elseif s == "array" then
-    if f.list then cur = at + 16
+    if f.list then
+      cur = at + 16
     else
       cur = at + (f.elem_size or 0) * (f.bound or 0)
       if not f.fixed and f.keyed == nil then cur = align_up(cur, 4) + 4 end
@@ -452,12 +495,19 @@ present_offset = function(T, f)
   elseif s == "union" then
     local u = T.Unions[f.target]
     cur = at + (u and u.size or 0)
-  elseif s == "bool" then cur = at + 1
-  elseif s == "float" then cur = at + (f.f32 and 4 or 8)
-  elseif s == "flags" then cur = at + 8
-  elseif s == "enum" then cur = at + enum_width(f)
-  elseif s == "int" then cur = at + f.width
-  else cur = at end
+  elseif s == "bool" then
+    cur = at + 1
+  elseif s == "float" then
+    cur = at + (f.f32 and 4 or 8)
+  elseif s == "flags" then
+    cur = at + 8
+  elseif s == "enum" then
+    cur = at + enum_width(f)
+  elseif s == "int" then
+    cur = at + f.width
+  else
+    cur = at
+  end
   return cur
 end
 
@@ -513,7 +563,11 @@ carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
     local start = cursor.at
     cursor.at = start + n * size
     local array = extentBase + start
-    if n == 0 then put_uint(w, at, 0, 8) else put_uint(w, at, array - at, 8) end
+    if n == 0 then
+      put_uint(w, at, 0, 8)
+    else
+      put_uint(w, at, array - at, 8)
+    end
     put_uint(w, at + 8, n, 4)
     if w ~= nil then
       for i = 1, n do
@@ -535,8 +589,11 @@ carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
   if s == "array" then
     x = x or {}
     local n
-    if f.fixed or f.keyed ~= nil then n = f.bound or 0
-    else n = math.min(#x, f.bound or 0) end
+    if f.fixed or f.keyed ~= nil then
+      n = f.bound or 0
+    else
+      n = math.min(#x, f.bound or 0)
+    end
     for i = 1, n do
       local e = x[i]
       if e == nil then e = zero_elem(T, f.elem) end
@@ -558,7 +615,15 @@ carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
     if tag == 0 then return true end
     local arm = u.arms[tag]
     if arm == nil or arm.field == nil then return true end
-    return carve_field(T, arm.field, type(x) == "table" and x[arm.name] or nil, at + u.arm_offset, extentBase, cursor, w)
+    return carve_field(
+      T,
+      arm.field,
+      type(x) == "table" and x[arm.name] or nil,
+      at + u.arm_offset,
+      extentBase,
+      cursor,
+      w
+    )
   end
   return true
 end
@@ -578,7 +643,15 @@ carve_element = function(T, e, x, at, extentBase, cursor, w)
     if tag == 0 then return true end
     local arm = u.arms[tag]
     if arm == nil or arm.field == nil then return true end
-    return carve_field(T, arm.field, type(x) == "table" and x[arm.name] or nil, at + u.arm_offset, extentBase, cursor, w)
+    return carve_field(
+      T,
+      arm.field,
+      type(x) == "table" and x[arm.name] or nil,
+      at + u.arm_offset,
+      extentBase,
+      cursor,
+      w
+    )
   end
   return true
 end
@@ -670,7 +743,9 @@ local function cook(T, name, v, capacity, order)
       if not write_record(T, e.desc, e.v, base, w, l.index) then return nil, D.refuse_non_finite(T, name, v) end
       if e.extent > 0 then
         local cursor = { at = 0, index = l.index }
-        if not carve_extent(T, e.desc, e.v, base, base + e.record, cursor, w) then return nil, D.refuse_non_finite(T, name, v) end
+        if not carve_extent(T, e.desc, e.v, base, base + e.record, cursor, w) then
+          return nil, D.refuse_non_finite(T, name, v)
+        end
         if cursor.at ~= e.extent then return nil end
       end
     else
@@ -719,7 +794,9 @@ end
 -- assemble joins the pieces in offset order, filling every unclaimed byte with
 -- zero (§7.2). Overlapping pieces are trimmed to the later write.
 assemble = function(w, total)
-  table.sort(w.chunks, function(a, b) return a.at < b.at end)
+  table.sort(w.chunks, function(a, b)
+    return a.at < b.at
+  end)
   local parts = {}
   local pos = 0
   for _, c in ipairs(w.chunks) do

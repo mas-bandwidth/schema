@@ -28,9 +28,21 @@ func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 		"tables-lua-luacheck-negative-control:",
 		"$(LUACHECK) --config",
 		"lua_luacheck_plant",
+		"tables-lua-format:",
+		"tables-lua-format-negative-control:",
+		"STYLUA_SHA256_linux-x86_64",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("makefile missing %q", want)
+		}
+	}
+
+	// ZERO WARNINGS, NO ALLOWANCE: the generated code and the table runtime
+	// are held to luacheck's default set. A global ignore list or a
+	// line-length allowance would hide warnings rather than fix the generator.
+	for _, banned := range []string{"max_line_length", "'ignore = {", "--no-max-line-length", "ratchet"} {
+		if strings.Contains(mk, banned) {
+			t.Errorf("makefile carries %q: the luacheck gate admits no allowance (fix the generator)", banned)
 		}
 	}
 
@@ -38,6 +50,8 @@ func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 	for _, want := range []string{
 		"run: make tables-lua-luacheck",
 		"run: make tables-lua-luacheck-negative-control",
+		"run: make tables-lua-format",
+		"run: make tables-lua-format-negative-control",
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Errorf("workflow missing %q", want)

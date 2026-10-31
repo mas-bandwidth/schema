@@ -23,7 +23,7 @@ local S = {}
 local load = require("load")
 local D = require("descriptor")
 
-local NODE_TABLE_ID = -1         -- 0xffffffffffffffff
+local NODE_TABLE_ID = -1 -- 0xffffffffffffffff
 local STRING_BLOB_ID = 0x704be0d8faaffc58
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 local MAX64 = 0xffffffffffffffff
@@ -38,14 +38,18 @@ end
 
 local function path_step(p, ordinal, index)
   local q = { node = p.node, steps = {} }
-  for k, v in ipairs(p.steps) do q.steps[k] = v end
+  for k, v in ipairs(p.steps) do
+    q.steps[k] = v
+  end
   q.steps[#q.steps + 1] = { o = ordinal, i = index }
   return q
 end
 
 local function path_key(p)
   local out = { tostring(p.node), "|" }
-  for _, s in ipairs(p.steps) do out[#out + 1] = tostring(s.o) .. "," .. tostring(s.i) .. ";" end
+  for _, s in ipairs(p.steps) do
+    out[#out + 1] = tostring(s.o) .. "," .. tostring(s.i) .. ";"
+  end
   return table.concat(out)
 end
 
@@ -79,19 +83,32 @@ local function w_leb(w, v)
   repeat
     local b = v & 0x7f
     v = v >> 7
-    if v ~= 0 then out[#out + 1] = string.char(b | 0x80) else out[#out + 1] = string.char(b) end
+    if v ~= 0 then
+      out[#out + 1] = string.char(b | 0x80)
+    else
+      out[#out + 1] = string.char(b)
+    end
   until v == 0
   w_raw(w, table.concat(out))
 end
 
-local function w_u64(w, v) w_raw(w, string.pack("<i8", v)) end
-local function w_f64(w, v) w_raw(w, string.pack("<d", v)) end
+local function w_u64(w, v)
+  w_raw(w, string.pack("<i8", v))
+end
+local function w_f64(w, v)
+  w_raw(w, string.pack("<d", v))
+end
 
 local function w_int(w, width, signed, v)
-  if width == 1 then w_u8(w, v)
-  elseif width == 2 then w_raw(w, signed and string.pack("<i2", v) or string.pack("<I2", v))
-  elseif width == 4 then w_raw(w, signed and string.pack("<i4", v) or string.pack("<I4", v))
-  else w_u64(w, v) end
+  if width == 1 then
+    w_u8(w, v)
+  elseif width == 2 then
+    w_raw(w, signed and string.pack("<i2", v) or string.pack("<I2", v))
+  elseif width == 4 then
+    w_raw(w, signed and string.pack("<i4", v) or string.pack("<I4", v))
+  else
+    w_u64(w, v)
+  end
 end
 
 -- A FLOAT RIDES AS THE BIT PATTERN OF A FINITE VALUE (docs/SPEC-TABLES.md
@@ -172,7 +189,9 @@ local function map_entries(cache, fd, x)
   if got ~= nil then return got end
   local kf = fd.key_field
   local keys = {}
-  for key in pairs(x) do keys[#keys + 1] = key end
+  for key in pairs(x) do
+    keys[#keys + 1] = key
+  end
   table.sort(keys, function(a, b)
     if kf.shape == "string" then return bytes_less(a, b) end
     if kf.signed or kf.width < 8 then return a < b end
@@ -181,7 +200,9 @@ local function map_entries(cache, fd, x)
   local keyname = kf.name
   local valname = fd.value_field.name
   got = {}
-  for i, key in ipairs(keys) do got[i] = { [keyname] = key, [valname] = x[key] } end
+  for i, key in ipairs(keys) do
+    got[i] = { [keyname] = key, [valname] = x[key] }
+  end
   cache[x] = got
   return got
 end
@@ -211,14 +232,18 @@ edge_value = function(T, fd, val, holder, name, out, cache)
   elseif s == "array" then
     local n = count_of(fd, val)
     local e = fd.elem
-    for i = 1, n do edge_value(T, e, val[i], val, i, out, cache) end
+    for i = 1, n do
+      edge_value(T, e, val[i], val, i, out, cache)
+    end
   elseif s == "union" then
     edge_union(T, T.Unions[fd.target], val, out, cache)
   elseif s == "map" then
     -- A MAP IS A BY-VALUE EDGE at its field's position (§2.8, §3.1): its
     -- entries in ascending key order, each descended before the next
     local d = T.Tables[fd.entry]
-    for _, kv in ipairs(map_entries(cache, fd, val)) do edges(T, d, kv, out, cache) end
+    for _, kv in ipairs(map_entries(cache, fd, val)) do
+      edges(T, d, kv, out, cache)
+    end
   end
 end
 
@@ -251,7 +276,9 @@ number_nodes = function(T, desc, root)
   local stack = { { v = root, edges = edges(T, desc, root, {}, nodes.entries), i = 0 } }
   while #stack > 0 do
     local top = stack[#stack]
-    if top.i >= #top.edges then open[top.v] = nil; stack[#stack] = nil
+    if top.i >= #top.edges then
+      open[top.v] = nil
+      stack[#stack] = nil
     else
       local e = top.edges[top.i + 1]
       top.i = top.i + 1
@@ -304,8 +331,11 @@ local function at_default(fd, v)
     local es = e.shape
     if es == "table" then return false end
     local def = 0
-    if es == "bool" or es == "enum" or es == "pointer" or es == "string_blob" or es == "bytes_blob" then def = false
-    elseif es == "string" or es == "bytes" then def = "" end
+    if es == "bool" or es == "enum" or es == "pointer" or es == "string_blob" or es == "bytes_blob" then
+      def = false
+    elseif es == "string" or es == "bytes" then
+      def = ""
+    end
     for i = 1, n do
       local e1 = x[i]
       if es == "union" then
@@ -316,14 +346,18 @@ local function at_default(fd, v)
         if e1 == nil then e1 = def end
         if es == "float" then
           if not same_float(e.f32, e1, def) then return false end
-        elseif e1 ~= def then return false end
+        elseif e1 ~= def then
+          return false
+        end
       end
     end
     return true
   end
   if s == "map" then
     local n = 0
-    for _ in pairs(x or {}) do n = n + 1 end
+    for _ in pairs(x or {}) do
+      n = n + 1
+    end
     return n == 0
   end
   if s == "wstring" then return x == nil or #x == 0 end
@@ -332,7 +366,9 @@ local function at_default(fd, v)
 end
 
 local function id_ref(ids, id)
-  for i, v in ipairs(ids.list) do if v == id then return i end end
+  for i, v in ipairs(ids.list) do
+    if v == id then return i end
+  end
   ids.list[#ids.list + 1] = id
   return #ids.list
 end
@@ -345,7 +381,9 @@ end
 -- record that needed the id is dropped and counted, and the save goes on.
 -- A store that declares no capacity is unbounded.
 local function id_ref_record(ids, id)
-  for i, v in ipairs(ids.list) do if v == id then return i end end
+  for i, v in ipairs(ids.list) do
+    if v == id then return i end
+  end
   if ids.known ~= nil and not ids.known[id] then
     if ids.idCapacity ~= nil and ids.retained >= ids.idCapacity then return nil end
     ids.retained = ids.retained + 1
@@ -386,11 +424,18 @@ local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, repo
     w_raw(w, val)
   elseif s == "wstring" then
     if val == nil or #val == 0 then return true, false end
-    for i = 1, #val do w_raw(w, string.pack("<I2", val[i])) end
+    for i = 1, #val do
+      w_raw(w, string.pack("<I2", val[i]))
+    end
   elseif s == "enum" then
     if val == nil or val == false then return true, false end
     local vref = 0
-    for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end
+    for _, var in ipairs(e.variants) do
+      if var[1] == val then
+        vref = id_ref(ids, var[2])
+        break
+      end
+    end
     if vref == 0 then return false end
     w_leb(w, vref)
   elseif s == "pointer" then
@@ -407,7 +452,9 @@ local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, repo
     if not write_union(T, ids, nodes, u, val, w, path, ord, retain, report) then return false end
   elseif s == "bytes" then
     if val == nil or #val == 0 then return true, false end
-    w_u8(w, 6); w_leb(w, #val); w_raw(w, val)
+    w_u8(w, 6)
+    w_leb(w, #val)
+    w_raw(w, val)
   else
     return false
   end
@@ -423,59 +470,91 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
   local s = fd.shape
   if s == "bool" then
     if fd.optional or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 1); w_u8(w, x and 1 or 0)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 1)
+      w_u8(w, x and 1 or 0)
     end
   elseif s == "int" or s == "flags" then
     if fd.optional or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_int(w, fd.width, fd.signed, x or 0)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, fd.kind)
+      w_int(w, fd.width, fd.signed, x or 0)
     end
   elseif s == "float" then
     if fd.optional or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, fd.kind)
       if not w_float(w, fd.f32, x) then return false end
     end
   elseif s == "string" then
     if fd.optional or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 12); w_leb(w, #x); w_raw(w, x)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 12)
+      w_leb(w, #x)
+      w_raw(w, x)
     end
   elseif s == "wstring" then
     -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
     -- little-endian, L their byte count; it rides when it holds a unit
     if fd.optional or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, fd.kind); w_leb(w, #x * 2)
-      for i = 1, #x do w_raw(w, string.pack("<I2", x[i])) end
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, fd.kind)
+      w_leb(w, #x * 2)
+      for i = 1, #x do
+        w_raw(w, string.pack("<I2", x[i]))
+      end
     end
   elseif s == "bytes" then
     if fd.optional or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 14)
       local body = W()
-      w_u8(body, 6); w_leb(body, #x); w_raw(body, x)
-      w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+      w_u8(body, 6)
+      w_leb(body, #x)
+      w_raw(body, x)
+      w_leb(w, body.n)
+      w_raw(w, table.concat(body.parts))
     end
   elseif s == "enum" then
     if fd.optional or not at_default(fd, v) then
       local ref = id_ref(ids, fd.id)
       local vref = 0
       if x ~= nil then
-        for _, var in ipairs(fd.variants) do if var[1] == x then vref = id_ref(ids, var[2]); break end end
+        for _, var in ipairs(fd.variants) do
+          if var[1] == x then
+            vref = id_ref(ids, var[2])
+            break
+          end
+        end
       end
       if vref == 0 and x ~= nil then return false end
-      w_leb(w, ref); w_u8(w, 30); w_leb(w, vref)
+      w_leb(w, ref)
+      w_u8(w, 30)
+      w_leb(w, vref)
     end
   elseif s == "pointer" then
     -- null is elided (§3.1); false is null where nil cannot be held (a map
     -- entry's value, as a sequence's element)
-    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x]) end
+    if x ~= nil and x ~= false then
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 17)
+      w_leb(w, nodes.index[x])
+    end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- A BLOB SLOT NAMES ITS NODE (§3.1, §6.3): the index the numbering gave the
     -- node's own box, never its content and never the slot that names it.
-    if x ~= nil and x ~= false then w_leb(w, id_ref(ids, fd.id)); w_u8(w, 17); w_leb(w, nodes.index[x] or 0) end
+    if x ~= nil and x ~= false then
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 17)
+      w_leb(w, nodes.index[x] or 0)
+    end
   elseif s == "union" then
     local tag = x and x.tag or 0
     if tag ~= 0 then
       local u = T.Unions[fd.target]
       if u == nil then return false end
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 15)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 15)
       if not write_union(T, ids, nodes, u, x, w, path, fd.ordinal - 1, retain, report) then return false end
     end
   elseif s == "table" then
@@ -485,8 +564,14 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
     local body = W()
     local ok = write_body(T, ids, nodes, d, x, body, path_step(path, fd.ordinal - 1, 0), retain, report)
     if not ok then return false end
-    if not fd.optional and body.n <= 1 then ids.list[mark + 1] = nil; return true end
-    w_leb(w, ref); w_u8(w, 13); w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+    if not fd.optional and body.n <= 1 then
+      ids.list[mark + 1] = nil
+      return true
+    end
+    w_leb(w, ref)
+    w_u8(w, 13)
+    w_leb(w, body.n)
+    w_raw(w, table.concat(body.parts))
   elseif s == "array" then
     if fd.keyed ~= nil then
       local mark = #ids.list
@@ -499,37 +584,78 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
         local emark = #ids.list
         local keyref = id_ref(ids, fd.keyed[i][2])
         local eb = W()
-        local ok, rides = write_keyed_one(T, ids, nodes, fd.elem, x[i], eb, path_step(path, fd.ordinal - 1, i - 1), fd.ordinal - 1, retain, report)
+        local ok, rides = write_keyed_one(
+          T,
+          ids,
+          nodes,
+          fd.elem,
+          x[i],
+          eb,
+          path_step(path, fd.ordinal - 1, i - 1),
+          fd.ordinal - 1,
+          retain,
+          report
+        )
         if not ok then return false end
         if rides then
           count = count + 1
           w_leb(entries, keyref)
-          w_leb(entries, eb.n); w_raw(entries, table.concat(eb.parts))
+          w_leb(entries, eb.n)
+          w_raw(entries, table.concat(eb.parts))
         else
           id_rollback(ids, emark)
         end
       end
-      if count == 0 and not fd.optional then id_rollback(ids, mark); return true end
-      w_leb(outer, count); w_raw(outer, table.concat(entries.parts))
-      w_leb(w, ref); w_u8(w, fd.kind); w_leb(w, outer.n); w_raw(w, table.concat(outer.parts))
+      if count == 0 and not fd.optional then
+        id_rollback(ids, mark)
+        return true
+      end
+      w_leb(outer, count)
+      w_raw(outer, table.concat(entries.parts))
+      w_leb(w, ref)
+      w_u8(w, fd.kind)
+      w_leb(w, outer.n)
+      w_raw(w, table.concat(outer.parts))
     else
       if not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
-      w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
+      w_leb(w, id_ref(ids, fd.id))
+      w_u8(w, 14)
       local body = W()
-      w_u8(body, fd.elem_kind); w_leb(body, n)
+      w_u8(body, fd.elem_kind)
+      w_leb(body, n)
       for i = 1, n do
-        if not write_element(T, ids, nodes, fd.elem, x[i], body, path_step(path, fd.ordinal - 1, i - 1), fd.ordinal - 1, retain, report) then return false end
+        if
+          not write_element(
+            T,
+            ids,
+            nodes,
+            fd.elem,
+            x[i],
+            body,
+            path_step(path, fd.ordinal - 1, i - 1),
+            fd.ordinal - 1,
+            retain,
+            report
+          )
+        then
+          return false
+        end
       end
-      w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+      w_leb(w, body.n)
+      w_raw(w, table.concat(body.parts))
     end
   elseif s == "map" then
     local n = 0
-    for _ in pairs(x or {}) do n = n + 1 end
+    for _ in pairs(x or {}) do
+      n = n + 1
+    end
     if n == 0 and not fd.optional then return true end
-    w_leb(w, id_ref(ids, fd.id)); w_u8(w, 14)
+    w_leb(w, id_ref(ids, fd.id))
+    w_u8(w, 14)
     local body = W()
-    w_u8(body, fd.elem_kind or 13); w_leb(body, n)
+    w_u8(body, fd.elem_kind or 13)
+    w_leb(body, n)
     local entry = T.Tables[fd.entry]
     local mi = 0
     for _, kv in ipairs(map_entries(nodes.entries, fd, x)) do
@@ -537,9 +663,11 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
       mi = mi + 1
       local ok = write_body(T, ids, nodes, entry, kv, eb, path_step(path, fd.ordinal - 1, mi - 1), retain, report)
       if not ok then return false end
-      w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
+      w_leb(body, eb.n)
+      w_raw(body, table.concat(eb.parts))
     end
-    w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+    w_leb(w, body.n)
+    w_raw(w, table.concat(body.parts))
   else
     -- a shape the save does not carry refuses (jstable TableVariableWriteField)
     return false
@@ -550,31 +678,52 @@ end
 -- ONE ARRAY ELEMENT (§2.4, §3).
 write_element = function(T, ids, nodes, e, val, body, path, ord, retain, report)
   local s = e.shape
-  if s == "bool" then w_u8(body, val and 1 or 0)
-  elseif s == "int" or s == "flags" then w_int(body, e.width, e.signed, val or 0)
-  elseif s == "float" then if not w_float(body, e.f32, val or 0.0) then return false end
+  if s == "bool" then
+    w_u8(body, val and 1 or 0)
+  elseif s == "int" or s == "flags" then
+    w_int(body, e.width, e.signed, val or 0)
+  elseif s == "float" then
+    if not w_float(body, e.f32, val or 0.0) then return false end
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(e.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(e.variants) do
+        if var[1] == val then
+          vref = id_ref(ids, var[2])
+          break
+        end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
-  elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
+  elseif s == "pointer" then
+    w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
   elseif s == "table" then
     local d = T.Tables[e.target]
     local eb = W()
     if not write_body(T, ids, nodes, d, val, eb, path, retain, report) then return false end
-    w_leb(body, eb.n); w_raw(body, table.concat(eb.parts))
+    w_leb(body, eb.n)
+    w_raw(body, table.concat(eb.parts))
   elseif s == "union" then
     local u = T.Unions[e.target]
     if u == nil then return false end
     if not write_union(T, ids, nodes, u, val, body, path, ord, retain, report) then return false end
-  elseif s == "string" then val = val or ""; w_leb(body, #val); w_raw(body, val)
+  elseif s == "string" then
+    val = val or ""
+    w_leb(body, #val)
+    w_raw(body, val)
   elseif s == "wstring" then
     val = val or {}
     local parts = {}
-    for i = 1, #val do parts[#parts + 1] = string.pack("<I2", val[i]) end
-    w_leb(body, #table.concat(parts)); w_raw(body, table.concat(parts))
-  elseif s == "bytes" then val = val or ""; w_leb(body, #val); w_raw(body, val)
+    for i = 1, #val do
+      parts[#parts + 1] = string.pack("<I2", val[i])
+    end
+    w_leb(body, #table.concat(parts))
+    w_raw(body, table.concat(parts))
+  elseif s == "bytes" then
+    val = val or ""
+    w_leb(body, #val)
+    w_raw(body, val)
   else
     -- a blob element (the checker refuses an array of byte buffers, §15) or
     -- any shape the save does not carry refuses
@@ -592,11 +741,16 @@ end
 -- this walk cannot take are the excluded classes and are a retain_lost.
 
 local function kind_width(kind)
-  if kind == 1 or kind == 2 or kind == 6 or kind == 20 or kind == 25 then return 1
-  elseif kind == 3 or kind == 7 or kind == 21 or kind == 26 then return 2
-  elseif kind == 4 or kind == 8 or kind == 10 or kind == 22 or kind == 27 then return 4
-  elseif kind == 5 or kind == 9 or kind == 11 or kind == 23 or kind == 28 or kind == 36 then return 8
-  elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then return 16
+  if kind == 1 or kind == 2 or kind == 6 or kind == 20 or kind == 25 then
+    return 1
+  elseif kind == 3 or kind == 7 or kind == 21 or kind == 26 then
+    return 2
+  elseif kind == 4 or kind == 8 or kind == 10 or kind == 22 or kind == 27 then
+    return 4
+  elseif kind == 5 or kind == 9 or kind == 11 or kind == 23 or kind == 28 or kind == 36 then
+    return 8
+  elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then
+    return 16
   end
   return 0
 end
@@ -616,7 +770,10 @@ local function tr_reader(b, at, lim)
 end
 
 local function tr_u8(r)
-  if r.at >= r.lim then r.bad = true; return 0 end
+  if r.at >= r.lim then
+    r.bad = true
+    return 0
+  end
   local v = string.byte(r.b, r.at + 1)
   r.at = r.at + 1
   return v
@@ -626,13 +783,25 @@ local function tr_leb(r)
   local start = r.at
   local v, s = 0, 0
   for i = 0, 9 do
-    if r.at >= r.lim then r.bad = true; r.at = start; return 0 end
+    if r.at >= r.lim then
+      r.bad = true
+      r.at = start
+      return 0
+    end
     local x = string.byte(r.b, r.at + 1)
     r.at = r.at + 1
-    if i == 9 and x > 1 then r.bad = true; r.at = start; return 0 end
+    if i == 9 and x > 1 then
+      r.bad = true
+      r.at = start
+      return 0
+    end
     v = v | ((x & 0x7f) << s)
     if (x & 0x80) == 0 then
-      if i > 0 and x == 0 then r.bad = true; r.at = start; return 0 end
+      if i > 0 and x == 0 then
+        r.bad = true
+        r.at = start
+        return 0
+      end
       return v
     end
     s = s + 7
@@ -646,9 +815,16 @@ local function tr_has(r, n)
   return r.at <= r.lim and not math.ult(r.lim - r.at, n)
 end
 
-local function cw_raw(w, s) w.parts[#w.parts + 1] = s; w.n = w.n + #s end
-local function cw_u8(w, v) cw_raw(w, string.char(v & 0xff)) end
-local function cw_raw_bytes(w, b, at, n) cw_raw(w, string.sub(b, at + 1, at + n)) end
+local function cw_raw(w, s)
+  w.parts[#w.parts + 1] = s
+  w.n = w.n + #s
+end
+local function cw_u8(w, v)
+  cw_raw(w, string.char(v & 0xff))
+end
+local function cw_raw_bytes(w, b, at, n)
+  cw_raw(w, string.sub(b, at + 1, at + n))
+end
 local function cw_leb(w, v)
   v = v & MAX64
   local out = {}
@@ -659,8 +835,12 @@ local function cw_leb(w, v)
   until v == 0
   cw_raw(w, table.concat(out))
 end
-local function cw_u32(w, v) cw_raw(w, string.pack("<I4", v)) end
-local function cw_u64(w, v) cw_raw(w, string.pack("<i8", v)) end
+local function cw_u32(w, v)
+  cw_raw(w, string.pack("<I4", v))
+end
+local function cw_u64(w, v)
+  cw_raw(w, string.pack("<i8", v))
+end
 
 local function tr_ref(r, atable, zero, w)
   local v = tr_leb(r)
@@ -771,12 +951,17 @@ end
 
 -- THE SAVE HALF of the resolving walk: a record's resolved payload is written
 -- as wire again, every reference interned into `ids` by its id.
-local function out_leb(w, v) w_leb(w, v) end
+local function out_leb(w, v)
+  w_leb(w, v)
+end
 local function out_ref(o)
   if not tr_has(o.r, 8) then return nil end
   local id = record_u64(o.r.b, o.r.at)
   o.r.at = o.r.at + 8
-  if id == 0 then out_leb(o.w, 0); return 0 end
+  if id == 0 then
+    out_leb(o.w, 0)
+    return 0
+  end
   local ref = id_ref_record(o.ids, id)
   if ref == nil then return nil end
   out_leb(o.w, ref)
@@ -827,7 +1012,9 @@ out_content = function(o, kind, n, depth)
     for _ = 1, count do
       if kind == 16 then
         if out_ref(o) == nil or not out_framed(o, k, depth + 1) then return false end
-      elseif not out_payload(o, k, depth) then return false end
+      elseif not out_payload(o, k, depth) then
+        return false
+      end
       if o.r.at > endpos then return false end
     end
   elseif kind == 15 or kind == 30 then
@@ -918,18 +1105,27 @@ local write_union_at
 
 write_union = function(T, ids, nodes, u, val, w, path, ord, retain, report)
   local tag = type(val) == "table" and val.tag or 0
-  if tag == 0 then w_leb(w, 0); return true end
+  if tag == 0 then
+    w_leb(w, 0)
+    return true
+  end
   local arm = u.arms[tag]
   if arm == nil then return false end
   local f = arm.field
   if f == nil then
-    w_leb(w, id_ref(ids, arm.id)); w_u8(w, 32); w_leb(w, 0)
+    w_leb(w, id_ref(ids, arm.id))
+    w_u8(w, 32)
+    w_leb(w, 0)
     return true
   end
-  w_leb(w, id_ref(ids, arm.id)); w_u8(w, f.kind)
+  w_leb(w, id_ref(ids, arm.id))
+  w_u8(w, f.kind)
   local body = W()
-  if not write_union_at(T, ids, nodes, f, val[arm.name], body, path_step(path, ord, tag), ord, retain, report) then return false end
-  w_leb(w, body.n); w_raw(w, table.concat(body.parts))
+  if not write_union_at(T, ids, nodes, f, val[arm.name], body, path_step(path, ord, tag), ord, retain, report) then
+    return false
+  end
+  w_leb(w, body.n)
+  w_raw(w, table.concat(body.parts))
   return true
 end
 
@@ -937,20 +1133,36 @@ end
 -- reached at the arm's position (edge_union, §3.1, §6.3).
 write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report)
   local s = f.shape
-  if s == "bool" then w_u8(body, val and 1 or 0)
-  elseif s == "int" or s == "flags" then w_int(body, f.width, f.signed, val or 0)
-  elseif s == "float" then if not w_float(body, f.f32, val) then return false end
-  elseif s == "string" then w_raw(body, val)
+  if s == "bool" then
+    w_u8(body, val and 1 or 0)
+  elseif s == "int" or s == "flags" then
+    w_int(body, f.width, f.signed, val or 0)
+  elseif s == "float" then
+    if not w_float(body, f.f32, val) then return false end
+  elseif s == "string" then
+    w_raw(body, val)
   elseif s == "wstring" then
-    for i = 1, #val do w_raw(body, string.pack("<I2", val[i])) end
+    for i = 1, #val do
+      w_raw(body, string.pack("<I2", val[i]))
+    end
   elseif s == "bytes" then
-    w_u8(body, 6); w_leb(body, #val); w_raw(body, val)
+    w_u8(body, 6)
+    w_leb(body, #val)
+    w_raw(body, val)
   elseif s == "enum" then
     local vref = 0
-    if val ~= nil and val ~= false then for _, var in ipairs(f.variants) do if var[1] == val then vref = id_ref(ids, var[2]); break end end end
+    if val ~= nil and val ~= false then
+      for _, var in ipairs(f.variants) do
+        if var[1] == val then
+          vref = id_ref(ids, var[2])
+          break
+        end
+      end
+    end
     if vref == 0 and val ~= nil and val ~= false then return false end
     w_leb(body, vref)
-  elseif s == "pointer" then w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
+  elseif s == "pointer" then
+    w_leb(body, (val == nil or val == false) and 0 or (nodes.index[val] or 0))
   elseif s == "table" then
     local d = T.Tables[f.target]
     if not write_body(T, ids, nodes, d, val, body, path, retain, report) then return false end
@@ -959,12 +1171,21 @@ write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report
     if not write_union(T, ids, nodes, inner, val, body, path, ord, retain, report) then return false end
   elseif s == "array" then
     local n = count_of(f, val)
-    w_u8(body, f.elem_kind); w_leb(body, n)
-    for i = 1, n do if not write_element(T, ids, nodes, f.elem, val[i], body, path_step(path, ord, i - 1), ord, retain, report) then return false end end
+    w_u8(body, f.elem_kind)
+    w_leb(body, n)
+    for i = 1, n do
+      if not write_element(T, ids, nodes, f.elem, val[i], body, path_step(path, ord, i - 1), ord, retain, report) then
+        return false
+      end
+    end
   elseif s == "string_blob" or s == "bytes_blob" then
     -- AN ARM'S BLOB IS THE SAME NODE (§2.6): its index is the box's identity,
     -- as the slot's is (§3.1, §6.3).
-    if val == nil or val == false then w_leb(body, 0) else w_leb(body, nodes.index[val] or 0) end
+    if val == nil or val == false then
+      w_leb(body, 0)
+    else
+      w_leb(body, nodes.index[val] or 0)
+    end
   else
     -- a map arm, or any shape the save does not carry, refuses
     return false
@@ -1062,12 +1283,16 @@ local function wire_nodes(bytes, o)
 end
 
 local function desc_for(T, tid)
-  for _, d in pairs(T.Tables) do if d.type_id == tid then return d end end
+  for _, d in pairs(T.Tables) do
+    if d.type_id == tid then return d end
+  end
   return nil
 end
 
 local function field_of(desc, id)
-  for _, f in ipairs(desc.fields) do if f.id == id then return f end end
+  for _, f in ipairs(desc.fields) do
+    if f.id == id then return f end
+  end
   return nil
 end
 
@@ -1083,7 +1308,9 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
     local ref = tr_leb(r)
     if r.bad or ref == 0 or math.ult(#atable, ref) then return end
     local id = atable[ref]
-    for _, var in ipairs(f.variants or {}) do if var[2] == id then return end end
+    for _, var in ipairs(f.variants or {}) do
+      if var[2] == id then return end
+    end
     report.retainLost = report.retainLost + 1
   elseif s == "table" then
     local d = T.Tables[f.target]
@@ -1098,7 +1325,12 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
     local u = T.Unions[f.target]
     if u == nil then return end
     local arm = nil
-    for _, a in ipairs(u.arms) do if a.id == armid then arm = a; break end end
+    for _, a in ipairs(u.arms) do
+      if a.id == armid then
+        arm = a
+        break
+      end
+    end
     if arm == nil or arm.field == nil then
       -- AN UNKNOWN UNION ARM ID IS AN EXCLUDED CLASS (§6.6), one level in
       report.retainLost = report.retainLost + 1
@@ -1136,7 +1368,9 @@ capture_value = function(T, atable, b, at, lim, f, path, ord, report, retain)
         if body.bad or math.ult(#atable, keyref) or not tr_has(body, elen) then return end
         local slot = nil
         local keyid = atable[keyref]
-        for k, v in ipairs(f.keyed) do if v[2] == keyid then slot = k end end
+        for k, v in ipairs(f.keyed) do
+          if v[2] == keyid then slot = k end
+        end
         if slot ~= nil then
           capture_value(T, atable, b, body.at, body.at + elen, e, path_step(path, ord, slot - 1), ord, report, retain)
         else
@@ -1179,11 +1413,11 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
         -- (docs/SPEC-TABLES.md §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's
         -- or 11's raw bits, and a NaN or an infinity refuses the read as
         -- non_finite_float, named <Owner>.0x<id>.
-        if kind == 10 and string.unpack("<I4", b, start + 1) & D.F32_EXP == D.F32_EXP
-          or kind == 11 and string.unpack("<i8", b, start + 1) & D.F64_EXP == D.F64_EXP then
-          if report.nonFiniteFloat == nil then
-            report.nonFiniteFloat = desc.name .. string.format(".0x%016x", id)
-          end
+        if
+          kind == 10 and string.unpack("<I4", b, start + 1) & D.F32_EXP == D.F32_EXP
+          or kind == 11 and string.unpack("<i8", b, start + 1) & D.F64_EXP == D.F64_EXP
+        then
+          if report.nonFiniteFloat == nil then report.nonFiniteFloat = desc.name .. string.format(".0x%016x", id) end
           return
         end
         local w = W()
@@ -1198,7 +1432,8 @@ capture_body = function(T, atable, b, at, lim, desc, path, report, retain)
             if retain ~= nil then
               retain.list = retain.list or {}
               retain.used = (retain.used or 0) + cost
-              retain.list[#retain.list + 1] = { key = path_key(path), id = id, kind = kind, payload = payload, placed = false }
+              retain.list[#retain.list + 1] =
+                { key = path_key(path), id = id, kind = kind, payload = payload, placed = false }
             end
             report.retained = report.retained + 1
           end
@@ -1274,17 +1509,24 @@ local function save_retain(T, name, v, retain, report)
     for k, n in ipairs(nodes.list) do
       w_leb(sub, id_ref(ids, n.typeId))
       if n.codec == nil then
-        w_leb(sub, #n.body); w_raw(sub, n.body)
+        w_leb(sub, #n.body)
+        w_raw(sub, n.body)
       else
         local body = W()
-        if not write_body(T, ids, nodes, n.codec, n.v, body, { node = k + 1, steps = {} }, retain, report) then return nil end
-        w_leb(sub, body.n); w_raw(sub, table.concat(body.parts))
+        if not write_body(T, ids, nodes, n.codec, n.v, body, { node = k + 1, steps = {} }, retain, report) then
+          return nil
+        end
+        w_leb(sub, body.n)
+        w_raw(sub, table.concat(body.parts))
       end
     end
-    w_leb(idx, sub.n); w_raw(idx, table.concat(sub.parts))
+    w_leb(idx, sub.n)
+    w_raw(idx, table.concat(sub.parts))
   end
   w_u8(idx, 0)
-  for _, id in ipairs(ids.list) do w_u64(idx, id) end
+  for _, id in ipairs(ids.list) do
+    w_u64(idx, id)
+  end
   w_u64(idx, #ids.list)
   return table.concat(idx.parts)
 end
@@ -1302,8 +1544,22 @@ function S.LoadRetain(T, name, bytes, retain, report)
   local desc = T.Tables[name]
   if desc == nil then return nil end
   if not desc.variable then fixed_refusal(name) end
-  if retain ~= nil then retain.list = {}; retain.used = 0 end
-  local rep = report or { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
+  if retain ~= nil then
+    retain.list = {}
+    retain.used = 0
+  end
+  local rep = report
+    or {
+      malformed = false,
+      refused = 0,
+      unknown = 0,
+      kindMismatch = 0,
+      clamped = 0,
+      widened = 0,
+      duplicate = 0,
+      retained = 0,
+      retainLost = 0,
+    }
   rep.retained = rep.retained or 0
   rep.retainLost = rep.retainLost or 0
   local v = load.Load(T, name, bytes, rep)
@@ -1313,7 +1569,10 @@ function S.LoadRetain(T, name, bytes, retain, report)
   -- nothing it captured stays (§3.3, ruling 3)
   if rep.nonFiniteFloat ~= nil then
     rep.reason = "non_finite_float"
-    if retain ~= nil then retain.list = {}; retain.used = 0 end
+    if retain ~= nil then
+      retain.list = {}
+      retain.used = 0
+    end
     rep.retained, rep.retainLost = retainedBefore, lostBefore
     return nil
   end
@@ -1327,7 +1586,9 @@ function S.MeasureRetain(T, name, v, retain)
   if desc == nil then return nil end
   if not desc.variable then fixed_refusal(name) end
   if retain ~= nil then
-    for _, rec in ipairs(retain.list or {}) do rec.placed = false end
+    for _, rec in ipairs(retain.list or {}) do
+      rec.placed = false
+    end
   end
   -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
   local refused = D.refuse_deprecated(T, name, v)
@@ -1345,7 +1606,9 @@ function S.SaveRetain(T, name, v, retain, report)
   if not desc.variable then fixed_refusal(name) end
   if report == nil then return nil end
   if retain ~= nil then
-    for _, rec in ipairs(retain.list or {}) do rec.placed = false end
+    for _, rec in ipairs(retain.list or {}) do
+      rec.placed = false
+    end
   end
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end

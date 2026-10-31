@@ -30,8 +30,12 @@ local function utf8_encode(code)
   elseif code < 0x10000 then
     return string.char(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
   end
-  return string.char(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f),
-    0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f))
+  return string.char(
+    0xf0 | (code >> 18),
+    0x80 | ((code >> 12) & 0x3f),
+    0x80 | ((code >> 6) & 0x3f),
+    0x80 | (code & 0x3f)
+  )
 end
 
 -- the length of one WELL-FORMED UTF-8 sequence at s[i], or -1
@@ -40,15 +44,25 @@ local function utf8_seq(s, i)
   if c == nil then return -1 end
   if c < 0x80 then return 1 end
   local n, lo, hi
-  if c >= 0xc2 and c <= 0xdf then n, lo, hi = 2, 0x80, 0xbf
-  elseif c == 0xe0 then n, lo, hi = 3, 0xa0, 0xbf
-  elseif c >= 0xe1 and c <= 0xec then n, lo, hi = 3, 0x80, 0xbf
-  elseif c == 0xed then n, lo, hi = 3, 0x80, 0x9f
-  elseif c >= 0xee and c <= 0xef then n, lo, hi = 3, 0x80, 0xbf
-  elseif c == 0xf0 then n, lo, hi = 4, 0x90, 0xbf
-  elseif c >= 0xf1 and c <= 0xf3 then n, lo, hi = 4, 0x80, 0xbf
-  elseif c == 0xf4 then n, lo, hi = 4, 0x80, 0x8f
-  else return -1 end
+  if c >= 0xc2 and c <= 0xdf then
+    n, lo, hi = 2, 0x80, 0xbf
+  elseif c == 0xe0 then
+    n, lo, hi = 3, 0xa0, 0xbf
+  elseif c >= 0xe1 and c <= 0xec then
+    n, lo, hi = 3, 0x80, 0xbf
+  elseif c == 0xed then
+    n, lo, hi = 3, 0x80, 0x9f
+  elseif c >= 0xee and c <= 0xef then
+    n, lo, hi = 3, 0x80, 0xbf
+  elseif c == 0xf0 then
+    n, lo, hi = 4, 0x90, 0xbf
+  elseif c >= 0xf1 and c <= 0xf3 then
+    n, lo, hi = 4, 0x80, 0xbf
+  elseif c == 0xf4 then
+    n, lo, hi = 4, 0x80, 0x8f
+  else
+    return -1
+  end
   if i + n - 1 > #s then return -1 end
   local b = s:byte(i + 1)
   if b < lo or b > hi then return -1 end
@@ -63,10 +77,16 @@ local function utf8_decode(s)
   local c = s:byte(1)
   if c < 0x80 then return c end
   local code, n
-  if c < 0xe0 then code, n = c & 0x1f, 2
-  elseif c < 0xf0 then code, n = c & 0x0f, 3
-  else code, n = c & 0x07, 4 end
-  for i = 2, n do code = (code << 6) | (s:byte(i) & 0x3f) end
+  if c < 0xe0 then
+    code, n = c & 0x1f, 2
+  elseif c < 0xf0 then
+    code, n = c & 0x0f, 3
+  else
+    code, n = c & 0x07, 4
+  end
+  for i = 2, n do
+    code = (code << 6) | (s:byte(i) & 0x3f)
+  end
   return code
 end
 
@@ -133,15 +153,23 @@ local function scan_string(st)
       if st.p > #t then fail("text_unterminated", start) end
       local e = t:sub(st.p, st.p)
       st.p = st.p + 1
-      if e == '"' then out[#out + 1] = '"'
-      elseif e == '\\' then out[#out + 1] = '\\'
-      elseif e == '/' then out[#out + 1] = '/'
-      elseif e == 'b' then out[#out + 1] = '\b'
-      elseif e == 'f' then out[#out + 1] = '\f'
-      elseif e == 'n' then out[#out + 1] = '\n'
-      elseif e == 'r' then out[#out + 1] = '\r'
-      elseif e == 't' then out[#out + 1] = '\t'
-      elseif e == 'u' then
+      if e == '"' then
+        out[#out + 1] = '"'
+      elseif e == "\\" then
+        out[#out + 1] = "\\"
+      elseif e == "/" then
+        out[#out + 1] = "/"
+      elseif e == "b" then
+        out[#out + 1] = "\b"
+      elseif e == "f" then
+        out[#out + 1] = "\f"
+      elseif e == "n" then
+        out[#out + 1] = "\n"
+      elseif e == "r" then
+        out[#out + 1] = "\r"
+      elseif e == "t" then
+        out[#out + 1] = "\t"
+      elseif e == "u" then
         local high = hex4(st)
         local code = high
         if high >= 0xd800 and high <= 0xdbff then
@@ -203,8 +231,7 @@ local function scan_atom(st)
   local start = st.p
   while st.p <= #t do
     local c = t:byte(st.p)
-    if c == 40 or c == 41 or c == 34 or c == 59
-      or c == 32 or c == 9 or c == 10 or c == 13 then break end
+    if c == 40 or c == 41 or c == 34 or c == 59 or c == 32 or c == 9 or c == 10 or c == 13 then break end
     st.p = st.p + 1
   end
   local tok = t:sub(start, st.p - 1)
@@ -265,15 +292,25 @@ local function quote(s)
   local out = { '"' }
   for i = 1, #s do
     local c = s:byte(i)
-    if c == 34 then out[#out + 1] = '\\"'
-    elseif c == 92 then out[#out + 1] = '\\\\'
-    elseif c == 8 then out[#out + 1] = '\\b'
-    elseif c == 12 then out[#out + 1] = '\\f'
-    elseif c == 10 then out[#out + 1] = '\\n'
-    elseif c == 13 then out[#out + 1] = '\\r'
-    elseif c == 9 then out[#out + 1] = '\\t'
-    elseif c < 0x20 then out[#out + 1] = string.format("\\u%04x", c)
-    else out[#out + 1] = s:sub(i, i) end
+    if c == 34 then
+      out[#out + 1] = '\\"'
+    elseif c == 92 then
+      out[#out + 1] = "\\\\"
+    elseif c == 8 then
+      out[#out + 1] = "\\b"
+    elseif c == 12 then
+      out[#out + 1] = "\\f"
+    elseif c == 10 then
+      out[#out + 1] = "\\n"
+    elseif c == 13 then
+      out[#out + 1] = "\\r"
+    elseif c == 9 then
+      out[#out + 1] = "\\t"
+    elseif c < 0x20 then
+      out[#out + 1] = string.format("\\u%04x", c)
+    else
+      out[#out + 1] = s:sub(i, i)
+    end
   end
   out[#out + 1] = '"'
   return table.concat(out)
@@ -281,7 +318,9 @@ end
 
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local b64val = {}
-for i = 1, #BASE64 do b64val[BASE64:sub(i, i)] = i - 1 end
+for i = 1, #BASE64 do
+  b64val[BASE64:sub(i, i)] = i - 1
+end
 
 -- padded standard base64 (§16.9.2 bytes row): the decoded length, or nil for
 -- a bad alphabet, missing pad or nonzero unused pad bits
@@ -323,13 +362,10 @@ end
 
 -- ONE RFC 3339 instant in §16.2's UTC nanosecond domain, or nil
 local function timestamp_ns(text)
-  local y, m, d, hh, mm, ss, rest = text:match(
-    "^(%d%d%d%d)%-(%d%d)%-(%d%d)[Tt](%d%d):(%d%d):(%d%d)(.*)$")
+  local y, m, d, hh, mm, ss, rest = text:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)[Tt](%d%d):(%d%d):(%d%d)(.*)$")
   if y == nil then return nil end
-  y, m, d, hh, mm, ss = tonumber(y), tonumber(m), tonumber(d),
-    tonumber(hh), tonumber(mm), tonumber(ss)
-  if y < 1 or y > 9999 or m < 1 or m > 12 or d < 1 or d > 31
-    or hh > 23 or mm > 59 or ss > 60 then return nil end
+  y, m, d, hh, mm, ss = tonumber(y), tonumber(m), tonumber(d), tonumber(hh), tonumber(mm), tonumber(ss)
+  if y < 1 or y > 9999 or m < 1 or m > 12 or d < 1 or d > 31 or hh > 23 or mm > 59 or ss > 60 then return nil end
   local frac, tail = 0, rest
   if rest:sub(1, 1) == "." then
     local digits = rest:match("^%.(%d+)")
@@ -361,7 +397,10 @@ end
 local function integral_digits(token)
   local neg = false
   local t = token
-  if t:sub(1, 1) == "-" then neg = true; t = t:sub(2) end
+  if t:sub(1, 1) == "-" then
+    neg = true
+    t = t:sub(2)
+  end
   local exp = 0
   local e = t:find("[eE]")
   if e then
@@ -408,21 +447,15 @@ local function digits_less(a, b)
 end
 
 local function int_bounds(d)
-  if d.lo ~= nil and d.hi ~= nil then
-    return tostring(d.lo), tostring(d.hi)
-  end
+  if d.lo ~= nil and d.hi ~= nil then return tostring(d.lo), tostring(d.hi) end
   local bits = d.bits
   if bits == nil or bits <= 0 then bits = (d.width or 8) * 8 end
   if d.signed then
-    if bits >= 64 then
-      return "-9223372036854775808", "9223372036854775807"
-    end
+    if bits >= 64 then return "-9223372036854775808", "9223372036854775807" end
     local hi = (1 << (bits - 1)) - 1
     return tostring(-hi - 1), tostring(hi)
   end
-  if bits >= 64 then
-    return "0", "18446744073709551615"
-  end
+  if bits >= 64 then return "0", "18446744073709551615" end
   return "0", tostring((1 << bits) - 1)
 end
 
@@ -435,13 +468,25 @@ local function integer_text(d, node)
   if neg then
     below = lo:sub(1, 1) ~= "-" or digits_less(lo:sub(2), digits)
   else
-    if lo:sub(1, 1) == "-" then below = false else below = digits_less(digits, lo) end
+    if lo:sub(1, 1) == "-" then
+      below = false
+    else
+      below = digits_less(digits, lo)
+    end
   end
   local above
   if neg then
-    if hi:sub(1, 1) ~= "-" then above = false else above = digits_less(hi:sub(2), digits) end
+    if hi:sub(1, 1) ~= "-" then
+      above = false
+    else
+      above = digits_less(hi:sub(2), digits)
+    end
   else
-    if hi:sub(1, 1) == "-" then above = true else above = digits_less(hi, digits) end
+    if hi:sub(1, 1) == "-" then
+      above = true
+    else
+      above = digits_less(hi, digits)
+    end
   end
   if below or above then fail("text_bound", node.pos) end
   if neg then return "-" .. digits end
@@ -493,14 +538,12 @@ local function resolve_record(T, desc, node, allow_label, labels)
     if name == "&node" then
       if not allow_label then fail("text_reference", first.pos) end
       local lv = items[2]
-      if lv.k ~= "num" or not lv.v:match("^%d+$") then
-        fail("text_reference", lv.pos)
-      end
+      if lv.k ~= "num" or not lv.v:match("^%d+$") then fail("text_reference", lv.pos) end
       label = tonumber(lv.v)
       start = 3
       if start > #items then
         if not labels[label] then fail("text_reference", lv.pos) end
-        return '{"&node":' .. tostring(label) .. '}'
+        return '{"&node":' .. tostring(label) .. "}"
       end
       if labels[label] then fail("text_reference", lv.pos) end
     end
@@ -536,12 +579,8 @@ local function resolve_record(T, desc, node, allow_label, labels)
     return true
   end
   for _, fd in ipairs(desc.fields) do
-    if present[fd.name] and not guard_holds(fd) then
-      fail("text_inactive_field", raw[fd.name].pos)
-    end
-    if not present[fd.name] and fd.required then
-      fail("text_missing_required", node.pos)
-    end
+    if present[fd.name] and not guard_holds(fd) then fail("text_inactive_field", raw[fd.name].pos) end
+    if not present[fd.name] and fd.required then fail("text_missing_required", node.pos) end
   end
   if label ~= nil then labels[label] = true end
   if label ~= nil then
@@ -572,7 +611,10 @@ local function resolve_array(T, d, node, labels)
       local name = key_name(items[i])
       local slot
       for k, v in ipairs(d.keyed) do
-        if v[1] == name then slot = k; break end
+        if v[1] == name then
+          slot = k
+          break
+        end
       end
       if slot == nil then fail("text_unknown_key", items[i].pos) end
       if seen[slot] then fail("text_duplicate_key", items[i].pos) end
@@ -583,9 +625,7 @@ local function resolve_array(T, d, node, labels)
     return "{" .. table.concat(parts, ",") .. "}"
   end
   if d.fixed and #items ~= d.bound then fail("text_bound", node.pos) end
-  if not d.fixed and d.bound and d.bound > 0 and #items > d.bound then
-    fail("text_bound", node.pos)
-  end
+  if not d.fixed and d.bound and d.bound > 0 and #items > d.bound then fail("text_bound", node.pos) end
   local parts = {}
   for idx = 1, #items do
     parts[idx] = resolve_value(T, d.elem, items[idx], labels)
@@ -597,9 +637,7 @@ local function resolve_map(T, d, node, labels)
   if node.k ~= "list" then fail("text_kind_mismatch", node.pos) end
   local parts, seen = {}, {}
   for _, entry in ipairs(node.items) do
-    if entry.k ~= "list" or #entry.items ~= 2 then
-      fail("text_kind_mismatch", entry.pos)
-    end
+    if entry.k ~= "list" or #entry.items ~= 2 then fail("text_kind_mismatch", entry.pos) end
     local kd, vd = d.key_field, d.value_field
     local knode = entry.items[1]
     local key
@@ -630,7 +668,10 @@ local function resolve_union(T, d, node, labels)
   local name = key_name(keynode)
   local arm
   for _, a in ipairs(u.arms) do
-    if a.name == name then arm = a; break end
+    if a.name == name then
+      arm = a
+      break
+    end
   end
   if arm == nil then fail("text_unknown_key", keynode.pos) end
   local valnode = node.items[2]
@@ -644,9 +685,7 @@ end
 resolve_value = function(T, d, node, labels)
   local s = d.shape
   if node.k == "null" then
-    if d.optional or s == "pointer" or s == "string_blob" or s == "bytes_blob" then
-      return "null"
-    end
+    if d.optional or s == "pointer" or s == "string_blob" or s == "bytes_blob" then return "null" end
     fail("text_kind_mismatch", node.pos)
   end
   if s == "int" then
@@ -660,9 +699,7 @@ resolve_value = function(T, d, node, labels)
   elseif s == "float" then
     if node.k ~= "num" then fail("text_kind_mismatch", node.pos) end
     local x = tonumber(node.v)
-    if x == nil or x ~= x or x == math.huge or x == -math.huge then
-      fail("text_kind_mismatch", node.pos)
-    end
+    if x == nil or x ~= x or x == math.huge or x == -math.huge then fail("text_kind_mismatch", node.pos) end
     if d.f32 then
       local narrow = string.unpack("<f", string.pack("<f", x))
       if narrow == math.huge or narrow == -math.huge then fail("text_bound", node.pos) end
@@ -695,9 +732,7 @@ resolve_value = function(T, d, node, labels)
   elseif s == "enum" then
     if node.k ~= "kw" and node.k ~= "str" then fail("text_kind_mismatch", node.pos) end
     local name = node.v
-    if name ~= "None" and not variants_has(d, name) then
-      fail("text_unknown_variant", node.pos)
-    end
+    if name ~= "None" and not variants_has(d, name) then fail("text_unknown_variant", node.pos) end
     return quote(name)
   elseif s == "flags" then
     if node.k ~= "list" then fail("text_kind_mismatch", node.pos) end
@@ -740,8 +775,8 @@ function TF.Load(T, name, text, limits)
   if st.p <= #text then fail("text_syntax", st.p) end
   if root.k ~= "list" then fail("text_kind_mismatch", root.pos) end
   local js = resolve_record(T, desc, root, false, {})
-  local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0,
-    clamped = 0, widened = 0, duplicate = 0 }
+  local report =
+    { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
   local v = J.FromJson(T, name, js, report)
   if v == nil or report.malformed then fail("text_syntax", 1) end
   if report.duplicate > 0 then fail("text_duplicate_key", 1) end

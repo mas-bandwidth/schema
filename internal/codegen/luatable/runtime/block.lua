@@ -62,19 +62,22 @@ local function elem_of(T, d)
     local w = T.FixedEnums and T.FixedEnums[d.enum]
     if w == nil then
       local n = #(d.variants or {})
-      if n <= 0xff then w = 1
-      elseif n <= 0xffff then w = 2
-      elseif n <= 0xffffffff then w = 4
-      else w = 8 end
+      if n <= 0xff then
+        w = 1
+      elseif n <= 0xffff then
+        w = 2
+      elseif n <= 0xffffffff then
+        w = 4
+      else
+        w = 8
+      end
     end
     return { size = w, align = w }
   elseif s == "flags" then
     return { size = 8, align = 8 }
   elseif s == "table" then
     local row = T.Tables[d.target]
-    if row == nil then
-      error("block: no descriptor for record " .. tostring(d.target), 0)
-    end
+    if row == nil then error("block: no descriptor for record " .. tostring(d.target), 0) end
     return { size = row.size, align = row.align }
   elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
     return { size = 8, align = 8 }
@@ -86,8 +89,7 @@ end
 -- TABLE'S OWN bounded arrays of records move out of line. A fixed [N]T, an
 -- enum-keyed [E]T, and every array inside a row stay exactly where they are.
 local function out_of_line(f)
-  return f.shape == "array" and not f.list and not f.fixed
-    and f.elem ~= nil and f.elem.shape == "table"
+  return f.shape == "array" and not f.list and not f.fixed and f.elem ~= nil and f.elem.shape == "table"
 end
 
 -- pieces spells one field's storage as the contiguous members a C record
@@ -95,9 +97,7 @@ end
 -- array its elements AND its count, an optional a presence byte. The
 -- projection replaces an out-of-line array with its sixteen-byte triple.
 local function pieces(T, f, projection)
-  if projection and out_of_line(f) then
-    return { { size = 16, align = 8 } }
-  end
+  if projection and out_of_line(f) then return { { size = 16, align = 8 } } end
   local p = {}
   local s = f.shape
   if s == "map" then
@@ -120,17 +120,13 @@ local function pieces(T, f, projection)
       local e = elem_of(T, f.elem)
       local slots = f.keyed and #f.keyed or f.bound
       p[#p + 1] = { size = e.size * slots, align = e.align }
-      if not f.fixed then
-        p[#p + 1] = { size = 4, align = 4 }
-      end
+      if not f.fixed then p[#p + 1] = { size = 4, align = 4 } end
     end
   else
     local e = elem_of(T, f)
     p[#p + 1] = { size = e.size, align = e.align }
   end
-  if f.optional then
-    p[#p + 1] = { size = 1, align = 1 }
-  end
+  if f.optional then p[#p + 1] = { size = 1, align = 1 } end
   return p
 end
 
@@ -139,9 +135,7 @@ end
 -- its descriptor names. It is the §19.3 model, not the wire's packed one.
 function B.Layout(T, name, projection)
   local d = T.Tables[name]
-  if d == nil then
-    error("block: no descriptor for table " .. tostring(name), 0)
-  end
+  if d == nil then error("block: no descriptor for table " .. tostring(name), 0) end
   local offset = projection and PROLOGUE or 0
   local record_align = projection and 8 or 1
   local fields = {}
@@ -181,9 +175,7 @@ function B.Layout(T, name, projection)
       presentOffset = nil,
       element = nil,
     }
-    if fl.optional then
-      fl.presentOffset = offsets[#offsets].offset
-    end
+    if fl.optional then fl.presentOffset = offsets[#offsets].offset end
     if fl.outOfLine then
       fl.isArray = true
       fl.counted = true
@@ -202,9 +194,7 @@ function B.Layout(T, name, projection)
       fl.bound = f.keyed and #f.keyed or f.bound
       local e = elem_of(T, f.elem)
       fl.elemSize = e.size
-      if f.elem.shape == "table" then
-        fl.element = B.Layout(T, f.elem.target, false)
-      end
+      if f.elem.shape == "table" then fl.element = B.Layout(T, f.elem.target, false) end
       if not f.fixed then
         fl.counted = true
         fl.countOffset = offsets[2].offset
@@ -230,30 +220,20 @@ end
 -- the base's alignment — the only clause that reads nothing out of the block.
 -- On a failure it returns nil and the refusal's name (§7's vocabulary).
 function B.BlockOpen(T, name, bytes, build_version, base_offset)
-  if type(bytes) ~= "string" then
-    return nil, "truncated"
-  end
-  if build_version == nil then
-    build_version = T.BuildVersion
-  end
+  if type(bytes) ~= "string" then return nil, "truncated" end
+  if build_version == nil then build_version = T.BuildVersion end
   local layout = B.Layout(T, name, true)
 
   -- the alignment clause is last, but a nil base is what a non-string is:
   -- there is no block to read and no offset to measure
-  if #bytes < layout.size then
-    return nil, "truncated"
-  end
+  if #bytes < layout.size then return nil, "truncated" end
   local magic = string.unpack("=I8", bytes, 1)
   if magic ~= MAGIC then
     if magic == FOREIGN_MAGIC then return nil, "foreign_order" end
     return nil, "not_a_cook"
   end
-  if string.unpack("=I8", bytes, 17) ~= NATIVE_ORDER then
-    return nil, "not_a_cook"
-  end
-  if build_version == nil or string.unpack("=I8", bytes, 9) ~= build_version then
-    return nil, "wrong_build_version"
-  end
+  if string.unpack("=I8", bytes, 17) ~= NATIVE_ORDER then return nil, "not_a_cook" end
+  if build_version == nil or string.unpack("=I8", bytes, 9) ~= build_version then return nil, "wrong_build_version" end
 
   local used = layout.size
   local arrays = {}
@@ -271,9 +251,7 @@ function B.BlockOpen(T, name, bytes, build_version, base_offset)
         elem_align = elem_align * 2
       end
       local start_align = max_align(BLOCK_ALIGN, elem_align)
-      if offset_of < layout.size or offset_of % start_align ~= 0 then
-        return nil, "bad_layout"
-      end
+      if offset_of < layout.size or offset_of % start_align ~= 0 then return nil, "bad_layout" end
       if offset_of > #bytes then return nil, "bad_layout" end
       local rows = count * stride -- both bounded above: this cannot carry
       if rows > #bytes - offset_of then return nil, "bad_layout" end
@@ -342,17 +320,27 @@ local function dump_scalar(bytes, at, kind, width)
     return string.format("0x%016x", b)
   elseif kind >= 2 and kind <= 5 then
     local v
-    if width == 1 then v = string.unpack("=i1", bytes, p)
-    elseif width == 2 then v = string.unpack("=i2", bytes, p)
-    elseif width == 4 then v = string.unpack("=i4", bytes, p)
-    else v = string.unpack("=i8", bytes, p) end
+    if width == 1 then
+      v = string.unpack("=i1", bytes, p)
+    elseif width == 2 then
+      v = string.unpack("=i2", bytes, p)
+    elseif width == 4 then
+      v = string.unpack("=i4", bytes, p)
+    else
+      v = string.unpack("=i8", bytes, p)
+    end
     return string.format("%d", v)
   end
   local v
-  if width == 1 then v = string.unpack("=I1", bytes, p)
-  elseif width == 2 then v = string.unpack("=I2", bytes, p)
-  elseif width == 4 then v = string.unpack("=I4", bytes, p)
-  else v = string.unpack("=I8", bytes, p) end
+  if width == 1 then
+    v = string.unpack("=I1", bytes, p)
+  elseif width == 2 then
+    v = string.unpack("=I2", bytes, p)
+  elseif width == 4 then
+    v = string.unpack("=I4", bytes, p)
+  else
+    v = string.unpack("=I8", bytes, p)
+  end
   return string.format("%d", v)
 end
 
@@ -369,9 +357,18 @@ local function dump_record(out, bytes, base, layout, prefix)
         -- a string, a bytes, or a counted array's used length companion
         local used = string.unpack("=i4", bytes, base + fl.countOffset + 1)
         if used < 0 or used > fl.bound then
-          error("block: " .. layout.name .. "." .. fl.f.name
-            .. " carries a used length of " .. tostring(used)
-            .. ", outside [ 0, " .. fl.bound .. " ]", 0)
+          error(
+            "block: "
+              .. layout.name
+              .. "."
+              .. fl.f.name
+              .. " carries a used length of "
+              .. tostring(used)
+              .. ", outside [ 0, "
+              .. fl.bound
+              .. " ]",
+            0
+          )
         end
         out[#out + 1] = "  " .. name .. " = " .. cook_text(bytes, base + fl.offset, used)
       else
@@ -386,9 +383,7 @@ local function dump_record(out, bytes, base, layout, prefix)
             -- array's slot is a float's bit pattern, never an integer
             local kind = fl.isArray and (fl.f.elem_kind or fl.f.kind) or fl.f.kind
             local text = dump_scalar(bytes, at, kind, fl.elemSize)
-            if text == nil then
-              error("non_finite_float: " .. layout.name .. "." .. fl.f.name, 0)
-            end
+            if text == nil then error("non_finite_float: " .. layout.name .. "." .. fl.f.name, 0) end
             out[#out + 1] = "  " .. slot .. " = " .. text
           end
         end
@@ -408,8 +403,8 @@ function B.Dump(handle)
   local out = { "projection " .. handle.name .. " @0" }
   dump_record(out, handle.bytes, 0, handle.layout, "")
   for _, a in ipairs(handle.arrays) do
-    out[#out + 1] = string.format("array %s %s @%d count=%d stride=%d",
-      a.field.name, a.layout.name, a.offsetOf, a.count, a.stride)
+    out[#out + 1] =
+      string.format("array %s %s @%d count=%d stride=%d", a.field.name, a.layout.name, a.offsetOf, a.count, a.stride)
     for r = 0, a.count - 1 do
       local at = a.offsetOf + r * a.stride
       out[#out + 1] = string.format("row %d @%d", r, at)

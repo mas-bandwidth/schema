@@ -32,8 +32,12 @@ local function align_up(n, a)
   return n
 end
 
-local function pack_u32(v) return string.pack("<I4", v) end
-local function pack_u64(v) return string.pack("<I8", v) end
+local function pack_u32(v)
+  return string.pack("<I4", v)
+end
+local function pack_u64(v)
+  return string.pack("<I8", v)
+end
 
 -- storage_bits_for is ir.StorageBitsFor: the smallest unsigned width holding
 -- max (§5.1), and an enum's own storage width.
@@ -80,8 +84,12 @@ end
 -- projection and into the triple. A fixed `[N]T`, an enum-keyed `[E]T` and an
 -- unbounded `[]T` do not.
 local function out_of_line(d)
-  return d.shape == "array" and not d.fixed and not d.list and d.keyed == nil
-    and d.elem ~= nil and d.elem.shape == "table"
+  return d.shape == "array"
+    and not d.fixed
+    and not d.list
+    and d.keyed == nil
+    and d.elem ~= nil
+    and d.elem.shape == "table"
 end
 
 -- pieces is ir.fieldPieces (§19.3): a field's contiguous storage members in
@@ -90,9 +98,7 @@ end
 -- one-byte presence companion. `projection` selects the block spelling, where
 -- an out-of-line array is its sixteen-byte triple.
 local function pieces(T, d, projection)
-  if projection and out_of_line(d) then
-    return { { size = 16, align = 8 } }
-  end
+  if projection and out_of_line(d) then return { { size = 16, align = 8 } } end
   local out = {}
   local s = d.shape
   if s == "map" then
@@ -122,9 +128,7 @@ local function pieces(T, d, projection)
       out[#out + 1] = { size = 16, align = 8 }
     else
       out[#out + 1] = { size = es * d.bound, align = ea }
-      if not d.fixed and d.keyed == nil then
-        out[#out + 1] = { size = 4, align = 4 }
-      end
+      if not d.fixed and d.keyed == nil then out[#out + 1] = { size = 4, align = 4 } end
     end
   else
     local es, ea = element_size(T, d)
@@ -157,8 +161,8 @@ local function projection(T, desc)
     if start >= 0 then
       fields[d.name] = { offset = start, size = offset - start, align = field_align }
       if out_of_line(d) then
-        arrays[#arrays + 1] = { name = d.name, triple = start, max = d.bound,
-          stride = d.elem_size, align = d.elem_align }
+        arrays[#arrays + 1] =
+          { name = d.name, triple = start, max = d.bound, stride = d.elem_size, align = d.elem_align }
       end
     end
   end
@@ -171,7 +175,9 @@ end
 -- is the greatest power of two dividing its stride, bounded by 16 (§19.1).
 local function stride_align(stride)
   local a = 1
-  while a < 16 and stride % (a * 2) == 0 do a = a * 2 end
+  while a < 16 and stride % (a * 2) == 0 do
+    a = a * 2
+  end
   return a
 end
 
@@ -201,7 +207,9 @@ function B.Begin(T, root, counts)
   local desc = T.Tables[root]
   if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
   if T.BuildVersion == nil then
-    return nil, "blockbuild: T.BuildVersion is nil; the block prologue carries the unit's build version (docs/SPEC-TABLES.md §19.1)"
+    return nil,
+      "blockbuild: T.BuildVersion is nil; the block prologue carries the unit's build version"
+        .. " (docs/SPEC-TABLES.md §19.1)"
   end
   counts = counts or {}
   local size, _, _, arrays = projection(T, desc)
@@ -226,8 +234,7 @@ function B.Begin(T, root, counts)
     local align = math.max(BLOCK_ALIGN, stride_align(a.stride))
     offset = align_up(offset, align)
     rows[#rows + 1] = { name = a.name, offset = offset, count = count, stride = a.stride }
-    writes[#writes + 1] = { offset = a.triple,
-      bytes = pack_u64(offset) .. pack_u32(count) .. pack_u32(a.stride) }
+    writes[#writes + 1] = { offset = a.triple, bytes = pack_u64(offset) .. pack_u32(count) .. pack_u32(a.stride) }
     offset = offset + count * a.stride
   end
   local used = align_up(offset, BLOCK_ALIGN)

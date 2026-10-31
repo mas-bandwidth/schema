@@ -27,7 +27,7 @@ func TestLuaZeroFixedStructArrayStaysInScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(files["Wire.lua"])
-	want := "for i = 1, 2 do _M.ZeroProbeSample(value.Samples[i]) end"
+	want := "for i = 1, 2 do\n    _M.ZeroProbeSample(value.Samples[i])\n  end"
 	if !strings.Contains(text, want) {
 		t.Fatalf("ZeroProbeArray missing %q", want)
 	}
@@ -138,7 +138,7 @@ func TestLuaTypeWireReadNegativeControl(t *testing.T) {
 	if start < 0 {
 		t.Fatal("Wire.lua has no ReadProbeBits")
 	}
-	anchor := "if not stream:serializeBits(BITS, 32) then\n    return false\n  end\n  value.Tail = BITS.value"
+	anchor := "if not stream:serializeBits(BITS, 32) then return false end\n  value.Tail = BITS.value"
 	i := strings.Index(text[start:], anchor)
 	if i < 0 || strings.Count(text[start:], anchor) != 1 {
 		t.Fatalf("the uint32 anchor does not occur exactly once in ReadSpanTail")

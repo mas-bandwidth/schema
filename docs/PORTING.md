@@ -1070,7 +1070,7 @@ reader controls share.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) | ❌ #381 (no card yet in the schema-lua stream) |
+| ✅ `tables-flat-wire-negative-control` | ✅ `conformance-negative-control-c` | ✅ `tables-rust-names-negative-control` | ✅ `tables-go-fuzz-extent-negative-control` | ✅ `conformance-negative-control-cs` | ✅ `tables-java-fuzz-negative-control` | ✅ `tables-js-accessor-negative-control` | ✅ `tables-dart-fuzz-negative-control` | ✅ `tables-elixir-fuzz-negative-control` `tables-elixir-block-lead-negative-control` (`ELIXIR_SABOTAGED_BUILD`) | ✅ `conformance-negative-control-lua` `conformance-negative-control-lua-walk` (`test/conformance/lua/negative-control`: the embedded runtime sedded into a `go build -overlay` compiler) |
 
 ### I3 — The forgery fuzz oracle walks what it opened
 
@@ -1329,7 +1329,7 @@ table of controls.
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | lua |
 |---|---|---|---|---|---|---|---|---|---|
-| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ❌ #514 | ❌ #515 | ❌ #381 schema-lua-conformance-leg |
+| ✅ `conformance-negative-control-cpp` | ✅ `conformance-negative-control-c` | ❌ #417 (no conformance control) | ✅ `conformance-negative-control-go-walk` | ✅ `conformance-negative-control-cs` | ✅ `conformance-negative-control-java-walk` | ✅ `conformance-negative-control-js-walk` | ❌ #514 | ❌ #515 | ✅ `conformance-negative-control-lua-walk` (the `FromJson` field-key match; lua json-read and json-hostile red, `json-write` and `wire` green) |
 
 ### I12 — The documented surface compiles and runs
 

@@ -44,43 +44,43 @@ toolchain-luacheck:
 		exit 1; \
 	fi
 
-# THE CONFIG, AND EVERY IGNORE IN IT. Strict means luacheck's own default set,
-# not a hand-picked subset. The four below are the only suppressions, each one
-# a shape the emitter produces on purpose rather than a defect:
+# THE CONFIG IS LUACHECK'S DEFAULT SET, WHOLE, AT ZERO WARNINGS. std = "lua54"
+# names the pinned interpreter's globals; nothing else is set for the emitted
+# code or the table runtime: no ignore list, no line-length allowance, no
+# pinned count of tolerated findings. A finding is fixed in the generator
+# (internal/codegen/lua, internal/codegen/luatable) or in the runtime it
+# emits, never here: a
+# parameter a fixed signature never reads is spelled with luacheck's own
+# "deliberately unread" underscore, and lua.Wrap reflows every emitted line to
+# luacheck's 120 (W631).
 #
-#   max_line_length = false   a descriptor row is one declaration per line;
-#                             wrapping it would make the data unreadable.
-#   212 unused argument       every emitted reader/writer keeps its fixed
-#                             (stream, value) signature even in an arm that
-#                             reads neither; the caller shape is the contract.
-#   213 unused loop variable  generated positional loops spell the index even
-#                             when the body does not read it.
-#   581 negated condition     generated guards are written `if not x then`.
+# THE VENDORED serialize.lua RUNTIME (internal/codegen/lua/runtime/serialize*.lua,
+# pinned by SERIALIZE_PIN) is held to its own repository's zero-warning lint,
+# the .luacheckrc that serialize.lua's `make lint` gates on, and to nothing
+# looser. Its two settings, verbatim in substance and scoped to those files:
 #
-# Real defects are NOT in this list. W111/W113 (an undefined global), W211
-# (dead local), W311/W412 (a value or argument silently replaced) and W542 (an
-# empty branch) stay visible, which is why the gate can go red on this corpus.
+#   self = false   WriteStream:isWriting() and its siblings answer for the
+#                  type and never read self: the shape of the stream
+#                  interface (serialize_stream.lua).
+#   581            serialize_compressed_float.lua compares as `not (x >= y)`
+#                  on purpose: the negated form is true for NaN and luacheck's
+#                  suggested rewrite is not, so the rewrite would change
+#                  behaviour.
 #
-# THE TRIAGE LEDGER. The prior attempt reported 977 diagnostics. The first
-# exact 415a0637 Linux run reported 50 warnings over 326 distinct files:
-# W211(19), W311(7), W113(7), W542(6), W411(5), W111(3), W431(2),
-# W412(1). The permitted source repair follows those 50 lines. A fresh gate at
-# this tip (the attempt's commits re-carried onto base 6dbb9ef6f) is green:
-# 0 warnings / 0 errors over 324 distinct files (131 units generated, 9 refused
-# by name), and the negative control names the planted dead local. Measured on
-# the Linux bench: cold corpus build + check 30 s, warm 2 s; luacheck itself is
-# seconds-scale.
-# The serialize*.lua files are pinned
-# vendored runtime: any warning there needs a justified per-file override and
-# a named follow-up FIX-CARD, never an edit to the vendored bytes. None is
-# open: serialize.lua v2.1.1 (SERIALIZE_PIN) fixed the three the 1.x vendor
-# carried upstream, and lints clean there under a stricter .luacheckrc.
+# A warning in the vendored bytes is fixed upstream in serialize.lua and
+# re-vendored (make vendor-serialize-lua), never edited here or ignored here.
+#
+# MEASURED (2026-10-28, luacheck 1.2.0 on Lua 5.4.8, macOS): 139 units
+# generated, 339 distinct files, 0 warnings in the emitted code and the table
+# runtime. The serialize.lua v2.1.1 runtime is 0 warnings under the two
+# settings above; an older pin carries the unused locals 2.1 removed upstream.
 $(LUA_LUACHECK_CONFIG): make/schema-lua-generated-luacheck-gate.mk
 	@mkdir -p $(dir $@)
 	@printf '%s\n' \
 		'std = "lua54"' \
-		'max_line_length = false' \
-		'ignore = { "212", "213", "581" }' \
+		'-- The vendored serialize.lua runtime, under its own .luacheckrc (see make/schema-lua-generated-luacheck-gate.mk).' \
+		'files["$(LUA_LUACHECK_CORPUS)/unique/*-serialize_stream.lua"] = { self = false }' \
+		'files["$(LUA_LUACHECK_CORPUS)/unique/*-serialize_compressed_float.lua"] = { ignore = { "581" } }' \
 		> $@
 
 # generate the corpus exactly as the other legs generate theirs: one directory
@@ -144,3 +144,74 @@ tables-lua-luacheck-negative-control: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/
 		echo "NEGATIVE CONTROL FAILED: luacheck did not name the plant"; cat build/lua-luacheck-control/plant.log; exit 1; }
 	@grep -n lua_luacheck_plant build/lua-luacheck-control/plant.log
 	@echo "luacheck-lua negative control: a planted dead local is named and turns the gate red"
+
+# THE FORMATTER, PINNED. StyLua is the Lua formatting authority this gate holds
+# the generated Lua to, the way clang-format is the C leg's (make/c.mk,
+# tables-c-clean): the pinned release, fetched from its official GitHub release
+# at the sha256 named per platform below into dist/ (gitignored), exactly as
+# dist-lua fetches the interpreter; any other sha256 is refused. The style is
+# make/lua-stylua.toml.
+STYLUA_VERSION := 2.5.2
+STYLUA_DIR     := dist/stylua-$(STYLUA_VERSION)
+STYLUA         ?= $(CURDIR)/$(STYLUA_DIR)/stylua
+STYLUA_CONFIG  := make/lua-stylua.toml
+STYLUA_PLATFORM := $(if $(filter Darwin,$(shell uname -s)),macos,linux)-$(if $(filter arm64 aarch64,$(shell uname -m)),aarch64,x86_64)
+STYLUA_SHA256_linux-x86_64  := bcb0d855e91f102f28a370e850f8566b3b44b79e6274d806ea5246837c0fd5ab
+STYLUA_SHA256_linux-aarch64 := 0ef2ebf0b7e5a652b65c4cb96c6d9ffb3981a98547de3c764465bbf54a8d761a
+STYLUA_SHA256_macos-x86_64  := 53c50a1605d0a6345d160a1a5a21db40bcf2bf9cd23c17f7c277a63a1bff3a7f
+STYLUA_SHA256_macos-aarch64 := 92ff0889e16324801bc072692974bb67f8161e62010fc90f96c62a17f81f32c7
+STYLUA_ZIP     := stylua-$(STYLUA_VERSION)-$(STYLUA_PLATFORM).zip
+STYLUA_URL     := https://github.com/JohnnyMorganz/StyLua/releases/download/v$(STYLUA_VERSION)/stylua-$(STYLUA_PLATFORM).zip
+
+.PHONY: dist-stylua
+dist-stylua:
+	@mkdir -p dist
+	@if [ ! -f dist/$(STYLUA_ZIP) ]; then curl -fsSL -o dist/$(STYLUA_ZIP).part $(STYLUA_URL) && mv dist/$(STYLUA_ZIP).part dist/$(STYLUA_ZIP); fi
+	@got=$$(sha256sum dist/$(STYLUA_ZIP) 2>/dev/null | cut -d" " -f1); \
+	if [ -z "$$got" ]; then got=$$(shasum -a 256 dist/$(STYLUA_ZIP) | cut -d" " -f1); fi; \
+	if [ "$$got" != "$(STYLUA_SHA256_$(STYLUA_PLATFORM))" ]; then \
+		echo "dist-stylua REFUSES: dist/$(STYLUA_ZIP) has sha256 $$got, the pin is $(STYLUA_SHA256_$(STYLUA_PLATFORM))"; \
+		echo "  delete dist/$(STYLUA_ZIP) and run make dist-stylua again; a release that does not match the pin is never run"; \
+		exit 1; fi
+	@rm -rf $(STYLUA_DIR) && mkdir -p $(STYLUA_DIR) && unzip -q -o dist/$(STYLUA_ZIP) -d $(STYLUA_DIR) && chmod +x $(STYLUA_DIR)/stylua
+	@v=$$($(STYLUA_DIR)/stylua --version); if [ "$$v" != "stylua $(STYLUA_VERSION)" ]; then \
+		echo "dist-stylua REFUSES: the pinned release reports '$$v'"; exit 1; fi
+	@echo "dist-stylua: StyLua $(STYLUA_VERSION) $(STYLUA_PLATFORM) sha256 $(STYLUA_SHA256_$(STYLUA_PLATFORM))"
+
+# THE FORMAT GATE: every file of the generated corpus above is exactly what
+# the pinned StyLua writes for it (--check: a diff is a failure, printed). The
+# generator writes this style itself (internal/codegen/lua/format.go and the
+# emitters), and the table runtime is committed in it, so there is no
+# allowance file and nothing is reformatted here. The vendored serialize.lua
+# runtime (the *-serialize*.lua copies) is upstream's bytes pinned by sha256 in
+# SERIALIZE_PIN and is not this repository's to restyle; it is the only thing
+# the gate does not read, by name.
+.PHONY: tables-lua-format
+tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
+	@files="$$(find $(LUA_LUACHECK_CORPUS)/unique -name '*.lua' ! -name '*-serialize*.lua' | sort)"; \
+	n=$$(printf '%s\n' "$$files" | wc -l | tr -d ' '); \
+	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check $$files; then \
+		echo "tables-lua-format: the generated Lua above is not what StyLua $(STYLUA_VERSION) writes ($(STYLUA_CONFIG)); fix the generator"; \
+		exit 1; \
+	fi; \
+	echo "lua-format gate: $$n generated files are StyLua $(STYLUA_VERSION)-canonical"
+
+# THE FORMAT GATE's NEGATIVE CONTROL: one generated module, copied, with its
+# first one-line early-out spelled as a block (the shape StyLua collapses),
+# must fail --check and be named; the unplanted copy must pass.
+.PHONY: tables-lua-format-negative-control
+tables-lua-format-negative-control: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp
+	@rm -rf build/lua-format-control && mkdir -p build/lua-format-control
+	@set -e; clean=$$(grep -l '^  if not stream:serialize[A-Za-z0-9]*(BITS, [0-9]*) then return false end$$' $(LUA_LUACHECK_CORPUS)/unique/*.lua | head -1); \
+	if [ -z "$$clean" ]; then echo "NEGATIVE CONTROL: the corpus has no one-line early-out to plant"; exit 1; fi; \
+	cp "$$clean" build/lua-format-control/clean.lua; \
+	if ! $(STYLUA) --config-path $(STYLUA_CONFIG) --check build/lua-format-control/clean.lua > build/lua-format-control/clean.log 2>&1; then \
+		echo "NEGATIVE CONTROL: the unplanted control file is already red"; cat build/lua-format-control/clean.log; exit 1; fi; \
+	awk 'done == 0 && /^  if not stream:serialize[A-Za-z0-9]*\(BITS, [0-9]*\) then return false end$$/ { sub(/ return false end$$/, ""); print; print "    return false"; print "  end"; done = 1; next } { print }' \
+		build/lua-format-control/clean.lua > build/lua-format-control/planted.lua; \
+	if cmp -s build/lua-format-control/clean.lua build/lua-format-control/planted.lua; then echo "NEGATIVE CONTROL: the plant did not apply"; exit 1; fi; \
+	if $(STYLUA) --config-path $(STYLUA_CONFIG) --check build/lua-format-control/planted.lua > build/lua-format-control/planted.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the planted block left the format gate green"; exit 1; fi; \
+	grep -q 'planted.lua' build/lua-format-control/planted.log || { \
+		echo "NEGATIVE CONTROL FAILED: the format gate did not name the planted file"; cat build/lua-format-control/planted.log; exit 1; }
+	@echo "lua-format negative control: a non-canonical early-out is named and turns the gate red"

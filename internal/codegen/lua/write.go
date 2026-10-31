@@ -53,7 +53,7 @@ func writeFn(m *Module, name string) string {
 // (ir.Struct.Items; SPEC §4.3, §4.5).
 func emitWriteStruct(m *Module, b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "-- type %s (SPEC §6.1: the wire order is the declared order)\n", st.Name)
-	fmt.Fprintf(b, "function _M.Write%s(stream, v)\n", st.Name)
+	fmt.Fprintf(b, "function _M.Write%s(%s, %s)\n", st.Name, unusedIf(len(st.Items) == 0, "stream"), unusedIf(!itemsTouchValue(st.Items), "v"))
 	emitWriteItems(m, b, st.Items, "  ")
 	b.WriteString("  return true\nend\n\n")
 }
@@ -104,7 +104,7 @@ func emitWriteField(m *Module, b *strings.Builder, val string, f *ir.Field, inde
 		if f.ArrayMin != 0 {
 			// a range form's count rides offset from its declared minimum
 			// (SPEC §4.6), exactly as the ranged integer it is
-			countExpr = fmt.Sprintf("%s - (%s)", count, min)
+			countExpr = count + " - " + subtrahend(min)
 		}
 		emitBitsOrSkip(b, indent, countExpr, ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), "the count")
 		fmt.Fprintf(b, "%sfor _i = 1, %s do\n", indent, count)
@@ -149,7 +149,7 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 				fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" or %s < %s or %s > %s then return false end\n",
 					indent, val, val, lo, val, hi)
 			}
-			emitBitsOrSkip(b, indent, val+" - ("+lo+")", ir.BitsRequired(f.IntMin, f.IntMax), "the offset from min")
+			emitBitsOrSkip(b, indent, val+" - "+subtrahend(lo), ir.BitsRequired(f.IntMin, f.IntMax), "the offset from min")
 		default:
 			fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" then return false end\n", indent, val)
 			expr := val
@@ -252,7 +252,7 @@ func callBits(v *big.Int, bits int64) string {
 // [0, Max], validated BEFORE it rides, then the selected arm only (SPEC §4.8).
 func emitWriteUnion(m *Module, b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "-- union %s (SPEC §4.8: None = 0, then each declared arm)\n", un.Name)
-	fmt.Fprintf(b, "function _M.Write%s(stream, v)\n", un.Name)
+	fmt.Fprintf(b, "function _M.Write%s(%s, v)\n", un.Name, unusedIf(un.Max == 0, "stream"))
 	fmt.Fprintf(b, "  if math.type(v.Type) ~= \"integer\" or v.Type < 0 or v.Type > %d then return false end\n", un.Max)
 	if un.Max > 0 {
 		bits := ir.BitsRequired(big.NewInt(0), big.NewInt(un.Max))
@@ -268,4 +268,17 @@ func emitWriteUnion(m *Module, b *strings.Builder, un *ir.Union) {
 		b.WriteString("  end\n")
 	}
 	b.WriteString("  return true\nend\n\n")
+}
+
+// subtrahend spells the right operand of a subtraction as StyLua does: a
+// single token (a literal, a negated literal, a name) bare, and anything with
+// an operator of its own in parentheses.
+func subtrahend(x string) string {
+	body := strings.TrimPrefix(x, "-")
+	for _, c := range body {
+		if !(c == '.' || c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
+			return "(" + x + ")"
+		}
+	}
+	return x
 }

@@ -171,7 +171,7 @@ end
 	}{
 		{"element count", "  w_u8(self.w, e.elem)\n  w_leb(self.w, n)\n", "  w_u8(self.w, e.elem)\n  w_leb(self.w, n + 1)\n", "nums"},
 		{"framed length", "  w_u32(self.w, body.n)\n", "  w_u32(self.w, body.n + 1)\n", "rec"},
-		{"scalar sign extension", "  if (e.packing == nil or e.packing == 0) and bits > 0 and bits < 64 and (e.kind >= 2 and e.kind <= 5 or e.kind >= 20 and e.kind <= 24) then\n    local sign = 1 << (bits - 1)\n    if v & sign ~= 0 then v = v - (1 << bits) end\n  end\n", "", "neg"},
+		{"scalar sign extension", "    local sign = 1 << (bits - 1)\n    if v & sign ~= 0 then v = v - (1 << bits) end\n", "", "neg"},
 		{"union arm kind", "    w_u8(self.w, arm.kind)\n", "    w_u8(self.w, 0)\n", "pick"},
 	} {
 		patched := strings.Replace(string(olderFiles["retainmessage.lua"]), bug.from, bug.to, 1)
