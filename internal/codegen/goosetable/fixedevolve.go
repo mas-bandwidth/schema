@@ -119,10 +119,10 @@ func parseLayout(data []byte) []rawEntry {
 		return nil
 	}
 	out := make([]rawEntry, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		at := 4 + 17*i
 		var id uint64
-		for b := 0; b < 8; b++ {
+		for b := range 8 {
 			id |= uint64(data[at+b]) << (8 * b)
 		}
 		out[i] = rawEntry{
@@ -566,16 +566,10 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 	case 15: // a union: the tag, then the selected arm
 		return c.union(oi, ci, oldOff, curOff, census, depth)
 	case 16: // a keyed array: the keys only ever append, so the old bytes stand
-		n := te.size
-		if me.size < n {
-			n = me.size
-		}
+		n := min(me.size, te.size)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
 	case 12, 33: // string / wstring: length and bytes, slack left at default
-		n := te.size
-		if me.size < n {
-			n = me.size
-		}
+		n := min(me.size, te.size)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
 	case 30: // an ordinal: a grown width is an unsigned widen, one count each
 		if te.size < me.size {
@@ -667,10 +661,7 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 	}
 	oldN := (te.size - head) / oe.size
 	newN := (me.size - head) / ce.size
-	n := oldN
-	if newN < n {
-		n = newN
-	}
+	n := min(newN, oldN)
 	var out []evolveNode
 	if head == 4 {
 		// THE COUNT WORD IS HELD TO THE PLAN'S BOUND, NEVER COPIED FIRST
