@@ -19,7 +19,7 @@ import 'Bench.dart' show MixedWeapon;
 // THE BUILD VERSION (docs/SPEC-TABLES.md §20): one digest over every fact the bytes
 // this build produces depend on. It rides here because this unit has no block
 // form to carry it — exactly one accelerator defines it (§20.7).
-const int tableBuildVersion = 0x23753a84972a054e;
+const int tableBuildVersion = 0x41d3559378bfa852;
 
 // The reason beside a refused Open (docs/SPEC-TABLES.md §7, §19.2): the FIRST
 // failing clause, as the reference leg's TableRefuseReason names it. word is the
