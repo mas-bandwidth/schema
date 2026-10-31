@@ -232,7 +232,7 @@ build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance
 #
 # `examples` IS NOT ON THIS LIST ANY MORE, for the reason its C++ twin is not
 # (see TABLES_ZERO_COST_HEADERS in the root Makefile): under the KEYWORD (#823)
-# `Guarded.schema`'s `Patrol` is a plain `table` — a guarded branch is exactly
+# `Guarded.schema`'s `Patrol` is a variable table — a guarded branch is exactly
 # the construct that keeps it one — so `tables/examples` is a VARIABLE unit and
 # carries the machinery by right. The follow-on that brings it back is the same
 # one: move `Guarded.schema` into a unit of its own.
@@ -1666,7 +1666,7 @@ test-c tables-c: tables-c-message-negative-control
 .PHONY: tables-c-retain tables-c-retain-negative-control
 tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
 	sh test/slowgate/proof tables-c-retain \
-		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
+		'TestCTableRetainFile TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName' \
 		./compiler -run '^TestCTableRetain' -count=1
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin

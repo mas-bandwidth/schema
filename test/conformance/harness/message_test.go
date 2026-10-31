@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -222,6 +223,9 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 		t.Fatal("the manifest names no message")
 	}
 	for _, msg := range m.Messages {
+		if msg.Refused() {
+			continue // a variable table: TestAMessageRowOverAVariableTableIsARefusal holds it
+		}
 		c, err := m.LookupConnection(msg.Connection)
 		if err != nil {
 			t.Errorf("%s: %v", msg.Name, err)
@@ -961,68 +965,41 @@ func TestPerDirectionIndependence(t *testing.T) {
 	}
 }
 
-// TestAPointeredBatch: a form-2 batch over a pointered root, whose node table
-// is the FIRST field of each root body, whose count is thirty-two raw bits,
-// whose table records carry NO length and end at their own zero reference,
-// whose blob records carry a thirty-two bit length and align, and whose
-// indices are bits_required(0, node count) wide. Beside it a root reaching no
-// node, which must carry no node-table reference at all.
-func TestAPointeredBatch(t *testing.T) {
+// TestAMessageRowOverAVariableTableIsARefusal: the message form is fixed
+// tables only (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-31: "only fixed tables
+// support message form (bitpacked)"). A message row is a NAMED REFUSAL row
+// (its message-form wire is `-`) exactly when its root is a variable table,
+// and the engine every leg is fuzzed against refuses that root on both halves.
+func TestAMessageRowOverAVariableTableIsARefusal(t *testing.T) {
 	m, _, u := corpus(t)
-	c, err := m.LookupConnection("graph_conn")
-	if err != nil {
-		t.Fatal(err)
-	}
-	unit, vocabulary := announced(t, u, c)
-	model := tabletext.NewModel(unit)
-	slotOf := func(id uint64) uint64 {
-		for i, e := range vocabulary.Entries() {
-			if e.Id == id && e.Kind == 0 {
-				return uint64(i + 1)
-			}
+	refused := 0
+	for _, msg := range m.Messages {
+		c, err := m.LookupConnection(msg.Connection)
+		if err != nil {
+			t.Fatal(err)
 		}
-		t.Fatalf("the vocabulary names no kind-0 entry %016x", id)
-		return 0
+		unit, vocabulary := announced(t, u, c)
+		variable := ir.VariableTables(unit)[msg.Root]
+		if variable != msg.Refused() {
+			t.Errorf("%s: the root %s is variable=%v and the row is a refusal=%v; a message row over a variable table is a named refusal and no other row is", msg.Name, msg.Root, variable, msg.Refused())
+			continue
+		}
+		if !variable {
+			continue
+		}
+		refused++
+		model := tabletext.NewModel(unit)
+		inst := model.New(model.Lookup(msg.Root))
+		if _, err := tablewire.EncodeMessages(model, []*tabletext.Instance{inst}); err == nil || !strings.Contains(err.Error(), "fixed tables only") {
+			t.Errorf("%s: the engine's message writer took the variable root %s: %v", msg.Name, msg.Root, err)
+		}
+		var report tabletext.Report
+		if _, _, err := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, []byte{ir.TableWireMessageForm, 0}, vocabulary, &report); err == nil || !strings.Contains(err.Error(), "fixed tables only") {
+			t.Errorf("%s: the engine's message reader took the variable root %s: %v", msg.Name, msg.Root, err)
+		}
 	}
-	message := wireBytes(t, "testdata/wire/tables/graph_tree_message.bin")
-	r := newBits(message[1:])
-	if r.get(8) != 0 {
-		t.Fatal("graph_tree_message is not a batch of one")
-	}
-	if ref := r.get(vocabulary.RefBits()); ref != slotOf(ir.TableNodeWireId) {
-		t.Errorf("the node table is not the root body's first field: the first reference is %d", ref)
-	}
-	if nodes := r.get(32); nodes != 6 {
-		t.Errorf("the node count reads %d, not the six nodes the tree has", nodes)
-	}
-	// the message reads and re-saves through the engine
-	inst := messageInstance(t, model, vocabulary, "Scene", "testdata/wire/tables/graph_tree_message.bin")
-	again, err := tablewire.EncodeMessage(model, inst)
-	if err != nil || string(again) != string(message) {
-		t.Errorf("the pointered message does not re-save to its own bytes (%v)", err)
-	}
-	// and the batch of three shares one form byte and one count
-	batch := wireBytes(t, "testdata/wire/tables/graph_batch_message.bin")
-	insts := []*tabletext.Instance{model.New(model.Lookup("Scene")), model.New(model.Lookup("Scene")), model.New(model.Lookup("Scene"))}
-	var report tabletext.Report
-	count, ok, derr := tablewire.DecodeMessages(model, insts, batch, vocabulary, &report)
-	if derr != nil || !ok || count != 3 || !report.Silent() {
-		t.Fatalf("the pointered batch did not read: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
-	}
-	three, err := tablewire.EncodeMessages(model, insts)
-	if err != nil || string(three) != string(batch) {
-		t.Errorf("the pointered batch does not re-save to its own bytes (%v)", err)
-	}
-	// A ROOT THAT REACHES NO NODE carries no node-table reference at all
-	empty := wireBytes(t, "testdata/wire/tables/graph_empty_message.bin")
-	e := newBits(empty[1:])
-	e.get(8)
-	if ref := e.get(vocabulary.RefBits()); ref == slotOf(ir.TableNodeWireId) {
-		t.Error("a root that reaches no node wrote a node table")
-	}
-	one := messageInstance(t, model, vocabulary, "Scene", "testdata/wire/tables/graph_empty_message.bin")
-	if string(instStr(t, one, "name")) != "empty" {
-		t.Error("the empty scene did not read")
+	if refused == 0 {
+		t.Error("the manifest carries no named refusal row: the variable table's message row is what proves every leg refuses it")
 	}
 }
 

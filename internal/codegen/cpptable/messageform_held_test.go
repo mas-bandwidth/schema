@@ -577,66 +577,6 @@ func cppMessageBody(root, announcement, fileWire, batchWire string) string {
 	).Replace(tmpl)
 }
 
-// cppVariableMessageBody asserts a `message` row whose root is a VARIABLE
-// table (a pointered root, read through a region): loading either form and
-// saving the other reproduces the other's pinned bytes, the §3.3 round trip
-// the manifest's `message` line pins. A variable root is held by reference,
-// so each form is read into its own region and re-saved as the other.
-func cppVariableMessageBody(root, announcement, fileWire, batchWire string) string {
-	const tmpl = `
-    std::vector<uint8_t> announcement, fileWire, batchWire;
-    if ( !slurp( @ANNOUNCE@, announcement ) || !slurp( @FILE@, fileWire ) || !slurp( @BATCH@, batchWire ) )
-        { printf( "a golden is missing\n" ); return 1; }
-    TableMessageEntry entries[kTableMessageEntriesHere];
-    TableVocabulary vocabulary( entries, kTableMessageEntriesHere );
-    TableReport announced; memset( &announced, 0, sizeof( announced ) );
-    if ( !AnnounceRead( vocabulary, announcement.data(), (int64_t) announcement.size(), &announced ) )
-        { printf( "AnnounceRead refused the reference announcement\n" ); return 1; }
-    // the FILE form, read into its own region (§3.3): a pointered root is held
-    // by reference, and the caller owns the region.
-    TableReport fileReport; memset( &fileReport, 0, sizeof( fileReport ) );
-    const int64_t fileNeed = @ROOT@LoadMeasure( fileWire.data(), (int64_t) fileWire.size() );
-    if ( fileNeed < 0 ) { printf( "@ROOT@LoadMeasure refused the file-form golden\n" ); return 1; }
-    std::vector<uint8_t> fileRegion( (size_t) fileNeed );
-    const @ROOT@ * fileRoot = @ROOT@Load( fileRegion.data(), fileNeed, fileWire.data(), (int64_t) fileWire.size(), &fileReport );
-    if ( fileRoot == NULL ) { printf( "@ROOT@Load refused the file-form golden\n" ); return 1; }
-    // loading the FILE form and saving the MESSAGE form reproduces the message
-    // bytes (§3.3).
-    const @ROOT@ * fileRoots[1] = { fileRoot };
-    TableReport fileSaveReport; memset( &fileSaveReport, 0, sizeof( fileSaveReport ) );
-    const int64_t fileMsgSize = @ROOT@MeasureMessages( fileRoots, 1, &fileSaveReport );
-    if ( fileMsgSize < 0 ) { printf( "MeasureMessages failed on the file-form value\n" ); return 1; }
-    std::vector<uint8_t> fileMsg( (size_t) fileMsgSize );
-    if ( @ROOT@SaveMessages( fileRoots, 1, fileMsg.data(), fileMsgSize, &fileSaveReport ) != fileMsgSize )
-        { printf( "SaveMessages failed on the file-form value\n" ); return 1; }
-    if ( memcmp( fileMsg.data(), batchWire.data(), batchWire.size() ) != 0 )
-        { printf( "the file form saved as a message differs from the message reference\n" ); return 1; }
-    // loading the MESSAGE form and saving the FILE form reproduces the file
-    // bytes (§3.3).
-    TableReport msgReport; memset( &msgReport, 0, sizeof( msgReport ) );
-    const int64_t msgNeed = @ROOT@LoadMeasure( vocabulary, batchWire.data(), (int64_t) batchWire.size() );
-    if ( msgNeed < 0 ) { printf( "@ROOT@LoadMeasure refused the message-form golden\n" ); return 1; }
-    std::vector<uint8_t> msgRegion( (size_t) msgNeed );
-    const @ROOT@ * msgRoots[1] = { NULL };
-    int64_t count = 1;
-    if ( !@ROOT@LoadMessages( msgRoots, &count, msgRegion.data(), msgNeed, vocabulary, batchWire.data(), (int64_t) batchWire.size(), &msgReport ) || count != 1 )
-        { printf( "@ROOT@LoadMessages: count=%lld\n", (long long) count ); return 1; }
-    const int64_t msgFileSize = @ROOT@Measure( msgRoots[0] );
-    if ( msgFileSize < 0 ) { printf( "@ROOT@Measure failed on the message-form value\n" ); return 1; }
-    std::vector<uint8_t> msgFile( (size_t) msgFileSize );
-    if ( @ROOT@Save( msgRoots[0], msgFile.data(), msgFileSize ) != msgFileSize )
-        { printf( "@ROOT@Save failed on the message-form value\n" ); return 1; }
-    if ( memcmp( msgFile.data(), fileWire.data(), fileWire.size() ) != 0 )
-        { printf( "the message form saved as a file differs from the file reference\n" ); return 1; }
-`
-	return strings.NewReplacer(
-		"@ROOT@", root,
-		"@ANNOUNCE@", fmt.Sprintf("%q", announcement),
-		"@FILE@", fmt.Sprintf("%q", fileWire),
-		"@BATCH@", fmt.Sprintf("%q", batchWire),
-	).Replace(tmpl)
-}
-
 // TestMessageFormHeldCPP is table-driven: one subtest per §3.3 refusal clause
 // and one per manifest `connection` and `message` row, and every subtest opens
 // with t.Parallel().
@@ -704,8 +644,16 @@ func TestMessageFormHeldCPP(t *testing.T) {
 			switch {
 			case row.connectionRow:
 				body = cppConnectionBody(filepath.Join(root, conn.path))
+			case row.batch == "-":
+				// a NAMED REFUSAL row: its root must be a variable table, which
+				// carries no message form (docs/SPEC-TABLES.md §3.3); that no
+				// backend emits one is compiler/messageformlock_test.go's
+				if !ir.VariableTables(u)[row.root] {
+					t.Fatalf("manifest row %q is a refusal row over %s, a fixed table", row.name, row.root)
+				}
+				return
 			case ir.VariableTables(u)[row.root]:
-				body = cppVariableMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
+				t.Fatalf("manifest row %q names %s, a variable table, and pins message bytes: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)", row.name, row.root)
 			default:
 				body = cppMessageBody(row.root, filepath.Join(root, conn.path), filepath.Join(root, row.file), filepath.Join(root, row.batch))
 			}

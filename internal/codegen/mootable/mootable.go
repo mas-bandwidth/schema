@@ -225,6 +225,12 @@ func requireCycle(deps map[string]map[string]bool, order []string) error {
 // a table body (docs/SPEC-TABLES.md §3, kind 13; a union, kind 15), so the
 // walk needs its descriptor too.
 func closure(u *ir.Unit) map[string]bool {
+	return reachFrom(u, func(*ir.Struct) bool { return true }, true)
+}
+
+// reachFrom is the closure walk over the tables root keeps, and, when unions is
+// set, every table-closure union besides.
+func reachFrom(u *ir.Unit, root func(*ir.Struct) bool, unions bool) map[string]bool {
 	seen := map[string]bool{}
 	var visit func(f *ir.Field)
 	var visitStruct func(st *ir.Struct)
@@ -264,10 +270,14 @@ func closure(u *ir.Unit) map[string]bool {
 	}
 	for _, f := range u.Files {
 		for _, t := range f.Tables {
-			visitStruct(t)
+			if root(t) {
+				visitStruct(t)
+			}
 		}
-		for _, un := range f.TableUnions {
-			visitUnion(un)
+		if unions {
+			for _, un := range f.TableUnions {
+				visitUnion(un)
+			}
 		}
 	}
 	return seen

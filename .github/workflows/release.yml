@@ -11,6 +11,9 @@ name: Release
 # that one commit with that one annotated tag and pushes only that tag. The
 # number is the dispatcher's choice under docs/VERSIONING.md's rules; CI,
 # including a certify.yml run on the commit, must be green first.
+# And the proof table must be green AT THAT COMMIT: `make release` refuses
+# unless ci-full's `proof` job left a green report for it (tools/matrix
+# VerifyRelease), naming the red cells when it is not.
 #
 #   gh workflow run release.yml --ref main -f version=vX.Y.Z
 
@@ -29,6 +32,8 @@ concurrency:
 
 permissions:
   contents: write
+  # the proof report: read from the ci-full run on the commit being released
+  actions: read
 
 jobs:
   release:
@@ -45,6 +50,18 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      # THE RELEASE LOCK: the proof report ci-full's `proof` job wrote at this
+      # exact commit. `make release` refuses unless it is there and green
+      # (tools/matrix VerifyRelease), naming the red cells; a commit with no
+      # completed ci-full run has no report, and the release refuses on that.
+      - name: the proof report at this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=$(gh run list --workflow ci-full.yml --commit "$GITHUB_SHA" --status completed --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$run" ]; then echo "no completed ci-full run at $GITHUB_SHA: no proof report, and make release will refuse"; exit 0; fi
+          gh run download "$run" --name proof --dir build/proof || echo "the ci-full run $run at $GITHUB_SHA kept no proof report; make release will refuse"
       - name: make the release tag
         env:
           GOFLAGS: -mod=readonly
@@ -55,4 +72,4 @@ jobs:
           git fetch --quiet origin main
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          make release RELEASE_COMMIT="$GITHUB_SHA" PUSH=1
+          make release RELEASE_COMMIT="$GITHUB_SHA" PROOF=build/proof/proof.json PUSH=1

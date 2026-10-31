@@ -139,16 +139,16 @@ func TestFixedDepthFarPastTheBoundIsStillNamed(t *testing.T) {
 	}
 }
 
-// A PLAIN `table` IS THE VARIABLE WIRE BY DECLARATION, so the bound has nothing
+// A VARIABLE table IS THE VARIABLE WIRE BY DECLARATION, so the bound has nothing
 // to say about the depth it nests.
 func TestFixedDepthSaysNothingAboutAPlainTable(t *testing.T) {
 	u, warns := depthUnit(t, deepSchema("table", ir.TableFixedMaxDepth+8))
 	if w := ir.TableFixedDepthBounds(u); len(w) != 0 {
-		t.Fatalf("a plain table is not a fixed root: %v", w)
+		t.Fatalf("a variable table is not a fixed root: %v", w)
 	}
 	for _, w := range warns {
 		if strings.Contains(w, "depth bound") {
-			t.Errorf("a plain table was held to the fixed form's depth bound: %s", w)
+			t.Errorf("a variable table was held to the fixed form's depth bound: %s", w)
 		}
 	}
 }

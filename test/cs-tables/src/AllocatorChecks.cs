@@ -66,9 +66,6 @@ static partial class Program
             Check(G.Schema.SceneMeasure((IntPtr)region,allocator)==wire.Length && counts.Calls>0 && counts.Live==0 && counts.Calls==counts.Frees,"native file numbering uses balanced caller hooks");
             byte[] saved=new byte[wire.Length];
             Check(G.Schema.SceneSave((IntPtr)region,saved,allocator)==wire.Length && saved.AsSpan().SequenceEqual(wire) && counts.Live==0,"native save hook path preserves bytes");
-            IntPtr[] roots={(IntPtr)region}; long messageSize=G.Schema.SceneMeasureMessages(roots,allocator);
-            byte[] message=new byte[messageSize];
-            Check(G.Schema.SceneSaveMessages(roots,message,allocator)==messageSize && counts.Live==0,"native message numbering uses caller hooks");
             long cookSize=G.Schema.SceneCookMeasure((IntPtr)region,allocator); byte[] cook=new byte[cookSize];
             Check(G.Schema.SceneCook((IntPtr)region,cook,G.TableByteOrder.Little,allocator) && counts.Live==0,"native cooking releases scratch");
             for(int fail=1;fail<=2;fail++)

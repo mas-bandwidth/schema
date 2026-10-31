@@ -46,7 +46,6 @@ var luaModuleKeys = map[string][]string{
 	"message.lua":       {"announceRead", "loadMessages", "measureMessages", "saveMessages"},
 	"refusal.lua":       {"ReadStrict"},
 	"retain.lua":        {"LoadRetain", "MeasureRetain", "SaveRetain"},
-	"retainmessage.lua": {"AnnounceRead", "LoadRetainMessages"},
 	"save.lua":          {"Measure", "Save", "SaveTyped", "Typed"},
 	"text.lua":          {"LoadText", "SaveText"},
 	"textform.lua":      {"Load", "LoadTextForm"},

@@ -22,7 +22,7 @@ table Card { items []Child }
 		t.Fatalf("a carried map nested in a list element is refused: %v", err)
 	}
 
-	// The card's own constructs are NOT refused: a plain table root with bool,
+	// The card's own constructs are NOT refused: a variable table root with bool,
 	// int32, int64 and enum fields, a string(N), the *string byte buffer and an
 	// unbounded list of table elements (docs/SPEC-TABLES.md §2.5, §2.9).
 	card := `package probe

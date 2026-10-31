@@ -1587,21 +1587,12 @@ int surfaceJsonHostile(String outDir) {
 // saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
 // what this port's own records cost, and the second load gets one byte less
 // (test/conformance/README.md). The id list's capacity is a count.
-//
-// A retain-message row's root is a plain `table` — Node in RT1 — which carries
-// no message verbs (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride
-// the form), so the driver answers ABSENT and names the reason, as the Go
-// leg's does.
 const int _retainRoomy = 1 << 20;
 
 int surfaceRetain(String outDir, bool saves) {
   for (final f in lines) {
-    if (f[0] != 'retain' && f[0] != 'retain-message') continue;
+    if (f[0] != 'retain') continue;
     if (saves && f[f.length - 1] == '-') continue;
-    if (f[0] == 'retain-message') {
-      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
-      continue;
-    }
     if (f[2] != 'tblrt1' || f[3] != 'Node') {
       stderr.writeln('driver: retain ${f[1]} names ${f[2]} ${f[3]}');
       return 1;
@@ -1919,11 +1910,19 @@ int surfaceMessage(String outDir) {
       return 1;
     }
     final run = messageRuns['${conn[2]} ${f[3]}'];
+    if (f[5] == '-') {
+      // A named refusal row: the root is a variable table, which carries no
+      // message verbs (docs/SPEC-TABLES.md §3.3: the message form is fixed
+      // tables only), so the driver answers ABSENT and names the reason.
+      if (run != null) {
+        stderr.writeln('message ${f[1]}: a variable table carries a message batch');
+        return 1;
+      }
+      File('$outDir/${f[1]}.absent').writeAsStringSync('variable table: the message form is fixed tables only (SPEC-TABLES §3.3)');
+      continue;
+    }
     if (run == null) {
-      // A message row whose root is a plain `table` carries no message verbs
-      // (docs/SPEC-TABLES.md §3.3: "a plain `table T` may not" ride the
-      // form), so the driver answers ABSENT and names the reason.
-      File('$outDir/${f[1]}.absent').writeAsStringSync('plain table: §3.3');
+      File('$outDir/${f[1]}.absent').writeAsStringSync('');
       continue;
     }
     final answer = run.batch(File(conn[4]).readAsBytesSync(), File(f[5]).readAsBytesSync());
@@ -2374,7 +2373,7 @@ Future<void> wireFuzz() async {
     final bound = form == 1 ? fuzzRoot(unit, root) : null;
     final run = bound == null ? null : (retain == 1 ? bound.retain : bound.plain);
     // a form-2 root rides the message arm (§3.3), as findMessageCodec binds
-    // it in test/conformance/go/wire_fuzz.go; a plain `table` carries no
+    // it in test/conformance/go/wire_fuzz.go; a variable table carries no
     // message verbs and so answers absent, as the Go leg's does
     final message = form == 2 && retain == 0 ? messageRuns['$unit $root']?.fuzz : null;
     runs.add(run);
