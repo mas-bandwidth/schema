@@ -75,6 +75,10 @@ public final class TableVariable {
         public String reason;
         public int retained;
         public int retainLost;
+        // THE NUMBERING'S SIZE for this load, set when the node table is read:
+        // the records it holds, or -1 when there is no good numbering to check
+        // against (a damaged table resolves nothing, §3.1).
+        int nodeLimit = -1;
 
         // reset puts every counter back to its start, so one Report can serve
         // call after call (a reused Measure) without a fresh object per call.
@@ -88,6 +92,7 @@ public final class TableVariable {
             reason = null;
             retained = 0;
             retainLost = 0;
+            nodeLimit = -1;
         }
     }
 
@@ -1344,18 +1349,33 @@ public final class TableVariable {
         // (internal/tablewire/decodenodes.go). An ABSENT field is an empty but
         // valid numbering, and a whole read carries the records.
         NodeTable nt = new NodeTable();
+        report.nodeLimit = -1;
         if (bad) {
             nt.bad = true;
             return nt;
         }
         if (payload == null) {
+            report.nodeLimit = 0;
             return nt;
         }
         nt.recs = nodes(payload, retain);
         if (nt.recs == null) {
             nt.bad = true;
+        } else {
+            report.nodeLimit = nt.recs.length;
         }
         return nt;
+    }
+
+    // checkIndex is the numbering's bound on one node index AS IT IS READ
+    // (§3.1; internal/tablewire/decodenodes.go resolveCell): an index past
+    // node_count + 1 is damage in every occurrence that carries it, an
+    // occurrence a later one replaces included, so it is judged here and not
+    // only when the surviving value resolves.
+    static void checkIndex(long index, Report report) {
+        if (index >= 2 && report.nodeLimit >= 0 && index - 2 >= report.nodeLimit) {
+            report.malformed = true;
+        }
     }
 
     // boolByte reads one bool byte: a byte past 1 is malformed and reads true,
@@ -4295,6 +4315,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			fmt.Fprintf(b, "                                    TableVariable.checkIndex(idx, report);\n")
 			for _, member := range []string{m, m + "Idx"} {
 				if f.Array == ir.ArrayFixed {
 					fmt.Fprintf(b, "                                    TableVariable.put(v.%s, (int) i, %s);\n", member, map[bool]string{true: "null", false: "idx"}[member == m])
@@ -4311,6 +4332,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
 			fmt.Fprintf(b, "                                    long idx = ar.leb();\n")
 			fmt.Fprintf(b, "                                    if (ar.fail) break;\n")
+			fmt.Fprintf(b, "                                    TableVariable.checkIndex(idx, report);\n")
 			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
@@ -4371,7 +4393,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	case isScalarArray(f):
 		writeArrayFieldRead(b, u, st, f)
 	case f.Type.Blob() || (f.Type.Pointer && isStruct(f)):
-		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); }\n", m)
+		fmt.Fprintf(b, "                if (kind == 17) { v.%sIdx = r.leb(); TableVariable.checkIndex(v.%sIdx, report); }\n", m, m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)

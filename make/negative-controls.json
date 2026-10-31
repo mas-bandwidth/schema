@@ -976,7 +976,8 @@
         "tables-java-retain-fuzz-negative-control",
         "tables-java-map-count-negative-control",
         "tables-java-keyed-count-negative-control",
-        "tables-java-retain-node-negative-control"
+        "tables-java-retain-node-negative-control",
+        "tables-java-node-index-negative-control"
       ],
       "java": "21"
     },

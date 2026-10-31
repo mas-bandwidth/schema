@@ -1646,20 +1646,18 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # The gate runs every ENUMERATED pass and every pinned vector over BOTH
 # arms: the plain pair, and the retaining pair (--retain, §6.6), whose own
 # pinned vectors it also replays. The seeded RANDOM pass stays at N = 0: at
-# the shared SEED its first finding in each arm is DAMAGED input (both
-# reports malformed, or the oracle discarding a damaged load the leg reads
-# clean: stream_arm_first random #22918 on the plain arm, parts_count_past_bound
-# random #4485 on the retaining arm), parked under the discard-on-damage
-# ruling, and each stops its pass before it reaches the mutants behind it.
+# the shared SEED the plain arm's first finding is DAMAGED input (stream_arm_first
+# random #22918, both reports malformed), parked under the discard-on-damage
+# ruling, and it stops the pass before it reaches the mutants behind it.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
@@ -1816,6 +1814,36 @@ tables-java-keyed-count-negative-control: tables-java-wire-fuzz
 	@echo 'Java keyed-count negative control: reading the count inside L loses the kind mismatch'
 
 test-java: tables-java-keyed-count-negative-control
+
+# THE NODE-INDEX BOUND'S CONTROL (docs/SPEC-TABLES.md §3.1): a scratch copy of the
+# generated units whose index check is planted out, so an index past the
+# numbering in an occurrence a later one replaces is never judged. The replay
+# of pointer_index_past_numbering (streamdemo.Feed: the first of two `parts`
+# occurrences names node 2 of an empty numbering) must go red in both arms.
+JAVA_NODE_INDEX_SABOTAGE := build/java-node-index-sabotage
+.PHONY: tables-java-node-index-negative-control
+tables-java-node-index-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_NODE_INDEX_SABOTAGE) && mkdir -p $(JAVA_NODE_INDEX_SABOTAGE)/generated $(JAVA_NODE_INDEX_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_NODE_INDEX_SABOTAGE)/generated/$$u || exit 1; done
+	@for f in $(JAVA_NODE_INDEX_SABOTAGE)/generated/*/TableVariable.java; do \
+		sed 's/if (index >= 2 \&\& report\.nodeLimit >= 0 \&\& index - 2 >= report\.nodeLimit) {/if (false) { \/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -q 'SABOTAGED node index check' $(JAVA_NODE_INDEX_SABOTAGE)/generated/stream/TableVariable.java || \
+		{ echo 'NEGATIVE CONTROL: the Java node-index sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_NODE_INDEX_SABOTAGE)/classes \
+		$(JAVA_NODE_INDEX_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@for arm in "" --retain; do \
+		if ./build/conformance-harness wire-fuzz $$arm \
+				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_NODE_INDEX_SABOTAGE)/classes TablesWireFuzz" \
+				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_numbering.bin --unit streamdemo --root Feed \
+				--failed $(JAVA_NODE_INDEX_SABOTAGE)/failed.bin > $(JAVA_NODE_INDEX_SABOTAGE)/log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: a node index past the numbering, unjudged, left the $$arm replay green"; exit 1; \
+		fi; \
+		grep -q 'damaged load' $(JAVA_NODE_INDEX_SABOTAGE)/log || { cat $(JAVA_NODE_INDEX_SABOTAGE)/log; exit 1; }; \
+	done
+	@echo 'Java node-index control: an index past the numbering, unjudged, reads a damaged load clean in both arms'
+
+test-java: tables-java-node-index-negative-control
 
 # THE JAVA CONFORMANCE NEGATIVE CONTROL, and it localises the block form's
 # Open. The fuzz and extent controls above each remove a bound; this one removes
