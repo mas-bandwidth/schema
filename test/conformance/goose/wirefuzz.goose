@@ -9,7 +9,7 @@
 //                             own value table, so it has no caller region and
 //                             no LoadMeasure, which is that arm's shape
 //   wirefuzz <unit> fixed     the value-only roots on the region arm, where a
-//                             fixed root always loads and measures -1
+//                             fixed root has no region and measures -1
 //
 // ONE UNIT PER PROCESS. Every generated unit carries its own copy of the
 // runtime, so two units cannot be one Goose program; make/goose-fuzz.mk builds
@@ -124,26 +124,10 @@ fn main() {
             if save_failed && debug {
                 write_stderr(str("wirefuzz: save refused: ", schema_rt::save_refusal_name(refusal), "\n"));
             }
-        } else if !builder {
-            // A FIXED ROOT ALWAYS LOADS (test/conformance/README.md): its Load
-            // reads into a value born at its defaults and reports, so what it
-            // saves after a read that placed nothing is that value. Goose's
-            // load answers no root then, so the leg takes the value at its
-            // defaults the one way the engine gives it: the empty file (the
-            // form byte, an empty body, an empty id table) loaded and saved.
-            let empty: u8[9] = [1, 0, 0, 0, 0, 0, 0, 0, 0];
-            var dv: schema_rt::LoadVal[>..] = [];
-            var dn: schema_rt::LoadNode[>..] = [];
-            var dr = schema_rt::LoadReport { .. };
-            let d = schema_rt::load_table(unit, name, empty, dv, dn, dr);
-            if d >= 0 {
-                save_failed = schema_rt::save_table(unit, name, empty, dv, dn, d, saved) != 0;
-            }
         }
         var out: u8[>..] = [];
-        // a fixed root always loads: what its Load read into is the value
-        // the builder arm's `loaded` is the walk's completion (tablewire.Decode's ok)
-        out.push(if (root >= 0 && !report.stopped) || !builder { 1 } else { 0 });
+        // Whole-load discard applies to both value-only and variable roots.
+        out.push(if root >= 0 && !report.stopped { 1 } else { 0 });
         put_i32(out, report.unknown);
         put_i32(out, report.kind_mismatch);
         put_i32(out, report.widened);
