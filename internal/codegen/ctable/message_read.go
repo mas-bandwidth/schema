@@ -120,6 +120,10 @@ static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const Table
  if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
  return 1;
 }
+/* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
+   infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
+   bits become a value, *value untouched, and the walk goes on. A quantized
+   index names a finite value and is never tested. */
 static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableMessageEntry * e,float * value)
 {
  uint64_t raw;
@@ -127,7 +131,8 @@ static SCHEMA_UNUSED int table_message_float(TableMessageReader * r,const TableM
  if(e->packing==2) {
   if(raw>e->qcount)return 0;
   *value=table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
- }else *value=table_bits_to_float((uint32_t)raw);
+ }else if(!table_bits_finite32((uint32_t)raw)){table_non_finite_float(r->report);return 2;}
+ else *value=table_bits_to_float((uint32_t)raw);
  return 1;
 }
 static SCHEMA_UNUSED int64_t table_message_open(TableMessageReader * r,const TableVocabulary * v,const uint8_t * buffer,int64_t bytes,TableReport * report)
@@ -166,17 +171,23 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		if kind == tkF64 {
 			typ = "double"
 		}
-		g.pf("%s{ %s decoded; if(%s->kind==10) {float narrow;if(!table_message_float(r,%s,&narrow))goto malformed;", ind, typ, e, e)
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+		// §3.3), before the bounds and before the field is written, and the
+		// walk goes on; the batch answers the refusal at its end. Every finite
+		// float32 is exactly a float64, so the ordinary conversion is the
+		// float rung.
+		g.pf("%s{ %s decoded=0; int finite=1; if(%s->kind==10) {float narrow=0;int got=table_message_float(r,%s,&narrow);if(!got)goto malformed;finite=got==1;", ind, typ, e, e)
 		if kind == tkF64 {
-			g.pf("decoded=table_wire_widen_f32(table_float_to_bits(narrow));")
+			g.pf("decoded=(double)narrow;")
 		} else {
 			g.pf("decoded=narrow;")
 		}
-		g.pf("} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto malformed;decoded=(%s)table_bits_to_double(raw);}\n", typ)
+		g.pf("} else {uint64_t raw;if(!table_bit_get(&r->bits,&raw,64))goto malformed;finite=table_bits_finite64(raw);if(finite)decoded=(%s)table_bits_to_double(raw);else table_non_finite_float(r->report);}\n", typ)
+		g.pf("%s if(finite){", ind)
 		if f.HasFloatRange {
-			g.pf("%s if(decoded<%s){decoded=%s;r->report->clamped++;}else if(decoded>%s){decoded=%s;r->report->clamped++;}\n", ind, formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMax, kind == tkF32), formatFloat(f.FMax, kind == tkF32))
+			g.pf("if(decoded<%s){decoded=%s;r->report->clamped++;}else if(decoded>%s){decoded=%s;r->report->clamped++;}", formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMax, kind == tkF32), formatFloat(f.FMax, kind == tkF32))
 		}
-		g.pf("%s %s=decoded; }\n", ind, dst)
+		g.pf("%s=decoded;} }\n", dst)
 		return
 	}
 	g.pf("%s{ uint64_t lo,hi;if(!table_message_number(r,%s,&lo,&hi))goto malformed;\n", ind, e)
@@ -413,7 +424,7 @@ func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
 	// name, unchanged, and the plain name wraps it below.
 	g.pf("/* %s is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */\n", g.api(st.Name, "load_messages_tolerant"))
 	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages_tolerant"), st.Name)
-	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))return 0;(*count)++;}return table_message_close(&r);\n}\n", g.api(st.Name, "load_message_body"))
+	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"))
 	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */\n", g.api(st.Name, "load_messages"))
 	g.pf("static SCHEMA_UNUSED int %s( %s * values, int64_t * count, const TableVocabulary * vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_messages"), st.Name)
 	g.pf("    TableReport ignored;\n    int64_t i;\n    int ok;\n    if ( report == NULL ) report = &ignored;\n    /* this read's report, not the caller's last one */\n    memset( report, 0, sizeof( *report ) );\n")

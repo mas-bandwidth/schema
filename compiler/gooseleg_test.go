@@ -19,6 +19,16 @@ func withGooseLeg(carriers []string) []string {
 	return slices.Sorted(slices.Values(append(slices.Clone(carriers), "goose")))
 }
 
+// gooseLegOrdered is a registry as the carrier gates compare it: sorted when
+// the goose leg is built (its init registers before the targets' own files),
+// in registration order otherwise.
+func gooseLegOrdered(registered []string) []string {
+	if !gooseLegBuilt {
+		return registered
+	}
+	return slices.Sorted(slices.Values(registered))
+}
+
 // gooseLegSpelled is a refusal's carrier list as it reads with the goose leg
 // built: goose sorts right after go.
 func gooseLegSpelled(s string) string {

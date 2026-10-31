@@ -157,6 +157,11 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        report.unknown++;\n")
 	b.WriteString("        if (r.fail) { return; }\n")
 	b.WriteString("        int pEnd = r.off;\n")
+	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+	// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a
+	// NaN or an infinity refuses the read as non_finite_float, named
+	// <Table>.0x<id>, and is never retained.
+	fmt.Fprintf(&b, "        if (kind == 10 && pEnd - pStart == 4 && (get32(r.buf, pStart) & 0x7f800000) == 0x7f800000 || kind == 11 && pEnd - pStart == 8 && (get64(r.buf, pStart) & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, TableVariable.retainedFloatName(%q, id)); return; }\n", st.DeclaredName())
 	b.WriteString("        byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);\n")
 	b.WriteString("        if (resolved == null) { report.retainLost++; return; }\n")
 	b.WriteString("        int total = 14 + 8 * depth + resolved.length;\n")
@@ -229,7 +234,8 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        }\n")
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
-	b.WriteString("        return w.overflow ? -1 : w.off;\n")
+	// a NaN or an infinity refuses the save (docs/SPEC-TABLES.md §3.3)
+	b.WriteString("        return w.overflow || ids.nonFinite ? -1 : w.off;\n")
 	b.WriteString("    }\n\n")
 
 	// writeFieldsRetain: the canonical write, threading the path into list
@@ -237,7 +243,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "    static void writeFieldsRetain(TableVariable.Writer w, TableVariable.NodeGraph nodes, %sVariable.Value v, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
 	b.WriteString("        TableVariable.NodeGraph graph = nodes;\n")
 	for i, f := range st.Fields {
+		open := openGuard(&b, st, f)
 		writeFieldSaveRetain(&b, u, st, f, i)
+		closeGuard(&b, open)
 	}
 	b.WriteString("    }\n\n")
 
@@ -271,12 +279,14 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("                int listMark = retain.idUsed;\n")
 	b.WriteString("                TableVariable.Writer rec = w.sub(new byte[1 << 20]);\n")
 	b.WriteString("                int[] pat = new int[]{at + hdr};\n")
-	b.WriteString("                long ref = TableRetain.ref(rec, retain, id, report);\n")
+	b.WriteString("                // the record is ONE loss however deep it fails, counted once\n")
+	b.WriteString("                // below, so the walk itself is handed no report (§6.6)\n")
+	b.WriteString("                long ref = TableRetain.ref(rec, retain, id, null);\n")
 	b.WriteString("                boolean ok = ref != 0;\n")
 	b.WriteString("                if (ok) {\n")
 	b.WriteString("                    rec.putLeb(ref);\n")
 	b.WriteString("                    rec.put8(kind);\n")
-	b.WriteString("                    ok = TableRetain.emit(rec, retain, report, retain.bytes, pat, kind);\n")
+	b.WriteString("                    ok = TableRetain.emit(rec, retain, null, retain.bytes, pat, kind);\n")
 	b.WriteString("                }\n")
 	b.WriteString("                if (ok) { w.putBytes(rec.buf, 0, rec.off); }\n")
 	b.WriteString("                else {\n")
@@ -342,6 +352,15 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	}
 	m := varMember(f)
 	fieldRef := fmt.Sprintf("%sVariable.F_%s", st.Name, m)
+	// A POINTER, alone or in an array, is a node index (kind 17) into the
+	// node table the save builds from the same graph, so its write is the
+	// variable codec's own; the pointee's body rides in that table.
+	if isStruct(f) && f.Type.Pointer {
+		var body strings.Builder
+		writeFieldSave(&body, u, st, f)
+		b.WriteString(strings.ReplaceAll(body.String(), "F_"+m, fieldRef))
+		return
+	}
 	if !isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f) {
 		var body strings.Builder
 		writeFieldSave(&body, u, st, f)
@@ -375,21 +394,30 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 			}
 			b.WriteString("                default: w.putLeb(0); break;\n")
 			b.WriteString("            }\n        }\n")
-		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array == ir.ArrayList {
-			fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		} else if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
+			// EVERY ARRAY OF TABLES — unbounded, counted or fixed — is kind 14
+			// over element bodies, and each element body carries its own
+			// retained tail (§6.6). A fixed array is written whole, as the
+			// variable codec writes it; the others only when they hold one.
+			if f.Array == ir.ArrayFixed {
+				b.WriteString("        {\n")
+			} else {
+				fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+			}
 			fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
-			b.WriteString("            TableVariable.Writer aw = w.sub(new byte[1 << 20]);\n")
-			fmt.Fprintf(b, "            aw.put8(13); aw.putLeb(v.%s.size());\n", m)
+			// written IN PLACE and framed after, as the variable codec writes it
+			// (no scratch per array, none per element: a 1 MiB scratch per element
+			// made the retaining save of eighty-eight bodies 60 times slower)
+			b.WriteString("            int list = w.off;\n")
+			fmt.Fprintf(b, "            w.put8(13); w.putLeb(v.%s.size());\n", m)
 			fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
 			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", elem.Name, m)
-			b.WriteString("                TableVariable.Writer ew = aw.sub(new byte[1 << 20]);\n")
+			b.WriteString("                int body = w.off;\n")
 			fmt.Fprintf(b, "                path[2 * depth] = %d; path[2 * depth + 1] = i;\n", ordinal)
-			fmt.Fprintf(b, "                %sRetain.writeBodyRetain(ew, nodes, e, retain, report, path, depth + 1);\n", elem.Name)
-			b.WriteString("                aw.putLeb(ew.off);\n")
-			b.WriteString("                aw.putBytes(ew.buf, 0, ew.off);\n")
+			fmt.Fprintf(b, "                %sRetain.writeBodyRetain(w, nodes, e, retain, report, path, depth + 1);\n", elem.Name)
+			b.WriteString("                w.frame(body);\n")
 			b.WriteString("            }\n")
-			b.WriteString("            w.putLeb(aw.off);\n")
-			b.WriteString("            w.putBytes(aw.buf, 0, aw.off);\n")
+			b.WriteString("            w.frame(list);\n")
 			b.WriteString("        }\n")
 		}
 	}

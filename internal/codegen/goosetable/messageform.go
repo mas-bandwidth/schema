@@ -7,9 +7,15 @@
 // declaration, ending at the zero reference.
 //
 // THE WRITER'S SLOT NUMBERS ARE COMPILE-TIME CONSTANTS (§3.3): the vocabulary
-// is a pure function of the build version, so every field header is emitted as
-// a literal at a literal width and a save does no lookup. The announcement is
-// emitted whole, as a constant (`<Root>Announce`).
+// is a pure function of the build version, so every field header is a named
+// constant at a named constant width and a save does no lookup. The numbers
+// are the UNIT's (a file that joins renumbers them), so they live in the
+// message form's package module, <package>_message.goose (docs/PORTING.md J2):
+// MessageRefBits, one MessageSlot_<id>_<kind>_<key> per vocabulary entry,
+// named for the entry and never for its place, and the announcement,
+// MessageAnnouncement. Each file's module names them, so no byte of it moves
+// when the unit gains a file; every use folds as a constant (Goose's named
+// constants). `<Root>Announce` is the announcement under the root's name.
 //
 // THE READ IS BY PEER ENTRY (§3.3, §4): a connection's reader first reads the
 // PEER's announcement with AnnounceRead (runtime/message.goose: a form-1 file
@@ -31,6 +37,7 @@ package goosetable
 
 import (
 	"fmt"
+	"hash/fnv"
 	"math"
 	"math/big"
 	"slices"
@@ -43,16 +50,50 @@ import (
 
 func init() {
 	Register("messageform", emitMessageFormPart)
+	RegisterUnit("messageform", "message", emitMessagePackage)
+}
+
+// msgRefBits is the package module's reference width.
+const msgRefBits = "MessageRefBits"
+
+// msgSlotName is an entry's slot constant: named for the entry's content (its
+// id, kind and encoded key), so the name never depends on the entry's place.
+func msgSlotName(entry ir.TableVocabularyEntry) string {
+	h := fnv.New32a()
+	h.Write([]byte(entry.Key()))
+	return fmt.Sprintf("MessageSlot_%016x_%d_%08x", entry.Id, entry.Kind, h.Sum32())
+}
+
+// emitMessagePackage writes the unit's vocabulary into <package>_message.goose:
+// the reference width, every entry's slot, and the announcement.
+func emitMessagePackage(g *goose.Gen) error {
+	structs, _ := fixedClosure(g.Unit)
+	if len(structs) == 0 {
+		return nil
+	}
+	vocabulary := ir.TableVocabulary(g.Unit)
+	bits := ir.TableMessageRefBits(len(vocabulary))
+	g.Pf("// THE UNIT'S MESSAGE VOCABULARY (docs/SPEC-TABLES.md §3.3): %d entries, %d-bit references.\n", len(vocabulary), bits)
+	g.Declare(msgRefBits)
+	g.Pf("let %s = %d;\n", msgRefBits, bits)
+	for i, entry := range vocabulary {
+		name := msgSlotName(entry)
+		g.Declare(name)
+		g.Pf("let %s = %d;\n", name, i+1)
+	}
+	g.Pf("// The announcement: the form-1 file carrying the build version and the vocabulary.\n")
+	g.Declare("MessageAnnouncement")
+	g.Pf("let MessageAnnouncement: const u8[:] = \"%s\";\n\n", fixedGooseBytes(ir.TableAnnouncement(g.Unit)))
+	return nil
 }
 
 // msgEmit writes one module's message-form functions.
 type msgEmit struct {
-	g       *goose.Gen
-	fx      *fixedEmit
-	slots   map[string]uint64
-	refBits int
-	loop    int
-	err     error
+	g     *goose.Gen
+	fx    *fixedEmit
+	slots map[string]uint64
+	loop  int
+	err   error
 }
 
 func (e *msgEmit) p(ind int, format string, args ...any) {
@@ -70,16 +111,16 @@ func (e *msgEmit) fail(format string, args ...any) {
 	}
 }
 
-// slot is an entry's reference: its 1-based place in the unit's vocabulary.
-func (e *msgEmit) slot(entry ir.TableVocabularyEntry) uint64 {
-	s := e.slots[entry.Key()]
-	if s == 0 {
+// slot is an entry's reference, by name: its 1-based place in the unit's
+// vocabulary is the package module's constant.
+func (e *msgEmit) slot(entry ir.TableVocabularyEntry) string {
+	if e.slots[entry.Key()] == 0 {
 		e.fail("goose message form: the unit's vocabulary names no slot for id %016x at kind %d, and the vocabulary is the closure's whole entry set (docs/SPEC-TABLES.md §3.3)", entry.Id, entry.Kind)
 	}
-	return s
+	return msgSlotName(entry)
 }
 
-func (e *msgEmit) nameSlot(id uint64) uint64 { return e.slot(ir.TableVocabularyEntry{Id: id}) }
+func (e *msgEmit) nameSlot(id uint64) string { return e.slot(ir.TableVocabularyEntry{Id: id}) }
 
 func (e *msgEmit) put(ind int, expr string, bits int64) {
 	if bits <= 0 {
@@ -88,8 +129,8 @@ func (e *msgEmit) put(ind int, expr string, bits int64) {
 	e.p(ind, "schema_rt::msg_put(w, out, %s, %d);", expr, bits)
 }
 
-func (e *msgEmit) ref(ind int, slot uint64) {
-	e.put(ind, fmt.Sprint(slot), int64(e.refBits))
+func (e *msgEmit) ref(ind int, slot string) {
+	e.p(ind, "schema_rt::msg_put(w, out, %s, %s);", slot, msgRefBits)
 }
 
 // emitMessageFormPart is the [Register]ed part, over the same closure and the
@@ -99,9 +140,9 @@ func emitMessageFormPart(g *goose.Gen) error {
 	if len(structs) == 0 {
 		return nil
 	}
-	vocabulary := ir.TableVocabulary(g.Unit)
 	g.Import("message")
-	e := &msgEmit{g: g, fx: &fixedEmit{g: g}, slots: ir.TableVocabularySlots(g.Unit), refBits: ir.TableMessageRefBits(len(vocabulary))}
+	g.Import(PackageModule(g.Unit, "message"))
+	e := &msgEmit{g: g, fx: &fixedEmit{g: g}, slots: ir.TableVocabularySlots(g.Unit)}
 	var mine []string
 	for _, t := range g.File.Tables {
 		if structs[t.Name] != nil {
@@ -263,7 +304,7 @@ func enumOf(f *ir.Field) *ir.Enum {
 // refuses invalid_value.
 func (e *msgEmit) putEnum(ind int, en *ir.Enum, expr string) {
 	e.p(ind, "if %s == 0 {", expr)
-	e.ref(ind+1, 0)
+	e.ref(ind+1, "0")
 	for i := range en.Variants {
 		e.p(ind, "} else if %s == %d {", expr, i+1)
 		e.ref(ind+1, e.nameSlot(ir.TableWireId(en.VariantWireName(i))))
@@ -353,7 +394,7 @@ func (e *msgEmit) slotRides(ind int, el *ir.Field, expr, def string) string {
 		e.p(ind, "var probe%s = schema_rt::MsgWriter { .. };", v)
 		e.p(ind, "probe%s.measure = true;", v)
 		e.p(ind, "if !_%sMsgSave(probe%s, out, %s) { return schema_rt::msg_refuse(w, probe%s.reason); }", el.Type.Name, v, expr, v)
-		return fmt.Sprintf("probe%s.bits > %d", v, e.refBits)
+		return fmt.Sprintf("probe%s.bits > %s", v, msgRefBits)
 	case e.isUnion(el):
 		return expr + ".Type != 0"
 	}
@@ -940,7 +981,7 @@ func (e *msgEmit) emitStruct(st *ir.Struct) {
 		e.p(1, "// %s", f.Name)
 		e.putField(1, f)
 	}
-	e.ref(1, 0)
+	e.ref(1, "0")
 	e.p(1, "return w.ok;")
 	e.p(0, "}\n")
 
@@ -993,7 +1034,7 @@ func (e *msgEmit) emitUnion(un *ir.Union) {
 		}
 	}
 	e.p(1, "if v.Type == 0 {")
-	e.ref(2, 0)
+	e.ref(2, "0")
 	for i, v := range un.Variants {
 		e.p(1, "} else if v.Type == %d {", i+1)
 		entry := ir.TableArmEntry(v)
@@ -1050,11 +1091,9 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.g.Declare(n + "MeasureMessages")
 	e.g.Declare(n + "SaveMessages")
 	e.g.Declare(n + "LoadMessages")
-	ann := ir.TableAnnouncement(e.g.Unit)
 	e.p(0, "// ---- %s, the message form, form byte 2 (docs/SPEC-TABLES.md §3.3) ----", n)
-	e.p(0, "// %sAnnounce is the unit's announcement, a compile-time constant: the form-1 file", n)
-	e.p(0, "// carrying the build version and the vocabulary (%d entries, %d-bit references).", len(ir.TableVocabulary(e.g.Unit)), e.refBits)
-	e.p(0, "let %sAnnounce: const u8[:] = \"%s\";\n", n, fixedGooseBytes(ann))
+	e.p(0, "// %sAnnounce is the unit's announcement (MessageAnnouncement, the message form's package module).", n)
+	e.p(0, "let %sAnnounce: const u8[:] = MessageAnnouncement;\n", n)
 
 	for _, measure := range []bool{true, false} {
 		e.loop = 0

@@ -1810,6 +1810,7 @@ static partial class Program
         }
 
         TestWireContracts();
+        TestFiniteFloats();
         TestVocabularyDistinctness();
         TestLebWireContracts();
         TestRootPayloadSizes();

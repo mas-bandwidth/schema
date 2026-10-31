@@ -1303,7 +1303,9 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%s%s.clear();\n", in, field)
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
-	fmt.Fprintf(b, "%s    let Some(ks) = jr.read_string() else { jr.malformed = true; break; };\n", in)
+	// a map key is bound for storage whatever its kind, so a U+0000 in it
+	// refuses the read even when the key is then dropped (§16.3)
+	fmt.Fprintf(b, "%s    let Some(ks) = jr.read_text() else { jr.malformed = true; break; };\n", in)
 	fmt.Fprintf(b, "%s    jr.space();\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() != b':' { jr.malformed = true; break; }\n", in)
 	fmt.Fprintf(b, "%s    jr.p += 1;\n", in)

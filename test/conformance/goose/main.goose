@@ -29,10 +29,16 @@
 // The message form, form 2 (docs/SPEC-TABLES.md §3.3):
 //   message      AnnounceRead the connection's announcement, LoadMessages the
 //                batch against it, SaveMessages what landed: the bytes
-// The other surfaces read forms other cards carry (JSON, the cook, the block
-// form) and are ABSENT here until they land.
+// The JSON text form (docs/SPEC-TABLES.md §16.2, §16.3):
+//   json-hostile FromJsonTolerant of <tree>/<root>.json and its report, through
+//                the unit's text glue: unit.goose, which the shell driver
+//                copies from units/<unit>.goose, or the empty unit.goose beside
+//                this file for a unit that has none (every row ABSENT)
+// The cook's and the block form's surfaces are accel.goose's: the shell
+// driver runs that program for them.
 import os;
 import .conformance_unit;
+import .unit;
 import .wire_load;
 import .wire_save;
 import .wire_retain;
@@ -189,6 +195,25 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
     }
 }
 
+// surface_json_hostile: the verdict of FromJsonTolerant over <tree>/<root>.json
+// for every json-hostile row of the unit, `u,k,w,c,d,false,read` or `refused`
+// (test/conformance/README.md). A root the unit's text glue does not name is
+// ABSENT.
+fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 5 || f[0] != "json-hostile" || f[2] != unit { continue; }
+        var data: u8[>..] = [];
+        load_file(str(f[4], "/", f[3], ".json"), data);
+        var verdict: u8[>..] = [];
+        if !unit_json_verdict(f[3], data, verdict) {
+            absent(f[1], "");
+            continue;
+        }
+        answer(f[1], verdict);
+    }
+}
+
 // surface_message: the MESSAGE FORM's round trip (docs/SPEC-TABLES.md §3.3).
 // A message row names its CONNECTION, whose announcement is the peer's
 // vocabulary and whose unit is the unit under test; the glue's
@@ -231,7 +256,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nretain\nretain-save\n");
+        write_stdout("wire\nmessage\nreport\nretain\nretain-save\njson-hostile\n");
         return;
     }
     if argv.len != 4 {
@@ -247,6 +272,7 @@ fn main() {
     if argv[1] == "message" { surface_message(lines, unit); return; }
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
     if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
+    if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);
 }

@@ -24,10 +24,10 @@ var wideTextTargets []string
 // it, so the message and the check can never disagree.
 var tableWideTextTargets = map[string]bool{
 	"cpp": true, "c": true, "cs": true, "go": true, "dart": true,
-	"rust": true, "java": true, "js": true, "elixir": true,
+	"rust": true, "java": true, "js": true, "elixir": true, "squirrel": true,
 }
 
-var tableWideTextNames = []string{"C", "C++", "C#", "Dart", "Elixir", "Go", "Java", "JavaScript", "Rust"}
+var tableWideTextNames = []string{"C", "C++", "C#", "Dart", "Elixir", "Go", "Java", "JavaScript", "Rust", "Squirrel"}
 
 // registerWideTextCarrier is what a carrying target's file calls from its
 // init, beside its registerBuiltin call.
