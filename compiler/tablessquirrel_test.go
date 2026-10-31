@@ -303,8 +303,18 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			t.Errorf("squirrel still refuses a construct it carries: %v", err)
 		}
 	}
-	if _, err := New().Generate(closure, "rust", nil); err == nil || !strings.Contains(err.Error(), "optional over a variable closure") {
-		t.Errorf("an unregistered target no longer refuses ?T over a variable closure by name: %v", err)
+	refused := 0
+	for _, target := range New().Targets() {
+		if carries(target, carryOptionalVariableClosure) {
+			continue
+		}
+		refused++
+		if _, err := New().Generate(closure, target, nil); err == nil || !strings.Contains(err.Error(), "optional over a variable closure") {
+			t.Errorf("%s does not register ?T over a variable closure and no longer refuses it by name: %v", target, err)
+		}
+	}
+	if refused == 0 {
+		t.Log("every built-in target carries ?T over a variable closure; the refusal half has no target to ask")
 	}
 }
 
