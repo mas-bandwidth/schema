@@ -110,6 +110,27 @@ func readInstanceRows(t *testing.T, path string) []instanceRow {
 	return rows
 }
 
+// manifestInstanceLines counts the manifest's `instance` lines as written, so a
+// test that reads the rows through readInstanceRows can tell that none was
+// dropped: the corpus grows with every landing, and the count follows it.
+func manifestInstanceLines(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if strings.HasPrefix(line, "instance ") {
+			n++
+		}
+	}
+	if n == 0 {
+		t.Fatalf("%s names no instance line", path)
+	}
+	return n
+}
+
 func readReportCounts(t *testing.T, path string) map[string]string {
 	t.Helper()
 	f, err := os.Open(path)
