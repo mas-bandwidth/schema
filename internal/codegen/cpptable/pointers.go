@@ -1206,13 +1206,6 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    ok = ok && !nodes.refused;\n")
 	}
 	g.pf("    table_release( allocator, directory );\n")
-	g.pf("    if ( ok && !out->malformed )\n    {\n")
-	g.pf("        TableNumbering cycle_walk;\n")
-	g.pf("        TableNumberingInit( cycle_walk, allocator );\n")
-	g.pf("        TableArenaCtx cycle_ctx = { &builder.arena };\n")
-	g.pf("        if ( !%sNumberFrom( cycle_ctx, cycle_walk, *root ) ) { out->malformed = true; } // a pointer naming an open node (§3.1)\n", n)
-	g.pf("        TableNumberingShutdown( cycle_walk );\n")
-	g.pf("    }\n")
 	g.pf("    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder\n")
 	g.pf("    // holds nothing to use, and false says so\n")
 	g.pf("    if ( out->malformed ) { return false; }\n")
@@ -1917,17 +1910,6 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing\n")
 	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
 	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
-	// A POINTER NAMING AN OPEN NODE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4):
-	// no writer produces a cycle, so the decoded graph is walked once from the
-	// root by the writer's own numbering walk, and a reference to a node whose
-	// descent is still open refuses the whole load.
-	g.pf("    if ( !out->malformed )\n    {\n")
-	g.pf("        TableNumbering cycle_walk;\n")
-	g.pf("        TableNumberingInit( cycle_walk, TableDefaultAllocator() );\n")
-	g.pf("        TableRegionCtx cycle_ctx;\n")
-	g.pf("        if ( !%sNumberFrom( cycle_ctx, cycle_walk, *root ) ) { out->malformed = true; } // a pointer naming an open node (§3.1)\n", n)
-	g.pf("        TableNumberingShutdown( cycle_walk );\n")
-	g.pf("    }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the region
 	// holds no root and the retention store holds nothing.
 	if g.retain {
