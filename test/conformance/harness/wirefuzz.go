@@ -110,25 +110,61 @@ const nodeDirEntryBytes = int64(16)
 const nodeRecordHeaderBytes = int64(2)
 
 // amplificationCeiling is the pinned ceiling on the region a table read may be
-// made to materialize from a wire of the given size (schema#466,
-// docs/SPEC-TABLES.md §6.5, docs/SECURITY.md). A hostile record costs its type
-// id reference and its length — nodeRecordHeaderBytes, two wire bytes — and
-// commands at most the largest record this root can place plus one directory
-// entry, so a wire can command no more than the root, one record per two
-// bytes, and the largest element a list or map under the root can add. The
-// row this constant pins is the amplification ratio (region bytes over wire
-// bytes): a mutant above the ceiling is a divergence even before the leg and
-// the oracle are compared, and it is the same number the oracle's exact
+// made to materialize from a wire (schema#466, docs/SPEC-TABLES.md §6.5,
+// docs/SECURITY.md). The row this function pins is the amplification ratio
+// (region bytes over wire bytes): a mutant above the ceiling is a divergence
+// even before the leg and the oracle are compared. Each form has its own bound,
+// read off the wire's form byte, because each form spends its bits differently.
+//
+// THE FILE FORM. A hostile record costs its type id reference and its length —
+// nodeRecordHeaderBytes, two wire bytes — and commands at most the largest
+// record this root can place plus one directory entry, so a wire can command
+// no more than the root, one record per two bytes, and the largest element a
+// list or map under the root can add. It is the same number the oracle's
 // answer takes as its upper form.
-func (r *wireRoot) amplificationCeiling(wireBytes int) int64 {
-	records := int64(wireBytes)/nodeRecordHeaderBytes + 1
-	ceiling := r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
-	ceiling += int64(wireBytes) * (r.maxElement + 16)
+//
+// THE MESSAGE FORM (§3.3). A batch is a form byte, an eight-bit count and then
+// bitpacked bodies, and EACH BODY IS ITS OWN ROOT in the batch's one region,
+// commanding the root's storage plus one directory entry. The least a body
+// costs is its terminator, one reference of bits_required(0, E) bits, so a
+// batch of W bytes holds at most min(256, 8(W-2)/R) bodies; a node record costs
+// at least its type reference, so bodies and records together are at most
+// 8(W-2)/R. The file form's element and blob terms ride on top unchanged.
+func (r *wireRoot) amplificationCeiling(wire []byte) int64 {
+	wireBytes := int64(len(wire))
+	var ceiling, records int64
+	if r.message && len(wire) > 0 && wire[0] == ir.TableWireMessageForm {
+		refs := int64(0)
+		if wireBytes > messageBatchHeaderBytes {
+			refs = (wireBytes - messageBatchHeaderBytes) * 8 / int64(r.vocabulary.RefBits())
+		}
+		// bodies and node records draw on one budget of refs references, and
+		// the region is linear in the split, so its largest is at a corner: as
+		// many bodies as the count allows, or the one body and every other
+		// reference a record
+		body, node := r.rootStorage+nodeDirEntryBytes, r.maxStorage+nodeDirEntryBytes
+		bodies := min(refs, int64(messageBatchMaxBodies))
+		ceiling = bodies*body + (refs-bodies)*node
+		if refs > 0 {
+			ceiling = max(ceiling, body+(refs-1)*node)
+		}
+		records = refs
+	} else {
+		records = wireBytes/nodeRecordHeaderBytes + 1
+		ceiling = r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
+	}
+	ceiling += wireBytes * (r.maxElement + 16)
 	if r.blobBytes || r.blobString {
-		ceiling += int64(wireBytes) + records*16
+		ceiling += wireBytes + records*16
 	}
 	return ceiling
 }
+
+// messageBatchHeaderBytes is a message batch's form byte and its eight-bit
+// body count (docs/SPEC-TABLES.md §3.3), and messageBatchMaxBodies the count's
+// wire constant: the most bodies one batch can carry.
+const messageBatchHeaderBytes = int64(2)
+const messageBatchMaxBodies = 256
 
 func (r *wireRoot) roundStorage(n int64) int64 { return (n + r.align - 1) & -r.align }
 
@@ -568,7 +604,7 @@ func (l *wireLeg) kill() {
 
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
-func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
+func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wire []byte) string {
 	if ans.nonFinite {
 		// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
 		// §3.3), and the refusal is the answer: a leg says so with the
@@ -649,9 +685,9 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int
 		// per-mutant answer. A hostile record is two wire bytes and commands
 		// at most the largest record the root can place, so a mutant above
 		// this ceiling is a divergence on the bound the page states.
-		if wireBytes > 0 && reply.measure > root.amplificationCeiling(wireBytes) {
+		if len(wire) > 0 && reply.measure > root.amplificationCeiling(wire) {
 			return fmt.Sprintf("LoadMeasure asks for %d region bytes from %d wire bytes; the amplification ceiling is %d",
-				reply.measure, wireBytes, root.amplificationCeiling(wireBytes))
+				reply.measure, len(wire), root.amplificationCeiling(wire))
 		}
 	}
 	return ""
@@ -914,7 +950,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			}
 			continue
 		}
-		if verdict := wireVerdict(root, reply, ans, len(mut.data)); verdict != "" {
+		if verdict := wireVerdict(root, reply, ans, mut.data); verdict != "" {
 			leg.kill()
 			// THE TWO ANSWERS BESIDE THE MUTANT: a divergence in the decoded
 			// VALUE is a diff, and a diff needs both sides on disk

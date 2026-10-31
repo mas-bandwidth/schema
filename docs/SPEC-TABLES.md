@@ -10003,13 +10003,31 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   is ONE record, because the table holds one record per node and a pointer is
   an index and never a copy, and a node the scan does not reach costs
   nothing. Depth is not recursion, because the graph is flat. The
-  amplification a hostile wire can reach is therefore the schema's largest
-  record (plus one directory entry) per two wire bytes, and the number of
-  records it can multiply that by is not a wire field the reader trusts: it
+  amplification a hostile FILE (form `1`) can reach is therefore the schema's
+  largest record (plus one directory entry) per two wire bytes, and the number
+  of records it can multiply that by is not a wire field the reader trusts: it
   is the record count the framing actually carries, which the scan proves
   before a byte of body is believed. `LoadMeasure` is the caller's traversal
   limit in that sense — the caller refuses a size it will not pay — and
   nothing in the runtime decides that for it.
+- **A MESSAGE BATCH's bound is counted in BODIES, because every body is its
+  own root.** A form-`2` batch (§3.3) loads into one region, and each body in
+  it commands its root's storage plus one directory entry, while a body is
+  bitpacked and pays no two-byte record header. The least a body can cost is
+  its terminator alone: ONE REFERENCE, `R = bits_required(0, E)` bits for an
+  announced vocabulary of `E` entries (§3.3), and every body a measure counts,
+  the one damage cuts short included, has read at least that first reference.
+  A batch of `W` bytes spends sixteen bits on its form byte and its count, so
+  its payload holds at most `P = floor(8 × (W − 2) / R)` references and the
+  batch frames at most `min(256, P)` bodies. A node record costs at least its
+  type reference, so bodies and node records together are at most `P`, and a
+  record commands what it commands in a file. The amplification a hostile
+  batch can reach is therefore the root's storage plus one directory entry per
+  `R` bits, up to 256 bodies, and the largest record the root can place plus
+  one directory entry per `R` bits after that. For `graphdemo`, `E` is 51 and
+  `R` is 6 bits: a 7-byte batch carries 40 payload bits, at most six bodies,
+  and its root of 176 bytes commands 192 bytes a body. The count is again not
+  trusted: the measure counts the bodies the bits actually frame.
 - **The plain `LoadMeasure` and `LoadMeasureReason` PURPOSELY DISAGREE on a
   damaged wire.** `LoadMeasure` sizes the tolerant `Load`, so it keeps the
   decoded prefix and answers a size; `LoadMeasureReason` refuses that same

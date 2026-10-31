@@ -50,10 +50,10 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 	if !answer.measureRefused || answer.bytes != -1 || answer.report.Malformed {
 		t.Fatalf("count cap: %+v", answer)
 	}
-	if verdict := wireVerdict(root, legReply{measure: -1}, answer, len(wire)); verdict != "" {
+	if verdict := wireVerdict(root, legReply{measure: -1}, answer, wire); verdict != "" {
 		t.Fatal(verdict)
 	}
-	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer, len(wire)); verdict == "" {
+	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer, wire); verdict == "" {
 		t.Fatal("accepted loaded count above the cap")
 	}
 }
@@ -83,11 +83,11 @@ func TestBuilderFuzzChecksCountRefusalWithoutRegionPreflight(t *testing.T) {
 				t.Fatalf("builder count cap: %+v", answer)
 			}
 			reply := legReply{loaded: false, measure: -1, report: answer.report, saveFail: true}
-			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict != "" {
+			if verdict := wireVerdict(root, reply, answer, wire); verdict != "" {
 				t.Fatal(verdict)
 			}
 			reply.report.Malformed = true
-			if verdict := wireVerdict(root, reply, answer, len(wire)); verdict == "" {
+			if verdict := wireVerdict(root, reply, answer, wire); verdict == "" {
 				t.Fatal("builder gate ignored an invented region recovery event")
 			}
 		})
@@ -174,10 +174,58 @@ func TestWireFuzzDriverStall(t *testing.T) {
 func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
 	root := &wireRoot{unit: "probe", root: "Root"}
 	answer := oracleAnswer{nonFinite: true}
-	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saveFail: true}, answer, 16); verdict != "" {
+	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Refused: true}, saveFail: true}, answer, make([]byte, 16)); verdict != "" {
 		t.Fatalf("a leg that refused the non-finite float diverged: %s", verdict)
 	}
-	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0}}, answer, 16); verdict == "" {
+	if verdict := wireVerdict(root, legReply{loaded: true, report: Counts{Unknown: 1}, saved: []byte{1, 0}}, answer, make([]byte, 16)); verdict == "" {
 		t.Fatal("a leg that landed a non-finite float did not diverge")
+	}
+}
+
+// THE MESSAGE FORM'S AMPLIFICATION BOUND (docs/SPEC-TABLES.md §6.5): every body
+// of a batch is its own root, and a body can cost one reference. This 7-byte
+// batch claims 182 bodies and frames four before its damage, each the root's
+// 176 bytes and one directory entry, 768 in all, which the oracle, the C++
+// reference and the C# leg all answer exactly. The file form's bound counts
+// one root and refused it; the message bound counts a body for every
+// reference the payload can hold, 40 bits at 6 bits a reference for graphdemo,
+// six bodies. The reversed witness is a measure of seven.
+func TestMessageAmplificationCeilingCountsEveryBody(t *testing.T) {
+	_, _, units := corpus(t)
+	root, err := newWireRoot(units, "graphdemo", "Scene", true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := hex.DecodeString("02b5a701000008")
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := root.oracle(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !answer.exact || answer.bytes != 768 {
+		t.Fatalf("the oracle sizes the batch at %d (exact %v), want exactly 768", answer.bytes, answer.exact)
+	}
+	reply := legReply{loaded: true, report: answer.report, measure: answer.bytes, saved: answer.encoded}
+	if verdict := wireVerdict(root, reply, answer, wire); verdict != "" {
+		t.Fatalf("the exact measure is over the message ceiling: %s", verdict)
+	}
+	body := root.rootStorage + nodeDirEntryBytes
+	elements := int64(len(wire)) * (root.maxElement + 16)
+	refs := (int64(len(wire)) - messageBatchHeaderBytes) * 8 / int64(root.vocabulary.RefBits())
+	if refs != 6 || root.amplificationCeiling(wire) != refs*body+elements {
+		t.Fatalf("the message ceiling is %d over %d references, want six bodies and the element term, %d",
+			root.amplificationCeiling(wire), refs, 6*body+elements)
+	}
+	file := root.rootStorage + (int64(len(wire))/nodeRecordHeaderBytes+1)*(root.maxStorage+nodeDirEntryBytes) + elements
+	if answer.bytes <= file {
+		t.Fatalf("the witness no longer separates the forms: file bound %d, exact %d", file, answer.bytes)
+	}
+	// the reversed witness: one body more than the payload can spell
+	over := oracleAnswer{report: answer.report, encoded: answer.encoded, bytes: (refs+1)*body + elements}
+	reply.measure = over.bytes
+	if verdict := wireVerdict(root, reply, over, wire); !strings.Contains(verdict, "amplification ceiling") {
+		t.Fatalf("a measure one body past the bound was not refused by the ceiling: %q", verdict)
 	}
 }

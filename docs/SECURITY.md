@@ -71,8 +71,11 @@ the buffer. Specifically:
   length — materialize the largest record the schema can place, so a table
   read's amplification is bounded by that record (plus one directory entry)
   per two wire bytes, times only the records the framing actually carries
-  (SPEC-TABLES §6.5). The wire fuzzer pins that maximum region-over-wire
-  ratio and a mutant above it is a divergence.
+  (SPEC-TABLES §6.5). A message batch is bitpacked and each of its bodies is
+  a root, so its bound is the root (plus one directory entry) per reference
+  width of payload, up to the batch's 256 bodies (the same section). The wire
+  fuzzer pins that maximum region-over-wire ratio for each form and a mutant
+  above it is a divergence.
 - Any read that continues past the end of the stream instead of failing.
 - Integer overflow in a bit or byte count computed from wire data.
 - **Any divergence between the nine languages on the above** — if C++ refuses
