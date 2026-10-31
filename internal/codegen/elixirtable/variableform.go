@@ -1712,10 +1712,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     |> Enum.with_index(2)
     |> Enum.reduce(empty_report(), fn
       {{:table, name, body}, idx}, acc ->
-        {_value, report} =
-          in_read_holder(idx, fn -> read_element(Map.fetch!(@tables, name), body, nodes, ids) end)
+        desc = Map.fetch!(@tables, name)
 
-        merge_report(acc, report)
+        # a record's body ends at its own zero reference, as the engine's
+        # bodyAt reads it; a walk that cannot finish it is damage
+        case entries(body, ids, desc.string_blob, :nested) do
+          {:ok, fields, []} ->
+            {_value, report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
+            merge_report(acc, report)
+
+          _ ->
+            %{acc | malformed: true}
+        end
 
       _, acc ->
         acc
