@@ -410,8 +410,8 @@ fixed table T
 
 // t05C3 holds dart/C3: "text length clamp". §5.4: the `text` op moves
 // `clamped` once per entry per record when the length was out of range, against
-// THIS READER'S OWN capacity — `cap = size ~/ unit`, so the count is in the
-// flavour's own units — and the decode's shared pass clamps a copied text's
+// THIS READER'S OWN capacity — `cap = size`, the count in bytes — and the
+// decode's shared pass clamps a copied text's
 // length over its LIVE elements only.
 func t05C3(t *testing.T) {
 	const src = `package probe
@@ -419,12 +419,11 @@ func t05C3(t *testing.T) {
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
     blob  bytes(8)
 }
 `
 	runtime := t05Runtime()
-	t05Has(t, runtime, "final cap = size ~/ unit;", "C3 the text capacity is the entry's own size in units")
+	t05Has(t, runtime, "final cap = size;", "C3 the text capacity is the entry's own size")
 	text := t05OpCase(t, runtime, "text")
 	t05Has(t, text, "} else if (used > cap) {", "C3 a length past the reader's cap is clamped")
 	t05Has(t, text, "used = cap;", "C3 the clamp lands the reader's own bound")
@@ -436,7 +435,6 @@ fixed table T
 	// THE DECODE'S SHARED PASS holds a length the plan COPIED rather than
 	// texted, over live elements and never over slack.
 	t05Has(t, emitted, "value.labelLength > 8", "C3 the decode clamps a copied string's length to its bound")
-	t05Has(t, emitted, "value.wideLength > 8", "C3 the decode clamps a copied wstring's length in code units")
 }
 
 // ---- dart/C4 ----------------------------------------------------------------
@@ -459,7 +457,6 @@ func t05C4(t *testing.T) {
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `)
 	t05Has(t, emitted, "final runWhy = tableFixedRun(", "C4 the load reads the run's refusal")
@@ -467,70 +464,19 @@ fixed table T
 		"C4 the load refuses the whole read by name")
 }
 
-// ---- dart/C5 ----------------------------------------------------------------
-
-// t05C5 holds dart/C5: "wide text code units". SPEC-TABLES §3.4: a `wstring(N)`
-// is N UTF-16 CODE UNITS of TWO BYTES each, and its length is in code units;
-// the plan carries the flavour on `meta` and the byte extent on `size`, so a
-// wide entry spends `2*N` bytes and the loop's unit is two.
-func t05C5(t *testing.T) {
-	const src = `package probe
-
-fixed table T
-{
-    narrow string(8)
-    wide   wstring(8)
-    blob   bytes(8)
-}
-`
-	plan, _ := fixedIdentityPlan(findTable(t, unitFrom(t, src), "T"))
-	byNote := map[string]fixedPlanEntry{}
-	for _, e := range plan {
-		byNote[e.note] = e
-	}
-	narrow, okN := byNote["narrow"]
-	wide, okW := byNote["wide"]
-	blob, okB := byNote["blob"]
-	if !okN || !okW || !okB {
-		t.Fatalf("C5: the identity plan carries text entries for narrow=%v wide=%v blob=%v", okN, okW, okB)
-	}
-	if wide.size != 2*8 {
-		t.Errorf("C5: the wstring(8) entry's size is %d, want 16 — a wide code unit is two bytes", wide.size)
-	}
-	if wide.meta != fixedTextWide {
-		t.Errorf("C5: the wstring(8) entry's flavour is %d, want textWide (%d)", wide.meta, fixedTextWide)
-	}
-	if narrow.size != 8 || narrow.meta != fixedTextUtf8 {
-		t.Errorf("C5: the string(8) entry is (size %d, flavour %d), want (8, textUtf8 %d)", narrow.size, narrow.meta, fixedTextUtf8)
-	}
-	if blob.size != 8 || blob.meta != fixedTextBytes {
-		t.Errorf("C5: the bytes(8) entry is (size %d, flavour %d), want (8, textBytes %d)", blob.size, blob.meta, fixedTextBytes)
-	}
-	t05Has(t, t05OpCase(t, t05Runtime(), "text"),
-		"plan[b + TableFixedLane.meta] == TableFixedOp.textWide\n            ? 2\n            : 1;",
-		"C5 the loop takes a wide text's unit as two")
-	t05Has(t, t05Runtime(), "meta == TableFixedOp.textWide", "C5 the content rule knows the wide flavour")
-	t05Has(t, t05Runtime(), "source[at + i * 2] | (source[at + i * 2 + 1] << 8)",
-		"C5 a wide unit is two bytes little-endian")
-	emitted := t05Emitted(t, src)
-	t05Has(t, emitted, "view.getUint16(", "C5 the decode reads a wide unit as sixteen bits")
-}
-
 // ---- dart/R24 ---------------------------------------------------------------
 
 // t05R24 holds dart/R24 to all three clauses: "ill-formed text in the USED units
-// refuses by name (text_ill_formed); text is counted in bytes with the clamp in
-// units; slack is unspecified on read and not a refusal". §4.5 fix 11 and §5.8
+// refuses by name (text_ill_formed); text is counted in bytes; slack is
+// unspecified on read and not a refusal". §4.5 fix 11 and §5.8
 // row 8 are the ruling where that page and SPEC-TABLES §3.4 disagree.
 func t05R24(t *testing.T) {
 	runtime := t05Runtime()
 	// (1) ILL-FORMED IN THE USED UNITS REFUSES BY NAME: UTF-8 with no zero
-	// byte, paired non-zero UTF-16 units.
+	// byte.
 	t05Has(t, runtime, "return TableFixedRefusal.textIllFormed;", "R24 ill-formed text refuses by name")
 	t05Has(t, runtime, "if (c == 0) {\n      return true;", "R24 a zero byte is ill-formed UTF-8")
 	t05Has(t, runtime, "(c & 0xE0) == 0xC0", "R24 the UTF-8 continuation rule is checked")
-	t05Has(t, runtime, "if (lo < 0xDC00 || lo > 0xDFFF) {", "R24 an unpaired surrogate is ill-formed")
-	t05Has(t, runtime, "if (u == 0) {\n        return true;", "R24 a zero code unit is ill-formed")
 	// THE SCALAR RANGES THE CONTENT RULE DECODES, mirroring the packet reader's
 	// (internal/codegen/dart/utf8.go): an overlong form, a surrogate encoded in
 	// UTF-8, or a code point past U+10FFFF is each ill-formed
@@ -547,26 +493,14 @@ func t05R24(t *testing.T) {
 		"R24 an overlong three-byte form or a UTF-8-encoded surrogate is ill-formed")
 	t05Has(t, runtime, "if (point < 0x10000 || point > 0x10FFFF) {",
 		"R24 an overlong four-byte form or a point past U+10FFFF is ill-formed")
-	// (2) THE LENGTH IS COUNTED IN BYTES WITH THE CLAMP IN UNITS: `cap` is the
-	// entry's byte size over the flavour's unit, and the wide plan spends two
-	// bytes a unit.
-	t05Has(t, runtime, "final cap = size ~/ unit;", "R24 the clamp is in units")
+	// (2) THE LENGTH IS COUNTED IN BYTES: `cap` is the entry's byte size.
+	t05Has(t, runtime, "final cap = size;", "R24 the clamp is in bytes")
 	t05Has(t, runtime, "if (meta == TableFixedOp.textBytes) {\n    return false;",
 		"R24 bytes(N) carries no content rule")
 	// (3) SLACK IS UNSPECIFIED AND NOT A REFUSAL: the content check is handed
 	// the USED units (the clamped length), never `size` or the whole payload.
 	t05Has(t, runtime, "if (tableFixedTextIllFormed(\n          plan[b + TableFixedLane.meta],\n          used,",
 		"R24 the content check holds the used units and not the slack")
-	widePlan, _ := fixedIdentityPlan(findTable(t, unitFrom(t, `package probe
-
-fixed table T
-{
-    wide wstring(8)
-}
-`), "T"))
-	if len(widePlan) != 1 || widePlan[0].size != 16 {
-		t.Errorf("R24: a wstring(8) plan entry spends %d bytes, want 16 — the clamp is in units over a two-byte unit", widePlan[0].size)
-	}
 }
 
 // ---- the card's test --------------------------------------------------------
@@ -585,7 +519,6 @@ func TestFixedRoadmapDartT05Evolution(t *testing.T) {
 		{id: "dart/R18", check: t05R18},
 		{id: "dart/C3", check: t05C3},
 		{id: "dart/C4", check: t05C4},
-		{id: "dart/C5", check: t05C5},
 		{id: "dart/R24", check: t05R24},
 	}
 	for _, task := range tasks {

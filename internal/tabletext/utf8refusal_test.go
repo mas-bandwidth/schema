@@ -15,7 +15,6 @@ const utf8RefusalSchema = `package probe
 fixed table Root
 {
     s string(16)
-    w wstring(16)
 }
 `
 
@@ -38,7 +37,7 @@ func utf8RefusalModel(t *testing.T) *tabletext.Model {
 
 // A BYTE SEQUENCE THAT IS NOT WELL-FORMED UTF-8 IS REFUSED BY NAME AT EVERY
 // STRING SITE (docs/SPEC-TABLES.md §16.3): a field value, a key, a skipped
-// value, a wstring. The read returns false, the report is Malformed, and its
+// value. The read returns false, the report is Malformed, and its
 // Reason starts `string_not_utf8`. A well-formed sequence still reads clean
 // and exact.
 func TestEngineStringRefusesInvalidUTF8(t *testing.T) {
@@ -50,7 +49,6 @@ func TestEngineStringRefusesInvalidUTF8(t *testing.T) {
 		`{"s":"` + "\xed\xa0\x80" + `"}`,
 		`{"s":"` + "\xc0\xaf" + `"}`,
 		`{"` + "\xff" + `":1}`,
-		`{"w":"` + "\xff" + `"}`,
 		`{"s":"` + "\xf4\x90\x80\x80" + `"}`,
 		`{"s":"` + "\xe0\xff" + `"}`,
 	}
@@ -75,16 +73,5 @@ func TestEngineStringRefusesInvalidUTF8(t *testing.T) {
 	}
 	if fv, ok := inst.FieldByKey("s"); !ok || string(fv.Cell.Str) != "\xf0\x9f\x98\x80" {
 		t.Fatalf("narrow: got %q", fv.Cell.Str)
-	}
-
-	// a wide field's well-formed two-byte sequence reads clean and exact
-	inst = m.New(root)
-	r = tabletext.Report{}
-	cleanWide := `{"w":"` + "\xe2\x82\xac" + `"}` // U+20AC EURO SIGN
-	if !m.Read(inst, []byte(cleanWide), &r) || r.Malformed {
-		t.Fatalf("wide clean read %s: report %+v", cleanWide, r)
-	}
-	if fv, ok := inst.FieldByKey("w"); !ok || len(fv.Cell.Units) != 1 || fv.Cell.Units[0] != 0x20ac {
-		t.Fatalf("wide: got %v", fv.Cell.Units)
 	}
 }

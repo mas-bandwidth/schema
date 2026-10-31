@@ -335,13 +335,6 @@ func TestTableRefusals(t *testing.T) {
 			src: "package t\ntable Tab { m map[uint32]int32 = 0 }\n"},
 		{name: "an attribute on a map is refused by name", want: "does not apply to a map",
 			src: "package t\ntable Tab { m map[uint32]int32 | max = 4 }\n"},
-		// THE ONE VALUE KIND REFUSED BY NAME (§2.8, §2.5). Every other kind
-		// §2.8 lists is an ordinary field of the generated entry and compiles
-		// as one; `*wstring` is refused wherever it is declared, and the entry
-		// is where the refusal has to reach a map's value, because the value
-		// is a field of a table nobody wrote.
-		{name: "a *wstring map value is refused by name", want: "*wstring is specified ahead of its implementation",
-			src: "package t\ntable Tab { m map[uint32]*wstring }\n"},
 		// the by-value cycle reaches THROUGH the entry, and a map of *Self is
 		// the ordinary legal recursion through a pointer
 		{name: "a map of ITSELF closes a by-value cycle", want: "type composition cycle",
@@ -1466,81 +1459,47 @@ func TestListQualificationBoundsTheElement(t *testing.T) {
 	}
 }
 
-// TestWideTextInEveryClosureEdgeIsAccepted holds the ACCEPTING side of §11's
-// closure rule (docs/SPEC-TABLES.md §11, schema#522): wide text rides kind 33 on
-// the table wire, so a `type` body a table reaches through ANY wrapper carries
-// its wstring(N), and so does a table's own field and a union arm. Each
-// wrapper is its own case, and the two controls hold the other edges of the
-// rule: `*wstring` is still refused by name, because no backend emits the
-// blob record (§2.5), and a wstring(N) MAP KEY is refused by name, because a
-// map's entries ride in `memcmp` order and little-endian code units have none
-// (§2.8).
-func TestWideTextInEveryClosureEdgeIsAccepted(t *testing.T) {
-	const text = "type Text { name wstring(4) }\n"
+// TestWStringIsRefusedByName holds the language's one rule for wide text: there
+// is none. Text in schema is `string`, which is UTF-8 on both wires (SPEC
+// §4.12), and `wstring` is a reserved word that names no type. Every spelling
+// of it, at every place a field type stands, is refused with the one
+// diagnostic that names the fix, and the refusal is the only diagnostic the
+// unit gets: the field reads on as the `string` the message names, so a
+// wstring never cascades into errors about something else.
+func TestWStringIsRefusedByName(t *testing.T) {
+	const want = "wstring is not a schema type: text is string, which is UTF-8"
 	cases := []struct {
 		name string
 		src  string
+		fix  string
 	}{
-		{name: "a type held by value", src: "package t\n" + text + "table Root { t Text }\n"},
-		{name: "a type held through a nested type", src: "package t\n" + text + "type Outer { t Text }\ntable Root { o Outer }\n"},
-		{name: "a type held through a union arm", src: "package t\n" + text + "union U\n{\n    t Text\n}\ntable Root { u U }\n"},
-		{name: "a type held through a union inside a union", src: "package t\n" + text + "union Inner\n{\n    t Text\n}\nunion Outer\n{\n    i Inner\n}\ntable Root { u Outer }\n"},
-		{name: "a type held as a fixed array's element", src: "package t\n" + text + "table Root { ts [4]Text }\n"},
-		{name: "a type held as a bounded array's element", src: "package t\n" + text + "table Root { ts [..4]Text }\n"},
-		{name: "a type held as an unbounded array's element", src: "package t\n" + text + "table Root { ts []Text }\n"},
-		{name: "a type held as an optional", src: "package t\n" + text + "table Root { t ?Text }\n"},
-		{name: "a type held through a pointer to a table", src: "package t\n" + text + "table Node { t Text }\ntable Root { n *Node }\n"},
-		{name: "a type held through a pointer array", src: "package t\n" + text + "table Node { t Text }\ntable Root { ns [..4]*Node }\n"},
-		{name: "a type held as a map's value", src: "package t\n" + text + "table Root { m map[uint32]Text }\n"},
-		{name: "a type held through an enum-keyed array", src: "package t\nenum E { A, B }\n" + text + "table Root { ts [E]Text }\n"},
-		{name: "a union arm carrying wstring directly", src: "package t\nunion U\n{\n    s wstring(4)\n}\ntable Root { u U }\n"},
-		{name: "a table field carrying wstring directly", src: "package t\ntable Root { s wstring(4) }\n"},
-		{name: "a packet-wire type outside every closure", src: "package t\n" + text + "type P { t Text }\n"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if errs := runUnit(t, map[string]string{"T.schema": tc.src}); len(errs) != 0 {
-				t.Fatalf("a wstring(N) in a table closure was refused: %v", errs)
-			}
-		})
-	}
-	// THE KIND, not just the acceptance: a table's own wstring field rides
-	// under 33, which is what makes it a distinct kind from 12 (§3).
-	u := buildUnit(t, "package t\ntable Root { s wstring(4) }\n")
-	f := u.Tables["Root"].Fields[0]
-	if f.Type.Kind != ir.TWString {
-		t.Fatalf("Root.s is not wstring: %v", f.Type.Kind)
-	}
-	if got := ir.TableWireFieldKind(f); got != ir.TableKindWstring {
-		t.Fatalf("Root.s rides kind %d, want %d (docs/SPEC-TABLES.md §3)", got, ir.TableKindWstring)
-	}
-}
-
-// TestWideTextBlobAndMapKeyStayRefused holds the two edges kind 33 does NOT
-// carry, each by name (docs/SPEC-TABLES.md §2.5, §2.8): `*wstring` is
-// specified ahead of its implementation and no backend emits the blob record,
-// and a `wstring(N)` MAP KEY has no portable order.
-func TestWideTextBlobAndMapKeyStayRefused(t *testing.T) {
-	cases := []struct {
-		name string
-		src  string
-		want string
-	}{
-		{name: "a *wstring blob", src: "package t\ntable Root { w *wstring }\n",
-			want: "specified ahead of its implementation"},
-		{name: "a wstring map key", src: "package t\ntable Root { m map[wstring(4)]uint32 }\n",
-			want: "a wstring(N) key is refused"},
+		{name: "a type field", src: "package t\ntype T { w wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a table field", src: "package t\ntable Root { w wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a union arm", src: "package t\nunion U\n{\n    w wstring(8)\n}\ntable Root { u U }\n", fix: "declare string(N)"},
+		{name: "a fixed array element", src: "package t\ntype T { w [4]wstring(8) }\n", fix: "declare string(N)"},
+		{name: "an unbounded list element", src: "package t\ntable Root { w []wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a map value", src: "package t\ntable Root { m map[uint32]wstring(8) }\n", fix: "declare string(N)"},
+		{name: "a map key", src: "package t\ntable Root { m map[wstring(8)]uint32 }\n", fix: "declare string(N)"},
+		{name: "an optional", src: "package t\ntable Root { w ?wstring(8) }\n", fix: "declare string(N)"},
+		{name: "the blob spelling", src: "package t\ntable Root { w *wstring }\n", fix: "declare *string"},
+		{name: "the bare word", src: "package t\ntable Root { w wstring }\n", fix: "declare string(N)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			errs := runUnit(t, map[string]string{"T.schema": tc.src})
-			for _, e := range errs {
-				if strings.Contains(e.Error(), tc.want) {
-					return
-				}
+			if len(errs) != 1 {
+				t.Fatalf("wstring was accepted or refused more than once: want exactly one diagnostic, got %d: %v", len(errs), errs)
 			}
-			t.Fatalf("no diagnostic contains %q; got: %v", tc.want, errs)
+			got := errs[0].Error()
+			if !strings.Contains(got, want) || !strings.Contains(got, tc.fix) {
+				t.Fatalf("wstring was refused without its name: want %q and %q in %q", want, tc.fix, got)
+			}
 		})
+	}
+	// `wstring` stays a reserved word: it names no declaration either.
+	errs := runUnit(t, map[string]string{"T.schema": "package t\ntype wstring { x int32 }\n"})
+	if len(errs) == 0 {
+		t.Fatal("wstring was accepted as a declaration name")
 	}
 }
 

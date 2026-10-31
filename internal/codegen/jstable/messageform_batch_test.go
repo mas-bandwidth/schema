@@ -649,13 +649,6 @@ func emitFieldCheck(b *strings.Builder, f *ir.Field, val any, member, ind string
 		raw, _ := base64.StdEncoding.DecodeString(s)
 		fmt.Fprintf(b, "%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(raw), member+".Length")
 		fmt.Fprintf(b, "%sif (!bytesEq(%s.subarray(0, %sLength), [%s])) { fail(%q); }\n", ind, member, member, byteList(raw), member)
-	case f.Type.Kind == ir.TWString:
-		s, _ := val.(string)
-		var units []uint16
-		for _, r := range s {
-			units = append(units, uint16(r))
-		}
-		fmt.Fprintf(b, "%sif (%sLength !== %d) { fail(%q); }\n", ind, member, len(units), member+".Length")
 	case enumRefOf(f) != nil:
 		e := enumRefOf(f)
 		s, _ := val.(string)

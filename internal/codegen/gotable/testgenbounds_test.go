@@ -214,7 +214,7 @@ func boundProbesDeclared(u *ir.Unit) []string {
 					continue
 				}
 				switch fd.Type.Kind {
-				case ir.TString, ir.TWString, ir.TBytes:
+				case ir.TString, ir.TBytes:
 					out = append(out, name+":above")
 				case ir.TBits:
 					if fd.Type.Width < 8*ir.TableKindWidth(ir.TableScalarKind(fd)) {

@@ -378,7 +378,7 @@ func messageShapeFacts(kind uint8, s ir.TableMessageShape) shapeFacts {
 		return f
 	}
 	switch kind {
-	case ir.TableKindString, ir.TableKindWstring:
+	case ir.TableKindString:
 		f.max = s.Max
 	case ir.TableKindArray:
 		f.min = s.Min

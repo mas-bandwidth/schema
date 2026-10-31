@@ -402,12 +402,6 @@ func (d *goDumper) cell(c *tabletext.Cell, f *ir.Field) string {
 		return "b0"
 	case t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64:
 		return goFloat(c.F, t.Kind == ir.TFloat32)
-	case t.Kind == ir.TWString:
-		us := make([]string, len(c.Units))
-		for i, u := range c.Units {
-			us[i] = fmt.Sprint(u)
-		}
-		return "u" + strings.Join(us, ",")
 	case t.Kind == ir.TString || t.Kind == ir.TBytes:
 		return "s" + hex.EncodeToString(c.Str)
 	}

@@ -26,8 +26,6 @@ func TestValueDefaultAndTableWasRefusals(t *testing.T) {
 			src: "package t\ntable Tab { s string(8) = \"\xff\" }\n"},
 		{name: "a quoted default on an integer", want: "a quoted string is a string(N) or bytes(N) default",
 			src: "package t\ntable Tab { n int32 = \"7\" }\n"},
-		{name: "a wstring takes no default", want: "a wstring takes no specified default",
-			src: "package t\ntype T { s wstring(8) = \"x\" }\n"},
 		// ---- flags defaults ----
 		{name: "a brace list on a scalar", want: "a brace list is a FLAGS default",
 			src: "package t\ntable Tab { n int32 = { A } }\n"},

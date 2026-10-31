@@ -252,7 +252,7 @@ local check = function(unit, T) {
 // nested tables, unions and 128-bit values answer false: the descriptor check
 // holds their shape.
 func bornValue(f *ir.Field) (string, bool) {
-	if f.Array != ir.ArrayNone || f.Type.Pointer || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString || f.IsMap() {
+	if f.Array != ir.ArrayNone || f.Type.Pointer || f.Type.Kind == ir.TBytes || f.IsMap() {
 		return "", false
 	}
 	if f.Type.Kind == ir.TNamed {

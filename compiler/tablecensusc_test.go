@@ -8,7 +8,7 @@
 //   - KIND 33's RUNTIME, table_wire_utf16_unit / table_wire_utf16 /
 //     table_wire_utf16_clamp. Its only call sites are a `wstring(N)` field
 //     (wire_read.go) and a `wstring(N)` arm (unions.go), and both sit behind
-//     ir.TWString, so a unit whose wide-text census is empty had thirty-two
+//     so a unit whose wide-text census is empty had thirty-two
 //     lines it could not reach.
 //   - THE BYTE BUFFER'S OWN SURFACE: the two views, the two reserved type ids,
 //     the three read accessors and the blob node type. All of it is reached

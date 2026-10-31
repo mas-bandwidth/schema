@@ -157,7 +157,7 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 }
 
 // TestTheTailIsUnconditional holds §3.3's stated choice: a unit with no
-// pointer announces the reserved node-table id and the three blob type ids all
+// pointer announces the reserved node-table id and the two blob type ids all
 // the same, so an ordinary edit only ever grows the tail at its END and never
 // moves a slot a generated field header carries as a literal.
 func TestTheTailIsUnconditional(t *testing.T) {
@@ -182,15 +182,15 @@ func TestTheTailIsUnconditional(t *testing.T) {
 				tables = append(tables, ir.TableWireId(unit.Tables[name].WireName()))
 			}
 		}
-		// the tail is the last 4 + one-per-table entries, in the fixed order
-		want := len(tables) + 4
+		// the tail is the last 3 + one-per-table entries, in the fixed order
+		want := len(tables) + 3
 		if len(entries) < want {
 			t.Fatalf("%s: %d entries cannot hold a tail of %d", c.Key, len(entries), want)
 		}
 		tail := entries[len(entries)-want:]
 		if tail[0].Id != ir.TableNodeWireId || tail[1].Id != ir.BytesWireTypeId ||
-			tail[2].Id != ir.StringWireTypeId || tail[3].Id != ir.WstringWireTypeId {
-			t.Errorf("%s: the tail does not open with the node-table id and bytes, string, wstring", c.Key)
+			tail[2].Id != ir.StringWireTypeId {
+			t.Errorf("%s: the tail does not open with the node-table id and bytes, string", c.Key)
 		}
 		for i, e := range tail {
 			if e.Kind != 0 {
@@ -200,7 +200,7 @@ func TestTheTailIsUnconditional(t *testing.T) {
 		// and the table name ids beyond them are the projection's sorted
 		// record order, which is what makes the tail grow only at its end
 		have := map[uint64]bool{}
-		for _, e := range tail[4:] {
+		for _, e := range tail[3:] {
 			have[e.Id] = true
 		}
 		for _, id := range tables {

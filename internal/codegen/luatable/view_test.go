@@ -176,8 +176,6 @@ func viewElemSize(u *ir.Unit, f *ir.Field) int64 {
 		return size
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		return 1
-	case f.Type.Kind == ir.TWString:
-		return 2
 	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
@@ -195,7 +193,7 @@ func viewCounted(f *ir.Field) bool {
 	}
 	return f.Array == ir.ArrayCounted ||
 		(!f.Type.Pointer && !f.Type.TextUnbounded() &&
-			(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString))
+			(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString))
 }
 
 // viewArrayBound is §8.1's array_bound, 0 on a container with no declared
@@ -208,7 +206,7 @@ func viewArrayBound(f *ir.Field) int64 {
 		return f.KeyEnumRef.Max
 	case f.Array != ir.ArrayNone:
 		return f.ArrayBound
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		return f.Type.Size
 	}
 	return 0

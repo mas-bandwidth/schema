@@ -288,10 +288,6 @@ func expectField(p *strings.Builder, want map[string]expect, rec string, f *ir.F
 	}
 	fresh := func() { line(key+".fresh", "v."+member+" != w."+member, exact("true")) }
 	switch {
-	case f.Array == ir.ArrayNone && f.Type.Kind == ir.TWString:
-		line(key, "v."+member, exact(fmt.Sprintf("array:%d", f.Type.Size)))
-		line(key+"Length", "v."+member+"Length", exact("0"))
-		fresh()
 	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		line(key, "v."+member, exact(fmt.Sprintf("blob:%d", f.Type.Size)))
 		used := 0

@@ -13,7 +13,7 @@ func TestRetainedMapReplacementAfterDamage(t *testing.T) {
 	m := listModel(t, `package mapdemo
  table Text {
  names map[string(8)]string(16)
- wide map[uint16]wstring(6)
+ wide map[uint16]string(6)
  blobs map[int32]bytes(10)
  past int32 | was = "after"
  }`)

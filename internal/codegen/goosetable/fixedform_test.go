@@ -494,9 +494,6 @@ func (m *fixedImage) elem(f *ir.Field) {
 	case ir.TString:
 		m.text(t.Size, 1)
 		return
-	case ir.TWString:
-		m.text(t.Size, 2)
-		return
 	case ir.TBytes:
 		n := int64(m.next() % uint64(t.Size+1))
 		m.put(uint64(n), 4)

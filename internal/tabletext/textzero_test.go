@@ -13,7 +13,7 @@ import (
 )
 
 // textZeroSchema holds every text kind the pack text reader places: string(N),
-// *string, wstring(N), a bounded and an unbounded text-list element,
+// *string, a bounded and an unbounded text-list element,
 // a map key, and a string(N) one table down.
 const textZeroSchema = `package probe
 
@@ -26,7 +26,6 @@ table Root
 {
     t string(8)
     s *string
-    w wstring(8)
     list [..4]string(8)
     open []string(8)
     m map[string(8)]int32
@@ -86,7 +85,6 @@ func TestPackTextReaderRefusesZeroInText(t *testing.T) {
 	}{
 		{"t", `"%s"`, "Root.t"},
 		{"s", `"%s"`, "Root.s"},
-		{"w", `"%s"`, "Root.w"},
 		{"list", `["%s"]`, "Root.list"},
 		{"open", `["ok","%s"]`, "Root.open"},
 		{"m", `{"%s":1}`, "Root.m"},

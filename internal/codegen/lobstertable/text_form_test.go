@@ -142,7 +142,7 @@ func textCarried(u *ir.Unit) bool {
 
 func textFieldCarried(f *ir.Field) bool {
 	t := f.Type
-	if t.Kind == ir.TWString || t.Timestamp || t.Pointer {
+	if t.Timestamp || t.Pointer {
 		return false
 	}
 	// a default document of a huge bound is the load walk's business, not

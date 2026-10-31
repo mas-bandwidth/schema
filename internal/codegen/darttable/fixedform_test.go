@@ -65,7 +65,6 @@ table Probe
 {
     label string(8)
     blob  bytes(6)
-    wide  wstring(3)
     marks [..4]int32
 }
 `)
@@ -91,19 +90,12 @@ table Probe
 	if blob.dst != 16 || blob.aux != 12 || blob.counted != 1 || blob.stride != 1 || blob.arg != fixedTextBytes {
 		t.Fatalf("blob dst row = %+v, want dest=buffer 16, aux=length 12, counted=1, stride=1, arg=bytes", blob)
 	}
-	wide, ok := row["wide"]
-	if !ok {
-		t.Fatal("no destination row for wide")
-	}
-	if wide.dst != 22 || wide.aux != 26 || wide.counted != 0 || wide.arg != fixedTextWide {
-		t.Fatalf("wide dst row = %+v, want dest=length 22, aux=buffer 26, counted=0, arg=wide", wide)
-	}
 	marks, ok := row["marks"]
 	if !ok {
 		t.Fatal("no destination row for marks")
 	}
-	if marks.dst != 36 || marks.aux != 32 || marks.counted != 1 || marks.stride != 4 {
-		t.Fatalf("marks dst row = %+v, want dest=buffer 36, aux=count 32, counted=1, stride=4", marks)
+	if marks.dst != 26 || marks.aux != 22 || marks.counted != 1 || marks.stride != 4 {
+		t.Fatalf("marks dst row = %+v, want dest=buffer 26, aux=count 22, counted=1, stride=4", marks)
 	}
 }
 
@@ -137,11 +129,9 @@ func dumpFn(t *testing.T, src, fn string) string {
 	return body
 }
 
-// A COUNTED ARRAY OF WRAPPED string(N)/wstring(N) IS ONE COPY, never a TEXT
-// per bound slot. v1 refuses `[1..4]string(8)` by name ("wrap the element in a
-// type"); the wrap is Item { label string(8); wide wstring(3) }. Identity
-// used to TEXT all four slots, so slack lengths counted. LIVE elements only,
-// slack never: the plan copies the run, decode clamps used-lengths behind
+// A COUNTED ARRAY OF WRAPPED string(N) IS ONE COPY, never a TEXT per bound
+// slot. v1 refuses `[1..4]string(8)` by name ("wrap the element in a type");
+// the wrap is Item { label string(8) }. LIVE elements only, slack never: the plan copies the run, decode clamps used-lengths behind
 // itemsCount. Compiled same-size text is a COPY for the same reason.
 func TestCountedStringArrayCopiesWholeRun(t *testing.T) {
 	src := `package probe
@@ -149,7 +139,6 @@ func TestCountedStringArrayCopiesWholeRun(t *testing.T) {
 table Item
 {
     label string(8)
-    wide  wstring(3)
 }
 
 table LiveNested
@@ -192,11 +181,8 @@ table LiveNested
 	if !strings.Contains(item, "if (value.labelLength < 0)") {
 		t.Fatalf("decode must clamp a live string length, slack never:\n%s", item)
 	}
-	if !strings.Contains(item, "if (value.wideLength < 0)") {
-		t.Fatalf("decode must clamp a live wstring length, slack never:\n%s", item)
-	}
 	if !strings.Contains(fixedRuntime, "SAME-SIZE TEXT IS A COPY") {
-		t.Fatal("compiled same-size string/wstring must COPY, or slack lengths count on that path")
+		t.Fatal("compiled same-size string must COPY, or slack lengths count on that path")
 	}
 }
 
@@ -293,7 +279,7 @@ table LiveRoot
 	}
 }
 
-// A STRING, BYTES, OR WSTRING WRITE COPIES LENGTH AND ZEROES SLACK
+// A STRING OR BYTES WRITE COPIES LENGTH AND ZEROES SLACK
 // (docs/SPEC-TABLES.md §3.4). Writing all N units would put unwritten or
 // stale storage onto the wire instead of the used length. Slack is zeroed.
 func TestWriteStringAndBytesCopiesLengthAndZeroesSlack(t *testing.T) {
@@ -303,7 +289,6 @@ table SpanRoot
 {
     label string(8)
     blob  bytes(6)
-    wide  wstring(4)
 }
 `)
 	files, err := Generate(u)
@@ -349,17 +334,6 @@ table SpanRoot
 	}
 	if !strings.Contains(body, "bytes.fillRange(at + 16 + value.blobLength, at + 22, 0);") {
 		t.Fatalf("bytes write must zero slack:\n%s", body)
-	}
-
-	// wstring(4): loops length code units, not bound 4; zeroes slack
-	if !strings.Contains(body, "for (var i = 0; i < value.wideLength; i++) {") {
-		t.Fatalf("wstring write must loop length code units:\n%s", body)
-	}
-	if strings.Contains(body, "for (var i = 0; i < 4; i++) {") {
-		t.Fatalf("wstring write still loops declared bound:\n%s", body)
-	}
-	if !strings.Contains(body, "bytes.fillRange(at + 26 + value.wideLength * 2, at + 34, 0);") {
-		t.Fatalf("wstring write must zero slack:\n%s", body)
 	}
 }
 

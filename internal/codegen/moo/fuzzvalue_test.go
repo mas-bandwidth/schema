@@ -17,7 +17,6 @@ import (
 	"math"
 	"math/big"
 	"math/rand/v2"
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -282,16 +281,6 @@ func (d *drawer) scalar(in *instance, f *ir.Field, g, m string) (bool, bool) {
 			in.moo = append(in.moo, fmt.Sprintf("buffer.writestring(%s, 0, %s)", m, luaString(b)))
 		}
 		in.moo = append(in.moo, fmt.Sprintf("%sLength = %d", m, n))
-	case ir.TWString:
-		units := d.wide(int(t.Size))
-		var w []string
-		for i, c := range units {
-			w = append(w, fmt.Sprintf("%04x", c))
-			in.moo = append(in.moo, fmt.Sprintf("buffer.writeu16(%s, %d, 0x%04x)", m, 2*i, c))
-		}
-		in.set = append(in.set, fmt.Sprintf("set %s w:%s", g, strings.Join(w, "")))
-		in.set = append(in.set, fmt.Sprintf("set %sLength i:%d", g, len(units)))
-		in.moo = append(in.moo, fmt.Sprintf("%sLength = %d", m, len(units)))
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
 		case *ir.Enum:

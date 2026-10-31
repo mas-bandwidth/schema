@@ -6,7 +6,7 @@
 //
 //   - KIND 33's runtime, TableUtf16Unit / TableUtf16Valid / TableUtf16Clamp.
 //     Its only call sites are a `wstring(N)` field and a `wstring(N)` arm, and
-//     both sit behind ir.TWString, so a unit whose wide-text census is empty
+//     both sit behind so a unit whose wide-text census is empty
 //     had fifty-three lines it could not reach.
 //   - THE FOUR BLOB THUNKS, TableBlob{,Message}{Measure,Save}Thunk. Their only
 //     call site is the `blob:` arm of the pointer edge walk, and it sits behind

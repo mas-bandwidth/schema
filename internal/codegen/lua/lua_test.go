@@ -275,8 +275,6 @@ func expectZero(u *ir.Unit, t ir.FieldType) string {
 		return luarun.DumpFloat(0)
 	case ir.TString, ir.TBytes:
 		return luarun.DumpString(nil)
-	case ir.TWString:
-		return luarun.DumpTable(nil, nil)
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Struct, *ir.Union:
@@ -307,8 +305,6 @@ func expectDefault(f *ir.Field) string {
 		return luarun.DumpFloat(f.DefFloat)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return luarun.DumpString(f.DefBytes)
-	case f.Type.Kind == ir.TWString:
-		return luarun.DumpTable(nil, nil)
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Width > 64:
 		return expectWide(f.DefInt)
 	}

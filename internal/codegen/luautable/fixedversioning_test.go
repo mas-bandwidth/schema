@@ -679,8 +679,6 @@ func luauResolvePath(t *testing.T, root *ir.Struct, expr, path string) (string, 
 		switch f.Type.Kind {
 		case ir.TString:
 			return expr, f, "string"
-		case ir.TWString:
-			return expr, f, "wstring"
 		case ir.TFloat32:
 			return expr, f, "f32"
 		case ir.TFloat64:

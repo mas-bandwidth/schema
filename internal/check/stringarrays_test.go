@@ -56,8 +56,6 @@ func TestTextListAndArrayRootRefusals(t *testing.T) {
 			"package t\ntable L {\n    xs [..4]?int32\n}\n"},
 		{"[]?T for a T but string(M)", "a named follow-on for every T but string(M)",
 			"package t\ntable L {\n    xs []?int32\n}\n"},
-		{"array of wstring(N)", "an array of wstring(N) is not supported",
-			"package t\ntable L {\n    xs [..4]wstring(8)\n}\n"},
 		{"array of bytes(N)", "an array of bytes(N) is not supported",
 			"package t\ntable L {\n    xs [..4]bytes(8)\n}\n"},
 		{"array of bits(N)", "an array of bits(N) is not supported",

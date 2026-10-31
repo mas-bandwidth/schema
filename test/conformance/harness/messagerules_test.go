@@ -244,45 +244,20 @@ func TestTheMasksWidth(t *testing.T) {
 	}
 }
 
-// TestTheWideStringsWidth: a `wstring(8)` of eight code units is 128 bits on
-// this wire against SPEC.md §4.12's 256. The checker refuses `wstring(N)` in
-// a table closure today (schema#522), so the row rides as an UNKNOWN entry at
-// kind 33 beside the backend vocabulary, skipped exactly, with a known field
-// after it whose value catches the position. Red if a leg spends a 32-bit
-// group a unit, or aligns before the units.
-func TestTheWideStringsWidth(t *testing.T) {
-	_, model, backendVocabulary := backend(t)
-	entries := append([]ir.TableVocabularyEntry(nil), backendVocabulary.Entries()...)
-	wide := ir.TableVocabularyEntry{Id: ir.TableWireId("label"), Kind: ir.TableKindWstring, Shape: ir.TableMessageShape{Max: 8}}
-	entries = append(entries, wide)
-	v, report, err := readAnnouncement(announce(backendVocabulary.BuildVersion(), entries))
-	if err != nil || !v.Announced() || report.Malformed {
-		t.Fatalf("the announcement with a kind-33 entry was refused: %v %+v", err, report)
-	}
-	if v.RefBits() != 6 {
-		t.Fatalf("34 entries take %d bits, not six", v.RefBits())
-	}
-	playerID := slotOf(t, v, ir.TableWireId("player_id"), ir.TableKindU64)
-	body := &bitw{}
-	body.put(uint64(len(entries)), v.RefBits()) // the wide string's slot, the last
-	body.put(8, ir.TableMessageBitsRequired(0, 8))
-	for i := range 8 {
-		body.put(uint64(0x4100+i), 16) // sixteen bits a unit, no align
-	}
-	body.put(playerID, v.RefBits())
-	body.put(77, 64)
-	body.put(0, v.RefBits())
-	inst, ok, rep, derr := decodeOne(t, model, "LoginRequest", v, batchOf(body))
-	if derr != nil || !ok || rep.Malformed || rep.Unknown != 1 || rep.KindMismatch != 0 {
-		t.Errorf("the wide string was not stepped over exactly: ok=%v err=%v report=%+v", ok, derr, rep)
-	}
-	if instU64(t, inst, "player_id") != 77 {
-		t.Errorf("the field after the wide string reads %d, not 77: the skip landed on the wrong bit", instU64(t, inst, "player_id"))
-	}
-	// and the body is 128 bits of units, not 256: a body sized for a 32-bit
-	// group a unit does not fit
-	if bits := 3*v.RefBits() + 4 + 128 + 64; body.n != bits {
-		t.Errorf("the crafted body is %d bits, the arithmetic says %d", body.n, bits)
+// TestTheRetiredAndReservedKindsRefuseTheAnnouncement: kind 33 is retired and
+// kind 34 is reserved for float16 (docs/SPEC-TABLES.md §3), so neither is in
+// this major's closed set and an announcement entry carrying one is damage. The
+// whole announcement is refused and sets no vocabulary, exactly as an entry of
+// any other kind outside the set is (§3.3).
+func TestTheRetiredAndReservedKindsRefuseTheAnnouncement(t *testing.T) {
+	_, _, backendVocabulary := backend(t)
+	for _, kind := range []uint8{ir.TableKindRetiredWstring, ir.TableKindReservedFloat16} {
+		entries := append([]ir.TableVocabularyEntry(nil), backendVocabulary.Entries()...)
+		entries = append(entries, ir.TableVocabularyEntry{Id: ir.TableWireId("label"), Kind: kind, Shape: ir.TableMessageShape{Max: 8}})
+		v, report, err := readAnnouncement(announce(backendVocabulary.BuildVersion(), entries))
+		if err == nil && v.Announced() && !report.Malformed {
+			t.Errorf("an announcement entry at kind %d was accepted: kind %d is outside this major's closed set", kind, kind)
+		}
 	}
 }
 
@@ -638,22 +613,20 @@ fixed table Every
 	if err != nil {
 		t.Fatal(err)
 	}
-	// AND THE TWO KINDS NO DECLARATION SPELLS, appended by hand after the
-	// engine's fields: an escape (31) with a two-byte payload, and a wide
-	// string (33) of three units. The engine's body ends with `last` and its
+	// AND THE KIND NO DECLARATION SPELLS, appended by hand after the engine's
+	// fields: an escape (31) with a two-byte payload. The engine's body ends with `last` and its
 	// terminator, and `last` is set with its top bit on so the fields end at
 	// the stream's last one bit: what follows is the terminator and the pad,
 	// both zero, and the rebuilt body replaces them.
 	entries := append([]ir.TableVocabularyEntry(nil), wv.Entries()...)
 	escape := ir.TableVocabularyEntry{Id: ir.TableWireId("escaped"), Kind: ir.TableKindEscape}
-	wide := ir.TableVocabularyEntry{Id: ir.TableWireId("label"), Kind: ir.TableKindWstring, Shape: ir.TableMessageShape{Max: 8}}
-	entries = append(entries, escape, wide)
+	entries = append(entries, escape)
 	v, areport, aerr := readAnnouncement(announce(wv.BuildVersion(), entries))
 	if aerr != nil || !v.Announced() || areport.Malformed {
 		t.Fatalf("the announcement of every kind was refused: %v %+v", aerr, areport)
 	}
 	if v.RefBits() != wv.RefBits() {
-		t.Fatalf("the two extra entries moved the reference width from %d to %d: size the row's unit differently", wv.RefBits(), v.RefBits())
+		t.Fatalf("the extra entry moved the reference width from %d to %d: size the row's unit differently", wv.RefBits(), v.RefBits())
 	}
 	refBits := v.RefBits()
 	stream := message[1:]
@@ -667,23 +640,18 @@ fixed table Every
 	for i := 8; i < fields; i++ {
 		rebuilt.put(in.get(1), 1)
 	}
-	rebuilt.put(uint64(len(entries)-1), refBits) // the escape's slot: align, a thirty-two bit L, then L bytes
+	rebuilt.put(uint64(len(entries)), refBits) // the escape's slot: align, a thirty-two bit L, then L bytes
 	rebuilt.align()
 	rebuilt.put(2, 32)
 	rebuilt.bytes([]byte{0xAA, 0xBB})
-	rebuilt.put(uint64(len(entries)), refBits) // the wide string's slot: the length, no align, sixteen bits a unit
-	rebuilt.put(3, ir.TableMessageBitsRequired(0, 8))
-	rebuilt.put(0x41, 16)
-	rebuilt.put(0x42, 16)
-	rebuilt.put(0x43, 16)
 	rebuilt.put(0, refBits)
 	back, ok, report, derr := decodeOne(t, rm, "Every", v, batchOf(rebuilt))
 	if derr != nil || !ok || report.Malformed || report.KindMismatch != 0 {
 		t.Fatalf("the shapes row: ok=%v err=%v report=%+v", ok, derr, report)
 	}
-	// every field but `last` is unknown to the reader: the declared ones, the
-	// escape and the wide string
-	if want := len(wm.Lookup("Every").Fields) - 1 + 2; report.Unknown != want {
+	// every field but `last` is unknown to the reader: the declared ones and
+	// the escape
+	if want := len(wm.Lookup("Every").Fields) - 1 + 1; report.Unknown != want {
 		t.Errorf("the reader counted %d unknowns, one for each of %d kinds is owed", report.Unknown, want)
 	}
 	if instU64(t, back, "last") != 0x80000001 {
@@ -752,18 +720,16 @@ func TestAHostileShape(t *testing.T) {
 			t.Errorf("%s: a body after the refused announcement was read: ok=%v err=%v", row.name, ok, derr)
 		}
 	}
-	// AN ELEMENT KIND OF 12 OR 33 IS A SHAPE LIKE ANY OTHER (§3.3): a text
-	// list (§2.13) is a kind 14 array of element kind 12, so a unit that
-	// declares one announces one. The row was a refusal until that was written
-	// down, and a Go unit with a text list was refused its own announcement.
+	// AN ELEMENT KIND OF 12 IS A SHAPE LIKE ANY OTHER (§3.3): a text list
+	// (§2.13) is a kind 14 array of element kind 12, so a unit that declares
+	// one announces one.
 	textLists := ir.TableVocabularyBytes(append(append([]ir.TableVocabularyEntry(nil), base...),
-		ir.TableVocabularyEntry{Id: ir.TableWireId("text_list"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 3, Elem: ir.TableKindString, Inner: &ir.TableMessageShape{Max: 8}}},
-		ir.TableVocabularyEntry{Id: ir.TableWireId("wide_keyed"), Kind: ir.TableKindKeyed, Shape: ir.TableMessageShape{Max: 3, Elem: ir.TableKindWstring, Inner: &ir.TableMessageShape{Max: 8}}}))
+		ir.TableVocabularyEntry{Id: ir.TableWireId("text_list"), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 3, Elem: ir.TableKindString, Inner: &ir.TableMessageShape{Max: 8}}}))
 	sbody := append(versionField(backendVocabulary.BuildVersion()), vocabularyField(textLists)...)
 	sbody = append(sbody, 0)
 	sv, sreport, serr := readAnnouncement(forgeAnnouncement(sbody, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
-	if serr != nil || sreport.Malformed || !sv.Announced() || len(sv.Entries()) != len(base)+2 {
-		t.Errorf("an array over element kind 12 and a keyed entry over 33: err=%v report=%+v announced=%v entries=%d", serr, sreport, sv.Announced(), len(sv.Entries()))
+	if serr != nil || sreport.Malformed || !sv.Announced() || len(sv.Entries()) != len(base)+1 {
+		t.Errorf("an array over element kind 12: err=%v report=%+v announced=%v entries=%d", serr, sreport, sv.Announced(), len(sv.Entries()))
 	}
 	// AND EACH CEILING'S OWN VALUE IS ACCEPTED, because an unbounded array
 	// announces the array one (§2.9) and a `string(N)` may declare the other

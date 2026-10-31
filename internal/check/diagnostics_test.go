@@ -162,29 +162,11 @@ func TestDiagnostics(t *testing.T) {
 		// ---- wide text (SPEC §4.12, §4.6): every refusal the construct owes.
 		// The type itself compiles, examples-wide/ being the corpus that pins
 		// it, so what a case here breaks is one rule and never the construct.
-		{name: "wstring below two", want: "wstring(1): N below 2",
-			src: "package t\ntype T { s wstring(1) }\n"},
-		{name: "wstring bound above int32", want: "lengths live in int32",
-			src: "package t\ntype T { s wstring(5000000000) }\n"},
-		{name: "wstring takes no default", want: "defaults cover bool, integer, float, enum, string, bytes and flags fields",
-			src: "package t\ntype T { s wstring(4) = 1 }\n"},
-		{name: "wstring takes no min/max", want: "min/max apply to integer fields",
-			src: "package t\ntype T { s wstring(4) | min = 0, max = 3 }\n"},
-		{name: "an array of wstring is not in v1", want: "an array of wstring(N) is not supported",
-			src: "package t\ntype T { a [4]wstring(4) }\n"},
-		{name: "wstring collides with its sibling's length companion", want: "length companion",
-			src: "package t\ntype T {\n    text wstring(8)\n    text_length uint8\n}\n"},
 		// wide text rides kind 33 in a table closure (docs/SPEC-TABLES.md §3),
 		// so what is left there is the OPTIONAL, refused for the reason a
 		// `?string(N)` is: the length companion already carries emptiness
-		{name: "an optional wstring inside a table closure", want: "? on wstring(N) is a named follow-on",
-			src: "package t\ntable T { s ?wstring(4) }\n"},
-		{name: "unbounded wide text", want: "*wstring is specified ahead of its implementation",
-			src: "package t\ntype T { s *wstring }\n"},
 		// memcmp over UTF-8 is a portable order and little-endian code units
 		// have none, so the key diagnostic names string(N) (§2.8, §11)
-		{name: "a wstring map key", want: "a wstring(N) key is refused",
-			src: "package t\ntable T { m map[wstring(4)]uint8 }\n"},
 		{name: "a map as a union arm is refused by name", want: "a map is not an arm",
 			src: "package t\nunion U { m map[uint8]int32 }\ntable Root { u U }\n"},
 		{name: "array bound zero", want: "below 1",
