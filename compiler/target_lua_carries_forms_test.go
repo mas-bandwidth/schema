@@ -25,6 +25,9 @@ func TestTargetLuaCarriesFormsDeclaration(t *testing.T) {
 			}
 			continue
 		}
+		if carries(target, carryForms) {
+			continue
+		}
 		if err == nil {
 			t.Errorf("target %q accepted a forms declaration", target)
 			continue
