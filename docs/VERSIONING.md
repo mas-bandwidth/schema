@@ -18,7 +18,7 @@ The table wire is pre-release until 3.0.0. Before that release its files may
 change in a minor version, announced first, and the promises below are made
 at 3.0.0. The packet wire's promises are held within a release by the pinned
 goldens, and across releases by the previous-release differential (#463),
-which refuses a release today: its section below says why.
+named in its section below.
 
 1. **From 3.0.0, data written by any build reads in any other build of the
    same major, in either direction, and never crashes.** A table wire from a
@@ -156,25 +156,30 @@ protocol id in existence:
 
 **The previous-release differential** (`make release-differential`,
 `tools/releasediff`, #463). The newest v tag's compiler and the release
-commit's, each built from its own tree, generate every unit `make check`
-names, in every target both carry. A unit whose protocol id is equal under
-both must come out as the same files and the same bytes; a difference
-refuses, naming the unit, the target, the file and its first differing byte.
-A unit whose id moved is listed and not compared, and so are a unit either
-compiler refuses and a target one side lacks or refuses for the unit: none of
-them can put two peers on one id with two wires. `make release` runs it
-before it tags anything, and certify.yml runs it nightly. Its negative
-control, `release-differential-negative-control`, moves every union arm's
-packet tag by one in the C++ writer under an unchanged protocol id and must
-go red naming the header and the byte; its guard leg runs one compiler
-against itself and must pass, which is also a check that generation is
-deterministic.
+commit's, each built from its own tree, encode the same instances, and a
+unit whose protocol id is equal under both must produce the same WIRE bytes.
+Generated source is not compared; it changes in every release by design.
+The packet wire is encoded by the C++ reference: each packet driver the
+Makefile builds (`test/main.cpp`, `test/ludicrous_main.cpp`,
+`test/bench/main.cpp`) is compiled from one source against each side's
+generated C++ and writes every pin it holds. The table forms are encoded by
+the Go engine each compiler carries, `schema pack` over every instance of the
+conformance manifest that carries text, in the variable and message forms. A
+differing byte refuses, naming the unit, the instance and the first
+differing byte, and so does a driver that passes its own checks on one side
+only. A unit whose id moved is listed and not compared, and so is a unit
+either compiler refuses, a driver that does not build on both sides, and an
+instance one side refuses to encode. Its negative control,
+`release-differential-negative-control`, moves every union arm's tag by one
+in the C++ packet writer, and writes a true bool as 2 in the Go engine's
+variable form, each under an unchanged protocol id, and each must go red on
+its own wire alone; its guard leg runs one compiler against itself and must
+pass having compared both wires.
 
-It is red against v2.5.0: six units whose protocol id did not move
-(`examples`, `examples128`, `tables/blobs`, `test/tables/P2.schema` and the
-two bench units) generate different files in all nine targets v2.5.0
-carries, so no release is made until the ids move with those bytes or the
-bytes return.
+Against v2.5.0 it is green: 44 packet encodings over the three drivers and
+5 variable-form table encodings are the same bytes. The table side is thin
+because v2.5.0 reads none of the table units but `tables/blobs`; the rest
+are listed.
 
 **Variant order is the wire, and the names carry it.** An enum value rides as
 its declaration ordinal, a flags variant as its bit position, a union arm as
@@ -1180,9 +1185,8 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   emitted nowhere.
 - #434: the reserved escape kind. The C++ reference and `internal/tablewire`
   carry it; what is owed is the eight ports (#511 to #518).
-- #463: a green previous-release differential. The gate is built and
-  refuses a release; against v2.5.0 it is red in 46 unit-target pairs, six
-  units under an unchanged protocol id in all nine targets v2.5.0 carries.
+- #463: the previous-release differential in the release path. It is built
+  and green against v2.5.0; `make release` and certify.yml do not run it yet.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #446: the evolution table's fixtures. `TestEvolutionTableFrames` pins 33
   of §4.1's 34 rows. The one owed is an unbounded array's element retyped:
