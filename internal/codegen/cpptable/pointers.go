@@ -244,6 +244,10 @@ type edgeVisitor struct {
 	// element is the pointer slot or the nested table the visitor already
 	// knows how to reach. The list adds only the cursor around them.
 	listField func(f *ir.Field, v edgeVisitor)
+	// everyGuard visits a field under a FALSE guard too: the cycle check
+	// walks what the storage HOLDS, not what a writer would write
+	// (docs/SPEC-TABLES.md §3.1, §4)
+	everyGuard bool
 }
 
 // at spells one storage PATH — ".field", ".field[i]", ".body.chunk" — under
@@ -404,7 +408,7 @@ func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
 			continue
 		}
 		open := ""
-		if cond, guarded := guards[f.Name]; guarded {
+		if cond, guarded := guards[f.Name]; guarded && !v.everyGuard {
 			open = cond
 		}
 		if f.Type.Optional {
@@ -597,6 +601,7 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 	for _, st := range g.varMembers(members) {
 		g.owner = st
 		g.emitNumber(st)
+		g.emitCycleSlots(st)
 		g.emitPackMeasure(st)
 		g.emitPack(st)
 	}
@@ -1205,6 +1210,15 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		g.pf("    // holds what it held when the count was met\n")
 		g.pf("    ok = ok && !nodes.refused;\n")
 	}
+	g.pf("    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)\n")
+	g.pf("    if ( ok && !out->malformed && nodes.good )\n    {\n")
+	g.pf("        TableCycle cycle;\n")
+	g.pf("        TableArenaCtx cycle_ctx = { &builder.arena };\n")
+	g.pf("        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &%sCycleOrdinal ) &&\n", n)
+	g.pf("                             TableCycleAcyclic( cycle, cycle_ctx, &%sCycleNode<TableArenaCtx> );\n", n)
+	g.pf("        TableCycleEnd( cycle );\n")
+	g.pf("        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one\n")
+	g.pf("    }\n")
 	g.pf("    table_release( allocator, directory );\n")
 	g.pf("    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder\n")
 	g.pf("    // holds nothing to use, and false says so\n")
@@ -1415,6 +1429,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	g.pf("    return 0;\n}\n\n")
 
 	g.emitRootNodeBody(st, reachable, blobs)
+	g.emitCycleDispatch(st, reachable)
 }
 
 // emitRootNodeBody is PASS TWO's half: decode one record's body into the
@@ -1741,11 +1756,10 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		loadName = "LoadTolerant"
 	}
 	g.pf("// %s%s: decode the tolerant wire into the caller's exact-sized region and\n", n, loadName)
-	g.pf("// return the root. LOAD IS A SCAN, and that is the whole of its bound: it\n")
-	g.pf("// follows no reference, so there is no depth cap, no visited set and no\n")
-	g.pf("// ordering rule on the indices. Partial results are kept, as everywhere on\n")
-	g.pf("// this wire — the report says what happened. NULL means the CALLER's buffer\n")
-	g.pf("// was wrong.\n")
+	g.pf("// return the root. LOAD IS A SCAN: the decode follows no reference, and a\n")
+	g.pf("// cyclic graph is refused afterwards by one linear pass over the node\n")
+	g.pf("// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load\n")
+	g.pf("// (§4). NULL means damage or a CALLER's buffer that was wrong.\n")
 	if g.retain {
 		g.pf("// UNDER RETENTION it also fills the caller's two stores with the fields\n")
 		g.pf("// this build cannot name, and the report carries what it could not keep\n")
@@ -1910,6 +1924,26 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing\n")
 	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
 	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
+	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
+	// produces a cycle, so the loaded graph is checked by Kahn's algorithm over
+	// the directory this load already holds, allocating nothing, and a cycle
+	// anywhere refuses the whole load. The type ids the check borrowed as
+	// scratch are put back from the wire's own records.
+	g.pf("    if ( !out->malformed && nodes.good )\n    {\n")
+	g.pf("        TableCycle cycle;\n")
+	g.pf("        TableRegionCtx cycle_ctx;\n")
+	g.pf("        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &%sCycleOrdinal ) &&\n", n)
+	g.pf("                             TableCycleAcyclic( cycle, cycle_ctx, &%sCycleNode<TableRegionCtx> );\n", n)
+	g.pf("        TableCycleRestore( cycle, 0, 0x%016xull );\n", ir.TableWireId(st.WireName()))
+	g.pf("        {\n")
+	g.pf("            TableReport restoring;\n")
+	g.pf("            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );\n")
+	g.pf("            int64_t k = 0;\n")
+	g.pf("            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }\n")
+	g.pf("        }\n")
+	g.pf("        TableCycleEnd( cycle );\n")
+	g.pf("        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one\n")
+	g.pf("    }\n")
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the region
 	// holds no root and the retention store holds nothing.
 	if g.retain {
@@ -1970,4 +2004,66 @@ func (g *tableGen) retainLoadParam() string {
 // does not ask keeps the signature it had, written on the refusal path only.
 func (g *tableGen) loadMeasureReasonParam() string {
 	return ", TableRefuseReason * reason_out = NULL"
+}
+
+// emitCycleSlots emits <T>CycleSlots: every non-null TABLE pointer slot one
+// node's by-value closure STORES, under a false guard too, handed to
+// TableCycleEdge (docs/SPEC-TABLES.md §3.1, §4). A byte buffer reaches nothing
+// and is not an edge of the cycle check.
+func (g *tableGen) emitCycleSlots(st *ir.Struct) {
+	g.pf("// %sCycleSlots: the cycle check's edges below one %s, guards ignored.\n", st.Name, st.Name)
+	g.pf("template <typename Ctx>\ninline bool %sCycleSlots( const Ctx & ctx, TableCycle & cycle, const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("    (void) ctx; (void) cycle; (void) value;\n")
+	g.emitEdgeWalk(st, edgeVisitor{
+		read:       "value",
+		everyGuard: true,
+		pointer: func(f *ir.Field, slot edgeExpr) {
+			g.pf("    if ( !TableCycleEdge( cycle, %s ) ) { return false; } // %s\n", slot.Src, f.Name)
+		},
+		blob: func(f *ir.Field, slot edgeExpr) {
+			g.pf("    // %s: a byte buffer reaches nothing\n", f.Name)
+		},
+		descend: func(table string, expr edgeExpr, indent string) {
+			g.pf("%sif ( !%sCycleSlots( ctx, cycle, %s ) ) { return false; }\n", indent, table, expr.Src)
+		},
+		mapField: func(f *ir.Field) {
+			g.emitMapEntryLoop(f, "value", "return false;", func(entry, elem, ind string) {
+				g.pf("%sif ( !%sCycleSlots( ctx, cycle, %s ) ) { TableMapRelease( cursor_%s ); return false; }\n", ind, entry, elem, f.Name)
+			})
+		},
+		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return false;") },
+	})
+	g.pf("    return true;\n}\n\n")
+}
+
+// emitCycleDispatch emits a pointered root's two hooks for the cycle check:
+// <Root>CycleOrdinal names a record's type by a small ordinal (0 for a byte
+// buffer or a type this root cannot place), and <Root>CycleNode enumerates
+// one directory node's slots by that ordinal.
+func (g *tableGen) emitCycleDispatch(st *ir.Struct, reachable []*ir.Struct) {
+	n := st.Name
+	types := []*ir.Struct{st}
+	for _, t := range reachable {
+		if t != st {
+			types = append(types, t)
+		}
+	}
+	if len(types) >= 0x3FFF {
+		panic("cpptable: too many node types below one root for the cycle check's ordinal")
+	}
+	g.pf("// %sCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).\n", n)
+	g.pf("inline uint32_t %sCycleOrdinal( uint64_t type_id )\n{\n", n)
+	g.pf("    switch ( type_id )\n    {\n")
+	for i, t := range types {
+		g.pf("        case 0x%016xull: return %d; // %s\n", ir.TableWireId(t.WireName()), i+1, t.Name)
+	}
+	g.pf("        default: return 0;\n    }\n}\n\n")
+	g.pf("// %sCycleNode: one directory node's stored slots, by its ordinal.\n", n)
+	g.pf("template <typename Ctx>\ninline bool %sCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )\n{\n", n)
+	g.pf("    const void * node = TableCycleNode( cycle, position );\n")
+	g.pf("    switch ( TableCycleOrdinal( cycle, position ) )\n    {\n")
+	for i, t := range types {
+		g.pf("        case %d: return %sCycleSlots( ctx, cycle, *(const %s *) node );\n", i+1, t.Name, t.Name)
+	}
+	g.pf("        default: return true;\n    }\n}\n\n")
 }

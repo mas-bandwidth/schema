@@ -511,6 +511,10 @@
         "tables-wire-fuzz-discard-negative-control",
         "tables-cpp-discard-negative-control",
         "tables-cpp-region-discard-negative-control",
+        "tables-cpp-cycle-negative-control",
+        "tables-cpp-cycle-linear-negative-control",
+        "tables-engine-cycle-negative-control",
+        "tables-engine-cycle-linear-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]

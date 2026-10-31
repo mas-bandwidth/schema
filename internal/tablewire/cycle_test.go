@@ -1,43 +1,33 @@
-// A POINTER CYCLE ON A FORGED WIRE (docs/SPEC-TABLES.md §3.1, §14 note 9;
-// schema#535, filed on #521 as G-19).
+// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4). Glenn's ruling,
+// 2026-10-31: "Why the fuck would I want to read a cycle" and "It's perhaps
+// the MOST OBVIOUS attack somebody would do on this protocol!"
 //
-// One flipped bit in a `ListNode` chain under a `Scene` root turns the first
-// node's `next` index from 3 into 2, which is that node's own index: it loads,
-// the report is all zero, and the loaded node points at itself. That looks
-// like a hole and is the contract, stated in §3.1 in four clauses this file
-// pins one by one, because each is a thing a future reader could quietly stop
-// doing:
+// No writer produces a cycle (the numbering walk refuses one at save and at
+// Lock), so a load whose graph holds one refuses the WHOLE load, on the
+// strict, tolerant, retaining and region reads alike. This file is the
+// engine's gate:
 //
-//  1. LOAD ACCEPTS IT, SILENTLY. "A pointer field's payload is a NUMBER: it is
-//     bounds-checked and stored, never followed. There is no traversal on the
-//     load path, and therefore no traversal bound — no depth cap, no visited
-//     set, no ordering rule on the indices." The index names a node that
-//     exists and whose type matches, so no §4 event happened and no counter
-//     may move. A reader that started following references to refuse this
-//     would take on state proportional to the graph on the reading path, which
-//     §6.5 forbids and §14 note 4 records as rejected.
-//  2. THE WALKING CONSUMER CARRIES THE BOUND. "What a cyclic structure costs
-//     is paid by whatever WALKS it, and a consumer walking untrusted table
-//     data — a reflection dump, a text export (§16) — carries its own visit
-//     bound." The text writer refuses this instance by name.
-//  3. SO DOES A RE-ENCODE. A save from a builder refuses a data cycle (§3.1),
-//     and the loaded instance is a builder's shape.
-//  4. AND THE WALK TERMINATES. Both refusals return rather than recursing
-//     away, which is the half a depth-limited walker would also satisfy and a
-//     naive one would not.
-//
-// §14 note 9 prices the reader-side acyclicity check this version does not
-// spend and records what shape it would take. Landing one is that ruling, not
-// a fix, and this file is what would have to change to take it.
+//  1. THE PINNED FORGED CYCLE (schema#535's one flipped bit) is damage, and
+//     the instance is handed back at its declared defaults.
+//  2. EVERY STORED SLOT COUNTS: a cycle through a pointer under a false
+//     guard, and a cycle the root never reaches, both refuse; the acyclic twin
+//     of each loads.
+//  3. THE CHECK IS LINEAR: a diamond chain of 81 nodes and 2^40 paths loads,
+//     inside a deadline, because each node is entered once and a pointer to a
+//     CLOSED node is a share, never re-entered.
 package tablewire_test
 
 import (
+	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const selfCycleVector = "../../testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin"
@@ -56,44 +46,8 @@ func pointerModel(t *testing.T) *tabletext.Model {
 	return tabletext.NewModel(u)
 }
 
-// reachesItself walks the loaded graph with its own visit bound — the bound
-// §3.1 says every walker owns — and reports whether any node is reachable from
-// itself.
-func reachesItself(root *tabletext.Instance) bool {
-	done := map[*tabletext.Instance]bool{}
-	var walk func(n *tabletext.Instance, open map[*tabletext.Instance]bool) bool
-	walk = func(n *tabletext.Instance, open map[*tabletext.Instance]bool) bool {
-		if n == nil {
-			return false
-		}
-		if open[n] {
-			return true
-		}
-		if done[n] {
-			return false
-		}
-		done[n] = true
-		open[n] = true
-		for i := range n.Fields {
-			f := &n.Fields[i]
-			cells := make([]*tabletext.Cell, 0, 1+len(f.Elems))
-			cells = append(cells, &f.Cell)
-			for j := range f.Elems {
-				cells = append(cells, &f.Elems[j])
-			}
-			for _, c := range cells {
-				if walk(c.Node, open) || walk(c.Tab, open) {
-					return true
-				}
-			}
-		}
-		delete(open, n)
-		return false
-	}
-	return walk(root, map[*tabletext.Instance]bool{})
-}
-
-func TestForgedPointerCycleLoadsSilentlyAndRefusesEveryWalk(t *testing.T) {
+func TestForgedPointerCycleIsDamage(t *testing.T) {
+	t.Parallel()
 	wire, err := os.ReadFile(selfCycleVector)
 	if err != nil {
 		t.Fatal(err)
@@ -101,56 +55,216 @@ func TestForgedPointerCycleLoadsSilentlyAndRefusesEveryWalk(t *testing.T) {
 	m := pointerModel(t)
 	inst := m.New(m.Lookup("Scene"))
 	var r tabletext.Report
-
-	// CLAUSE 1: the load accepts it and reports nothing.
 	ok, derr := tablewire.Decode(m, inst, wire, &r)
 	if derr != nil {
-		t.Fatalf("the load errored on a wire it is specified to scan: %v", derr)
+		t.Fatalf("the load errored rather than reporting damage: %v", derr)
 	}
-	if !ok {
-		t.Fatal("the load refused a forged cycle; §3.1 specifies a scan that follows nothing")
+	if ok || !r.Malformed {
+		t.Fatalf("a forged cycle loaded: ok=%v %+v", ok, r)
 	}
-	if !r.Silent() {
-		t.Errorf("a counter moved for a pointer index that names a node of the right type: %+v", r)
+	head, _ := inst.FieldByKey("head")
+	if head.Cell.Node != nil {
+		t.Fatal("damage discards the whole load, and the refused instance still holds a node")
 	}
-
-	// the vector is still the mutant it was pinned as
-	if !reachesItself(inst) {
-		t.Fatal("the pinned vector no longer loads a node reachable from itself — it has stopped being the case it pins")
-	}
-
-	// CLAUSE 2: the text export carries its own visit bound and refuses by name.
-	text, werr := m.Write(inst)
-	if werr == nil {
-		t.Errorf("the text export walked a cyclic graph and produced %d bytes; §3.1 requires the walking consumer to carry the bound", len(text))
-	} else if !containsAll(werr.Error(), "data cycle", "docs/SPEC-TABLES.md §3.1") {
-		t.Errorf("the text export's refusal does not name the cycle and its rule: %v", werr)
-	}
-
-	// CLAUSE 3: a re-encode refuses it the same way.
-	enc, eerr := tablewire.Encode(m, inst)
-	if eerr == nil {
-		t.Errorf("a save reproduced a data cycle as %d bytes; §3.1 refuses one at save", len(enc))
-	} else if !containsAll(eerr.Error(), "data cycle", "docs/SPEC-TABLES.md §3.1") {
-		t.Errorf("the save's refusal does not name the cycle and its rule: %v", eerr)
-	}
-
-	// CLAUSE 4 is this test returning at all: both refusals return rather than
-	// recursing away, and the Go test timeout is the gate on that.
 }
 
-func containsAll(s string, wants ...string) bool {
-	for _, w := range wants {
-		found := false
-		for i := 0; i+len(w) <= len(s); i++ {
-			if s[i:i+len(w)] == w {
-				found = true
-				break
-			}
+const cycleUnit = `package cyclecheck
+
+table Node
+{
+    a     int32 = 0
+    on    bool
+    left  *Node
+    right *Node
+    if on
+    {
+        side *Node
+    }
+}
+`
+
+func cycleModel(t *testing.T) *tabletext.Model {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "probe.schema")
+	if err := os.WriteFile(path, []byte(cycleUnit), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tabletext.NewModel(u)
+}
+
+type cycleLink struct {
+	from  int
+	field string
+	to    int
+}
+
+// cycleEncode writes an acyclic Node graph, nodes[0] the root, through the
+// engine's writer; a test then turns one index on the wire.
+func cycleEncode(t *testing.T, m *tabletext.Model, count int, on []int, links []cycleLink) []byte {
+	t.Helper()
+	nodes := make([]*tabletext.Instance, count)
+	for i := range nodes {
+		nodes[i] = m.New(m.Lookup("Node"))
+	}
+	for _, i := range on {
+		f, _ := nodes[i].FieldByKey("on")
+		f.Cell.B = true
+	}
+	for _, l := range links {
+		f, ok := nodes[l.from].FieldByKey(l.field)
+		if !ok {
+			t.Fatalf("Node has no field %s", l.field)
 		}
-		if !found {
-			return false
+		f.Cell.Node = nodes[l.to]
+	}
+	wire, err := tablewire.Encode(m, nodes[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wire
+}
+
+// cyclePatch turns the ONE pointer naming node index `from` into one naming
+// `to`; every graph here stays under 128 nodes, so an index is one byte.
+func cyclePatch(t *testing.T, wire []byte, from, to byte) {
+	t.Helper()
+	pattern := []byte{byte(ir.TableKindPointer), from}
+	if n := bytes.Count(wire, pattern); n != 1 {
+		t.Fatalf("index %d is named %d times, not once", from, n)
+	}
+	wire[bytes.Index(wire, pattern)+1] = to
+}
+
+// cycleGuardOff clears the one `on = true` byte on the wire, so the guarded
+// slot rides under a FALSE guard; the engine confirms the slot is still
+// stored.
+func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
+	t.Helper()
+	for i := 0; i+2 < len(wire); i++ {
+		if wire[i+1] != byte(ir.TableKindBool) || wire[i+2] != 1 {
+			continue
+		}
+		try := append([]byte(nil), wire...)
+		try[i+2] = 0
+		root := m.New(m.Lookup("Node"))
+		var report tabletext.Report
+		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil || report.Malformed {
+			continue
+		}
+		left, _ := root.FieldByKey("left")
+		if left.Cell.Node == nil {
+			continue
+		}
+		on, _ := left.Cell.Node.FieldByKey("on")
+		side, _ := left.Cell.Node.FieldByKey("side")
+		if !on.Cell.B && side.Cell.Node != nil {
+			copy(wire, try)
+			return
 		}
 	}
-	return true
+	t.Fatal("no byte turns the guard off with the guarded slot kept")
 }
+
+// cycleRead loads one wire on the tolerant and region reads and
+// demands one verdict of all of them.
+func cycleRead(t *testing.T, m *tabletext.Model, name string, wire []byte, load bool) {
+	t.Helper()
+	reads := map[string]func(*tabletext.Instance, *tabletext.Report) (bool, error){
+		"tolerant": func(inst *tabletext.Instance, r *tabletext.Report) (bool, error) {
+			return tablewire.Decode(m, inst, wire, r)
+		},
+		"region": func(inst *tabletext.Instance, r *tabletext.Report) (bool, error) {
+			return tablewire.DecodeRegion(m, inst, wire, r)
+		},
+	}
+	for how, read := range reads {
+		var r tabletext.Report
+		ok, err := read(m.New(m.Lookup("Node")), &r)
+		if err != nil {
+			t.Fatalf("%s (%s): %v", name, how, err)
+		}
+		if load && (!ok || r.Malformed) {
+			t.Errorf("%s (%s): an acyclic graph was refused: %+v", name, how, r)
+		}
+		if !load && (ok || !r.Malformed) {
+			t.Errorf("%s (%s): a cyclic wire loaded: %+v", name, how, r)
+		}
+	}
+}
+
+func TestCyclicWireIsDamage(t *testing.T) {
+	t.Parallel()
+	m := cycleModel(t)
+
+	// root(1) -> A(2) -> B(3) -> L(4); B's pointer at L turned back at A
+	chain := []cycleLink{{0, "left", 1}, {1, "left", 2}, {2, "left", 3}}
+	cycleRead(t, m, "mid ancestor twin", cycleEncode(t, m, 4, nil, chain), true)
+	mid := cycleEncode(t, m, 4, nil, chain)
+	cyclePatch(t, mid, 4, 2)
+	cycleRead(t, m, "mid ancestor", mid, false)
+	self := cycleEncode(t, m, 4, nil, chain)
+	cyclePatch(t, self, 4, 3)
+	cycleRead(t, m, "self", self, false)
+	root := cycleEncode(t, m, 4, nil, chain)
+	cyclePatch(t, root, 4, 1)
+	cycleRead(t, m, "to root", root, false)
+
+	// the root's pointer at A nulled: A -> B -> A is a cycle the root never
+	// reaches, and it is still a cyclic wire
+	unreached := cycleEncode(t, m, 4, nil, chain)
+	cyclePatch(t, unreached, 2, 0)
+	cyclePatch(t, unreached, 4, 2)
+	cycleRead(t, m, "unreached", unreached, false)
+
+	// root(1) -> A(2), A.side -> L(3) under a guard the wire turns false: the
+	// load still STORES the slot, so the slot is an edge
+	guarded := []cycleLink{{0, "left", 1}, {1, "side", 2}}
+	off := cycleEncode(t, m, 3, []int{1}, guarded)
+	cycleGuardOff(t, m, off)
+	cycleRead(t, m, "false guard twin", off, true)
+	cyclePatch(t, off, 3, 2)
+	cycleRead(t, m, "false guard", off, false)
+}
+
+// TestDiamondChainLoadsLinear is the check's linear gate: forty diamonds, each
+// level's two nodes both naming the next level's two, are 81 nodes and 2^40
+// root-to-leaf paths. The load must finish, and finish whole, in a deadline a
+// walk that re-enters a shared node cannot meet.
+func TestDiamondChainLoadsLinear(t *testing.T) {
+	t.Parallel()
+	m := cycleModel(t)
+	const levels = 40
+	links := []cycleLink{{0, "left", 1}, {0, "right", 2}}
+	for l := 0; l < levels-1; l++ {
+		a, b := 1+2*l, 2+2*l
+		links = append(links, cycleLink{a, "left", a + 2}, cycleLink{a, "right", b + 2}, cycleLink{b, "left", a + 2}, cycleLink{b, "right", b + 2})
+	}
+	wire := cycleEncode(t, m, 1+2*levels, nil, links)
+	done := make(chan error, 1)
+	go func() {
+		var r tabletext.Report
+		ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), wire, &r)
+		if err == nil && (!ok || r.Malformed) {
+			err = errDiamondRefused
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("diamond: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("diamond: the walk did not finish linear")
+	}
+}
+
+type diamondError string
+
+func (e diamondError) Error() string { return string(e) }
+
+const errDiamondRefused = diamondError("a legal DAG was refused")
