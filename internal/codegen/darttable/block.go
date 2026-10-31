@@ -436,6 +436,20 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			// only a cooked record reaches one, since a map refuses the block form
 			g.emitCookMapAccessors(f, fl.Offset, ind, origin)
 			continue
+		case f.IsList() && bl == nil:
+			// a LIST slot is a delta and a count too (§2.9, §7.2): its elements
+			// are a span in the holder's node extent, read where they lie
+			g.emitCookListAccessors(f, fl.Offset, ind, origin)
+			continue
+		case f.Type.Kind == ir.TWString && bl == nil:
+			// wstring(N)'s cooked storage (§7.2): char16_t[N+1], then the used
+			// length in CODE UNITS
+			g.pf("%s// wstring(%d): the USED length in code units, and each unit\n", ind, f.Type.Size)
+			g.pf("%sint get %sLength {\n", ind, name)
+			g.pf("%s  final used = view.getInt32(%s + %d, Endian.little);\n", ind, origin, facts.CountOffset)
+			g.pf("%s  return used < 0 || used > %d ? 0 : used;\n%s}\n\n", ind, f.Type.Size, ind)
+			g.arrow(ind, fmt.Sprintf("int %sAt(int index)", name), fmt.Sprintf("view.getUint16(%s + %d + index * 2, Endian.little)", origin, fl.Offset))
+			continue
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("%s// %s: the USED length, and a view of the bytes it names\n", ind, tableFieldTypeName(f))
 			g.pf("%sint get %sLength {\n", ind, name)

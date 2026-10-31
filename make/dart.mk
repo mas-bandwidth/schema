@@ -128,7 +128,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
+build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
@@ -136,6 +136,8 @@ build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schem
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
 	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
 	./bin/schema generate --lang dart --out build/tables-generated-dart/maps tables/maps
+	# widelist: 128-bit list elements, the cook's node-alignment row (§2.8, §6.2)
+	./bin/schema generate --lang dart --out build/tables-generated-dart/widelist tables/widelist
 	./bin/schema generate --lang dart --out build/tables-generated-dart/messages tables/messages
 	# backend, vocab and vocab9 are also the MESSAGE FORM's units (docs/SPEC-TABLES.md
 	# §3.3): the conformance driver's `message` surface reads their batches.
@@ -1273,6 +1275,55 @@ tables-dart-map-sort-negative-control:
 	@echo 'negative control: with the writer sort a no-op in the generated runtime, the map-sort probe goes red on the saved bytes'
 
 test-dart: tables-dart-map-sort tables-dart-map-sort-negative-control
+
+# THE COOK'S MAPS AND LISTS (docs/PORTING.md M19, docs/SPEC-TABLES.md §2.8,
+# §2.9, §7.6): every map and list cook-write row of the manifest (mapdemo,
+# listdemo, widelist) cooked by the Dart writer in both byte orders onto the
+# files `schema cook` wrote; then every map of each value REVERSED at every
+# depth, which must not move the cook by one byte (the WRITER holds the sort);
+# then map_full's maps searched in place by `<field>Find` at both depths and
+# list_tables' lists read in place by `<field>Count` and `<field>At`.
+DART_COOK_MAP := build/dart-cook-map
+.PHONY: tables-dart-cook-map tables-dart-cook-map-negative-control
+tables-dart-cook-map: build/tables-generated-dart/.stamp test/dart-tables/cook_map_main.dart
+	@mkdir -p $(DART_COOK_MAP)
+	$(DART) compile exe -o $(DART_COOK_MAP)/probe test/dart-tables/cook_map_main.dart >/dev/null
+	./$(DART_COOK_MAP)/probe testdata/conformance/tables/MANIFEST.txt
+
+# ITS CONTROLS, two code sabotages, no tracked file written to. UNSORTED: a
+# copy of the generated tree whose TableCookGraph.sorted keeps the stored
+# order; the as-loaded cooks stay schema cook's (the wire loads ascending) and
+# the reversed ones must go red. MISALIGNED: a copy of the emitter that starts
+# a node's extent at its sizeof rounded to eight and aligns the node to its
+# record alone (dropping ir.CookExtentStart and ir.CookNodeAlign), which must
+# turn widelist_wide's cook-write rows red and no other row.
+DART_COOK_MAP_NC := build/dart-cook-map-nc
+DART_COOK_ALIGN_SED := -e 's|ir.CookExtentStart(g.unit, rs)|(ir.RecordLayout(g.unit, rs).Size+7)/8*8 /* SABOTAGED */|g' \
+	-e 's|ir.CookNodeAlign(g.unit, rs)|ir.RecordLayout(g.unit, rs).Align|g'
+tables-dart-cook-map-negative-control: build/tables-generated-dart/.stamp build/conformance-dart build/conformance-harness test/dart-tables/cook_map_main.dart
+	@rm -rf $(DART_COOK_MAP_NC) && mkdir -p $(DART_COOK_MAP_NC)
+	@cp -r build/tables-generated-dart $(DART_COOK_MAP_NC)/tree
+	@for f in $(DART_COOK_MAP_NC)/tree/*/*Cook.dart; do \
+		sed -i.bak 's|while (j >= 0 && order(out\[j\], x) > 0) {|while (j < 0 \&\& order(out[j], x) > 0) { // SABOTAGED|' $$f && rm -f $$f.bak; \
+	done
+	@grep -lq SABOTAGED $(DART_COOK_MAP_NC)/tree/maps/*Cook.dart || \
+		{ echo "NEGATIVE CONTROL FAILED: the unsorted sabotage matched nothing - the runtime moved"; exit 1; }
+	@sed "s|'../../build/tables-generated-dart/|'$(CURDIR)/$(DART_COOK_MAP_NC)/tree/|" \
+		test/dart-tables/cook_map_main.dart > $(DART_COOK_MAP_NC)/main.dart
+	$(DART) compile exe -o $(DART_COOK_MAP_NC)/probe $(DART_COOK_MAP_NC)/main.dart >/dev/null
+	@if ./$(DART_COOK_MAP_NC)/probe testdata/conformance/tables/MANIFEST.txt > $(DART_COOK_MAP_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the probe stayed green with the writer's sort a no-op"; cat $(DART_COOK_MAP_NC)/log; exit 1; \
+	fi
+	@grep -q 'the writer does not hold the sort' $(DART_COOK_MAP_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the probe went red, but not on the sort"; cat $(DART_COOK_MAP_NC)/log; exit 1; }
+	@if grep -q "is not schema cook's" $(DART_COOK_MAP_NC)/log; then \
+		echo "NEGATIVE CONTROL FAILED: the unsorted sabotage moved an as-loaded cook too"; cat $(DART_COOK_MAP_NC)/log; exit 1; \
+	fi
+	@grep -m1 'the writer does not hold the sort' $(DART_COOK_MAP_NC)/log
+	$(call dart-cookwrite-nc-leg,cookalign,cookwrite.go,$(DART_COOK_ALIGN_SED),tables-generated-dart/widelist,tables/widelist,widelist_)
+	@echo "negative control: an unsorted map reds the writer-holds-the-sort probe, and a misaligned extent reds widelist_wide's cook-write rows and nothing else"
+
+test-dart: tables-dart-cook-map tables-dart-cook-map-negative-control
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart

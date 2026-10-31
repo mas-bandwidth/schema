@@ -261,6 +261,12 @@ type cookGen struct {
 	form1UnionsSeen map[*ir.Union]bool
 	// the records some field column names, so only those need the edge method
 	cookNamed map[string]bool
+	// depth numbers the extent walk's nested locals (l1, n1, i1, ...) so an
+	// inner holder never shadows an outer one
+	depth int
+	// mapOrders queues the key order of each map entry type a writer sorts
+	// (docs/SPEC-TABLES.md §2.8), emitted once per root writer
+	mapOrders map[string]*ir.Field
 }
 
 func (g *cookGen) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
@@ -899,6 +905,51 @@ func (g *blockGen) emitCookMapAccessors(f *ir.Field, offset int64, ind, origin s
 		}
 	}
 	g.pf("%s}\n\n", ind)
+}
+
+// emitCookListAccessors writes a cooked record's LIST field (docs/SPEC-TABLES.md
+// §2.9, §7.2) as the span its elements are, in place in the holder's node
+// extent: `<f>Count`, zero for an empty list and for a span that would leave
+// the view, and `<f>At(index)` — a record element moved onto the cursor the
+// caller lends, a scalar element read where it lies, and a reference or union
+// element answered as its slot's offset, the pointer field's own currency.
+func (g *blockGen) emitCookListAccessors(f *ir.Field, offset int64, ind, origin string) {
+	name := accessorName(f, false)
+	size, _ := ir.ListElementLayout(g.unit, f)
+	g.pf("%s// a LIST: the slot is a self-relative delta to the ELEMENT ARRAY and its\n", ind)
+	g.pf("%s// count, the elements in place (docs/SPEC-TABLES.md §2.9, §7.2). The\n", ind)
+	g.pf("%s// count is 0 for an empty list, and for an array that would leave the view.\n", ind)
+	g.pf("%sint get %sCount {\n", ind, name)
+	g.pf("%s  final slot = %s + %d;\n", ind, origin, offset)
+	g.pf("%s  final delta = view.getInt64(slot, Endian.little);\n", ind)
+	g.pf("%s  final count = view.getInt32(slot + 8, Endian.little);\n", ind)
+	g.pf("%s  if (count <= 0 || delta == 0 || slot + delta < 0) {\n", ind)
+	g.pf("%s    return 0;\n%s  }\n", ind, ind)
+	g.arrowBlock(ind+"  ", fmt.Sprintf("return count > (view.lengthInBytes - slot - delta) ~/ %d", size), "? 0", ": count;")
+	g.pf("%s}\n\n", ind)
+
+	g.pf("%sint get _%sElements {\n", ind, name)
+	g.pf("%s  final slot = %s + %d;\n", ind, origin, offset)
+	g.pf("%s  return slot + view.getInt64(slot, Endian.little);\n%s}\n\n", ind, ind)
+
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.ArrayBound = 0
+	at := fmt.Sprintf("_%sElements + index * %d", name, size)
+	switch {
+	case isStructRef(f.Type):
+		row := f.Type.Name + "Row"
+		g.needRow(f.Type.Name)
+		g.pf("%s/// One element, moved onto the cursor the caller lends; `index` runs\n", ind)
+		g.pf("%s/// over [0, count).\n", ind)
+		g.signature(ind, row, name+"At", "int index", row+" into")
+		g.pf("%s  into.at = %s;\n", ind, at)
+		g.pf("%s  return into;\n%s}\n\n", ind, ind)
+	case f.Type.Pointer || unionRef(f) != nil:
+		g.arrow(ind, fmt.Sprintf("int %sAt(int index)", name), at)
+	default:
+		g.scalarGetter(ind, &elem, fmt.Sprintf("%s %sAt(int index)", dartScalarType(f.Type), name), at)
+	}
 }
 
 // signature writes one method head the way `dart format` does: on one line when

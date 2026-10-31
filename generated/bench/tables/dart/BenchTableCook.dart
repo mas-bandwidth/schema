@@ -180,6 +180,32 @@ final class TableCookGraph {
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
     : offsets = List<int>.filled(count, 0);
 
+  // A map's entries in ASCENDING KEY ORDER (§2.8), a stable sort of a copy:
+  // the writer holds the sort, whatever order the value holds them in, and
+  // the caller's list is not reordered.
+  static List<T> sorted<T>(List<T> entries, int Function(T a, T b) order) {
+    final out = List<T>.of(entries);
+    for (var i = 1; i < out.length; i++) {
+      final x = out[i];
+      var j = i - 1;
+      while (j >= 0 && order(out[j], x) > 0) {
+        out[j + 1] = out[j];
+        j--;
+      }
+      out[j + 1] = x;
+    }
+    return out;
+  }
+
+  // Two string keys by their UTF-8 bytes, unsigned, a prefix first (§2.8).
+  static int bytesOrder(List<int> a, List<int> b) {
+    final n = a.length < b.length ? a.length : b.length;
+    for (var i = 0; i < n; i++) {
+      if (a[i] != b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  }
+
   // A reference slot holds the signed delta from the slot to its target node,
   // and a null is a delta of zero (§6.3).
   void ref(int slot, Object? node) {
