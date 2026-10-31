@@ -145,3 +145,33 @@ tables-luau-names-negative-control:
 	go test ./compiler/ -run '^TestLuauRuntimeNameScanGoesRed$$' -count=1 -timeout 600s
 
 test-luau: tables-luau-names tables-luau-names-negative-control
+
+# I3: the forgery fuzz oracle (forgeryfuzz_test.go). A mutated block or cook
+# must REFUSE, or OPEN and be WHOLE (the block against the compiler's layout,
+# the cook against the tool's cook-check), and a full walk of whatever opened
+# reads inside the bytes. SEED and N are knobs (LUAU_FORGERY_SEED,
+# LUAU_FORGERY_N); the run prints its seed. The control removes BOTH halves of
+# the block's extent bound.
+.PHONY: tables-luau-fuzz tables-luau-fuzz-negative-control
+tables-luau-fuzz: toolchain-luau
+	sh test/slowgate/proof tables-luau-fuzz 'TestLuauForgeryFuzz' \
+		./internal/codegen/luautable -run '^TestLuauForgeryFuzz$$' -count=1 -timeout 1200s -v
+tables-luau-fuzz-negative-control: toolchain-luau
+	sh test/slowgate/proof tables-luau-fuzz-negative-control 'TestLuauForgeryFuzzNegativeControl' \
+		./internal/codegen/luautable -run '^TestLuauForgeryFuzzNegativeControl$$' -count=1 -timeout 1200s -v
+
+# M18: an arm is a field line (armfield_test.go): read_arm checks framing and
+# reads through read_field, and read_union leaves every payload to it; the
+# control plants a per-shape reader into each and requires the scan to name it.
+# The behaviour is the engine's: TestLuauLoadUnionFramingAgreesWithTheEngine
+# and the wire-fuzz differential.
+.PHONY: tables-luau-arms tables-luau-arms-negative-control
+tables-luau-arms: toolchain-luau
+	go test ./internal/codegen/luautable/ -run '^TestLuauArmIsAFieldLine$$' -count=1 -timeout 600s
+	sh test/slowgate/proof tables-luau-arms 'TestLuauLoadUnionFramingAgreesWithTheEngine' \
+		./internal/codegen/luautable -run '^TestLuauLoadUnionFramingAgreesWithTheEngine$$' -count=1 -timeout 600s
+tables-luau-arms-negative-control: toolchain-luau
+	go test ./internal/codegen/luautable/ -run '^TestLuauArmFieldLineNegativeControl$$' -count=1 -timeout 600s
+
+test-luau: tables-luau-arms tables-luau-arms-negative-control
+test-luau: tables-luau-fuzz tables-luau-fuzz-negative-control
