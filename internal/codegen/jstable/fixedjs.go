@@ -1297,10 +1297,7 @@ func (g *fixedGen) emitPresenceStorage(f *ir.Field, ind, target string) {
 // The prefill lays the same default down on the read side
 // (fixedprefill.go), so a constructed value and a record whose writer did not
 // carry the field now hold the same thing — which is what a default means.
-//
-// A wstring carries none: the IR holds a wstring default as BYTES and this form
-// counts CODE UNITS, so laying one down would be this backend guessing an
-// encoding. fixedDefaultTextLength answers 0 there for the same reason.
+
 func (g *fixedGen) emitDefaultTextBytes(f *ir.Field, ind, target string) {
 	n := fixedDefaultTextLength(f)
 	if n <= 0 {

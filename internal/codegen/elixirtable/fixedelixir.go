@@ -816,7 +816,7 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.ArrayBound))
 		g.readElements(out, f, v, rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString:
-		g.readText(out, f, v, 1, present)
+		g.readText(out, f, v, present)
 	case f.Type.Kind == ir.TBytes:
 		segN := "n_" + v + "::little-signed-32"
 		segB := fmt.Sprintf("b_%s::binary-size(%d)", v, f.Type.Size)
@@ -833,21 +833,17 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	}
 }
 
-// readText is a string(N) or wstring(N): the length is clamped to this
-// reader's bound, the used units are held to the CONTENT rule, and a payload
+// readText is a string(N): the length is clamped to this reader's bound,
+// the used bytes are held to the CONTENT rule, and a payload
 // that is not the text its kind says it is REFUSES BY NAME (`text_ill_formed`,
 // §4.5 fix 11). bytes(N) does not come here.
-func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, unit int64, present node) {
+func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, present node) {
 	bound := f.Type.Size
-	bytes := unit * bound
 	segN := "n_" + v + "::little-signed-32"
-	segB := fmt.Sprintf("b_%s::binary-size(%d)", v, bytes)
+	segB := fmt.Sprintf("b_%s::binary-size(%d)", v, bound)
 	out.match = append(out.match, segN, segB)
 	out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, bound))
-	used := rawf("binary_part(b_%s, 0, %d * min(max(n_%s, 0), %d))", v, unit, v, bound)
-	if unit == 1 {
-		used = rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, bound)
-	}
+	used := rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, bound)
 	def := g.fixedElemDefaultTerm(f)
 	helper := "R.text"
 	out.stmt("{t_"+v+", m}", call(helper, used, raw(def), raw("m"), present))
@@ -1863,7 +1859,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    # first and owns the ragged tail, so a `rest` that is not a whole number\n")
 	g.pf("    # of records passes this and the split reports `malformed`.\n")
 	g.pf("    # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME\n")
-	g.pf("    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all\n")
+	g.pf("    # (§4.5 fix 11): `R.text` and the compiled plan's text op both\n")
 	g.pf("    # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform\n")
 	g.pf("    # refusal is caught, with no destination byte landed and every counter\n")
 	g.pf("    # left at zero.\n")

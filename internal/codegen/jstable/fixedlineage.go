@@ -323,10 +323,6 @@ func (v fixedLayoutWalk) check(i, depth int) (int, bool) {
 		if kids != 0 || size < 4 {
 			return 0, false
 		}
-	case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-		if kids != 0 || size < 4 || (size-4)%2 != 0 {
-			return 0, false
-		}
 	default:
 		return 0, false
 	}
@@ -334,9 +330,9 @@ func (v fixedLayoutWalk) check(i, depth int) (int, bool) {
 }
 
 // fixedLayoutKnownKind is the CLOSED KIND SET: §3's kinds 1..30, the no-payload
-// variant 32, wstring 33, and the optional wrapper 35 this form's layout adds.
+// variant 32, and the optional wrapper 35 this form's layout adds.
 func fixedLayoutKnownKind(kind int) bool {
-	return (kind >= 1 && kind <= 30) || kind == 32 || kind == 33 || kind == 35
+	return (kind >= 1 && kind <= 30) || kind == 32 || kind == 35
 }
 
 func fixedLayoutOrdinalWidth(n int) bool { return n == 1 || n == 2 || n == 4 || n == 8 }

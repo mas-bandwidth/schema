@@ -132,7 +132,7 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 func variablePayloadStart(f *ir.Field, w, start string) string {
 	switch ir.TableWireFieldKind(f) {
-	case 12, 13, 14, 16, 33:
+	case 12, 13, 14, 16:
 		return "TableVariable.lebEnd(" + w + ".buf," + start + "," + w + ".off)-" + start
 	}
 	return "0"

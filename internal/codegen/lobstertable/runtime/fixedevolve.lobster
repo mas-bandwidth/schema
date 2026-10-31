@@ -567,13 +567,6 @@ def fixed_check_entry(c:tableFixedCheck, i:int, depth:int) -> int:
             if e.size < 4:
                 fixed_check_fail(c, TableRefuseLayoutSizeMismatch)
                 return 0
-        case 33:
-            if e.children != 0:
-                fixed_check_fail(c, TableRefuseLayoutKindInvalid)
-                return 0
-            if e.size < 4 or ((e.size - 4) % 2) != 0:
-                fixed_check_fail(c, TableRefuseLayoutSizeMismatch)
-                return 0
         default:
             fixed_check_fail(c, TableRefuseLayoutKindUnknown)
             return 0
@@ -857,7 +850,7 @@ def fixed_compile_entry(c:tableFixedCompiler, theirs:TableFixedLayoutView, ti:in
                 dst_size: me.size,
                 remap: m
             })
-        case 12, 33:
+        case 12:
             var units = me.size - 4
             if te.size - 4 < units:
                 units = te.size - 4

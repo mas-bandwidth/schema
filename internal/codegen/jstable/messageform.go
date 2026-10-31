@@ -146,7 +146,7 @@ class TableMessageReader {
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
     switch (kind) {
       case 17: case 30: { const [, ok] = this.Leb(); return ok; }
-      case 12: case 13: case 14: case 16: case 31: case 32: case 33: { const [, ok] = this.Body(); return ok; }
+      case 12: case 13: case 14: case 16: case 31: case 32: { const [, ok] = this.Body(); return ok; }
       case 15: {
         const [ref, ok] = this.Leb();
         if (!ok) { return false; }
@@ -196,7 +196,7 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 33; }
+function TableMessageKnownKind(k) { return k <= 32; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -257,7 +257,7 @@ function TableMessageShapeRead(r, k) {
     }
     return [s, false];
   }
-  if (k === 12 || k === 33) {
+  if (k === 12) {
     const [n, ok] = r.Leb();
     if (!ok || n > 2147483647n) { return [s, false]; }
     s.Max = Number(n);
@@ -285,14 +285,14 @@ function TableMessageEntryRead(r) {
   if (kind === 14 || kind === 16) {
     if (!r.Has(1)) { return [e, false]; }
     const elem = r.Get8();
-    if (!TableMessageKnownKind(elem) || elem === 12 || elem === 33) { return [e, false]; }
+    if (!TableMessageKnownKind(elem) || elem === 12) { return [e, false]; }
     const [es, eok] = TableMessageShapeRead(r, elem);
     e.Element = es;
     if (!eok) { return [e, false]; }
     if (elem === 14 || elem === 16) {
       if (!r.Has(1)) { return [e, false]; }
       const inner = r.Get8();
-      if (!TableMessageKnownKind(inner) || inner === 12 || inner === 33) { return [e, false]; }
+      if (!TableMessageKnownKind(inner) || inner === 12) { return [e, false]; }
     }
   }
   return [e, true];

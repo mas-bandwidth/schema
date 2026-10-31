@@ -335,7 +335,7 @@ local skipField = function(r, kind) {
     return true;
   }
   switch (kind) {
-    case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
+    case 12: case 13: case 14: case 16: case 31: case 32: {
       local L = leb(r);
       if (r.bad || r.at + L > r.end) return false;
       r.at += L;

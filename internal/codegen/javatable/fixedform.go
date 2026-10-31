@@ -70,7 +70,6 @@ const (
 // the text flavours, which say how a `text` plan entry lands its units.
 const (
 	fixedTextUtf8  = 1
-	fixedTextWide  = 2
 	fixedTextBytes = 3
 )
 

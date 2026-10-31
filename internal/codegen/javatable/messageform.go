@@ -460,7 +460,7 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        return kind <= 33;
+        return kind <= 32;
     }
 
     static int kindWidth(int kind) {
@@ -591,7 +591,7 @@ public final class TableVocabulary {
             }
             return null; // a packing outside the closed set
         }
-        if (kind == 12 || kind == 33) {
+        if (kind == 12) {
             long max = r.leb();
             if (r.err || max > 0x7fffffffL) {
                 return null;
@@ -636,7 +636,7 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            if (!knownKind(elem) || elem == 12 || elem == 33) {
+            if (!knownKind(elem) || elem == 12) {
                 return false;
             }
             e.element = shapeRead(r, elem);
@@ -648,7 +648,7 @@ public final class TableVocabulary {
                     return false;
                 }
                 int inner = r.u8();
-                if (!knownKind(inner) || inner == 12 || inner == 33) {
+                if (!knownKind(inner) || inner == 12) {
                     return false;
                 }
             }
@@ -989,11 +989,6 @@ public final class TableMessage {
                 long n = r.get(TableVocabulary.bitCount(s.max));
                 if (r.err || !r.align()) { return false; }
                 return r.skipBits(n * 8L);
-            }
-            case 33: {
-                long n = r.get(TableVocabulary.bitCount(s.max));
-                if (r.err) { return false; }
-                return r.skipBits(n * 16L);
             }
             case 31: {
                 if (!r.align()) { return false; }

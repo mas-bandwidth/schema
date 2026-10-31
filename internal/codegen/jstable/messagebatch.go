@@ -152,7 +152,7 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       return arm !== null && arm.Id < 0xfffffffffffffffdn && arm.Shape.Kind !== 0 &&
         tableMessageSkip(r, v, indexBits, arm, depth + 1);
     }
-    case 12: case 33: {
+    case 12: {
       const [n, ok] = tableMessageCount(r, s);
       if (!ok) { return false; }
       const width = s.Kind === 12 ? 8 : 16;

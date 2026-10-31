@@ -400,54 +400,6 @@ function TableVariableUtf8Decode(bytes) {
   return { s, ok: true };
 }
 
-// ---- WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3, §4; SPEC.md §4.12) --------
-//
-// A wstring(N) is held as a JavaScript string, which IS a sequence of UTF-16
-// code units, so the wire's units are the string's own char codes: two bytes
-// each, LITTLE-ENDIAN, under a byte length L that is twice the unit count
-// (internal/tablewire text.go wideUnits, wideBytes).
-
-// the units onto the wire, or false for a value past its N units: wide text is
-// never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
-function TableVariableWideWrite(w, s, bound) {
-  if (s.length > bound) { return false; }
-  for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
-  return true;
-}
-
-// a kind 33 payload's text (wideUnits + wideValid): null for an odd L or for
-// content that is not paired UTF-16 with no zero unit — the reader's damage
-function TableVariableWideDecode(bytes) {
-  if ((bytes.length & 1) !== 0) { return null; }
-  let s = "";
-  for (let i = 0; i < bytes.length; i += 2) {
-    const u = bytes[i] | (bytes[i + 1] << 8);
-    if (u === 0) { return null; }
-    if (u >= 0xd800 && u <= 0xdbff) {
-      if (i + 3 >= bytes.length) { return null; } // a high surrogate with no low half
-      const lo = bytes[i + 2] | (bytes[i + 3] << 8);
-      if (lo < 0xdc00 || lo > 0xdfff) { return null; }
-    } else if (u >= 0xdc00 && u <= 0xdfff) {
-      const hi = i >= 2 ? bytes[i - 2] | (bytes[i - 1] << 8) : 0;
-      if (hi < 0xd800 || hi > 0xdbff) { return null; } // a low surrogate first
-    }
-    s += String.fromCharCode(u);
-  }
-  return s;
-}
-
-// THE CLAMP (wideBoundary, §3, §16.2): the first N units, and where the last
-// kept unit is a high surrogate whose low half did not fit, that unit goes too,
-// so a clamp never invents an unpaired surrogate. Over well-formed text this is
-// the longest prefix of whole code points within N, which is the text form's
-// rule as well (internal/tabletext read.go scanWString).
-function TableVariableWideClamp(s, bound) {
-  if (s.length <= bound) { return s; }
-  let cut = bound;
-  if (cut > 0) { const u = s.charCodeAt(cut - 1); if (u >= 0xd800 && u <= 0xdbff) { cut--; } }
-  return s.slice(0, cut);
-}
-
 // ---- skipping a field the reader cannot name (docs/SPEC-TABLES.md §3) ------
 
 // Kind 36, the timestamp, skips its eight bytes like any fixed-width kind
@@ -460,7 +412,7 @@ function TableVariableSkip(r, kind) {
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
     case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
-    case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
+    case 12: case 13: case 14: case 16: case 31: case 32: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
     }
     case 15: {
