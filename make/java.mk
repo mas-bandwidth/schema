@@ -1659,7 +1659,7 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # those close; raising N to $(N) and running --retain whole closes the card.
 JAVA_WIRE_FUZZ_N ?= 0
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header whose foreign element kind
 # carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
@@ -1735,6 +1735,34 @@ tables-java-retain-fuzz-negative-control: tables-java-wire-fuzz
 	fi
 	@grep -q 'the decoded value differs' $(JAVA_RETAIN_FUZZ_SABOTAGE)/log || { cat $(JAVA_RETAIN_FUZZ_SABOTAGE)/log; exit 1; }
 	@echo 'Java retain negative control: a retaining save that ignores a declared default changes the saved bytes'
+
+# THE NODE-RECORD RETENTION CONTROL (docs/SPEC-TABLES.md §6.6: retained "in the
+# root body and in every node record"): a scratch copy whose retaining load
+# keys no node record, so the save cannot find the node's retained fields and
+# writes its body without them. The retaining replay of
+# retain_node_record_unknown must go red.
+JAVA_RETAIN_NODE_SABOTAGE := build/java-retain-node-sabotage
+.PHONY: tables-java-retain-node-negative-control
+tables-java-retain-node-negative-control: tables-java-wire-fuzz
+	@rm -rf $(JAVA_RETAIN_NODE_SABOTAGE) && mkdir -p $(JAVA_RETAIN_NODE_SABOTAGE)/generated $(JAVA_RETAIN_NODE_SABOTAGE)/classes
+	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_RETAIN_NODE_SABOTAGE)/generated/$$u || exit 1; done
+	sed 's/retain\.nodeKeys\.put(rec\.table, i);/\/\/ SABOTAGED no node key/' \
+		build/tables-generated-java/pointers/SceneRetain.java > $(JAVA_RETAIN_NODE_SABOTAGE)/generated/pointers/SceneRetain.java
+	@grep -q 'SABOTAGED no node key' $(JAVA_RETAIN_NODE_SABOTAGE)/generated/pointers/SceneRetain.java || \
+		{ echo 'NEGATIVE CONTROL: the Java node-record retention sabotage did not apply'; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_RETAIN_NODE_SABOTAGE)/classes \
+		$(JAVA_RETAIN_NODE_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@if ./build/conformance-harness wire-fuzz --retain \
+			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_RETAIN_NODE_SABOTAGE)/classes TablesWireFuzz" \
+			--replay testdata/wire/tables/fuzz-vectors/retain_node_record_unknown.bin --unit graphdemo --root Scene \
+			> $(JAVA_RETAIN_NODE_SABOTAGE)/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a save that cannot find a node record'"'"'s retained fields left the pinned vector green'; exit 1; \
+	fi
+	@grep -q 'FAILED after' $(JAVA_RETAIN_NODE_SABOTAGE)/log || { cat $(JAVA_RETAIN_NODE_SABOTAGE)/log; exit 1; }
+	@grep -m1 'differs' $(JAVA_RETAIN_NODE_SABOTAGE)/log
+	@echo 'Java node-record retention control: a save that keys no node record drops its retained field'
+
+test-java: tables-java-retain-node-negative-control
 
 test-java: tables-java-retain-fuzz-negative-control
 
