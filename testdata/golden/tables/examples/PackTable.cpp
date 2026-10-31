@@ -15,6 +15,18 @@
 #include <vector> // the hand-editable text form (§16.9)
 #include <string.h> // the hand-editable text form (§16.9)
 
+// schema_allocate / schema_release — what "no allocator handed in" means for
+// this program. schema_allocate hands back ZEROED bytes and NULL on failure:
+// an arena segment is copied whole, padding included, so anything left
+// uninitialized here would reach a packed region. Supply both and <stdlib.h>
+// is never included; hand a TableAllocator to a builder to route one
+// structure's allocations somewhere else again.
+#ifndef schema_allocate
+#include <stdlib.h> // calloc, free
+#define schema_allocate( bytes ) calloc( (size_t) 1, (size_t) ( bytes ) )
+#define schema_release( pointer ) free( pointer )
+#endif // #ifndef schema_allocate
+
 // The guard is not vestigial. Several tabledemo Table.cpp files may be
 // concatenated into ONE translation unit — a unity build — and without it
 // each would redefine the walk. It is also why the walk's functions may be
@@ -84,8 +96,8 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
 //
 // The dialect: trailing commas are accepted on read (the authoring files
 // this exists for carry them) and never written; comments are not JSON and
-// are refused; unknown keys are skipped and counted; a duplicate key is
-// last-wins and counted; a key present with the wrong JSON type is skipped
+// are refused; unknown keys are skipped and counted; a repeated key is
+// damage; a key present with the wrong JSON type is skipped
 // and counted, never coerced.
 
 static const int32_t kTableJsonMaxDepth = 128;
@@ -1390,6 +1402,133 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     return true;
 }
 
+// ONE NAME, ONCE PER OBJECT (docs/SPEC-TABLES.md §16.2). No writer puts a
+// member name down twice in one object, so a repeat is damage, whether or not
+// this reader can name the member. A name is held by where its opening quote
+// sits in the text and by a fingerprint of its DECODED bytes, whole, so two
+// spellings of one name ("a" and "\u0061") are one name and a name longer than
+// any scan buffer is compared in full. Equal fingerprints are confirmed by
+// decoding both names again, so the answer is exact. The first eight names of
+// an object are held in a line on the stack; an object that names more takes
+// an open-addressed table from schema_allocate, which the text form may do
+// (§16), released when the object ends.
+struct TableJsonNames
+{
+    struct Held { uint64_t print; int64_t at; }; // at + 1 in the table, so zero is empty
+    Held first[8];
+    int32_t n = 0;
+    Held * table = NULL;
+    int64_t capacity = 0;
+    int64_t count = 0;
+    TableJsonNames() {}
+    TableJsonNames( const TableJsonNames & ) = delete;
+    TableJsonNames & operator=( const TableJsonNames & ) = delete;
+    ~TableJsonNames() { if ( table != NULL ) { schema_release( table ); } }
+};
+
+// the fingerprint of the name whose opening quote is at AT: fnv1a64 over its
+// decoded bytes. The name was scanned once already, so it is well formed.
+inline uint64_t TableJsonNamePrint( const TableJsonIn & in, int64_t at )
+{
+    TableJsonIn scan = in;
+    scan.pos = at + 1;
+    uint64_t h = 0xcbf29ce484222325ull;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        if ( !TableJsonScanUnit( scan, unit, &unit_length ) || unit_length == 0 ) { return h; }
+        for ( int32_t i = 0; i < unit_length; i++ ) { h = ( h ^ (uint8_t) unit[i] ) * 0x100000001b3ull; }
+    }
+}
+
+// whether the two names at A and B decode to the same bytes
+inline bool TableJsonNameEqual( const TableJsonIn & in, int64_t a, int64_t b )
+{
+    TableJsonIn x = in, y = in;
+    x.pos = a + 1;
+    y.pos = b + 1;
+    for ( ;; )
+    {
+        char ux[4], uy[4];
+        int32_t lx = 0, ly = 0;
+        if ( !TableJsonScanUnit( x, ux, &lx ) || !TableJsonScanUnit( y, uy, &ly ) ) { return false; }
+        if ( lx != ly || memcmp( ux, uy, (size_t) lx ) != 0 ) { return false; }
+        if ( lx == 0 ) { return true; }
+    }
+}
+
+inline bool TableJsonNamesGrow( TableJsonNames & names, int64_t capacity )
+{
+    TableJsonNames::Held * grown = (TableJsonNames::Held *) schema_allocate( capacity * (int64_t) sizeof( TableJsonNames::Held ) ); // zeroed
+    if ( grown == NULL ) { return false; }
+    const int64_t mask = capacity - 1;
+    if ( names.table == NULL )
+    {
+        for ( int32_t i = 0; i < names.n; i++ )
+        {
+            int64_t slot = (int64_t) ( names.first[i].print & (uint64_t) mask );
+            while ( grown[slot].at != 0 ) { slot = ( slot + 1 ) & mask; }
+            grown[slot].print = names.first[i].print;
+            grown[slot].at = names.first[i].at + 1;
+        }
+    }
+    else
+    {
+        for ( int64_t i = 0; i < names.capacity; i++ )
+        {
+            if ( names.table[i].at == 0 ) { continue; }
+            int64_t slot = (int64_t) ( names.table[i].print & (uint64_t) mask );
+            while ( grown[slot].at != 0 ) { slot = ( slot + 1 ) & mask; }
+            grown[slot] = names.table[i];
+        }
+        schema_release( names.table );
+    }
+    names.table = grown;
+    names.capacity = capacity;
+    return true;
+}
+
+// hold the name whose opening quote is at AT. False when the object already
+// named it, which is damage, or when the table could not grow, which stops the
+// read where every other allocation failure on this path stops it; both mark
+// the read malformed.
+inline bool TableJsonNameAdd( TableJsonIn & in, TableJsonNames & names, int64_t at )
+{
+    const uint64_t print = TableJsonNamePrint( in, at );
+    if ( names.table == NULL )
+    {
+        for ( int32_t i = 0; i < names.n; i++ )
+        {
+            if ( names.first[i].print == print && TableJsonNameEqual( in, names.first[i].at, at ) )
+            {
+                in.report->malformed = true; in.bad = true; return false; // one name twice
+            }
+        }
+        if ( names.n < 8 ) { names.first[names.n].print = print; names.first[names.n].at = at; names.n++; return true; }
+        if ( !TableJsonNamesGrow( names, 32 ) ) { in.report->malformed = true; in.bad = true; return false; }
+        names.count = names.n;
+    }
+    const int64_t mask = names.capacity - 1;
+    int64_t slot = (int64_t) ( print & (uint64_t) mask );
+    while ( names.table[slot].at != 0 )
+    {
+        if ( names.table[slot].print == print && TableJsonNameEqual( in, names.table[slot].at - 1, at ) )
+        {
+            in.report->malformed = true; in.bad = true; return false; // one name twice
+        }
+        slot = ( slot + 1 ) & mask;
+    }
+    names.table[slot].print = print;
+    names.table[slot].at = at + 1;
+    names.count++;
+    if ( names.count * 2 > names.capacity && !TableJsonNamesGrow( names, names.capacity * 2 ) )
+    {
+        in.report->malformed = true; in.bad = true; return false;
+    }
+    return true;
+}
+
 // One CHARACTER of a base64 body, after the JSON layer has had its say
 // (docs/SPEC-TABLES.md §16.2): a bytes field is a JSON string whose DECODED
 // value is base64, so an escape is undone first and the character it names
@@ -2609,8 +2748,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
         in.pos++;
         // every slot back to its declared defaults first, so a key the text
-        // omits keeps them and a repeated field key cannot leave an earlier
-        // occurrence's slots standing
+        // omits keeps them
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
             void * slot = storage + (int64_t) i * f->elem_size;
@@ -2618,12 +2756,10 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             else { memset( slot, 0, (size_t) f->elem_size ); }
         }
         char shape = TableJsonElementShape( f );
-        // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a duplicate
-        // key like any other, last-wins and counted (§16.2). Tracked the way
-        // a table's own field keys are — a bounded, allocation-free bitmask;
-        // a vocabulary wider than this still reads, its repeats simply stop
-        // being counted.
-        uint64_t seen[8] = {};
+        // A KEYED OBJECT'S KEYS ARE KEYS: a name given twice is damage like
+        // any repeated key (§16.2). A slot has one name, so one slot twice is
+        // one name twice.
+        TableJsonNames names;
         for ( ;; )
         {
             char c = TableJsonPeek( in );
@@ -2631,7 +2767,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( c == 0 ) { in.bad = true; return false; }
             char key[kTableJsonMaxKey];
             int32_t key_length = 0;
+            const int64_t key_at = in.pos;
             if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
+            if ( !TableJsonNameAdd( in, names, key_at ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
             in.pos++;
@@ -2642,12 +2780,6 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 // an unknown key like any other name this reader cannot place
                 if ( !TableJsonKeyedSlotValid( f, v ) ) { continue; }
                 if ( strcmp( f->key_name( TableJsonKeyedSlotKey( v ) ), key ) == 0 ) { slot = v; break; }
-            }
-            if ( slot >= 0 && slot < 512 )
-            {
-                uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-                if ( ( seen[slot >> 6] & bit ) != 0 ) { in.report->duplicate++; }
-                seen[slot >> 6] |= bit;
             }
             if ( slot < 0 )
             {
@@ -2675,14 +2807,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
         in.pos++;
-        // LAST WINS has to be true of a repeated ARRAY key too, and it is
-        // wire-visible: a fixed array writes every slot, so a second, shorter
-        // occurrence overlaying a prefix would leave the first occurrence's
-        // tail standing. The field goes back to its declared defaults before
-        // this occurrence's elements are placed — the re-establishment a nested
-        // table and a union arm already get. A table element's defaults are
-        // its own (the reset hook); every other element kind's storage
-        // default is zero, which is what the generated array declares.
+        // The text's elements replace the declared default whole: the field
+        // goes back to its declared defaults before the elements are placed.
+        // A table element's defaults are its own (the reset hook); every other
+        // element kind's storage default is zero, which is what the generated
+        // array declares.
         if ( f->kind == 13 )
         {
             for ( int32_t i = 0; i < f->array_bound; i++ )
@@ -2752,7 +2881,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     return TableJsonReadScalar( in, storage, f, depth );
 }
 
-inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key );
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int64_t first_key_at );
 
 // ONE table object: keys are field keys, unknown ones are skipped and
 // counted, a repeated key is last-wins and counted. The instance is already
@@ -2771,7 +2900,7 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
     }
     if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
     in.pos++;
-    return TableJsonReadTableKeys( in, base, info, depth, NULL );
+    return TableJsonReadTableKeys( in, base, info, depth, NULL, 0 );
 }
 
 // The keys of an object whose brace is already consumed. A pointer's object
@@ -2779,18 +2908,18 @@ inline bool TableJsonReadTable( TableJsonIn & in, void * base, const TableTypeIn
 // and the adapter that reads it has to scan the key to know — so it hands the
 // key it scanned in as `first_key`, with the colon consumed, and this places
 // it before scanning the rest.
-inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
+inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key, int64_t first_key_at )
 {
-    // duplicate tracking, bounded and allocation-free: a table with more
-    // fields than this still reads, its repeats simply stop being counted
-    uint64_t seen[8] = {};
+    TableJsonNames names; // one name, once per object (§16.2)
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
         char c = 0;
+        int64_t key_at = 0;
         if ( first_key != NULL )
         {
             memcpy( key, first_key, strlen( first_key ) + 1 ); // scanned into a buffer this size by the caller
+            key_at = first_key_at;
             first_key = NULL;
         }
         else
@@ -2799,11 +2928,13 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( c == '}' ) { in.pos++; return true; }
             if ( c == 0 ) { in.bad = true; return false; }
             int32_t key_length = 0;
+            key_at = in.pos;
             if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
             key[key_length] = 0;
             if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
             in.pos++;
         }
+        if ( !TableJsonNameAdd( in, names, key_at ) ) { return false; }
         int32_t index = -1;
         for ( int32_t i = 0; i < info->num_fields; i++ )
         {
@@ -2830,12 +2961,6 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         else
         {
             const TableFieldInfo * f = &info->fields[index];
-            if ( index < 512 )
-            {
-                uint64_t bit = uint64_t( 1 ) << ( index & 63 );
-                if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->duplicate++; }
-                seen[index >> 6] |= bit;
-            }
             // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this line
             // is the key being present, so an optional is set present
             // whatever its value — with one exception the page names: a JSON
@@ -2865,9 +2990,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             else if ( f->optional && got == 'z' )
             {
                 if ( !TableJsonLiteral( in, "null" ) ) { return false; }
-                // absent, and back at its defaults: a repeated key whose last
-                // occurrence is null must not leave an earlier value standing.
-                // A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                // absent, and back at its defaults. A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
                 // ENTRY table its descriptor's table names (docs/SPEC-TABLES.md
                 // §2.8, §16.2): the entry reset would read the slot as an entry.
                 // The oracle is internal/codegen/gotable/mappresence_test.go.
@@ -3174,6 +3297,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     if ( c == 0 ) { in.bad = true; return false; }
     char key[kTableJsonMaxKey];
     int32_t key_length = 0;
+    const int64_t key_at = in.pos;
     if ( !TableJsonScanString( in, key, kTableJsonMaxKey - 1, &key_length ) ) { return false; }
     key[key_length] = 0;
     if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
@@ -3185,7 +3309,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
         // this form does not have, which ReadTableKeys refuses
         void * node = f->emplace( *graph->worker, slot );
         if ( node == NULL ) { in.report->malformed = true; in.bad = true; return false; }
-        return TableJsonReadTableKeys( in, node, f->table, depth + 1, key );
+        return TableJsonReadTableKeys( in, node, f->table, depth + 1, key, key_at );
     }
     uint64_t label = 0;
     if ( !TableJsonScanLabel( in, label ) ) { return false; }
@@ -3237,7 +3361,7 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
     void * node = f->emplace( *graph->worker, slot );
     if ( node == NULL ) { in.report->malformed = true; in.bad = true; return false; }
     entry->open = 1;
-    if ( !TableJsonReadTableKeys( in, node, f->table, depth + 1, NULL ) ) { return false; }
+    if ( !TableJsonReadTableKeys( in, node, f->table, depth + 1, NULL, 0 ) ) { return false; }
     entry = TableJsonGraphMapFind( graph->labels, label ); // the map may have grown under the descent
     if ( entry == NULL ) { in.report->malformed = true; in.bad = true; return false; }
     TableRef ref;

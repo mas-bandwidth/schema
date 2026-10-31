@@ -214,9 +214,9 @@ struct TableReport
     // and the number survived.
     int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
+    // RETIRED, and always zero: a repeated id, map key or JSON member name is
+    // damage (docs/SPEC-TABLES.md §4, §16.2), so nothing counts a repeat. The
+    // member stays while every leg's report and the conformance line carry it.
     int32_t duplicate = 0;
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
@@ -237,8 +237,8 @@ struct TableReport
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
     // when malformed is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
-    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct as
+    // the counters, because a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -848,6 +848,42 @@ struct TableReader
             case 34: return false;
         }
         return false;
+    }
+};
+
+// ONE ID, ONCE PER BODY (docs/SPEC-TABLES.md §3, §4). No writer puts an id
+// down twice in one body, so a body carrying one twice is damage, whether or
+// not this reader can name the id. The id table holds each id once, so the
+// REFERENCE stands for the id, and a reference is at most the entry count,
+// which TableOpen caps at kTableProbeBound (4096). Every body holds one of
+// these on its own stack frame: the first eight references are checked in a
+// line, and a body that names more takes a bitmap over the entry count, cleared
+// over only the words that count needs, at the ninth. The work is bounded by
+// the bytes the body spends, and nothing is allocated.
+struct TableBodySeen
+{
+    uint64_t first[8];
+    int32_t n = 0;
+    bool wide = false;
+    uint64_t bits[64]; // ( 4096 + 63 ) / 64, cleared only when the body widens
+
+    // false = this reference is already in the body (1 <= ref <= count)
+    bool add( uint64_t ref, int64_t count )
+    {
+        if ( !wide )
+        {
+            for ( int32_t i = 0; i < n; i++ ) { if ( first[i] == ref ) { return false; } }
+            if ( n < 8 ) { first[n++] = ref; return true; }
+            const int64_t words = ( count + 63 ) >> 6;
+            for ( int64_t w = 0; w < words; w++ ) { bits[w] = 0; }
+            for ( int32_t i = 0; i < n; i++ ) { bits[ ( first[i] - 1 ) >> 6 ] |= 1ull << ( ( first[i] - 1 ) & 63 ); }
+            wide = true;
+        }
+        const uint64_t at = ref - 1;
+        const uint64_t bit = 1ull << ( at & 63 );
+        if ( ( bits[ at >> 6 ] & bit ) != 0 ) { return false; }
+        bits[ at >> 6 ] |= bit;
+        return true;
     }
 };
 

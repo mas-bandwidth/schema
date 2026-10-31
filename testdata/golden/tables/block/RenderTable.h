@@ -221,9 +221,9 @@ struct TableReport
     // and the number survived.
     int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
+    // RETIRED, and always zero: a repeated id, map key or JSON member name is
+    // damage (docs/SPEC-TABLES.md §4, §16.2), so nothing counts a repeat. The
+    // member stays while every leg's report and the conformance line carry it.
     int32_t duplicate = 0;
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
@@ -244,8 +244,8 @@ struct TableReport
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
     // when malformed is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
-    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct as
+    // the counters, because a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -855,6 +855,42 @@ struct TableReader
             case 34: return false;
         }
         return false;
+    }
+};
+
+// ONE ID, ONCE PER BODY (docs/SPEC-TABLES.md §3, §4). No writer puts an id
+// down twice in one body, so a body carrying one twice is damage, whether or
+// not this reader can name the id. The id table holds each id once, so the
+// REFERENCE stands for the id, and a reference is at most the entry count,
+// which TableOpen caps at kTableProbeBound (4096). Every body holds one of
+// these on its own stack frame: the first eight references are checked in a
+// line, and a body that names more takes a bitmap over the entry count, cleared
+// over only the words that count needs, at the ninth. The work is bounded by
+// the bytes the body spends, and nothing is allocated.
+struct TableBodySeen
+{
+    uint64_t first[8];
+    int32_t n = 0;
+    bool wide = false;
+    uint64_t bits[64]; // ( 4096 + 63 ) / 64, cleared only when the body widens
+
+    // false = this reference is already in the body (1 <= ref <= count)
+    bool add( uint64_t ref, int64_t count )
+    {
+        if ( !wide )
+        {
+            for ( int32_t i = 0; i < n; i++ ) { if ( first[i] == ref ) { return false; } }
+            if ( n < 8 ) { first[n++] = ref; return true; }
+            const int64_t words = ( count + 63 ) >> 6;
+            for ( int64_t w = 0; w < words; w++ ) { bits[w] = 0; }
+            for ( int32_t i = 0; i < n; i++ ) { bits[ ( first[i] - 1 ) >> 6 ] |= 1ull << ( ( first[i] - 1 ) & 63 ); }
+            wide = true;
+        }
+        const uint64_t at = ref - 1;
+        const uint64_t bit = 1ull << ( at & 63 );
+        if ( ( bits[ at >> 6 ] & bit ) != 0 ) { return false; }
+        bits[ at >> 6 ] |= bit;
+        return true;
     }
 };
 
@@ -5130,12 +5166,14 @@ inline int64_t RenderCameraSave( const RenderCamera & value, uint8_t * buffer, i
 BLOCKDEMO_TABLE_INLINE bool RenderCameraLoadBody( TableReader & r, RenderCamera & value )
 {
     RenderCameraReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -5925,12 +5963,14 @@ inline int64_t RenderShipSave( const RenderShip & value, uint8_t * buffer, int64
 BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & value )
 {
     RenderShipReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -6920,12 +6960,14 @@ inline int64_t RenderTurretSave( const RenderTurret & value, uint8_t * buffer, i
 BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret & value )
 {
     RenderTurretReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -7859,12 +7901,14 @@ inline int64_t RenderMissileSave( const RenderMissile & value, uint8_t * buffer,
 BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissile & value )
 {
     RenderMissileReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -8652,12 +8696,14 @@ inline int64_t RenderDynamicPropSave( const RenderDynamicProp & value, uint8_t *
 BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDynamicProp & value )
 {
     RenderDynamicPropReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -9447,12 +9493,14 @@ inline int64_t RenderStaticPropSave( const RenderStaticProp & value, uint8_t * b
 BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderStaticProp & value )
 {
     RenderStaticPropReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -10278,12 +10326,14 @@ inline int64_t RenderCosmeticPropSave( const RenderCosmeticProp & value, uint8_t
 BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderCosmeticProp & value )
 {
     RenderCosmeticPropReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -11145,12 +11195,14 @@ inline int64_t RenderLaserSave( const RenderLaser & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & value )
 {
     RenderLaserReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -11898,12 +11950,14 @@ inline int64_t RenderExplosionSave( const RenderExplosion & value, uint8_t * buf
 BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExplosion & value )
 {
     RenderExplosionReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -13026,12 +13080,14 @@ inline int64_t RenderFrameSave( const RenderFrame & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & value )
 {
     RenderFrameReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -13087,20 +13143,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.cameras_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13145,20 +13197,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.ships_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13203,20 +13251,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.turrets_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13261,20 +13305,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.missiles_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13319,20 +13359,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.dynamic_props_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13377,20 +13413,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.static_props_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13435,20 +13467,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.cosmetic_props_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13493,20 +13521,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.lasers_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -13551,20 +13575,16 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameLoadBody( TableReader & r, RenderFrame & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
-                // count, so fewer than two bytes — is INERT (§4): the field keeps the
-                // value it has, no counter is raised, and the walk continues past L.
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE L (§3): the element kind byte and the count. A
+                // body too short to carry them, and a count spelled past L or unable to
+                // complete, are damage, because no writer produces either (§4).
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     const int32_t previous_count = value.explosions_count;
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    const bool counted_ok = r.getleb( count );
-                    // A DAMAGED COUNT stops the elements and nothing else: the field
-                    // RODE, so an optional is still PRESENT (§2.3) — only a foreign
-                    // ELEMENT KIND says the payload is not this array's at all.
-                    if ( !counted_ok ) { r.report->malformed = true; }
-                    else if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
+                    if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     else
                     {
                     uint64_t keep = count;
@@ -14438,12 +14458,14 @@ inline int64_t RenderVector3Save( const RenderVector3 & value, uint8_t * buffer,
 BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector3 & value )
 {
     RenderVector3Reset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -14985,12 +15007,14 @@ inline int64_t RenderQuaternionSave( const RenderQuaternion & value, uint8_t * b
 BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQuaternion & value )
 {
     RenderQuaternionReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();

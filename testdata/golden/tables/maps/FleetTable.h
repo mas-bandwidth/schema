@@ -235,9 +235,9 @@ struct TableReport
     // and the number survived.
     int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
+    // RETIRED, and always zero: a repeated id, map key or JSON member name is
+    // damage (docs/SPEC-TABLES.md §4, §16.2), so nothing counts a repeat. The
+    // member stays while every leg's report and the conformance line carry it.
     int32_t duplicate = 0;
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
@@ -258,8 +258,8 @@ struct TableReport
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
     // when malformed is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
-    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct as
+    // the counters, because a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -895,6 +895,42 @@ struct TableReader
             case 34: return false;
         }
         return false;
+    }
+};
+
+// ONE ID, ONCE PER BODY (docs/SPEC-TABLES.md §3, §4). No writer puts an id
+// down twice in one body, so a body carrying one twice is damage, whether or
+// not this reader can name the id. The id table holds each id once, so the
+// REFERENCE stands for the id, and a reference is at most the entry count,
+// which TableOpen caps at kTableProbeBound (4096). Every body holds one of
+// these on its own stack frame: the first eight references are checked in a
+// line, and a body that names more takes a bitmap over the entry count, cleared
+// over only the words that count needs, at the ninth. The work is bounded by
+// the bytes the body spends, and nothing is allocated.
+struct TableBodySeen
+{
+    uint64_t first[8];
+    int32_t n = 0;
+    bool wide = false;
+    uint64_t bits[64]; // ( 4096 + 63 ) / 64, cleared only when the body widens
+
+    // false = this reference is already in the body (1 <= ref <= count)
+    bool add( uint64_t ref, int64_t count )
+    {
+        if ( !wide )
+        {
+            for ( int32_t i = 0; i < n; i++ ) { if ( first[i] == ref ) { return false; } }
+            if ( n < 8 ) { first[n++] = ref; return true; }
+            const int64_t words = ( count + 63 ) >> 6;
+            for ( int64_t w = 0; w < words; w++ ) { bits[w] = 0; }
+            for ( int32_t i = 0; i < n; i++ ) { bits[ ( first[i] - 1 ) >> 6 ] |= 1ull << ( ( first[i] - 1 ) & 63 ); }
+            wide = true;
+        }
+        const uint64_t at = ref - 1;
+        const uint64_t bit = 1ull << ( at & 63 );
+        if ( ( bits[ at >> 6 ] & bit ) != 0 ) { return false; }
+        bits[ at >> 6 ] |= bit;
+        return true;
     }
 };
 
@@ -5899,73 +5935,6 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
     retain->directory_count = nodes.count;
 }
 
-// ---- RECORD LIFETIME (docs/SPEC-TABLES.md §6.6) ----
-//
-// A RETAINED RECORD BELONGS TO THE BODY OCCURRENCE THAT CARRIED IT, AND DIES
-// WITH IT. Legal input can carry a known child body twice, and the later
-// occurrence resets the child and wins whole (§3, §4): the records retained
-// under the earlier occurrence go with the values it held. The discard moves
-// NEITHER counter. The writer superseded the data, so nothing was lost that
-// the load could have kept, and retained counted the record when its bytes
-// were kept and does not fall when they are let go.
-//
-// The occurrences are four, and each is a body the wire lets a writer put down
-// again: a repeated TABLE field, by value or under ?, a UNION whose arm is
-// written again, a MAP's duplicate key, and a KEYED-ARRAY slot written again.
-// The FIELD form covers the three where the field itself is read again, arm
-// switches and shrinking arrays included; the BODY form covers a duplicate key
-// inside one occurrence of a map, where the field is read once and the entry
-// twice.
-inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
-                              const TableRetainPath & path, bool field, uint32_t ordinal )
-{
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
-    const int32_t depth = TableRetainRecordDepth( record );
-    if ( field )
-    {
-        if ( depth <= path.depth ) { return false; }
-    }
-    else if ( depth < path.depth ) { return false; }
-    const uint8_t * steps = TableRetainRecordSteps( record );
-    for ( int32_t i = 0; i < path.depth; i++ )
-    {
-        if ( TableRetainRead32( steps + 8 * i ) != path.steps[i].ordinal ) { return false; }
-        if ( TableRetainRead32( steps + 8 * i + 4 ) != path.steps[i].index ) { return false; }
-    }
-    if ( field && TableRetainRead32( steps + 8 * path.depth ) != ordinal ) { return false; }
-    return true;
-}
-
-inline void TableRetainDiscard( TableRetain * retain, const TableRetainPath & path, bool field, uint32_t ordinal )
-{
-    if ( retain == NULL || retain->count == 0 ) { return; }
-    int64_t read = 0, write = 0;
-    int32_t kept = 0;
-    for ( int32_t k = 0; k < retain->count; k++ )
-    {
-        const int64_t bytes = TableRetainRecordBytes( retain->bytes + read );
-        if ( !TableRetainUnder( retain->bytes + read, path.at, *retain, path, field, ordinal ) )
-        {
-            if ( write != read ) { memmove( retain->bytes + write, retain->bytes + read, (size_t) bytes ); }
-            write += bytes;
-            kept++;
-        }
-        read += bytes;
-    }
-    retain->used = write;
-    retain->count = kept;
-}
-
-inline void TableRetainDiscardBody( TableRetain * retain, const TableRetainPath & path )
-{
-    TableRetainDiscard( retain, path, false, 0 );
-}
-
-inline void TableRetainDiscardField( TableRetain * retain, const TableRetainPath & path, uint32_t ordinal )
-{
-    TableRetainDiscard( retain, path, true, ordinal );
-}
-
 // ---- EMIT: the save side (§6.6) ----
 //
 // The record read back the other way: every resolved id becomes the reference
@@ -6946,14 +6915,6 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
     map.entries.value = (int64_t) ( base - (const uint8_t *) &map.entries );
     fill.ok = true;
     return fill;
-}
-
-// the entry that last LANDED — NULL before the first
-template <typename Entry> inline Entry * TableMapFillLast( TableMapFill<Entry> & fill )
-{
-    if ( fill.map->count <= 0 ) { return NULL; }
-    if ( fill.array != NULL ) { return fill.array + ( fill.map->count - 1 ); }
-    return TableMapLive( *fill.worker->arena, *fill.map, fill.map->count - 1 );
 }
 
 // the next slot, at the entry type's declared defaults
@@ -8317,6 +8278,7 @@ inline FleetLoadoutsEntryValueEntryKeyRead FleetLoadoutsEntryValueEntryReadKey( 
     FleetLoadoutsEntryValueEntryKeyRead out = { 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
+    bool key_seen = false; // the key's id twice in one entry is damage (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8328,13 +8290,15 @@ inline FleetLoadoutsEntryValueEntryKeyRead FleetLoadoutsEntryValueEntryReadKey( 
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
+            if ( key_seen ) { out.malformed = true; return out; }
+            key_seen = true;
             out.kind_bad = field_kind != 6; // THE KEY KIND IS THE READER'S DECLARATION
             out.found = !out.kind_bad;
             if ( !out.kind_bad )
             {
                 if ( !r.has( 1 ) ) { out.malformed = true; return out; }
                 out.key = (uint8_t) r.get8();
-                continue; // the LAST occurrence is the one §3 keeps
+                continue;
             }
         }
         if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
@@ -8399,6 +8363,7 @@ inline FleetShipsEntryKeyRead FleetShipsEntryReadKey( const uint8_t * body, int6
     FleetShipsEntryKeyRead out = { NULL, 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
+    bool key_seen = false; // the key's id twice in one entry is damage (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8410,6 +8375,8 @@ inline FleetShipsEntryKeyRead FleetShipsEntryReadKey( const uint8_t * body, int6
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
+            if ( key_seen ) { out.malformed = true; return out; }
+            key_seen = true;
             out.kind_bad = field_kind != 12; // THE KEY KIND IS THE READER'S DECLARATION
             out.found = !out.kind_bad;
             if ( !out.kind_bad )
@@ -8422,7 +8389,7 @@ inline FleetShipsEntryKeyRead FleetShipsEntryReadKey( const uint8_t * body, int6
                 out.length = (int32_t) key_len;
                 out.over = key_len > 32; // KEYS NEVER CLAMP: the entry is dropped whole
                 r.offset += (int64_t) key_len;
-                continue; // the LAST occurrence is the one §3 keeps
+                continue;
             }
         }
         if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
@@ -8475,6 +8442,7 @@ inline FleetByIdEntryKeyRead FleetByIdEntryReadKey( const uint8_t * body, int64_
     FleetByIdEntryKeyRead out = { 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
+    bool key_seen = false; // the key's id twice in one entry is damage (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8486,6 +8454,8 @@ inline FleetByIdEntryKeyRead FleetByIdEntryReadKey( const uint8_t * body, int64_
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
+            if ( key_seen ) { out.malformed = true; return out; }
+            key_seen = true;
             if ( field_kind != 8 && TableKindWidens( field_kind, 8 ) )
             {
                 out.widened = true;
@@ -8493,7 +8463,7 @@ inline FleetByIdEntryKeyRead FleetByIdEntryReadKey( const uint8_t * body, int64_
                 uint64_t widened_v = 0;
                 if ( !TableReadUnsignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }
                 out.key = (uint32_t) widened_v;
-                continue; // the LAST occurrence is the one §3 keeps
+                continue;
             }
             out.kind_bad = field_kind != 8; // THE KEY KIND IS THE READER'S DECLARATION
             out.found = !out.kind_bad;
@@ -8501,7 +8471,7 @@ inline FleetByIdEntryKeyRead FleetByIdEntryReadKey( const uint8_t * body, int64_
             {
                 if ( !r.has( 4 ) ) { out.malformed = true; return out; }
                 out.key = (uint32_t) r.get32();
-                continue; // the LAST occurrence is the one §3 keeps
+                continue;
             }
         }
         if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
@@ -8568,6 +8538,7 @@ inline FleetLoadoutsEntryKeyRead FleetLoadoutsEntryReadKey( const uint8_t * body
     FleetLoadoutsEntryKeyRead out = { NULL, 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
+    bool key_seen = false; // the key's id twice in one entry is damage (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8579,6 +8550,8 @@ inline FleetLoadoutsEntryKeyRead FleetLoadoutsEntryReadKey( const uint8_t * body
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
+            if ( key_seen ) { out.malformed = true; return out; }
+            key_seen = true;
             out.kind_bad = field_kind != 12; // THE KEY KIND IS THE READER'S DECLARATION
             out.found = !out.kind_bad;
             if ( !out.kind_bad )
@@ -8591,7 +8564,7 @@ inline FleetLoadoutsEntryKeyRead FleetLoadoutsEntryReadKey( const uint8_t * body
                 out.length = (int32_t) key_len;
                 out.over = key_len > 16; // KEYS NEVER CLAMP: the entry is dropped whole
                 r.offset += (int64_t) key_len;
-                continue; // the LAST occurrence is the one §3 keeps
+                continue;
             }
         }
         if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
@@ -8642,6 +8615,7 @@ inline FleetTiersEntryKeyRead FleetTiersEntryReadKey( const uint8_t * body, int6
     FleetTiersEntryKeyRead out = { 0, false, false, false, false, false };
     TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller
     TableReader r( body, length, &scratch, ids );
+    bool key_seen = false; // the key's id twice in one entry is damage (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -8653,6 +8627,8 @@ inline FleetTiersEntryKeyRead FleetTiersEntryReadKey( const uint8_t * body, int6
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
+            if ( key_seen ) { out.malformed = true; return out; }
+            key_seen = true;
             if ( field_kind != 3 && TableKindWidens( field_kind, 3 ) )
             {
                 out.widened = true;
@@ -8660,7 +8636,7 @@ inline FleetTiersEntryKeyRead FleetTiersEntryReadKey( const uint8_t * body, int6
                 int64_t widened_v = 0;
                 if ( !TableReadSignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }
                 out.key = (int16_t) widened_v;
-                continue; // the LAST occurrence is the one §3 keeps
+                continue;
             }
             out.kind_bad = field_kind != 3; // THE KEY KIND IS THE READER'S DECLARATION
             out.found = !out.kind_bad;
@@ -8668,7 +8644,7 @@ inline FleetTiersEntryKeyRead FleetTiersEntryReadKey( const uint8_t * body, int6
             {
                 if ( !r.has( 2 ) ) { out.malformed = true; return out; }
                 out.key = (int16_t) r.get16();
-                continue; // the LAST occurrence is the one §3 keeps
+                continue;
             }
         }
         if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }
@@ -8758,12 +8734,14 @@ inline int64_t ShipConfigSave( const ShipConfig & value, uint8_t * buffer, int64
 MAPDEMO_TABLE_INLINE bool ShipConfigLoadBody( TableReader & r, ShipConfig & value )
 {
     ShipConfigReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -9201,12 +9179,14 @@ inline int64_t ItemSave( const Item & value, uint8_t * buffer, int64_t capacity 
 MAPDEMO_TABLE_INLINE bool ItemLoadBody( TableReader & r, Item & value )
 {
     ItemReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -9578,12 +9558,14 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBody( TableReader & r, FleetShipsEntry & value )
 {
     FleetShipsEntryReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -9718,12 +9700,14 @@ inline bool FleetByIdEntryLoadBody( TableReader & r, const TableNodeMap & nodes,
 {
     if ( nodes.refused ) { return false; }
     FleetByIdEntryReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -9841,12 +9825,14 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBody( TableWriter & w,
 MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntryLoadBody( TableReader & r, FleetLoadoutsEntryValueEntry & value )
 {
     FleetLoadoutsEntryValueEntryReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -9992,12 +9978,14 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
     (void) nodes;
     if ( nodes.refused ) { return false; }
     FleetLoadoutsEntryReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -10056,11 +10044,14 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
@@ -10096,27 +10087,15 @@ inline bool FleetLoadoutsEntryLoadBody( TableReader & r, const TableNodeMap & no
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetLoadoutsEntryValueEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetLoadoutsEntryValueEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -10186,12 +10165,14 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBody( TableWriter & w, TableIds & i
 MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBody( TableReader & r, FleetTiersEntry & value )
 {
     FleetTiersEntryReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -10488,12 +10469,14 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
 {
     if ( nodes.refused ) { return false; }
     FleetReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -10523,11 +10506,14 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
@@ -10563,27 +10549,15 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetShipsEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetShipsEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -10610,11 +10584,14 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
@@ -10650,27 +10627,15 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetByIdEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetByIdEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -10718,11 +10683,14 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
@@ -10758,27 +10726,15 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetLoadoutsEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetLoadoutsEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -10806,11 +10762,14 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
@@ -10846,27 +10805,15 @@ inline bool FleetLoadBody( TableReader & r, const TableNodeMap & nodes, Fleet & 
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (int64_t) last_key, (int64_t) read.key ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetTiersEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetTiersEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -13597,17 +13544,14 @@ MAPDEMO_TABLE_INLINE bool ShipConfigSaveBodyRetain( TableWriter & w, TableRetain
 MAPDEMO_TABLE_INLINE bool ShipConfigLoadBodyRetain( TableReader & r, ShipConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     ShipConfigReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -13712,17 +13656,14 @@ MAPDEMO_TABLE_INLINE bool ItemSaveBodyRetain( TableWriter & w, TableRetainIds & 
 MAPDEMO_TABLE_INLINE bool ItemLoadBodyRetain( TableReader & r, Item & value, TableRetain * retain, const TableRetainPath & path )
 {
     ItemReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -13821,17 +13762,14 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBodyRetain( TableWriter & w, TableR
 MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBodyRetain( TableReader & r, FleetShipsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     FleetShipsEntryReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -13887,7 +13825,6 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntryLoadBodyRetain( TableReader & r, FleetS
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
@@ -13969,17 +13906,14 @@ inline bool FleetByIdEntryLoadBodyRetain( TableReader & r, const TableNodeMap & 
 {
     if ( nodes.refused ) { return false; }
     FleetByIdEntryReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -14099,17 +14033,14 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBodyRetain( TableWrite
 MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntryLoadBodyRetain( TableReader & r, FleetLoadoutsEntryValueEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     FleetLoadoutsEntryValueEntryReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -14151,7 +14082,6 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntryLoadBodyRetain( TableReade
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
@@ -14258,17 +14188,14 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
     (void) nodes;
     if ( nodes.refused ) { return false; }
     FleetLoadoutsEntryReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -14327,17 +14254,17 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 1 );
                     TableMapFill<FleetLoadoutsEntryValueEntry> fill = TableMapFillBegin( nodes, value.value, count );
                     if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -14370,27 +14297,15 @@ inline bool FleetLoadoutsEntryLoadBodyRetain( TableReader & r, const TableNodeMa
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetLoadoutsEntryValueEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetLoadoutsEntryValueEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -14462,17 +14377,14 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBodyRetain( TableWriter & w, TableR
 MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBodyRetain( TableReader & r, FleetTiersEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     FleetTiersEntryReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -14524,7 +14436,6 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntryLoadBodyRetain( TableReader & r, FleetT
                     if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
                     break;
                 }
-                TableRetainDiscardField( retain, path, 1 );
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 {
@@ -14772,17 +14683,14 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
 {
     if ( nodes.refused ) { return false; }
     FleetReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -14812,17 +14720,17 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 0 );
                     TableMapFill<FleetShipsEntry> fill = TableMapFillBegin( nodes, value.ships, count );
                     if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -14855,27 +14763,15 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetShipsEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetShipsEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -14902,17 +14798,17 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 1 );
                     TableMapFill<FleetByIdEntry> fill = TableMapFillBegin( nodes, value.by_id, count );
                     if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -14945,27 +14841,15 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (uint64_t) last_key, (uint64_t) read.key ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetByIdEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetByIdEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -15013,17 +14897,17 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 3 );
                     TableMapFill<FleetLoadoutsEntry> fill = TableMapFillBegin( nodes, value.loadouts, count );
                     if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -15056,27 +14940,15 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( last_key, last_length, read.key, read.length ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetLoadoutsEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetLoadoutsEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
@@ -15104,17 +14976,17 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
                 int64_t body_end = r.offset + (int64_t) body_len;
-                if ( body_len >= 2 )
+                // THE HEADER LIES INSIDE THE MAP'S L (§3): a body too short to carry the
+                // element kind and the count, and a count spelled past L, are damage,
+                // because no writer produces either (§4)
+                if ( body_len < 2 ) { r.report->malformed = true; return false; }
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) || r.offset > body_end ) { r.report->malformed = true; return false; }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 4 );
                     TableMapFill<FleetTiersEntry> fill = TableMapFillBegin( nodes, value.tiers, count );
                     if ( fill.refused ) { nodes.refused = true; return false; }
                     if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
@@ -15147,27 +15019,15 @@ inline bool FleetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fl
                         if ( read.malformed ) { r.report->malformed = true; break; }
                         if ( read.over ) { r.report->clamped++; continue; } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (int64_t) last_key, (int64_t) read.key ) : -1;
-                        if ( order > 0 )
+                        if ( order >= 0 )
                         {
-                            // DESCENDING: not a body any conforming writer produced. It is
-                            // damage, and damage discards the whole load (§4).
+                            // DESCENDING or EQUAL: not a body any conforming writer
+                            // produced, since a writer puts each key down once and in
+                            // order. It is damage, and damage discards the whole load (§4).
                             r.report->malformed = true;
                             break;
                         }
-                        FleetTiersEntry * slot = NULL;
-                        if ( order == 0 )
-                        {
-                            // EQUAL: a DUPLICATE. The slot that entry took is reset to the
-                            // entry's defaults by the decode below, so LAST WINS WHOLE and an
-                            // elided field of the repeat reads as its default. The map's
-                            // count excludes it.
-                            slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
-                        }
-                        else
-                        {
-                            slot = TableMapFillNext( fill ); // ASCENDING: the next slot
-                        }
+                        FleetTiersEntry * slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         if ( slot == NULL ) { r.report->malformed = true; break; }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );

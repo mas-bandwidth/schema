@@ -212,9 +212,9 @@ struct TableReport
     // and the number survived.
     int32_t widened = 0;
     int32_t clamped = 0;       // out-of-range values clamped to declared bounds
-    // a key the TEXT form saw twice: last wins, and the repeat is counted
-    // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
-    // id twice is legal input whose last occurrence wins, silently (§3).
+    // RETIRED, and always zero: a repeated id, map key or JSON member name is
+    // damage (docs/SPEC-TABLES.md §4, §16.2), so nothing counts a repeat. The
+    // member stays while every leg's report and the conformance line carry it.
     int32_t duplicate = 0;
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
@@ -235,8 +235,8 @@ struct TableReport
     // integrity_mismatch is §2.14's checked-trailer damage. Read this member
     // when malformed is true; the reason above remains the message refusal name.
     TableRefuseReason damage_reason = ok;
-    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct for
-    // the reason duplicate is: a caller has one report type and not two. Both
+    // RETAIN-UNKNOWN's pair (docs/SPEC-TABLES.md §6.6), on the same struct as
+    // the counters, because a caller has one report type and not two. Both
     // are ZERO in every read that did not opt in, and retention moves no
     // counter above. A retained field still counts unknown, because unknown
     // says what a READER could not name and that stays true.
@@ -865,6 +865,42 @@ struct TableReader
             case 34: return false;
         }
         return false;
+    }
+};
+
+// ONE ID, ONCE PER BODY (docs/SPEC-TABLES.md §3, §4). No writer puts an id
+// down twice in one body, so a body carrying one twice is damage, whether or
+// not this reader can name the id. The id table holds each id once, so the
+// REFERENCE stands for the id, and a reference is at most the entry count,
+// which TableOpen caps at kTableProbeBound (4096). Every body holds one of
+// these on its own stack frame: the first eight references are checked in a
+// line, and a body that names more takes a bitmap over the entry count, cleared
+// over only the words that count needs, at the ninth. The work is bounded by
+// the bytes the body spends, and nothing is allocated.
+struct TableBodySeen
+{
+    uint64_t first[8];
+    int32_t n = 0;
+    bool wide = false;
+    uint64_t bits[64]; // ( 4096 + 63 ) / 64, cleared only when the body widens
+
+    // false = this reference is already in the body (1 <= ref <= count)
+    bool add( uint64_t ref, int64_t count )
+    {
+        if ( !wide )
+        {
+            for ( int32_t i = 0; i < n; i++ ) { if ( first[i] == ref ) { return false; } }
+            if ( n < 8 ) { first[n++] = ref; return true; }
+            const int64_t words = ( count + 63 ) >> 6;
+            for ( int64_t w = 0; w < words; w++ ) { bits[w] = 0; }
+            for ( int32_t i = 0; i < n; i++ ) { bits[ ( first[i] - 1 ) >> 6 ] |= 1ull << ( ( first[i] - 1 ) & 63 ); }
+            wide = true;
+        }
+        const uint64_t at = ref - 1;
+        const uint64_t bit = 1ull << ( at & 63 );
+        if ( ( bits[ at >> 6 ] & bit ) != 0 ) { return false; }
+        bits[ at >> 6 ] |= bit;
+        return true;
     }
 };
 
@@ -5554,73 +5590,6 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
     retain->directory_count = nodes.count;
 }
 
-// ---- RECORD LIFETIME (docs/SPEC-TABLES.md §6.6) ----
-//
-// A RETAINED RECORD BELONGS TO THE BODY OCCURRENCE THAT CARRIED IT, AND DIES
-// WITH IT. Legal input can carry a known child body twice, and the later
-// occurrence resets the child and wins whole (§3, §4): the records retained
-// under the earlier occurrence go with the values it held. The discard moves
-// NEITHER counter. The writer superseded the data, so nothing was lost that
-// the load could have kept, and retained counted the record when its bytes
-// were kept and does not fall when they are let go.
-//
-// The occurrences are four, and each is a body the wire lets a writer put down
-// again: a repeated TABLE field, by value or under ?, a UNION whose arm is
-// written again, a MAP's duplicate key, and a KEYED-ARRAY slot written again.
-// The FIELD form covers the three where the field itself is read again, arm
-// switches and shrinking arrays included; the BODY form covers a duplicate key
-// inside one occurrence of a map, where the field is read once and the entry
-// twice.
-inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
-                              const TableRetainPath & path, bool field, uint32_t ordinal )
-{
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
-    const int32_t depth = TableRetainRecordDepth( record );
-    if ( field )
-    {
-        if ( depth <= path.depth ) { return false; }
-    }
-    else if ( depth < path.depth ) { return false; }
-    const uint8_t * steps = TableRetainRecordSteps( record );
-    for ( int32_t i = 0; i < path.depth; i++ )
-    {
-        if ( TableRetainRead32( steps + 8 * i ) != path.steps[i].ordinal ) { return false; }
-        if ( TableRetainRead32( steps + 8 * i + 4 ) != path.steps[i].index ) { return false; }
-    }
-    if ( field && TableRetainRead32( steps + 8 * path.depth ) != ordinal ) { return false; }
-    return true;
-}
-
-inline void TableRetainDiscard( TableRetain * retain, const TableRetainPath & path, bool field, uint32_t ordinal )
-{
-    if ( retain == NULL || retain->count == 0 ) { return; }
-    int64_t read = 0, write = 0;
-    int32_t kept = 0;
-    for ( int32_t k = 0; k < retain->count; k++ )
-    {
-        const int64_t bytes = TableRetainRecordBytes( retain->bytes + read );
-        if ( !TableRetainUnder( retain->bytes + read, path.at, *retain, path, field, ordinal ) )
-        {
-            if ( write != read ) { memmove( retain->bytes + write, retain->bytes + read, (size_t) bytes ); }
-            write += bytes;
-            kept++;
-        }
-        read += bytes;
-    }
-    retain->used = write;
-    retain->count = kept;
-}
-
-inline void TableRetainDiscardBody( TableRetain * retain, const TableRetainPath & path )
-{
-    TableRetainDiscard( retain, path, false, 0 );
-}
-
-inline void TableRetainDiscardField( TableRetain * retain, const TableRetainPath & path, uint32_t ordinal )
-{
-    TableRetainDiscard( retain, path, true, ordinal );
-}
-
 // ---- EMIT: the save side (§6.6) ----
 //
 // The record read back the other way: every resolved id becomes the reference
@@ -6588,12 +6557,14 @@ inline bool AssetSaveBody( const Ctx & ctx, const TableNumbering & numbering, Ta
 inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & value )
 {
     AssetReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -6866,12 +6837,14 @@ inline bool CatalogSaveBody( const Ctx & ctx, const TableNumbering & numbering, 
 inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalog & value )
 {
     CatalogReset( value ); // prefill declared defaults in place, then overlay
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -8967,17 +8940,14 @@ inline bool AssetSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberi
 inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Asset & value, TableRetain * retain, const TableRetainPath & path )
 {
     AssetReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
@@ -9252,17 +9222,14 @@ inline bool CatalogSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbe
 inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Catalog & value, TableRetain * retain, const TableRetainPath & path )
 {
     CatalogReset( value ); // prefill declared defaults in place, then overlay
-    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
-    // (docs/SPEC-TABLES.md §6.6): this body is being established, so
-    // whatever an earlier occurrence of it left is discarded before the
-    // winning one is read. The discard moves neither counter.
-    TableRetainDiscardBody( retain, path );
+    TableBodySeen seen; // one id, once per body (§3, §4)
     for ( ;; )
     {
         uint64_t field_ref = 0;
         if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
         uint8_t kind = r.get8();
