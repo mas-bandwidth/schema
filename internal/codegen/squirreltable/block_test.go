@@ -428,3 +428,30 @@ func TestSquirrelBlockByteOrderNegativeControl(t *testing.T) {
 	}
 	t.Logf("with a 32-bit word read big-endian, the block gate reports %d disagreements; the first: %.200s", len(red), red[0])
 }
+
+// TestSquirrelBlockOrderWordNegativeControl is I7's control (docs/PORTING.md,
+// the cross-endian refusal as a named gate; docs/SPEC-TABLES.md §19.1, §19.2).
+// The half no foreign surface forges is a block whose magic is intact and
+// whose byte-order word says the other order: the corpus's block_byte_order,
+// which the block gate requires refused by name. A scratch copy of the block
+// runtime drops the order-word check (one anchor, matched exactly once), and
+// the gate must go red on that forgery.
+func TestSquirrelBlockOrderWordNegativeControl(t *testing.T) {
+	t.Parallel()
+	const anchor = "  if (!eqB(bytes, 16, T.TableBlockByteOrderBytes)) return refuse(report, \"not_a_cook\");\n"
+	runtime := string(squirreltable.Runtime()["schema_table_block.nut"])
+	if n := strings.Count(runtime, anchor); n != 1 {
+		t.Fatalf("the control's anchor appears %d times in the block runtime, want exactly once", n)
+	}
+	var red []string
+	blockReadProbe(t, map[string]string{"schema_table_block.nut": strings.Replace(runtime, anchor, "", 1)}, func(format string, args ...any) {
+		red = append(red, fmt.Sprintf(format, args...))
+	})
+	for _, r := range red {
+		if strings.Contains(r, "block_byte_order") {
+			t.Logf("with the order word unchecked, the block gate reports %d disagreements, block_byte_order among them", len(red))
+			return
+		}
+	}
+	t.Fatalf("with the order word unchecked, the block gate did not name block_byte_order (%d disagreements: %q)", len(red), red)
+}
