@@ -195,7 +195,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 		OTP      string `json:"otp"`
 		Elixir   string `json:"elixir"`
 		Golangci string `json:"golangci"`
-		Lobster string `json:"lobster"`
+		Lobster  string `json:"lobster"`
 	}
 	if when != whenPullRequest && when != whenNightly {
 		return nil, fmt.Errorf("%q is not a tier: the tiers are %s and %s", when, whenPullRequest, whenNightly)
@@ -215,7 +215,7 @@ func (m Manifest) matrix(when string) ([]byte, error) {
 			OTP:      g.OTP,
 			Elixir:   g.Elixir,
 			Golangci: g.Golangci,
-			Lobster: g.Lobster,
+			Lobster:  g.Lobster,
 		})
 	}
 	return json.Marshal(struct {
