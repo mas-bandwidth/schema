@@ -1869,21 +1869,21 @@ Message reads allocate nothing. A damaged body can return a partially decoded ro
 the output count includes only complete bodies.
 
 **What you get.** The three backend messages measured on schema#523 go from
-106, 273 and 104 bytes to 52, 148 and 43, and from 10, 43 and 10 to 3, 11 and 3
+106, 273 and 104 bytes to 51, 142 and 41, and from 10, 43 and 10 to 3, 10 and 3
 when every field sits at its declared default. Sent as ONE batch under an
-envelope, one root holding a union of the three, they are 244 bytes against
-proto3's 285 for the same envelope. The announcement costs 361 bytes for that
-unit and pays for itself in the ninth round against proto3.
+envelope, one root holding a union of the three, they are 237 bytes against
+proto3's 285 for the same envelope. The announcement costs 280 bytes for that
+unit and pays for itself in the sixth round against proto3.
 
 **Where it does not win, and what to do about it.** `LoginRequest` and
-`StorePurchase` come out three bytes OVER proto3 each, because their
+`StorePurchase` come out OVER proto3, by two bytes and one, because their
 `player_id`, `client_build` and `price_minor` are declared BARE and this wire
 writes 64, 32 and 32 raw bits where proto3 writes a varint whose value happens
 to be small. Declare the range a field actually holds and the wire pays for the
-range: `client_build uint32 | max = 65535` alone takes `LoginRequest` from 52
-to 50 bytes, one over proto3's 49, and `price_minor uint32 | max = 9999`, which
-is a price cap of 99.99 in minor units, takes `StorePurchase` from 43 to 41,
-one over proto3's 40, and the batch closes the rest. That is the same habit the
+range: `client_build uint32 | max = 65535` alone takes `LoginRequest` from 51
+to 49 bytes, level with proto3's 49, and `price_minor uint32 | max = 9999`,
+which is a price cap of 99.99 in minor units, takes `StorePurchase` from 41 to
+39, one under proto3's 40, and the batch is already under. That is the same habit the
 packet wire already asks for.
 
 **What it asks of you.** ONE thing: the announcement arrives once, reliably,
