@@ -176,6 +176,14 @@ public final class TableCookWrite {
 
     /** Measure and validate before writing; invalid values answer null (§7.6). */
     public static Plan plan(Object root, TableCookInfo info) {
+        return plan(root, info, null);
+    }
+
+    /**
+     * plan, saying why it refused: nonFinite[0] turns true when the value held a NaN or an
+     * infinity (docs/SPEC-TABLES.md §3.3), which no cook carries.
+     */
+    public static Plan plan(Object root, TableCookInfo info, boolean[] nonFinite) {
         if (root == null || info == null) { return null; }
         try {
             Plan p = new Plan();
@@ -198,8 +206,20 @@ public final class TableCookWrite {
                 if (n.info != null) { record(p, null, 0, 64L + n.offset, n.value, n.info); }
             }
             return p;
+        } catch (NonFiniteFloat ex) {
+            if (nonFinite != null) { nonFinite[0] = true; }
+            return null;
         } catch (ReflectiveOperationException | RuntimeException ex) {
             return null;
+        }
+    }
+
+    /** a cooked float's NaN or infinity: the plan's own refusal (docs/SPEC-TABLES.md §3.3). */
+    static final class NonFiniteFloat extends IllegalArgumentException {
+        private static final long serialVersionUID = 1L;
+
+        NonFiniteFloat() {
+            super("non_finite_float", null);
         }
     }
 
@@ -211,8 +231,14 @@ public final class TableCookWrite {
         if (source == null) { return 0; }
         if (storage == TableCookStorage.BOOL) { return Boolean.TRUE.equals(source) ? 1 : 0; }
         if (storage == TableCookStorage.FLOAT) {
-            return width == 4 ? Float.floatToRawIntBits(((Number) source).floatValue()) & 0xffffffffL
+            // A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): its raw bits
+            // ride, -0 and the subnormals exact, and a NaN or an infinity
+            // refuses the plan, so the cook is never written.
+            long raw = width == 4 ? Float.floatToRawIntBits(((Number) source).floatValue()) & 0xffffffffL
                     : Double.doubleToRawLongBits(((Number) source).doubleValue());
+            long exponent = width == 4 ? 0x7f800000L : 0x7ff0000000000000L;
+            if ((raw & exponent) == exponent) { throw new NonFiniteFloat(); }
+            return raw;
         }
         if (source instanceof Character) { return ((Character) source).charValue(); }
         return ((Number) source).longValue();

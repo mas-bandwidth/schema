@@ -157,6 +157,11 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        report.unknown++;\n")
 	b.WriteString("        if (r.fail) { return; }\n")
 	b.WriteString("        int pEnd = r.off;\n")
+	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+	// §3.3, §6.6, ruling 3 of 2026-10-27): kind 10's or 11's raw bits, and a
+	// NaN or an infinity refuses the read as non_finite_float, named
+	// <Table>.0x<id>, and is never retained.
+	fmt.Fprintf(&b, "        if (kind == 10 && pEnd - pStart == 4 && (get32(r.buf, pStart) & 0x7f800000) == 0x7f800000 || kind == 11 && pEnd - pStart == 8 && (get64(r.buf, pStart) & 0x7ff0000000000000L) == 0x7ff0000000000000L) { TableVariable.nonFiniteFloat(report, TableVariable.retainedFloatName(%q, id)); return; }\n", st.DeclaredName())
 	b.WriteString("        byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);\n")
 	b.WriteString("        if (resolved == null) { report.retainLost++; return; }\n")
 	b.WriteString("        int total = 14 + 8 * depth + resolved.length;\n")
@@ -229,7 +234,8 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        }\n")
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
-	b.WriteString("        return w.overflow ? -1 : w.off;\n")
+	// a NaN or an infinity refuses the save (docs/SPEC-TABLES.md §3.3)
+	b.WriteString("        return w.overflow || ids.nonFinite ? -1 : w.off;\n")
 	b.WriteString("    }\n\n")
 
 	// writeFieldsRetain: the canonical write, threading the path into list

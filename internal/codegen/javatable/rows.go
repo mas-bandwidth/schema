@@ -18,6 +18,7 @@ package javatable
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -69,6 +70,24 @@ type rowGen struct {
 	unit *ir.Unit
 	set  *records
 	b    strings.Builder
+	// record is the declared name of the record being emitted, the <Record>
+	// of a float accessor's non_finite_float refusal (docs/SPEC-TABLES.md §3.3)
+	record string
+}
+
+// fieldName names one of the record's fields for a float accessor's refusal.
+func (g *rowGen) fieldName(f *ir.Field) string { return g.record + "." + f.Name }
+
+// declaredRecordName is a record's schema spelling (ir.Struct.DeclaredName),
+// found by its generated name among the unit's tables and types.
+func declaredRecordName(u *ir.Unit, name string) string {
+	if st := u.Tables[name]; st != nil {
+		return st.DeclaredName()
+	}
+	if st := u.Structs[name]; st != nil {
+		return st.DeclaredName()
+	}
+	return name
 }
 
 func (g *rowGen) f(format string, args ...any) { fmt.Fprintf(&g.b, format, args...) }
@@ -106,8 +125,10 @@ func javaRecordType(t ir.FieldType) string {
 	return "byte"
 }
 
-// readCall is the TableBytes read one Java type takes.
-func readCall(typ, at string) string {
+// readCall is the TableBytes read one Java type takes. A float's read names
+// its field, <Record>.<field>, because it refuses a NaN or an infinity by
+// that name (docs/SPEC-TABLES.md §3.3, ruling 2).
+func readCall(typ, at, field string) string {
 	switch typ {
 	case "boolean":
 		return "TableBytes.bool(data, " + at + ")"
@@ -120,9 +141,9 @@ func readCall(typ, at string) string {
 	case "long":
 		return "TableBytes.i64(data, " + at + ")"
 	case "float":
-		return "TableBytes.f32(data, " + at + ")"
+		return "TableBytes.f32(data, " + at + ", " + strconv.Quote(field) + ")"
 	case "double":
-		return "TableBytes.f64(data, " + at + ")"
+		return "TableBytes.f64(data, " + at + ", " + strconv.Quote(field) + ")"
 	}
 	return "TableBytes.i8(data, " + at + ")"
 }
@@ -239,6 +260,7 @@ func unsignedReadCall(width int64, at string) string {
 }
 
 func (g *rowGen) emitRow(name string, ml *ir.MemberLayout, blocks *ir.BlockUnit, ck *cookUnit) {
+	g.record = declaredRecordName(g.unit, name)
 	g.f("// %s — a block row, a cooked record, or a record one of them nests by\n", name)
 	g.f("// value. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no declaration\n")
 	g.f("// in the unit can take it.\n")
@@ -320,7 +342,7 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 				name, pieces[0].Offset+8, elemSize)
 		default:
 			g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n",
-				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize)))
+				elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize), g.fieldName(f)))
 		}
 		if f.KeyEnum != "" {
 			g.emitRowKeyForm(f, name, elem, pieces[0].Offset, elemSize)
@@ -345,7 +367,7 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 	default:
 		typ := javaRecordType(f.Type)
 		g.f("    public static %s %s(byte[] data, int at) { return %s; }\n\n",
-			typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset)))
+			typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset), g.fieldName(f)))
 	}
 	if f.Type.Optional {
 		g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, at + %d); }\n\n",
@@ -377,7 +399,7 @@ func (g *rowGen) emitRowKeyForm(f *ir.Field, name, elem string, base, elemSize i
 		ir.FieldTypeSpelling(f), keyedFormMarker)
 	g.f("    public static %s %sByKey(byte[] data, int at, int key) {\n", elem, name)
 	g.f("%s", javaKeyRefusal("        ", "key", f))
-	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize)))
+	g.f("        return %s;\n", readCall(elem, fmt.Sprintf("at + %d + (key - 1) * %d", base, elemSize), g.fieldName(f)))
 	g.f("    }\n")
 }
 

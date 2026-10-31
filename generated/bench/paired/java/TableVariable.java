@@ -12,16 +12,26 @@ package bench;
 // end of the wire. A reference is an unsigned LEB128 naming a slot of the id
 // table, counted from 1; reference 0 names no id and is the terminator.
 public final class TableVariable {
-    static double widenF32(int raw) {
-        if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x7fffff) != 0)
-            return Double.longBitsToDouble(
-                    ((long) (raw & 0x80000000) << 32)
-                            | 0x7ff0000000000000L
-                            | ((long) (raw & 0x7fffff) << 29));
-        return (double) Float.intBitsToFloat(raw);
+    private TableVariable() {}
+
+    // A FLOAT IS FINITE ON EVERY TABLE WIRE (docs/SPEC-TABLES.md §3.3, the
+    // packet wire's own rule): a read that meets a NaN or an
+    // infinity in a float's raw bits refuses as non_finite_float, the
+    // tolerant load too, naming the first such field, and lands nothing.
+    // Every finite float32 widens exactly through the ordinary conversion.
+    public static void nonFiniteFloat(Report report, String field) {
+        if (report.reason == null) {
+            report.reason = "non_finite_float: " + field;
+        }
+        report.refused = true;
     }
 
-    private TableVariable() {}
+    // a retained unknown float is named by the table that holds it and the
+    // id it cannot name (§6.6): <Table>.0x<id, sixteen hex digits>
+    public static String retainedFloatName(String owner, long id) {
+        String hex = Long.toHexString(id);
+        return owner + ".0x" + "0000000000000000".substring(hex.length()) + hex;
+    }
 
     // The two RESERVED ids the node table names (docs/SPEC-TABLES.md §3.1, §5):
     // the node-table field's own id, and the reserved type id a *string blob
@@ -375,6 +385,10 @@ public final class TableVariable {
         public final long[] entries;
         public int count;
         public boolean overflow;
+        // nonFinite is the SAVE's refusal of a NaN or an infinity
+        // (docs/SPEC-TABLES.md §3.3): it lives on the one id table every
+        // writer of a save shares, sub-writers included, so the save sees it.
+        public boolean nonFinite;
 
         public Ids(int cap) {
             entries = new long[cap];
@@ -604,6 +618,25 @@ public final class TableVariable {
             for (int i = 0; i < 8; i++) {
                 put8((int) (v >>> (8 * i)) & 0xff);
             }
+        }
+
+        // putF32 and putF64 write a float's RAW bits, -0 and the subnormals
+        // exact, and refuse a NaN or an infinity for the whole save
+        // (docs/SPEC-TABLES.md §3.3): no table writer emits one.
+        public void putF32(float v) {
+            int bits = Float.floatToRawIntBits(v);
+            if ((bits & 0x7f800000) == 0x7f800000) {
+                ids.nonFinite = true;
+            }
+            put32(bits);
+        }
+
+        public void putF64(double v) {
+            long bits = Double.doubleToRawLongBits(v);
+            if ((bits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                ids.nonFinite = true;
+            }
+            put64(bits);
         }
 
         public void putLeb(long v) {
@@ -1646,6 +1679,7 @@ public final class TableVariable {
             graph.reset();
             ids.count = 0;
             ids.overflow = false;
+            ids.nonFinite = false;
             writer.off = 0;
             writer.overflow = false;
             return writer;

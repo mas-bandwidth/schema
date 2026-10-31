@@ -592,7 +592,12 @@ public final class BenchMixedRetain {
             } else if (id == BenchMixedVariable.F_aimX) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.aimX = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchMixed.aim_x");
+                        } else {
+                            v.aimX = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -604,7 +609,12 @@ public final class BenchMixedRetain {
             } else if (id == BenchMixedVariable.F_aimY) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.aimY = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchMixed.aim_y");
+                        } else {
+                            v.aimY = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -616,7 +626,12 @@ public final class BenchMixedRetain {
             } else if (id == BenchMixedVariable.F_aimZ) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.aimZ = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchMixed.aim_z");
+                        } else {
+                            v.aimZ = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -628,7 +643,12 @@ public final class BenchMixedRetain {
             } else if (id == BenchMixedVariable.F_recoil) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.recoil = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchMixed.recoil");
+                        } else {
+                            v.recoil = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -640,14 +660,24 @@ public final class BenchMixedRetain {
             } else if (id == BenchMixedVariable.F_drift) {
                 if (kind == 11) {
                     if (r.has(8)) {
-                        v.drift = Double.longBitsToDouble(r.get64());
+                        long fbits = r.get64();
+                        if ((fbits & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+                            TableVariable.nonFiniteFloat(report, "BenchMixed.drift");
+                        } else {
+                            v.drift = Double.longBitsToDouble(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
                     }
                 } else if (kind == 10) {
                     if (r.has(4)) {
-                        v.drift = TableVariable.widenF32(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchMixed.drift");
+                        } else {
+                            v.drift = (double) Float.intBitsToFloat(fbits);
+                        }
                         report.widened++;
                     } else {
                         report.malformed = true;
@@ -866,6 +896,13 @@ public final class BenchMixedRetain {
             return;
         }
         int pEnd = r.off;
+        if (kind == 10 && pEnd - pStart == 4 && (get32(r.buf, pStart) & 0x7f800000) == 0x7f800000
+                || kind == 11
+                        && pEnd - pStart == 8
+                        && (get64(r.buf, pStart) & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            TableVariable.nonFiniteFloat(report, TableVariable.retainedFloatName("BenchMixed", id));
+            return;
+        }
         byte[] resolved = TableRetain.resolve(r.buf, r.ids, pStart, pEnd, kind);
         if (resolved == null) {
             report.retainLost++;
@@ -957,7 +994,7 @@ public final class BenchMixedRetain {
         }
         w.put8(0);
         w.trailer();
-        return w.overflow ? -1 : w.off;
+        return w.overflow || ids.nonFinite ? -1 : w.off;
     }
 
     static void writeFieldsRetain(
@@ -1082,30 +1119,30 @@ public final class BenchMixedRetain {
             w.putBytes(v.payload, 0, v.payload.length);
             w.frame(list);
         }
-        if (v.aimX != 0.0f) {
+        if (Float.floatToRawIntBits(v.aimX) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimX));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.aimX));
+            w.putF32(v.aimX);
         }
-        if (v.aimY != 0.0f) {
+        if (Float.floatToRawIntBits(v.aimY) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimY));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.aimY));
+            w.putF32(v.aimY);
         }
-        if (v.aimZ != 0.0f) {
+        if (Float.floatToRawIntBits(v.aimZ) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_aimZ));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.aimZ));
+            w.putF32(v.aimZ);
         }
-        if (v.recoil != 0.0f) {
+        if (Float.floatToRawIntBits(v.recoil) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(BenchMixedVariable.F_recoil));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.recoil));
+            w.putF32(v.recoil);
         }
-        if (v.drift != 0.0d) {
+        if (Double.doubleToRawLongBits(v.drift) != Double.doubleToRawLongBits(0.0d)) {
             w.putLeb(w.ref(BenchMixedVariable.F_drift));
             w.put8(11);
-            w.put64(Double.doubleToLongBits(v.drift));
+            w.putF64(v.drift);
         }
         if (!(v.wideKey.equals(new UInt128(0x0000000000000000L, 0x0000000000000000L)))) {
             w.putLeb(w.ref(BenchMixedVariable.F_wideKey));
