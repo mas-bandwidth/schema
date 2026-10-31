@@ -155,8 +155,10 @@ table Root
 // wantTableDigest is ViewProbeTable.luau's sha256 at BASE. The view is a leaf:
 // adding it may not change the table module a game links (docs/SPEC-TABLES.md
 // §8.5). Moved when the table module began registering the unit's wire ids
-// (retainids.go, docs/SPEC-TABLES.md §6.6), a change to the module itself.
-const wantTableDigest = "ca62e3a8e7a03c62f3c6fa1d7412a71da03818e2ac92ec906132dbf2d221ea9e"
+// (retainids.go, docs/SPEC-TABLES.md §6.6), a change to the module itself. The
+// module carries the unit's build versions, so a change to the build version's
+// form moves it too.
+const wantTableDigest = "41f89eb6bd8e2e89b396b4cee5d4391ac3f406c16b325f7193e587a53d3e68be"
 
 // declaredViewNames is every `type`, `union`, `enum` and `flags` the unit
 // declares, the set §8.2 says every one of has a view.
