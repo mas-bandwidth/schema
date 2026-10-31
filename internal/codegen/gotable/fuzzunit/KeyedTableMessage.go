@@ -198,8 +198,9 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 	}
 }
 
-// TeamConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// TeamConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // TeamConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // TeamConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -228,7 +229,9 @@ func TeamConfigLoadMessagesTolerant(values []TeamConfig, vocabulary *TableVocabu
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -236,17 +239,20 @@ func TeamConfigLoadMessagesTolerant(values []TeamConfig, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !TeamConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					TeamConfigReset(&values[j])
-				}
-				return 0, false
+		if !TeamConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				TeamConfigReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			TeamConfigReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func GunnerConfigSaveMessageBody(w *TableMessageWriter, value *GunnerConfig) bool {
 	{
@@ -425,8 +431,9 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 	}
 }
 
-// GunnerConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// GunnerConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // GunnerConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // GunnerConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -455,7 +462,9 @@ func GunnerConfigLoadMessagesTolerant(values []GunnerConfig, vocabulary *TableVo
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -463,17 +472,20 @@ func GunnerConfigLoadMessagesTolerant(values []GunnerConfig, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !GunnerConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					GunnerConfigReset(&values[j])
-				}
-				return 0, false
+		if !GunnerConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				GunnerConfigReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			GunnerConfigReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) bool {
 	{
@@ -683,8 +695,9 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 	}
 }
 
-// TurretConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// TurretConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // TurretConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // TurretConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -713,7 +726,9 @@ func TurretConfigLoadMessagesTolerant(values []TurretConfig, vocabulary *TableVo
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -721,17 +736,20 @@ func TurretConfigLoadMessagesTolerant(values []TurretConfig, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !TurretConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					TurretConfigReset(&values[j])
-				}
-				return 0, false
+		if !TurretConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				TurretConfigReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			TurretConfigReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 	{
@@ -1014,8 +1032,9 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 	}
 }
 
-// HullConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// HullConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // HullConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // HullConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -1044,7 +1063,9 @@ func HullConfigLoadMessagesTolerant(values []HullConfig, vocabulary *TableVocabu
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -1052,17 +1073,20 @@ func HullConfigLoadMessagesTolerant(values []HullConfig, vocabulary *TableVocabu
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !HullConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					HullConfigReset(&values[j])
-				}
-				return 0, false
+		if !HullConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				HullConfigReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			HullConfigReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func KeyedConfigSaveMessageBody(w *TableMessageWriter, value *KeyedConfig) bool {
 	{
@@ -1389,8 +1413,9 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 	}
 }
 
-// KeyedConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// KeyedConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // KeyedConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // KeyedConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -1419,7 +1444,9 @@ func KeyedConfigLoadMessagesTolerant(values []KeyedConfig, vocabulary *TableVoca
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -1427,17 +1454,20 @@ func KeyedConfigLoadMessagesTolerant(values []KeyedConfig, vocabulary *TableVoca
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !KeyedConfigLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					KeyedConfigReset(&values[j])
-				}
-				return 0, false
+		if !KeyedConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				KeyedConfigReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			KeyedConfigReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool {
 	{

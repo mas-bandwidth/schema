@@ -724,7 +724,8 @@ func PatrolLoadMeasureReason(wire []byte) (int64, error) {
 }
 
 // PatrolLoadTolerant is the TOLERANT region read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every wire the
-// framing walk accepts and returns the recovered root, with the counters counted onto the report passed.
+// framing walk accepts and returns its root, with the counters counted onto the report passed; damage
+// returns nil and hands back nothing (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 func PatrolLoadTolerant(region, wire []byte, report *TableReport) *Patrol {
 	return (*Patrol)(tableRegionLoad(region, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report))
 }
@@ -742,8 +743,9 @@ func PatrolSave(value *Patrol, buffer []byte, context ...TableWriteContext) int6
 	return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), buffer, false, arena, allocator)
 }
 
-// PatrolLoadBuilderTolerant is the TOLERANT builder read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps the recovered
-// value in the builder, with the counters counted onto the report passed.
+// PatrolLoadBuilderTolerant is the TOLERANT builder read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it reads the value into
+// the builder, with the counters counted onto the report passed; damage answers false with the builder's
+// root at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 func PatrolLoadBuilderTolerant(b *PatrolBuilder, wire []byte, report *TableReport) bool {
 	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report)
 }

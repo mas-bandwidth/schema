@@ -985,8 +985,9 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 	}
 }
 
-// RangedSignedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// RangedSignedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // RangedSignedLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // RangedSignedReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -1015,7 +1016,9 @@ func RangedSignedLoadMessagesTolerant(values []RangedSigned, vocabulary *TableVo
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -1023,17 +1026,20 @@ func RangedSignedLoadMessagesTolerant(values []RangedSigned, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !RangedSignedLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					RangedSignedReset(&values[j])
-				}
-				return 0, false
+		if !RangedSignedLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				RangedSignedReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			RangedSignedReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned) bool {
 	{
@@ -2005,8 +2011,9 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 	}
 }
 
-// RangedUnsignedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// RangedUnsignedLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // RangedUnsignedLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // RangedUnsignedReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -2035,7 +2042,9 @@ func RangedUnsignedLoadMessagesTolerant(values []RangedUnsigned, vocabulary *Tab
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -2043,17 +2052,20 @@ func RangedUnsignedLoadMessagesTolerant(values []RangedUnsigned, vocabulary *Tab
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !RangedUnsignedLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					RangedUnsignedReset(&values[j])
-				}
-				return 0, false
+		if !RangedUnsignedLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				RangedUnsignedReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			RangedUnsignedReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) bool {
 	{
@@ -2403,8 +2415,9 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 	}
 }
 
-// RangedWidthsLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): it keeps every
-// recovered value, with the counters counted onto the report passed.
+// RangedWidthsLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
+// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
+// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 // RangedWidthsLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
 // RangedWidthsReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
 // value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
@@ -2433,7 +2446,9 @@ func RangedWidthsLoadMessagesTolerant(values []RangedWidths, vocabulary *TableVo
 		report = &ignored
 	}
 	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	defer func() { *report = r.Report }()
+	pre := r.Report.Malformed
+	r.Report.Malformed = false
+	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
 	if count < 0 {
 		return 0, false
 	}
@@ -2441,17 +2456,20 @@ func RangedWidthsLoadMessagesTolerant(values []RangedWidths, vocabulary *TableVo
 		return count, tableMessageRefuse(&r.Report, "batch_too_large")
 	}
 	for i := range count {
-		if !RangedWidthsLoadMessageBody(&r, &values[i]) || r.Report.NonFiniteFloat != "" {
-			if tableNonFiniteRefused(&r.Report) {
-				for j := range i + 1 {
-					RangedWidthsReset(&values[j])
-				}
-				return 0, false
+		if !RangedWidthsLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+			for j := range i + 1 {
+				RangedWidthsReset(&values[j])
 			}
-			return i, false
+			return 0, false
 		}
 	}
-	return count, tableMessageBatchClose(&r)
+	if !tableMessageBatchClose(&r) {
+		for j := range count {
+			RangedWidthsReset(&values[j])
+		}
+		return 0, false
+	}
+	return count, true
 }
 func init() {
 	RangedSignedTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {

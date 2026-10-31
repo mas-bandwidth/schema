@@ -494,9 +494,10 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 }
 
 // RootConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RootConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. RootConfigLoad is the strict read; call this one by name.
 func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -531,9 +532,11 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !RootConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			RootConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -550,6 +553,10 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			RootConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -560,6 +567,12 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		RootConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -567,7 +580,7 @@ func RootConfigLoadTolerant(value *RootConfig, data []byte, report *TableReport)
 // whatever RootConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RootConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. RootConfigLoadTolerant also reads past an evolution event.
 func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -1438,9 +1451,10 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 }
 
 // WeaponConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. WeaponConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. WeaponConfigLoad is the strict read; call this one by name.
 func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -1475,9 +1489,11 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !WeaponConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			WeaponConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -1494,6 +1510,10 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			WeaponConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -1504,6 +1524,12 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		WeaponConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -1511,7 +1537,7 @@ func WeaponConfigLoadTolerant(value *WeaponConfig, data []byte, report *TableRep
 // whatever WeaponConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. WeaponConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. WeaponConfigLoadTolerant also reads past an evolution event.
 func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -2676,9 +2702,10 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 }
 
 // LoadoutConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. LoadoutConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. LoadoutConfigLoad is the strict read; call this one by name.
 func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -2713,9 +2740,11 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !LoadoutConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			LoadoutConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -2732,6 +2761,10 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			LoadoutConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -2742,6 +2775,12 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		LoadoutConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -2749,7 +2788,7 @@ func LoadoutConfigLoadTolerant(value *LoadoutConfig, data []byte, report *TableR
 // whatever LoadoutConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. LoadoutConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. LoadoutConfigLoadTolerant also reads past an evolution event.
 func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4296,9 +4335,10 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 }
 
 // ProfileConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. ProfileConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. ProfileConfigLoad is the strict read; call this one by name.
 func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -4333,9 +4373,11 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !ProfileConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			ProfileConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -4352,6 +4394,10 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			ProfileConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -4362,6 +4408,12 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		ProfileConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -4369,7 +4421,7 @@ func ProfileConfigLoadTolerant(value *ProfileConfig, data []byte, report *TableR
 // whatever ProfileConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. ProfileConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. ProfileConfigLoadTolerant also reads past an evolution event.
 func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5341,9 +5393,10 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 }
 
 // AttachmentLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. AttachmentLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. AttachmentLoad is the strict read; call this one by name.
 func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -5378,9 +5431,11 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !AttachmentLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			AttachmentReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -5397,6 +5452,10 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			AttachmentReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -5407,6 +5466,12 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		AttachmentReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -5414,7 +5479,7 @@ func AttachmentLoadTolerant(value *AttachmentRow, data []byte, report *TableRepo
 // whatever AttachmentReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. AttachmentLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. AttachmentLoadTolerant also reads past an evolution event.
 func AttachmentLoad(value *AttachmentRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -5723,9 +5788,10 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 }
 
 // BuffLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. BuffLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. BuffLoad is the strict read; call this one by name.
 func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -5760,9 +5826,11 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !BuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			BuffReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -5779,6 +5847,10 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			BuffReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -5789,6 +5861,12 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		BuffReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -5796,7 +5874,7 @@ func BuffLoadTolerant(value *BuffRow, data []byte, report *TableReport) bool {
 // whatever BuffReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. BuffLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. BuffLoadTolerant also reads past an evolution event.
 func BuffLoad(value *BuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -6072,9 +6150,10 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 }
 
 // DebuffLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. DebuffLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. DebuffLoad is the strict read; call this one by name.
 func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -6109,9 +6188,11 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !DebuffLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			DebuffReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -6128,6 +6209,10 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			DebuffReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -6138,6 +6223,12 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		DebuffReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -6145,7 +6236,7 @@ func DebuffLoadTolerant(value *DebuffRow, data []byte, report *TableReport) bool
 // whatever DebuffReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. DebuffLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. DebuffLoadTolerant also reads past an evolution event.
 func DebuffLoad(value *DebuffRow, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
