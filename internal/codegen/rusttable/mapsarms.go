@@ -208,7 +208,7 @@ func (g *gen) emitOptionalSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	default:
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
-		fmt.Fprintf(b, "%s%s\n", inner, scalarWrite(f, "(*opt)", "out"))
+		fmt.Fprintf(b, "%s%s\n", inner, g.scalarWrite(f, "(*opt)", "out"))
 	}
 	fmt.Fprintf(b, "%s}\n", ind)
 }
@@ -268,7 +268,7 @@ func elemNonDefaultExpr(f *ir.Field, e string) string {
 			}
 			return "*" + e
 		}
-		return "*" + e + " != " + scalarDefault(f)
+		return scalarDiffers(f, "(*"+e+")", scalarDefault(f))
 	}
 }
 
@@ -320,7 +320,7 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 		case vString:
 			fmt.Fprintf(b, "%seb.extend_from_slice(e.as_bytes());\n", ein)
 		default:
-			fmt.Fprintf(b, "%s%s\n", ein, scalarWrite(f, "(*e)", "eb"))
+			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "eb"))
 		}
 	}
 	fmt.Fprintf(b, "%sleb_write(&mut body, kref);\n", ein)
@@ -467,7 +467,7 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 		fmt.Fprintf(b, "%slet vref = %s;\n", ind, enumRef(f, "*"+arm))
 		fmt.Fprintf(b, "%sleb_write(&mut payload, vref);\n", ind)
 	default:
-		fmt.Fprintf(b, "%s%s\n", ind, scalarWrite(f, "(*"+arm+")", "payload"))
+		fmt.Fprintf(b, "%s%s\n", ind, g.scalarWrite(f, "(*"+arm+")", "payload"))
 	}
 }
 
@@ -523,7 +523,7 @@ func (g *gen) emitElementWrite(b *strings.Builder, f *ir.Field, x, dst string, o
 	case vBytes:
 		fmt.Fprintf(b, "%s%s.push(*%s);\n", ind, dst, x)
 	default:
-		fmt.Fprintf(b, "%s%s\n", ind, scalarWrite(f, "(*"+x+")", dst))
+		fmt.Fprintf(b, "%s%s\n", ind, g.scalarWrite(f, "(*"+x+")", dst))
 	}
 }
 
@@ -653,7 +653,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
 		fmt.Fprintf(b, "%s    let Some(raw) = %s(wire, off, end, kind) else { report.malformed = true; return false; };\n", in, scalarReadFn(f))
-		emitScalarConvert(b, &inner, "let tmp", "kind", in+"    ")
+		emitScalarConvert(b, &inner, g.floatOwner(f), "let tmp", "kind", in+"    ")
 		fmt.Fprintf(b, "%s    %s = Some(tmp);\n", in, field)
 		fmt.Fprintf(b, "%s}\n", in)
 	}
@@ -737,7 +737,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	default:
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%sif let Some(raw) = %s(wire, &mut o, eend, ek) {\n", i5, scalarReadFn(f))
-		emitScalarConvert(b, f, "let e", "ek", i5+"    ")
+		emitScalarConvert(b, f, g.floatOwner(f), "let e", "ek", i5+"    ")
 		fmt.Fprintf(b, "%s    %s[slot] = e;\n", i5, field)
 		fmt.Fprintf(b, "%s} else { report.malformed = true; }\n", i5)
 	}
@@ -925,7 +925,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		in := ind + "    "
 		fmt.Fprintf(b, "%sif %s != %d { report.widened += 1; }\n", in, akind, want)
 		fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, %s, %s) else { report.malformed = true; %s = %s::None; *off = %s; return false; };\n", in, scalarReadFn(f), aend, akind, field, un.Name, aend)
-		emitScalarConvert(b, f, "let slot", akind, in)
+		emitScalarConvert(b, f, g.floatOwner(f), "let slot", akind, in)
 		fmt.Fprintf(b, "%s%s = %s::%s(slot);\n", in, field, un.Name, rustVariant(v.Name))
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
@@ -966,7 +966,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 	case f.Array == ir.ArrayNone && classOf(f) == vScalar:
 		// a scalar arm: the read either refuses (returning) or yields the value
 		fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, %s, %s) else { report.malformed = true; %s = %s::None; *off = %s; return false; };\n", in, scalarReadFn(f), aend, akind, field, un.Name, aend)
-		emitScalarConvert(b, f, "let slot", akind, in)
+		emitScalarConvert(b, f, g.floatOwner(f), "let slot", akind, in)
 		fmt.Fprintf(b, "%s%s = %s::%s(slot);\n", in, field, un.Name, rustVariant(v.Name))
 	default:
 		fmt.Fprintf(b, "%slet mut slot = %s;\n", in, fieldDefault(f))
@@ -993,7 +993,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 			fmt.Fprintf(b, "%selse { slot = std::str::from_utf8(bytes).unwrap().to_string(); }\n", in)
 		default:
 			fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, %s, %s) else { report.malformed = true; %s = %s::None; *off = %s; return false; };\n", in, scalarReadFn(f), aend, akind, field, un.Name, aend)
-			emitScalarConvert(b, f, "slot", akind, in)
+			emitScalarConvert(b, f, g.floatOwner(f), "slot", akind, in)
 		}
 		fmt.Fprintf(b, "%sif ok { %s = %s::%s(slot); } else { %s = %s::None; }\n", in, field, un.Name, rustVariant(v.Name), field, un.Name)
 	}
@@ -1098,7 +1098,7 @@ func (g *gen) emitElementReadWithKind(b *strings.Builder, f *ir.Field, field, bo
 		fmt.Fprintf(b, "%s%s.push(raw as u8);\n", ind, field)
 	default:
 		fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, %s, %s) else { report.malformed = true; break; };\n", ind, scalarReadFn(f), bound, ekVar)
-		emitScalarConvert(b, f, "let e", ekVar, ind)
+		emitScalarConvert(b, f, g.floatOwner(f), "let e", ekVar, ind)
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	}
 }

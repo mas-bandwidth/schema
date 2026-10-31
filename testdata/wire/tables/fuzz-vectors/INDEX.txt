@@ -178,6 +178,23 @@ keyed_slot_rewrite_discards_retained mapdemo Depth testdata/wire/tables/fuzz-vec
 # gate is internal/codegen/jstable's TestBoolByteAboveOneIsMalformedJavaScript.
 bool_byte_above_one tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin
 
+# A RETAINING SAVE ELIDES A FIELD AT ITS DECLARED DEFAULT, not at zero (§4.2,
+# §6.6). graph_tree with its root `name` reference moved to an id Scene does not
+# declare: the load retains that one field, and the retaining save then wrote
+# `meta { build = 1 }`, the declared default the engine elides, because the Java
+# retaining writer tested scalar leaves against zero. Found by the Java leg's
+# retention arm at enumerated pass reference #1 of graph_tree, run seed 1.
+retain_declared_default graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_declared_default.bin
+
+# A MAP HEADER WITH A FOREIGN ELEMENT KIND COUNTS THE MISMATCH even when its
+# count is spelled past the map's own L (§2.8, §4). list_of_maps with a squad's
+# map cut to L = 2 over element kind 14 and a count byte that continues: the
+# engine reads the count against the enclosing body, as for every bounded
+# collection, and counts one kind_mismatch; the Java leg read it inside L, failed
+# the spelling, and counted none. Found by the Java leg's random pass #5292 of
+# list_of_maps, run seed 24845619678.
+map_foreign_kind_count_past_body listdemo Army testdata/wire/tables/fuzz-vectors/map_foreign_kind_count_past_body.bin
+
 # AN ARM'S ARRAY HEADER IS READ INSIDE THE ARM'S L (§3, the arm payload table).
 # ToolMessage's body arrives as the spans arm with L = 4: element kind 2 (an i8,
 # which widens into the declared i32) and a count whose LEB128 runs past the

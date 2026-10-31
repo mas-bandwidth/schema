@@ -95,7 +95,8 @@ def fixture(path:string) -> string:
 // reference leg's driver reads (§6.5), and Save it (§3). An instance line is
 // `instance <name> <unit> <root> <wire> [no-text]`. A graph that names one
 // blob from two slots is refused by every writer (§2.5), so that case is a
-// named absence, as the C and C# legs answer it; any other refusal fails.
+// named absence carrying the refusal's name, as the Go writer names it
+// (the manifest's go-refusal= and refused-by=); any other refusal fails.
 def surface_wire(text:string):
     for(rows(text, "instance")) f:
         let rep = schema_rt.LoadReport {}
@@ -103,7 +104,7 @@ def surface_wire(text:string):
         assert rec
         let out, why = schema_rt.save_reasoned(rec)
         if why == "blob_shared":
-            print(f[1] + " absent")
+            print(f[1] + " absent blob_shared")
         else:
             assert why == ""
             say(f[1], out)

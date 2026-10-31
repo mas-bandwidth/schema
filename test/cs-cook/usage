@@ -1,0 +1,99 @@
+#!/bin/sh
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, C# side.
+#
+# The C# cook example in docs/USAGE.md (between the cs-table-usage markers) is
+# not a sketch beside the code: this gate pulls the fragment out of the page,
+# hoists its using lines, wraps the rest in a method that takes the page's
+# `pointer` and `length` and supplies the one helper the page leaves to the
+# caller (`LoadFromWire`, which fails the gate: the fixture must open), generates
+# the `tables/pointers` unit afresh beside it, and runs it over the Scene cook
+# fixture under the pinned SDK. The day the emitted surface moves, the page goes
+# red with it.
+#
+#   usage <dotnet> [control]     (run from the repository root)
+#
+# `control` is the gate's negative control: the same run against a generated
+# unit with the page's entry point moved (SceneCook.Open renamed, as an emitter
+# that moved it would leave it), which must fail to compile and name the symbol.
+# A gate that stays green then is not compiling the page against generated code.
+set -eu
+
+dotnet=${1:-dotnet}
+mode=${2:-gate}
+out=build/cs-usage
+[ "$mode" = control ] && out=build/cs-usage-nc
+cook=build/cook-open/Scene.cook
+
+rm -rf "$out"
+mkdir -p "$out/generated"
+./bin/schema generate --lang cs --out "$out/generated" tables/pointers >/dev/null
+
+sed -n '/<!-- cs-table-usage -->/,/<!-- \/cs-table-usage -->/p' docs/USAGE.md \
+    | sed '1,2d' | sed '$d' | sed '$d' > "$out/fragment.cs"
+grep -q 'SceneCook.Open' "$out/fragment.cs" || \
+    { echo "MISSING: docs/USAGE.md carries no cs-table-usage example" >&2; exit 1; }
+
+{
+    echo 'using System;'
+    echo 'using System.IO;'
+    echo 'using System.Text;'
+    echo 'using System.Runtime.InteropServices;'
+    grep '^using ' "$out/fragment.cs"
+    echo ''
+    echo 'static unsafe class Usage'
+    echo '{'
+    echo '    static int LoadFromWire() { throw new InvalidOperationException("docs/USAGE.md C# cook example: the Scene cook did not open"); }'
+    echo '    static int Example(IntPtr pointer, long length)'
+    echo '    {'
+    grep -v '^using ' "$out/fragment.cs" | sed 's/^/        /'
+    echo '        return 1;'
+    echo '    }'
+    echo '    static int Main(string[] args)'
+    echo '    {'
+    echo '        byte[] bytes = File.ReadAllBytes(args[0]);'
+    echo '        void* region = NativeMemory.AlignedAlloc((nuint)bytes.Length, 4096);'
+    echo '        try { bytes.CopyTo(new Span<byte>(region, bytes.Length)); Example((IntPtr)region, bytes.Length); }'
+    echo '        finally { NativeMemory.AlignedFree(region); }'
+    echo '        Console.WriteLine("usage: docs/USAGE.md C# cook example compiled, opened the Scene cook and walked its chain");'
+    echo '        return 0;'
+    echo '    }'
+    echo '}'
+} > "$out/Usage.cs"
+
+cat > "$out/usage.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings><Nullable>annotations</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Usage.cs" />
+    <Compile Include="generated/*Cook.cs" />
+    <Compile Include="generated/*Refuse.cs" />
+    <Compile Include="generated/*Block.cs" />
+  </ItemGroup>
+</Project>
+PROJECT
+
+if [ "$mode" = control ]; then
+    anchor='public static bool Open(out SceneCook cook, IntPtr pointer, long length)'
+    n=$(cat "$out"/generated/*Cook.cs | grep -cF "$anchor" || true)
+    [ "$n" = 1 ] || { echo "control anchor matched $n times, want exactly 1" >&2; exit 1; }
+    for f in "$out"/generated/*Cook.cs; do
+        sed 's/public static bool Open(out SceneCook cook, IntPtr pointer, long length)/public static bool OpenMoved(out SceneCook cook, IntPtr pointer, long length)/' "$f" > "$f.tmp"
+        mv "$f.tmp" "$f"
+    done
+    if "$dotnet" build "$out/usage.csproj" -v q --nologo > "$out/log" 2>&1; then
+        cat "$out/log"
+        echo "NEGATIVE CONTROL FAILED: the page compiled against a unit with SceneCook.Open moved" >&2
+        exit 1
+    fi
+    grep -q "Open" "$out/log" || { cat "$out/log"; exit 1; }
+    grep -m1 "error CS" "$out/log"
+    echo "negative control: moving SceneCook.Open out from under docs/USAGE.md turns tables-cs-usage red"
+    exit 0
+fi
+
+"$dotnet" build "$out/usage.csproj" -v q --nologo > "$out/build.log" 2>&1 || { cat "$out/build.log"; exit 1; }
+"$dotnet" "$out/bin/Debug/net10.0/usage.dll" "$cook"

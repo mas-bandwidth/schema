@@ -43,6 +43,11 @@ func TestUnionArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, unionArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
+		if target == "goose" {
+			files, err := c.Generate(u, target, Options{})
+			gooseCarriesTableWire(t, files, err)
+			continue
+		}
 		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "js" || target == "rust" || target == "java" || target == "lobster" || target == "squirrel" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {

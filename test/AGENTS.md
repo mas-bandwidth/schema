@@ -36,6 +36,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `go-ludicrous/` | Go int128 tests | `make test-go` | `make test-go` |
 | `go-tables/` | Go table tests | `make test-go` | `make test-go` |
 | `goose/` | Goose packet tests | `make test-goose` | `make test-goose` |
+| `goose-hostile/` | Goose hostile-corpus runner | `make schema-goose-runs-hostile-corpus` | `make schema-goose-runs-hostile-corpus` |
 | `goose-ludicrous/` | Goose int128 tests | `make test-goose` | `make test-goose` |
 | `guard/` | C++ include-guard test | `./build/schema_test_guard` | `./build/schema_test_guard` |
 | `java/` | Java packet tests | `make test-java` | `make test-java` |

@@ -169,7 +169,7 @@ instance blob_empty           blobdemo    Catalog     testdata/wire/tables/blob_
 instance blob_large           blobdemo    Catalog     testdata/wire/tables/blob_large.bin
 # The Go wire writer names its §2.5 refusal for this instance, and so does every
 # port refused-by= lists; the reference still writes the bytes (§2.5).
-instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared refused-by=js,dart,lua,luau
+instance blob_shared          blobdemo    Catalog     testdata/wire/tables/blob_shared.bin  no-text go-refusal=blob_shared refused-by=js,dart,lua,luau,lobster
 # THE STRING TERMINATOR, at the two lengths that can see it (§6.3): a *string
 # node carries one zero byte after its data, and the node's extent is rounded
 # to the arena's alignment like every node's. At a length that is not a
@@ -184,13 +184,14 @@ instance blob_str16           blobdemo    Catalog     testdata/wire/tables/blob_
 # blob_shared_string holds ONE *string node named from two map slots. A blob
 # belongs to one slot (§2.5), so every writer refuses it by name: the Go
 # writer's MeasureReason names it (go-refusal=), and Lua's Save, Measure and
-# message writer answer the same name (refused-by=lua); a port that names the
+# message writer answer the same name (refused-by=lua), and so does Lobster's
+# Save (refused-by=lobster); a port that names the
 # same refusal is counted as that refusal, and every other port is held to the
 # committed bytes, as the reference is. Both rows are `no-text`: a blob's text
 # is a string with no first key to carry `&node`, so a shared blob has no
 # spelling (§16.7).
 instance blob_equal_bytes      blobdemo    Catalog     testdata/wire/tables/blob_equal_bytes.bin  no-text
-instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text go-refusal=blob_shared refused-by=lua
+instance blob_shared_string    mapdemo     Docs        testdata/wire/tables/blob_shared_string.bin no-text go-refusal=blob_shared refused-by=lua,lobster
 
 # WIDE TEXT, kind 33 (§3). wide_empty is the ELISION: wide text takes no
 # specified default (SPEC.md §4.12), so an empty wstring writes no line at all.
@@ -710,9 +711,9 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # str-illformed-at-bound: the ill-formed 0xFF byte is REFUSED BY NAME at the
 # string site, before any clamp (§16.3): it does not spell a code point, so
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
-# HELD FIRST IN GO (§16.3): Go, C, Rust, moo, Lobster, Squirrel, Lua, Luau and Elixir carry the rule,
+# HELD FIRST IN GO (§16.3): Go, C, Rust, Java, moo, Lobster, Squirrel, Lua, Luau, Elixir and Goose carry the rule,
 # every other port keeps the counters it answered before the ruling until its port.
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,rust,moo,lobster,squirrel,lua,luau,elixir uncarried=0,0,0,1,0,false,read
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,rust,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,1,0,false,read
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
@@ -721,13 +722,13 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # false, the report is Malformed, and Reason reads text_holds_zero:
 # <Table>.<field> for the innermost field that held it." A string the read only
 # SKIPS — the value of an unknown key — "stores nothing and is not this event".
-# Held first in Go, carried by C, Rust, Dart, moo, Lobster, Squirrel, Lua and Luau: the two refusals carry the standard's verdict, and every
+# Held first in Go, carried by C, Rust, Dart, Java, moo, Lobster, Squirrel, Lua and Luau: the two refusals carry the standard's verdict, and every
 # other port keeps the counters its reader gives (it stores the zero as text),
 # 0,0,0,0,0,false,read, until its port. The map-key row uses the existing
 # `mapdemo` unit's Text root, whose names field is map[string(8)]string(16);
 # tabledemo's RootConfig has no string-keyed map.
-json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c,rust,dart,moo,lobster,squirrel,lua,luau,elixir uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
 # A duplicate KEY in a map is last-wins and counted (§2.8): listdemo's Army
 # root carries a roster map, so this row exercises the readMap duplicate counter.
 json-hostile list-map-dup-key              listdemo Army          testdata/conformance/tables/json-hostile/list-map-dup-key             0,0,0,0,1,false,read

@@ -67,6 +67,10 @@ func TestWasRowsCarriers(t *testing.T) {
 	c := New()
 	for _, target := range c.Targets() {
 		out, err := c.Generate(u, target, Options{})
+		if target == "goose" {
+			gooseCarriesTableWire(t, out, err)
+			continue
+		}
 		if target == "squirrel" {
 			// docs/SPEC-TABLES.md §5: squirrel carries the three rows. The
 			// unit above also holds a union in a table closure, which the

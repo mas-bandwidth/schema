@@ -767,3 +767,24 @@ pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, clamped: &mut i32
     value.idle_ticks = value.idle_ticks.clamp(0_i32, 15_i32);
 }
 
+/// BenchMixed's finite rule (docs/SPEC-TABLES.md §3.3): the first float holding a
+/// NaN or an infinity, named <Owner>.<field>, or "" when every float is finite.
+pub fn bench_mixed_fixed_finite_body(value: &BenchMixedRow) -> &'static str {
+    if !value.aim_x.is_finite() {
+        return "BenchMixed.aim_x";
+    }
+    if !value.aim_y.is_finite() {
+        return "BenchMixed.aim_y";
+    }
+    if !value.aim_z.is_finite() {
+        return "BenchMixed.aim_z";
+    }
+    if !value.recoil.is_finite() {
+        return "BenchMixed.recoil";
+    }
+    if !value.drift.is_finite() {
+        return "BenchMixed.drift";
+    }
+    ""
+}
+

@@ -641,10 +641,11 @@ jobs:
       # (TestGooseFixedFormAgreesWithTheByteOracle) and its negative control fail
       # rather than skip without the corpus the steps above built. The unit
       # groups' `go test` runs the same packages without the corpus, where
-      # those two skip. Goose's versioning rows are owed (schema#2236).
-      - name: the Goose leg reads the reference's fixed-form bytes
+      # those two skip. `tables-goose-versioning` is §5.7's two columns over
+      # every versioning row (make/goose-versioning.mk).
+      - name: the Goose leg reads the reference's fixed-form bytes, and reads backward over every versioning row
         if: matrix.group == 'versioning'
-        run: make dist-goose test-goose
+        run: make dist-goose test-goose tables-goose-versioning tables-goose-message-form
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
@@ -1420,6 +1421,8 @@ jobs:
             target: tables-c-big-endian-negative-control
           - leg: go
             target: conformance-big-endian
+          - leg: go-control
+            target: conformance-big-endian-negative-control
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2181,6 +2184,19 @@ jobs:
       - name: install the Squirrel pin
         if: matrix.squirrel != ''
         run: make dist-squirrel
+
+      # THE C AND C++ FORMAT GATES' formatter, for a row naming `clang_format`:
+      # clang-format from PyPI at the version make/c.mk's CLANG_FORMAT_PIN
+      # names, as ci-fast's C and C++ legs install it.
+      - name: the pinned clang-format
+        if: matrix.clang_format != ''
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          python3 -m venv "$RUNNER_TEMP/clang-format"
+          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
       # The compiler and the generated tree ONCE, in parallel, before any
       # control runs. Every control in the group hangs off these two, and

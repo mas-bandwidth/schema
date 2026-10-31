@@ -154,7 +154,7 @@ func TestCsCarriesBlobs(t *testing.T) {
 		carry = "c, cpp, cs, dart, elixir, go, js, lobster, lua, luau, rust and squirrel"
 		wants = append(wants, "--lang squirrel")
 	}
-	wants = append(wants, "*bytes and *string are "+carry+" only today")
+	wants = append(wants, gooseLegSpelled("*bytes and *string are "+carry+" only today"))
 	for _, want := range wants {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("blob-carrier refusal does not name %q: %v", want, err)

@@ -27,10 +27,12 @@
 set -e
 
 if [ "$2" = "list" ]; then
-    # the WIRE-CARRYING surfaces are ABSENT while the Go port writes the
-    # wire's previous form (docs/SPEC-TABLES.md §3, schema#511)
-    echo cook-foreign
-    echo block-foreign
+    # every byte-order-NEUTRAL surface: the wire and its message and framing
+    # forms, the read report, retention, both directions of the text form,
+    # and the two foreign refusals
+    for surface in wire message report framing retain retain-save json-read json-write json-hostile cook-foreign block-foreign; do
+        echo "$surface"
+    done
     exit 0
 fi
 

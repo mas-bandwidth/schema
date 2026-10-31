@@ -583,7 +583,7 @@ func t10OptionalArraysRow(t *testing.T) {
 		"optional-arrays: the present byte is written")
 	t02Has(t, n, "if (value.OptionalPresent) { int count_optional = value.OptionalCount;",
 		"optional-arrays: the count rides behind the present byte")
-	t02Has(t, n, "MemoryMarshal.AsBytes(value.Optional.AsSpan(0, Math.Min(value.Optional.Length, count_optional))).CopyTo(b.Slice(5));",
+	t02Has(t, n, "TableFixedWire.WriteLittle<Cell>(value.Optional.AsSpan(0, Math.Min(value.Optional.Length, count_optional)), b.Slice(5));",
 		"optional-arrays: the elements ride only when present")
 	t02Has(t, n, "BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1), count_optional);",
 		"optional-arrays: the count is written behind the present byte, bounded by the declared count")
@@ -607,7 +607,7 @@ func t10OptionalArraysRow(t *testing.T) {
 		"optional-arrays: the present byte is read into the present bool")
 	t02Has(t, slots, "new TableFixedSlot<T>(setRaw: (t, v) => t.OptionalCount = (int)v, reset: (t) => { t.OptionalCount = 0; }),",
 		"optional-arrays: the count is read behind the present byte")
-	t02Has(t, slots, "MemoryMarshal.Cast<byte, Cell>(b.Slice(0, Math.Min(b.Length, t.Optional.Length * 1))).CopyTo(t.Optional)",
+	t02Has(t, slots, "TableFixedWire.ReadLittle<Cell>(b.Slice(0, Math.Min(b.Length, t.Optional.Length * 1)), t.Optional)",
 		"optional-arrays: the elements are read back into the wrapper's buffer")
 }
 

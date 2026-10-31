@@ -61,13 +61,14 @@ func parseSaved(t *testing.T, out []byte) map[string]savedRow {
 	return rows
 }
 
-// TestSquirrelTableSaveRoundTripsEveryInstance loads every instance row of
-// testdata/conformance/tables/MANIFEST.txt whose unit the target generates,
-// saves it, and compares the saved bytes with the same wire file byte for
-// byte (docs/SPEC-TABLES.md §3, §3.1). Measure equals the saved length. A
-// unit the table surface refuses is named and its rows are not compared.
-func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
-	t.Parallel()
+// saveRoundTrip loads every instance row of testdata/conformance/tables/
+// MANIFEST.txt whose unit the target generates, saves it, and names every row
+// whose saved bytes are not the same wire file byte for byte, or whose
+// measure is not the saved length (docs/SPEC-TABLES.md §3, §3.1). patch, when
+// not nil, replaces emitted runtime files by name (a control's scratch copy).
+// A unit the table surface refuses is named and its rows are not compared.
+func saveRoundTrip(t *testing.T, patch map[string]string) (red map[string]string, compared, total int, refused []string) {
+	t.Helper()
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +89,6 @@ func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
 	inputs := map[string][]byte{}
 	mods := map[string]string{}
 	refusedSet := map[string]bool{}
-	var refused []string
 	for _, key := range instanceUnitOrder(instances) {
 		unit, ok := paths[key]
 		if !ok {
@@ -121,8 +121,10 @@ func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
 		for name, data := range tables {
 			writeFile(t, filepath.Join(out, name), data)
 		}
-		mod := squirreltable.ModuleName(u)
-		mods[key] = mod
+		for name, data := range patch {
+			writeFile(t, filepath.Join(out, name), []byte(data))
+		}
+		mods[key] = squirreltable.ModuleName(u)
 	}
 	for _, in := range instances {
 		if refusedSet[in.unit] {
@@ -138,14 +140,15 @@ func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(p.String()))
 
 	got := parseSaved(t, sqrun.Run(t, dir, "main.nut", inputs))
-	compared := 0
+	red = map[string]string{}
 	for _, in := range instances {
 		if refusedSet[in.unit] {
 			continue
 		}
+		total++
 		row, ok := got[in.name]
 		if !ok {
-			t.Errorf("%s: the save probe printed no row", in.name)
+			red[in.name] = "the save probe printed no row"
 			continue
 		}
 		if in.goRefusal != "" {
@@ -153,48 +156,71 @@ func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
 			// §2.5): the save answers null and nothing is compared. The Go engine
 			// refuses the same instance by the same name.
 			if row.hex != "" || row.measure != -1 {
-				t.Errorf("%s: a writer-refused value saved %d bytes", in.name, row.measure)
+				red[in.name] = fmt.Sprintf("a writer-refused value saved %d bytes", row.measure)
+				continue
 			}
 			compared++
-			t.Logf("refused %s (%s)", in.name, in.goRefusal)
 			continue
 		}
-		want, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(in.wire)))
-		if err != nil {
-			t.Fatal(err)
-		}
+		want := inputs[in.name]
 		if row.hex == "" {
-			t.Errorf("%s: save answered null", in.name)
+			red[in.name] = "save answered null"
 			continue
 		}
 		have, err := hex.DecodeString(row.hex)
 		if err != nil {
-			t.Errorf("%s: saved bytes are not hex: %v", in.name, err)
+			red[in.name] = fmt.Sprintf("saved bytes are not hex: %v", err)
 			continue
 		}
 		if row.measure != len(have) {
-			t.Errorf("%s: measure %d, saved %d bytes", in.name, row.measure, len(have))
+			red[in.name] = fmt.Sprintf("measure %d, saved %d bytes", row.measure, len(have))
+			continue
 		}
-		if len(have) != len(want) || string(have) != string(want) {
-			t.Errorf("%s: the save wrote %d bytes, the wire file holds %d\n got %x\nwant %x", in.name, len(have), len(want), have, want)
+		if string(have) != string(want) {
+			red[in.name] = fmt.Sprintf("the save wrote %d bytes, the wire file holds %d\n got %x\nwant %x", len(have), len(want), have, want)
 			continue
 		}
 		compared++
-		t.Logf("compared %s (%d bytes)", in.name, len(have))
+	}
+	return red, compared, total, refused
+}
+
+// TestSquirrelTableSaveRoundTripsEveryInstance holds every instance row the
+// target generates to its wire file byte for byte through load then save
+// (docs/SPEC-TABLES.md §3, §3.1); measure equals the saved length.
+func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
+	t.Parallel()
+	red, compared, total, refused := saveRoundTrip(t, nil)
+	for name, why := range red {
+		t.Errorf("%s: %s", name, why)
 	}
 	for _, r := range refused {
 		t.Logf("refused %s", r)
 	}
-	refusedRows := 0
-	for _, in := range instances {
-		if refusedSet[in.unit] {
-			refusedRows++
-		}
+	if compared == 0 || compared != total {
+		t.Errorf("compared %d of %d instance rows; %d refused units", compared, total, len(refused))
 	}
-	if compared == 0 || compared != len(instances)-refusedRows {
-		t.Errorf("compared %d of %d instance rows; %d rows in %d refused units", compared, len(instances), refusedRows, len(refused))
+	t.Logf("compared %d of %d instance rows; %d refused units", compared, total, len(refused))
+}
+
+// TestSquirrelTableSaveIdentityNegativeControl is M6's control
+// (docs/PORTING.md, the flat node table and its identity map;
+// docs/SPEC-TABLES.md §3.1). A scratch copy of the save runtime forgets a node
+// it already numbered (one anchor, matched exactly once), so a node two
+// pointers share is written twice. The round trip must go red on
+// graph_shared, the corpus row whose node two pointers share.
+func TestSquirrelTableSaveIdentityNegativeControl(t *testing.T) {
+	t.Parallel()
+	const anchor = "    if (found >= 0) continue;\n"
+	runtime := string(squirreltable.Runtime()["schema_table_save.nut"])
+	if n := strings.Count(runtime, anchor); n != 1 {
+		t.Fatalf("the control's anchor appears %d times in the save runtime, want exactly once", n)
 	}
-	t.Logf("compared %d of %d instance rows; %d rows in %d refused units", compared, len(instances), refusedRows, len(refused))
+	red, _, _, _ := saveRoundTrip(t, map[string]string{"schema_table_save.nut": strings.Replace(runtime, anchor, "", 1)})
+	if _, ok := red["graph_shared"]; !ok {
+		t.Fatalf("with the identity map forgetting, graph_shared still round-trips (%d rows red): the gate cannot see a shared node written twice", len(red))
+	}
+	t.Logf("with the identity map forgetting, %d rows go red, graph_shared among them", len(red))
 }
 
 func instanceUnitOrder(instances []instanceRow) []string {
