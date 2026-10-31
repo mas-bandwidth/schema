@@ -4529,9 +4529,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7760,11 +7766,11 @@ inline void TableReset( Gate & value ) { GateReset( value ); }
 // Only is a pointer target.
 inline const Only * OnlyAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Only *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Only *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Only * OnlyAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Only *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Only *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Only * OnlyAt( const TableRegionCtx &, const TableRef & ref ) { return OnlyAt( ref ); }
 inline const Only * OnlyAt( const TableArenaCtx & ctx, const TableRef & ref )

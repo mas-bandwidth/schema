@@ -4571,9 +4571,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -8618,11 +8624,11 @@ inline void TableReset( Mixed & value ) { MixedReset( value ); }
 // LogEntry is a pointer target.
 inline const LogEntry * LogEntryAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const LogEntry *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const LogEntry *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline LogEntry * LogEntryAt( TableRef & ref )
 {
-    return ref.value != 0 ? (LogEntry *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (LogEntry *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const LogEntry * LogEntryAt( const TableRegionCtx &, const TableRef & ref ) { return LogEntryAt( ref ); }
 inline const LogEntry * LogEntryAt( const TableArenaCtx & ctx, const TableRef & ref )
