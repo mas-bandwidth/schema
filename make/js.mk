@@ -1415,3 +1415,17 @@ tables-js-json-walk-negative-control: tables-js-json-walk-extract
 	@echo "JavaScript json-walk negative control: a specialised walker in one unit turns the gate red"
 
 test-js: tables-js-json-walk tables-js-json-walk-negative-control
+
+# M13 (docs/PORTING.md, "Descriptors are constants"): the variable codec and
+# union descriptors are frozen whole once TableVariableLink has filled them,
+# and the exported <Name>TableType, <Package>UnitRegistry and TableRetainKnown
+# are frozen as they are made. TestJavaScriptDescriptorsAreConstants walks
+# every descriptor reachable from them and requires each frozen, and a write
+# into one to throw; its reversed witness drops the freeze and must find one
+# open. SCHEMA_REQUIRE_CORPUS=1 makes a missing node a FAILURE, not a skip.
+.PHONY: tables-js-descriptors
+tables-js-descriptors:
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestJavaScriptDescriptorsAreConstants$$'
+	@echo 'tables JS descriptors: every variable descriptor is frozen after the link (M13)'
+
+test-js: tables-js-descriptors
