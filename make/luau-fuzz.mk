@@ -35,8 +35,9 @@ LUAU_WIREFUZZ_DRIVER ?= test/conformance/luau/wirefuzz-driver
 
 LUAU_WIRE_FUZZ_ABSENT_COUNT := 9
 LUAU_WIRE_FUZZ_ABSENT_PIN   := test/conformance/luau/wire-fuzz-absent.txt
-LUAU_WIRE_FUZZ_LOG          := build/wire-fuzz/luau.log
-LUAU_WIRE_FUZZ_ABSENT       := build/wire-fuzz/luau.absent
+LUAU_WIRE_FUZZ_LOG          ?= build/wire-fuzz/luau.log
+LUAU_WIRE_FUZZ_ABSENT       ?= build/wire-fuzz/luau.absent
+LUAU_WIRE_FUZZ_FAILED       ?= build/wire-fuzz/failed-luau.bin
 
 # build/luaufuzzhost/luaufuzzhost is built by make/schema-luau-nightly-fuzz.mk;
 # its path is spelled out because that file is included after this one.
@@ -46,7 +47,7 @@ tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau build/lu
 	@rm -f $(LUAU_WIRE_FUZZ_ABSENT)
 	@LUAUFUZZ_NOTE=$(CURDIR)/$(LUAU_WIRE_FUZZ_ABSENT) \
 		./build/conformance-harness wire-fuzz --driver "$(LUAU_WIREFUZZ_DRIVER)" \
-		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed build/wire-fuzz/failed-luau.bin \
+		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed $(LUAU_WIRE_FUZZ_FAILED) \
 		> $(LUAU_WIRE_FUZZ_LOG) 2>&1; \
 		status=$$?; cat $(LUAU_WIRE_FUZZ_LOG); \
 		if [ ! -f $(LUAU_WIRE_FUZZ_ABSENT) ]; then \

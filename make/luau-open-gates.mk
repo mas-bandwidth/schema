@@ -118,10 +118,12 @@ tables-luau-release-negative-control: toolchain-luau build/conformance-harness b
 	sh test/conformance/luau/wire-fuzz-negative-control
 	@if $(MAKE) --no-print-directory tables-luau-release \
 		LUAU_WIREFUZZ_DRIVER="build/luaufuzzhost/luaufuzzhost build/luau-wire-fuzz-nc/test/conformance/luau/wirefuzz.luau" \
+		LUAU_WIRE_FUZZ_LOG=build/wire-fuzz/luau-release-nc.log LUAU_WIRE_FUZZ_ABSENT=build/wire-fuzz/luau-release-nc.absent \
+		LUAU_WIRE_FUZZ_FAILED=build/wire-fuzz/luau-release-nc.failed.bin \
 		> build/luau-release-nc.log 2>&1; then \
 		cat build/luau-release-nc.log; \
 		echo "NEGATIVE CONTROL FAILED: the release gate stayed green over a reader that does not count a string frame past its body"; exit 1; fi
-	@grep -q 'the report differs' build/wire-fuzz/luau.log || { cat build/luau-release-nc.log; \
+	@grep -q 'the report differs' build/wire-fuzz/luau-release-nc.log || { cat build/luau-release-nc.log; \
 		echo "NEGATIVE CONTROL FAILED: the release gate went red, but not on the report the plant moves"; exit 1; }
 	@echo "luau release negative control: the planted reader turns the release gate RED on the report"
 
