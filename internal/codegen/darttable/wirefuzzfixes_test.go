@@ -80,7 +80,11 @@ func TestWireFuzzFindingsAreSpelledByTheEmitter(t *testing.T) {
 	guardedLoad := dartFunc(t, g1, "Guarded guardedWireLoad(")
 	rootLoad := dartFunc(t, tabledemo, "RootConfig rootConfigWireLoad(")
 	loadoutLoad := dartFunc(t, tabledemo, "void loadoutConfigWireLoadBody(")
-	toolFixed := messagedemo[strings.Index(messagedemo, "bool _toolMessageMarksFixed("):]
+	toolAt := strings.Index(messagedemo, "bool _toolMessageMarksFixed(")
+	if toolAt < 0 {
+		t.Fatal("messagedemo has no _toolMessageMarksFixed")
+	}
+	toolFixed := messagedemo[toolAt:]
 	toolFixed = toolFixed[:strings.Index(toolFixed, "\n}\n")+3]
 
 	rules := []wireRule{

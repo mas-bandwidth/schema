@@ -729,14 +729,8 @@ func (g *wireGen) emitIntClamp(f *ir.Field, value, p, ind string) {
 	}
 }
 
-// emitGetElem reads one array element at the DECLARED element kind ek and
-// appends it to out (§3); on framing damage it counts malformed and returns
-// false out of the enclosing arm reader.
-func (g *wireGen) emitGetElem(f *ir.Field, ek int, out, p, ind string) {
-	g.emitGetElemBad(f, ek, out, p, ind, fmt.Sprintf("{ %s.report.malformed = true; return false; }", p))
-}
-
-// emitGetElemBad is emitGetElem with the statement framing damage runs. An ARM
+// emitGetElemBad reads one array element at the DECLARED element kind ek and
+// appends it to out (§3); bad is the statement framing damage runs. An ARM
 // reader returns false (the union reads None, §3); a FIELD's array stops the
 // loop and keeps the prefix it decoded (§4, internal/tablewire arrayBody).
 func (g *wireGen) emitGetElemBad(f *ir.Field, ek int, out, p, ind, bad string) {
@@ -823,7 +817,7 @@ func (g *wireGen) emitElemInt(f *ir.Field, signedExpr string, signed bool, out, 
 	if signed {
 		expr = signedExpr
 	}
-	if !f.HasIntRange && !(f.Type.Kind == ir.TBits && f.Type.Width < 64) {
+	if !f.HasIntRange && (f.Type.Kind != ir.TBits || f.Type.Width >= 64) {
 		g.pf("%s%s.add(%s);\n", ind, out, expr)
 		return
 	}

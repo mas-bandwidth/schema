@@ -45,7 +45,7 @@ import '../../build/dart-hostile/generated/graphdemo/GraphdemoWire.dart' as grap
 import '../../build/dart-hostile/generated/scalardemo/ScalardemoWire.dart' as scalardemo;
 import '../../build/dart-hostile/generated/streamdemo/StreamdemoWire.dart' as streamdemo;
 import '../../build/dart-hostile/generated/mapdemo/MapdemoWire.dart' as mapdemo;
-import '../../build/dart-hostile/generated/probe/ProbeWire.dart' as probe;
+import '../../build/dart-hostile/generated/probe/probeWire.dart' as probe;
 
 // ---- the answer a case gets ----
 
