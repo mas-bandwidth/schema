@@ -16168,8 +16168,9 @@ the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`. The C walk carries it too (`table_json_scan_unit`; C's report
-has no `Reason` text, so it answers `Malformed`); every other backend keeps its
-behaviour until its port.
+has no `Reason` text, so it answers `Malformed`), and so does the Rust reader
+(`Jr::read_string` under `<root>_from_json_bytes`, answering `Malformed`); every
+other backend keeps its behaviour until its port.
 **The refusal comes BEFORE any clamp**: an ill-formed byte at or past a
 field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
@@ -16256,8 +16257,8 @@ pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored` and `scanWString`), which refuses with the same `Malformed` and
 the same `Reason`, so a pack never encodes a wire its own decode calls
 `malformed`. The C walk carries it too (`table_json_scan_text`, and the wide
-scan), answering `Malformed`; every other backend keeps its behaviour until its
-port.
+scan), answering `Malformed`, and so does the Rust reader (`Jr::read_text`);
+every other backend keeps its behaviour until its port.
 
 ### 16.4 The key: `json`
 

@@ -752,7 +752,7 @@ test-rust: tables-rust-view
 # the all-roots driver; each must report 0 divergences. The roster roots the
 # harness counts absent are the ones no Rust codec exists for: fixed-class
 # roots' form-1 files, form-2 message entries, and units the generator refuses.
-.PHONY: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+.PHONY: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-rust-json-hostile-negative-control
 build/tables-generated-rust/tblrt1/src/lib.rs: bin/schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-rust/tblrt1/src
 	./bin/schema generate --lang rust --out build/tables-generated-rust/tblrt1/src test/tables/RT1.schema
@@ -798,7 +798,40 @@ tables-rust-retain-negative-control:
 	@grep -m1 'retain=true): the leg reports' build/rust-retain-control/log
 	@echo "rust retention negative control: turning retention off turns the every-root gate RED on it"
 
-test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control
+# THE JSON-HOSTILE NEGATIVE CONTROL (docs/SPEC-TABLES.md §16.3): the Rust JSON
+# reader's two refusals, text_holds_zero and string_not_utf8, are planted back
+# to the old reader — a decoded U+0000 never flags the string, and the string's
+# bytes decode lossily to U+FFFD — through a `go test -overlay` of
+# internal/codegen/rusttable/variabletext.go, so no tracked file is edited.
+# TestJsonHostileTextRefusalsRust must go red on EXACTLY its fifteen refusal
+# rows, and its five rows that are not the event (a skipped zero, a zero object
+# key, a `\u0001`, a well-formed clamp, a lone surrogate) must stay green: a
+# control that reddened those would localise nothing.
+tables-rust-json-hostile-negative-control:
+	@rm -rf build/rust-json-hostile-control && mkdir -p build/rust-json-hostile-control
+	@sed -e 's|self.zero [|]= cp == 0;|/* SABOTAGED */|' \
+		-e 's|match String::from_utf8(out) {|match Ok::<String, ()>(String::from_utf8_lossy(\&out).into_owned()) { /* SABOTAGED */|' \
+		internal/codegen/rusttable/variabletext.go > build/rust-json-hostile-control/variabletext.go.txt
+	@test "$$(grep -c SABOTAGED build/rust-json-hostile-control/variabletext.go.txt)" = 2 || \
+		{ echo "NEGATIVE CONTROL: the json-hostile sabotage did not apply twice"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variabletext.go":"%s/build/rust-json-hostile-control/variabletext.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/rust-json-hostile-control/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 300s \
+			-overlay=build/rust-json-hostile-control/overlay.json \
+			-run TestJsonHostileTextRefusalsRust ./internal/codegen/rusttable/ > build/rust-json-hostile-control/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
+		cat build/rust-json-hostile-control/log; exit 1; \
+	fi
+	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = 15 || \
+		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the fifteen refusal rows"; \
+		  cat build/rust-json-hostile-control/log; exit 1; }
+	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound|lone-lead-then-escape):' build/rust-json-hostile-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: a row that is not the event went red"; exit 1; }
+	@grep -m1 'MISMATCH illformed-at-bound' build/rust-json-hostile-control/log
+	@grep -m1 'MISMATCH zero-map-key:' build/rust-json-hostile-control/log
+	@echo "rust json-hostile negative control: the old reader turns exactly the fifteen §16.3 refusal rows RED"
+
+test-rust: tables-rust-wire-fuzz-all tables-rust-retain-negative-control tables-rust-json-hostile-negative-control
 
 # THE CARDS UNIT'S RUST LEG (docs/SPEC-TABLES.md §2). These targets are the
 # Rust side of the cards wire-fuzz gate: they mirror the Go leg's
