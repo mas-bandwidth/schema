@@ -29,7 +29,7 @@ const (
 	// the fixed-point + 128-bit unit: all nine targets, pinned like the main
 	// corpus (the serialize ports all carry the phase-1 surface).
 	corpus128Dir = "../../examples128"
-	goldenDir = "../../testdata/golden"
+	goldenDir    = "../../testdata/golden"
 )
 
 // schema is the driver every test here runs on — the public API, with the
@@ -273,7 +273,6 @@ func TestGoldenLudicrousSource(t *testing.T) {
 		pinDir(t, filepath.Join(goldenDir, "ludicrous", target), generate(t, u, target, nil))
 	}
 }
-
 
 // pinDir compares (or, under -update, rewrites) one directory of goldens.
 func pinDir(t *testing.T, dir string, files map[string][]byte) {

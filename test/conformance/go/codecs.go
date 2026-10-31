@@ -664,7 +664,6 @@ var codecTable = []codec{
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == messagedemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
 
-
 	row("scalars", "SimState", scalardemo.SimStateReset, scalardemo.SimStateLoadTolerant, scalardemo.SimStateMeasure, scalardemo.SimStateSave, scalardemo.SimStateFromJSONTolerant, scalardemo.SimStateToJSONMeasure, scalardemo.SimStateToJSON, scalardemo.SimStateCookMeasure, scalardemo.SimStateCookFrom, func(r *scalardemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == scalardemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
