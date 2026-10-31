@@ -166,6 +166,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedWriteBody(st)
 	}
+	/* THE FINITE PASS, in the same post-order: the save's pre-pass and the
+	   read's first pass over the storage a record landed in (§3.3). */
+	for _, st := range own {
+		g.emitFixedFiniteBodyFn(st)
+	}
 	/* THE READ-SIDE BOUNDS, in the same closure order the write bodies take —
 	   post-order, so a nested type's body stands before the call to it. */
 	for _, st := range own {
@@ -648,6 +653,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
+		// §3.3): the whole batch is checked before one byte is written
+		g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
+		g.pf("        if ( !%s( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */\n    }\n", g.sym(st.Name, "fixed_finite_body"))
+	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
 	g.pf("    table_fixed_put64( buffer + kTableFixedHashAt, %s_fixed_hash );\n", n)
@@ -696,6 +707,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t pick;\n")
 	g.pf("    int32_t reserved_at;\n")
 	g.pf("    int32_t census_unknown = 0;\n    int32_t census_kind = 0;\n")
+	if fixedFiniteNeededStruct(st, map[string]bool{}) {
+		g.pf("    int32_t read_clamped, read_widened;\n")
+	}
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
@@ -790,6 +804,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( fill_count > 0 )\n    {\n")
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
 	g.pf("        %s( &defaults );\n    }\n", g.api(st.Name, "reset"))
+	finite := fixedFiniteNeededStruct(st, map[string]bool{})
+	if finite {
+		g.pf("    read_clamped = report->clamped;\n    read_widened = report->widened;\n")
+	}
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        int32_t rec_clamped = report->clamped;\n")
@@ -798,6 +816,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
 	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );\n")
+	if finite {
+		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
+		// FIRST, before the bounds pass, over the storage the run just wrote,
+		// and a NaN or an infinity refuses the whole batch as
+		// non_finite_float, the tolerant read included. Nothing of the batch
+		// is kept: every record this call wrote goes back to its defaults, and
+		// no counter moves.
+		g.pf("        /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the\n")
+		g.pf("           bounds pass: every record this call wrote is reset and no\n")
+		g.pf("           counter moves. */\n")
+		g.pf("        if ( !%s( values + k ) )\n        {\n", g.sym(st.Name, "fixed_finite_body"))
+		g.pf("            int64_t j;\n")
+		g.pf("            for ( j = 0; j <= k; ++j ) { %s( values + j ); }\n", g.api(st.Name, "reset"))
+		g.pf("            report->clamped = read_clamped;\n            report->widened = read_widened;\n")
+		g.pf("            table_non_finite_float( report );\n")
+		g.pf("            return -1;\n        }\n")
+	}
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("           storage it just wrote: the same pass for either plan (§3.4). A\n")

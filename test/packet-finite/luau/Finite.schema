@@ -1,0 +1,22 @@
+// Finite.schema — the packet finite-float rule (SPEC §4.3): every way a bare
+// float reaches the Luau packet wire, at both widths. `aligned` is a float64
+// on a byte boundary, `unaligned` one behind a bool; the lists carry floats as
+// elements, Pair a fixed array, and `quantized` is the compressed float, whose
+// write refuses a non-finite value.
+package packetfinite
+
+type Finite
+{
+    aligned   float64
+    single    float32
+    flag      bool
+    unaligned float64
+    singles   [..4]float32
+    doubles   [..4]float64
+    quantized float32 | min = 0, max = 10, resolution = 0.01
+}
+
+type Pair
+{
+    values [2]float64
+}

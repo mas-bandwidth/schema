@@ -83,6 +83,19 @@ func (g *tableGen) wireDefaultEquals(f *ir.Field, expr string) string {
 		}
 		return fmt.Sprintf("%s_equal( %s, %s )", prefix, expr, g.fieldDefaultExpr(f))
 	}
+	// A PLAIN FLOAT COMPARES BIT PATTERNS, not values (docs/SPEC-TABLES.md
+	// §3.3): under ==, -0 equals +0 and would be elided and read back as +0. A
+	// compressed float keeps ==, because its -0 IS +0 by §3.3's
+	// compressed-float rule, and so does every other kind. The Go oracle is
+	// internal/codegen/gotable's elideDiffers.
+	if !f.HasFloatRange {
+		switch f.Type.Kind {
+		case ir.TFloat32:
+			return fmt.Sprintf("table_float_to_bits( %s ) == table_float_to_bits( %s )", expr, g.fieldDefaultExpr(f))
+		case ir.TFloat64:
+			return fmt.Sprintf("table_double_to_bits( %s ) == table_double_to_bits( %s )", expr, g.fieldDefaultExpr(f))
+		}
+	}
 	return expr + " == " + g.fieldDefaultExpr(f)
 }
 

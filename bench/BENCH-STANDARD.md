@@ -1328,8 +1328,10 @@ comparison costs minutes, not an evening; nothing it prints publishes.
   the #184 redefinition — see §1.3a: the shape grew 20.9x, so the count drops
   10x to keep a measured run above §2.1's 200 ms floor and the leg inside the
   one-minute bound), except where a language still cannot hold that bound:
-  elixir runs 400,000 (the BEAM is ~2 orders behind the native legs). Every
-  count is recorded in the `iters` column as always.
+  elixir runs 400,000 (the BEAM is ~2 orders behind the native legs), and luau
+  runs 12,800 (the interpreter, native codegen off, is ~3 orders behind; its
+  tables leg runs 6,400 against 400,000, `bench/README.md`, "The Luau leg").
+  Every count is recorded in the `iters` column as always.
 - The driver prints **one blended section** — family `gen`, every language's
   schema-GENERATED code, the estate's only benchmark subject since schema#196
   retired family `rt`. **AMENDED 2026-08-31 by §2.9 and the owner's

@@ -45,10 +45,8 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 		fmt.Fprintf(b, "        %s.putLeb(%s.length*2L);for(int i%d=0;i%d<%s.length;i%d++){char unit%d=%s[i%d];%s.put8(unit%d);%s.put8(unit%d>>>8);}\n", w, expr, depth, depth, expr, depth, depth, expr, depth, w, depth, w, depth)
 	case ir.TBytes:
 		fmt.Fprintf(b, "        %s.putLeb(%s.length+1+TableVariable.lebLen(%s.length));%s.put8(6);%s.putLeb(%s.length);%s.putBytes(%s,0,%s.length);\n", w, expr, expr, w, w, expr, w, expr, expr)
-	case ir.TFloat32:
-		fmt.Fprintf(b, "        %s.put32(Float.floatToRawIntBits(%s));\n", w, expr)
-	case ir.TFloat64:
-		fmt.Fprintf(b, "        %s.put64(Double.doubleToRawLongBits(%s));\n", w, expr)
+	case ir.TFloat32, ir.TFloat64:
+		fmt.Fprintf(b, "        %s\n", variableFloatPut(f, w, expr))
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
@@ -106,4 +104,14 @@ func writeVariableRetainedPayload(b *strings.Builder, u *ir.Unit, owner string, 
 		return
 	}
 	writeVariablePayload(b, u, owner, f, expr, w, serial)
+}
+
+// variableFloatPut is a float's write on the variable form: its RAW bits, -0
+// and the subnormals exact, through the writer's finite test, so a NaN or an
+// infinity refuses the save (docs/SPEC-TABLES.md §3.3).
+func variableFloatPut(f *ir.Field, w, expr string) string {
+	if f.Type.Kind == ir.TFloat32 {
+		return w + ".putF32(" + expr + ");"
+	}
+	return w + ".putF64(" + expr + ");"
 }

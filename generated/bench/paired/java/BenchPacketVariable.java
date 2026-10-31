@@ -439,7 +439,11 @@ public final class BenchPacketVariable {
             } else if (id == F_flag) {
                 if (kind == 1) {
                     if (r.has(1)) {
-                        v.flag = r.get8() != 0;
+                        int bv = r.get8();
+                        if (bv > 1) {
+                            report.malformed = true;
+                        }
+                        v.flag = bv != 0;
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -451,7 +455,12 @@ public final class BenchPacketVariable {
             } else if (id == F_x) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.x = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.x");
+                        } else {
+                            v.x = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -463,7 +472,12 @@ public final class BenchPacketVariable {
             } else if (id == F_y) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.y = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.y");
+                        } else {
+                            v.y = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -475,7 +489,12 @@ public final class BenchPacketVariable {
             } else if (id == F_z) {
                 if (kind == 10) {
                     if (r.has(4)) {
-                        v.z = Float.intBitsToFloat(r.get32());
+                        int fbits = r.get32();
+                        if ((fbits & 0x7f800000) == 0x7f800000) {
+                            TableVariable.nonFiniteFloat(report, "BenchPacket.z");
+                        } else {
+                            v.z = Float.intBitsToFloat(fbits);
+                        }
                     } else {
                         report.malformed = true;
                         r.fail = true;
@@ -528,28 +547,26 @@ public final class BenchPacketVariable {
                     if (ar != null) {
                         if (ar.has(2)) {
                             int ek = ar.get8();
-                            if (ek == 6) {
-                                long n = ar.leb();
-                                if (ar.fail) {
-                                } else {
-                                    if (n < 0 || n > 17) {
-                                        n = 17;
-                                        report.clamped++;
-                                    }
-                                    if (ek != 6) {
-                                        report.widened++;
-                                    }
-                                    {
-                                        for (long i = 0; i < n; i++) {
-                                            java.math.BigInteger raw =
-                                                    TableVariable.readInteger(ar, ek);
-                                            if (raw == null) break;
-                                            TableVariable.put(v.blob, (int) i, raw.intValue());
-                                        }
+                            long n = ar.count(r.limit);
+                            if (ar.fail) {
+                            } else if (!(ek == 6)) {
+                                report.kindMismatch++;
+                            } else {
+                                if (n < 0 || n > 17) {
+                                    n = 17;
+                                    report.clamped++;
+                                }
+                                if (ek != 6) {
+                                    report.widened++;
+                                }
+                                {
+                                    for (long i = 0; i < n; i++) {
+                                        java.math.BigInteger raw =
+                                                TableVariable.readInteger(ar, ek);
+                                        if (raw == null) break;
+                                        TableVariable.put(v.blob, (int) i, raw.intValue());
                                     }
                                 }
-                            } else {
-                                report.kindMismatch++;
                             }
                         }
                     }
@@ -642,20 +659,20 @@ public final class BenchPacketVariable {
             w.put8(1);
             w.put8(v.flag ? 1 : 0);
         }
-        if (v.x != 0.0f) {
+        if (Float.floatToRawIntBits(v.x) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_x));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.x));
+            w.putF32(v.x);
         }
-        if (v.y != 0.0f) {
+        if (Float.floatToRawIntBits(v.y) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_y));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.y));
+            w.putF32(v.y);
         }
-        if (v.z != 0.0f) {
+        if (Float.floatToRawIntBits(v.z) != Float.floatToRawIntBits(0.0f)) {
             w.putLeb(w.ref(F_z));
             w.put8(10);
-            w.put32(Float.floatToIntBits(v.z));
+            w.putF32(v.z);
         }
         if (v.big != 0L) {
             w.putLeb(w.ref(F_big));
@@ -730,6 +747,9 @@ public final class BenchPacketVariable {
         }
         w.put8(0);
         w.trailer();
+        if (w.ids.nonFinite) {
+            return null;
+        }
         return java.util.Arrays.copyOf(w.buf, w.off);
     }
 

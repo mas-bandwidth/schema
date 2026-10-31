@@ -1,0 +1,13 @@
+# THE GOOSE PORT'S CARRIED HOSTILE-CORPUS FINDINGS (make/goose-hostile.sh).
+# One row per case the port disagrees with the engine on today: the name, the
+# disagreement exactly as the gate prints it, and the card that owes the fix.
+# A row whose case goes green fails the gate, so a fix removes its row.
+#
+# Both rows are one gap: Goose's load refuses every form byte but 1 with one
+# unnamed refusal (wire_load.goose, load_table), where the engine names a form
+# 2 offered as a file `message_form_as_file` and a form past 2 `newer_form`
+# (docs/SPEC-TABLES.md §3).
+#
+# name	disagreement	owed by
+wire-form-02	the port names refused, the engine names message_form_as_file	schema-goose-table-wire-load
+wire-form-ff	the port names refused, the engine names newer_form	schema-goose-table-wire-load

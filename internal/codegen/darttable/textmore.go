@@ -386,7 +386,7 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
 
 String? _jsonStringBlob(dynamic val, TableTextReport r) {
   if (val == null) return null;
-  if (val is String) return val;
+  if (val is String) return _jsonText(val);
   r.kindMismatch++;
   return null;
 }
@@ -411,7 +411,7 @@ String _jsonWStringField(dynamic val, int bound, TableTextReport r) {
     r.kindMismatch++;
     return '';
   }
-  if (val.length <= bound) return val;
+  if (_jsonText(val).length <= bound) return val;
   var keep = bound;
   if (keep > 0) {
     final u = val.codeUnitAt(keep - 1);

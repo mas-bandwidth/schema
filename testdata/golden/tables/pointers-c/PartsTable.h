@@ -76,7 +76,7 @@ typedef struct graphdemo_table_report_t
        the tolerant read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported form byte, not framing damage */
+    int refused;           /* a refusal by name (reason), not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
@@ -84,6 +84,13 @@ typedef struct graphdemo_table_report_t
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+       an infinity is refused on its raw bits by every read, the tolerant one
+       included, so a read that moves this answers refused, reason
+       SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
+       a read can tell its own refusal from a caller's report that already
+       held one. */
+    int32_t non_finite_floats;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -92,7 +99,11 @@ typedef struct graphdemo_table_report_t
     uint64_t layout_hash;
 } graphdemo_table_report_t;
 
-enum SCHEMA_GRAPHDEMO_TABLE_REFUSAL_REASON { SCHEMA_GRAPHDEMO_TABLE_NO_REFUSAL, SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM, SCHEMA_GRAPHDEMO_TABLE_MESSAGE_FORM_AS_FILE };
+/* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
+   bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
+   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   names it whichever form a unit carries. */
+enum SCHEMA_GRAPHDEMO_TABLE_REFUSAL_REASON { SCHEMA_GRAPHDEMO_TABLE_NO_REFUSAL, SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM, SCHEMA_GRAPHDEMO_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT = 21 };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -2323,6 +2334,37 @@ static SCHEMA_UNUSED uint32_t graphdemo_table_float_to_bits( float f ) { uint32_
 static SCHEMA_UNUSED double graphdemo_table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 static SCHEMA_UNUSED uint64_t graphdemo_table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+/* A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's own rule): a
+   NaN or an infinity, whatever its sign or payload, has an all-ones exponent,
+   and that is the whole test. Every read runs it on the RAW BITS, before they
+   become a float and before the field is written; every writer runs it on the
+   bits of the value it was handed. -0 and the subnormals are finite and ride
+   bit-exact. */
+static SCHEMA_UNUSED int graphdemo_table_bits_finite32( uint32_t bits ) { return ( bits & 0x7f800000u ) != 0x7f800000u; }
+static SCHEMA_UNUSED int graphdemo_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
+static SCHEMA_UNUSED int graphdemo_table_float_finite( float f ) { return graphdemo_table_bits_finite32( graphdemo_table_float_to_bits( f ) ); }
+static SCHEMA_UNUSED int graphdemo_table_double_finite( double d ) { return graphdemo_table_bits_finite64( graphdemo_table_double_to_bits( d ) ); }
+/* table_non_finite_float is a read meeting one: the read is REFUSED by name,
+   non_finite_float, and the walk goes on so the framing verdict is the one a
+   finite wire gets; the load that started it answers the refusal at its end
+   (table_non_finite_refused) and lands nothing. */
+static SCHEMA_UNUSED void graphdemo_table_non_finite_float( graphdemo_table_report_t * report )
+{
+    report->refused = 1;
+    report->reason = SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT;
+    report->non_finite_floats++;
+}
+/* table_non_finite_refused is that load's end: 1 when the walk met a
+   non-finite float since before, the refusal stamped again over whatever the
+   walk met after it, because it outranks any damage (§3.3). */
+static SCHEMA_UNUSED int graphdemo_table_non_finite_refused( graphdemo_table_report_t * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return 0; }
+    report->refused = 1;
+    report->reason = SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT;
+    return 1;
+}
+
 #endif /* SCHEMA_GRAPHDEMO_TABLE_PRIMITIVES */
 
 #ifndef SCHEMA_GRAPHDEMO_TABLE_REFUSE_RUNTIME
@@ -2361,13 +2403,15 @@ static SCHEMA_UNUSED const uint8_t * graphdemo_table_cook_refuse(graphdemo_table
    what the strict read refuses -- an unknown form, wire damage, a blob named
    from two slots, a clamp or a kind mismatch -- and unknown, widened and
    retained alone never refuse. decoded is the tolerant read's own answer.
-   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   It sets the report's ONE TYPED REASON, a non-finite float first (it
+   outranks any damage, §3.3), then damage before blob_shared before
    clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
    them, and answers 1 when the plain name must refuse. */
 static SCHEMA_UNUSED int graphdemo_table_report_strict_refuses( graphdemo_table_report_t * report, int decoded )
 {
     graphdemo_table_refuse_reason_t reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
-    if ( report->refused ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    if ( report->refused && report->reason == SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; }
     else if ( report->clamped > 0 ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_CLAMPED; }
@@ -3950,6 +3994,10 @@ static SCHEMA_UNUSED int graphdemo_table_message_number(graphdemo_table_message_
  if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
  return 1;
 }
+/* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
+   infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
+   bits become a value, *value untouched, and the walk goes on. A quantized
+   index names a finite value and is never tested. */
 static SCHEMA_UNUSED int graphdemo_table_message_float(graphdemo_table_message_reader_t * r,const graphdemo_table_message_entry_t * e,float * value)
 {
  uint64_t raw;
@@ -3957,7 +4005,10 @@ static SCHEMA_UNUSED int graphdemo_table_message_float(graphdemo_table_message_r
  if(e->packing==2) {
   if(raw>e->qcount)return 0;
   *value=graphdemo_table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
- }else *value=graphdemo_table_bits_to_float((uint32_t)raw);
+ }else if(!graphdemo_table_bits_finite32((uint32_t)raw)){graphdemo_table_non_finite_float(r->report);
+ return 2;
+ }
+ else *value=graphdemo_table_bits_to_float((uint32_t)raw);
  return 1;
 }
 static SCHEMA_UNUSED int64_t graphdemo_table_message_open(graphdemo_table_message_reader_t * r,const graphdemo_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,graphdemo_table_report_t * report)
@@ -4398,6 +4449,10 @@ keep.retain->used+=bytes;
 keep.retain->count++;
 report->retained++;
 }
+/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+   §3.3, §6.6): kind 10's or 11's raw bits, and a NaN or an infinity refuses
+   the read as non_finite_float. Nothing is kept, the read goes on as it does
+   for a known field, and the load answers the refusal at its end. */
 static SCHEMA_UNUSED int graphdemo_table_retain_capture(graphdemo_table_reader_t * r,uint64_t id,uint8_t kind,graphdemo_table_retain_walk_t keep)
 {
  graphdemo_table_retain_in_t s;
@@ -4405,6 +4460,12 @@ static SCHEMA_UNUSED int graphdemo_table_retain_capture(graphdemo_table_reader_t
  uint8_t * record;
  if(!graphdemo_table_reader_skip(r,kind))return 0;
  if(!keep.retain)return 1;
+ if(kind==10||kind==11){uint64_t raw=0;
+ int64_t i;
+ for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
+  if(kind==10?!graphdemo_table_bits_finite32((uint32_t)raw):!graphdemo_table_bits_finite64(raw)){graphdemo_table_non_finite_float(r->report);
+  return 1;
+  }}
  record=graphdemo_table_retain_begin(keep,id,kind,&s);
  if(!record){r->report->retain_lost++;
  return 1;
@@ -4684,6 +4745,10 @@ static SCHEMA_UNUSED int graphdemo_table_retain_message_payload(graphdemo_table_
  default:return graphdemo_table_retain_message_scalar(s,e);
  }
 }
+/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+   §3.3, §6.6): kind 10's or 11's raw bits, unless the float rides as a
+   quantized index, which names a finite value. A NaN or an infinity refuses
+   the read as non_finite_float, nothing is kept and the walk goes on. */
 static SCHEMA_UNUSED int graphdemo_table_retain_message_capture(graphdemo_table_message_reader_t * r,const graphdemo_table_message_entry_t * entry,graphdemo_table_retain_walk_t keep)
 {
  graphdemo_table_retain_message_t s;
@@ -4691,6 +4756,11 @@ static SCHEMA_UNUSED int graphdemo_table_retain_message_capture(graphdemo_table_
  s.input=*r;
  if(!graphdemo_table_message_skip(r,entry))return 0;
  if(!keep.retain)return 1;
+ if((entry->kind==10&&entry->packing!=2)||entry->kind==11){graphdemo_table_bit_reader_t bits=s.input.bits;
+ uint64_t raw=0;
+  if(graphdemo_table_bit_get(&bits,&raw,entry->kind==10?32:64)&&(entry->kind==10?!graphdemo_table_bits_finite32((uint32_t)raw):!graphdemo_table_bits_finite64(raw))){graphdemo_table_non_finite_float(r->report);
+  return 1;
+  }}
  record=graphdemo_table_retain_begin(keep,entry->id,entry->kind,&s.output);
  if(!record||!graphdemo_table_retain_message_payload(&s,entry,0)||s.input.bits.offset!=r->bits.offset){r->report->retain_lost++;
  return 1;
@@ -4982,12 +5052,15 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_body( graphdemo_table_reader_t * r
    body the walk could not finish. */
 static SCHEMA_UNUSED int graphdemo_stamp_load_tolerant( graphdemo_stamp_t * value, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t r;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     graphdemo_stamp_reset( value );
     if ( !graphdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return graphdemo_stamp_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = graphdemo_stamp_load_body( &r, value );
+    if ( graphdemo_table_non_finite_refused( report, non_finite_before ) ) { graphdemo_stamp_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN stamp_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5132,6 +5205,8 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_messages_tolerant(graphdemo_stamp_
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5144,9 +5219,16 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_messages_tolerant(graphdemo_stamp_
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!graphdemo_stamp_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!graphdemo_stamp_load_message_body(&r,values+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)graphdemo_stamp_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN stamp_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_stamp_load_messages( graphdemo_stamp_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -5327,12 +5409,15 @@ static SCHEMA_UNUSED int graphdemo_colour_load_body( graphdemo_table_reader_t * 
    body the walk could not finish. */
 static SCHEMA_UNUSED int graphdemo_colour_load_tolerant( graphdemo_colour_t * value, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t r;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     graphdemo_colour_reset( value );
     if ( !graphdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return graphdemo_colour_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = graphdemo_colour_load_body( &r, value );
+    if ( graphdemo_table_non_finite_refused( report, non_finite_before ) ) { graphdemo_colour_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN colour_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5491,6 +5576,8 @@ static SCHEMA_UNUSED int graphdemo_colour_load_messages_tolerant(graphdemo_colou
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5503,9 +5590,16 @@ static SCHEMA_UNUSED int graphdemo_colour_load_messages_tolerant(graphdemo_colou
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!graphdemo_colour_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!graphdemo_colour_load_message_body(&r,values+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)graphdemo_colour_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN colour_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_colour_load_messages( graphdemo_colour_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -6433,7 +6527,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_cook(const graphdemo_stamp_t * value,vo
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<104) { return 0; }
     memset(raw,0,104);
-    if(!schema_graphdemo_stamp_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_graphdemo_stamp_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,104); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     graphdemo_table_cook_put(raw+96,UINT64_C(0xae3b9113b7db93a4),8,order);
     graphdemo_table_cook_header(raw,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,24,1,8,order); return 1;
 }

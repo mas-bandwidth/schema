@@ -587,16 +587,16 @@ tables-cs-fixed-rows: tables-fixedform-corpus
 	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
 tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
 
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
 
 tables-cs-retain-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs --retain --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-retain-cs.bin
+	./build/conformance-harness wire-fuzz --retain --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-retain-cs.bin
 
 .PHONY: tables-cs-retain-negative-control
 tables-cs-retain-negative-control: bin/schema
@@ -605,6 +605,14 @@ tables-cs-retain-negative-control: bin/schema
 .PHONY: tables-cs-pack-negative-control
 tables-cs-pack-negative-control: bin/schema
 	sh test/cs-tables/pack-negative-control "$(DOTNET)"
+
+# THE FINITE RULE'S CONTROL (docs/SPEC-TABLES.md §3.3): the form-1 read's
+# raw-bits test, the fixed read's finite pass and the form-1 writer's refusal,
+# each sabotaged in turn through a go build -overlay, must each turn exactly
+# their own vector of one probe red.
+.PHONY: tables-cs-finite-float-negative-control
+tables-cs-finite-float-negative-control: bin/schema
+	sh test/cs-tables/finite-negative-control "$(DOTNET)"
 
 .PHONY: tables-cs-message-blob-endian-negative-control
 tables-cs-message-blob-endian-negative-control: bin/schema
@@ -1062,7 +1070,7 @@ CARDS_CS_DRIVER = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconforma
 # make/go.mk's cards-wire-fuzz does.
 .PHONY: cards-cs-wire-fuzz
 cards-cs-wire-fuzz: build-conformance-cs build/conformance-harness
-	@timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs \
+	@timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 \
 		> build/cards-cs-wire-fuzz.log 2>&1; \
@@ -1083,7 +1091,7 @@ test-cs: cards-cs-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 .PHONY: cards-cs-retain-fuzz
 cards-cs-retain-fuzz: build-conformance-cs build/conformance-harness
-	@timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs \
+	@timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 --retain \
 		> build/cards-cs-retain-fuzz.log 2>&1; \
@@ -1105,7 +1113,7 @@ test-cs: cards-cs-retain-fuzz
 .PHONY: cards-cs-retain-negative-control
 cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 	@mkdir -p build/wire-fuzz
-	@if CARDS_CS_RETAIN_DROP=1 timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs \
+	@if CARDS_CS_RETAIN_DROP=1 timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 --retain \
 		--failed build/wire-fuzz/failed-cards-retain-neg-cs.bin \
@@ -1113,7 +1121,7 @@ cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 		echo 'NEGATIVE CONTROL FAILED: the Card retain arm stayed green with retention dropped'; cat build/cards-cs-retain-neg.log; exit 1; fi
 	@grep -qE 'FAILED after [1-9][0-9]* mutants: the retention report differs' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the retain arm did not go red on the retention report'; cat build/cards-cs-retain-neg.log; exit 1; }
 	@! grep -Eq 'driver exited|driver wrote nothing|panic|Unhandled exception' build/cards-cs-retain-neg.log || { echo 'NEGATIVE CONTROL FAILED: the driver broke rather than diverged'; cat build/cards-cs-retain-neg.log; exit 1; }
-	@CARDS_CS_RETAIN_DROP=1 timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz --finite-owed tables-finite/cs \
+	@CARDS_CS_RETAIN_DROP=1 timeout $(CARDS_CS_FUZZ_TIME) ./build/conformance-harness wire-fuzz \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver '$(CARDS_CS_DRIVER)' --seed 24845619678 --n 100 \
 		> build/cards-cs-retain-neg-plain.log 2>&1 || { echo 'NEGATIVE CONTROL FAILED: the plain arm went red too'; cat build/cards-cs-retain-neg-plain.log; exit 1; }
