@@ -642,10 +642,9 @@ static void test_evolution_union_insert_new_data()
     CHECK( out2.effect.type == tblv1::EffectType::Ward && out2.effect.ward.charge == -2.0f );
 }
 
-// ---- hostile: a REPEATED field id whose second occurrence names an arm or a
-// ---- variant this build cannot name. "Reads as empty" (docs/SPEC-TABLES.md §4) is
-// ---- a value the reader must WRITE, not one the prefill happens to leave —
-// ---- an earlier occurrence of the same id may have decoded a real arm.
+// ---- hostile: a REPEATED field id, here naming an arm and a variant this
+// ---- build cannot name. One id twice in one body is input no writer produces,
+// ---- so it is damage and the whole load is refused (docs/SPEC-TABLES.md §3, §4).
 
 static void test_repeated_id_unnameable_variant()
 {
@@ -679,13 +678,10 @@ static void test_repeated_id_unnameable_variant()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    out.effect.type = tblv1::EffectType::Boost; // junk the prefill must erase
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( !report.malformed );
-    CHECK( report.unknown == 2 ); // one arm id, one variant id
-    // both vocabularies land on the SAME answer: the reader's empty value,
-    // never the arm or variant an earlier occurrence decoded
-    CHECK( out.effect.type == tblv1::EffectType::None );
+    out.effect.type = tblv1::EffectType::Boost; // junk the reset must erase
+    CHECK( !tblv1::CfgLoadTolerant( out, wire, n, &report ) );
+    CHECK( report.malformed );
+    CHECK( out.effect.type == tblv1::EffectType::None ); // the whole load discarded
     CHECK( out.grade == tblv1::Grade::None );
 }
 
@@ -2817,9 +2813,8 @@ static void test_keyed_none_key_is_malformed()
     CHECK( out.tokens[tblv1::Slot::Delta] == 0 ); // and the body stopped at the damage
 }
 
-// ---- #261: a repeated enum-ARRAY id whose second occurrence carries an
-// ---- element no build names must RESET the slot — the prefill cannot stand
-// ---- in, because an earlier occurrence already wrote it.
+// ---- a repeated enum-ARRAY id: one id twice in one body is damage, whatever
+// ---- the second occurrence carries (docs/SPEC-TABLES.md §3, §4).
 
 static void test_repeated_id_unnameable_enum_element()
 {
@@ -2852,14 +2847,9 @@ static void test_repeated_id_unnameable_enum_element()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( !report.malformed );
-    CHECK( report.unknown == 2 ); // two element ids this reader cannot name
-    // the LAST occurrence wins, and an element with no name lands on None —
-    // never on the variant the FIRST occurrence decoded into that slot
-    CHECK( out.grades_count == 2 );
-    CHECK( out.grades[0] == tblv1::Grade::None );
-    CHECK( out.grades[1] == tblv1::Grade::None );
+    CHECK( !tblv1::CfgLoadTolerant( out, wire, n, &report ) );
+    CHECK( report.malformed );
+    CHECK( out.grades_count == 0 ); // the whole load discarded
 }
 
 // ---- the two constructs in the VARIABLE class: a keyed array of variable

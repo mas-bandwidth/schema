@@ -118,7 +118,7 @@ func cppRuntimeNames() []Name {
 			"TableRetainRecordId", "TableRetainRecordKind", "TableRetainRecordNode", "TableRetainRecordPayload",
 			"TableRetainRecordPayloadBytes", "TableRetainRecordPlaced", "TableRetainRecordSteps",
 			"TableRetainRecordWire", "TableRetainReservedId", "TableRetainReset", "TableRetainStepInto",
-			"TableRetainTailMeasure", "TableRetainTailSave", "TableRetainUnder", "TableRetainWrite32",
+			"TableRetainTailMeasure", "TableRetainTailSave", "TableRetainWrite32",
 			"TableRetainWrite64", "kTableRetainDepthMax", "kTableRetainKnown", "kTableRetainKnownIds",
 			"kTableRetainRecordHeader", "kTableRetainSlotBytes", "kTableRetainWalkDepthMax",
 		}},

@@ -1449,6 +1449,42 @@ struct TableReader
     }
 };
 
+// ONE ID, ONCE PER BODY (docs/SPEC-TABLES.md §3, §4). No writer puts an id
+// down twice in one body, so a body carrying one twice is damage, whether or
+// not this reader can name the id. The id table holds each id once, so the
+// REFERENCE stands for the id, and a reference is at most the entry count,
+// which TableOpen caps at kTableProbeBound (4096). Every body holds one of
+// these on its own stack frame: the first eight references are checked in a
+// line, and a body that names more takes a bitmap over the entry count, cleared
+// over only the words that count needs, at the ninth. The work is bounded by
+// the bytes the body spends, and nothing is allocated.
+struct TableBodySeen
+{
+    uint64_t first[8];
+    int32_t n = 0;
+    bool wide = false;
+    uint64_t bits[64]; // ( 4096 + 63 ) / 64, cleared only when the body widens
+
+    // false = this reference is already in the body (1 <= ref <= count)
+    bool add( uint64_t ref, int64_t count )
+    {
+        if ( !wide )
+        {
+            for ( int32_t i = 0; i < n; i++ ) { if ( first[i] == ref ) { return false; } }
+            if ( n < 8 ) { first[n++] = ref; return true; }
+            const int64_t words = ( count + 63 ) >> 6;
+            for ( int64_t w = 0; w < words; w++ ) { bits[w] = 0; }
+            for ( int32_t i = 0; i < n; i++ ) { bits[ ( first[i] - 1 ) >> 6 ] |= 1ull << ( ( first[i] - 1 ) & 63 ); }
+            wide = true;
+        }
+        const uint64_t at = ref - 1;
+        const uint64_t bit = 1ull << ( at & 63 );
+        if ( ( bits[ at >> 6 ] & bit ) != 0 ) { return false; }
+        bits[ at >> 6 ] |= bit;
+        return true;
+    }
+};
+
 ` + widenRuntime + tableTextRuntime + wideText + `
 // The RESERVED node-table id, the one id the language holds back
 // (docs/SPEC-TABLES.md §3.1, §5). It rides in every unit, pointered or not,

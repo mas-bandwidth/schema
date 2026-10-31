@@ -1805,18 +1805,13 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	// place, with neither cost.
 	g.emitLoadRefusal(st.Name, "    ")
 	g.pf("    %sReset( value ); // prefill declared defaults in place, then overlay\n", st.Name)
-	if g.retain {
-		g.pf("    // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT\n")
-		g.pf("    // (docs/SPEC-TABLES.md §6.6): this body is being established, so\n")
-		g.pf("    // whatever an earlier occurrence of it left is discarded before the\n")
-		g.pf("    // winning one is read. The discard moves neither counter.\n")
-		g.pf("    TableRetainDiscardBody( retain, path );\n")
-	}
+	g.pf("    TableBodySeen seen; // one id, once per body (§3, §4)\n")
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE\n")
 	g.pf("        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count\n")
+	g.pf("        if ( !seen.add( field_ref, r.ids->count ) ) { r.report->malformed = true; return false; } // ONE ID TWICE IN ONE BODY: no writer produces it\n")
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
 	g.pf("        uint8_t kind = r.get8();\n")
@@ -2087,16 +2082,6 @@ func (g *tableGen) retainLostInline() string {
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 	ind := "                "
-	if g.retain && fieldDiscardsWhole(f) {
-		// THE FIELD IS BEING READ AGAIN (docs/SPEC-TABLES.md §6.6): a repeated
-		// table field and a union whose arm is written again, the same arm or
-		// another, both replace everything the earlier occurrence held, so
-		// every record under this field goes before the winning one is read.
-		// A map, a list and a bounded array take this at the point their own
-		// read commits to replace instead, and an enum-keyed array never takes
-		// it at all.
-		g.pf("%sTableRetainDiscardField( retain, path, %d );\n", ind, g.ordinal[f])
-	}
 	if f.IsMap() {
 		g.emitMapReadField(f)
 		return
@@ -2278,10 +2263,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		}
 		g.pf("%s        default:\n", ind)
 		g.pf("%s            // an arm this reader cannot name: the value reads EMPTY and\n", ind)
-		g.pf("%s            // the body is skipped by its length, never misdecoded. The\n", ind)
-		g.pf("%s            // reset is explicit, not the prefill's: a repeated field id\n", ind)
-		g.pf("%s            // must not leave an arm decoded by an earlier occurrence\n", ind)
-		g.pf("%s            // standing (docs/SPEC-TABLES.md §4).\n", ind)
+		g.pf("%s            // the body is skipped by its length, never misdecoded.\n", ind)
 		g.pf("%s            value.%s.type = %sType::None;\n", ind, f.Name, un.Name)
 		g.pf("%s            r.report->unknown++;%s\n%s            break;\n", ind, g.retainLostInline(), ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
@@ -2323,9 +2305,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 	switch kind {
 	case tkUnion:
 		// AN ELEMENT OF AN ARRAY OF UNIONS IS AN ARM HEADER and carries its own
-		// kind, so the arm rules apply once per element (§3). The element is
-		// re-established as None before the arm is read, so a repeated field id
-		// leaves no earlier arm standing (§4).
+		// kind, so the arm rules apply once per element (§3).
 		un := f.Type.Ref.(*ir.Union)
 		ref, id, length := "elem_arm_ref"+sfx, "elem_arm_id"+sfx, "elem_arm_len"+sfx
 		armKind := "elem_arm_kind" + sfx

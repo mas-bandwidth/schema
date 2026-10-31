@@ -1119,9 +1119,9 @@ func (g *tableGen) emitMapWriteField(f *ir.Field) {
 
 // emitMapKeyReader emits one entry's key scan: the reader does not assume
 // where the key sits, so before an entry's body decodes it SCANS that body's
-// field headers for the key's id and reads the key. Where the body carries the
-// id more than once the scan reads the occurrence §3's repeated-field rule
-// keeps, the last one; a body with no key field at all has the key's default.
+// field headers for the key's id and reads the key. A body carrying the key's
+// id twice is damage (§3, §4); a body with no key field at all has the key's
+// default.
 func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	entry := mapEntryOf(f)
 	key := ir.MapKeyField(f)
@@ -1153,6 +1153,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	}
 	g.pf("    TableReport scratch; // the scan's own framing damage is the MAP's, raised by the caller\n")
 	g.pf("    TableReader r( body, length, &scratch, ids );\n")
+	g.pf("    bool key_seen = false; // the key's id twice in one entry is damage (§3, §4)\n")
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) ) { out.malformed = true; return out; }\n")
@@ -1162,6 +1163,8 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 	g.pf("        if ( !r.has( 1 ) ) { out.malformed = true; return out; }\n")
 	g.pf("        uint8_t field_kind = r.get8();\n")
 	g.pf("        if ( field_id == 0x%016xull ) // `key`, the ordinary hash of an ordinary name\n        {\n", ir.MapKeyWireId)
+	g.pf("            if ( key_seen ) { out.malformed = true; return out; }\n")
+	g.pf("            key_seen = true;\n")
 	if !mapKeyIsString(f) && widenable(kind) {
 		// A KEY KIND THE DECLARATION WIDENS IS NOT A DISAGREEMENT (§2.8,
 		// §4): the key decodes exactly at its own width and the entry lands.
@@ -1178,7 +1181,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 			g.pf("                if ( !TableReadUnsignedAt( r, field_kind, widened_v ) ) { out.malformed = true; return out; }\n")
 		}
 		g.pf("                out.key = (%s) widened_v;\n", typ)
-		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
+		g.pf("                continue;\n")
 		g.pf("            }\n")
 	}
 	g.pf("            out.kind_bad = field_kind != %d; // THE KEY KIND IS THE READER'S DECLARATION\n", kind)
@@ -1193,13 +1196,13 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 		g.pf("                out.length = (int32_t) key_len;\n")
 		g.pf("                out.over = key_len > %d; // KEYS NEVER CLAMP: the entry is dropped whole\n", key.Type.Size)
 		g.pf("                r.offset += (int64_t) key_len;\n")
-		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
+		g.pf("                continue;\n")
 	} else {
 		width := tableKindWidth(kind)
 		typ, _ := g.cppFieldType(key.Type)
 		g.pf("                if ( !r.has( %d ) ) { out.malformed = true; return out; }\n", width)
 		g.pf("                out.key = (%s) r.%s();\n", typ, tableGet(width))
-		g.pf("                continue; // the LAST occurrence is the one §3 keeps\n")
+		g.pf("                continue;\n")
 	}
 	g.pf("            }\n        }\n")
 	g.pf("        if ( !r.skip( field_kind ) ) { out.malformed = true; return out; }\n")

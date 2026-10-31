@@ -370,6 +370,7 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 // declared kind widens (§4); without it, at the declared width.
 func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened bool) {
 	g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
+	g.pf("%s    TableBodySeen slots_seen; // one slot key, once per keyed body (§3.2, §4)\n", ind)
 	g.pf("%s    for ( uint64_t i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref = 0;\n", ind)
 	g.pf("%s        if ( !sub.getleb( key_ref ) ) { r.report->malformed = true; break; }\n", ind)
@@ -380,6 +381,7 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s            // §4).\n", ind)
 	g.pf("%s            r.report->malformed = true;\n%s            break;\n%s        }\n", ind, ind, ind)
 	g.pf("%s        if ( key_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }\n", ind)
+	g.pf("%s        if ( !slots_seen.add( key_ref, r.ids->count ) ) { r.report->malformed = true; break; } // a slot key twice: no writer produces it\n", ind)
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
 	g.pf("%s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->malformed = true; break; }\n", ind)
 	g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
