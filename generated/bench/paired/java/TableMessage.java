@@ -594,8 +594,25 @@ public final class TableMessage {
         return c != 0 ? c : Long.compareUnsigned(aLo, bLo);
     }
 
+    // A FLOAT IS FINITE ON THE MESSAGE WIRE (docs/SPEC-TABLES.md §3.3, the
+    // packet wire's own rule): a float carried whole whose raw bits
+    // are a NaN or an infinity refuses the batch as non_finite_float, naming
+    // the first such field, before any range is applied. A quantized float's
+    // index always names a finite value.
+    public static void nonFiniteFloat(TableVocabulary.Report report, String field) {
+        if (!report.refused) {
+            report.refused = true;
+            report.reason = "non_finite_float: " + field;
+        }
+    }
+
     public static float readFloat32(
-            Reader r, TableVocabulary.Shape s, float min, float max, boolean hasRange) {
+            Reader r,
+            TableVocabulary.Shape s,
+            float min,
+            float max,
+            boolean hasRange,
+            String field) {
         float v;
         if (s.packing == 2) {
             long index = r.get((int) s.bits);
@@ -609,6 +626,10 @@ public final class TableMessage {
         } else {
             int raw = (int) r.get(32);
             if (r.err) {
+                return 0.0f;
+            }
+            if ((raw & 0x7f800000) == 0x7f800000) {
+                nonFiniteFloat(r.report, field);
                 return 0.0f;
             }
             v = Float.intBitsToFloat(raw);
@@ -625,17 +646,13 @@ public final class TableMessage {
         return v;
     }
 
-    public static double widenF32(int raw) {
-        if ((raw & 0x7f800000) == 0x7f800000 && (raw & 0x007fffff) != 0) {
-            long sign = (long) (raw & 0x80000000) << 32;
-            long payload = (long) (raw & 0x007fffff) << 29;
-            return Double.longBitsToDouble(sign | 0x7ff0000000000000L | payload);
-        }
-        return (double) Float.intBitsToFloat(raw);
-    }
-
     public static double readFloat64(
-            Reader r, TableVocabulary.Shape s, double min, double max, boolean hasRange) {
+            Reader r,
+            TableVocabulary.Shape s,
+            double min,
+            double max,
+            boolean hasRange,
+            String field) {
         if (s.kind == 10) {
             if (s.packing == 2) {
                 long index = r.get((int) s.bits);
@@ -651,10 +668,19 @@ public final class TableMessage {
             if (r.err) {
                 return 0.0;
             }
-            return widenF32(raw);
+            if ((raw & 0x7f800000) == 0x7f800000) {
+                nonFiniteFloat(r.report, field);
+                return 0.0;
+            }
+            // the float rung is the ordinary conversion: exact for every finite float32
+            return (double) Float.intBitsToFloat(raw);
         }
         long raw = r.get(64);
         if (r.err) {
+            return 0.0;
+        }
+        if ((raw & 0x7ff0000000000000L) == 0x7ff0000000000000L) {
+            nonFiniteFloat(r.report, field);
             return 0.0;
         }
         double v = Double.longBitsToDouble(raw);

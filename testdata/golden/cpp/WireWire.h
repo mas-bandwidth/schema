@@ -30,7 +30,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_WRITE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_WRITE_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_WRITE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_WRITE_INLINE inline
 #endif
@@ -49,7 +49,7 @@ namespace example {
 #if defined( _MSC_VER )
 #define SCHEMA_READ_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define SCHEMA_READ_INLINE inline __attribute__(( always_inline ))
+#define SCHEMA_READ_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define SCHEMA_READ_INLINE inline
 #endif
@@ -63,23 +63,23 @@ namespace example {
 // operation in a generated body has the one spelling. serialize's own
 // read_object/write_object call a Serialize member; generated types carry
 // free Write/Read functions, so the function rides as an argument.
-#define schema_write_object( stream, function, value )                          \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_write_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 
-#define schema_read_object( stream, function, value )                           \
-    do                                                                          \
-    {                                                                           \
-        if ( !function( stream, value ) )                                       \
-        {                                                                       \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
+#define schema_read_object( stream, function, value ) \
+    do \
+    { \
+        if ( !function( stream, value ) ) \
+        { \
+            return false; \
+        } \
+    } while ( 0 )
 #endif // SCHEMA_OBJECT_MACROS_DEFINED
 
 #ifndef SCHEMA_EXAMPLE_UTF8_VALID_DEFINED
@@ -407,10 +407,10 @@ SCHEMA_READ_INLINE bool ReadProbeShape( serialize::ReadStream & stream, ProbeSha
         case ProbeShapeType::None:
             return true;
         case ProbeShapeType::Ring:
-            ::new ( (void*) &value.ring ) ProbeRing{};
+            ::new ( static_cast<void *>( &value.ring ) ) ProbeRing{};
             return ReadProbeRing( stream, value.ring );
         case ProbeShapeType::Slab:
-            ::new ( (void*) &value.slab ) ProbeSlab{};
+            ::new ( static_cast<void *>( &value.slab ) ) ProbeSlab{};
             return ReadProbeSlab( stream, value.slab );
     }
     return false;

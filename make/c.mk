@@ -909,6 +909,33 @@ tables-c-strict-load-negative-control:
 	@grep -m1 "THE PLAIN READ ACCEPTED" build/c-strict-load-nc/log
 	@echo "negative control: a plain read that does not refuse is the tolerant read under the plain name"
 
+# THE FINITE RULE, C LEG (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+# "tables go finite-only too, same rule as packets"): every read refuses a NaN
+# or an infinity on its raw bits as non_finite_float and lands nothing, every
+# writer refuses one, and -0 rides by its bits. TestCFiniteFloats is the pin,
+# one ASan+UBSan probe over the value, region, retaining, message and fixed
+# reads and every writer, the cook among them. The control blinds each check in
+# turn in the emitted source (the variable read at both widths, the message
+# read at both widths, the fixed finite pass, the retained unknown, and the
+# file, message, fixed and cook writers) and requires exactly that check's rows
+# red and every other row green. A skipped run proves nothing, so a SKIP fails.
+.PHONY: tables-c-finite-float tables-c-finite-float-negative-control
+tables-c-finite-float:
+	@mkdir -p build/c-finite-float
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloats$$' > build/c-finite-float/pin.log 2>&1 || \
+		{ cat build/c-finite-float/pin.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-finite-float/pin.log || \
+		{ echo "tables-c-finite-float: the pin was skipped, so it held nothing"; cat build/c-finite-float/pin.log; exit 1; }
+	@echo 'C finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides by its bits'
+tables-c-finite-float-negative-control:
+	@mkdir -p build/c-finite-float
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloatNegativeControl$$' > build/c-finite-float/control.log 2>&1 || \
+		{ cat build/c-finite-float/control.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-finite-float/control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the finite-float control was skipped, so it is watching nothing"; cat build/c-finite-float/control.log; exit 1; }
+	@echo 'negative control: each C finite check blinded reddens exactly its own rows'
+test-c: tables-c-finite-float
+
 # THE SECOND HALF OF THE SAME RULE HAS NO C CONTROL, and the reason is a fact
 # about this emitter rather than an omission. C++'s
 # tables-ref-ordinal-shared-negative-control removes the ordinal recording from
@@ -1057,7 +1084,25 @@ tables-c-slot-negative-control: bin/schema test/c-tables/accessor_descriptor_mai
 		  cat build/c-slot-sabotage/log; exit 1; }
 	@echo "negative control: a pointer slot eight bytes off turns the C accessor/descriptor gate RED"
 
-test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negative-control tables-c-slot-negative-control
+test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negative-control tables-c-slot-negative-control tables-c-text-differential tables-c-text-differential-negative-control
+
+# I13 (docs/PORTING.md): the C leg's text differential against a third
+# implementation. A C probe (compiled with the generated ProbeTable.c) draws 200
+# random float-only instances of a root (seed 24845619678, splitmix64, the Go
+# cell's schema and draw order) and writes each as (wire, text) with the
+# generated root_save and root_to_json; the Go engine (internal/tabletext,
+# internal/tablepack) writes its own text from the leg's wire, byte-compared,
+# and packs the leg's text back to wire, byte-compared. The control caps the
+# emitted float32 writer at six significant digits in memory and must go red on
+# the text comparison. SCHEMA_REQUIRE_CORPUS=1 makes a missing C compiler a
+# FAILURE rather than a skip.
+.PHONY: tables-c-text-differential tables-c-text-differential-negative-control
+tables-c-text-differential:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialAgainstTheGoEngine$$'
+	@echo 'tables C text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
+tables-c-text-differential-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialNegativeControl$$'
+	@echo 'tables C text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C LEG of `make test` (docs/SPEC-TABLES.md; test/conformance/README.md):
 # the same corpus in C, with the two gates that hold the emitter honest, the
@@ -1252,8 +1297,8 @@ build/wire-fuzz-c-asan: build/tables-generated-c/.stamp test/c-tables/wire_fuzz_
 
 .PHONY: tables-c-wire-fuzz
 tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
 # Wide text on the packet wire, using the shared group's corpus.
 build/packet-wide/c/.stamp: bin/schema build/packet-wide/source/WideText.schema
@@ -1300,7 +1345,7 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@grep -q 'SABOTAGED canonical LEB128' build/c-wire-sabotage/generated/examples/TablesTable.h || { echo 'NEGATIVE CONTROL: canonical LEB128 sabotage did not apply'; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
 		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-wire-sabotage/driver -lm
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
+	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
 	@grep -q 'the report differs' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
@@ -1393,8 +1438,8 @@ tables-c-retain: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-a
 	sh test/slowgate/proof tables-c-retain \
 		'TestCTableRetainFile TestCTableRetainCapacityBoundsZeroBitMessage TestCTableRetainFramedDepth/64 TestCTableRetainFramedDepth/65 TestCTableRetainRefusedByName TestCTableRetainMessageDroppedMapKey/false TestCTableRetainMessageDroppedMapKey/true' \
 		./compiler -run '^TestCTableRetain' -count=1
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/c --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain.bin
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --retain --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-retain-asan.bin
 
 tables-c-retain-negative-control:
 	@mkdir -p build/c-retain-negative

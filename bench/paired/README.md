@@ -197,8 +197,10 @@ type board's, from its own runner over the same sixty-four records. The table
 leg, `bench/tables/dart/table_main.dart`, is compiled by `dart compile exe` into
 `build/paired/table-dart` — the AOT form, the one that ships — with the generated
 unit (`generated/bench/paired/dart`) compiled into it, so like rust it runs as
-the driver's own build product. Dart has no form-1 table wire (schema#514), so
-the leg is the fixed form alone. `DART` names the SDK (the repository-local pin
+the driver's own build product. This runner is the fixed form alone: the paired
+corpus's `fixed table` root has no form-1 codec, and the variable form of the
+board's `TableMixed` is measured by its own runner under the tables board
+(`bench/tables/dart/leg`, `bench/tables/README.md`), against that corpus's id. `DART` names the SDK (the repository-local pin
 under `dist/` when it is there, as in make/dart.mk; CI passes `DART=dart`).
 
     go run ./bench/paired -mode build -langs rust   generate, build, gate the leg

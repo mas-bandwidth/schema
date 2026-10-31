@@ -27,7 +27,7 @@
 #                                   [--compiler CXX] [--inline] [--twins]
 #   --out FILE      final pass CSV (default bench/results/<date>-<arch>-<host>-pass.csv)
 #   --rounds N      measured rounds (default 7, §2.1/§2.4)
-#   --langs a,b,c   subset of cpp,c,go,rust,cs,js,java,dart,elixir (default:
+#   --langs a,b,c   subset of cpp,c,go,rust,cs,js,java,dart,elixir,lobster,luau (default:
 #                   all nine, the languages the published table carries;
 #                   unavailable toolchains are skipped and recorded, a
 #                   skipped leg is a fact not a failure)
@@ -63,7 +63,7 @@ ROUNDS=7
 # is the certification instrument, and a language it does not run by default
 # is a language no pass certifies. A leg whose toolchain is absent is skipped
 # and recorded (# skipped:), which is a fact, not a failure.
-LANGS="cpp,c,go,rust,cs,js,java,dart,elixir"
+LANGS="cpp,c,go,rust,cs,js,java,dart,elixir,lobster,luau"
 COMPILER="${CXX:-c++}"
 INLINE=0
 TWINS=0

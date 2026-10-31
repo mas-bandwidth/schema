@@ -67,13 +67,25 @@ func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
 		"",
 	}, "\n"))
 
+	// make's test line is every registered leg in make/*.mk order; zz sorts
+	// last, so the planted tree's line is the unplanted one plus test-zz.
+	var testLine string
+	for line := range strings.SplitSeq(before["make"], "\n") {
+		if strings.HasPrefix(line, "test:") {
+			testLine = strings.TrimRight(line, " ")
+		}
+	}
+	if testLine == "" {
+		t.Fatalf("make registry names no test line before the plant:\n%s", before["make"])
+	}
+
 	after := discover(t, tree)
 	want := map[string]string{
 		"harness":     "zz",
 		"matrix":      `"lang":"zz"`,
 		"matrix-keys": `"zztool":""`, // every row carries every key
 		"bench":       "zz,bench_table,write",
-		"make":        "test: test-c test-cs test-dart test-elixir test-go test-java test-js test-rust test-zz",
+		"make":        testLine + " test-zz",
 		"make-conf":   "build/conformance-zz",
 		"make-bench":  "generated/bench/tables/zz/.stamp",
 		"make-golden": "update-goldens-zz",

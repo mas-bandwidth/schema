@@ -88,7 +88,7 @@ func TestOptionalArraysCarriers(t *testing.T) {
 	u := unitFromSource(t, optionalArraySrc)
 	c := New()
 	for _, target := range c.Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "js" || target == "rust" || target == "java" {
+		if target == "cpp" || target == "c" || target == "cs" || target == "dart" || target == "go" || target == "js" || target == "rust" || target == "java" || target == "lobster" || target == "squirrel" {
 			files, err := c.Generate(u, target, Options{})
 			if err != nil {
 				t.Fatalf("--lang %s refused the supported shape: %v", target, err)
@@ -105,6 +105,12 @@ func TestOptionalArraysCarriers(t *testing.T) {
 				}
 				continue
 			}
+			if target == "squirrel" {
+				if _, ok := files["ProbeTables.nut"]; !ok {
+					t.Fatalf("--lang squirrel emitted no table source (ProbeTables.nut)")
+				}
+				continue
+			}
 			suffix := "h"
 			if target != "cpp" {
 				suffix = target
@@ -118,6 +124,22 @@ func TestOptionalArraysCarriers(t *testing.T) {
 			_, variable := files["ProbeVariable.js"]
 			if !table && (target != "js" || !variable) {
 				t.Fatalf("--lang %s emitted no table source", target)
+			}
+			continue
+		}
+		if target == "luau" {
+			// the table descriptors and codecs carry the construct: one
+			// <Base>Table.luau per unit file
+			files, err := c.Generate(u, target, Options{})
+			if err != nil {
+				t.Fatalf("--lang luau refused the supported shape: %v", err)
+			}
+			table := false
+			for name := range files {
+				table = table || strings.HasSuffix(name, "Table.luau")
+			}
+			if !table {
+				t.Fatal("--lang luau emitted no Table.luau")
 			}
 			continue
 		}

@@ -50,7 +50,7 @@ func TestUnionArmSetterSetsTagAndArm(t *testing.T) {
 	} {
 		want := "    " + c.typ + " & Select" + c.arm + "() // sets the tag and constructs the arm with its defaults (SPEC §4.8)\n" +
 			"    {\n" +
-			"        ::new ( (void*) &" + c.member + " ) " + c.typ + "{};\n" +
+			"        ::new ( static_cast<void *>( &" + c.member + " ) ) " + c.typ + "{};\n" +
 			"        type = " + c.union + "Type::" + c.arm + ";\n" +
 			"        return " + c.member + ";\n" +
 			"    }\n"

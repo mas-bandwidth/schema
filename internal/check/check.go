@@ -3600,6 +3600,10 @@ var reservedLanguages = []struct {
 	// Luau's reserved words, and its contextual keywords.
 	{"Luau", []string{"luau"}, `and break do else elseif end false for function if in local nil not or
 		repeat return then true until while continue export type typeof`},
+	// moo's reserved words: Luau's, which the deterministic fork keeps whole
+	// (mas-bandwidth/moo, Ast/src/Lexer.cpp at v1.3.0), and its contextual keywords.
+	{"moo", []string{"moo"}, `and break do else elseif end false for function if in local nil not or
+		repeat return then true until while continue export type typeof`},
 	// Squirrel 3.2's reserved words (squirrel/sqlexer.cpp).
 	{"Squirrel", []string{"squirrel"}, `while do if else break continue return null function local for foreach in
 		typeof base delete try catch throw clone yield resume switch case default this class

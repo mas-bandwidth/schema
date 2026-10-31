@@ -193,3 +193,30 @@ nested_arm_trailing_top messagedemo ToolMessage testdata/wire/tables/nested_arm_
 # nothing. Found by the random pass at mutant 193624 of seed 24845619678
 # (corpus seed list_shared), on the region fuzz of PR #2163.
 region_list_cap_resumes listdemo Album testdata/wire/tables/fuzz-vectors/region_list_cap_resumes.bin
+
+# A VALUE THE SKIP CANNOT HONOUR ENDS THE RECORD (§3, §4). The C# region
+# measure's ExtentField ignored the result of skipping a framed scalar, so a
+# map entry whose string key claimed more bytes than the entry holds left the
+# reader just past the length and ExtentBody resumed inside the broken payload,
+# read it as the entry's value (an inner map) and measured storage the framing
+# never placed: "LoadMeasure asks for 528 region bytes; the framing commands
+# exactly 512". The reference scan (internal/tablewire/extent.go) ends the
+# record. Found by the region fuzz at mutant 215837 of seed 24845619678
+# (corpus seed map_full, mapdemo.Fleet), on the CI of PR #2237.
+region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/region_map_skip_past_value.bin
+
+# A PLAIN FLOAT'S -0 UNDER A +0 DEFAULT RIDES (§3.3). The C# writer's default
+# elision compared a float32 or float64 as a VALUE, under which -0 == +0, so a
+# list element's x of -0 was left off the wire and the saved bytes were 57 where
+# the oracle saved 71. Elision compares bit patterns. Found by the random pass
+# at mutant 237037 of seed 24845619678 (corpus seed list_scalar_widen,
+# listdemo.Save), on the Certify wire fuzz.
+list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin
+
+# A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
+# and one malformed counts, naming the field. profile_elide with has_loadout's
+# byte set to 0x11. The JavaScript variable reader read it true and counted
+# nothing. Found by the random pass at mutant 18630 of seed 24845619678
+# (corpus seed profile_elide), on tables-js-wire-fuzz-all; its emitter-lane
+# gate is internal/codegen/jstable's TestBoolByteAboveOneIsMalformedJavaScript.
+bool_byte_above_one tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin
