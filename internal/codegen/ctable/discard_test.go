@@ -215,7 +215,7 @@ var discardSabotages = []discardSabotage{
 		[]string{"builder"}},
 	{"text read", [][2]string{{"if ( value != NULL ) { root_reset( value ); } /* damage discards the whole load (§4) */", "/* SABOTAGED */"}},
 		[]string{"text"}},
-	{"graph text read", [][2]string{{"if ( root != NULL ) { graph_reset( root ); } /* damage discards the whole load (§4) */", "/* SABOTAGED */"}},
+	{"graph text read", [][2]string{{"if ( root != NULL ) { graph_reset( root ); } /* damage discards the whole load (§4) */", "(void) root; /* SABOTAGED */"}},
 		[]string{"graph text"}},
 }
 
