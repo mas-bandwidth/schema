@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 
 	f "packetfinite"
 
@@ -32,6 +33,9 @@ func fail(name, format string, args ...any) {
 
 // refusedNonFinite reports whether err is the format's non_finite_float.
 func refusedNonFinite(err error) bool {
+	if errors.Is(err, errWriteTrapped) {
+		return true
+	}
 	var refusal serialize.Refusal
 	return errors.Is(err, serialize.ErrNonFiniteFloat) && errors.As(err, &refusal) && refusal.String() == "non_finite_float"
 }
@@ -117,9 +121,28 @@ func single64Wire(x uint64) []byte {
 	return rawWire(func(s *serialize.WriteStream) { s.SerializeBits64(&x, 64) })
 }
 
+// errWriteTrapped is the runtime's write-side refusal. serialize.go v2.1.1
+// (IMPLEMENTING U9) traps write misuse by panicking at the call, before any bit
+// is written, as the C++ reference's asserts do; SPEC says a writer refuses a
+// non-finite float "the runtime asserts or fails". The generated flat form,
+// which packs float bits itself, returns serialize.ErrNonFiniteFloat instead.
+var errWriteTrapped = errors.New("the runtime trapped a non-finite float on write")
+
+const nonFiniteTrap = "NaN or an infinity"
+
 // write runs a generated writer into a fresh stream, returning its bytes or
-// its refusal.
-func write[T any](value *T, writer func(*serialize.WriteStream, *T) error) ([]byte, error) {
+// its refusal. A runtime trap for a non-finite float is the refusal
+// errWriteTrapped; any other panic is not swallowed.
+func write[T any](value *T, writer func(*serialize.WriteStream, *T) error) (wire []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if strings.Contains(fmt.Sprint(r), nonFiniteTrap) {
+				wire, err = nil, errWriteTrapped
+				return
+			}
+			panic(r)
+		}
+	}()
 	stream := serialize.NewWriteStream(make([]byte, 64))
 	if err := writer(stream, value); err != nil {
 		return nil, err

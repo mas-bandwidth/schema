@@ -209,7 +209,11 @@ const tableMessageReadSource = `
             int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
             if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
             int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
-            ulong walk = run >= 0 ? (ulong)kept : n;
+            // A FLOAT PAST THE BOUND IS STILL TESTED (docs/SPEC-TABLES.md §3.3):
+            // the stream walks every element, the dropped tail into no slot, so
+            // its NaN or infinity refuses the batch as a kept one does.
+            bool tested = shape.Elem == 11 || shape.Elem == 10 && shape.Inner.Packing != 2;
+            ulong walk = run >= 0 && !tested ? (ulong)kept : n;
             for (ulong i = 0; i < walk; i++)
             {
                 if (f.Dynamic && value != null) { f.EnsureCount(value, (int)i + 1); }
@@ -274,11 +278,14 @@ const tableMessageReadSource = `
                 float scaled = normalized * shape.Delta;
                 bits = TableFloatToBits(scaled + shape.QMin);
             }
+            // refused on its raw bits, kept or dropped (docs/SPEC-TABLES.md §3.3)
+            else if (NonFiniteBits(10, (ulong)bits)) { NonFinite(f, d.Report); return true; }
             ulong raw = f.Kind == 11 ? WidenFloat((uint)bits) : (uint)bits;
             if (f.Kind != 11 && f.ClampRaw != null) { raw = f.ClampRaw(raw, d.Report); }
             if (keep) { f.SetRaw(value, index, raw); }
             return true;
         }
+        if (kind == 11 && NonFiniteBits(11, (ulong)bits)) { NonFinite(f, d.Report); return true; }
         if (kind == 1 || kind == 11)
         { if (keep) { f.SetRaw(value, index, (ulong)bits); } return true; }
         UInt128 stored = bits; bool negative = false, above = false;
@@ -388,7 +395,7 @@ const tableMessageReadSource = `
     }
     public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
     {
-        count = 0;
+        count = 0; report.NonFiniteFloat = null;
         int total = MessageCount(bytes, vocabulary, report);
         if (report.Refused) { return Finish(report, Verdict.Refused); }
         if (total == 0) { return Finish(report, Verdict.Damaged); }
@@ -398,8 +405,12 @@ const tableMessageReadSource = `
         {
             object value = values[count]; type.Reset(value);
             var d = new MessageRead { Vocabulary = vocabulary, Report = report };
-            if (type.Variable && !MessageNodes(ref r, ref d, value, type) || !MessageReadBody(ref r, d, value, type))
-            { Damage(report); return Finish(report, Verdict.Damaged); }
+            bool good = !(type.Variable && !MessageNodes(ref r, ref d, value, type) || !MessageReadBody(ref r, d, value, type));
+            // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+            // §3.3), outranking damage met after it: no body is delivered.
+            if (NonFiniteRefused(report))
+            { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+            if (!good) { Damage(report); return Finish(report, Verdict.Damaged); }
         }
         if (!r.Align() || r.At != r.End) { Damage(report); return Finish(report, Verdict.Damaged); }
         return Finish(report, Verdict.Ok);

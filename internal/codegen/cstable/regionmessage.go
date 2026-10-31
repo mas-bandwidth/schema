@@ -78,7 +78,9 @@ const tableRegionMessageReadSource = `
             int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
             if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
             if (f.Dynamic && !NativeReserve(ref state, value, f, n, d.Report)) { return false; }
-            ulong walk = run >= 0 ? (ulong)kept : n;
+            // a float past the bound is still tested (docs/SPEC-TABLES.md §3.3)
+            bool tested = shape.Elem == 11 || shape.Elem == 10 && shape.Inner.Packing != 2;
+            ulong walk = run >= 0 && !tested ? (ulong)kept : n;
             for (ulong i = 0; i < walk; i++)
             {
 
@@ -140,11 +142,14 @@ const tableRegionMessageReadSource = `
                 float scaled = normalized * shape.Delta;
                 bits = TableFloatToBits(scaled + shape.QMin);
             }
+            // refused on its raw bits, kept or dropped (docs/SPEC-TABLES.md §3.3)
+            else if (NonFiniteBits(10, (ulong)bits)) { NonFinite(f, d.Report); return true; }
             ulong raw = f.Kind == 11 ? WidenFloat((uint)bits) : (uint)bits;
             if (f.Kind != 11 && f.ClampRaw != null) { raw = f.ClampRaw(raw, d.Report); }
             if (keep) { value.SetRaw(f, index, raw); }
             return true;
         }
+        if (kind == 11 && NonFiniteBits(11, (ulong)bits)) { NonFinite(f, d.Report); return true; }
         if (kind == 1 || kind == 11)
         { if (keep) { value.SetRaw(f, index, (ulong)bits); } return true; }
         UInt128 stored = bits; bool negative = false, above = false;
