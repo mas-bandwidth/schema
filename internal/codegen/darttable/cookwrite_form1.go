@@ -2,6 +2,7 @@ package darttable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -43,6 +44,11 @@ func (g *cookGen) emitCookWriteForm1(st *ir.Struct) {
 	g.pf("// this fixed table cooked to `schema cook`'s bytes, measured before written.\n")
 	g.pf("final class %s {\n", form1CookClass(st))
 	g.emitCookWriteVariable(st)
+	if len(g.form1Unions) > 0 {
+		g.pf("\n")
+		g.emitCookForm1UnionWriters()
+		g.trimBlank()
+	}
 	g.pf("}\n\n")
 }
 
@@ -116,18 +122,21 @@ func form1CookField(f *ir.Field) bool {
 		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 			return false
 		}
+		// an ARRAY OF UNIONS (§2.6, §3) is carried element by element: each
+		// slot is the union's own storage, written by `_cook<Union>`
 		elem := *f
 		elem.Array, elem.ArrayBound, elem.KeyEnum, elem.KeyEnumRef = ir.ArrayNone, 0, "", nil
-		if _, isUnion := elem.Type.Ref.(*ir.Union); isUnion {
-			return false
-		}
 		return form1CookField(&elem)
 	}
 	switch f.Type.Kind {
 	case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes:
 		return true
+	case ir.TFixed:
+		// the fixed-point kinds (§3, §15): the wire library holds the RAW
+		// value as a BigInt, written at its storage width
+		return isWide(f)
 	case ir.TInt:
-		return f.Type.Width != 128
+		return f.Type.Width != 128 || isWide(f)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct, *ir.Enum, *ir.Flags:
@@ -183,7 +192,12 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 		stride := pieces[0].Size / bound
 		g.pf("%sif (%s.length != %d) return false;\n", ind, expr, bound)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
-		if ref := tableRef(f); ref != nil {
+		if un := unionRef(f); un != nil {
+			g.emitCookForm1UnionElement(un, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
+		} else if isWide(f) {
+			g.pf("%s  final e = %s[i];\n", ind, expr)
+			g.emitCookElementWide(f, "e", offset, stride, ind+"  ")
+		} else if ref := tableRef(f); ref != nil {
 			call := fmt.Sprintf("%s  if (!_cook%s(%s[i], c, at + %d + i * %d)) return false;", ind, ref.Name, expr, offset, stride)
 			if len(call) <= 80 {
 				g.pf("%s\n", call)
@@ -195,6 +209,18 @@ func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string
 			g.pf("%s  final e = %s[i];\n", ind, expr)
 			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
+		g.pf("%s}\n", ind)
+		return
+	}
+	if un := unionRef(f); un != nil && f.Array == ir.ArrayCounted {
+		// a COUNTED ARRAY OF UNIONS (§2.6, §3): the count, then each live
+		// slot; a dead slot is the union's value-initialized storage, tag 0
+		// and nothing else, which the zero-filled region already holds
+		stride := pieces[0].Size / f.ArrayBound
+		g.pf("%sif (%s.length > %d) return false;\n", ind, expr, f.ArrayBound)
+		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
+		g.pf("%sfor (var i = 0; i < %s.length; i++) {\n", ind, expr)
+		g.emitCookForm1UnionElement(un, expr+"[i]", fmt.Sprintf("at + %d + i * %d", offset, stride), ind+"  ")
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -263,6 +289,64 @@ func (g *cookGen) emitCookForm1Union(f *ir.Field, un *ir.Union, offset int64, ex
 		g.emitCookForm1Field(v.F, offset+armOffset, expr+"."+armMember(v), ind+"    ")
 	}
 	g.pf("%s}\n", ind)
+}
+
+// queueForm1Union queues a union's element writer, once.
+func (g *cookGen) queueForm1Union(un *ir.Union) {
+	if g.form1UnionsSeen == nil {
+		g.form1UnionsSeen = map[*ir.Union]bool{}
+	}
+	if !g.form1UnionsSeen[un] {
+		g.form1UnionsSeen[un] = true
+		g.form1Unions = append(g.form1Unions, un)
+	}
+}
+
+// emitCookForm1UnionElement writes one union array element where it lies,
+// through the union's element writer, and queues that writer (§2.6, §7.2).
+func (g *cookGen) emitCookForm1UnionElement(un *ir.Union, expr, addr, ind string) {
+	g.queueForm1Union(un)
+	if line := fmt.Sprintf("%sif (!_cook%s(%s, c, %s)) return false;", ind, un.Name, expr, addr); len(line) <= 80 {
+		g.pf("%s\n", line)
+	} else if head := fmt.Sprintf("%sif (!_cook%s(%s, c, %s))", ind, un.Name, expr, addr); len(head) <= 80 {
+		g.pf("%s\n%s  return false;\n", head, ind)
+	} else {
+		g.pf("%sif (!_cook%s(\n%s  %s,\n%s  c,\n%s  %s,\n%s))\n%s  return false;\n", ind, un.Name, ind, expr, ind, ind, addr, ind, ind)
+	}
+}
+
+// emitCookForm1UnionWriters writes the element writer of every union the
+// form-1 cook met as an array element: the union's storage at `at`, the tag
+// and the set arm exactly as a union field's (§2.6, §7.2). A writer's arms
+// may queue another union, so the queue drains until it is empty. The name
+// `_cook<Union>` cannot meet a record writer's `_cook<Table>`: a union and
+// a table share the unit's one namespace of type names.
+func (g *cookGen) emitCookForm1UnionWriters() {
+	for i := 0; i < len(g.form1Unions); i++ {
+		un := g.form1Unions[i]
+		outer := g.body
+		g.body = strings.Builder{}
+		elem := &ir.Field{Name: "value"}
+		elem.Type.Kind, elem.Type.Ref = ir.TNamed, un
+		g.emitCookForm1Union(elem, un, 0, "value", "    ")
+		fields := g.body.String()
+		g.body = outer
+		g.pf("  // One %s array element where it lies (§2.6, §7.2).\n", un.Name)
+		if sig := fmt.Sprintf("  static bool _cook%s(wire.%s value, TableCookGraph c, int at) {", un.Name, un.Name); len(sig) <= 80 {
+			g.pf("%s\n", sig)
+		} else {
+			g.pf("  static bool _cook%s(\n    wire.%s value,\n    TableCookGraph c,\n    int at,\n  ) {\n", un.Name, un.Name)
+		}
+		if cookUsesOut.MatchString(fields) {
+			g.pf("    final out = c.out;\n")
+		}
+		if cookUsesOrder.MatchString(fields) {
+			g.pf("    final order = c.order;\n")
+		}
+		g.pf("%s", fields)
+		g.pf("    return true;\n  }\n\n")
+	}
+	g.form1Unions, g.form1UnionsSeen = nil, nil
 }
 
 func lastDot(s string) int {

@@ -580,9 +580,10 @@ control puts the start-only bound back and requires the gate to go red.
 **DART emits two libraries per unit file**: `<Base>Block.dart` and
 `<Base>Cook.dart` (the two accelerators, §19 and §7) — plus one runtime home
 per unit and per surface, `<Package>Block.dart` and `<Package>Cook.dart`, which
-every other library of the unit imports. It emits no `<Base>Table.dart`: the
-Dart port of the table wire wrote the form that preceded the id-table wire and
-was removed rather than carried (schema#514 brings the current wire to Dart). A Dart library IS a file, so a runtime shared across a unit's
+every other library of the unit imports. The id-table wire (§3) and the text
+form (§16) ride one library per unit, `<Package>Wire.dart`; the fixed form
+(§3.4) rides `<Base>Fixed.dart` with its runtime home `<Package>Fixed.dart`;
+reflection (§8) rides the optional `<Package>View.dart`. A Dart library IS a file, so a runtime shared across a unit's
 files has to be PUBLIC, and every spelling of it is claimed by the front end
 (§11); the backend spells NO PRIVATE LIBRARY-SCOPE NAME AT ALL, because a schema
 identifier may begin with an underscore and a private top-level name would be a
@@ -637,14 +638,11 @@ Four spellings are Dart's own and the reason is at each site.
   The refusals a save and a measure answer are the reference's `-1`, in both
   verbs, because a value that measures as unsaveable and a buffer too short
   are one contract in the reference and this port does not split it.
-- **A float32 field's storage is a `double`**, so every elision comparison
-  narrows first (`tableNarrowFloat`). That is what gives the decision C's own
-  float semantics rather than the double's — -0.0 equal to 0.0, a NaN equal to
-  nothing — and what makes a Dart wire byte equal the C++ one for a value the
-  two languages cannot store alike.
-  The `-0.0 equal to 0.0` half is the comparison §3.3's plain-float rule
-  retires: a plain float's elision compares BIT PATTERNS, so this port owes
-  the bit compare after the narrowing (Go first, §3.3).
+- **A float32 field's storage is a `double`**, and a plain float's elision
+  compares BIT PATTERNS (§3.3): a value at a nonzero default elides by `==`,
+  and at a zero default by `==` and the sign (`isNegative`), so a `-0` under a
+  `+0` default rides as it does on every leg. A NaN or an infinity is refused
+  before any comparison matters (§3.3).
 - **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
   of a per-type `<Name>TableFields` class rather than C++'s offset and width: a
   Dart field has no address, and a tear-off of a static method is a
@@ -6589,10 +6587,17 @@ appearance gave it, and the same name at a SECOND kind or shape takes a second
 slot. Two entries that agree on all three parts are malformed, and both engines
 enforce that at `AnnounceRead` rather than leaving it to a writer's good
 behavior. **An element kind of `12` or `33` in an announced array or keyed
-shape is malformed there too**, because no declaration this language accepts is
-an array of `string(N)` or of `wstring(N)`, so such a shape is refused once at
-the announcement rather than accepted there and refused again by the skip that
-would meet it.
+shape is a shape like any other**, and its own shape is the `max` the kind
+names. A text list (§2.13) is a kind `14` array of element kind `12`, so a unit
+that declares one announces one, and an announcement that carried the shape
+would otherwise be refused whole: the unit's own would be (a Go unit with a text
+list refused its own announcement until this rule was written down). The
+element's `max` is the list's `M`, and `0` for the unbounded spelling, the value
+the element record's own `value` entry gives it. Such an element is framed, so
+a skip steps it one element at a time and never by width. A target that does not
+yet carry text lists (§2.13) reads the shape all the same: it can never meet the
+field in a body, because the form is fixed-only (§3.3), and refusing the entry
+would refuse the announcement.
 
 **THREE PROPERTIES FOLLOW from announcing the unit rather than the message.**
 
@@ -6969,8 +6974,7 @@ Go dogfooding). Go's wire for a value holding `-0` in an elided plain float
 GAINS that field — its header and four or eight bytes — where a leg still
 comparing with `==` elides it, so until each leg adopts the bit compare the
 legs agree byte for byte on every value except that one. Each other leg owes
-three things: elision by bit pattern (Dart's `tableNarrowFloat` comparison
-included, which today gives `-0` C's `==`), and the finite rule of
+three things: elision by bit pattern, and the finite rule of
 2026-10-27: the writer's refusal and every read's `non_finite_float`
 refusal, in all three binary forms. The Go leg, the C++ leg and the tool's
 engines (`internal/tablewire`, `internal/tablecook`) keep the rule, held by
