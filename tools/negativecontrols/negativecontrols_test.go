@@ -654,6 +654,11 @@ func TestToolchainPinsMatchTheConformanceRegistry(t *testing.T) {
 		if strings.ContainsAny(g.Dotnet, "0123456789") {
 			t.Errorf("group %q pins dotnet at %q: the SDK version lives in .github/dotnet-version, and this field only says the row needs it", g.Name, g.Dotnet)
 		}
+		// The moo pin is a commit, and it lives in make/moo.mk (MOO_PIN); the
+		// field is the marker "pin" or nothing, so the plan holds no second pin.
+		if g.Moo != "" && g.Moo != "pin" {
+			t.Errorf("group %q sets moo to %q: the moo pin lives in make/moo.mk (MOO_PIN), and this field is \"pin\" or absent", g.Name, g.Moo)
+		}
 	}
 }
 

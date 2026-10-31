@@ -138,7 +138,7 @@ func WideNew(class string, v *big.Int, width int) string {
 func IdLit(id uint64) string {
 	var b strings.Builder
 	b.WriteByte('"')
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		fmt.Fprintf(&b, "\\x%02x", byte(id>>(8*i)))
 	}
 	b.WriteByte('"')

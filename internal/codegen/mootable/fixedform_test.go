@@ -47,7 +47,7 @@ func corpusFile(t *testing.T, corpus, name string) []byte {
 }
 
 // a manifest line: records= and the values, normalised so a float compares
-// by its bits and a fixed-point value by its raw integer
+// by its bits and a fixed-point value by its raw integer.
 type manifestLine struct {
 	records int
 	values  map[string]string
@@ -76,7 +76,7 @@ func readFixedManifest(t *testing.T, corpus string) map[string]manifestLine {
 		}
 		// a value may hold a comma inside its quotes: split only before the
 		// next r<k>. key
-		for _, kv := range strings.Split(manifestValueSplit.ReplaceAllString(values, "\x00$1"), "\x00") {
+		for kv := range strings.SplitSeq(manifestValueSplit.ReplaceAllString(values, "\x00$1"), "\x00") {
 			k, v, ok := strings.Cut(kv, "=")
 			if ok {
 				ml.values[k] = normaliseManifestValue(v)
@@ -418,7 +418,7 @@ func TestMooFixedFormByteOracleNegativeControl(t *testing.T) {
 	}
 }
 
-// the versioning rows the corpus carries an old_ and a new_ file for
+// the versioning rows the corpus carries an old_ and a new_ file for.
 type versionRow struct {
 	row      string
 	sameHash bool
