@@ -233,33 +233,64 @@ end
 -- ---------------------------------------------------------------------------
 -- bytes (STANDARD.md bytes; DESIGN.md (g): aligns first, count not written).
 
-function M.writeBytes(s: any, data: any): boolean
+-- bytesRange is the optional counted form serializeBytes(data[, offset, count])
+-- (the reference's serialize_bytes( stream, data, count ), with moo's offset):
+-- count bytes of data from offset, the whole buffer by default. The count is
+-- the caller's declaration and is never written (STANDARD.md bytes). It
+-- returns the range, or nil when data is not a buffer or the range is not
+-- integers inside it (IMPLEMENTING.md U7, U16): the caller's misuse, a trap on
+-- write and measure and a ValueOutOfRange refusal on read.
+local RAISE_BYTES_DATA = "serialize: serializeBytes data must be a buffer"
+local RAISE_BYTES_RANGE = "serialize: serializeBytes offset and count must be integers inside the buffer"
+
+local function bytesRange(data: any, offset: any, count: any): (number?, number?, string?)
 	if type(data) ~= "buffer" then
-		return s:_misuse("serialize: serializeBytes data must be a buffer")
+		return nil, nil, RAISE_BYTES_DATA
+	end
+	local len = buffer.len(data)
+	if offset == nil and count == nil then
+		-- the whole-buffer form, the hot one: nothing to validate
+		return 0, len, nil
+	end
+	local off = if offset == nil then 0 else offset
+	if type(off) ~= "number" or off % 1 ~= 0 or off < 0 or off > len then
+		return nil, nil, RAISE_BYTES_RANGE
+	end
+	local cnt = if count == nil then len - off else count
+	if type(cnt) ~= "number" or cnt % 1 ~= 0 or cnt < 0 or cnt > len - off then
+		return nil, nil, RAISE_BYTES_RANGE
+	end
+	return off, cnt, nil
+end
+
+function M.writeBytes(s: any, data: any, offset: any, count: any): boolean
+	local off, n, bad = bytesRange(data, offset, count)
+	if off == nil or n == nil then
+		return s:_misuse(bad :: string)
 	end
 	if s:_latched() then
 		return false
 	end
-	local count = buffer.len(data)
 	local align = s:_alignBits()
-	if s._bits + align + count * 8 > s._numBits then
+	if s._bits + align + n * 8 > s._numBits then
 		return s:_misuse(RAISE_ROOM)
 	end
 	writeBitsRaw(s, 0, align)
-	if count > 0 then
+	if n > 0 then
 		if hasBitpacker then
-			s:_writeBytes(data, 0, count)
+			s:_writeBytes(data, off, n)
 		else
-			buffer.copy(s._data, s._bits // 8, data, 0, count)
-			s._bits += count * 8
+			buffer.copy(s._data, s._bits // 8, data, off, n)
+			s._bits += n * 8
 		end
 	end
 	return true
 end
 
-function M.readBytes(s: any, data: any): boolean
-	if type(data) ~= "buffer" then
-		return s:_misuse("serialize: serializeBytes data must be a buffer")
+function M.readBytes(s: any, data: any, offset: any, count: any): boolean
+	local off, n, bad = bytesRange(data, offset, count)
+	if off == nil or n == nil then
+		return s:_misuse(bad :: string)
 	end
 	if s:_latched() then
 		return false
@@ -267,24 +298,24 @@ function M.readBytes(s: any, data: any): boolean
 	if not readAlign(s) then
 		return false
 	end
-	local count = buffer.len(data)
-	if s._bits + count * 8 > s._numBits then
+	if s._bits + n * 8 > s._numBits then
 		return s:_fail(PastEnd)
 	end
-	if count > 0 then
+	if n > 0 then
 		if hasBitpacker then
-			s:_readBytes(data, 0, count)
+			s:_readBytes(data, off, n)
 		else
-			buffer.copy(data, 0, s._data, s._bits // 8, count)
-			s._bits += count * 8
+			buffer.copy(data, off, s._data, s._bits // 8, n)
+			s._bits += n * 8
 		end
 	end
 	return true
 end
 
-function M.measureBytes(s: any, data: any): boolean
-	if type(data) ~= "buffer" then
-		return s:_misuse("serialize: serializeBytes data must be a buffer")
+function M.measureBytes(s: any, data: any, offset: any, count: any): boolean
+	local off, n, bad = bytesRange(data, offset, count)
+	if off == nil or n == nil then
+		return s:_misuse(bad :: string)
 	end
 	if s:_latched() then
 		return false
@@ -292,7 +323,7 @@ function M.measureBytes(s: any, data: any): boolean
 	if not s:_measure(7) then
 		return false
 	end
-	return s:_measure(buffer.len(data) * 8)
+	return s:_measure(n * 8)
 end
 
 -- ---------------------------------------------------------------------------

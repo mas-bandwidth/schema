@@ -188,7 +188,9 @@ end
 -- readBits reads bits in [1,32] as a number, least-significant-bit first.
 -- Misuse (bits outside [1,32], past the end) raises serialize.go's panic text
 -- (serialize.go ReadBits). The reader never touches a byte past the data's
--- end: the past-end test happens before any byte is loaded.
+-- end: the past-end test happens before any byte is loaded. One
+-- buffer.readbits call reads the whole field (LSB first, the wire's own bit
+-- order), so the cost no longer grows with the width.
 function BitReader.readBits(self: any, bits: number): number
 	if bits < 1 or bits > 32 then
 		error(RAISE_BITS_RANGE, 2)
@@ -197,17 +199,8 @@ function BitReader.readBits(self: any, bits: number): number
 		error(RAISE_READ_OVERFLOW, 2)
 	end
 	local start = self._bitsRead
-	local result = 0
-	for i = 0, bits - 1 do
-		local bitIndex = start + i
-		local byteValue = buffer.readu8(self._data, math.floor(bitIndex / 8))
-		local bit = math.floor(byteValue / (2 ^ (bitIndex % 8))) % 2
-		if bit == 1 then
-			result = result + (2 ^ i)
-		end
-	end
 	self._bitsRead = start + bits
-	return result
+	return buffer.readbits(self._data, start, bits)
 end
 
 -- readAlign reads an align: skips to the next byte boundary, refusing nonzero
