@@ -138,3 +138,44 @@ BENCH_TABLES_LEGS += generated/bench/tables/squirrel/.stamp
 GOLDENS_LEGS      += update-goldens-squirrel
 TOOLCHAIN_LEGS          += squirrel
 TOOLCHAIN_PINS_squirrel := SQ
+
+# I12 (docs/PORTING.md) — THE DOCUMENTED SURFACE COMPILES AND RUNS, Squirrel
+# side. The gate pulls the marked fragment out of docs/USAGE.md, wraps it in a
+# script that supplies the one helper the page leaves to the caller, and runs
+# it under the pinned interpreter against the generated `tables/pointers`
+# modules, so the day the emitted surface moves the page goes red with it. The
+# fragment saves a two-node list and walks it back: it must reach both nodes.
+# USAGE_DOC names the page; the control points it at a sabotaged copy.
+USAGE_DOC ?= docs/USAGE.md
+USAGE_SQUIRREL_DIR ?= build/squirrel-usage
+.PHONY: tables-squirrel-usage tables-squirrel-usage-negative-control
+tables-squirrel-usage: toolchain-squirrel bin/schema $(USAGE_DOC)
+	@rm -rf $(USAGE_SQUIRREL_DIR) && mkdir -p $(USAGE_SQUIRREL_DIR)
+	./bin/schema generate --lang squirrel --out $(USAGE_SQUIRREL_DIR) tables/pointers
+	printf 'local used = { n = 0 };\nlocal use = function(x) { used.n++; };\n' > $(USAGE_SQUIRREL_DIR)/usage.nut
+	sed -n '/<!-- squirrel-table-usage -->/,/<!-- \/squirrel-table-usage -->/p' $(USAGE_DOC) \
+		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(USAGE_SQUIRREL_DIR)/usage.nut
+	printf 'if (used.n != 2) throw "the walk reached " + used.n + " node(s), want 2";\n' >> $(USAGE_SQUIRREL_DIR)/usage.nut
+	printf 'print("usage: docs/USAGE.md Squirrel example saved the Scene and walked " + used.n + " node(s)\\n");\n' >> $(USAGE_SQUIRREL_DIR)/usage.nut
+	grep -q 'SceneLoad' $(USAGE_SQUIRREL_DIR)/usage.nut || \
+		{ echo "MISSING: $(USAGE_DOC) carries no squirrel-table-usage example"; exit 1; }
+	cd $(USAGE_SQUIRREL_DIR) && $(SQ) usage.nut > usage.out 2> usage.err; cat usage.out; \
+		if [ -s usage.err ]; then cat usage.err; exit 1; fi; grep -q '^usage: ' usage.out
+
+# THE REVERSED WITNESSES: two edited copies of the page, each checked to have
+# changed, must each turn the gate red. The first renames the strict read the
+# page calls (the surface moved: the run errors); the second walks a member the
+# Scene does not carry (the example runs but reaches the wrong count).
+tables-squirrel-usage-negative-control:
+	@rm -rf build/squirrel-usage-negative && mkdir -p build/squirrel-usage-negative
+	sed 's/T\.SceneLoad(/T.SceneLaod(/' docs/USAGE.md > build/squirrel-usage-negative/renamed.md
+	sed 's/local node = back\.Head;/local node = back.Alias;/' docs/USAGE.md > build/squirrel-usage-negative/walks-one.md
+	@for c in renamed walks-one; do \
+		if cmp -s docs/USAGE.md build/squirrel-usage-negative/$$c.md; then \
+			echo "NEGATIVE CONTROL: the $$c edit did not apply to docs/USAGE.md"; exit 1; fi; \
+		if $(MAKE) tables-squirrel-usage USAGE_DOC=build/squirrel-usage-negative/$$c.md USAGE_SQUIRREL_DIR=build/squirrel-usage-negative/$$c > build/squirrel-usage-negative/$$c.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: the $$c copy of the page passed the Squirrel usage gate"; exit 1; fi; \
+		echo "tables-squirrel-usage negative control: the $$c copy fails the gate"; \
+	done
+
+test-squirrel: tables-squirrel-usage
