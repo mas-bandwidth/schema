@@ -306,7 +306,8 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #   walk   (I11) the text reader stores the negation of every bool field:
 #          json-read red; json-write and wire green.
 #   shared (M6)  the pack walk's identity check is gone, so a node two
-#          pointers name is written twice: wire red; json-read green.
+#          pointers name is written twice: wire and json-read (whose
+#          answer is the saved wire) red; json-write and report green.
 #   label  (M14) the text writer never labels a shared node and writes it in
 #          full at every pointer: json-write red; json-read and wire green.
 #   ids    (M20) the id table is written in reverse first-use order while the
@@ -346,7 +347,7 @@ conformance-negative-control-elixir-walk: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-walk,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WALK_SED,json-read,json-write wire,a text reader that negates every bool)
 
 conformance-negative-control-elixir-shared: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-shared,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_SHARED_SED,wire,json-read,a pack walk that writes a shared node twice)
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-shared,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_SHARED_SED,wire json-read,json-write report,a pack walk that writes a shared node twice)
 
 conformance-negative-control-elixir-label: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-label,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_LABEL_SED,json-write,json-read wire,a text writer that never labels a shared node)
