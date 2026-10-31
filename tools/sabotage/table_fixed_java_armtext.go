@@ -28,9 +28,5 @@ func init() {
 			old: "c.push(theirAt, at, units, auxAt, guard, opText, arg, (byte) 0, (byte) 0, meta);",
 			new: "c.push(theirAt, at, units, auxAt, guard, opText, meta, (byte) 0, (byte) 0); // SABOTAGED: the flavour over the arm ordinal",
 		},
-		{
-			old: "final int unit = (p.meta == textWide) ? 2 : 1;",
-			new: "final int unit = (p.arg == textWide) ? 2 : 1; // SABOTAGED: the flavour read back off the guard's lane",
-		},
 	}
 }

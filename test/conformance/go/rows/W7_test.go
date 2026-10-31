@@ -5,7 +5,7 @@
 // `arg` is THE GUARD'S ORDINAL and nothing else; `meta` is THE OP'S OWN
 // ARGUMENT (a text flavour). They must never share one lane. A string(N)
 // under a union arm needs both at once: one lane gives whichever was stamped
-// last — a byte string under arm 2 read as WIDE, or an entry that runs only
+// last — a text string under arm 3 read as BYTES, or an entry that runs only
 // when the tag equals the flavour, UNDER THE WRONG ARM.
 //
 // THE GO LEG'S FIXTURE. The law names UT1/UT2; the Go conformance module does
@@ -14,8 +14,7 @@
 // save Save; quit Quit }`, and Save carries `path string(16)` — a text field
 // under the SECOND arm. That is UT1's own reason for putting the string under
 // arm 2: the flavour of a string(N) is 1 and the second arm's ordinal is 2,
-// so a shared lane does not merely lose a fact, it turns a utf8 read WIDE or
-// guards on the wrong arm. Msg's baked identity plan (tblm1.MsgFixedPlan,
+// so a shared lane does not merely lose a fact, it guards on the wrong arm. Msg's baked identity plan (tblm1.MsgFixedPlan,
 // emitted by internal/codegen/gotable/fixedform.go:510-515) is:
 //
 //	entry 0: copy 5B  seq+tag      unguarded
@@ -103,9 +102,9 @@ func TestRowW7(t *testing.T) {
 	// One record whose tag is 2 and whose arm carries the five bytes
 	// "two-lanes!" — the guard fires because the tag equals Arg (2) at ArgW,
 	// and the text lands as utf8 because Meta (1) says unit 1 with a one-byte
-	// terminator. A shared lane either never fires (the ordinal stamped over
-	// the flavour: the guard compares 2 against 1) or reads the span WIDE —
-	// both lose the string under this tag.
+	// terminator. A shared lane never fires (the ordinal stamped over the
+	// flavour: the guard compares 2 against 1), and the string is lost under
+	// this tag.
 	values := []tblm1.Msg{{Seq: 7}}
 	values[0].Body.Type = tblm1.BodyTypeSave
 	copy(values[0].Body.Save.Path[:], "two-lanes!")

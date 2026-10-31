@@ -1353,9 +1353,8 @@ void twoLanesCase() {
     'two lanes: meta is the utf8 flavour (got $meta)',
   );
   // THE WHOLE POINT: the ordinal and the flavour are DIFFERENT facts. If one
-  // lane carried both, the guard's ordinal 2 would be the flavour (wide, 2)
-  // and this entry's string would read as WIDE — or the guard would test the
-  // tag against the flavour 1 and the entry would never run.
+  // lane carried both, the guard would test the tag against the flavour 1 and
+  // the entry would never run.
   check(
     arg != meta,
     'two lanes: the guard ordinal and the op flavour are DIFFERENT facts in '
@@ -1368,9 +1367,7 @@ void twoLanesCase() {
 
   // AND THE TWO LANES ARE USED. A record whose SECOND arm carries "seven77"
   // round-trips whole: an entry guarded by the wrong ordinal never runs (the
-  // text is lost) and an entry whose flavour is the arm ordinal halves the
-  // bound and terminates two bytes at a time. Both are silent; the value is
-  // what says so.
+  // text is lost). It is silent; the value is what says so.
   final one = fu1home.FuRoot();
   one.pick.type = fu1decl.PickType.labelled; // the SECOND arm
   one.pick.labelled.lead = 101;

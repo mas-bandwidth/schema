@@ -4,13 +4,13 @@
 # inside the guard2 paragraph, the governing sentence is :245):
 #   "**`arg` and `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never
 #   share one.** A `string(N)` under a union arm needs both, and one lane gives
-#   whichever was stamped last: a byte string under arm `2` read as WIDE, or an
+#   whichever was stamped last: a text string under arm `3` read as BYTES, or an
 #   entry that runs only when the tag equals the flavour — **under the wrong arm**."
 # and the struct's own split (docs/FIXED-FORM-ALGORITHM.md:231):
 #   "arg is THE GUARD'S ORDINAL and nothing else; meta is THE OP'S OWN ARGUMENT
 #   (a text flavour)."
 # The `text` op's table row confirms the meta lane (docs/FIXED-FORM-ALGORITHM.md:254):
-#   "`meta` = flavour" (1 utf8, 2 wide, 3 bytes).
+#   "`meta` = flavour" (1 utf8, 3 bytes).
 #
 # THIS LEG SPENDS THE TWO LANES BY SHAPE, in two different tuples of one plan
 # entry: the ordinal rides the `{:guard, gsrc, tag, argw, inner}` wrapper (`tag` IS
@@ -53,20 +53,20 @@ alias Tblp1.FixedRuntime, as: RT
 
 # THE VECTOR — derived in the header, built here.
 record_utf8 = <<2, 5::little-signed-32, "hello", 0, 0, 0>>
-# the wide twin: same arm-2 guard, length in CODE UNITS (2), payload four
-# UTF-16 LE units across the same 8-byte declared span.
-record_wide = <<2, 2::little-signed-32, "h", 0, "e", 0, "l", 0, "l", 0>>
+# the bytes twin: same arm-2 guard, three used bytes that are not UTF-8, which
+# only the bytes flavour lands.
+record_bytes = <<2, 3::little-signed-32, 0xFF, 0xFE, 0x01, 0, 0, 0, 0, 0>>
 prefill = :binary.copy(<<0>>, 13)
 
 # THE TWO LANES, TWO TUPLES: the tag byte copied whole (unguarded), then the
 # arm-2 guard wrapping the text entry. arg lane = 2 (the ordinal, nothing else);
-# meta lane = 1 (utf8). The wide twin keeps the guard IDENTICAL and changes only
+# meta lane = 1 (utf8). The bytes twin keeps the guard IDENTICAL and changes only
 # the flavour element — that is the independence the law demands.
 tag_copy = {:copy, 0, 0, 1}
 guarded_utf8 = {:guard, 0, 2, 1, {:text, 1, 1, 5, 8, 1}}
-guarded_wide = {:guard, 0, 2, 1, {:text, 1, 1, 5, 8, 2}}
+guarded_bytes = {:guard, 0, 2, 1, {:text, 1, 1, 5, 8, 3}}
 plan_utf8 = [tag_copy, guarded_utf8]
-plan_wide = [tag_copy, guarded_wide]
+plan_bytes = [tag_copy, guarded_bytes]
 
 # THE OLD ONE-LANE ENCODING, PLANTED BY HAND: the flavour stamped over the
 # arm ordinal in the guard's slot — what a port that shared one lane would have
@@ -85,8 +85,8 @@ checks = [
   {"W7 changing the flavour leaves the ORDINAL lane untouched (guard identical, 2 in both)",
    fn ->
      {:guard, g1, t1, w1, {:text, _, _, _, _, f1}} = guarded_utf8
-     {:guard, g2, t2, w2, {:text, _, _, _, _, f2}} = guarded_wide
-     g1 == g2 and t1 == t2 and w1 == w2 and t1 == 2 and f1 == 1 and f2 == 2
+     {:guard, g2, t2, w2, {:text, _, _, _, _, f2}} = guarded_bytes
+     g1 == g2 and t1 == t2 and w1 == w2 and t1 == 2 and f1 == 1 and f2 == 3
    end},
   {"W7 both lanes together: the entry fires under arm 2 and lands the utf8 text, clean",
    fn ->
@@ -103,15 +103,23 @@ checks = [
 
      image == <<1, 0::size(12)-unit(8)>> and report.malformed == false
    end},
-  {"W7 the FLAVOUR lane alone moves the read: wide under the same arm-2 guard counts units",
+  {"W7 the FLAVOUR lane alone moves the read: bytes under the same arm-2 guard land what utf8 refuses",
    fn ->
-     # meta 1 -> 2 turns the same bytes into wide: the length lands in UNITS
-     # (2), not bytes (5), and the payload rides as UTF-16 — while the arg lane
-     # still fires under tag 2.
-     {image, report} = run.(plan_wide, record_wide)
+     # meta 1 -> 3 turns the same entry into a byte string: bytes that are not
+     # UTF-8 land whole, where the utf8 flavour refuses them by name -- while
+     # the arg lane still fires under tag 2.
+     {image, report} = run.(plan_bytes, record_bytes)
 
-     image == <<2, 2::little-signed-32, "h", 0, "e", 0, "l", 0, "l", 0>> and
-       report.malformed == false and report.clamped == 0
+     refused =
+       try do
+         run.(plan_utf8, record_bytes)
+         false
+       catch
+         :throw, {:refuse, :text_ill_formed} -> true
+       end
+
+     image == <<2, 3::little-signed-32, 0xFF, 0xFE, 0x01, 0, 0, 0, 0, 0>> and
+       report.malformed == false and report.clamped == 0 and refused
    end},
   {"W7 NEGATIVE CONTROL: the old one-lane encoding (flavour stamped over the ordinal) drops the string under arm 2",
    fn ->

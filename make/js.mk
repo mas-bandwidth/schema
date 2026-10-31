@@ -943,10 +943,8 @@ tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
 	@sed 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
 		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
-	@sed -i.bak 's|const unit = e\[b + TableFixedLaneMeta\] === TableFixedTextWide ? 2 : 1;|const unit = e[b + TableFixedLaneArg] === TableFixedTextWide ? 2 : 1; // SABOTAGED|' \
-		build/js-armtext-sabotage/fixedruntime.go.txt
-	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 2 || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both halves of the lane"; exit 1; }
+	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 1 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not put the flavour in the guard's lane"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
