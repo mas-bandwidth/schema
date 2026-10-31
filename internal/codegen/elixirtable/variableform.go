@@ -1353,7 +1353,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
             report = Map.put(report, :blob_shared, shared)
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+
+            # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
+            # that met damage anywhere returns no value, only its report
+            if report.malformed do
+              {:error, :malformed, reasoned(report, :malformed)}
+            else
+              {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+            end
         end
     end
   catch
@@ -4537,10 +4544,17 @@ const variableRetainSource = `
             # the records were kept newest first; they are saved in the order
             # retained
             retain = %{Map.delete(retain, :memo) | records: Enum.reverse(retain.records)}
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
+
+            # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no value
+            # and nothing retained, only the report
+            if report.malformed do
+              {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+            else
+              {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
+            end
 
           _ ->
-            {:error, :malformed, reasoned(report, :malformed), retain}
+            {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
         end
     end
   catch

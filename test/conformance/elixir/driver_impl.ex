@@ -761,8 +761,8 @@ defmodule Driver do
             {:error, _refusal, %{reason: "unknown_form"}} ->
               write(outdir, name, "0,0,0,0,0,false,refused\n")
 
-            {:error, _refusal, %{reason: "wire_damaged"}} ->
-              write(outdir, name, "0,0,0,0,0,true,read\n")
+            {:error, _refusal, %{reason: "wire_damaged"} = report} ->
+              write(outdir, name, report_counters(report) <> ",read\n")
 
             _ ->
               write_absent(outdir, name)
@@ -850,8 +850,9 @@ defmodule Driver do
       {:error, _refusal, %{reason: "unknown_form"}} ->
         "0,0,0,0,0,false,refused\n"
 
-      {:error, _refusal, %{reason: "wire_damaged"}} ->
-        "0,0,0,0,0,true,read\n"
+      {:error, _refusal, %{reason: "wire_damaged"} = report} ->
+        # a damaged load returns no value, and its report stands
+        report_counters(report) <> ",read\n"
 
       _ ->
         :absent
