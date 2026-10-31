@@ -222,6 +222,7 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk:1023", "same separate test/go-tables module, -run '^TestUsage$$'"},
 	{"make/go.mk:530", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone"},
 	{"make/go.mk:544", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone"},
+	{"make/moo-tables.mk:17", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them"},
 	{"Makefile:5570", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 }
 
