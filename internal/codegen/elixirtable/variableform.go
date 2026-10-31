@@ -3449,6 +3449,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     |> Enum.reduce({%{}, report}, fn {key, input}, {acc, report} ->
       # a map key is a JSON string whatever its kind, bound for text storage
       report = json_text_zero(f, key, report)
+      # a repeated key is counted and the last occurrence wins (§2.8)
+      report =
+        if Map.has_key?(acc, key),
+          do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+          else: report
+
       {value, report} = json_read_field(value_field, input, report)
       {Map.put(acc, key, value), report}
     end)
