@@ -73,7 +73,7 @@ final class _RetainRecord {
 // the ids this build can name (docs/SPEC-TABLES.md §6.6): a retained id is by
 // definition not here, and takes its entry from the caller's list rather than
 // the generated table.
-final Set<int> _retainKnown = <int>{%s};
+const Set<int> _retainKnown = <int>{%s};
 
 int _retainWidth(int kind) {
   switch (kind) {

@@ -3,7 +3,11 @@ name: Release
 # A RELEASE vX.Y.Z IS MADE HERE AND NOWHERE ELSE (Glenn, 2026-10-15): dispatched
 # by hand with the version, on main, it runs `make release`, which refuses by
 # name a version that does not parse as vMAJOR.MINOR.PATCH, one not greater
-# than the newest v tag, and a commit that is not on main, and otherwise tags
+# than the newest v tag, a commit that is not on main, and a patch release
+# that moves the build version's form (ir.BuildVersionForm), and, first of all,
+# a commit whose compiler encodes different wire bytes than the newest v tag's
+# under an equal protocol id (the previous-release differential, #463), and
+# otherwise tags
 # that one commit with that one annotated tag and pushes only that tag. The
 # number is the dispatcher's choice under docs/VERSIONING.md's rules; CI,
 # including a certify.yml run on the commit, must be green first.
@@ -29,7 +33,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # two compilers built, three C++ packet drivers built twice, the
+    # conformance instances packed twice
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -619,6 +619,16 @@ struct TableIds
     // the reference an id takes: the file's own first-use entry, appended on
     // first use. The MESSAGE form names no id at all: its references are
     // compile-time slots of the announced vocabulary (docs/SPEC-TABLES.md §3.3).
+    //
+    // ids and chain are left unset by the constructor on purpose: a save
+    // builds one TableIds, and only the entries below count are ever read,
+    // because a bucket's chain links only entries this function appended.
+    // gcc cannot see that invariant through the chain and calls the reads
+    // maybe-uninitialized, so the warning is off for this function alone.
+#if defined( __GNUC__ ) && !defined( __clang__ )
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
     BLOBDEMO_TABLE_INLINE uint64_t ref( uint64_t id )
     {
         const uint32_t b = bucket_of( id );
@@ -630,6 +640,9 @@ struct TableIds
         ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
+#if defined( __GNUC__ ) && !defined( __clang__ )
+#pragma GCC diagnostic pop
+#endif
 
     // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
     // header, union arm header or blob header names. A REPEAT answers from
@@ -4436,9 +4449,15 @@ struct TableRegionCtx {};
 // view is the header plus eight and the header's first word. Nothing here
 // allocates and nothing copies: off a locked region, a loaded one or an
 // opened cook the view points INTO the region.
+//
+// The add is done on the ADDRESS (uintptr_t), not on a pointer to the slot:
+// the target lies elsewhere in the region, outside the eight-byte TableRef, so
+// pointer arithmetic from &ref would leave the slot's object, and an optimizer
+// that tracks object sizes (gcc 13 at -O2) then refuses strlen on a view whose
+// terminator is really there. The same holds for every node's At.
 inline const TableBlob * TableBlobAt( const TableRef & ref )
 {
-    return ref.value != 0 ? (const TableBlob *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const TableBlob *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const TableBlob * TableBlobAt( const TableRegionCtx &, const TableRef & ref ) { return TableBlobAt( ref ); }
 inline const TableBlob * TableBlobAt( const TableArenaCtx & ctx, const TableRef & ref )
@@ -7013,11 +7032,11 @@ inline void TableReset( Catalog & value ) { CatalogReset( value ); }
 // Asset is a pointer target.
 inline const Asset * AssetAt( const TableRef & ref ) // the const form's hot path: one add, no base
 {
-    return ref.value != 0 ? (const Asset *) ( (const uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (const Asset *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline Asset * AssetAt( TableRef & ref )
 {
-    return ref.value != 0 ? (Asset *) ( (uint8_t *) &ref + ref.value ) : NULL;
+    return ref.value != 0 ? (Asset *) ( (uintptr_t) &ref + (uintptr_t) ref.value ) : NULL;
 }
 inline const Asset * AssetAt( const TableRegionCtx &, const TableRef & ref ) { return AssetAt( ref ); }
 inline const Asset * AssetAt( const TableArenaCtx & ctx, const TableRef & ref )
