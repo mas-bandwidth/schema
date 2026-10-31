@@ -162,6 +162,7 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 	inputs := map[string][]byte{}
 	var names []string
 	wants := map[string][]byte{}
+	goRefusals := map[string]string{}
 	for _, in := range readInstanceRows(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")) {
 		if in.unit != "mapdemo" {
 			continue
@@ -172,6 +173,7 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 		}
 		inputs[in.name] = data
 		wants[in.name] = data
+		goRefusals[in.name] = in.goRefusal
 		names = append(names, in.name)
 		fmt.Fprintf(&p, "run(%q, %q, %q, %q);\n", in.unit, mod, in.root, in.name)
 	}
@@ -183,6 +185,16 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 	compared := 0
 	for _, name := range names {
 		row, ok := got[name]
+		if refusal := goRefusals[name]; refusal != "" && ok {
+			// a writer refuses a blob two slots name, by name (docs/SPEC-TABLES.md
+			// §2.5), as the Go engine does: the save answers null
+			if row.hex != "" || row.measure != -1 {
+				t.Errorf("%s: a writer-refused value saved %d bytes", name, row.measure)
+				continue
+			}
+			compared++
+			continue
+		}
 		if !ok || row.hex == "" {
 			t.Errorf("%s: the load then save answered no bytes", name)
 			continue

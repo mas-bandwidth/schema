@@ -300,8 +300,8 @@ func (pr *jsonProbe) jsonWriteRed(t *testing.T) map[string]string {
 func TestSquirrelJsonAgreesWithTheCorpus(t *testing.T) {
 	t.Parallel()
 	pr := runJsonProbe(t)
-	if len(pr.rows.instances) != 98 {
-		t.Fatalf("the manifest names %d instance rows, want 98", len(pr.rows.instances))
+	if want := manifestInstanceLines(t, filepath.Join(pr.root, "testdata", "conformance", "tables", "MANIFEST.txt")); len(pr.rows.instances) != want {
+		t.Fatalf("read %d instance rows, the manifest has %d instance lines", len(pr.rows.instances), want)
 	}
 	red := pr.jsonWriteRed(t)
 	for name, why := range red {

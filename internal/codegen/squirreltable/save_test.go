@@ -74,8 +74,8 @@ func TestSquirrelTableSaveRoundTripsEveryInstance(t *testing.T) {
 	}
 	units := manifestUnits(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	instances := readInstanceRows(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
-	if len(instances) != 98 {
-		t.Fatalf("the manifest names %d instance rows, want 98", len(instances))
+	if want := manifestInstanceLines(t, filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt")); len(instances) != want {
+		t.Fatalf("read %d instance rows, the manifest has %d instance lines", len(instances), want)
 	}
 	paths := map[string][]string{}
 	for _, u := range units {
