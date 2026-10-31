@@ -678,16 +678,20 @@ local function node_records(bytes: buffer, ids: { any }, endpos: number): any
 	return raw
 end
 
--- LoadRetain is the ordinary load's answer beside §6.6's retained set. The
--- value comes from schema_load.luau's own walk; the capturing walk adds nothing to
--- the plain read's verdict and never raises `malformed`. `capacity` is the
+-- LoadRetain is the ordinary load's answer beside §6.6's retained set, and
+-- LoadRetainTolerant the tolerant load's (§6.5: the plain name is the strict
+-- read, and the recovering read is reached by its explicit name, as
+-- schema_load.luau's loadTolerant is). The value comes from schema_load.luau's
+-- own walk; the capturing walk adds nothing to the read's verdict and never
+-- raises `malformed`, and a file whose id table the tolerant read could not
+-- frame keeps no record at all. `capacity` is the
 -- byte ceiling the caller owns: the retained store never grows past it and a
 -- whole record that does not fit counts one `retain_lost` (§6.6). `idCount` is
 -- the retained-id list's capacity, a COUNT: the save numbers an id this build
 -- cannot name into that list, and a record whose ids would pass it is dropped
 -- and counts one `retain_lost` there (§6.6). It defaults to C / 8, the bound
 -- no file can beat.
-function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
+local function load_retain(read: any, root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
 	if report.retained == nil then report.retained = 0 end
 	if report.retainLost == nil then report.retainLost = 0 end
 	local cap: number = capacity or 65536
@@ -697,7 +701,7 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 	local new_store = function()
 		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0, idCap = idCap }
 	end
-	local v = Load.load(root, bytes, report)
+	local v = read(root, bytes, report)
 	if v == nil then
 		return v, new_store()
 	end
@@ -709,6 +713,10 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 		count = integer.tonumber(buffer.readinteger(bytes, len - 8))
 	end
 	local endpos = len - 8 - count * 8
+	if count < 0 or endpos < 1 then
+		-- an id table the tolerant read could not frame: nothing to capture
+		return v, store
+	end
 	local ids = {}
 	for i = 0, count - 1 do
 		ids[i + 1] = buffer.readinteger(bytes, endpos + i * 8)
@@ -746,6 +754,14 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 		return nil, new_store()
 	end
 	return v, store
+end
+
+function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
+	return load_retain(Load.load, root, bytes, report, capacity, idCount)
+end
+
+function R.LoadRetainTolerant(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
+	return load_retain(Load.loadTolerant, root, bytes, report, capacity, idCount)
 end
 
 -- ---------------------------------------------------------------------------
