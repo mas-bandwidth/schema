@@ -752,9 +752,9 @@
     {
       "name": "cs-framing",
       "when": "pull-request",
-      "why": "the C# leg's framing surface (docs/LAYERS/1-framing.md): the conformance driver built against a copy of the generated runtime with the 4096-entry id-table cap removed, run through a substituted registry; the framing surface must go red on frame_entries_4097 and no other surface may move. About 25 s on vision.",
+      "why": "the C# leg's framing control (docs/LAYERS/1-framing.md, F6): the conformance driver built against a copy of the generated C# tree whose file read has no 4096-entry id-table cap, run through the shared framing gate, which must go red on frame_entries_4097. One dotnet build and one framing-only harness run, about 15 s on vision.",
       "targets": [
-        "tables-cs-framing-negative-control"
+        "conformance-negative-control-cs-framing"
       ],
       "dotnet": "pin"
     },
