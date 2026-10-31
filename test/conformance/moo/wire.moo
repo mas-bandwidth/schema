@@ -5,6 +5,9 @@
 --
 --   wire    Load the instance's wire, Save, the bytes
 --   report  Load the wire tolerantly, the report as `u,k,w,c,d,m,verdict\n`
+--   framing the report line as `report` prints it, then the §16 text of the
+--           value the read left, unless the row says `no-value` or the read
+--           was refused (docs/LAYERS/1-framing.md)
 --
 -- through the emitted table_load.moo and table_save.moo and the descriptors the
 -- unit's <Base>Table modules register. ctx is the one block.moo documents, with
@@ -78,6 +81,41 @@ return function(ctx: any): { [string]: Surface }
 						if refused then "refused" else "read"
 					)
 				)
+			end
+		end,
+	}
+	-- THE FRAMING VECTORS (docs/LAYERS/1-framing.md). A derived line is
+	-- `framing <case> <unit> <root> <wire> [no-value]`. A damaged row owes the
+	-- refusal alone (D1), so a row with no value owes nothing past the report.
+	surfaces["framing"] = {
+		carried = carried,
+		run = function()
+			for _, f in ctx.kind("framing") do
+				if not carried(nil, f[3]) or ctx.module(f[3], "json") == nil then
+					ctx.say(f[2], nil)
+					continue
+				end
+				local v, r, _, schema, refused = loadWire(f)
+				local malformed = r.malformed or (v == nil and not refused)
+				local text = string.format(
+					"%d,%d,%d,%d,%d,%s,%s\n",
+					r.unknown,
+					r.kindMismatch,
+					r.widened,
+					r.clamped,
+					r.duplicate,
+					tostring(malformed),
+					if refused then "refused" else "read"
+				)
+				if not refused and f[6] ~= "no-value" then
+					if v == nil then
+						ctx.say(f[2], text .. "!no value")
+						continue
+					end
+					local J: any = ctx.module(f[3], "json")
+					text ..= J.toJson(schema.lookup(f[4]), v)
+				end
+				ctx.say(f[2], text)
 			end
 		end,
 	}
