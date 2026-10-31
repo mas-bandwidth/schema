@@ -4300,9 +4300,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # a header whose element kind is not the declared one is a kind mismatch the
+  # read answers as an empty list, so it places nothing (internal/tablewire
+  # extent.go): only a list DECLARED of tables descends into table elements.
   defp list_extent(field, arr, ids, at) do
     case arr do
-      <<13, count_rest::binary>> ->
+      <<13, count_rest::binary>> when field.elem_kind == 13 ->
         case leb(count_rest) do
           :error ->
             :error
