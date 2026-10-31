@@ -839,6 +839,39 @@ public final class Driver {
         return 0;
     }
 
+    // THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+    // `report` surface prints it, then the §16 text of the value the read left,
+    // unless the row says `no-value` or the read was refused. A derived line is
+    // `framing <case> <unit> <root> <wire> [no-value]`. A damaged read owes the
+    // refusal alone (§4, DAMAGE DISCARDS THE WHOLE LOAD), so its value is not
+    // written.
+    private static int surfaceFraming(String out) throws IOException {
+        for (String[] f : kind("framing")) {
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) { spillAbsent(out, f[1]); continue; }
+                Object report = codec.report();
+                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                boolean refused = codec.flag(report, "refused");
+                boolean malformed = codec.flag(report, "malformed") || (value == null && !refused);
+                StringBuilder answer = new StringBuilder(String.format("%d,%d,%d,%d,%d,%s,%s\n",
+                        codec.count(report, "unknown"), codec.count(report, "kindMismatch"),
+                        codec.count(report, "widened"), codec.count(report, "clamped"),
+                        codec.count(report, "duplicate"), malformed, refused ? "refused" : "read"));
+                boolean noValue = f.length > 5 && f[5].equals("no-value");
+                byte[] head = answer.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                if (refused || malformed || noValue) { spill(out, f[1], head); continue; }
+                byte[] text = codec.toJson(value);
+                if (text == null) return failInt(f[1] + ": toJson refused the value");
+                byte[] both = new byte[head.length + text.length];
+                System.arraycopy(head, 0, both, 0, head.length);
+                System.arraycopy(text, 0, both, head.length, text.length);
+                spill(out, f[1], both);
+            } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": framing codec failed: " + failure); }
+        }
+        return 0;
+    }
+
     // ---- THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2)
     //
     // cook-reason and block-reason (test/conformance/README.md): each forgery of
@@ -1224,7 +1257,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
+            System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
                     + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
@@ -1238,6 +1271,7 @@ public final class Driver {
         switch (surface) {
             case "wire": return surfaceWire(out);
             case "report": return surfaceReport(out);
+            case "framing": return surfaceFraming(out);
             case "block-reason": return surfaceReason(out, "block");
             case "cook-reason": return surfaceReason(out, "cook");
             case "json-read": return surfaceJsonRead(out);
