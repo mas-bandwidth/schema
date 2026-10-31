@@ -1486,8 +1486,11 @@ defmodule WireFuzz do
           # §3.3), and the refusal is the answer the oracle compares
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
-        _ ->
-          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+        {:error, _reason, report} ->
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # damage discards the whole load): its report, malformed among it,
+          # is the answer the oracle compares
+          stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
       end
     end
   end
@@ -1521,8 +1524,11 @@ defmodule WireFuzz do
         {:error, :non_finite_float, _report, _retain} ->
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
-        _ ->
-          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+        {:error, _reason, report, _retain} ->
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # damage discards the whole load): its report, malformed among it,
+          # is the answer the oracle compares
+          stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
       end
     end
   end
