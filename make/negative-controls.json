@@ -1564,6 +1564,15 @@
       "luau": "0.741"
     },
     {
+      "name": "luau-forgery",
+      "when": "pull-request",
+      "why": "Production block-open and optional CheckWhole/open composition controls on pinned Luau 0.741: remove both block extent bounds, then the optional cook-check region scan, and require independent bounds/checker findings. This does not complete production cook I3. Each control covers 24000 mutants; the actual make target took 63.44 seconds on hetzner1 at GOMAXPROCS=4. A separate group keeps this measured work within the owner's one-to-two-minute per-commit budget.",
+      "targets": [
+        "tables-luau-forgery-fuzz-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
       "name": "lobster",
       "when": "pull-request",
       "why": "the Lobster leg's controls, with the pinned v2026.8 toolchain (make dist-lobster). The strict gate's control generates examples/ fresh, requires it clean, plants a never-reassigned var in a copy of the generated Types.lobster and requires the compiler's output to be that one warning; about 2 s on the studio. The bench legs' control (bench/lobster/negative-control.sh) flips each leg's golden, plants a compiler warning under the packet runner and a seconds_elapsed() clock and a corpus name in .lobster files under a copy of bench/, and requires each refused by name beside clean baselines; about 3 s. Both fit the per-commit rule with room.",
