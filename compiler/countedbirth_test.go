@@ -42,17 +42,17 @@ type T
 // countName is the count's spelling in each target's storage. It is the
 // identifier every claim below is made about.
 var countName = map[string]string{
-	"c": "window_count",
-	"cpp": "window_count",
-	"cs": "WindowCount",
-	"dart": "windowCount",
-	"elixir": "window", // the list IS the count: length(value.window)
-	"go": "WindowCount",
-	"goose": "WindowCount",
-	"java": "windowCount",
-	"js": "windowCount",
+	"c":       "window_count",
+	"cpp":     "window_count",
+	"cs":      "WindowCount",
+	"dart":    "windowCount",
+	"elixir":  "window", // the list IS the count: length(value.window)
+	"go":      "WindowCount",
+	"goose":   "WindowCount",
+	"java":    "windowCount",
+	"js":      "windowCount",
 	"lobster": "WindowCount",
-	"rust": "window_count",
+	"rust":    "window_count",
 }
 
 // bornAtMinimum is the text each target's CONSTRUCTED form carries when the
@@ -60,17 +60,17 @@ var countName = map[string]string{
 // here: it is all-zero by rule in every target, and a specified default does
 // not reach it either.
 var bornAtMinimum = map[string]string{
-	"c": "value.window_count = 2;",
-	"cpp": "int32_t window_count = 2;",
-	"cs": "value.WindowCount = 2;", // a struct: Init, run by its constructor, births the count
-	"dart": "int windowCount = 2;",
-	"elixir": "defstruct window: List.duplicate(0, 2)",
-	"go": "value.WindowCount = 2",
-	"goose": "WindowCount: i32 = 2,", // the struct field's own default (docs/PORT-GOOSE.md, THE TYPE MAPPING)
-	"java": "public int windowCount = 2;",
-	"js": "this.windowCount = 2;",
+	"c":       "value.window_count = 2;",
+	"cpp":     "int32_t window_count = 2;",
+	"cs":      "value.WindowCount = 2;", // a struct: Init, run by its constructor, births the count
+	"dart":    "int windowCount = 2;",
+	"elixir":  "defstruct window: List.duplicate(0, 2)",
+	"go":      "value.WindowCount = 2",
+	"goose":   "WindowCount: i32 = 2,", // the struct field's own default (docs/PORT-GOOSE.md, THE TYPE MAPPING)
+	"java":    "public int windowCount = 2;",
+	"js":      "this.windowCount = 2;",
 	"lobster": "WindowCount: 2",
-	"rust": "window_count: 2,",
+	"rust":    "window_count: 2,",
 }
 
 // refusesEveryBuild is the write path's UNCONDITIONAL range refusal, for the
