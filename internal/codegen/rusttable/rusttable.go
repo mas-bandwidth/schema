@@ -84,6 +84,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		// it, owns TableReport, and the message runtime then emits none.
 		_, variable := out[VariableRuntimeModule+".rs"]
 		out[MessageRuntimeModule+".rs"] = messageRuntimeModule(u, !variable)
+	} else if anyCookable(u, closure) {
+		// a unit with no fixed root still has cooked records, and those name
+		// the fixed runtime's row types (TableU128, TableCookSpan)
+		out[FixedRuntimeModule+".rs"] = fixedRuntimeModule(u)
 	}
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 	// THE VIEW (docs/SPEC-TABLES.md §8): every table's and every type's
