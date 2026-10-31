@@ -641,10 +641,11 @@ jobs:
       # (TestGooseFixedFormAgreesWithTheByteOracle) and its negative control fail
       # rather than skip without the corpus the steps above built. The unit
       # groups' `go test` runs the same packages without the corpus, where
-      # those two skip. Goose's versioning rows are owed (schema#2236).
-      - name: the Goose leg reads the reference's fixed-form bytes
+      # those two skip. `tables-goose-versioning` is §5.7's two columns over
+      # every versioning row (make/goose-versioning.mk).
+      - name: the Goose leg reads the reference's fixed-form bytes, and reads backward over every versioning row
         if: matrix.group == 'versioning'
-        run: make dist-goose test-goose
+        run: make dist-goose test-goose tables-goose-versioning tables-goose-message-form
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would

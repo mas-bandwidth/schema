@@ -992,9 +992,34 @@
     {
       "name": "goose",
       "when": "pull-request",
-      "why": "the Goose leg's fixed-form control (docs/PORT-GOOSE.md): the target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
+      "why": "the Goose leg's fixed-form, message-form, message peer-read and versioning controls (docs/PORT-GOOSE.md; the message-form, peer-read and versioning controls about 2 s each): each target installs the pinned Goose compiler itself (make dist-goose) and reads the C++ reference's corpus, so the group needs Go, the host C++ compiler and the ../serialize sibling, and nothing else.",
       "targets": [
-        "tables-goose-fixedform-negative-control"
+        "tables-goose-fixedform-negative-control",
+        "tables-goose-tablewire-negative-control",
+        "tables-goose-message-form-negative-control",
+        "tables-goose-message-peer-negative-control",
+        "tables-goose-versioning-negative-control"
+      ]
+    },
+    {
+      "name": "goose-blockcook",
+      "when": "pull-request",
+      "why": "the Goose leg's accelerator controls (docs/PORT-GOOSE.md; make/goose-blockcook.mk): the block form's lead and Begin controls against the C++ goldens, and three harness runs over a sabotaged copy of the generated units (the cook's reserved words, the block's pitch, the write's byte order), and the forgery fuzzer's two both-bounds extent controls (about 4 s together). The targets install the pinned Goose compiler themselves (make dist-goose) and need Go and nothing else; their own group because three harness runs (about 55 s on a laptop) would push the goose group past the 120 s rule.",
+      "targets": [
+        "tables-goose-accel-negative-control",
+        "tables-goose-block-negative-control",
+        "tables-goose-fuzz-negative-control"
+      ]
+    },
+    {
+      "name": "goose-wire",
+      "when": "pull-request",
+      "why": "the Goose leg under hostile input (make/goose-fuzz.mk): the wire-fuzz differential's two load sabotages (a non-minimal LEB128 accepted, every text taken as well-formed), each a sed over the generated wire_load.goose of one unit and a goose build -O2 of that leg, and the hostile corpus's non-finite plant, with the umbrella that names the two fuzz leaves (make builds each once in one invocation, so it costs the group nothing). Each installs the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else. Measured at 7.7 s of control time together on the author's machine (2026-10-28).",
+      "targets": [
+        "schema-goose-runs-hostile-corpus-negative-control",
+        "tables-goose-wire-fuzz-leb-negative-control",
+        "tables-goose-wire-fuzz-negative-control",
+        "tables-goose-wire-fuzz-utf8-negative-control"
       ]
     },
     {
@@ -1004,7 +1029,8 @@
       "targets": [
         "tables-goose-runtime-home-negative-control",
         "tables-goose-strict-emitter-negative-control",
-        "tables-goose-strict-negative-control"
+        "tables-goose-strict-negative-control",
+        "tables-goose-unit-home-negative-control"
       ]
     },
     {
@@ -1016,6 +1042,25 @@
         "packet-finite-goose-negative-control",
         "packet-utf8-goose-negative-control",
         "packet-wide-goose-negative-control"
+      ]
+    },
+    {
+      "name": "goose-text",
+      "when": "pull-request",
+      "why": "the Goose leg's JSON text form controls (make/goose-text.mk): the walk's field dispatch sabotaged in generated code, and the float32 writer capped at six digits under the text differential. Each installs the pinned Goose compiler itself (make dist-goose) and needs Go and nothing else; a group of its own so the goose group's other surfaces land without touching these lines.",
+      "targets": [
+        "tables-goose-json-differential-negative-control",
+        "tables-goose-json-walk-negative-control"
+      ]
+    },
+    {
+      "name": "goose-conformance",
+      "when": "pull-request",
+      "why": "the Goose leg's own conformance controls (test/conformance/goose/negative-control): each copies build/conformance-goose, breaks one runtime clause (the load's unknown-field count) and runs the harness over wire, report, retain and retain-save against the copy (report and retain red, wire and retain-save green; 60 s on amd-2), and the accelerators' order-word control (two harness runs over the accelerator surfaces, each Open's byte-order clause taken out of a copy: forgery or cook-forgery red, the foreign surfaces green), and the usage page's two reversed witnesses (docs/USAGE.md's Goose fragment renamed and walking nothing, each a goose run of a small program), so the group needs Go, the host C++ compiler for the reference leg, the ../serialize sibling and the pinned Goose compiler (make dist-goose), and nothing else.",
+      "targets": [
+        "conformance-negative-control-goose",
+        "tables-goose-order-negative-control",
+        "tables-goose-usage-negative-control"
       ]
     },
     {

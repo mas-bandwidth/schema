@@ -246,7 +246,7 @@ jobs:
             case "$f" in
               internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
               internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
-              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
+              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/goose-hostile/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
             esac
           done <<EOF
           $files
@@ -737,9 +737,9 @@ jobs:
             luau)   make dist-luau
                     make tables-luau-fixed-form tables-luau-versioning
                     make bench-luau-gate ;;
-            # the Goose leg's fixed form against the reference's bytes (make/goose.mk;
-            # its versioning rows are owed, schema#2236), under the pinned compiler
-            goose)  make dist-goose test-goose ;;
+            # the Goose leg's fixed form against the reference's bytes (make/goose.mk)
+            # and its versioning rows (make/goose-versioning.mk), under the pinned compiler
+            goose)  make dist-goose test-goose tables-goose-versioning tables-goose-message-form ;;
             # test-lobster holds the fixed form to the reference's byte oracle
             # (SCHEMA_REQUIRE_CORPUS=1) beside both packages' suites; the strict
             # gate compiles every generated unit with zero warnings; the bench

@@ -1,0 +1,109 @@
+#!/bin/sh
+# THE GOOSE ACCELERATORS' NEGATIVE CONTROLS (make/goose.mk; docs/PORTING.md M7,
+# M8; docs/SPEC-TABLES.md §7, §7.6, §19.2). Each mode breaks ONE clause of the
+# Goose runtime in a COPY of build/conformance-goose — nothing tracked is
+# written to — aims the driver at the copy (SCHEMA_GOOSE_GENERATED), and runs
+# the harness over the accelerators' surfaces alone. The control passes only
+# when the surfaces the clause owns go red and every other accelerator
+# surface stays green:
+#
+#   cook-open    Open stops checking the cook's two reserved words (M8):
+#                cook-forgery and cook-reason go red; cook, cook-write and
+#                every block surface stay green
+#   block-pitch  Open stops holding an array's pitch to this build's (M7: the
+#                stride a row is reached by is the instance's, asserted once):
+#                forgery and block-reason go red; block, block-dump and every
+#                cook surface stay green
+#   cook-order   the writer ignores the byte order it is handed (§7.6: the
+#                order is the target's, a parameter of the write): cook-write
+#                goes red; every read surface stays green
+#   block-order  Open stops reading the prologue's byte-order word (§19.2;
+#                docs/PORTING.md I7: a block whose magic is intact and whose
+#                order word says the other order): forgery and block-reason go
+#                red (block_byte_order); block-foreign, which reverses the
+#                magic, stays green with every other surface
+#   cook-order-word  the same for the cook's header word (§7): cook-forgery and
+#                cook-reason go red (cook_byte_order_*); cook-foreign stays
+#                green with every other surface
+#
+# usage: test/conformance/goose/negative-control-accel <mode>
+# The working directory is the repository root.
+mode=$1
+case "$mode" in
+cook-open)
+	file=cook_form.goose
+	from='    if accel_u64(b, 48) != 0 { return TableRefuseReservedNotZero; }'
+	to=''
+	red="cook-forgery cook-reason"
+	green="cook cook-foreign cook-write block block-foreign block-dump forgery block-reason"
+	;;
+block-pitch)
+	file=block_form.goose
+	from='    if pitch != stride as u64 { return TableRefuseBadLayout; }'
+	to=''
+	red="forgery block-reason"
+	green="block block-foreign block-dump cook cook-foreign cook-forgery cook-reason cook-write"
+	;;
+cook-order)
+	file=cook_form.goose
+	from='        let shift = if big { w - 1 - i } else { i };'
+	to='        let shift = i;'
+	red="cook-write"
+	green="cook cook-foreign cook-forgery cook-reason block block-foreign block-dump forgery block-reason"
+	;;
+block-order)
+	file=block_form.goose
+	from='    if accel_u64(b, 16) != TableBlockByteOrder { return TableRefuseNotACook; }'
+	to=''
+	red="forgery block-reason"
+	green="block block-foreign block-dump cook cook-foreign cook-forgery cook-reason cook-write"
+	;;
+cook-order-word)
+	file=cook_form.goose
+	from='    if accel_u64(b, 16) != TableCookByteOrder { return TableRefuseNotACook; }'
+	to=''
+	red="cook-forgery cook-reason"
+	green="cook cook-foreign cook-write block block-foreign block-dump forgery block-reason"
+	;;
+*)
+	echo "usage: $0 cook-open|block-pitch|cook-order|block-order|cook-order-word" >&2
+	exit 2
+	;;
+esac
+nc=build/goose-negative-control-accel/$mode
+rm -rf "$nc" && mkdir -p "$nc" || exit 1
+[ -d build/conformance-goose ] || { echo "NEGATIVE CONTROL FAILED: build/conformance-goose is missing (make build/conformance-goose)"; exit 1; }
+cp -R build/conformance-goose "$nc/units" || exit 1
+changed=0
+for f in "$nc"/units/*/"$file"; do
+	FROM=$from TO=$to perl -0pi -e '$c += s/\Q$ENV{FROM}\E\n/$ENV{TO} ? "$ENV{TO}\n" : ""/ge; END { exit($c == 1 ? 0 : 1) }' "$f" ||
+		{ echo "NEGATIVE CONTROL FAILED: $f does not hold the clause exactly once: $from"; exit 1; }
+	changed=$((changed + 1))
+done
+[ "$changed" -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no unit holds $file"; exit 1; }
+# the accelerators' surfaces alone: a wrapper answers `list` with them
+cat >"$nc/driver" <<'EOF'
+#!/bin/sh
+if [ "$2" = list ]; then
+	printf 'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\n'
+	exit 0
+fi
+exec test/conformance/goose/driver "$@"
+EOF
+chmod +x "$nc/driver"
+printf 'goose %s\n' "$nc/driver" >"$nc/drivers.txt"
+if SCHEMA_GOOSE_GENERATED=$nc/units ./build/conformance-harness run --only goose --drivers "$nc/drivers.txt" --work "$nc/work" >"$nc/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED ($mode): the harness stayed green"
+	cat "$nc/log"
+	exit 1
+fi
+for s in $red; do
+	grep -Eq "^$s +FAIL" "$nc/log" ||
+		{ echo "NEGATIVE CONTROL FAILED ($mode): $s did not go red"; cat "$nc/log"; exit 1; }
+done
+for s in $green; do
+	grep -Eq "^$s +pass" "$nc/log" ||
+		{ echo "NEGATIVE CONTROL FAILED ($mode): $s went red too, so the control does not localise the clause"; cat "$nc/log"; exit 1; }
+done
+grep -E "^($(echo "$red" | tr ' ' '|')) +FAIL" "$nc/log"
+echo "negative control ($mode): the broken clause turns RED $red alone"
