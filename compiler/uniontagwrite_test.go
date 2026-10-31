@@ -79,7 +79,7 @@ var tagRefusesEveryBuild = map[string][]string{
 	"go":     {"if value.Type > ShotTypeMax {"},
 	// Goose has no build-removable assert: the writer returns the refusal
 	// kind before the tag rides (internal/codegen/goose/wire.go)
-	"goose": {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
+	"goose":    {"if value.Type > ShotTypeMax { return SERIALIZE_ERROR_VALUE_OUT_OF_RANGE; }"},
 	"squirrel": {`if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;`},
 }
 

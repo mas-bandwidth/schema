@@ -22,8 +22,8 @@ var nonGoCarriers = map[string][]string{
 	"dart": {carryOptionalVariableClosure},
 	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
 	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine
-	"moo":     {carryTimestamp, carryIntegrity, carryTextList, carryTextListTotal, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
-	"lobster": {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap},
+	"moo":      {carryTimestamp, carryIntegrity, carryTextList, carryTextListTotal, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
+	"lobster":  {carryOptionalVariableClosure, carryTimestamp, carryOneSidedRange, carryTextList, carryTextListTotal, carryUnboundedText, carryRequired, carryOptionalMap},
 	"squirrel": {carryTimestamp, carryTextList, carryArrayRoot, carryOptionalVariableClosure, carryRequired, carryOptionalMap, carryForms, carryIntegrity, carryOneSidedRange, carryUnboundedText}, // docs/SPEC-TABLES.md §2.3, §2.8, §2.11, §2.12, §2.13, §2.13.1, §2.14, §4.3, §16.2, §16.10
 }
 
