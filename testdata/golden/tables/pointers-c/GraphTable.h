@@ -78,7 +78,7 @@ typedef struct graphdemo_table_report_t
        the tolerant read keeps the one node and counts each extra naming. */
     int32_t blob_shared;
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported form byte, not framing damage */
+    int refused;           /* a refusal by name (reason), not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
     /* THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, §11): a
        TableRefuseReason, the same value a measure's -1 and a cook's open
@@ -86,6 +86,13 @@ typedef struct graphdemo_table_report_t
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
+       an infinity is refused on its raw bits by every read, the tolerant one
+       included, so a read that moves this answers refused, reason
+       SCHEMA_TABLE_NON_FINITE_FLOAT, and lands nothing. It is a count only so
+       a read can tell its own refusal from a caller's report that already
+       held one. */
+    int32_t non_finite_floats;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
        (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
@@ -94,7 +101,11 @@ typedef struct graphdemo_table_report_t
     uint64_t layout_hash;
 } graphdemo_table_report_t;
 
-enum SCHEMA_GRAPHDEMO_TABLE_REFUSAL_REASON { SCHEMA_GRAPHDEMO_TABLE_NO_REFUSAL, SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM, SCHEMA_GRAPHDEMO_TABLE_MESSAGE_FORM_AS_FILE };
+/* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
+   bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
+   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   names it whichever form a unit carries. */
+enum SCHEMA_GRAPHDEMO_TABLE_REFUSAL_REASON { SCHEMA_GRAPHDEMO_TABLE_NO_REFUSAL, SCHEMA_GRAPHDEMO_TABLE_NEWER_FORM, SCHEMA_GRAPHDEMO_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT = 21 };
 
 /* ---- reflection (tables only, docs/SPEC-TABLES.md) ----
 
@@ -2325,6 +2336,37 @@ static SCHEMA_UNUSED uint32_t graphdemo_table_float_to_bits( float f ) { uint32_
 static SCHEMA_UNUSED double graphdemo_table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 static SCHEMA_UNUSED uint64_t graphdemo_table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
 
+/* A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3, the packet wire's own rule): a
+   NaN or an infinity, whatever its sign or payload, has an all-ones exponent,
+   and that is the whole test. Every read runs it on the RAW BITS, before they
+   become a float and before the field is written; every writer runs it on the
+   bits of the value it was handed. -0 and the subnormals are finite and ride
+   bit-exact. */
+static SCHEMA_UNUSED int graphdemo_table_bits_finite32( uint32_t bits ) { return ( bits & 0x7f800000u ) != 0x7f800000u; }
+static SCHEMA_UNUSED int graphdemo_table_bits_finite64( uint64_t bits ) { return ( bits & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull; }
+static SCHEMA_UNUSED int graphdemo_table_float_finite( float f ) { return graphdemo_table_bits_finite32( graphdemo_table_float_to_bits( f ) ); }
+static SCHEMA_UNUSED int graphdemo_table_double_finite( double d ) { return graphdemo_table_bits_finite64( graphdemo_table_double_to_bits( d ) ); }
+/* table_non_finite_float is a read meeting one: the read is REFUSED by name,
+   non_finite_float, and the walk goes on so the framing verdict is the one a
+   finite wire gets; the load that started it answers the refusal at its end
+   (table_non_finite_refused) and lands nothing. */
+static SCHEMA_UNUSED void graphdemo_table_non_finite_float( graphdemo_table_report_t * report )
+{
+    report->refused = 1;
+    report->reason = SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT;
+    report->non_finite_floats++;
+}
+/* table_non_finite_refused is that load's end: 1 when the walk met a
+   non-finite float since before, the refusal stamped again over whatever the
+   walk met after it, because it outranks any damage (§3.3). */
+static SCHEMA_UNUSED int graphdemo_table_non_finite_refused( graphdemo_table_report_t * report, int32_t before )
+{
+    if ( report->non_finite_floats == before ) { return 0; }
+    report->refused = 1;
+    report->reason = SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT;
+    return 1;
+}
+
 #endif /* SCHEMA_GRAPHDEMO_TABLE_PRIMITIVES */
 
 #ifndef SCHEMA_GRAPHDEMO_TABLE_REFUSE_RUNTIME
@@ -2363,13 +2405,15 @@ static SCHEMA_UNUSED const uint8_t * graphdemo_table_cook_refuse(graphdemo_table
    what the strict read refuses -- an unknown form, wire damage, a blob named
    from two slots, a clamp or a kind mismatch -- and unknown, widened and
    retained alone never refuse. decoded is the tolerant read's own answer.
-   It sets the report's ONE TYPED REASON, damage before blob_shared before
+   It sets the report's ONE TYPED REASON, a non-finite float first (it
+   outranks any damage, §3.3), then damage before blob_shared before
    clamped before kind_mismatch as the Go oracle's TableReport.Err() orders
    them, and answers 1 when the plain name must refuse. */
 static SCHEMA_UNUSED int graphdemo_table_report_strict_refuses( graphdemo_table_report_t * report, int decoded )
 {
     graphdemo_table_refuse_reason_t reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OK;
-    if ( report->refused ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    if ( report->refused && report->reason == SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_BLOB_SHARED; }
     else if ( report->clamped > 0 ) { reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_CLAMPED; }
@@ -3952,6 +3996,10 @@ static SCHEMA_UNUSED int graphdemo_table_message_number(graphdemo_table_message_
  if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
  return 1;
 }
+/* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
+   infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
+   bits become a value, *value untouched, and the walk goes on. A quantized
+   index names a finite value and is never tested. */
 static SCHEMA_UNUSED int graphdemo_table_message_float(graphdemo_table_message_reader_t * r,const graphdemo_table_message_entry_t * e,float * value)
 {
  uint64_t raw;
@@ -3959,7 +4007,10 @@ static SCHEMA_UNUSED int graphdemo_table_message_float(graphdemo_table_message_r
  if(e->packing==2) {
   if(raw>e->qcount)return 0;
   *value=graphdemo_table_message_dequantize((uint32_t)raw,e->qmin,e->qdelta,e->qcount);
- }else *value=graphdemo_table_bits_to_float((uint32_t)raw);
+ }else if(!graphdemo_table_bits_finite32((uint32_t)raw)){graphdemo_table_non_finite_float(r->report);
+ return 2;
+ }
+ else *value=graphdemo_table_bits_to_float((uint32_t)raw);
  return 1;
 }
 static SCHEMA_UNUSED int64_t graphdemo_table_message_open(graphdemo_table_message_reader_t * r,const graphdemo_table_vocabulary_t * v,const uint8_t * buffer,int64_t bytes,graphdemo_table_report_t * report)
@@ -4400,6 +4451,10 @@ keep.retain->used+=bytes;
 keep.retain->count++;
 report->retained++;
 }
+/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+   §3.3, §6.6): kind 10's or 11's raw bits, and a NaN or an infinity refuses
+   the read as non_finite_float. Nothing is kept, the read goes on as it does
+   for a known field, and the load answers the refusal at its end. */
 static SCHEMA_UNUSED int graphdemo_table_retain_capture(graphdemo_table_reader_t * r,uint64_t id,uint8_t kind,graphdemo_table_retain_walk_t keep)
 {
  graphdemo_table_retain_in_t s;
@@ -4407,6 +4462,12 @@ static SCHEMA_UNUSED int graphdemo_table_retain_capture(graphdemo_table_reader_t
  uint8_t * record;
  if(!graphdemo_table_reader_skip(r,kind))return 0;
  if(!keep.retain)return 1;
+ if(kind==10||kind==11){uint64_t raw=0;
+ int64_t i;
+ for(i=r->offset-1;i>=source.offset;i--)raw=(raw<<8)|source.buffer[i];
+  if(kind==10?!graphdemo_table_bits_finite32((uint32_t)raw):!graphdemo_table_bits_finite64(raw)){graphdemo_table_non_finite_float(r->report);
+  return 1;
+  }}
  record=graphdemo_table_retain_begin(keep,id,kind,&s);
  if(!record){r->report->retain_lost++;
  return 1;
@@ -4686,6 +4747,10 @@ static SCHEMA_UNUSED int graphdemo_table_retain_message_payload(graphdemo_table_
  default:return graphdemo_table_retain_message_scalar(s,e);
  }
 }
+/* A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+   §3.3, §6.6): kind 10's or 11's raw bits, unless the float rides as a
+   quantized index, which names a finite value. A NaN or an infinity refuses
+   the read as non_finite_float, nothing is kept and the walk goes on. */
 static SCHEMA_UNUSED int graphdemo_table_retain_message_capture(graphdemo_table_message_reader_t * r,const graphdemo_table_message_entry_t * entry,graphdemo_table_retain_walk_t keep)
 {
  graphdemo_table_retain_message_t s;
@@ -4693,6 +4758,11 @@ static SCHEMA_UNUSED int graphdemo_table_retain_message_capture(graphdemo_table_
  s.input=*r;
  if(!graphdemo_table_message_skip(r,entry))return 0;
  if(!keep.retain)return 1;
+ if((entry->kind==10&&entry->packing!=2)||entry->kind==11){graphdemo_table_bit_reader_t bits=s.input.bits;
+ uint64_t raw=0;
+  if(graphdemo_table_bit_get(&bits,&raw,entry->kind==10?32:64)&&(entry->kind==10?!graphdemo_table_bits_finite32((uint32_t)raw):!graphdemo_table_bits_finite64(raw))){graphdemo_table_non_finite_float(r->report);
+  return 1;
+  }}
  record=graphdemo_table_retain_begin(keep,entry->id,entry->kind,&s.output);
  if(!record||!graphdemo_table_retain_message_payload(&s,entry,0)||s.input.bits.offset!=r->bits.offset){r->report->retain_lost++;
  return 1;
@@ -5357,12 +5427,15 @@ static SCHEMA_UNUSED int graphdemo_meta_load_body( graphdemo_table_reader_t * r,
    body the walk could not finish. */
 static SCHEMA_UNUSED int graphdemo_meta_load_tolerant( graphdemo_meta_t * value, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t r;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     graphdemo_meta_reset( value );
     if ( !graphdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return graphdemo_meta_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = graphdemo_meta_load_body( &r, value );
+    if ( graphdemo_table_non_finite_refused( report, non_finite_before ) ) { graphdemo_meta_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN meta_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5507,6 +5580,8 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages_tolerant(graphdemo_meta_t 
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5519,9 +5594,16 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages_tolerant(graphdemo_meta_t 
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!graphdemo_meta_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!graphdemo_meta_load_message_body(&r,values+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)graphdemo_meta_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN meta_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_meta_load_messages( graphdemo_meta_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -5719,12 +5801,15 @@ static SCHEMA_UNUSED int graphdemo_settings_load_body( graphdemo_table_reader_t 
    body the walk could not finish. */
 static SCHEMA_UNUSED int graphdemo_settings_load_tolerant( graphdemo_settings_t * value, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t r;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t r; int32_t non_finite_before; int whole;
     memset( &ignored, 0, sizeof( ignored ) );
     if ( report == NULL ) { report = &ignored; }
     graphdemo_settings_reset( value );
     if ( !graphdemo_table_wire_open( &r, buffer, bytes, report ) ) { return 0; }
-    return graphdemo_settings_load_body( &r, value );
+    non_finite_before = report->non_finite_floats;
+    whole = graphdemo_settings_load_body( &r, value );
+    if ( graphdemo_table_non_finite_refused( report, non_finite_before ) ) { graphdemo_settings_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
+    return whole;
 }
 
 /* The PLAIN settings_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5863,6 +5948,8 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages_tolerant(graphdemo_set
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t capacity,bodies,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(values==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -5875,9 +5962,16 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages_tolerant(graphdemo_set
  report->reason=SCHEMA_GRAPHDEMO_TABLE_BATCH_TOO_LARGE;
  return 0;
  }
- for(i=0;i<bodies;i++){if(!graphdemo_settings_load_message_body(&r,values+i))return 0;
+ non_finite_before=report->non_finite_floats;
+ for(i=0;i<bodies;i++){if(!graphdemo_settings_load_message_body(&r,values+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)graphdemo_settings_reset(values+i);
+ *count=0;
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN settings_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and every value it had written is reset; when the tolerant read itself stopped, the records ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_settings_load_messages( graphdemo_settings_t * values, int64_t * count, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -12147,7 +12241,7 @@ static SCHEMA_UNUSED int64_t graphdemo_list_node_load_measure(const uint8_t * wi
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(graphdemo_table_reader_t * reader, graphdemo_list_node_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
-    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0;
+    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_list_node_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_list_node_node_lookup_(id);
@@ -12189,7 +12283,10 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(graphdemo_table_
     reader->nodes=nodes; reader->nested=0;
     { int read_ok; graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_list_node_wire_storage_(reader); carve.region=&extent; }
-      nodes->sink=&carve;  read_ok=graphdemo_list_node_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
+      nodes->sink=&carve;  read_ok=graphdemo_list_node_load_body(reader,root); nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
+      return !nodes->refused && (!nodes->arena || read_ok); }
 }
 /* list_node_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
 static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
@@ -12203,7 +12300,7 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_tole
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xf60ec899a5a69fa9);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_list_node_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_list_node_load_graph_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink)) { graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_list_node_load_graph_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_list_node_t *)(const void *)region;
 }
 /* list_node_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -12474,6 +12571,8 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_messages_tolerant(const graphd
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(roots==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -12489,10 +12588,18 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_messages_tolerant(const graphd
  if(region==NULL||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
- if(!schema_graphdemo_list_node_message_load_into_(&r,region,region_bytes,&used,roots+i))return 0;
+ if(!schema_graphdemo_list_node_message_load_into_(&r,region,region_bytes,&used,roots+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN list_node_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_list_node_load_messages( const graphdemo_list_node_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -12639,7 +12746,7 @@ static SCHEMA_UNUSED int64_t graphdemo_tree_node_load_measure(const uint8_t * wi
 }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(graphdemo_table_reader_t * reader, graphdemo_tree_node_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
-    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0;
+    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_tree_node_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_tree_node_node_lookup_(id);
@@ -12681,7 +12788,10 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(graphdemo_table_
     reader->nodes=nodes; reader->nested=0;
     { int read_ok; graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_tree_node_wire_storage_(reader); carve.region=&extent; }
-      nodes->sink=&carve;  read_ok=graphdemo_tree_node_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
+      nodes->sink=&carve;  read_ok=graphdemo_tree_node_load_body(reader,root); nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
+      return !nodes->refused && (!nodes->arena || read_ok); }
 }
 /* tree_node_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
 static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
@@ -12695,7 +12805,7 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_tole
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xb97e90a3784c431d);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_tree_node_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_tree_node_load_graph_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink)) { graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_tree_node_load_graph_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_tree_node_t *)(const void *)region;
 }
 /* tree_node_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -12966,6 +13076,8 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_messages_tolerant(const graphd
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(roots==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -12981,10 +13093,18 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_messages_tolerant(const graphd
  if(region==NULL||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
- if(!schema_graphdemo_tree_node_message_load_into_(&r,region,region_bytes,&used,roots+i))return 0;
+ if(!schema_graphdemo_tree_node_message_load_into_(&r,region,region_bytes,&used,roots+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN tree_node_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_tree_node_load_messages( const graphdemo_tree_node_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -13131,7 +13251,7 @@ static SCHEMA_UNUSED int64_t graphdemo_layer_load_measure(const uint8_t * wire, 
 }
 static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(graphdemo_table_reader_t * reader, graphdemo_layer_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
-    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0;
+    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_layer_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_layer_node_lookup_(id);
@@ -13173,7 +13293,10 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(graphdemo_table_read
     reader->nodes=nodes; reader->nested=0;
     { int read_ok; graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_layer_wire_storage_(reader); carve.region=&extent; }
-      nodes->sink=&carve;  read_ok=graphdemo_layer_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
+      nodes->sink=&carve;  read_ok=graphdemo_layer_load_body(reader,root); nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
+      return !nodes->refused && (!nodes->arena || read_ok); }
 }
 /* layer_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
 static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
@@ -13187,7 +13310,7 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x9d167ef77aed79b6);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_layer_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_layer_load_graph_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink)) { graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_layer_load_graph_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_layer_t *)(const void *)region;
 }
 /* layer_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -13458,6 +13581,8 @@ static SCHEMA_UNUSED int graphdemo_layer_load_messages_tolerant(const graphdemo_
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(roots==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -13473,10 +13598,18 @@ static SCHEMA_UNUSED int graphdemo_layer_load_messages_tolerant(const graphdemo_
  if(region==NULL||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
- if(!schema_graphdemo_layer_message_load_into_(&r,region,region_bytes,&used,roots+i))return 0;
+ if(!schema_graphdemo_layer_message_load_into_(&r,region,region_bytes,&used,roots+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN layer_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_layer_load_messages( const graphdemo_layer_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -13625,7 +13758,7 @@ static SCHEMA_UNUSED int64_t graphdemo_scene_load_measure(const uint8_t * wire, 
 }
 static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(graphdemo_table_reader_t * reader, graphdemo_scene_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
-    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0;
+    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_scene_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_scene_node_lookup_(id);
@@ -13669,7 +13802,10 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(graphdemo_table_read
     reader->nodes=nodes; reader->nested=0;
     { int read_ok; graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_scene_wire_storage_(reader); carve.region=&extent; }
-      nodes->sink=&carve;  read_ok=graphdemo_scene_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
+      nodes->sink=&carve;  read_ok=graphdemo_scene_load_body(reader,root); nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
+      return !nodes->refused && (!nodes->arena || read_ok); }
 }
 /* scene_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
 static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
@@ -13683,7 +13819,7 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x4a9a31623ab5f213);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_scene_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_scene_load_graph_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink)) { graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_scene_load_graph_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_scene_t *)(const void *)region;
 }
 /* scene_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -13980,6 +14116,8 @@ static SCHEMA_UNUSED int graphdemo_scene_load_messages_tolerant(const graphdemo_
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(roots==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -13995,10 +14133,18 @@ static SCHEMA_UNUSED int graphdemo_scene_load_messages_tolerant(const graphdemo_
  if(region==NULL||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
- if(!schema_graphdemo_scene_message_load_into_(&r,region,region_bytes,&used,roots+i))return 0;
+ if(!schema_graphdemo_scene_message_load_into_(&r,region,region_bytes,&used,roots+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN scene_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_scene_load_messages( const graphdemo_scene_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -14145,7 +14291,7 @@ static SCHEMA_UNUSED int64_t graphdemo_depot_load_measure(const uint8_t * wire, 
 }
 static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(graphdemo_table_reader_t * reader, graphdemo_depot_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
-    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0;
+    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_depot_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_depot_node_lookup_(id);
@@ -14187,7 +14333,10 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(graphdemo_table_read
     reader->nodes=nodes; reader->nested=0;
     { int read_ok; graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_depot_wire_storage_(reader); carve.region=&extent; }
-      nodes->sink=&carve;  read_ok=graphdemo_depot_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
+      nodes->sink=&carve;  read_ok=graphdemo_depot_load_body(reader,root); nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
+      return !nodes->refused && (!nodes->arena || read_ok); }
 }
 /* depot_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
 static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
@@ -14201,7 +14350,7 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x327fe6dc702553fd);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_depot_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_depot_load_graph_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink)) { graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_depot_load_graph_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_depot_t *)(const void *)region;
 }
 /* depot_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -14472,6 +14621,8 @@ static SCHEMA_UNUSED int graphdemo_depot_load_messages_tolerant(const graphdemo_
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(roots==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -14487,10 +14638,18 @@ static SCHEMA_UNUSED int graphdemo_depot_load_messages_tolerant(const graphdemo_
  if(region==NULL||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
- if(!schema_graphdemo_depot_message_load_into_(&r,region,region_bytes,&used,roots+i))return 0;
+ if(!schema_graphdemo_depot_message_load_into_(&r,region,region_bytes,&used,roots+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN depot_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_depot_load_messages( const graphdemo_depot_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -14639,7 +14798,7 @@ static SCHEMA_UNUSED int64_t graphdemo_album_load_measure(const uint8_t * wire, 
 }
 static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(graphdemo_table_reader_t * reader, graphdemo_album_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink)
 {
-    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0;
+    graphdemo_table_node_scan_t scan=graphdemo_table_node_scan_begin(reader); graphdemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_album_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_album_node_lookup_(id);
@@ -14683,7 +14842,10 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(graphdemo_table_read
     reader->nodes=nodes; reader->nested=0;
     { int read_ok; graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_album_wire_storage_(reader); carve.region=&extent; }
-      nodes->sink=&carve;  read_ok=graphdemo_album_load_body(reader,root); nodes->sink=NULL; return !nodes->refused && (!nodes->arena || read_ok); }
+      nodes->sink=&carve;  read_ok=graphdemo_album_load_body(reader,root); nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
+      return !nodes->refused && (!nodes->arena || read_ok); }
 }
 /* album_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
 static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
@@ -14697,7 +14859,7 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xd858c2cb7f1514cc);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_album_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_album_load_graph_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink)) { graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_album_load_graph_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_album_t *)(const void *)region;
 }
 /* album_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -14994,6 +15156,8 @@ static SCHEMA_UNUSED int graphdemo_album_load_messages_tolerant(const graphdemo_
  graphdemo_table_report_t ignored={0};
  graphdemo_table_message_reader_t r;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(report==NULL)report=&ignored;
  if(roots==NULL||count==NULL){report->malformed=1;
  return 0;
@@ -15009,10 +15173,18 @@ static SCHEMA_UNUSED int graphdemo_album_load_messages_tolerant(const graphdemo_
  if(region==NULL||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
- if(!schema_graphdemo_album_message_load_into_(&r,region,region_bytes,&used,roots+i))return 0;
+ if(!schema_graphdemo_album_message_load_into_(&r,region,region_bytes,&used,roots+i))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 /* The PLAIN album_load_messages IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. When the strict rule alone refused, count is 0 and no root is handed back; when the tolerant read itself stopped, the roots ahead keep what they decoded and count says how many. */
 static SCHEMA_UNUSED int graphdemo_album_load_messages( const graphdemo_album_t ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const graphdemo_table_vocabulary_t * vocabulary, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
@@ -15042,6 +15214,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo
     graphdemo_table_reader_t body;
     uint64_t id,k=0;
     int32_t unknown=0;
+    int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_list_node_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_list_node_node_lookup_(id);
@@ -15124,6 +15297,9 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_retain_(graphdemo
       retention.path=graphdemo_table_retain_root(root,1);
       read_ok=graphdemo_list_node_load_body_retain(reader,root, retention);
       nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
+      }
       return !nodes->refused && (!nodes->arena || read_ok);
       }
 }
@@ -15161,8 +15337,9 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_reta
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_list_node_load_graph_retain_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink,retention))return NULL;
- return (const graphdemo_list_node_t *)(const void *)region;
+ if(!schema_graphdemo_list_node_load_graph_retain_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ return NULL;
+ }return (const graphdemo_list_node_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -15285,6 +15462,8 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_retain_messages(const graphdem
  graphdemo_table_message_reader_t r;
  graphdemo_table_retain_walk_t retention;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(!report)report=&ignored;
  if(!roots||!count){report->malformed=1;
  return 0;
@@ -15300,13 +15479,21 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_retain_messages(const graphdem
  if(!region||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
  memset(&retention,0,sizeof(retention));
  retention.retain=retains?retains+i:NULL;
  graphdemo_table_retain_reset(retention.retain,NULL,NULL);
- if(!schema_graphdemo_list_node_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))return 0;
+ if(!schema_graphdemo_list_node_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_tree_node_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
 {
@@ -15316,6 +15503,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo
     graphdemo_table_reader_t body;
     uint64_t id,k=0;
     int32_t unknown=0;
+    int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_tree_node_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_tree_node_node_lookup_(id);
@@ -15398,6 +15586,9 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_retain_(graphdemo
       retention.path=graphdemo_table_retain_root(root,1);
       read_ok=graphdemo_tree_node_load_body_retain(reader,root, retention);
       nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
+      }
       return !nodes->refused && (!nodes->arena || read_ok);
       }
 }
@@ -15435,8 +15626,9 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_reta
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_tree_node_load_graph_retain_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink,retention))return NULL;
- return (const graphdemo_tree_node_t *)(const void *)region;
+ if(!schema_graphdemo_tree_node_load_graph_retain_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ return NULL;
+ }return (const graphdemo_tree_node_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -15559,6 +15751,8 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_retain_messages(const graphdem
  graphdemo_table_message_reader_t r;
  graphdemo_table_retain_walk_t retention;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(!report)report=&ignored;
  if(!roots||!count){report->malformed=1;
  return 0;
@@ -15574,13 +15768,21 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_retain_messages(const graphdem
  if(!region||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
  memset(&retention,0,sizeof(retention));
  retention.retain=retains?retains+i:NULL;
  graphdemo_table_retain_reset(retention.retain,NULL,NULL);
- if(!schema_graphdemo_tree_node_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))return 0;
+ if(!schema_graphdemo_tree_node_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_layer_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
 {
@@ -15590,6 +15792,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_tab
     graphdemo_table_reader_t body;
     uint64_t id,k=0;
     int32_t unknown=0;
+    int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_layer_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_layer_node_lookup_(id);
@@ -15672,6 +15875,9 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_retain_(graphdemo_tab
       retention.path=graphdemo_table_retain_root(root,1);
       read_ok=graphdemo_layer_load_body_retain(reader,root, retention);
       nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
+      }
       return !nodes->refused && (!nodes->arena || read_ok);
       }
 }
@@ -15709,8 +15915,9 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_layer_load_graph_retain_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink,retention))return NULL;
- return (const graphdemo_layer_t *)(const void *)region;
+ if(!schema_graphdemo_layer_load_graph_retain_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ return NULL;
+ }return (const graphdemo_layer_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_layer_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -15834,6 +16041,8 @@ static SCHEMA_UNUSED int graphdemo_layer_load_retain_messages(const graphdemo_la
  graphdemo_table_message_reader_t r;
  graphdemo_table_retain_walk_t retention;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(!report)report=&ignored;
  if(!roots||!count){report->malformed=1;
  return 0;
@@ -15849,13 +16058,21 @@ static SCHEMA_UNUSED int graphdemo_layer_load_retain_messages(const graphdemo_la
  if(!region||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
  memset(&retention,0,sizeof(retention));
  retention.retain=retains?retains+i:NULL;
  graphdemo_table_retain_reset(retention.retain,NULL,NULL);
- if(!schema_graphdemo_layer_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))return 0;
+ if(!schema_graphdemo_layer_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_scene_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
 {
@@ -15865,6 +16082,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_tab
     graphdemo_table_reader_t body;
     uint64_t id,k=0;
     int32_t unknown=0;
+    int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_scene_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_scene_node_lookup_(id);
@@ -15953,6 +16171,9 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_retain_(graphdemo_tab
       retention.path=graphdemo_table_retain_root(root,1);
       read_ok=graphdemo_scene_load_body_retain(reader,root, retention);
       nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
+      }
       return !nodes->refused && (!nodes->arena || read_ok);
       }
 }
@@ -15990,8 +16211,9 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_scene_load_graph_retain_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink,retention))return NULL;
- return (const graphdemo_scene_t *)(const void *)region;
+ if(!schema_graphdemo_scene_load_graph_retain_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ return NULL;
+ }return (const graphdemo_scene_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_scene_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -16131,6 +16353,8 @@ static SCHEMA_UNUSED int graphdemo_scene_load_retain_messages(const graphdemo_sc
  graphdemo_table_message_reader_t r;
  graphdemo_table_retain_walk_t retention;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(!report)report=&ignored;
  if(!roots||!count){report->malformed=1;
  return 0;
@@ -16146,13 +16370,21 @@ static SCHEMA_UNUSED int graphdemo_scene_load_retain_messages(const graphdemo_sc
  if(!region||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
  memset(&retention,0,sizeof(retention));
  retention.retain=retains?retains+i:NULL;
  graphdemo_table_retain_reset(retention.retain,NULL,NULL);
- if(!schema_graphdemo_scene_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))return 0;
+ if(!schema_graphdemo_scene_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_depot_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
 {
@@ -16162,6 +16394,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_tab
     graphdemo_table_reader_t body;
     uint64_t id,k=0;
     int32_t unknown=0;
+    int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_depot_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_depot_node_lookup_(id);
@@ -16244,6 +16477,9 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_retain_(graphdemo_tab
       retention.path=graphdemo_table_retain_root(root,1);
       read_ok=graphdemo_depot_load_body_retain(reader,root, retention);
       nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
+      }
       return !nodes->refused && (!nodes->arena || read_ok);
       }
 }
@@ -16281,8 +16517,9 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_depot_load_graph_retain_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink,retention))return NULL;
- return (const graphdemo_depot_t *)(const void *)region;
+ if(!schema_graphdemo_depot_load_graph_retain_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ return NULL;
+ }return (const graphdemo_depot_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_depot_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -16406,6 +16643,8 @@ static SCHEMA_UNUSED int graphdemo_depot_load_retain_messages(const graphdemo_de
  graphdemo_table_message_reader_t r;
  graphdemo_table_retain_walk_t retention;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(!report)report=&ignored;
  if(!roots||!count){report->malformed=1;
  return 0;
@@ -16421,13 +16660,21 @@ static SCHEMA_UNUSED int graphdemo_depot_load_retain_messages(const graphdemo_de
  if(!region||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
  memset(&retention,0,sizeof(retention));
  retention.retain=retains?retains+i:NULL;
  graphdemo_table_retain_reset(retention.retain,NULL,NULL);
- if(!schema_graphdemo_depot_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))return 0;
+ if(!schema_graphdemo_depot_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_table_reader_t * reader, graphdemo_album_t * root, graphdemo_table_node_map_t * nodes, graphdemo_table_node_dir_entry_t * directory, graphdemo_table_sink_t * sink, graphdemo_table_retain_walk_t retention)
 {
@@ -16437,6 +16684,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_tab
     graphdemo_table_reader_t body;
     uint64_t id,k=0;
     int32_t unknown=0;
+    int32_t non_finite_before=reader->report->non_finite_floats;
     graphdemo_album_reset(root);
     while (graphdemo_table_node_scan_next(&scan,&id,&body)) {
         const graphdemo_table_node_type_t * type=schema_graphdemo_album_node_lookup_(id);
@@ -16525,6 +16773,9 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_retain_(graphdemo_tab
       retention.path=graphdemo_table_retain_root(root,1);
       read_ok=graphdemo_album_load_body_retain(reader,root, retention);
       nodes->sink=NULL;
+      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
+      if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
+      }
       return !nodes->refused && (!nodes->arena || read_ok);
       }
 }
@@ -16562,8 +16813,9 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_album_load_graph_retain_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink,retention))return NULL;
- return (const graphdemo_album_t *)(const void *)region;
+ if(!schema_graphdemo_album_load_graph_retain_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ return NULL;
+ }return (const graphdemo_album_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_album_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -16703,6 +16955,8 @@ static SCHEMA_UNUSED int graphdemo_album_load_retain_messages(const graphdemo_al
  graphdemo_table_message_reader_t r;
  graphdemo_table_retain_walk_t retention;
  int64_t bodies,capacity,used=0,i;
+ int32_t non_finite_before;
+ int ok;
  if(!report)report=&ignored;
  if(!roots||!count){report->malformed=1;
  return 0;
@@ -16718,13 +16972,21 @@ static SCHEMA_UNUSED int graphdemo_album_load_retain_messages(const graphdemo_al
  if(!region||region_bytes<0||((uintptr_t)region&(GRAPHDEMO_K_TABLE_ALIGN-1))){report->malformed=1;
  return 0;
  }memset(region,0,(size_t)region_bytes);
+ non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){roots[i]=NULL;
  memset(&retention,0,sizeof(retention));
  retention.retain=retains?retains+i:NULL;
  graphdemo_table_retain_reset(retention.retain,NULL,NULL);
- if(!schema_graphdemo_album_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))return 0;
+ if(!schema_graphdemo_album_message_load_into_retain_(&r,region,region_bytes,&used,roots+i,retention))break;
  (*count)++;
- }return graphdemo_table_message_close(&r);
+ }ok=i==bodies&&graphdemo_table_message_close(&r);
+ /* a NaN or an infinity refuses the whole batch: count 0, no root and the region zeroed (§3.3) */
+ if(graphdemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)roots[i]=NULL;
+ *count=0;
+ memset(region,0,(size_t)region_bytes);
+ return 0;
+ }
+ return ok;
 }
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define graphdemo_meta_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
@@ -16989,7 +17251,7 @@ static SCHEMA_UNUSED int graphdemo_meta_cook(const graphdemo_meta_t * value,void
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<104) { return 0; }
     memset(raw,0,104);
-    if(!schema_graphdemo_meta_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_graphdemo_meta_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,104); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     graphdemo_table_cook_put(raw+96,UINT64_C(0x6dadeaaee49d6d18),8,order);
     graphdemo_table_cook_header(raw,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,24,1,8,order); return 1;
 }
@@ -17008,7 +17270,7 @@ static SCHEMA_UNUSED int graphdemo_settings_cook(const graphdemo_settings_t * va
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<112) { return 0; }
     memset(raw,0,112);
-    if(!schema_graphdemo_settings_cook_body_(NULL,raw+64,value,order)) { return 0; }
+    if(!schema_graphdemo_settings_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,112); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     graphdemo_table_cook_put(raw+104,UINT64_C(0x9d8b8aa2b404c2c8),8,order);
     graphdemo_table_cook_header(raw,SCHEMA_GRAPHDEMO_BUILD_VERSION_VALUE,32,1,8,order); return 1;
 }

@@ -286,11 +286,15 @@ func (g *cookGen) emit() {
 				emitRecordObject(&g.body, g.unit, name, ml, refs)
 			}
 		}
-		// the unit's one float32 conversion lives in the block home when the
-		// block owns the runtime; a cook-only record that reads a float32
-		// imports it from there
-		if g.blockOwnsRuntime() && strings.Contains(g.body.String(), jsF32Reader+"(") {
-			g.need(blockHome(g.unit, g.blocks)+"Block", jsF32Reader)
+		// the unit's float readers live in the block home when the block owns
+		// the runtime; a cook-only record that reads a float imports them from
+		// there
+		if g.blockOwnsRuntime() {
+			for _, reader := range jsFloatReaders {
+				if strings.Contains(g.body.String(), reader+"(") {
+					g.need(blockHome(g.unit, g.blocks)+"Block", reader)
+				}
+			}
 		}
 	}
 	if g.file == nil {
@@ -386,7 +390,7 @@ func (g *cookGen) assemble() []byte {
 func (g *cookGen) cookHomeSurface() []string {
 	names := []string{"TableCookByteOrder", "TableCookHeaderBytes", "TableCookLayout", "TableCookMagic", "TableCookMaxAlign"}
 	if !g.blockOwnsRuntime() {
-		names = append(names, "BuildVersion")
+		names = append(names, "BuildVersion", jsNonFiniteFloat)
 	}
 	for _, name := range g.cook.order {
 		if !g.blockHasRecord(name) {

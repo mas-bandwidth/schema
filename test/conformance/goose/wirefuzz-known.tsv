@@ -1,0 +1,15 @@
+# THE GOOSE WIRE-FUZZ LEG'S KNOWN FINDINGS (make/goose-wirefuzz.sh). One row
+# per arm that the differential holds red today, at the pinned seed and count
+# make/goose-fuzz.mk runs: the unit, the arm, a substring of the harness's
+# first divergence, and the card that owes the fix. A known arm that goes red
+# on anything else, or goes GREEN, fails the gate: a fixed finding leaves this
+# file in the same commit, so the list cannot rot into silence. The fuzzer
+# stops an arm at its first divergence, so a known row also hides whatever
+# that arm would have found after it; the fix's own run says what that is.
+#
+# None is held today: the three value-only arms held here on 2026-10-28
+# (scalars, tblm1, widedemo) went green on the table wire's union framing
+# before reset and its zero-extended widening of an unsigned kind into a
+# 128-bit field (rowan/port-goose-tablewire).
+#
+# unit	arm	first divergence	owed by

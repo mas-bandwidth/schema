@@ -211,9 +211,11 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	// The variable wire carries fixed-point and 128-bit values (§15).
-	// Accelerators retain their separately named limitation; having a real
-	// wire codec prevents that limitation from refusing the whole unit.
+	// The variable wire carries fixed-point and 128-bit values (§15), and so
+	// does the COOKED FORM: a fixed is its raw integer at its storage width,
+	// and a 128-bit slot is sixteen bytes at sixteen (§7.2). The BLOCK FORM
+	// keeps the scope's Accelerators limitation: its accessors and builder
+	// spell a slot as one Java primitive, which a 128-bit slot is not.
 	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0 || len(cardVariableTables(u)) > 0)
 	if scope.Unit {
 		return nil, scope.Refusal
@@ -222,12 +224,15 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 		return nil, err
 	}
 	out := map[string][]byte{}
-	if !scope.Accelerators {
+	{
 		// The two ACCELERATORS operate directly on a byte[] the caller owns:
 		// the BLOCK form (§19) builds and opens in-place block images and the
 		// COOK (§7) measures, writes, and opens cooked regions, reaching every
 		// cookable table of the unit — a pointered unit's cooks open and write in full.
 		blocks := ir.Blocks(u)
+		if scope.Accelerators {
+			blocks = nil
+		}
 		ck := cookUnitOf(u)
 		set := collectRecords(u, blocks, ck)
 		// TableBytes and BuildVersion BELONG TO THE TWO ACCELERATORS and to

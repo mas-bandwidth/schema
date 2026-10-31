@@ -1,6 +1,7 @@
 package rusttable
 
 import (
+	"math/big"
 	"strings"
 	"testing"
 
@@ -46,7 +47,8 @@ func TestCardConstructsAreNotRefused(t *testing.T) {
 // every variable-class construct outside the card slice is refused at
 // generation, and the refusal names the table, the field and the construct.
 // It is the boundary the card draws: never mis-encoded, never silently
-// dropped.
+// dropped. A guarded field (an if group) left this list when the variable
+// wire learned to gate it (variableguard.go, TestGuardAndOptionalEdgesRust).
 func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	t.Parallel()
 
@@ -55,8 +57,6 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		field    *ir.Field
 		keywords []string
 	}{
-		{"guarded", &ir.Field{Name: "when", Guard: "armed", Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"guarded"}},
-		{"fixed_point", &ir.Field{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, Signed: true}}, []string{"fixed-point"}},
 		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
 		{"compressed_float", &ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}}, []string{"compressed float"}},
 	}
@@ -78,10 +78,11 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 	}
 }
 
-// TestFixedClassConstructsAreCarried pins the three constructs the fixed class
+// TestFixedClassConstructsAreCarried pins the constructs the fixed class
 // brought onto the Rust variable wire (docs/SPEC-TABLES.md §2, §2.2, §3): a
-// fixed-length array [N]T, a flags mask (kind 9, its set bits' names in text)
-// and a `type` nested by value (kind 13, a body like a table's). They were
+// fixed-length array [N]T, a flags mask (kind 9, its set bits' names in text),
+// a `type` nested by value (kind 13, a body like a table's) and the
+// fixed-point family (kinds 20–29, its raw storage integer). They were
 // refused by name before vt/fixed-class/rust; TestFixedClassOnTableWireRust
 // holds their bytes to the oracle.
 func TestFixedClassConstructsAreCarried(t *testing.T) {
@@ -91,6 +92,9 @@ func TestFixedClassConstructsAreCarried(t *testing.T) {
 		{Name: "three", Array: ir.ArrayFixed, ArrayBound: 3, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
 		{Name: "perms", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Flags{Name: "Perm"}}},
 		{Name: "tint", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "Colour"}}},
+		// the fixed-point family rides as its raw storage integer (§3, kinds
+		// 20–29); TestFixedPointRidesItsRawStorage pins storage and clamp
+		{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}},
 	} {
 		if err := refuseCardUnsupportedVariableConstructs(cardUnit(f)); err != nil {
 			t.Errorf("%s: the fixed class's construct was refused: %v", f.Name, err)
@@ -112,14 +116,14 @@ func TestCardUnitWithOneExcludedConstructIsRefused(t *testing.T) {
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		&ir.Field{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, Signed: true}},
+		&ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}},
 	)
 
 	err := refuseCardUnsupportedVariableConstructs(unit)
 	if err == nil {
-		t.Fatal("a card unit carrying a fixed-point field was not refused")
+		t.Fatal("a card unit carrying a compressed float was not refused")
 	}
-	for _, want := range []string{"Card", "rate", "fixed-point"} {
+	for _, want := range []string{"Card", "speed", "compressed float"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}
@@ -195,5 +199,47 @@ func TestCardShapeGenerationEmitsTheVariableWire(t *testing.T) {
 		if _, ok := modules[want]; !ok {
 			t.Errorf("the card constructs emitted no %s; got %d modules", want, len(modules))
 		}
+	}
+}
+
+// TestFixedPointRidesItsRawStorage pins the fixed-point family on the Rust
+// variable wire (docs/SPEC-TABLES.md §3, §4): a fixed(I, F) is the raw integer
+// its I+F storage holds, under the fixed kind of that width and signedness, and
+// its declared whole-unit range clamps on the RAW scale — the bounds shifted by
+// F — never on the whole units. tables-rust-wide-clamp-negative-control is the
+// reversed witness on the conformance rows.
+func TestFixedPointRidesItsRawStorage(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		f       ir.FieldType
+		storage string
+		kind    int
+	}{
+		{ir.FieldType{Kind: ir.TFixed, Width: 8, IntBits: 4, FracBits: 4, Signed: true}, "i8", ir.TableKindFixed8},
+		{ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}, "i32", ir.TableKindFixed32},
+		{ir.FieldType{Kind: ir.TFixed, Width: 16, IntBits: 8, FracBits: 8}, "u16", ir.TableKindUFixed16},
+		{ir.FieldType{Kind: ir.TFixed, Width: 128, IntBits: 112, FracBits: 16}, "u128", ir.TableKindUFixed128},
+	}
+	for _, c := range cases {
+		f := &ir.Field{Name: "x", Type: c.f}
+		if got := scalarRust(f); got != c.storage {
+			t.Errorf("%s: storage %s, want %s", ir.FieldTypeSpelling(f), got, c.storage)
+		}
+		if got := scalarWireKind(f); got != c.kind {
+			t.Errorf("%s: kind %d, want %d", ir.FieldTypeSpelling(f), got, c.kind)
+		}
+	}
+
+	angle := &ir.Field{Name: "angle", HasIntRange: true, IntMin: big.NewInt(-180), IntMax: big.NewInt(180),
+		Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}}
+	got := clampStmt(angle, 64, true, "i64", "report.clamped", "")
+	for _, want := range []string{"-11796480i64", "11796480i64"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("fixed(16, 16) in [-180, 180] clamps as %q, missing the raw bound %s", got, want)
+		}
+	}
+	if strings.Contains(got, " 180i64") {
+		t.Errorf("fixed(16, 16) clamps on the whole-unit scale: %q", got)
 	}
 }

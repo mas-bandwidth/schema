@@ -170,6 +170,13 @@ namespace Tabledemo
         public int Retained, RetainLost;
         public bool Refused;
         public string Reason;
+        // NonFiniteFloat names the float a read found to be a NaN or an infinity
+        // on its raw bits, as <Table>.<field> (docs/SPEC-TABLES.md §3.3): the
+        // field is not written, and the load, the tolerant one too, refuses as
+        // non_finite_float and lands nothing. The first name wins; null on every
+        // other read.
+        public string NonFiniteFloat;
+        internal string NonFiniteReason;
         public Schema.TableWire.Verdict Verdict;
         public bool Malformed;     // framing damage; decode stopped, partial result kept
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
@@ -249,6 +256,10 @@ namespace Tabledemo
         public Func<ulong, string> KeyName;
         public Func<ulong, ulong> KeyId;
 
+        // a float32/float64 field's name for a non-finite refusal (docs/SPEC-TABLES.md
+        // §3.3), <Owner>.<field>, and the whole reason; constants, so a refusing
+        // read allocates nothing. null on every other kind.
+        public string NonFiniteField, NonFiniteReason;
         // Typed callbacks retain exact integer bounds and defaults without boxing.
         public ulong DefaultRaw;
         public Func<object, bool> WireGuard;
@@ -3453,7 +3464,7 @@ namespace Tabledemo
                 if (f.IsArray)
                 {
                     Reader a = r;
-                    if (framed && !r.Slice(out a)) { return true; }
+                    if (framed && !r.Slice(out a)) { r.Offset = r.Buffer.Length; return true; }
                     if (!a.Has(2)) { return true; }
                     byte sourceKind = a.Byte();
                     if (sourceKind != f.Kind && !Widen(sourceKind, f.Kind) || !a.Var(out ulong n)) { return true; }
@@ -3464,7 +3475,7 @@ namespace Tabledemo
                         if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
                         at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
                     }
-                    for (ulong i = 0; i < n; i++)
+                    for (ulong i = 0; i < n && a.Has(1); i++)
                     {
                         Reader source = a;
                         if (f.KeyId != null)
@@ -3488,18 +3499,27 @@ namespace Tabledemo
                 if (f.Kind == 13)
                 {
                     Reader body = r;
-                    if (framed && !r.Slice(out body)) { return true; }
+                    if (framed && !r.Slice(out body)) { r.Offset = r.Buffer.Length; return true; }
                     return ExtentBody(body, f.Table, ref at, ref reason);
                 }
                 if (f.Kind == 15) { return ExtentUnion(ref r, f, ref at, ref reason); }
-                if (framed) { r.Skip(f.Kind); } else { r.Offset = r.Buffer.Length; }
+                // A value the skip cannot honour ENDS the record's scan, as the reference scan's
+                // does: the reader goes to its end rather than resuming at the bytes after it.
+                if (!framed || !r.Skip(f.Kind)) { r.Offset = r.Buffer.Length; }
                 return true;
             }
             static bool ExtentUnion(ref Reader r, TableFieldInfo f, ref long at, ref string reason)
             {
-                if (!r.Ref(out ulong reference, out ulong id) || reference == 0 || !r.Has(1)) { return true; }
+                // A frame that does not parse ENDS the record's scan, as the reference
+                // scan's does (internal/tablewire/extent.go): the reader goes to its
+                // end rather than resuming at the bytes after a length or a reference
+                // it could not honour, which would read a payload as fields and
+                // measure storage the framing never commanded.
+                if (!r.Ref(out ulong reference, out ulong id)) { r.Offset = r.Buffer.Length; return true; }
+                if (reference == 0) { return true; }
+                if (!r.Has(1)) { r.Offset = r.Buffer.Length; return true; }
                 r.Byte(); // the framing scan follows a named arm even if its value kind mismatches
-                if (!r.Slice(out Reader body)) { return true; }
+                if (!r.Slice(out Reader body)) { r.Offset = r.Buffer.Length; return true; }
                 int tag = FindVariant(f, id, false);
                 if (tag == 0) { return true; }
                 TableFieldInfo arm = f.Arms.Arms[tag].Field;
@@ -4095,7 +4115,11 @@ namespace Tabledemo
                     int kept = (int)Math.Min(n, (ulong)f.ArrayBound);
                     if (n > (ulong)f.ArrayBound) { d.Report.Clamped++; }
                     int previous = f.Counted && value != null && f.GetCount != null ? f.GetCount(value) : 0;
-                    ulong walk = run >= 0 ? (ulong)kept : n;
+                    // A FLOAT PAST THE BOUND IS STILL TESTED (docs/SPEC-TABLES.md §3.3):
+                    // the stream walks every element, the dropped tail into no slot, so
+                    // its NaN or infinity refuses the batch as a kept one does.
+                    bool tested = shape.Elem == 11 || shape.Elem == 10 && shape.Inner.Packing != 2;
+                    ulong walk = run >= 0 && !tested ? (ulong)kept : n;
                     for (ulong i = 0; i < walk; i++)
                     {
                         if (f.Dynamic && value != null) { f.EnsureCount(value, (int)i + 1); }
@@ -4160,11 +4184,14 @@ namespace Tabledemo
                         float scaled = normalized * shape.Delta;
                         bits = TableFloatToBits(scaled + shape.QMin);
                     }
+                    // refused on its raw bits, kept or dropped (docs/SPEC-TABLES.md §3.3)
+                    else if (NonFiniteBits(10, (ulong)bits)) { NonFinite(f, d.Report); return true; }
                     ulong raw = f.Kind == 11 ? WidenFloat((uint)bits) : (uint)bits;
                     if (f.Kind != 11 && f.ClampRaw != null) { raw = f.ClampRaw(raw, d.Report); }
                     if (keep) { f.SetRaw(value, index, raw); }
                     return true;
                 }
+                if (kind == 11 && NonFiniteBits(11, (ulong)bits)) { NonFinite(f, d.Report); return true; }
                 if (kind == 1 || kind == 11)
                 { if (keep) { f.SetRaw(value, index, (ulong)bits); } return true; }
                 UInt128 stored = bits; bool negative = false, above = false;
@@ -4274,7 +4301,7 @@ namespace Tabledemo
             }
             public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
             {
-                count = 0;
+                count = 0; report.NonFiniteFloat = null;
                 int total = MessageCount(bytes, vocabulary, report);
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
@@ -4284,8 +4311,12 @@ namespace Tabledemo
                 {
                     object value = values[count]; type.Reset(value);
                     var d = new MessageRead { Vocabulary = vocabulary, Report = report };
-                    if (type.Variable && !MessageNodes(ref r, ref d, value, type) || !MessageReadBody(ref r, d, value, type))
-                    { Damage(report); return Finish(report, Verdict.Damaged); }
+                    bool good = !(type.Variable && !MessageNodes(ref r, ref d, value, type) || !MessageReadBody(ref r, d, value, type));
+                    // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
+                    // §3.3), outranking damage met after it: no body is delivered.
+                    if (NonFiniteRefused(report))
+                    { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+                    if (!good) { Damage(report); return Finish(report, Verdict.Damaged); }
                 }
                 if (!r.Align() || r.At != r.End) { Damage(report); return Finish(report, Verdict.Damaged); }
                 return Finish(report, Verdict.Ok);
@@ -4453,6 +4484,8 @@ namespace Tabledemo
                 }
                 for (int i = 0; i < count; i++)
                 {
+                    // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a NaN or an infinity refuses the cook
+                    if ((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))) { return false; }
                     long element = at + (long)i * f.NativeElementSize, before = extent;
                     if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
                     if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -4600,10 +4633,11 @@ namespace Tabledemo
             public static int VarSize(ulong v) { int n = 1; while (v >= 128) { n++; v >>= 7; } return n; }
             static byte Kind(TableFieldInfo f) { return f.KeyId != null ? (byte)16 : f.IsArray ? (byte)14 : f.Kind; }
             static bool Named(string name) { return name != null && name != "???"; }
+            // Elision compares BITS, floats included (docs/SPEC-TABLES.md §3.3): a -0
+            // under a +0 default rides and reads back as -0.
             static bool DefaultRaw(ulong raw, TableFieldInfo f)
             {
-                if (f.Kind == 10) { return TableBitsToFloat((uint)raw) == TableBitsToFloat((uint)f.DefaultRaw); }
-                if (f.Kind == 11) { return TableBitsToDouble(raw) == TableBitsToDouble(f.DefaultRaw); }
+                if (f.Kind == 10) { return (uint)raw == (uint)f.DefaultRaw; }
                 return raw == f.DefaultRaw;
             }
             static bool DefaultElement(object value, TableFieldInfo f, int i)
@@ -4638,6 +4672,10 @@ namespace Tabledemo
             public static int Count(object value, TableFieldInfo f) { return f.Counted ? f.GetCount(value) : f.ArrayBound; }
             static bool CollectElement(object value, TableFieldInfo f, int i, ref Ids ids)
             {
+                // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
+                // §3.3): collect precedes measure and the first output byte, so Measure
+                // and Save both answer -1.
+                if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, f.GetRaw(value, i)); }
                 if (f.Kind == 13) { return Collect(f.GetChild(value, i), f.Table, ref ids); }
                 if (f.Kind == 15)
                 {
@@ -4942,13 +4980,37 @@ namespace Tabledemo
             {
                 return (from >= 2 && to <= 5 && from < to) || (from >= 6 && to <= 9 && from < to) || (from == 10 && to == 11) || (to == 18 && from >= 2 && from <= 5) || (to == 19 && from >= 6 && from <= 9);
             }
-            // Numeric float conversion quiets signalling NaNs. Carry their sign and
-            // payload by bits; ordinary finite values use the exact hardware widening.
-            static ulong WidenFloat(uint raw)
+            // A FLOAT IS FINITE OR REFUSED (docs/SPEC-TABLES.md §3.3, the same rule as
+            // the packet wire's): every read tests the raw bits, before they become a
+            // value and before the field is written, and an all-ones exponent (a NaN,
+            // any sign and payload, or an infinity) is never landed. Every finite float32 widens exactly, so the
+            // float rung (kind 10 into a float64) is the ordinary conversion.
+            internal static bool NonFiniteBits(byte kind, ulong raw)
+            { return kind == 10 ? (raw & 0x7f800000ul) == 0x7f800000ul : (raw & 0x7ff0000000000000ul) == 0x7ff0000000000000ul; }
+            static ulong WidenFloat(uint raw) { return TableDoubleToBits((double)TableBitsToFloat(raw)); }
+            // NonFinite names the field on the report, the first name winning; the
+            // load refuses as non_finite_float when its walk is done (NonFiniteRefused).
+            internal static void NonFinite(TableFieldInfo f, TableReport report)
             {
-                if ((raw & 0x7f800000u) == 0x7f800000u)
-                { return ((ulong)(raw & 0x80000000u) << 32) | 0x7ff0000000000000ul | ((ulong)(raw & 0x7fffffu) << 29); }
-                return TableDoubleToBits((double)TableBitsToFloat(raw));
+                if (report.NonFiniteFloat != null) { return; }
+                report.NonFiniteFloat = f.NonFiniteField ?? f.Name;
+                report.NonFiniteReason = f.NonFiniteReason ?? "non_finite_float";
+            }
+            // NonFiniteRetained names a retained unknown float the same way, by the id
+            // the reader cannot name (docs/SPEC-TABLES.md §3.3, §6.6).
+            internal static void NonFiniteRetained(ulong id, TableReport report)
+            {
+                if (report.NonFiniteFloat != null) { return; }
+                report.NonFiniteFloat = "0x" + id.ToString("x16");
+                report.NonFiniteReason = "non_finite_float: " + report.NonFiniteFloat;
+            }
+            // NonFiniteRefused ends a load whose walk met a non-finite float: the
+            // refusal outranks any damage met after it, and nothing lands.
+            internal static bool NonFiniteRefused(TableReport report)
+            {
+                if (report.NonFiniteFloat == null) { return false; }
+                report.Refused = true; report.Reason = report.NonFiniteReason;
+                return true;
             }
             static bool Compatible(byte from, byte to, TableReport report)
             {
@@ -5007,6 +5069,7 @@ namespace Tabledemo
                     // A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on the
                     // tolerant read (docs/SPEC-TABLES.md §6.5), as the Go oracle counts it.
                     if (kind == 1) { if (raw > 1) { report.Malformed = true; } raw = raw == 0 ? 0ul : 1ul; }
+                    if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
                     if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
                     if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
                 }
@@ -5395,7 +5458,7 @@ namespace Tabledemo
             {
                 if (report == null) { report = Ignored; }
                 type.Reset(value);
-                report.Refused = false; report.Reason = null;
+                report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
                 if (bytes[0] != 1)
                 {
@@ -5416,7 +5479,9 @@ namespace Tabledemo
                 Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
-                return Finish(report, ReadBody(ref r, value, type, report, false) ? Verdict.Ok : Verdict.BodyStopped);
+                bool complete = ReadBody(ref r, value, type, report, false);
+                if (NonFiniteRefused(report)) { type.Reset(value); return Finish(report, Verdict.Refused); }
+                return Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped);
             }
         }
         // ---- form-1 table wire: end ----
@@ -5477,26 +5542,6 @@ namespace Tabledemo
             public static bool SignedKind(byte kind)
             {
                 return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
-            }
-
-            // THE FLOAT RUNG'S ONE WIDENING (ALG §4.2): the f32's bits as the f64's
-            // bits, exact by construction, NaN payloads included. The hardware's own
-            // conversion between the widths SETS THE QUIET BIT on a signalling NaN,
-            // so the all-ones-exponent pattern is spelled by the sign, exponent and
-            // payload shifts; only the finite case rides the conversion. EVERY call
-            // site — the scalar widenf and the folded flat-array widen alike — comes
-            // through here, as the C++ reference's one TableWidenF32 does.
-            public static double WidenF32(float f)
-            {
-                uint fbits = unchecked((uint)BitConverter.SingleToInt32Bits(f));
-                if ((fbits & 0x7F800000u) == 0x7F800000u)
-                {
-                    ulong w = ((ulong)(fbits & 0x80000000u) << 32)
-                        | 0x7FF0000000000000UL
-                        | ((ulong)(fbits & 0x7FFFFFu) << 29);
-                    return BitConverter.Int64BitsToDouble(unchecked((long)w));
-                }
-                return (double)f;
             }
 
             public static TableFixedLayoutEntry EntryAt(TableFixedLayoutView b, int i)
@@ -6575,7 +6620,7 @@ namespace Tabledemo
                                     int at = (int)p.Src + e * sw;
                                     if (p.Sign == 2)
                                     {
-                                        double d2 = WidenF32(BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at)));
+                                        double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
                                         BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                         continue;
                                     }
@@ -6717,17 +6762,11 @@ namespace Tabledemo
                             }
                         case WidenF:
                             {
-                                // A FLOAT RIDES AS ITS BITS (SPEC-TABLES §3, the FU ruling),
-                                // so the widening is BY THE PATTERN and never through the
-                                // hardware's own conversion: the conversion between the two
-                                // widths SETS THE QUIET BIT on a signalling NaN and drops a
-                                // payload the narrower cell would have kept, and widenf owes
-                                // the bit-exact widening (ALG §4.2: "NaN payloads included").
-                                // The one helper carries sign, exponent and payload; every
-                                // finite value is exact through the conversion, so only the
-                                // all-ones exponent NaN and infinity share needs the pattern.
+                                // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
+                                // §3.3, ALG §4.2): exact for every finite float32; a NaN or an
+                                // infinity stays one, and the finite pass after the run refuses it.
                                 float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
-                                slots[(int)p.Dst].SetDouble?.Invoke(dst, WidenF32(f));
+                                slots[(int)p.Dst].SetDouble?.Invoke(dst, (double)f);
                                 if (report != null) { report.Widened++; }
                                 break;
                             }
