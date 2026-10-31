@@ -1242,7 +1242,7 @@ tables-dart-identity-negative-control:
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestWireIdentityMapDartNegativeControl$$'
 	@echo 'negative control: with the OPEN-entry test out of the generated runtime, the identity probe goes red on the cycle alone'
 
-test-dart: tables-dart-identity
+test-dart: tables-dart-identity tables-dart-identity-negative-control
 
 # BYTE ORDER IS THE READER'S (docs/PORTING.md M12): every multi-byte ByteData
 # call in every corpus unit's generated Dart names its Endian, so the host's
@@ -1272,7 +1272,7 @@ tables-dart-map-sort-negative-control:
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestMapWriterSortDartNegativeControl$$'
 	@echo 'negative control: with the writer sort a no-op in the generated runtime, the map-sort probe goes red on the saved bytes'
 
-test-dart: tables-dart-map-sort
+test-dart: tables-dart-map-sort tables-dart-map-sort-negative-control
 
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
