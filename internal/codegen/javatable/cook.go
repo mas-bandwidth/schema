@@ -175,6 +175,14 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 		if f.Type.Kind == ir.TWString && !f.Type.Pointer {
 			return owner + "." + f.Name + " is a wstring, which is retired (docs/rulings.json wstring-removed-utf8); the Java cook carries no wstring slot"
 		}
+		// a map's key and value are its entry's fields
+		if f.IsMap() {
+			for _, ef := range f.MapEntry.Fields {
+				if why := field(owner+"."+f.Name, ef); why != "" {
+					return why
+				}
+			}
+		}
 		if f.Type.Kind != ir.TNamed {
 			return ""
 		}
