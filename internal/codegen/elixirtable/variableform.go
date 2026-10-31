@@ -166,6 +166,10 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  # the unit registry (docs/SPEC-TABLES.md §8.3): the descriptors a tool\n")
 	b.WriteString("  # walks a record by name and kind with, no per-version struct on hand.\n")
 	b.WriteString("  def descriptors, do: @tables\n\n")
+	b.WriteString("  # the value a load starts from (docs/SPEC-TABLES.md §4): every field at its\n")
+	b.WriteString("  # declared default, the value a fixed-class read leaves where the wire\n")
+	b.WriteString("  # carries nothing it can place.\n")
+	b.WriteString("  def new(table), do: defaults(Map.fetch!(@tables, table))\n\n")
 	uncarried := uncarriedRootNames(u)
 	b.WriteString(uncarriedAttribute(uncarried))
 	cookUncarried := cookUncarriedRootNames(u)
@@ -1329,6 +1333,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
+      {:error, :malformed} when not desc.variable ->
+        # a FIXED-CLASS root reads into a value that starts at its declared
+        # defaults (§3, §4): a wire that cannot be opened leaves it there, one
+        # malformed counted
+        report = Map.put(empty_report(), :blob_shared, false)
+        {:ok, defaults(desc), reasoned(report, :malformed)}
+
       {:error, reason} ->
         {:error, reason, reasoned(empty_report(), reason)}
 
@@ -1337,9 +1348,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:error, _} ->
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
+          {:stop, fields, [], _remaining} when not desc.variable ->
+            # a fixed-class root body the walk could not finish keeps every
+            # field it placed before the damage, over its declared defaults,
+            # and counts one malformed (§3, §4)
+            {value, report} = decode(desc, fields, [], ids)
+            report = Map.put(%{report | malformed: true}, :blob_shared, false)
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+
           {:stop, _fields, _nodes, _remaining} ->
-            # a ROOT body the walk could not finish is malformed; nothing below
-            # the damage is read, so there is no value to save (§3)
+            # a variable-class ROOT body the walk could not finish is
+            # malformed; nothing below the damage is read, so there is no value
+            # to save (§3)
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
@@ -4216,6 +4236,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # backends answer, so a caller sizes a region and the harness's oracle holds
   # the measure to the framing's bound. A wire this reader cannot open, or a
   # list count past the storage cap, answers -1.
+  # A fixed-class root commands its record alone, whatever the wire.
 
   def load_measure(table, _data) when table in @uncarried, do: -1
 
@@ -4223,6 +4244,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
+      _ when not desc.variable ->
+        region_round(desc.size)
+
       {:error, _} ->
         -1
 
