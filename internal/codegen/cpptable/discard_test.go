@@ -147,10 +147,10 @@ func TestDamageDiscardsTheWholeLoadCPP(t *testing.T) {
     if ( !br.malformed ) { printf( "builder: the report does not say malformed\n" ); return 1; }
     const Graph * groot = builder.GetRoot();
     if ( groot == NULL || groot->a != 0 || groot->b != 0 || groot->inner.n != 0 ) { printf( "builder: a damaged load left a usable root\n" ); return 1; }
-    GraphBuilder strict;
+    GraphBuilder strict_builder;
     TableReport sr; memset( &sr, 0, sizeof( sr ) );
-    if ( GraphLoadBuilder( strict, variable, (int64_t) sizeof( variable ), &sr ) ) { printf( "builder: the strict load accepted damage\n" ); return 1; }
-    const Graph * sroot = strict.GetRoot();
+    if ( GraphLoadBuilder( strict_builder, variable, (int64_t) sizeof( variable ), &sr ) ) { printf( "builder: the strict load accepted damage\n" ); return 1; }
+    const Graph * sroot = strict_builder.GetRoot();
     if ( sroot == NULL || sroot->a != 0 || sroot->b != 0 ) { printf( "builder: the strict load left a usable root\n" ); return 1; }
 `, cppBytes(fixed), cppBytes(variable))
 	out, err := cppHeldRun(t, u, body)

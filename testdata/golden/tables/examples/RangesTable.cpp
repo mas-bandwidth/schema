@@ -1152,7 +1152,7 @@ struct TableJsonIn
     int64_t size;
     int64_t pos;
     TableReport * report;
-    bool bad;     // the text is not JSON: the walk stops and keeps what it placed
+    bool bad;     // the text is not JSON: the walk stops and the read is discarded whole
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
 };
 
