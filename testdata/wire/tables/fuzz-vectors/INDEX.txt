@@ -271,3 +271,13 @@ map_foreign_kind_count_past_body listdemo Army testdata/wire/tables/fuzz-vectors
 # mutant 487423 of seed 68719476731 (corpus seed message_arms), on Certify run
 # 41188400968, tables-rust-release.
 arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/arm_array_count_past_arm_length.bin
+
+# A BLOB TWO SLOTS NAME IS REFUSED BY THE RETAINING SAVE TOO (§2.5, §6.6). One
+# byte of blob_small moves the `brick` Asset's `data` index from its own blob
+# (node 3) to node 6, the blob Catalog's `thumb` names. The load keeps both
+# slots on the one blob; every writer
+# refuses that graph as blob_shared, and the oracle refuses to encode it. The C#
+# retaining save numbered the region without the refusal and wrote 186 bytes.
+# Found by the index pass (#33, corpus seed blob_small) of the retention arm at
+# seed 24845619678, on tables-cs-release on hetzner1.
+retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin

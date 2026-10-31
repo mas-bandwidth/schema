@@ -1,11 +1,11 @@
-0x1c8e6838797bdedc
-schema-build-version 4
+0x9f28ca26fd6a6924
+schema-build-version 5
 protocol 1ac124decde5b2aa
 byteorder little
 block prologue=magic:8,build_version:8,byte_order:8
 record 033de3f1246bba76.755332609c470fbd sizeof=24 alignof=8
     field 3dc94a19365b10ec kind=6 offset=0 size=1
-    field 7ce4fd9430e80cea kind=14 offset=8 size=16 type=Item elem=4 array=unbounded
+    field 7ce4fd9430e80cea kind=14 offset=8 size=16 type=Item elem=4 elemkind=13 array=unbounded
 record 036ffe7360826852.ab01daa76a48769f sizeof=24 alignof=8
     field 3dc94a19365b10ec kind=12 offset=0 size=16 bound=8
     field 7ce4fd9430e80cea kind=17 offset=16 size=8 type=string
@@ -111,7 +111,7 @@ record b413964e3571a316.c5b2a72c0845a253 sizeof=8 alignof=4
     field 7ce4fd9430e80cea kind=13 offset=4 size=4 type=Item
 record b4578774a78fb150.124250ad5a5b6d14 sizeof=24 alignof=8
     field 3dc94a19365b10ec kind=8 offset=0 size=4
-    field 7ce4fd9430e80cea kind=14 offset=8 size=16 type=Item elem=8 array=unbounded
+    field 7ce4fd9430e80cea kind=14 offset=8 size=16 type=Item elem=8 elemkind=17 array=unbounded
 record c85b940060088651.79d594675e391090 sizeof=32 alignof=8
     field 3dc94a19365b10ec kind=8 offset=0 size=4
     field 7ce4fd9430e80cea kind=17 offset=8 size=20 type=Item elem=8 array=bounded bound=2

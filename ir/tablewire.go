@@ -108,6 +108,15 @@ func BlobWireTypeId(f *Field) uint64 {
 // begins at byte 1.
 const TableWireForm = 1
 
+// TableWireIdTableBound is the MAXIMUM entry count of a file's id table
+// (docs/SPEC-TABLES.md §3, THE DISTINCTNESS CHECK; docs/LAYERS/1-framing.md
+// F6): a reader refuses as malformed, on the whole-wire rule, any table whose
+// count exceeds it, whatever the buffer would hold, so that proving the
+// entries distinct is bounded work. The generated C++ names it
+// kTableProbeBound. Every table this schema's own writer emits is far under
+// it.
+const TableWireIdTableBound = 4096
+
 // The kinds this form adds to §3's closed set. An ENUM rides under its own
 // kind carrying the reference to its variant name's id, whatever the
 // declaration-side storage width; the ESCAPE is how a later major adds a kind

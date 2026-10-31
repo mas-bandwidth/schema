@@ -561,6 +561,16 @@ func frameRows(t *testing.T) []frameRow {
 			hint:     "Buff.mult: renamed under was = \"multiplier\", which keeps the wire id and NOT the text key — the JSON key is now \"mult\"; pair json = \"multiplier\" if an existing text must still read (docs/SPEC-TABLES.md §16.4)",
 			build:    "stands",
 		},
+		{
+			name:     "an unbounded array's element retyped",
+			row:      "an unbounded array's ELEMENT retyped",
+			base:     framesRichSrc,
+			edited:   richEdit(t, framesRichSrc, "    scores  []int32\n", "    scores  []float32\n"),
+			instance: `{"scores":[1,2,3]}`,
+			read:     "0,1,0,0,0,false",
+			baseline: "refuse",
+			build:    "moves",
+		},
 	}
 }
 
@@ -687,12 +697,7 @@ func tableCell(t *testing.T, row string, n int) string {
 // reason. A row lands here only when its spec cell and the engine disagree, or
 // the cell does not say which verdict the frame returns: the fixture is owed,
 // and the contract is not this file's to settle.
-var framesLeftOut = map[string]string{
-	"an unbounded array's ELEMENT retyped": "the cell says the build version MOVES; §20.1 and §20.2 specify the " +
-		"unbounded array's cook line as kind=14, array=unbounded and elem= the element's SIZE, with no element " +
-		"kind, and `[]int32` to `[]float32` measures it standing: the page contradicts itself, which is not this " +
-		"file's to settle",
-}
+var framesLeftOut = map[string]string{}
 
 // evolutionTableRows is §4.1's table, one line per row, header and rule
 // excluded.

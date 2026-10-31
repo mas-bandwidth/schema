@@ -27,3 +27,16 @@ func init() {
 		new: "\t\tg.pf(\"      // SABOTAGED: the pitch check is gone %s\\n\", field)",
 	}}
 }
+
+// THE RELEASE WIRE-FUZZ GATE'S CONTROL (make/wire-fuzz-release.mk): #2400
+// reverted. A map's header (element kind, pair count) is read against the
+// PARENT and only its entries are bounded by the map's L (docs/SPEC-TABLES.md
+// §2.8, §3); the sabotage reads the header from the body bounded by L, as Dart
+// did before #2400, so a count LEB128 that runs past L reads as framing damage
+// where the engine judges the element kind and counts one kind_mismatch.
+func init() {
+	sabotages["table-dart-map-header-bounded"] = []edit{{
+		old: "\tg.pf(\"%s\\t\\tfinal elemKind = r.readByte();\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal count = r.readLeb();\\n\", ind)\n\tg.pf(\"%s\\t\\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\\n\", ind)",
+		new: "\tg.pf(\"%s\\t\\tfinal arr = TableWireReader.sub(r, r.pos, end);\\n\", ind)\n\tg.pf(\"%s\\t\\t// SABOTAGED: the map header is bounded by L\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal elemKind = arr.readByte();\\n\", ind)\n\tg.pf(\"%s\\t\\tfinal count = arr.readLeb();\\n\", ind)\n\tg.pf(\"%s\\t\\tif (count == null) { r.report.malformed = true; r.pos = end; break; }\\n\", ind)",
+	}}
+}
