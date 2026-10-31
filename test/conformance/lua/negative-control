@@ -17,8 +17,13 @@
 #           `lua / json-hostile`, which reads through the same match) and
 #           nothing else; `json-write`, `wire` and every other surface green,
 #           so the break is the text walk's and the matrix localizes it (I11).
+#   framing descriptor.lua's id-table entry bound (docs/SPEC-TABLES.md §3,
+#           4096) is lifted: a wire whose id table names 4097 entries loads
+#           instead of being refused as malformed, so `lua / framing`
+#           (frame_entries_4097) goes red and nothing else; `wire` and
+#           `report` green.
 #
-# usage: test/conformance/lua/negative-control <report|walk>
+# usage: test/conformance/lua/negative-control <report|walk|framing>
 set -eu
 
 mode=$1
@@ -34,6 +39,10 @@ report)
 walk)
     source=internal/codegen/luatable/runtime/json.lua
     sed 's/    if fd.key == key then return fd end/    if fd.key == key and fd.ordinal ~= 1 then return fd end/' "$source" > "$out/runtime.lua"
+    ;;
+framing)
+    source=internal/codegen/luatable/runtime/descriptor.lua
+    sed 's/^D.ID_TABLE_BOUND = 4096$/D.ID_TABLE_BOUND = math.maxinteger/' "$source" > "$out/runtime.lua"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -70,6 +79,7 @@ red=$(grep -oE '^ *lua / [a-z-]+' "$out/log" | sed 's/^ *lua \/ //' | sort -u | 
 case "$mode" in
 report) want="report retain " ; green="wire json-read retain-save" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+framing) want="framing " ; green="wire report" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
