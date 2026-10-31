@@ -172,8 +172,6 @@ union Force
     arm plain id=0xfd4d194e1652b207 kind=4
 
 ## retired
-    field 2492f5fb1b05b45e.a633f1f655715cca.key id=0x3dc94a19365b10ec date=2026-10-31
-    field 2492f5fb1b05b45e.a633f1f655715cca.value id=0x7ce4fd9430e80cea date=2026-10-31
     field Text.wide id=0xa633f1f655715cca date=2026-10-31
 
 ## history
@@ -216,6 +214,4 @@ union Force
 
 ### 2026-10-31 (UTC) — wstring is removed: text is UTF-8 string(N), so Text.wide is retired
 - table 2492f5fb1b05b45e.a633f1f655715cca: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
-- retired field 2492f5fb1b05b45e.a633f1f655715cca.key id=0x3dc94a19365b10ec — a re-added name or id is refused until this entry is acknowledged (issue #441)
-- retired field 2492f5fb1b05b45e.a633f1f655715cca.value id=0x7ce4fd9430e80cea — a re-added name or id is refused until this entry is acknowledged (issue #441)
 - retired field Text.wide id=0xa633f1f655715cca — a re-added name or id is refused until this entry is acknowledged (issue #441)
