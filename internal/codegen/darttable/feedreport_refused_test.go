@@ -4,12 +4,9 @@ package darttable
 // §4). The representative is the pinned vector stream_count_past_body
 // (testdata/wire/tables/fuzz-vectors/INDEX.txt, streamdemo.Feed): a
 // `bytes(8)` count spelled wide enough that the count LEB128 runs past the end
-// of the body that framed it. The reference reads the header against the
-// PARENT buffer (internal/tablewire/decode.go arrayBody, subTo): the count is
-// past the field's bound, so it CLAMPS and counts `clamped` once, the body
-// covers no elements so `malformed` counts, and the root saves 24 bytes. A
-// reader that reads the count against the body's own L sees no count at all
-// and never clamps, which is the report divergence this test pins.
+// of the body that framed it, a count the body cannot cover. That is damage,
+// and DAMAGE DISCARDS THE WHOLE LOAD (§4): the Dart leg owes the refusal,
+// malformed, and no counter or saved byte is compared.
 
 import (
 	"encoding/hex"
@@ -24,7 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-func TestWireFeedCountPastBodyReportDart(t *testing.T) {
+func TestWireFeedCountPastBodyRefusedDart(t *testing.T) {
 	t.Parallel()
 
 	u := loadUnit(t, filepath.Join("..", "..", "..", "tables", "stream", "Stream.schema"))
@@ -58,48 +55,17 @@ func TestWireFeedCountPastBodyReportDart(t *testing.T) {
 	}
 
 	m := tabletext.NewModel(u)
-	inst := m.New(root)
 	var rep tabletext.Report
-	if _, err := tablewire.DecodeRegion(m, inst, data, &rep); err != nil {
-		t.Fatalf("the Go oracle refused the pinned vector: %v", err)
+	if _, err := tablewire.DecodeRegion(m, m.New(root), data, &rep); err != nil || !rep.Malformed {
+		t.Fatalf("the Go oracle does not read the pinned vector as damaged: %v %+v", err, rep)
 	}
-	want, err := tablewire.Encode(m, inst)
-	if err != nil {
-		t.Fatalf("the Go oracle could not save the pinned vector: %v", err)
-	}
-	if rep.Clamped != 1 || !rep.Malformed {
-		t.Fatalf("the oracle no longer pins the cause: clamped=%d malformed=%t", rep.Clamped, rep.Malformed)
-	}
-	if len(want) != 24 {
-		t.Fatalf("the oracle saved %d bytes, want the pinned 24", len(want))
-	}
-	if sx := hex.EncodeToString(want); sx != "0101080300000000c03a5cb5072eb7080100000000000000" {
-		t.Fatalf("the oracle no longer saves the pinned 24 bytes: %s", sx)
-	}
-
-	gotRep, gotSaved := feedReportProbe(t, wire, data)
-	wantRep := dartReport{
-		unknown:      rep.Unknown,
-		kindMismatch: rep.KindMismatch,
-		widened:      rep.Widened,
-		clamped:      rep.Clamped,
-		duplicate:    rep.Duplicate,
-		malformed:    rep.Malformed,
-		refused:      rep.Refused,
-	}
-	if gotRep != wantRep {
-		t.Errorf("Dart report = %s, the Go oracle's = %s on stream_count_past_body (the count-past-body clamp)", gotRep, wantRep)
-	}
-	if got, wantHex := hex.EncodeToString(gotSaved), hex.EncodeToString(want); got != wantHex {
-		t.Errorf("Dart saved %s, the Go oracle saved %s on stream_count_past_body", got, wantHex)
+	if gotRep, _ := feedReportProbe(t, wire, data); !gotRep.malformed {
+		t.Errorf("Dart report = %s on stream_count_past_body: the damaged load is not refused", gotRep)
 	}
 }
 
 // dartReport is the six counters every leg prints, in the manifest's order,
-// and the refusal. EVERY ONE IS COMPARED WITH THE ORACLE'S, `duplicate`
-// included: the Dart leg prints it as the conformance driver does
-// (test/conformance/dart/main.dart _reportLine), and Feed carries no map, so
-// the oracle's must be zero too.
+// and the refusal.
 type dartReport struct {
 	unknown      int
 	kindMismatch int

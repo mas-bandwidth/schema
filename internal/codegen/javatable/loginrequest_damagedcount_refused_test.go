@@ -2,7 +2,6 @@ package javatable
 
 import (
 	"encoding/hex"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,13 +14,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestJavaFixSpuriousKindMismatchLoginRequest is a regression for the kind
-// mismatch the Java leg counted where the oracle counted none on a damaged
-// LoginRequest bytes field (docs/SPEC-TABLES.md §4). The count of a bytes body
-// is read before its element kind is compared, so a body whose count is
-// damaged is malformed and never counts a kind mismatch, exactly as the
-// oracle's arrayBody does.
-func TestJavaFixSpuriousKindMismatchLoginRequest(t *testing.T) {
+// TestJavaFixLoginRequestDamagedCountRefused holds the Java leg to the
+// refusal on a LoginRequest whose bytes field carries a damaged count: DAMAGE
+// DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), so the leg owes malformed
+// and no counter or saved byte is compared.
+func TestJavaFixLoginRequestDamagedCountRefused(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "tables", "backend")
@@ -35,13 +32,8 @@ func TestJavaFixSpuriousKindMismatchLoginRequest(t *testing.T) {
 	}
 
 	var oracle tabletext.Report
-	if _, err := tablewire.Decode(model, inst, mutant, &oracle); err != nil {
-		t.Fatal(err)
-	}
-	oracleText := oracleLine(oracle)
-	oracleEncoded, err := tablewire.Encode(model, inst)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := tablewire.Decode(model, inst, mutant, &oracle); err != nil || !oracle.Malformed {
+		t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, oracle)
 	}
 
 	files, err := Generate(u)
@@ -94,12 +86,8 @@ func TestJavaFixSpuriousKindMismatchLoginRequest(t *testing.T) {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	leg := legLine(string(out))
-	if leg == "REFUSED" {
-		t.Fatalf("leg refused the mutant; oracle refuses? %v", oracle.Refused)
-	}
-	want := fmt.Sprintf("%s %d", oracleText, len(oracleEncoded))
-	if leg != want {
-		t.Fatalf("leg reports %s, oracle reports %s", leg, want)
+	if fields := strings.Fields(strings.ReplaceAll(leg, ",", " ")); len(fields) < 6 || fields[5] != "true" {
+		t.Fatalf("Java LoginRequest did not refuse a damaged load: %q", leg)
 	}
 }
 
@@ -117,10 +105,6 @@ func legLine(out string) string {
 	return last
 }
 
-func oracleLine(r tabletext.Report) string {
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%v", r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
-}
-
 // oracleDriver loads a wire file, decodes it through the generated table codec,
 // and prints the report counters plus the number of bytes the leg re-saves.
 func oracleDriver(pkg, root string) string {
@@ -134,7 +118,7 @@ public final class OracleDriver {
         byte[] wire = Files.readAllBytes(Paths.get(args[0]));
         ` + pkg + `.TableVariable.Report report = new ` + pkg + `.TableVariable.Report();
         ` + pkg + `.` + root + `Variable.Value v = ` + pkg + `.` + root + `Variable.load(wire, report);
-        if (v == null) { System.out.println("REFUSED"); return; }
+        if (v == null) { System.out.println(report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + " null"); return; }
         byte[] saved = ` + pkg + `.` + root + `Variable.save(v);
         System.out.println(report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + " " + saved.length);
     }

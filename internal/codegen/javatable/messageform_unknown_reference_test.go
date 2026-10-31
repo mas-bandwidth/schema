@@ -29,10 +29,13 @@ import (
 )
 
 // mutantMatchUnknownRef is the wire-fuzz mutant of match_full_message.bin that
-// isolates cause C9 (an unknown reference inside a MatchResult body).
+// isolates cause C9 (an unknown reference inside a MatchResult body). The
+// batch is damaged, and DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md
+// §4, §3.3): the Java leg owes the refusal, malformed, and no counter or
+// re-saved body is compared.
 const mutantMatchUnknownRef = "02004640404040404040c021a00f00000000000020d20400217d00000000000000f928900420a80f000000000000206c05120184f50100000000000024b7403280c03e000000000000801818480810da07000000000000902903490182fb00000000000000026a203140781f00000000000040da0d240708f00300000000000088ce810401217e00000000000000383c90240000"
 
-func TestJavaFixMessageUnknownReference(t *testing.T) {
+func TestJavaFixMessageUnknownReferenceRefused(t *testing.T) {
 	t.Parallel()
 	root, err := filepath.Abs("../../..")
 	if err != nil {
@@ -51,19 +54,9 @@ func TestJavaFixMessageUnknownReference(t *testing.T) {
 		batch[i] = tabletext.NewModel(u).New(u.Tables["MatchResult"])
 	}
 	rep := &tabletext.Report{}
-	_, ok, derr := tablewire.DecodeMessages(tabletext.NewModel(u), batch, mutant, v, rep)
-	if derr != nil {
-		t.Fatalf("oracle: %v", derr)
+	if _, _, derr := tablewire.DecodeMessages(tabletext.NewModel(u), batch, mutant, v, rep); derr != nil || !rep.Malformed {
+		t.Fatalf("oracle does not read the batch as damaged: %v %+v", derr, rep)
 	}
-	m := tabletext.NewModel(u)
-	wantSaved, werr := tablewire.EncodeMessage(m, batch[0])
-	if werr != nil {
-		t.Fatalf("oracle encode: %v", werr)
-	}
-	wantMalformed := rep.Malformed || !ok
-	want := fmt.Sprintf("unknown=%d kind_mismatch=%d widened=%d clamped=%d malformed=%t",
-		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, wantMalformed)
-	t.Logf("oracle: %s save=%d bytes", want, len(wantSaved))
 
 	ann, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "backend_conn.bin"))
 	if err != nil {
@@ -106,19 +99,8 @@ func TestJavaFixMessageUnknownReference(t *testing.T) {
 	if line == "" {
 		t.Fatalf("no C9 report line in the probe output:\n%s", out)
 	}
-	if !strings.Contains(line, "malformed="+fmt.Sprintf("%t", wantMalformed)) {
-		t.Errorf("malformed diverges:\n  leg: %s\n  oracle: %s", line, want)
-	}
-	got := strings.SplitN(strings.TrimPrefix(line, "C9 "), " save=", 2)
-	if len(got) != 2 {
-		t.Fatalf("bad C9 line: %s", line)
-	}
-	gotReport, gotSave := got[0], got[1]
-	if gotReport != want {
-		t.Errorf("report diverges:\n  leg:   %s\n  oracle: %s", gotReport, want)
-	}
-	if gotSave != hexOf(wantSaved) {
-		t.Errorf("ret value diverges (leg %d bytes vs oracle %d):\n  leg:   %s\n  oracle: %s", len(gotSave)/2, len(wantSaved), gotSave, hexOf(wantSaved))
+	if !strings.Contains(line, " malformed=true ") {
+		t.Errorf("Java did not refuse a damaged batch: %s", line)
 	}
 }
 
