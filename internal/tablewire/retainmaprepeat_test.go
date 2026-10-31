@@ -1,7 +1,6 @@
 package tablewire_test
 
 import (
-	"bytes"
 	"os"
 	"testing"
 

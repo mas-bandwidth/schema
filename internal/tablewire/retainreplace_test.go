@@ -2,8 +2,6 @@ package tablewire_test
 
 import (
 	"encoding/binary"
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
