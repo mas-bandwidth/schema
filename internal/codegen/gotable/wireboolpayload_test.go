@@ -86,7 +86,7 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 		t.Fatal("Patrol fuzz repro does not match the clean wire with Active set to 0xfe")
 	}
 
-	assertMalformed := func(field string, offset int, bad []byte, value func(*Patrol) bool) {
+	assertMalformed := func(field string, offset int, bad []byte) {
 		t.Helper()
 		if offset < 0 || offset >= len(bad) || bad[offset] != 0xfe {
 			t.Fatalf("bad %s payload not set at %d: %x", field, offset, bad)
@@ -96,12 +96,10 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 			t.Fatal("malformed wire has no load region")
 		}
 		var report TableReport
-		got := PatrolLoadTolerant(buf, bad, &report)
-		if got == nil {
-			t.Fatalf("tolerant refused %s: %+v", field, report)
-		}
-		if !value(got) {
-			t.Fatalf("%s did not read true", field)
+		// a bool payload other than 0 or 1 is damage, and damage discards the
+		// whole load (docs/SPEC-TABLES.md §4): the tolerant read hands back nothing
+		if got := PatrolLoadTolerant(buf, bad, &report); got != nil {
+			t.Fatalf("tolerant read of malformed %s handed back a value: %+v", field, report)
 		}
 		if !report.Malformed {
 			t.Fatalf("%s did not set malformed", field)
@@ -114,12 +112,10 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 		}
 	}
 
-	assertMalformed("Active", activeOffset, repro, func(v *Patrol) bool { return v.Active })
+	assertMalformed("Active", activeOffset, repro)
 	badTarget := append([]byte(nil), clean...)
 	badTarget[targetOffset] = 0xfe
-	assertMalformed("HasTarget", targetOffset, badTarget, func(v *Patrol) bool {
-		return v.Active && v.HasTarget
-	})
+	assertMalformed("HasTarget", targetOffset, badTarget)
 
 	buf := aligned(t, clean)
 	if buf == nil {

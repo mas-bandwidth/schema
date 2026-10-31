@@ -50,14 +50,14 @@ import("errors";"testing";"encoding/base64")
 func file(count uint64) []byte {var ids TableIds;b:=make([]byte,256);w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);w.ID(RootTableFields[0].ID);w.Put8(14);w.PutLeb(uint64(1+tableLebBytes(count)+4));w.Put8(4);w.PutLeb(count);w.Put32(19);w.ID(RootTableFields[1].ID);w.Put8(4);w.Put32(42);w.Put8(0);w.Trailer();return b[:w.Offset]}
 func TestTableWireOverATextTransport(t *testing.T) {
 	wire := file(1 << 30)
-	// The fixture is still the recoverable shape: the tolerant builder load
-	// answers true AND reports malformed.
+	// The fixture is damaged: the tolerant builder load discards the whole
+	// load (docs/SPEC-TABLES.md §4), answering false and reporting malformed.
 	var b RootBuilder
 	if !b.Init() { t.Fatal("init") }
 	defer b.Shutdown()
 	var tolerant TableReport
-	if !RootLoadBuilderTolerant(&b, wire, &tolerant) || !tolerant.Malformed {
-		t.Fatalf("fixture is not the recoverable shape: %+v", tolerant)
+	if RootLoadBuilderTolerant(&b, wire, &tolerant) || !tolerant.Malformed {
+		t.Fatalf("fixture is not damaged: %+v", tolerant)
 	}
 	text := base64.StdEncoding.EncodeToString(wire)
 	got, err := RootLoadText(text, nil)

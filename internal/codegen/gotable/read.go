@@ -209,7 +209,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("\t\t\treport.Verdict = TableOpenDamaged\n")
 	g.pf("\t\t\treturn false\n")
 	g.pf("\t\t}\n")
-	g.pf("\t\t%sReset(value)\n", n)
+	g.pf("\t\tif report.Malformed {\n\t\t\t%sReset(value)\n\t\t}\n", n)
 	g.pf("\t\treport.Malformed = report.Malformed || before.Malformed\n")
 	g.pf("\t\treport.Verdict = TableOpenBodyStopped\n")
 	g.pf("\t\treturn false\n")

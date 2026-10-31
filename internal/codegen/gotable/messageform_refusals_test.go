@@ -331,9 +331,9 @@ func TestBatchTooLarge(t *testing.T) {
 }
 `
 
-// "DAMAGE INSIDE BODY `k` DELIVERS BODIES `1` TO `k - 1`. The returned count
-// states `k - 1`, ONE `malformed` counts, and nothing at or after body `k` is
-// read." (docs/SPEC-TABLES.md §3.3).
+// A three-body batch damaged inside the second "must report `malformed` and
+// return a count of 0 with no body delivered" (docs/SPEC-TABLES.md §4,
+// DAMAGE DISCARDS THE WHOLE LOAD).
 const msgDamageInsideBodyProbe = `
 import "testing"
 
@@ -354,7 +354,7 @@ func TestDamageInsideBody(t *testing.T) {
 	storage := make([]Root, 3)
 	var report TableReport
 	count, ok := RootLoadMessages(storage, vocab, wire, &report)
-	if ok || count != 1 {
+	if ok || count != 0 {
 		t.Fatalf("damage in body 2: count=%d ok=%v %+v", count, ok, report)
 	}
 	if report != (TableReport{Malformed: true}) {

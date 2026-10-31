@@ -107,8 +107,8 @@ func TestArrayCountCrossesBody(t *testing.T) {
  wire = binary.LittleEndian.AppendUint64(wire,1)
  var value Root
  var report TableReport
- if !RootLoadTolerant(&value,wire,&report) || !report.Malformed || report.Clamped != 1 || report.KindMismatch != 1 {
-  t.Fatalf("count recovery differs: %+v",report)
+ if RootLoadTolerant(&value,wire,&report) || !report.Malformed {
+  t.Fatalf("damage must discard the whole load: %+v",report)
  }
 }
 
