@@ -190,6 +190,7 @@ var catalog = []Entry{
 	e("test/cookgen", "cook fixture generator", "make tables-cook-scale", "go build -o build/cookgen ./test/cookgen"),
 	e("test/cpp-tables", "C++ table runtime-home digest", "make tables-cpp-runtime-home", "make tables-cpp-runtime-home"),
 	e("test/cs", "C# packet tests", "make test-cs", "make test-cs"),
+	e("test/cs-hostile", "C# hostile-corpus runner", "make schema-cs-runs-hostile-corpus", "make schema-cs-runs-hostile-corpus"),
 	e("test/cs-block", "C# block tests", "make test-cs", "make test-cs"),
 	e("test/cs-cook", "C# cook tests", "make test-cs", "make test-cs"),
 	e("test/cs-ludicrous", "C# int128 tests", "make test-cs", "make test-cs"),

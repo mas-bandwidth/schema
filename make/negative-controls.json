@@ -662,9 +662,10 @@
     {
       "name": "cs-finite",
       "when": "pull-request",
-      "why": "the C# finite rule (docs/SPEC-TABLES.md §3.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. A job of its own for the cs-tables group's 5-minute timeout; four probe builds, 8 s on the author's machine.",
+      "why": "the C# finite rule (docs/SPEC-TABLES.md §3.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. A job of its own for the cs-tables group's 5-minute timeout; four probe builds, 8 s on the author's machine. The hostile-corpus control (docs/HOSTILE-CORPUS.md) rides here too: it requires the unplanted corpus green, flips one passing accepted and one passing refused verdict in a scratch copy of the manifest, and requires the runner to go red naming both; one dispatch generation and one SDK build, about 10 s on the author's machine.",
       "targets": [
-        "tables-cs-finite-float-negative-control"
+        "tables-cs-finite-float-negative-control",
+        "schema-cs-runs-hostile-corpus-negative-control"
       ],
       "dotnet": "pin"
     },

@@ -96,3 +96,5 @@ erl_crash.dump
 /bench/tables/rust/Cargo.lock
 /generated/bench/paired/rust/target/
 /generated/bench/paired/rust/Cargo.lock
+/test/cs-hostile/bin/
+/test/cs-hostile/obj/
