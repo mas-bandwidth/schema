@@ -15,6 +15,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `cs/` | C# packet tests | `make test-cs` | `make test-cs` |
 | `cs-block/` | C# block tests | `make test-cs` | `make test-cs` |
 | `cs-cook/` | C# cook tests | `make test-cs` | `make test-cs` |
+| `cs-hostile/` | C# hostile-corpus runner | `make schema-cs-runs-hostile-corpus` | `make schema-cs-runs-hostile-corpus` |
 | `cs-ludicrous/` | C# int128 tests | `make test-cs` | `make test-cs` |
 | `cs-tables/` | C# table tests | `make test-cs` | `make test-cs` |
 | `cs-view/` | C# view tests | `make test-cs` | `make test-cs` |

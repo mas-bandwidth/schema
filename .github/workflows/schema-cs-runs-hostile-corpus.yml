@@ -1,0 +1,82 @@
+name: schema-cs-runs-hostile-corpus
+
+# THE C# PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md).
+# The fast part runs on every push and pull request: generate the C# units the
+# manifest names, build the runner with the pinned .NET SDK, and check every
+# input's verdict against the committed oracle, each case in a pooled worker
+# process so a stack overflow or a hang fails only its own case. The
+# planted-verdict control flips one passing accepted and one passing refused
+# verdict in a scratch copy of the corpus and requires the runner to go red
+# naming both; it runs on schedule and workflow_dispatch because it certifies
+# the gate has a blade rather than the corpus's content.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+  SERIALIZE_CS_TAG: v2.0.1
+
+jobs:
+  corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the serialize.cs runtime (pinned release)
+        run: |
+          rm -rf "$RUNNER_TEMP/serialize.cs"
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git "$RUNNER_TEMP/serialize.cs"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      # the fleet runner cannot write /usr/share/dotnet; the SDK installs
+      # into the runner's own tool cache
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - name: the corpus gate
+        run: make schema-cs-runs-hostile-corpus SERIALIZE_CS="$RUNNER_TEMP/serialize.cs"
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the serialize.cs runtime (pinned release)
+        run: |
+          rm -rf "$RUNNER_TEMP/serialize.cs"
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git "$RUNNER_TEMP/serialize.cs"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      # the fleet runner cannot write /usr/share/dotnet; the SDK installs
+      # into the runner's own tool cache
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - name: the planted-verdict control
+        run: make schema-cs-runs-hostile-corpus-negative-control SERIALIZE_CS="$RUNNER_TEMP/serialize.cs"
