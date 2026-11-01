@@ -937,6 +937,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-nightly-fuzz.yml:replay",
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, sameRepoMainUnlabeled)
@@ -994,6 +995,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-nightly-fuzz.yml:replay",
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
@@ -1021,6 +1023,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			"schema-luau-nightly-fuzz.yml:replay",
 			"schema-luau-resource-bounds.yml:luau-resource-bounds",
 			"schema-luau-runs-hostile-corpus.yml:corpus",
+			"schema-rust-runs-hostile-corpus.yml:corpus",
 		} {
 			wfName, jobName, _ := strings.Cut(wantKey, ":")
 			if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, pushEv); err != nil || !ok {
@@ -1056,6 +1059,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:negative-control",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, schedEv); err != nil || !ok {
@@ -1136,6 +1141,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-luau-resource-bounds.yml:luau-resource-bounds",
 		"schema-luau-runs-hostile-corpus.yml:corpus",
 		"schema-luau-runs-hostile-corpus.yml:negative-control",
+		"schema-rust-runs-hostile-corpus.yml:corpus",
+		"schema-rust-runs-hostile-corpus.yml:negative-control",
 		"schema-squirrel-all-port-differential.yml:fast",
 		"schema-squirrel-all-port-differential.yml:nightly",
 		"schema-squirrel-nightly-fuzz.yml:fuzz",
