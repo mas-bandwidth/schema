@@ -1,0 +1,75 @@
+name: schema-js-runs-hostile-corpus
+
+# THE JAVASCRIPT PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md).
+# The fast part runs on every push and pull request: generate the JavaScript
+# units the manifest names, then check every input's verdict against the
+# committed oracle through the port's table readers and, for a packet case, both
+# read tiers (serialize.js runtime and flat) under NODE_ENV development and
+# production. The planted-verdict control changes one verdict in a scratch copy
+# of the manifest and requires the runner to go red on exactly that row; it runs
+# on schedule and workflow_dispatch because it certifies the gate has a blade
+# rather than the corpus's content.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+  SERIALIZE_JS_TAG: v2.0.1
+
+jobs:
+  corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the serialize.js runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          # a self-hosted runner's workspace parent persists between runs: the
+          # sibling is removed and re-cloned at the pinned tag every time
+          rm -rf serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+      - name: the corpus gate
+        run: make schema-js-runs-hostile-corpus NODE=node
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the serialize.js runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26'
+      - name: the planted-verdict control
+        run: make schema-js-runs-hostile-corpus-negative-control NODE=node
