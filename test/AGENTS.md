@@ -6,11 +6,13 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | --- | --- | --- | --- |
 | `bench/` | C++ bench drivers | `make test` | `./build/schema_test_bench` |
 | `c/` | C packet tests | `make test-c` | `make test-c` |
+| `c-hostile/` | C hostile-corpus runner | `make schema-c-runs-hostile-corpus` | `make schema-c-runs-hostile-corpus` |
 | `c-ludicrous/` | C int128 tests | `make test-c` | `make test-c` |
 | `c-tables/` | C table tests | `make test-c` | `make test-c` |
 | `c-two-units/` | C two units in one TU | `make tables-c-two-units` | `make tables-c-two-units` |
 | `conformance/` | cross-language table matrix | `make conformance` | `make conformance` |
 | `cookgen/` | cook fixture generator | `make tables-cook-scale` | `go build -o build/cookgen ./test/cookgen` |
+| `cpp-hostile/` | C++ hostile-corpus runner | `make schema-cpp-runs-hostile-corpus` | `make schema-cpp-runs-hostile-corpus` |
 | `cpp-tables/` | C++ table runtime-home digest | `make tables-cpp-runtime-home` | `make tables-cpp-runtime-home` |
 | `cs/` | C# packet tests | `make test-cs` | `make test-cs` |
 | `cs-block/` | C# block tests | `make test-cs` | `make test-cs` |

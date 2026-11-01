@@ -512,6 +512,22 @@
       ]
     },
     {
+      "name": "base-c-hostile-corpus",
+      "when": "pull-request",
+      "why": "the C port's hostile-corpus control (docs/HOSTILE-CORPUS.md): one accepted case's verdict is flipped in a scratch copy of the corpus and the runner (tools/hostilecorpusexec over the sanitized C case binary, one process per case) must name it FAIL, then the unplanted gate runs green. Go, the host C compiler and the serialize.c sibling, and nothing else: nine units generated and built under AddressSanitizer and UndefinedBehaviorSanitizer, then the corpus run twice.",
+      "targets": [
+        "schema-c-runs-hostile-corpus-negative-control"
+      ]
+    },
+    {
+      "name": "base-cpp-hostile-corpus",
+      "when": "pull-request",
+      "why": "the C++ port's hostile-corpus control, the C one's twin: the same planted verdict over the sanitized C++ case binary. Go, the host C and C++ compilers and the serialize sibling, and nothing else; a group of its own because the nine sanitized C++ units are most of its cost.",
+      "targets": [
+        "schema-cpp-runs-hostile-corpus-negative-control"
+      ]
+    },
+    {
       "name": "base-c-discard",
       "when": "pull-request",
       "why": "the C leg's WHOLE-LOAD DISCARD control (docs/SPEC-TABLES.md \u00a74, damage discards the whole load): it removes each read's discard from the emitted C in turn (the value read, the region read, the retaining read, the builder read and both text reads) and requires exactly that read's rows of TestDamageDiscardsTheWholeLoadC red and every other row green. Six small cc builds of one probe unit, about 10 s together on hetzner1, so well inside the rule on its own row.",
