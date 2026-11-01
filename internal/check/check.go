@@ -2294,6 +2294,10 @@ func (c *checker) resolveAttrsInTable(f *ast.Field, out *ir.Field, inTable bool)
 			c.errf(byKey["resolution"].Pos, "field %s: compressed-float step derivation overflows or requires the upper clamp at float32 (SPEC §4.3)", f.Name)
 			return
 		}
+		if !ir.CompressedFloatDecodeFinite(fmin, fmax, res) {
+			c.errf(byKey["max"].Pos, "field %s: the top quantization step dequantizes past the largest float32, so a reader would decode an infinity (SPEC §4.3)", f.Name)
+			return
+		}
 		out.HasFloatRange = true
 		out.FMin, out.FMax, out.Resolution = fmin, fmax, res
 		// Steps is a frozen projection token computed from the source triple.

@@ -802,11 +802,8 @@ func (g *gen) flatCompressedPiece(f *ir.Field, name string) (flatPiece, bool) {
 				g.pf("%s\treturn ErrValidation\n%s}\n", ind, ind)
 			}
 			g.pf("%s{\n%s\tnormalizedValue := float32(%s) / %s\n", ind, ind, src, f32lit(float32(steps)))
-			if min32 == 0 {
-				g.pf("%s\t%s = float32(normalizedValue * %s)\n%s}\n", ind, name, f32lit(delta), ind)
-			} else {
-				g.pf("%s\t%s = %s\n%s}\n", ind, name, floatPlusMin("float32(normalizedValue*"+f32lit(delta)+")", min32), ind)
-			}
+			g.emitDequantize(f, name, ind+"\t", min32, delta)
+			g.pf("%s}\n", ind)
 		},
 	}, true
 }
