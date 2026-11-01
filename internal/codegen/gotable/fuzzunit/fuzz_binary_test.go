@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"unsafe"
 
 	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
 )
@@ -60,7 +61,11 @@ func keyedOf[T any](name string, reset func(*T),
 }
 
 // regionOf adapts the region entry point `PatrolLoad(region, wire, report)`.
+// The region is sized by `PatrolLoadMeasure(wire)` and aligned to 64 bytes, as
+// a caller sizes it, so every input reaches the region decode; a nil region is
+// refused before the wire is read.
 func regionOf[T any](name string, reset func(*T),
+	loadMeasure func([]byte) int64,
 	load func([]byte, []byte, *tabledemo.TableReport) *T,
 	read func([]byte) (*T, error),
 	measure func(*T, ...tabledemo.TableWriteContext) int64,
@@ -75,7 +80,13 @@ func regionOf[T any](name string, reset func(*T),
 			return v
 		},
 		load: func(data []byte) (any, bool) {
-			v := load(nil, data, &tabledemo.TableReport{})
+			size := loadMeasure(data)
+			if size < 0 {
+				return nil, false
+			}
+			raw := make([]byte, size+63)
+			off := (-uintptr(unsafe.Pointer(unsafe.SliceData(raw)))) & 63
+			v := load(raw[off:off+uintptr(size)], data, &tabledemo.TableReport{})
 			return v, v != nil
 		},
 		readStrict: func(data []byte) (any, error) {
@@ -93,7 +104,7 @@ func regionOf[T any](name string, reset func(*T),
 }
 
 var targets = []target{
-	regionOf("Patrol", tabledemo.PatrolReset, tabledemo.PatrolLoad, tabledemo.PatrolReadStrict,
+	regionOf("Patrol", tabledemo.PatrolReset, tabledemo.PatrolLoadMeasure, tabledemo.PatrolLoad, tabledemo.PatrolReadStrict,
 		tabledemo.PatrolMeasure, tabledemo.PatrolSave, tabledemo.PatrolToJSONMeasure, tabledemo.PatrolToJSON),
 	keyedOf("TeamConfig", tabledemo.TeamConfigReset, tabledemo.TeamConfigLoad, tabledemo.TeamConfigReadStrict,
 		tabledemo.TeamConfigMeasure, tabledemo.TeamConfigSave, tabledemo.TeamConfigToJSONMeasure, tabledemo.TeamConfigToJSON),
@@ -139,6 +150,23 @@ var targets = []target{
 		tabledemo.DebuffMeasure, tabledemo.DebuffSave, tabledemo.DebuffToJSONMeasure, tabledemo.DebuffToJSON),
 	keyedOf("WideBlob", tabledemo.WideBlobReset, tabledemo.WideBlobLoad, tabledemo.WideBlobReadStrict,
 		tabledemo.WideBlobMeasure, tabledemo.WideBlobSave, tabledemo.WideBlobToJSONMeasure, tabledemo.WideBlobToJSON),
+}
+
+// TestTargetsLoadTheirSeeds requires every target's load to accept the
+// writer's image of a value away from its defaults, so the fuzz targets reach
+// each entry point's decode rather than a refusal of the harness's own
+// arguments (a region load given no region refuses before it reads the wire).
+func TestTargetsLoadTheirSeeds(t *testing.T) {
+	t.Parallel()
+	for _, target := range targets {
+		image, err := writerImage(target, awayFromDefaults(target.value()))
+		if err != nil {
+			t.Fatalf("%s: %v", target.name, err)
+		}
+		if _, ok := target.load(image); !ok {
+			t.Errorf("%s: the load refused the writer's own image, so the fuzz target never reaches its decode", target.name)
+		}
+	}
 }
 
 func FuzzLoad(f *testing.F) {
