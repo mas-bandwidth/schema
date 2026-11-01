@@ -35,7 +35,7 @@ RUST_HOSTILE_TARGET   ?= $(RUST_HOSTILE_BUILD)/target
 RUST_HOSTILE_JOBS     ?= 4
 
 # every schema the manifest names, read off its third column
-RUST_HOSTILE_SCHEMAS = $(shell awk -F'\t' '!/^\#/ && NF == 9 { print $$3 }' $(RUST_HOSTILE_CORPUS)/manifest.tsv | sort -u)
+RUST_HOSTILE_SCHEMAS = $(shell awk -F'\t' 'substr($$1, 1, 1) != "\043" && NF == 9 { print $$3 }' $(RUST_HOSTILE_CORPUS)/manifest.tsv | sort -u)
 # the one schema not in the checkout's tree (docs/HOSTILE-CORPUS.md) is the
 # probe beside the runner
 rust_hostile_source = $(if $(filter schemas/probe.schema,$(1)),test/rust-hostile/probe.schema,$(1))
