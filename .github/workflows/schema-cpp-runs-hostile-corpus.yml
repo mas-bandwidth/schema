@@ -1,0 +1,71 @@
+name: schema-cpp-runs-hostile-corpus
+
+# THE C++ PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md).
+# The fast part runs on every push and pull request: generate the C++ units
+# the manifest names, build the case binary under AddressSanitizer and
+# UndefinedBehaviorSanitizer against the pinned serialize runtime, and check every
+# input's verdict against the committed oracle, one case per process. The
+# planted-verdict control flips one accepted case's verdict in a scratch copy of
+# the corpus and requires the runner to go red; it runs on schedule and
+# workflow_dispatch because it certifies the gate has a blade rather than the
+# corpus's content.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+  # the runtime the generated C++ targets, at the tag ci-full.yml pins
+  SERIALIZE_TAG: v2.1.3
+
+jobs:
+  corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the post step uploaded a 4.9 GB module and build
+          # cache at 3.5 MB/s and ran the corpus job past its timeout; the fleet
+          # runner keeps its own warm Go cache
+          cache: false
+      - name: Check out the serialize runtime (pinned release)
+        run: |
+          # a previous run's clone is removed and re-cloned at the pinned tag
+          rm -rf ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+      - name: the corpus gate
+        run: make schema-cpp-runs-hostile-corpus SERIALIZE=../serialize
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the post step uploaded a 4.9 GB module and build
+          # cache at 3.5 MB/s and ran the corpus job past its timeout; the fleet
+          # runner keeps its own warm Go cache
+          cache: false
+      - name: Check out the serialize runtime (pinned release)
+        run: |
+          # a previous run's clone is removed and re-cloned at the pinned tag
+          rm -rf ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+      - name: the planted-verdict control
+        run: make schema-cpp-runs-hostile-corpus-negative-control SERIALIZE=../serialize

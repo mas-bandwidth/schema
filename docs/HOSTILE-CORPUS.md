@@ -89,7 +89,14 @@ Three ports carry one today. Java: `make schema-java-runs-hostile-corpus`
 `javac --release 17 -Xlint:all -Werror`). Elixir: `make schema-elixir-runs-hostile-corpus`
 (`test/elixir-hostile/runner.exs`). Dart: `make schema-dart-runs-hostile-corpus`
 (`test/dart-hostile/runner.dart`, the generated `<Package>Wire.dart` and
-`<Package>Fixed.dart` readers, every carrier). Each carries the disagreements
+`<Package>Fixed.dart` readers, every carrier). C and C++:
+`make schema-c-runs-hostile-corpus` and `make schema-cpp-runs-hostile-corpus`
+(the units in `test/c-hostile` and `test/cpp-hostile`, linked into one case
+binary per port under AddressSanitizer and UndefinedBehaviorSanitizer and
+driven by `tools/hostilecorpusexec`, which runs each case in its own process
+with a 512 KiB case-thread stack and the per-case budget, so a crash, a
+sanitizer report or a hang fails only that case; a retaining load of a
+fixed-storage root, which neither port has, answers `SKIP`). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
