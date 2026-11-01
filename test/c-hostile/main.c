@@ -193,7 +193,8 @@ int main( int argc, char ** argv )
         fprintf( stderr, "cannot read %s\n", argv[4] );
         return 2;
     }
-    /* exactly the input's length: one byte past it is a sanitizer report */
+    /* exactly the input's length (one byte for an empty input, which no
+       read may touch): a read past it is a sanitizer report */
     data = (uint8_t *) malloc( (size_t) ( length > 0 ? length : 1 ) );
     if ( data == NULL || ( length > 0 && fread( data, 1, (size_t) length, f ) != (size_t) length ) )
     {
@@ -201,11 +202,6 @@ int main( int argc, char ** argv )
         return 2;
     }
     fclose( f );
-    if ( length == 0 )
-    {
-        free( data );
-        data = (uint8_t *) malloc( 0 );
-    }
     c.carrier = argv[1];
     c.schema = argv[2];
     c.table = argv[3];
