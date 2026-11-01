@@ -32,7 +32,7 @@ CS_HOSTILE_DOTNET_FLAGS = -v q --nologo \
 $(CS_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-cs-runs-hostile-corpus.mk \
 		test/cs-hostile/gen/main.go internal/ci/hostilecorpus/corpus.go $(CS_HOSTILE_CORPUS)/manifest.tsv \
 		$(wildcard tables/*/*.schema)
-	go run ./test/cs-hostile/gen -schema ./bin/schema -corpus $(CS_HOSTILE_CORPUS) -out $(CS_HOSTILE_BUILD)/generated
+	go run ./test/cs-hostile/gen -schema bin/schema -corpus $(CS_HOSTILE_CORPUS) -out $(CS_HOSTILE_BUILD)/generated
 	@touch $@
 
 $(CS_HOSTILE_BUILD)/bin/.stamp: $(CS_HOSTILE_BUILD)/generated/.stamp test/cs-hostile/Runner.cs test/cs-hostile/cshostile.csproj
