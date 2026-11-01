@@ -84,12 +84,16 @@ case and fails if any verdict differs from the committed manifest. A per-port
 card (`schema-<port>-runs-hostile-corpus`) follows the same shape with that
 port's decoder and the same manifest.
 
-Three ports carry one today. Java: `make schema-java-runs-hostile-corpus`
+Four ports carry one today. Java: `make schema-java-runs-hostile-corpus`
 (`test/java-hostile/Runner.java`, the units the manifest names compiled with
 `javac --release 17 -Xlint:all -Werror`). Elixir: `make schema-elixir-runs-hostile-corpus`
 (`test/elixir-hostile/runner.exs`). Dart: `make schema-dart-runs-hostile-corpus`
 (`test/dart-hostile/runner.dart`, the generated `<Package>Wire.dart` and
-`<Package>Fixed.dart` readers, every carrier). Each carries the disagreements
+`<Package>Fixed.dart` readers, every carrier). JavaScript:
+`make schema-js-runs-hostile-corpus` (`test/js-hostile/runner.mjs`, every carrier,
+each row on its own worker thread under the per-case time budget; a packet case
+runs both read tiers, runtime and flat, under NODE_ENV development and
+production, one row each). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.

@@ -933,6 +933,15 @@
       ]
     },
     {
+      "name": "js-hostile",
+      "when": "pull-request",
+      "node": "26",
+      "why": "the JavaScript port's hostile-corpus control (docs/HOSTILE-CORPUS.md): a changed verdict planted in a scratch copy of the shared manifest (wire-valid's accept turned into a refusal), requiring test/js-hostile/runner.mjs red on exactly that row, after the unplanted run is green. Its own row so the js jobs keep their measured time; one generate of the manifest's units and two corpus runs, about 2 s on the author's machine.",
+      "targets": [
+        "schema-js-runs-hostile-corpus-negative-control"
+      ]
+    },
+    {
       "name": "dart-conformance",
       "when": "pull-request",
       "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point, and the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host.",

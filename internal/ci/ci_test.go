@@ -1122,6 +1122,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-go-generated-golangci-lint-gate.yml:gate",
 		"schema-java-runs-hostile-corpus.yml:corpus",
 		"schema-java-runs-hostile-corpus.yml:negative-control",
+		"schema-js-runs-hostile-corpus.yml:corpus",
+		"schema-js-runs-hostile-corpus.yml:negative-control",
 		"schema-lobster-generated-strict-gate.yml:strict",
 		"schema-lua-generated-luacheck-gate.yml:luacheck",
 		"schema-lua-nightly-fuzz.yml:fast",
