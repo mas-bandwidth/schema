@@ -12,11 +12,15 @@
 //
 // The working directory is the repository root. The generated units are the
 // ones make/schema-dart-runs-hostile-corpus.mk writes under
-// build/dart-hostile/generated (its imports below are relative to this file).
+// build/dart-hostile/generated, and the text, wire, wire_retain and packet
+// bindings are build/dart-hostile/dispatch.dart, which
+// test/dart-hostile/dispatch_gen.dart writes from the manifest (its imports
+// below are relative to this file).
 //
 // A carrier maps to the port's public reader:
 //   text              <root>FromJson(text, report)   (<Package>Wire.dart)
 //   wire              <root>WireLoad(bytes, report)  (<Package>Wire.dart)
+//   wire_retain       <root>WireLoadRetain(bytes, retain, report)
 //   message           announceRead(own announcement), then <root>LoadMessages
 //                     into one value (capacity 1)
 //   message_novocab   <root>LoadMessages with no announcement read
@@ -24,29 +28,37 @@
 //   announce_second   announceRead twice on one vocabulary
 //   announce_bytes    announceRead with maxBytes 8
 //   announce_entries  announceRead with maxEntries 1
+//   packet            read<Type>(value, bytes, 8 * length), then write<Type>
+//                     re-writes the decoded value; the digest is SHA-256 of
+//                     those bytes
 //
-// An accepted text read's value is digested as the engine's is: SHA-256 of the
-// port's text writer with its one trailing newline removed (the engine's
-// canonical text, internal/tabletext.Model.Write, carries none). A wire or
-// message accept carries no digest in the manifest. A read that throws, or a
-// report that says malformed, is the corpus's `damaged`; a refusal is named by
-// the port's own reason.
+// An accepted text or wire read's value is digested as the engine's is:
+// SHA-256 of the port's text writer with its one trailing newline removed (the
+// engine's canonical text, internal/tabletext.Model.Write, carries none). A
+// read that throws, or a report that says malformed, is the corpus's
+// `damaged`; a refusal is named by the port's own reason.
+//
+// THE RUNNER RULES (docs/HOSTILE-CORPUS.md). Every case runs in its own isolate
+// (the VM's default isolate stack) under a time budget (5 s, or
+// HOSTILE_CASE_BUDGET_MS). An uncaught error, a stack overflow among them, is
+// that case's answer and the run goes on; an isolate still running at its
+// budget is killed and the case is over budget. After an accepted wire,
+// wire_retain, text or message case the runner also measures, saves and writes
+// the text of the decoded value; a throw there is the case's answer too, except
+// a writer's named refusal (a StateError whose message opens with its reason,
+// `blob_shared: ...`). Cases run one at a time: the budget is wall-clock, and
+// parallel cases sharing the bench would charge each other's time.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 
-import '../../build/dart-hostile/generated/tabledemo/TabledemoWire.dart' as tabledemo;
+import '../../build/dart-hostile/dispatch.dart' as dispatch;
 import '../../build/dart-hostile/generated/tabledemo/TabledemoFixed.dart' as tabledemo_fixed;
 import '../../build/dart-hostile/generated/messagedemo/MessagedemoWire.dart' as messagedemo;
 import '../../build/dart-hostile/generated/messagedemo/MessagedemoFixed.dart' as messagedemo_fixed;
 import '../../build/dart-hostile/generated/messagedemo/MessagesFixed.dart' as messages;
-import '../../build/dart-hostile/generated/blobdemo/BlobdemoWire.dart' as blobdemo;
-import '../../build/dart-hostile/generated/graphdemo/GraphdemoWire.dart' as graphdemo;
-import '../../build/dart-hostile/generated/scalardemo/ScalardemoWire.dart' as scalardemo;
-import '../../build/dart-hostile/generated/streamdemo/StreamdemoWire.dart' as streamdemo;
-import '../../build/dart-hostile/generated/mapdemo/MapdemoWire.dart' as mapdemo;
-import '../../build/dart-hostile/generated/listdemo/ListdemoWire.dart' as listdemo;
-import '../../build/dart-hostile/generated/probe/probeWire.dart' as probe;
 
 // ---- the answer a case gets ----
 
@@ -60,49 +72,38 @@ final class Answer {
 
 const Answer _damaged = Answer('refuse', 'damaged');
 
-// a case the runner has no reader bound for is the runner's defect, never an
-// answer: it stops the run rather than scoring as a disagreement
-final class _Unbound implements Exception {
-  final String message;
-  const _Unbound(this.message);
-  @override
-  String toString() => message;
-}
+Answer _unbound(String what) => Answer('error', 'unbound: no $what reader bound');
 
 // `--show <case>` prints the port's canonical text for one case, to diff by
 // hand against the engine's when a FIX-CARD is being worked.
 var _show = false;
 
-// ---- the text carrier ----
-
-String? _textRead(String schema, String table, String text) {
-  final key = '$schema $table';
-  switch (key) {
-    case 'tables/examples RootConfig':
-      return tabledemo.rootConfigToJson(tabledemo.rootConfigFromJson(text, tabledemo.TableTextReport()));
-    case 'tables/examples PackConfig':
-      return tabledemo.packConfigToJson(tabledemo.packConfigFromJson(text, tabledemo.TableTextReport()));
-    case 'tables/examples GlobalSettings':
-      return tabledemo.globalSettingsToJson(tabledemo.globalSettingsFromJson(text, tabledemo.TableTextReport()));
-    case 'tables/examples ShipEntry':
-      return tabledemo.shipEntryToJson(tabledemo.shipEntryFromJson(text, tabledemo.TableTextReport()));
-    case 'tables/messages ToolMessage':
-      return messagedemo.toolMessageToJson(messagedemo.toolMessageFromJson(text, messagedemo.TableTextReport()));
-    case 'tables/blobs Catalog':
-      return blobdemo.catalogToJson(blobdemo.catalogFromJson(text, blobdemo.TableTextReport()));
-    case 'tables/pointers Scene':
-      return graphdemo.sceneToJson(graphdemo.sceneFromJson(text, graphdemo.TableTextReport()));
-    case 'tables/scalars SimState':
-      return scalardemo.simStateToJson(scalardemo.simStateFromJson(text, scalardemo.TableTextReport()));
-    case 'tables/stream Feed':
-      return streamdemo.feedToJson(streamdemo.feedFromJson(text, streamdemo.TableTextReport()));
-    case 'tables/maps Text':
-      return mapdemo.textToJson(mapdemo.textFromJson(text, mapdemo.TableTextReport()));
-    case 'tables/lists Army':
-      return listdemo.armyToJson(listdemo.armyFromJson(text, listdemo.TableTextReport()));
-  }
-  throw _Unbound('no text reader bound for $key');
+Answer _accepted(String written) {
+  if (_show) stdout.write(written);
+  final canonical = written.endsWith('\n') ? written.substring(0, written.length - 1) : written;
+  return Answer('accept', sha256Hex(utf8.encode(canonical)));
 }
+
+// A writer's named refusal: a StateError whose message opens with its reason.
+final _namedRefusal = RegExp(r'^[a-z][a-z0-9_]*: ');
+
+// Measure and Save after an accept: a throw is the case's answer, except a
+// writer's named refusal.
+Answer _after(Answer verdict, String step, void Function() exercise) {
+  if (verdict.verdict != 'accept') return verdict;
+  try {
+    exercise();
+  } on StateError catch (e) {
+    if (!_namedRefusal.hasMatch(e.message)) {
+      return Answer('error', 'after accept, $step raised ${e.toString().split('\n').first}');
+    }
+  } catch (e) {
+    return Answer('error', 'after accept, $step raised ${e.toString().split('\n').first}');
+  }
+  return verdict;
+}
+
+// ---- the text carrier ----
 
 Answer _text(String schema, String table, Uint8List payload) {
   final String text;
@@ -112,43 +113,37 @@ Answer _text(String schema, String table, Uint8List payload) {
   } on FormatException {
     return _damaged;
   }
+  final dispatch.Loaded? loaded;
   final String written;
   try {
-    written = _textRead(schema, table, text)!;
-  } on _Unbound {
-    rethrow;
+    loaded = dispatch.textLoad(schema, table, text);
+    if (loaded == null) return _unbound('text');
+    written = loaded.written();
   } catch (_) {
     return _damaged;
   }
-  return _accepted(written);
+  return _after(_accepted(written), 'WireSave/WireMeasure', loaded.exercise);
 }
 
-// ---- the wire carrier ----
+// ---- the wire carriers ----
 
-Answer _accepted(String written) {
-  if (_show) stdout.write(written);
-  final canonical = written.endsWith('\n') ? written.substring(0, written.length - 1) : written;
-  return Answer('accept', sha256Hex(utf8.encode(canonical)));
+Answer _wire(String schema, String table, Uint8List payload, {required bool retain}) {
+  final loaded =
+      retain ? dispatch.wireLoadRetain(schema, table, payload) : dispatch.wireLoad(schema, table, payload);
+  if (loaded == null) return _unbound(retain ? 'wire_retain' : 'wire');
+  if (loaded.refused) return Answer('refuse', loaded.reason);
+  if (loaded.malformed) return _damaged;
+  return _after(_accepted(loaded.written()), retain ? 'WireMeasureRetain/WireSaveRetain' : 'WireMeasure/WireSave',
+      loaded.exercise);
 }
 
-Answer _wireReport(bool malformed, bool refused, String reason, String Function() written) {
-  if (refused) return Answer('refuse', reason);
-  if (malformed) return _damaged;
-  return _accepted(written());
-}
+// ---- the packet carrier ----
 
-Answer _wire(String schema, String table, Uint8List payload) {
-  switch ('$schema $table') {
-    case 'tables/examples ShipEntry':
-      final r = tabledemo.TableWireReport();
-      final v = tabledemo.shipEntryWireLoad(payload, r);
-      return _wireReport(r.malformed, r.refused, r.reason, () => tabledemo.shipEntryToJson(v));
-    case 'schemas/probe.schema Root':
-      final r = probe.TableWireReport();
-      final v = probe.rootWireLoad(payload, r);
-      return _wireReport(r.malformed, r.refused, r.reason, () => probe.rootToJson(v));
-  }
-  throw _Unbound('no wire reader bound for $schema $table');
+Answer _packet(String schema, String type, Uint8List payload) {
+  if (!dispatch.packetBound(schema, type)) return _unbound('packet');
+  final written = dispatch.packetRun(schema, type, payload);
+  if (written == null) return const Answer('refuse', 'packet_refused');
+  return Answer('accept', sha256Hex(written));
 }
 
 // ---- the message carriers (docs/SPEC-TABLES.md §3.3) ----
@@ -168,14 +163,20 @@ Answer _messageAccepted(messagedemo_fixed.ToolMessage value) {
   for (var i = 0; i < a.length; i++) {
     if (a[i] != b[i]) return const Answer('error', 'the decoded body set a field: no text writer to digest it');
   }
-  return _accepted(messagedemo.toolMessageToJson(messagedemo.toolMessageFromJson('{}')));
+  final verdict = _accepted(messagedemo.toolMessageToJson(messagedemo.toolMessageFromJson('{}')));
+  // Measure and Save the decoded batch back through the message writer.
+  return _after(verdict, 'MeasureMessages/SaveMessages', () {
+    final values = <messagedemo_fixed.ToolMessage>[value];
+    final need = messages.toolMessageMeasureMessages(values, messagedemo_fixed.TableReport());
+    messages.toolMessageSaveMessages(values, Uint8List(need < 0 ? 64 : need + 64), messagedemo_fixed.TableReport());
+  });
 }
 
 messagedemo_fixed.TableVocabulary _messageVocabulary() => messagedemo_fixed.TableVocabulary(
     entries: List<messagedemo_fixed.TableMessageEntry>.generate(4096, (_) => messagedemo_fixed.TableMessageEntry(0, 0)));
 
 Answer _message(String table, Uint8List payload, {required bool announced}) {
-  if (table != 'ToolMessage') throw _Unbound('no message reader bound for $table');
+  if (table != 'ToolMessage') return _unbound('message');
   final vocab = _messageVocabulary();
   if (announced) {
     final own = Uint8List(messagedemo_fixed.announceMeasure());
@@ -216,7 +217,9 @@ Answer run(String carrier, String schema, String table, Uint8List payload) {
     case 'text':
       return _text(schema, table, payload);
     case 'wire':
-      return _wire(schema, table, payload);
+      return _wire(schema, table, payload, retain: false);
+    case 'wire_retain':
+      return _wire(schema, table, payload, retain: true);
     case 'message':
       return _message(table, payload, announced: true);
     case 'message_novocab':
@@ -226,8 +229,60 @@ Answer run(String carrier, String schema, String table, Uint8List payload) {
     case 'announce_bytes':
     case 'announce_entries':
       return _announce(carrier, payload);
+    case 'packet':
+      return _packet(schema, table, payload);
   }
-  throw _Unbound('unknown carrier $carrier');
+  return Answer('error', 'unknown carrier $carrier');
+}
+
+// ---- one case in its own isolate ----
+
+// the isolate's entry: [reply, carrier, schema, table, payload]
+void _caseMain(List<Object> message) {
+  final reply = message[0] as SendPort;
+  Answer got;
+  try {
+    got = run(message[1] as String, message[2] as String, message[3] as String, message[4] as Uint8List);
+  } catch (e) {
+    // e.g. the text writer refusing a value the read accepted (a NaN)
+    got = Answer('error', e.toString().split('\n').first);
+  }
+  reply.send(<String>[got.verdict, got.detail]);
+}
+
+Future<Answer> isolated(String carrier, String schema, String table, Uint8List payload, Duration budget) async {
+  final port = ReceivePort();
+  final errors = ReceivePort();
+  final exits = ReceivePort();
+  final done = Completer<Answer>();
+  port.listen((m) {
+    final l = m as List<Object?>;
+    if (!done.isCompleted) done.complete(Answer(l[0] as String, l[1] as String));
+  });
+  errors.listen((e) {
+    final l = e as List<Object?>;
+    if (!done.isCompleted) done.complete(Answer('error', 'uncaught ${l[0]}'.split('\n').first));
+  });
+  exits.listen((_) {
+    // the reply, when there is one, is delivered before the exit notice
+    Timer.run(() {
+      if (!done.isCompleted) done.complete(const Answer('error', 'the case isolate exited without an answer'));
+    });
+  });
+  final isolate = await Isolate.spawn<List<Object>>(_caseMain, <Object>[port.sendPort, carrier, schema, table, payload],
+      onError: errors.sendPort, onExit: exits.sendPort, errorsAreFatal: true);
+  final timer = Timer(budget, () {
+    if (!done.isCompleted) {
+      isolate.kill(priority: Isolate.immediate);
+      done.complete(Answer('error', 'over budget: still running after ${budget.inMilliseconds} ms'));
+    }
+  });
+  final got = await done.future;
+  timer.cancel();
+  port.close();
+  errors.close();
+  exits.close();
+  return got;
 }
 
 // ---- SHA-256 (FIPS 180-4), so the runner needs no package ----
@@ -303,7 +358,7 @@ List<List<String>> _rows(String path) => File(path)
     .map((l) => l.split('\t'))
     .toList();
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   if (args.length == 3 && args[0] == '--show') {
     for (final m in _rows('${args[1]}/manifest.tsv')) {
       if (m[0] != args[2]) continue;
@@ -324,6 +379,8 @@ void main(List<String> args) {
     stderr.writeln('the runner\'s SHA-256 fails its own known-answer test');
     exit(1);
   }
+  final budgetEnv = Platform.environment['HOSTILE_CASE_BUDGET_MS'] ?? '';
+  final budget = Duration(milliseconds: budgetEnv.isEmpty ? 5000 : int.parse(budgetEnv));
   final corpus = args[0];
   final findings = <String, List<String>>{};
   if (args.length == 2 && File(args[1]).existsSync()) {
@@ -341,15 +398,7 @@ void main(List<String> args) {
     seen.add(name);
     final want = verdict == 'accept' ? Answer('accept', digest == '-' ? '-' : digest) : Answer('refuse', reason);
     final payload = File('$corpus/$input').readAsBytesSync();
-    Answer got;
-    try {
-      got = run(carrier, schema, table, payload);
-    } on _Unbound {
-      rethrow;
-    } catch (e) {
-      // e.g. the text writer refusing a value the read accepted (a NaN)
-      got = Answer('error', e.toString().split('\n').first);
-    }
+    final got = await isolated(carrier, schema, table, payload, budget);
     final agrees = got.verdict == want.verdict && got.detail == want.detail;
     final finding = findings[name];
     if (agrees) {
@@ -375,5 +424,5 @@ void main(List<String> args) {
   }
   stdout.writeln('${manifest.length} cases: $passed pass, $carried carried as FIX-CARD, '
       '${bad.length} unexplained, ${stale.length} stale');
-  if (bad.isNotEmpty || stale.isNotEmpty) exit(1);
+  exit(bad.isNotEmpty || stale.isNotEmpty ? 1 : 0);
 }

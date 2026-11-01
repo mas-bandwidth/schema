@@ -37,7 +37,7 @@ func TestSchemaElixirRunsHostileCorpusWiring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the port runner is missing: %v", err)
 	}
-	for _, want := range []string{"manifest.tsv", "FIX-CARD", "known-findings.tsv", "from_json", "load_messages"} {
+	for _, want := range []string{"manifest.tsv", "FIX-CARD", "known-findings.tsv", "from_json", "load_messages", "load_retain", "\"packet\"", ":max_heap_size", "HOSTILE_CASE_BUDGET_MS"} {
 		if !strings.Contains(string(runner), want) {
 			t.Errorf("test/elixir-hostile/runner.exs does not carry %q", want)
 		}

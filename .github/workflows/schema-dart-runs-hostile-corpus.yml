@@ -1,0 +1,63 @@
+name: schema-dart-runs-hostile-corpus
+
+# THE DART PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md).
+# The fast part runs on every push and pull request: generate the Dart units
+# the manifest names, write the runner's bindings from the manifest, and check
+# every input's verdict against the committed oracle, each case in its own
+# isolate under the case budget. The planted-bad-pattern control changes the
+# generated text reader in a scratch copy and requires the runner to go red,
+# then requires a 0 ms budget to go red; it runs on schedule and
+# workflow_dispatch because it certifies the gate has a blade rather than the
+# corpus's content (the pull-request negative-control row runs it too).
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  schedule:
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+
+jobs:
+  corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: the corpus gate
+        run: make schema-dart-runs-hostile-corpus DART=dart
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: the planted-bad-pattern control
+        run: make schema-dart-runs-hostile-corpus-negative-control DART=dart
