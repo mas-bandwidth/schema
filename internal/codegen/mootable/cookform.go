@@ -99,7 +99,7 @@ func emitCookRecord(g *Gen, ck string, st *ir.Struct) {
 	for _, fl := range ml.Fields {
 		fields = append(fields, cookPieces(g, fl.Field, fl.Offset))
 	}
-	g.Pf("%s.record(%q, { size = %d, align = %d, fields = { %s } })\n", ck, st.Name, ml.Size, ml.Align, strings.Join(fields, ", "))
+	g.Pf("%s.record(%q, { size = %d, align = %d, nodeAlign = %d, extentStart = %d, fields = { %s } })\n", ck, st.Name, ml.Size, ml.Align, ir.CookNodeAlign(g.Unit, st), ir.CookExtentStart(g.Unit, st), strings.Join(fields, ", "))
 }
 
 func emitCookUnion(g *Gen, ck string, un *ir.Union) {
