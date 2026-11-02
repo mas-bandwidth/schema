@@ -25,6 +25,12 @@ table Keyed {
 table Parent {
 	kid Kid | required
 }
+table Other {
+	ver uint8
+}
+table RequiredEmpty {
+	value Other | required
+}
 `
 	t.Run("emitted", func(t *testing.T) {
 		t.Parallel()
@@ -92,6 +98,25 @@ func TestKeyedZeroWireAndStrictRefusal(t *testing.T) {
 	}
 	if _, err := ParentReadStrict(empty); err == nil {
 		t.Fatal("ParentReadStrict accepted empty wire missing required kid")
+	}
+
+	var re RequiredEmpty
+	RequiredEmptyReset(&re)
+	ren := RequiredEmptyMeasure(&re)
+	if ren <= 0 {
+		t.Fatalf("RequiredEmptyMeasure after Reset = %d, want > 0", ren)
+	}
+	rebuf := make([]byte, ren)
+	if got := RequiredEmptySave(&re, rebuf); got != ren {
+		t.Fatalf("RequiredEmptySave = %d, want %d", got, ren)
+	}
+	const wantRequiredEmptyHex = "01010d010000ea0ce83094fde47c0100000000000000"
+	if gotHex := hex.EncodeToString(rebuf); gotHex != wantRequiredEmptyHex {
+		t.Fatalf("RequiredEmptySave after Reset = %s, want %s", gotHex, wantRequiredEmptyHex)
+	}
+	regot, reerr := RequiredEmptyReadStrict(rebuf)
+	if reerr != nil || regot == nil || *regot != re {
+		t.Fatalf("RequiredEmptyReadStrict round-trip: got=%+v err=%v", regot, reerr)
 	}
 }
 `
