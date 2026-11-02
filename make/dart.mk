@@ -1246,6 +1246,23 @@ tables-dart-identity-negative-control:
 
 test-dart: tables-dart-identity tables-dart-identity-negative-control
 
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1; Glenn, 2026-10-31): the
+# framing vectors node_cycle_self, node_cycle_to_root and node_cycle_mid are
+# refused whole through WireLoad and WireLoadRetain, and a chain and the
+# 2^40-path diamond chain load clean inside a linear deadline. The control
+# makes the runtime's cyclic() answer false; the probe goes red on the three
+# cyclic rows alone.
+.PHONY: tables-dart-cycle tables-dart-cycle-negative-control
+tables-dart-cycle:
+	SCHEMA_SLOW=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestCyclicWireIsDamageDart$$'
+	@echo 'tables Dart cycle: a cyclic wire is refused whole on every load, a chain and a diamond chain load'
+
+tables-dart-cycle-negative-control:
+	SCHEMA_SLOW=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestCyclicWireIsDamageDartNegativeControl$$'
+	@echo 'negative control: with cyclic() answering false, the probe goes red on the three cyclic rows alone'
+
+test-dart: tables-dart-cycle tables-dart-cycle-negative-control
+
 # BYTE ORDER IS THE READER'S (docs/PORTING.md M12): every multi-byte ByteData
 # call in every corpus unit's generated Dart names its Endian, so the host's
 # order is never consulted. The control strips one call's Endian.little and
@@ -1758,7 +1775,7 @@ test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 DART_DISCARD_NC := build/dart-discard-nc
 .PHONY: tables-dart-discard tables-dart-discard-negative-control
 tables-dart-discard:
-	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadDart$$'
+	SCHEMA_SLOW=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadDart$$'
 	@echo 'tables Dart discard: every damaged load hands back nothing it decoded'
 tables-dart-discard-negative-control:
 	@rm -rf $(DART_DISCARD_NC) && mkdir -p $(DART_DISCARD_NC)
@@ -1772,7 +1789,7 @@ tables-dart-discard-negative-control:
 			internal/codegen/darttable/$$file > $$d/$$file.txt; \
 		if cmp -s internal/codegen/darttable/$$file $$d/$$file.txt; then echo "NEGATIVE CONTROL: the $$file sabotage patched nothing"; exit 1; fi; \
 		printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/%s.txt"}}\n' "$(CURDIR)" "$$file" "$(CURDIR)" "$$d" "$$file" > $$d/overlay.json; \
-		if DART=$(DART) go test -count=1 -overlay $$d/overlay.json -run '^TestDamageDiscardsTheWholeLoadDart$$' \
+		if SCHEMA_SLOW=1 DART=$(DART) go test -count=1 -overlay $$d/overlay.json -run '^TestDamageDiscardsTheWholeLoadDart$$' \
 				./internal/codegen/darttable > $$d/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$file discard is gone and the gate stayed green"; cat $$d/log; exit 1; \
 		fi; \

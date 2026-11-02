@@ -239,7 +239,7 @@ final class TableWireWriter {
   int refFor(int id) => state.refFor(id);
 }
 
-// _round is the region's 8-byte alignment (§6.2).
+// _round is the region's alignment (§6.2, ir.TableRegionAlign).
 int _round(int n) => (n + 7) & -8;
 
 // _kindFloor is the minimum byte cost of one element of a counted array body,
@@ -498,6 +498,13 @@ final class TableWireReader {
   List<int> path = <int>[];
   Object? rootObj;
   int rootType = 0;
+  // owner is the node index (§3.1: 1 the root, k + 2 the record at k) whose
+  // body this reader is reading, and edges holds one (from, to) pair for
+  // every table pointer slot the load stores, shared by every sub-reader:
+  // the graph cyclic() checks once the load is done.
+  int owner = 1;
+  final List<int> edges;
+  final Map<Object, int> nodeIndex;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -506,6 +513,8 @@ final class TableWireReader {
       nodes = <Uint8List>[],
       knownTypes = <int>{},
       decoded = <Object?>[],
+      edges = <int>[],
+      nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -528,7 +537,10 @@ final class TableWireReader {
       retain = parent.retain,
       path = parent.path,
       rootObj = parent.rootObj,
-      rootType = parent.rootType;
+      rootType = parent.rootType,
+      owner = parent.owner,
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
   // over reads one node-record body against the parent's numbering. The bytes
   // are the record, not a slice of the file, so the cursor starts at 0 (§3.1).
@@ -549,7 +561,10 @@ final class TableWireReader {
       retain = parent.retain,
       path = parent.path,
       rootObj = parent.rootObj,
-      rootType = parent.rootType;
+      rootType = parent.rootType,
+      owner = parent.owner,
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
   bool has(int n) => n >= 0 && pos + n <= limit;
 
@@ -842,20 +857,18 @@ final class TableWireReader {
     }
     final have = decoded[rec];
     if (have != null) return have;
-    final obj = _newNode(wantType);
-    if (obj == null) {
-      report.kindMismatch++;
-      return null;
+    report.kindMismatch++;
+    return null;
+  }
+
+  void noteEdge(int from, Object? to) {
+    if (to == null) return;
+    final idx = nodeIndex[to];
+    if (idx != null) {
+      edges
+        ..add(from)
+        ..add(idx);
     }
-    decoded[rec] = obj;
-    final sub = TableWireReader.over(nodes[rec], this);
-    // A node record's body is read to its zero reference, and the reference
-    // stops the body: bytes left after it inside the record's own length are
-    // kept and do not damage the node (docs/SPEC-TABLES.md §3.1, "the body is
-    // an ordinary table body"; internal/tablewire/decodenodes.go leaves
-    // records[i].Body after pass two unchecked, unlike a by-value field's L).
-    _loadNodeBody(sub, wantType, obj);
-    return obj;
   }
 
   // open resolves the id table from the END of the wire (§3), then walks the
@@ -1042,13 +1055,56 @@ final class TableWireReader {
       final typeId = nodeTypes[rec];
       if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
       if (!knownTypes.contains(typeId)) continue;
-      if (decoded[rec] != null) continue;
       final obj = _newNode(typeId);
       if (obj == null) continue;
       decoded[rec] = obj;
-      final sub = TableWireReader.over(nodes[rec], this);
-      _loadNodeBody(sub, typeId, obj);
+      nodeIndex[obj] = rec + 2;
     }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final obj = decoded[rec];
+      if (obj == null) continue;
+      final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
+      _loadNodeBody(sub, nodeTypes[rec], obj);
+    }
+  }
+
+  // cyclic reports whether the pointer graph the load stored has a cycle
+  // (docs/SPEC-TABLES.md §3.1: a cyclic wire is damage, and every read refuses
+  // the whole load). It is Kahn's pass over the node indices: count each
+  // node's in-degree from edges, then repeatedly take a node nothing points at
+  // and drop its out-edges; a node never taken sits on a cycle. Linear in
+  // nodes plus edges, with no recursion, so a diamond chain of shared nodes
+  // costs its node count and not its path count.
+  bool cyclic() {
+    if (edges.isEmpty) return false;
+    final count = nodes.length + 2;
+    final indegree = List<int>.filled(count, 0);
+    final outStart = List<int>.filled(count + 1, 0);
+    for (var i = 0; i < edges.length; i += 2) {
+      indegree[edges[i + 1]]++;
+      outStart[edges[i] + 1]++;
+    }
+    for (var k = 0; k < count; k++) {
+      outStart[k + 1] += outStart[k];
+    }
+    final fill = List<int>.from(outStart);
+    final out = List<int>.filled(edges.length ~/ 2, 0);
+    for (var i = 0; i < edges.length; i += 2) {
+      out[fill[edges[i]]++] = edges[i + 1];
+    }
+    final ready = <int>[];
+    for (var k = 1; k < count; k++) {
+      if (indegree[k] == 0) ready.add(k);
+    }
+    var taken = 0;
+    while (ready.isNotEmpty) {
+      final k = ready.removeLast();
+      taken++;
+      for (var e = outStart[k]; e < outStart[k + 1]; e++) {
+        if (--indegree[out[e]] == 0) ready.add(out[e]);
+      }
+    }
+    return taken != count - 1;
   }
 }
 
@@ -1648,6 +1704,31 @@ void _loadNodeBody(TableWireReader r, int typeId, Object obj) {
   }
 }
 
+void _nodeEdges(TableWireReader r, int owner, int typeId, Object obj) {
+  switch (typeId) {
+    case _kTypeTableEntity: tableEntityEdges(r, owner, obj as TableEntity); break;
+    case _kTypeTableStat: tableStatEdges(r, owner, obj as TableStat); break;
+    case _kTypeTableHitEvent: tableHitEventEdges(r, owner, obj as TableHitEvent); break;
+    case _kTypeTableChatEvent: tableChatEventEdges(r, owner, obj as TableChatEvent); break;
+    case _kTypeTablePickupEvent: tablePickupEventEdges(r, owner, obj as TablePickupEvent); break;
+    case _kTypeTableMixed: tableMixedEdges(r, owner, obj as TableMixed); break;
+  }
+}
+
+void _collectNodeEdges(TableWireReader r) {
+  r.edges.clear();
+  final root = r.rootObj;
+  if (root != null) {
+    r.nodeIndex[root] = 1;
+    _nodeEdges(r, 1, r.rootType, root);
+  }
+  for (var rec = 0; rec < r.nodes.length; rec++) {
+    final obj = r.decoded[rec];
+    if (obj == null) continue;
+    _nodeEdges(r, rec + 2, r.nodeTypes[rec], obj);
+  }
+}
+
 // _bytesCompare orders two keys by their UTF-8 bytes (docs/SPEC-TABLES.md §2.8).
 int _bytesCompare(List<int> a, List<int> b) {
   final n = a.length < b.length ? a.length : b.length;
@@ -1926,6 +2007,20 @@ void _tableEventNumber(WireState s, TableEvent v, Set<Object> open) {
       break;
     case 3:
       tablePickupEventNumber(s, v.pickup, open);
+      break;
+  }
+}
+
+void _tableEventEdges(TableWireReader r, int owner, TableEvent v) {
+  switch (v.armTag) {
+    case 1:
+      tableHitEventEdges(r, owner, v.hit);
+      break;
+    case 2:
+      tableChatEventEdges(r, owner, v.chat);
+      break;
+    case 3:
+      tablePickupEventEdges(r, owner, v.pickup);
       break;
   }
 }
@@ -4029,6 +4124,31 @@ void tableMixedNumber(WireState s, TableMixed v, Set<Object> open) {
   _tableEventNumber(s, v.gameEvent, open);
 }
 
+void tableEntityEdges(TableWireReader r, int owner, TableEntity v) {
+}
+
+void tableStatEdges(TableWireReader r, int owner, TableStat v) {
+}
+
+void tableHitEventEdges(TableWireReader r, int owner, TableHitEvent v) {
+}
+
+void tableChatEventEdges(TableWireReader r, int owner, TableChatEvent v) {
+}
+
+void tablePickupEventEdges(TableWireReader r, int owner, TablePickupEvent v) {
+}
+
+void tableMixedEdges(TableWireReader r, int owner, TableMixed v) {
+  for (final e in v.entities) {
+    tableEntityEdges(r, owner, e);
+  }
+  for (final e in v.stats) {
+    tableStatEdges(r, owner, e);
+  }
+  _tableEventEdges(r, owner, v.gameEvent);
+}
+
 Uint8List tableEntityWireSave(TableEntity v) {
   final state = WireState()..refuseSharedBlob = true;
   state.indexRoot(v);
@@ -4060,6 +4180,12 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   r.pos = 1;
   tableEntityWireLoadBody(r, v, false);
   if (r.report.nonFiniteFloat.isNotEmpty) return TableEntity();
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    return TableEntity();
+  }
+  if (r.report.malformed) return TableEntity();
   return v;
 }
 
@@ -4187,6 +4313,16 @@ TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableW
     retain.reset();
     return TableEntity();
   }
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    retain.reset();
+    return TableEntity();
+  }
+  if (r.report.malformed) {
+    retain.reset();
+    return TableEntity();
+  }
   return v;
 }
 
@@ -4245,6 +4381,12 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   r.pos = 1;
   tableStatWireLoadBody(r, v, false);
   if (r.report.nonFiniteFloat.isNotEmpty) return TableStat();
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    return TableStat();
+  }
+  if (r.report.malformed) return TableStat();
   return v;
 }
 
@@ -4360,6 +4502,16 @@ TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireR
     retain.reset();
     return TableStat();
   }
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    retain.reset();
+    return TableStat();
+  }
+  if (r.report.malformed) {
+    retain.reset();
+    return TableStat();
+  }
   return v;
 }
 
@@ -4418,6 +4570,12 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   r.pos = 1;
   tableMixedWireLoadBody(r, v, false);
   if (r.report.nonFiniteFloat.isNotEmpty) return TableMixed();
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    return TableMixed();
+  }
+  if (r.report.malformed) return TableMixed();
   return v;
 }
 
@@ -4601,6 +4759,16 @@ TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   r.pos = 1;
   tableMixedWireLoadBody(r, v, false);
   if (r.report.nonFiniteFloat.isNotEmpty) {
+    retain.reset();
+    return TableMixed();
+  }
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    retain.reset();
+    return TableMixed();
+  }
+  if (r.report.malformed) {
     retain.reset();
     return TableMixed();
   }

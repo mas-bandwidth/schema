@@ -815,6 +815,9 @@ int fixedTableFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
+      for (var j = 0; j < k; j++) {
+        initFixedTable(values[j]);
+      }
       report.refused = runWhy;
       return -1;
     }
@@ -898,13 +901,17 @@ int fixedTableLoadMessages(
   }
   for (var i = 0; i < count; i++) {
     if (!fixedTableLoadMessageBody(r, values[i])) {
-      if (report.nonFiniteFloat.isEmpty) return i;
       for (var j = 0; j <= i; j++) {
         initFixedTable(values[j]);
       }
       return 0;
     }
   }
-  if (!tableMessageBatchClose(r)) return count;
+  if (!tableMessageBatchClose(r)) {
+    for (var j = 0; j < count; j++) {
+      initFixedTable(values[j]);
+    }
+    return 0;
+  }
   return count;
 }

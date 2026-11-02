@@ -230,6 +230,7 @@ func (g *wireGen) emitUnion(un *ir.Union) {
 	g.emitUnionSave(un)
 	g.emitUnionLoad(un)
 	g.emitUnionNumber(un)
+	g.emitUnionEdges(un)
 }
 
 func unionFn(un *ir.Union, what string) string { return "_" + dartName(un.Name) + what }
@@ -871,6 +872,54 @@ func (g *wireGen) emitUnionNumber(un *ir.Union) {
 		case isUnionField(f):
 			g.pf("\t\tcase %d:\n", i+1)
 			g.pf("\t\t\t%s(s, %s, open);\n", unionFn(unionRef(f), "Number"), expr)
+			g.pf("\t\t\tbreak;\n")
+		}
+	}
+	g.pf("\t}\n}\n\n")
+}
+
+func (g *wireGen) emitUnionEdges(un *ir.Union) {
+	g.pf("void %s(TableWireReader r, int owner, %s v) {\n", unionFn(un, "Edges"), un.Name)
+	g.pf("\tswitch (v.armTag) {\n")
+	for i, arm := range un.Variants {
+		if arm.Void() {
+			continue
+		}
+		f := arm.F
+		expr := "v." + armMember(arm)
+		switch {
+		case isPointerTable(f):
+			g.pf("\t\tcase %d:\n", i+1)
+			g.pf("\t\t\tr.noteEdge(owner, %s);\n", expr)
+			g.pf("\t\t\tbreak;\n")
+		case isByValueTable(f):
+			g.pf("\t\tcase %d:\n", i+1)
+			g.pf("\t\t\t%sEdges(r, owner, %s);\n", dartName(tableRef(f).Name), expr)
+			g.pf("\t\t\tbreak;\n")
+		case f.Array == ir.ArrayFixed && (unionRef(f) != nil || tableRef(f) != nil):
+			g.pf("\t\tcase %d:\n", i+1)
+			g.emitEdgesArray(f, expr, "\t\t\t")
+			g.pf("\t\t\tbreak;\n")
+		case f.CountedOnWire() && unionRef(f) != nil:
+			g.pf("\t\tcase %d:\n", i+1)
+			g.pf("\t\t\tfor (final e in %s) { %s(r, owner, e); }\n", expr, unionFn(unionRef(f), "Edges"))
+			g.pf("\t\t\tbreak;\n")
+		case f.CountedOnWire() && tableRef(f) != nil:
+			ref := tableRef(f)
+			g.pf("\t\tcase %d:\n", i+1)
+			if f.Type.Pointer {
+				g.pf("\t\t\tfor (final e in %s) { r.noteEdge(owner, e); }\n", expr)
+			} else {
+				g.pf("\t\t\tfor (final e in %s) { %sEdges(r, owner, e); }\n", expr, dartName(ref.Name))
+			}
+			g.pf("\t\t\tbreak;\n")
+		case f.IsMap():
+			g.pf("\t\tcase %d:\n", i+1)
+			g.pf("\t\t\tfor (final e in %s) { %sEdges(r, owner, e); }\n", expr, dartName(f.MapEntry.Name))
+			g.pf("\t\t\tbreak;\n")
+		case isUnionField(f):
+			g.pf("\t\tcase %d:\n", i+1)
+			g.pf("\t\t\t%s(r, owner, %s);\n", unionFn(unionRef(f), "Edges"), expr)
 			g.pf("\t\t\tbreak;\n")
 		}
 	}
