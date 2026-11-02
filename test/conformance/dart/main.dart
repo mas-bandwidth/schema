@@ -87,6 +87,8 @@ import '../../../build/tables-generated-dart/maps/TrailsCook.dart' as mtrailscoo
 import '../../../build/tables-generated-dart/widelist/WidelistdemoWire.dart' as widelist;
 import '../../../build/tables-generated-dart/widelist/WidesCook.dart' as widelistcook;
 import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
+import '../../../build/tables-generated-dart/features/FeaturewitnessesWire.dart' as feature;
+import '../../../build/tables-generated-dart/features/FeaturesCook.dart' as featurecook;
 
 // Decode JSON bytes before entering a generated String reader. Dart's UTF-8
 // decoder skips one leading BOM, matching the Go reader's whole-text boundary.
@@ -811,6 +813,11 @@ String _reportLine(int unknown, int kind, int widened, int clamped, int duplicat
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return feature.rootWireSave(feature.rootWireLoad(wire));
+    case 'featurewitnesses ArrayRoot':
+      return feature.arrayRootWireSave(feature.arrayRootWireLoad(wire));
+
     case 'tblg1 Guarded':
       return tblg1.guardedWireSave(tblg1.guardedWireLoad(wire));
     case 'tblv1 Cfg':
@@ -917,6 +924,11 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return feature.rootWireSave(feature.rootFromJson(text));
+    case 'featurewitnesses ArrayRoot':
+      return feature.arrayRootWireSave(feature.arrayRootFromJson(text));
+
     case 'tblw1 Fleet':
       return tblw1.fleetWireSave(tblw1.fleetFromJson(text));
     case 'tblw2 Fleet':
@@ -1023,6 +1035,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return feature.rootToJson(feature.rootWireLoad(wire));
+    case 'featurewitnesses ArrayRoot':
+      return feature.arrayRootToJson(feature.arrayRootWireLoad(wire));
+
     case 'graphdemo ListNode':
       return graphdemo.listNodeToJson(graphdemo.listNodeWireLoad(wire));
     case 'listdemo Bounded':
@@ -1137,6 +1154,13 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
 
 String? loadReport(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      final r=feature.TableWireReport();feature.rootWireLoad(wire,r);
+      return _reportLine(r.unknown,r.kindMismatch,r.widened,r.clamped,r.duplicate,r.malformed,r.refused);
+    case 'featurewitnesses ArrayRoot':
+      final r=feature.TableWireReport();feature.arrayRootWireLoad(wire,r);
+      return _reportLine(r.unknown,r.kindMismatch,r.widened,r.clamped,r.duplicate,r.malformed,r.refused);
+
     case 'graphdemo ListNode':
       final r = graphdemo.TableWireReport();
       graphdemo.listNodeWireLoad(wire, r);
@@ -1339,6 +1363,15 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
   Uint8List wire,
 ) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      final r=feature.TableWireReport();final value=feature.rootWireLoad(wire,r);
+      if(r.malformed||r.refused)return(-1,(_,__)=>false);
+      return(featurecook.RootCook.cookMeasure(value),(out,order)=>featurecook.RootCook.cook(value,out,order));
+    case 'featurewitnesses ArrayRoot':
+      final r=feature.TableWireReport();final value=feature.arrayRootWireLoad(wire,r);
+      if(r.malformed||r.refused)return(-1,(_,__)=>false);
+      return(featurecook.ArrayRootCook.cookMeasure(value),(out,order)=>featurecook.ArrayRootCook.cook(value,out,order));
+
     case 'graphdemo Scene':
       final r = graphdemo.TableWireReport();
       final value = graphdemo.sceneWireLoad(wire, r);
@@ -1740,6 +1773,11 @@ String? jsonHostileReport(String unit, String root, String text) {
   dynamic r;
   try {
     switch ('$unit $root') {
+      case 'featurewitnesses Root':
+        r=feature.TableTextReport();feature.rootFromJson(text,r);break;
+      case 'featurewitnesses ArrayRoot':
+        r=feature.TableTextReport();feature.arrayRootFromJson(text,r);break;
+
       case 'tabledemo RootConfig':
         r = tabledemo.TableTextReport();
         tabledemo.rootConfigFromJson(text, r);
@@ -2387,6 +2425,15 @@ List<int> _fuzzReplyFor(dynamic r, bool loaded, int measure, List<int>? saved) {
 
 _FuzzRoot? fuzzRoot(String unit, String root) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return _FuzzRoot(
+        _plainCodec(feature.TableWireReport.new,feature.rootWireMeasure,feature.rootWireLoad,feature.rootWireSave),
+        retain:_retainCodec(feature.TableRetain.new,feature.TableWireReport.new,feature.rootWireMeasure,feature.rootWireLoadRetain,feature.rootWireSaveRetain));
+    case 'featurewitnesses ArrayRoot':
+      return _FuzzRoot(
+        _plainCodec(feature.TableWireReport.new,feature.arrayRootWireMeasure,feature.arrayRootWireLoad,feature.arrayRootWireSave),
+        retain:_retainCodec(feature.TableRetain.new,feature.TableWireReport.new,feature.arrayRootWireMeasure,feature.arrayRootWireLoadRetain,feature.arrayRootWireSaveRetain));
+
     case 'cards Card':
       return _FuzzRoot(
           _plainCodec(TableWireReport.new, cardWireMeasure, cardWireLoad, cardWireSave),

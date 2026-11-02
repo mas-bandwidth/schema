@@ -128,8 +128,9 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
+build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard examples-wide/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/RT1.schema
 	@mkdir -p build/tables-generated-dart
+	./bin/schema generate --lang dart --out build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
 	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
@@ -1754,6 +1755,7 @@ test-dart: tables-dart-usage tables-dart-usage-negative-control
 # graph_tree mutant (docs/PORTING.md I15).
 .PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
+	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDartRetainingRosterAllRoots$$'
 	./build/conformance-harness wire-fuzz --finite-owed tables-finite/dart --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
