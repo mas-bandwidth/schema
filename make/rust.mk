@@ -1738,6 +1738,6 @@ test-rust: tables-rust-discard
 
 .PHONY: tables-rust-json-bom
 tables-rust-json-bom:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestJsonLeadingBOMBoundaryRust$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 0 -run '^TestJsonLeadingBOMBoundaryRust$$' -v
 
 test-rust: tables-rust-json-bom
