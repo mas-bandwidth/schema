@@ -73,6 +73,15 @@ func rustCountWire(t *testing.T, u *ir.Unit, shape string, count uint64, short b
 	case "list":
 		list := binary.AppendUvarint([]byte{byte(ir.TableKindI32)}, count)
 		root, body = "Leaf", named("values", byte(ir.TableKindArray), length(list))
+	case "widened", "framing-tail":
+		list := binary.AppendUvarint([]byte{byte(ir.TableKindI16)}, count)
+		list = append(list, 0, 0)
+		leaf = append(named("values", byte(ir.TableKindArray), length(list)), 0)
+		body = named("inner", byte(ir.TableKindTable), length(leaf))
+		if shape == "framing-tail" {
+			// The declared tail body exceeds the actual root, after the refusal.
+			body = append(body, named("damaged_tail", byte(ir.TableKindTable), []byte{127})...)
+		}
 	case "nested", "optional":
 		name := "inner"
 		if shape == "optional" {
@@ -171,14 +180,14 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
                 check!(result.is_none(), "%s/%d partial value");
                 check!(report.refused && report.reason == TableReason::CountOverExtentCap, "%s/%d named count refusal");
                 check!(report.malformed == old_damage && report.cycle_on_save, "%s/%d damage history");
-                check!(report.unknown >= 7 && report.kind_mismatch == 11 && report.widened == 13 &&
+                check!(report.unknown == %d && report.kind_mismatch == 11 && report.widened == 13 &&
                     report.clamped == 17 && report.duplicate == 19 && report.retained >= 23 &&
                     report.retain_lost >= 29, "%s/%d counters");
                 check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "%s/%d retained partial state");
             }
         }
     }
-`, rustBytes(wire), load, load, shape, count, shape, count, shape, count, shape, count, shape, count)
+`, rustBytes(wire), load, load, shape, count, shape, count, shape, count, r.Unknown, shape, count, shape, count)
 		}
 		root, wire := rustCountWire(t, u, shape, 0, false)
 		var rep tabletext.Report
@@ -240,5 +249,52 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	out, err := runRustDiscardProbe(t, u, body.String())
 	if err != nil {
 		t.Fatalf("count-refusal probe: %v\n%s", err, out)
+	}
+}
+
+// A later measure failure cannot erase the diagnostic prefix before refusal.
+func TestCountRefusalKeepsEarnedPrefixRust(t *testing.T) {
+	slowtest.Gate(t, "rustc (the generated count-refusal diagnostic-prefix probe)")
+	u := unitFrom(t, rustCountRefusalSchema)
+	model := tabletext.NewModel(u)
+	var body strings.Builder
+	for _, shape := range []string{"widened", "framing-tail"} {
+		root, wire := rustCountWire(t, u, shape, 1<<31, false)
+		report := tabletext.Report{Unknown: 7, Widened: 13}
+		ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &report)
+		var refusal *tablewire.CountRefusal
+		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 8 || report.Widened != 14 {
+			t.Fatalf("%s: unexpected oracle prefix: %v %v %+v", shape, ok, err, report)
+		}
+		retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
+		retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
+		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
+		if ok || !errors.As(err, &refusal) || retainingReport.Malformed || retainingReport.Unknown != 8 || retainingReport.Widened != 14 {
+			t.Fatalf("%s: unexpected retaining oracle prefix: %v %v %+v", shape, ok, err, retainingReport)
+		}
+		fmt.Fprintf(&body, `
+    {
+        let wire: &[u8] = &[%s];
+        for retaining in [false, true] {
+            let mut report = TableReport { unknown: 7, widened: 13, retained: 23, retain_lost: 29, ..Default::default() };
+            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new() };
+            let result = if retaining { holder_load_retain(wire, &mut store, &mut report) } else { holder_load(wire, &mut report) };
+            assert!(result.is_none() && report.refused && report.reason == TableReason::CountOverExtentCap, "%s reason");
+            assert!(!report.malformed && report.unknown == %d && report.widened == %d,
+                "%s prefix retaining={}: unknown={} widened={} malformed={}", retaining, report.unknown, report.widened, report.malformed);
+            assert!(report.retained == if retaining { %d } else { 23 } &&
+                report.retain_lost == if retaining { %d } else { 29 },
+                "%s retention counters: retained={} lost={}", report.retained, report.retain_lost);
+            assert!(store.bytes.is_empty() && store.ids.is_empty(), "%s partial retained state");
+        }
+`, rustBytes(wire), shape, report.Unknown, report.Widened, shape, retainingReport.Retained, retainingReport.RetainLost, shape, shape)
+		if shape == "framing-tail" {
+			body.WriteString("        assert!(holder_load_measure(wire) < 0, \"tail must take scratch refusal path\");\n")
+		}
+		body.WriteString("    }\n")
+	}
+	out, err := runRustDiscardProbe(t, u, body.String())
+	if err != nil {
+		t.Fatalf("count diagnostic-prefix probe: %v\n%s", err, out)
 	}
 }
