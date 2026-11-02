@@ -161,7 +161,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | arrays of unions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | optional arrays | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | blobs (*bytes, *string) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | the wire fuzzer gate | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | maps | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | union arms of any field type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
@@ -176,7 +176,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 81% | 87% | 93% | 96% | 87% | 93% | 84% | 90% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 81% | 87% | 93% | 96% | 90% | 93% | 84% | 90% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
