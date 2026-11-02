@@ -2383,5 +2383,26 @@ public final class TableFixed {
         }
         return out;
     }
+
+    /** Castagnoli CRC-32C over the first len bytes of data (docs/SPEC-TABLES.md §2.14). */
+    public static int crc32c(byte[] data, int len) {
+        int crc = 0xffffffff;
+        for (int i = 0; i < len; i++) {
+            crc ^= data[i] & 0xff;
+            for (int k = 0; k < 8; k++) {
+                crc = (crc >>> 1) ^ ((crc & 1) != 0 ? 0x82f63b78 : 0);
+            }
+        }
+        return ~crc;
+    }
+
+    /** true when data holds at least five bytes and ends with the CRC-32C of the prefix (§2.14). */
+    public static boolean integrityHolds(byte[] data) {
+        if (data == null || data.length < 5) {
+            return false;
+        }
+        final int n = data.length - 4;
+        return get32(data, n) == crc32c(data, n);
+    }
 }
 `

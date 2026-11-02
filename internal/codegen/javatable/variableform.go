@@ -791,6 +791,44 @@ public final class TableVariable {
         return v;
     }
 
+    public static int crc32c(byte[] data, int len) {
+        int crc = 0xffffffff;
+        for (int i = 0; i < len; i++) {
+            crc ^= data[i] & 0xff;
+            for (int k = 0; k < 8; k++) {
+                crc = (crc >>> 1) ^ ((crc & 1) != 0 ? 0x82f63b78 : 0);
+            }
+        }
+        return ~crc;
+    }
+
+    public static boolean integrityHolds(byte[] data) {
+        if (data == null || data.length < 5) {
+            return false;
+        }
+        int n = data.length - 4;
+        int want =
+                (data[n] & 0xff)
+                        | ((data[n + 1] & 0xff) << 8)
+                        | ((data[n + 2] & 0xff) << 16)
+                        | ((data[n + 3] & 0xff) << 24);
+        return want == crc32c(data, n);
+    }
+
+    public static byte[] integrityOpen(byte[] data, Report report) {
+        if (data == null || data.length == 0 || (data[0] & 0xff) != 1) {
+            return data;
+        }
+        if (integrityHolds(data)) {
+            return java.util.Arrays.copyOf(data, data.length - 4);
+        }
+        if (report != null) {
+            report.malformed = true;
+            report.reason = "integrity_mismatch";
+        }
+        return null;
+    }
+
     // bodyExtent walks the framing of the body in [off, limit) to the zero
     // reference that ends it (§3). It answers the offset just past the
     // terminator, or -1 where the walk cannot reach one at all — §4's framing
@@ -3518,12 +3556,21 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        if (w.ids.nonFinite) {\n")
 	fmt.Fprintf(&b, "            return null;\n")
 	fmt.Fprintf(&b, "        }\n")
+	if st.Integrity != "" {
+		fmt.Fprintf(&b, "        w.put32(TableVariable.crc32c(w.buf, w.off));\n")
+	}
 	fmt.Fprintf(&b, "        return java.util.Arrays.copyOf(w.buf, w.off);\n")
 	fmt.Fprintf(&b, "    }\n\n")
 
 	// load
 	fmt.Fprintf(&b, "    public static Value load(byte[] data, TableVariable.Report report) {\n")
-	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
+	if st.Integrity != "" {
+		fmt.Fprintf(&b, "        byte[] wire = TableVariable.integrityOpen(data, report);\n")
+		fmt.Fprintf(&b, "        if (wire == null) { return null; }\n")
+		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(wire, report);\n")
+	} else {
+		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
+	}
 	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
 	fmt.Fprintf(&b, "        Value v = new Value();\n")
 	if st.FixedDeclared {
@@ -3683,6 +3730,10 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        return loadMeasure(data, new TableVariable.Measure());\n")
 	fmt.Fprintf(b, "    }\n\n")
 	fmt.Fprintf(b, "    public static long loadMeasure(byte[] data, TableVariable.Measure m) {\n")
+	if st.Integrity != "" {
+		fmt.Fprintf(b, "        data = TableVariable.integrityOpen(data, m.report);\n")
+		fmt.Fprintf(b, "        if (data == null) { return -1; }\n")
+	}
 	fmt.Fprintf(b, "        TableVariable.Reader r = m.open(data);\n")
 	fmt.Fprintf(b, "        if (r == null) { return -1; }\n")
 	fmt.Fprintf(b, "        m.nodeSizer = NODE_SIZER;\n")
