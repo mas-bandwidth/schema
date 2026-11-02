@@ -481,7 +481,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	// AN ARRAY OF SCALARS carries no body and so no retained tail: it is the
 	// codec's own write too, which elides a fixed array that holds only its
 	// defaults where a hand-written copy wrote it whole (map_cells, kind #261)
-	scalar = scalar || isScalarArray(f)
+	scalar = scalar || isScalarArray(f) || ir.TextListPlain(f)
 	if scalar || (!isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f)) {
 		var body strings.Builder
 		writeFieldSave(&body, u, st, f)

@@ -129,7 +129,11 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear();\n", m)
 	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
-		fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
+		if key.Type.TextUnbounded() {
+			b.WriteString("                    entry.key=mapKey;\n")
+		} else {
+			fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
+		}
 	} else {
 		// A key is parsed at arbitrary precision before narrowing: unsigned 64-bit
 		// magnitudes must never pass through signed-long range checks (§16.1).
@@ -184,7 +188,7 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	// retain_lost when its path names no body.
 	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m)
 	key := ir.MapKeyField(f)
-	if key.Type.Kind == ir.TString {
+	if key.Type.Kind == ir.TString && !key.Type.TextUnbounded() {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)
 	}
 	fmt.Fprintf(b, "                    int order=v.%s.isEmpty()?-1:"+st.Name+"Variable.compare_%s(v.%s.get(v.%s.size()-1),keyValue);if(order>0){report.malformed=true;break;} %s decoded=new %s();int priorWidened=report.widened;\n", m, m, m, m, entry, entry)
