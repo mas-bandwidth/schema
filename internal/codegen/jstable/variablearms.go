@@ -307,6 +307,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "arr": {
+      if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       w.leb(ids.ref(fd.id));
       w.u8(14);

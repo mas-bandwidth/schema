@@ -140,6 +140,9 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	}
 	g.emitRetainRuntime()
 	g.pf("%s", jsVariableCodecRuntime)
+	if ir.UnitHasTextLists(g.unit) {
+		g.pf("%s", jsTextListRuntime)
+	}
 	g.pf("%s", jsVariableArmsRuntime)
 	// THE ONE TEXT WALK (docs/PORTING.md M9): the text form and the four
 	// constructs' text arms, between markers `make tables-js-json-walk`
@@ -990,6 +993,9 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		fmt.Fprintf(&b, "s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Array != ir.ArrayNone:
 		lsize, lalign := ir.ListElementLayout(g.unit, f)
+		if f.IsTextList() {
+			fmt.Fprintf(&b, "tl: true, plain: %v, total: %d, ", ir.TextListPlain(f), f.TextTotal)
+		}
 		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, esz: %d, eal: %d, e: %s }",
 			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:

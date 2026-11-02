@@ -119,6 +119,7 @@ function TableVariableLink(codecs, unions) {
     c.byKey = new Map();
     c.required = c.fields.filter(fd => fd.req);
     for (const fd of c.fields) {
+      if (fd.tl) { fd.field = c.name + "." + fd.n; }
       c.byId.set(fd.id, fd);
       c.byKey.set(fd.key, fd);
       fd.q = TableVariableJsonString(fd.key);
@@ -430,6 +431,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "arr": {
+      if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { return true; }
       if (fd.fixed && fd.e.s !== "tab") {
@@ -459,6 +461,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
 // element carries its own length, a pointer its node index (0 is null), an
 // enum its variant reference, a scalar its width
 function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
+  if (fd.plain) { const b = TableVariableUtf8Encode(val.value); w.leb(b.length); w.raw(b); return true; }
   const e = fd.e;
   switch (e.s) {
     case "bool": w.u8(val ? 1 : 0); return true;
@@ -1146,6 +1149,7 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     } else if (count > fd.bound) {
       keep = fd.bound;
       report.clamped++;
+      if (fd.tl && !report.clampedField) { report.clampedField = fd.field; }
     }
     // the span from the cursor to the body's end, empty rather than negative
     // when the count's own spelling ran past it (decode.go subTo)
@@ -1170,8 +1174,15 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       }
     } else {
       const out = [];
+      let total = 0;
       for (let i = 0; i < keep; i++) {
+        const before = report.clamped;
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
+        if (fd.tl) {
+          if (report.clamped !== before && !report.clampedField) { report.clampedField = fd.field; }
+          total += TableVariableTextListLength(out[i]);
+          if (fd.total > 0 && total > fd.total) { out.length = i; TableVariableTextListClamp(fd, report); break; }
+        }
       }
       v[fd.n] = out;
     }
@@ -1181,6 +1192,12 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
 }
 
 function TableVariableReadElement(fd, r, table, out, report, st, retain, path, ek, i) {
+  if (fd.plain) {
+    const inst = fd.e.c.make(), vf = fd.e.c.fields[0], before = report.clamped;
+    if (!TableVariableReadField(vf, r, table, inst, report, st, retain, path)) { return false; }
+    if (report.clamped !== before && !report.clampedField) { report.clampedField = fd.field; }
+    out[i] = inst; return true;
+  }
   const e = fd.e;
   switch (e.s) {
     case "union": {
@@ -1339,6 +1356,7 @@ function TableVariableArrayExtent(fd, sub, ids, at) {
     at = TableVariableRound(at, fd.eal);
     at += n * fd.esz;
   }
+  if (fd.plain) { return at; } // kind 12 payloads are text, not record bodies
   return TableVariableElementsExtent(fd.e, sub, ids, at, n);
 }
 
@@ -1661,6 +1679,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { out.push("[]"); return true; }
       out.push("[");
@@ -1668,7 +1687,8 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       for (let i = 0; i < n; i++) {
         if (i > 0) { out.push(","); }
         out.push(ind);
-        if (!TableVariableJsonScalar(fd.e, val[i], depth + 1, g, out)) { return false; }
+        if (fd.tl) { out.push(val[i].value === null ? "null" : TableVariableJsonString(val[i].value)); }
+        else if (!TableVariableJsonScalar(fd.e, val[i], depth + 1, g, out)) { return false; }
       }
       out.push("\n" + "  ".repeat(depth) + "]");
       return true;
@@ -2150,7 +2170,7 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
       v[fd.n] = b.bytes;
       return true;
     }
-    case "arr": return TableVariableTextArray(fd, inp, v, depth, graph, report);
+    case "arr": return fd.tl ? TableVariableTextListRead(fd, inp, v, depth, graph, report) : TableVariableTextArray(fd, inp, v, depth, graph, report);
     case "map": return TableVariableTextMap(fd, inp, v, depth, graph, report);
     case "keyed": return TableVariableTextKeyed(fd, inp, v, depth, graph, report);
   }
