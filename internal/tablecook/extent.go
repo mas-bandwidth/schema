@@ -149,10 +149,28 @@ func (c *carver) record(recordAt int64, st *ir.Struct, inst *tabletext.Instance)
 		return nil
 	}
 	ml := ir.RecordLayout(c.m.Unit, st)
+	guards := tabletext.Guards(st)
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
 		fv := instField(inst, fl.Field)
 		if fv == nil {
+			continue
+		}
+		live := true
+		if terms, guarded := guards[fl.Field.Name]; guarded && !inst.GuardHolds(terms) {
+			live = false
+		}
+		if fl.Field.Type.Optional && !fv.Present {
+			live = false
+		}
+		if !live {
+			probe := &carver{m: c.m}
+			if err := probe.field(0, fl.Field, fv); err != nil {
+				return fmt.Errorf("%s.%s: %w", st.Name, fl.Field.Name, err)
+			}
+			if probe.at != 0 {
+				return fmt.Errorf("%s.%s: absent or unguarded field holds %d bytes of extent: a cook cannot carry storage the walk does not reach (docs/SPEC-TABLES.md §2.3, §7.6)", st.Name, fl.Field.Name, probe.at)
+			}
 			continue
 		}
 		if err := c.field(recordAt+fl.Offset, fl.Field, fv); err != nil {

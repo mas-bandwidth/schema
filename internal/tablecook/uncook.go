@@ -215,6 +215,9 @@ func (r *regionReader) mapEntries(at int64, f *ir.Field, fv *tabletext.Field) er
 		fv.Entries = fv.Entries[:0]
 		return nil
 	}
+	if f.Type.Optional && !fv.Present {
+		return fmt.Errorf("field %s: the optional is absent and its map slot is (%d, %d), not (0, 0)", f.Name, delta, count)
+	}
 	if count == 0 {
 		return fmt.Errorf("field %s: the count is 0 and the reference is not null: an empty map's reference is null in every encoding", f.Name)
 	}

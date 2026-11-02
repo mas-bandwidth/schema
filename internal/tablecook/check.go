@@ -302,6 +302,14 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	value := pieces[0]
 	switch {
 	case f.IsMap():
+		if f.Type.Optional && s.buf[pieces[len(pieces)-1].Offset] == 0 {
+			delta := int64(s.ord.Uint64(s.buf[value.Offset:]))
+			count := int64(int32(s.ord.Uint32(s.buf[value.Offset+8:])))
+			if delta != RefNull || count != 0 {
+				return fmt.Errorf("the optional map is absent and its slot is (%d, %d), not (0, 0)", delta, count)
+			}
+			return nil
+		}
 		return s.mapSlot(value.Offset, f)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		return s.ref(value.Offset, f)

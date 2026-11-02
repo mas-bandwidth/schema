@@ -329,3 +329,76 @@ func TestUnboundedTextHostileControls(t *testing.T) {
 		t.Fatal("Cook accepted unreached slot past live count holding non-empty unbounded text")
 	}
 }
+
+func TestAbsentOptionalMapAndContainerCookRefusal(t *testing.T) {
+	_, m := unitFromSource(t, "package probe\ntable Inner {\n    items []int32\n}\ntable Holder {\n    on bool\n    scalar_map ?map[int32]int32\n    text_map ?map[string]int32\n    nested ?Inner\n    if on {\n        guarded_map map[int32]int32\n    }\n}\n")
+	root := m.Lookup("Holder")
+	var r tabletext.Report
+
+	for _, big := range []bool{false, true} {
+		// 1. Absent optional scalar map with non-empty backing entries must be refused by Cook in both byte orders, while wire and JSON omit it.
+		inst := m.New(root)
+		if !m.Read(inst, []byte(`{"scalar_map":{"1":10,"2":20}}`), &r) || !r.Silent() {
+			t.Fatalf("Read scalar_map: %+v", r)
+		}
+		sm := field(inst, "scalar_map")
+		sm.Present = false
+		if len(sm.Entries) != 2 {
+			t.Fatalf("expected 2 backing entries, got %d", len(sm.Entries))
+		}
+		if _, err := tablecook.Cook(m, inst, tablecook.Options{Big: big}); err == nil {
+			t.Fatalf("big=%v: Cook accepted absent optional scalar_map with %d entries", big, len(sm.Entries))
+		}
+		wire, err := tablewire.Encode(m, inst)
+		if err != nil {
+			t.Fatalf("big=%v: wire Encode failed on absent optional scalar_map: %v", big, err)
+		}
+		decoded := m.New(root)
+		if ok, err := tablewire.Decode(m, decoded, wire, &r); !ok || err != nil {
+			t.Fatalf("big=%v: wire Decode failed: %v %v", big, ok, err)
+		}
+		if field(decoded, "scalar_map").Present || len(field(decoded, "scalar_map").Entries) != 0 {
+			t.Fatalf("big=%v: wire did not omit absent optional scalar_map", big)
+		}
+		// Once backing entries are cleared, Cook succeeds and reserves 0 extent bytes.
+		sm.Entries = nil
+		cooked, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
+		if err != nil {
+			t.Fatalf("big=%v: Cook rejected cleared absent optional scalar_map: %v", big, err)
+		}
+		if _, err := tablecook.Check(m, cooked); err != nil {
+			t.Fatalf("big=%v: Check failed on cleared absent optional scalar_map: %v", big, err)
+		}
+
+		// 2. Absent optional text-keyed map with non-empty backing entries must be refused by Cook.
+		inst2 := m.New(root)
+		if !m.Read(inst2, []byte(`{"text_map":{"alpha":1}}`), &r) || !r.Silent() {
+			t.Fatalf("Read text_map: %+v", r)
+		}
+		tm := field(inst2, "text_map")
+		tm.Present = false
+		if _, err := tablecook.Cook(m, inst2, tablecook.Options{Big: big}); err == nil {
+			t.Fatalf("big=%v: Cook accepted absent optional text_map with %d entries", big, len(tm.Entries))
+		}
+
+		// 3. Absent optional nested table holding a non-empty list must be refused by Cook.
+		inst3 := m.New(root)
+		if !m.Read(inst3, []byte(`{"nested":{"items":[7,8]}}`), &r) || !r.Silent() {
+			t.Fatalf("Read nested: %+v", r)
+		}
+		field(inst3, "nested").Present = false
+		if _, err := tablecook.Cook(m, inst3, tablecook.Options{Big: big}); err == nil {
+			t.Fatalf("big=%v: Cook accepted absent optional nested table holding non-empty list", big)
+		}
+
+		// 4. Guarded-off map with non-empty backing entries must be refused by Cook.
+		inst4 := m.New(root)
+		if !m.Read(inst4, []byte(`{"on":true,"guarded_map":{"5":50}}`), &r) || !r.Silent() {
+			t.Fatalf("Read guarded_map: %+v", r)
+		}
+		field(inst4, "on").Cell.B = false
+		if _, err := tablecook.Cook(m, inst4, tablecook.Options{Big: big}); err == nil {
+			t.Fatalf("big=%v: Cook accepted guarded-off map with non-empty entries", big)
+		}
+	}
+}
