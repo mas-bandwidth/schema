@@ -66,6 +66,7 @@ final class _RetainRecord {
   final int id;
   final int kind;
   final List<int> resolved;
+  bool placed = false;
   _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
@@ -455,6 +456,7 @@ void _retainTail(TableWireWriter w, Object owner) {
   if (t == null) return;
   for (final rec in t.records) {
     if (!identical(rec.owner, owner)) continue;
+    rec.placed = true;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -532,6 +534,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 
 	g.pf("Uint8List %sWireSaveRetain(%s v, TableRetain retain, TableWireReport report) {\n", d, n)
 	g.pf("\tretain.idUsed = 0;\n")
+	g.pf("\tfor (final rec in retain.records) { rec.placed = false; }\n")
 	g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
 	g.pf("\tstate.retain = retain;\n")
 	g.pf("\tstate.report = report;\n")
@@ -543,6 +546,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tw.putByte(1);\n")
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", d)
 	g.pf("\t_writeNodeTable(w);\n")
+	g.pf("\tfor (final rec in retain.records) { if (!rec.placed) report.retainLost++; }\n")
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")

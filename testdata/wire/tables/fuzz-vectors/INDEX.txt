@@ -218,3 +218,7 @@ distinct_empty_string_blobs blobdemo Catalog testdata/wire/tables/fuzz-vectors/d
 # An unknown enum in a counted list is an excluded retained class.
 # Dart counted unknown but omitted retain_lost for this list element.
 retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain_enum_list_unknown.bin
+
+# Retained records in nodes no longer reached by the save count retain_lost.
+# Dart saved the right bytes but omitted the unvisited retained-record count.
+retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
