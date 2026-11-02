@@ -222,13 +222,6 @@ func withoutArrayRoots(source string) string {
           {:error, :json_root_not_array, %{report | malformed: true}}
 
 `,
-		`      f.t == :table and Map.get(Map.fetch!(@tables, f.elem), :json_array, false) ->
-        case json_read_field(f, raw, report) do
-          {:skip, report} -> {json_present_default(f), report}
-          pair -> pair
-        end
-
-`,
 	} {
 		source = strings.ReplaceAll(source, block, "")
 	}
@@ -3931,38 +3924,17 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  # Map values enter their field reader directly. A wrong JSON shape is
-  # malformed here; an inexact number is an accepted default-valued entry.
+  # A map entry is present even when its non-null value has the wrong shape.
+  # Only optional null is absent; a skipped value becomes present-default and
+  # participates in the same last-wins duplicate rule as an admitted value.
   defp json_map_value(f, raw, report) do
-    shape =
-      case f do
-        %{t: :int, flags: _} -> is_list(raw)
-        %{t: kind} when kind in [:string, :wstring, :bytes, :blob, :enum] -> is_binary(raw)
-        %{t: :bool} -> is_boolean(raw)
-        %{t: kind} when kind in [:int, :float] -> is_number(raw) or match?({:decimal, _}, raw)
-        %{t: :list} -> is_list(raw)
-        _ -> match?({:obj, _}, raw)
+    if raw == nil and (Map.get(f, :optional, false) or f.t in [:pointer, :blob]) do
+      {nil, report}
+    else
+      case json_read_field(f, raw, report) do
+        {:skip, report} -> {json_present_default(f), report}
+        pair -> pair
       end
-
-    cond do
-      raw == nil and (Map.get(f, :optional, false) or f.t in [:pointer, :blob]) ->
-        {nil, report}
-
-      f.t == :table and Map.get(Map.fetch!(@tables, f.elem), :json_array, false) ->
-        case json_read_field(f, raw, report) do
-          {:skip, report} -> {json_present_default(f), report}
-          pair -> pair
-        end
-
-      shape ->
-        case json_read_field(f, raw, report) do
-          {:skip, report} -> {json_present_default(f), report}
-          pair -> pair
-        end
-
-      true ->
-        Process.put(:elixir_json_bad, true)
-        {nil, %{report | malformed: true}}
     end
   end
 
