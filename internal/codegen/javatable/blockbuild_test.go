@@ -167,6 +167,7 @@ var cookWriteCarried = []cookWriteUnit{
 		{"Slots", []string{"map_slots"}},
 		{"Spans", []string{"map_spans"}},
 		{"Trails", []string{"map_trails"}},
+		{"Text", []string{"map_text"}},
 		{"Runs", []string{"map_runs"}},
 	}},
 	{"../../../tables/widelist", "widelist", "widelistdemo", []cookWriteRoot{
@@ -198,13 +199,7 @@ var cookWriteCarried = []cookWriteUnit{
 // does not carry, so cook.go emits <Root>Cook as the STUB (a private
 // constructor, no method). The conformance driver answers these rows absent
 // on exactly that evidence, and cook_absent_is_structural pins it here.
-var cookWriteStub = []cookWriteUnit{
-	// Text holds a wstring(6) map value: wstring is retired (docs/rulings.json
-	// wstring-removed-utf8), and the Java cook carries no wstring slot
-	{"../../../tables/maps", "mapdemo", "mapdemo", []cookWriteRoot{
-		{"Text", []string{"map_text"}},
-	}},
-}
+var cookWriteStub = []cookWriteUnit{}
 
 // cookWriteNoForm: a unit for which the generator emits no cook form at all:
 // no <Root>Cook and no TableCookInfo. The driver answers these rows absent on
