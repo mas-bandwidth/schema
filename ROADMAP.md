@@ -135,7 +135,7 @@ Remaining Rust: the final full nightly rerun after the nested-reader and neutral
 
 Remaining Java: required-blob shared accounting and complete retaining/fuzzer acceptance. Remaining JavaScript: generated UnitRegistry name-collision coverage and final full-roster acceptance.
 
-Remaining Dart: repeated-map-key widening and remaining nightly builder/retirement controls. Remaining Elixir: truncated nested payloads can reach float/bool readers incorrectly; the framing repair is preserved as unfinished work. Their complete retaining/fuzzer acceptance remains open.
+Remaining Dart: repeated-map-key widening and remaining nightly builder/retirement controls. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage and the exact failing input retained. Full nightly acceptance remains open. Their complete retaining/fuzzer acceptance remains open.
 
 Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. Current full-roster nightly acceptance remains incomplete across the nine, so the wire-fuzzer row is open. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
 
@@ -151,7 +151,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | block form, read side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | cook open | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | build version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| variable class (pointers, the flat node table) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| variable class (pointers, the flat node table) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | text form, variable class | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | block form, build side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | cook write in the runtime | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
@@ -176,7 +176,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 81% | 87% | 93% | 96% | 87% | 93% | 84% | 90% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 81% | 87% | 93% | 96% | 87% | 93% | 84% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
