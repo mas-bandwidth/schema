@@ -47,7 +47,7 @@ table Outer
 			t.Errorf("a unit with no extent still emits the walk %s", name)
 		}
 	}
-	for _, gone := range append(append([]string{"@unions", "defp arm_header(", "defp json_read_arm(", "elem_kind: 15}", "defp cook_union("}, unionClauses...), cookUnionClauses...) {
+	for _, gone := range append(append([]string{"@unions", "defp arm_header(", "defp json_read_arm(", "defp union_elements_extent(", "elem_kind: 15}", "defp cook_union("}, unionClauses...), cookUnionClauses...) {
 		if strings.Contains(src, gone) {
 			t.Errorf("a unit with no union still emits %q", gone)
 		}
@@ -78,9 +78,12 @@ table Outer
 		t.Fatal(err)
 	}
 	src = string(full[VariableTableModule+".ex"])
-	for _, kept := range []string{"def load_measure(table, _data) when table in @uncarried", cookExtentDef, cookCarveDef, "cook_walk_record", "cook_walk_holder", "cook_put_member"} {
+	if strings.Contains(src, "when table in @uncarried") {
+		t.Error("map region measurement must not be excluded")
+	}
+	for _, kept := range []string{cookExtentDef, cookCarveDef, "cook_walk_record", "cook_walk_holder", "cook_put_member"} {
 		if !strings.Contains(src, kept) && !strings.Contains(src, "defp "+kept+"(") {
-			t.Errorf("a unit with an uncarried root and an extent lost %q", kept)
+			t.Errorf("a unit with an extent lost %q", kept)
 		}
 	}
 

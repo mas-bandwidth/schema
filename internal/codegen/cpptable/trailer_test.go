@@ -36,3 +36,7 @@ func TestTableIdsWriteBulkProperties(t *testing.T) {
 		}
 	}
 }
+
+// These assertions pin emitted operations and constants. Line wrapping and
+// indentation are held separately by the clang-format gate.
+func cppSourceSpelling(s string) string { return strings.Join(strings.Fields(s), " ") }

@@ -3091,6 +3091,9 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				if !in.skipValue(depth + 1) {
 					return false
 				}
+				if value.Optional {
+					*(*bool)(unsafe.Add(slot, value.PresentOffset)) = true
+				}
 			} else {
 				if !tableJSONReadField(in, slot, value, depth+1) {
 					return false
@@ -3813,11 +3816,11 @@ func TeamConfigLoadText(text string, report *TableReport) (*TeamConfig, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -3931,11 +3934,11 @@ func GunnerConfigLoadText(text string, report *TableReport) (*GunnerConfig, erro
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4049,11 +4052,11 @@ func TurretConfigLoadText(text string, report *TableReport) (*TurretConfig, erro
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4167,11 +4170,11 @@ func HullConfigLoadText(text string, report *TableReport) (*HullConfig, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4285,11 +4288,11 @@ func KeyedConfigLoadText(text string, report *TableReport) (*KeyedConfig, error)
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4403,11 +4406,11 @@ func ScoreBoardLoadText(text string, report *TableReport) (*ScoreBoardRow, error
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4521,11 +4524,11 @@ func ArchiveConfigLoadText(text string, report *TableReport) (*ArchiveConfig, er
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4639,11 +4642,11 @@ func GunnerSettingsLoadText(text string, report *TableReport) (*GunnerSettings, 
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4757,11 +4760,11 @@ func ShipEntryLoadText(text string, report *TableReport) (*ShipEntry, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4875,11 +4878,11 @@ func GlobalSettingsLoadText(text string, report *TableReport) (*GlobalSettings, 
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4993,11 +4996,11 @@ func PackConfigLoadText(text string, report *TableReport) (*PackConfig, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5111,11 +5114,11 @@ func RangedSignedLoadText(text string, report *TableReport) (*RangedSigned, erro
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5229,11 +5232,11 @@ func RangedUnsignedLoadText(text string, report *TableReport) (*RangedUnsigned, 
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5347,11 +5350,11 @@ func RangedWidthsLoadText(text string, report *TableReport) (*RangedWidths, erro
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5465,11 +5468,11 @@ func RootConfigLoadText(text string, report *TableReport) (*RootConfig, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5583,11 +5586,11 @@ func WeaponConfigLoadText(text string, report *TableReport) (*WeaponConfig, erro
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5701,11 +5704,11 @@ func LoadoutConfigLoadText(text string, report *TableReport) (*LoadoutConfig, er
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5819,11 +5822,11 @@ func ProfileConfigLoadText(text string, report *TableReport) (*ProfileConfig, er
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -5937,11 +5940,11 @@ func AttachmentLoadText(text string, report *TableReport) (*AttachmentRow, error
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -6055,11 +6058,11 @@ func BuffLoadText(text string, report *TableReport) (*BuffRow, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -6173,11 +6176,11 @@ func DebuffLoadText(text string, report *TableReport) (*DebuffRow, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -6291,11 +6294,11 @@ func WideBlobLoadText(text string, report *TableReport) (*WideBlob, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }

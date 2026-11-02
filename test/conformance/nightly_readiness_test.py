@@ -24,8 +24,8 @@ def native(package="gotable", name="TestReady", action="pass", output=""):
         {"Package":pkg,"Action":"pass"}])
 
 
-def fuzz(arm="plain", seed=1):
-    prefix = "wire-fuzz retain" if arm == "retain" else "wire-fuzz"
+def fuzz(arm="plain", seed=1, lang=""):
+    prefix = "wire-fuzz" + ("-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
     return f"{prefix}: seed {seed}, 41 seeds over 20 roots, 30 enumerated + 100000 random = 100030 mutants, 0 divergences, 1.0 s, 100030 mutants/s"
 
 
@@ -53,7 +53,7 @@ class FakeRunner(m.Runner):
             text = f"IMPLEMENTATION_PREREQUISITES_PASS language={self.lang} constructs=11 witnesses=20"
         elif name.startswith("wire-plain-") or (name.startswith("wire-retain-") and name[-1:].isdigit()):
             _,arm,seed = name.split("-")
-            text = fuzz(arm,int(seed))
+            text = fuzz(arm,int(seed),self.lang)
         elif name.startswith("packet-"):
             text = "OK"
             if name == "packet-schema_test_random":
@@ -123,6 +123,25 @@ class Contracts(unittest.TestCase):
         for arm in ("plain","retain"):
             for seed in (1,2,3):
                 self.assertEqual(m.fuzz_result(fuzz(arm,seed),arm,seed),[])
+
+    def test_dart_builder_profile_is_required_and_not_accepted_for_other_languages(self):
+        for arm in ("plain", "retain"):
+            for seed in (1, 2, 3):
+                builder = fuzz(arm, seed, "dart")
+                self.assertEqual(m.fuzz_result(builder, arm, seed, "dart"), [])
+                self.assertTrue(m.fuzz_result(fuzz(arm, seed), arm, seed, "dart"))
+                for lang in m.LANGUAGES:
+                    if lang != "dart":
+                        self.assertTrue(m.fuzz_result(builder, arm, seed, lang))
+                for text in ("", builder + "\n" + builder,
+                             builder.replace("41 seeds", "0 seeds"),
+                             builder.replace("20 roots", "0 roots"),
+                             builder.replace("30 enumerated", "0 enumerated"),
+                             builder.replace("100000 random", "0 random"),
+                             builder.replace("100030 mutants", "100029 mutants"),
+                             builder.replace("20 roots,", "20 roots, 1 seeds absent,"),
+                             builder.replace("20 roots,", "20 roots, 1 non-finite mutants not compared,")):
+                    self.assertTrue(m.fuzz_result(text, arm, seed, "dart"))
 
     def test_retaining_outside_domain_is_not_missing_codec(self):
         text=fuzz("retain").replace("20 roots,", "20 roots, 4 seeds outside the arm,")
@@ -213,11 +232,19 @@ class Contracts(unittest.TestCase):
                     prerequisites=next(argv for name,argv,cwd in runner.calls if name=="prerequisites")
                     self.assertIn("build/c-collections-fuzz",prerequisites)
                     self.assertIn("build/cpp-collections-fuzz",prerequisites)
+                if lang == "dart":
+                    prerequisite_index = next(i for i, call in enumerate(runner.calls) if call[0] == "prerequisites")
+                    prerequisites = runner.calls[prerequisite_index][1]
+                    self.assertIn("build/tables-generated-dart/.stamp", prerequisites)
+                    self.assertIn("cards-dart-generate", prerequisites)
+                    native_index = next(i for i, call in enumerate(runner.calls) if call[0] == "native-list-darttable")
+                    self.assertLess(prerequisite_index, native_index)
                 for name,argv,cwd in runner.calls:
                     if "test" in argv and ("go" in argv):
                         self.assertIn("-timeout=0",argv,(name,argv))
                     if name.startswith("wire-plain-") or (name.startswith("wire-retain-") and name[-1:].isdigit()):
                         self.assertNotIn("--finite-owed",argv)
+                        self.assertEqual("--builder" in argv, lang == "dart")
                         self.assertEqual(argv[argv.index("--n")+1],"100000")
                 runner.temporary.cleanup()
         finally:

@@ -80,6 +80,9 @@ func variableModules(u *ir.Unit) map[string][]byte {
 		return nil
 	}
 	out := map[string][]byte{}
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		out[integrityRuntimeModule+".rs"] = []byte(header(runtimeSourceName(u), u.Package, "CRC-32C integrity trailers") + integrityRuntimeRust)
+	}
 	out[VariableRuntimeModule+".rs"] = []byte(variableRuntimeModule(u))
 	if d := variableDescriptorModule(u); d != nil {
 		out[VariableDescriptorModule+".rs"] = d
@@ -289,6 +292,7 @@ pub enum TableNodeRecord {
 
 #[derive(Default)]
 pub struct TableNodeGraph {
+    pub invalid_required: bool,
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
@@ -1469,6 +1473,9 @@ pub static KNOWN_IDS: &[u64] = &[
 	}
 	b.WriteString("];\n")
 	b.WriteString(textHelpers())
+	if len(ir.TableTimestampFields(u)) > 0 {
+		b.WriteString(timestampHelpersRust)
+	}
 	b.WriteString(cookRegionWriterRust)
 	b.WriteString(cookCarveRust)
 	text := b.String()

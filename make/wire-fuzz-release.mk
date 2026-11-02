@@ -41,7 +41,7 @@ WFR_DRIVER_cs    = $(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconform
 
 WFR_DEPS_dart    = build/conformance-dart
 WFR_DRIVER_dart  = build/conformance-dart wire-fuzz
-WFR_FLAGS_dart   = --finite-owed tables-finite/dart
+WFR_FLAGS_dart   = --builder --finite-owed tables-finite/dart
 
 WFR_DEPS_elixir  = build/elixir-tables-ebin/.stamp
 WFR_DRIVER_elixir = test/conformance/elixir/driver wire-fuzz

@@ -1138,7 +1138,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5454,8 +5454,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace blockdemo
@@ -7770,9 +7816,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.ship_type = ShipType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.ship_type ) )
                 {
                     value.ship_type = ShipType::None;
@@ -7795,9 +7843,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -8892,9 +8942,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -9858,9 +9910,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.missile_type = MissileType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.missile_type ) )
                 {
                     value.missile_type = MissileType::None;
@@ -9883,9 +9937,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -10728,9 +10784,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -10753,9 +10811,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -11620,9 +11680,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -11645,9 +11707,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -12555,9 +12619,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -12580,9 +12646,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -13450,9 +13518,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.laser_type = LaserType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.laser_type ) )
                 {
                     value.laser_type = LaserType::None;
@@ -13475,9 +13545,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -14310,9 +14382,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.explosion_type = ExplosionType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.explosion_type ) )
                 {
                     value.explosion_type = ExplosionType::None;
@@ -14335,9 +14409,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -18592,20 +18668,48 @@ constexpr int64_t RenderCameraFixedLayoutBytes = (int64_t) sizeof( RenderCameraF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderCameraFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderCamera
-    { 0, 0, 0, 0, 0 }, // position
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 56, 0, 0, 0, 0 }, // camera_id
-    { 60, 0, 0, 0, 0 }, // camera_type
-    { 64, 0, 0, 0, 0 }, // target_object_id
-    { 68, 0, 0, 0, 0 }, // fov
+    {
+        0, 0, 0, 0, 0
+    }, // RenderCamera
+    {
+        0, 0, 0, 0, 0
+    }, // position
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        56, 0, 0, 0, 0
+    }, // camera_id
+    {
+        60, 0, 0, 0, 0
+    }, // camera_type
+    {
+        64, 0, 0, 0, 0
+    }, // target_object_id
+    {
+        68, 0, 0, 0, 0
+    }, // fov
 };
 
 // THE IDENTITY PLAN, coalesced out of 11 leaves by the schema compiler —
@@ -18983,32 +19087,84 @@ constexpr int64_t RenderShipFixedLayoutBytes = (int64_t) sizeof( RenderShipFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderShipFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderShip
-    { 0, 0, 0, 0, 0 }, // position
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 56, 0, 0, 0, 0 }, // flags
-    { 64, 0, 0, 0, 0 }, // object_id
-    { 68, 0, 0, 0, 0 }, // target_object_id
-    { 72, 0, 0, 0, 0 }, // thrust
-    { 76, 0, 0, 0, 0 }, // object_sequence
-    { 77, 0, 0, 0, 0 }, // ship_type
-    { 0, 0, 0, 0, 0 }, // Fighter
-    { 0, 0, 0, 0, 0 }, // Bomber
-    { 0, 0, 0, 0, 0 }, // Freighter
-    { 78, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 79, 0, 0, 0, 0 }, // has_target_lock
-    { 80, 0, 0, 0, 0 }, // predicted_explode
+    {
+        0, 0, 0, 0, 0
+    }, // RenderShip
+    {
+        0, 0, 0, 0, 0
+    }, // position
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        56, 0, 0, 0, 0
+    }, // flags
+    {
+        64, 0, 0, 0, 0
+    }, // object_id
+    {
+        68, 0, 0, 0, 0
+    }, // target_object_id
+    {
+        72, 0, 0, 0, 0
+    }, // thrust
+    {
+        76, 0, 0, 0, 0
+    }, // object_sequence
+    {
+        77, 0, 0, 0, 0
+    }, // ship_type
+    {
+        0, 0, 0, 0, 0
+    }, // Fighter
+    {
+        0, 0, 0, 0, 0
+    }, // Bomber
+    {
+        0, 0, 0, 0, 0
+    }, // Freighter
+    {
+        78, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        79, 0, 0, 0, 0
+    }, // has_target_lock
+    {
+        80, 0, 0, 0, 0
+    }, // predicted_explode
 };
 
 // THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -19401,24 +19557,60 @@ constexpr int64_t RenderTurretFixedLayoutBytes = (int64_t) sizeof( RenderTurretF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderTurretFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderTurret
-    { 0, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 32, 0, 0, 0, 0 }, // flags
-    { 40, 0, 0, 0, 0 }, // object_id
-    { 44, 0, 0, 0, 0 }, // parent_object_id
-    { 48, 0, 0, 0, 0 }, // turret_index
-    { 52, 0, 0, 0, 0 }, // target_object_id
-    { 56, 0, 0, 0, 0 }, // object_sequence
-    { 57, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 58, 0, 0, 0, 0 }, // has_target_lock
+    {
+        0, 0, 0, 0, 0
+    }, // RenderTurret
+    {
+        0, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        32, 0, 0, 0, 0
+    }, // flags
+    {
+        40, 0, 0, 0, 0
+    }, // object_id
+    {
+        44, 0, 0, 0, 0
+    }, // parent_object_id
+    {
+        48, 0, 0, 0, 0
+    }, // turret_index
+    {
+        52, 0, 0, 0, 0
+    }, // target_object_id
+    {
+        56, 0, 0, 0, 0
+    }, // object_sequence
+    {
+        57, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        58, 0, 0, 0, 0
+    }, // has_target_lock
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -19806,27 +19998,69 @@ constexpr int64_t RenderMissileFixedLayoutBytes = (int64_t) sizeof( RenderMissil
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderMissileFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderMissile
-    { 0, 0, 0, 0, 0 }, // position
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 56, 0, 0, 0, 0 }, // flags
-    { 64, 0, 0, 0, 0 }, // object_id
-    { 68, 0, 0, 0, 0 }, // object_sequence
-    { 69, 0, 0, 0, 0 }, // missile_type
-    { 0, 0, 0, 0, 0 }, // Seeker
-    { 0, 0, 0, 0, 0 }, // Dumb
-    { 70, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // RenderMissile
+    {
+        0, 0, 0, 0, 0
+    }, // position
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        56, 0, 0, 0, 0
+    }, // flags
+    {
+        64, 0, 0, 0, 0
+    }, // object_id
+    {
+        68, 0, 0, 0, 0
+    }, // object_sequence
+    {
+        69, 0, 0, 0, 0
+    }, // missile_type
+    {
+        0, 0, 0, 0, 0
+    }, // Seeker
+    {
+        0, 0, 0, 0, 0
+    }, // Dumb
+    {
+        70, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -20217,28 +20451,72 @@ constexpr int64_t RenderDynamicPropFixedLayoutBytes = (int64_t) sizeof( RenderDy
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderDynamicProp
-    { 0, 0, 0, 0, 0 }, // position
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 56, 0, 0, 0, 0 }, // flags
-    { 64, 0, 0, 0, 0 }, // object_id
-    { 68, 0, 0, 0, 0 }, // object_sequence
-    { 69, 0, 0, 0, 0 }, // prop_type
-    { 0, 0, 0, 0, 0 }, // Rock
-    { 0, 0, 0, 0, 0 }, // Station
-    { 0, 0, 0, 0, 0 }, // Beacon
-    { 70, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // RenderDynamicProp
+    {
+        0, 0, 0, 0, 0
+    }, // position
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        56, 0, 0, 0, 0
+    }, // flags
+    {
+        64, 0, 0, 0, 0
+    }, // object_id
+    {
+        68, 0, 0, 0, 0
+    }, // object_sequence
+    {
+        69, 0, 0, 0, 0
+    }, // prop_type
+    {
+        0, 0, 0, 0, 0
+    }, // Rock
+    {
+        0, 0, 0, 0, 0
+    }, // Station
+    {
+        0, 0, 0, 0, 0
+    }, // Beacon
+    {
+        70, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -20630,28 +20908,72 @@ constexpr int64_t RenderStaticPropFixedLayoutBytes = (int64_t) sizeof( RenderSta
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderStaticPropFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderStaticProp
-    { 0, 0, 0, 0, 0 }, // position
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 56, 0, 0, 0, 0 }, // scale
-    { 64, 0, 0, 0, 0 }, // flags
-    { 72, 0, 0, 0, 0 }, // static_prop_id
-    { 76, 0, 0, 0, 0 }, // prop_type
-    { 0, 0, 0, 0, 0 }, // Rock
-    { 0, 0, 0, 0, 0 }, // Station
-    { 0, 0, 0, 0, 0 }, // Beacon
-    { 77, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // RenderStaticProp
+    {
+        0, 0, 0, 0, 0
+    }, // position
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        56, 0, 0, 0, 0
+    }, // scale
+    {
+        64, 0, 0, 0, 0
+    }, // flags
+    {
+        72, 0, 0, 0, 0
+    }, // static_prop_id
+    {
+        76, 0, 0, 0, 0
+    }, // prop_type
+    {
+        0, 0, 0, 0, 0
+    }, // Rock
+    {
+        0, 0, 0, 0, 0
+    }, // Station
+    {
+        0, 0, 0, 0, 0
+    }, // Beacon
+    {
+        77, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -21044,29 +21366,75 @@ constexpr int64_t RenderCosmeticPropFixedLayoutBytes = (int64_t) sizeof( RenderC
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderCosmeticProp
-    { 0, 0, 0, 0, 0 }, // position
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 56, 0, 0, 0, 0 }, // scale
-    { 64, 0, 0, 0, 0 }, // flags
-    { 72, 0, 0, 0, 0 }, // cosmetic_prop_id
-    { 76, 0, 0, 0, 0 }, // prop_sequence
-    { 77, 0, 0, 0, 0 }, // prop_type
-    { 0, 0, 0, 0, 0 }, // Rock
-    { 0, 0, 0, 0, 0 }, // Station
-    { 0, 0, 0, 0, 0 }, // Beacon
-    { 78, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // RenderCosmeticProp
+    {
+        0, 0, 0, 0, 0
+    }, // position
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        56, 0, 0, 0, 0
+    }, // scale
+    {
+        64, 0, 0, 0, 0
+    }, // flags
+    {
+        72, 0, 0, 0, 0
+    }, // cosmetic_prop_id
+    {
+        76, 0, 0, 0, 0
+    }, // prop_sequence
+    {
+        77, 0, 0, 0, 0
+    }, // prop_type
+    {
+        0, 0, 0, 0, 0
+    }, // Rock
+    {
+        0, 0, 0, 0, 0
+    }, // Station
+    {
+        0, 0, 0, 0, 0
+    }, // Beacon
+    {
+        78, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 13 leaves by the schema compiler —
@@ -21456,25 +21824,63 @@ constexpr int64_t RenderLaserFixedLayoutBytes = (int64_t) sizeof( RenderLaserFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderLaserFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderLaser
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // finish
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 48, 0, 0, 0, 0 }, // t
-    { 56, 0, 0, 0, 0 }, // laser_id
-    { 60, 0, 0, 0, 0 }, // laser_type
-    { 0, 0, 0, 0, 0 }, // Pulse
-    { 0, 0, 0, 0, 0 }, // Beam
-    { 61, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // RenderLaser
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // finish
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        48, 0, 0, 0, 0
+    }, // t
+    {
+        56, 0, 0, 0, 0
+    }, // laser_id
+    {
+        60, 0, 0, 0, 0
+    }, // laser_type
+    {
+        0, 0, 0, 0, 0
+    }, // Pulse
+    {
+        0, 0, 0, 0, 0
+    }, // Beam
+    {
+        61, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 10 leaves by the schema compiler —
@@ -21862,27 +22268,69 @@ constexpr int64_t RenderExplosionFixedLayoutBytes = (int64_t) sizeof( RenderExpl
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderExplosionFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderExplosion
-    { 0, 0, 0, 0, 0 }, // position
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // rotation
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // z
-    { 24, 0, 0, 0, 0 }, // w
-    { 56, 0, 0, 0, 0 }, // t
-    { 64, 0, 0, 0, 0 }, // explosion_id
-    { 68, 0, 0, 0, 0 }, // parent_object_id
-    { 72, 0, 0, 0, 0 }, // explosion_type
-    { 0, 0, 0, 0, 0 }, // Small
-    { 0, 0, 0, 0, 0 }, // Large
-    { 73, 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // RenderExplosion
+    {
+        0, 0, 0, 0, 0
+    }, // position
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // rotation
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // z
+    {
+        24, 0, 0, 0, 0
+    }, // w
+    {
+        56, 0, 0, 0, 0
+    }, // t
+    {
+        64, 0, 0, 0, 0
+    }, // explosion_id
+    {
+        68, 0, 0, 0, 0
+    }, // parent_object_id
+    {
+        72, 0, 0, 0, 0
+    }, // explosion_type
+    {
+        0, 0, 0, 0, 0
+    }, // Small
+    {
+        0, 0, 0, 0, 0
+    }, // Large
+    {
+        73, 0, 0, 0, 0
+    }, // team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —

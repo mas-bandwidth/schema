@@ -450,6 +450,9 @@ func (g *blockGen) emitInlineAccessors(ml *ir.MemberLayout, bl *ir.BlockLayout, 
 			g.pf("%s  return used < 0 || used > %d ? 0 : used;\n%s}\n\n", ind, f.Type.Size, ind)
 			g.arrow(ind, fmt.Sprintf("int %sAt(int index)", name), fmt.Sprintf("view.getUint16(%s + %d + index * 2, Endian.little)", origin, fl.Offset))
 			continue
+		case f.Type.TextUnbounded() && bl == nil:
+			g.pf("%sint get %sLength {final p=tableCookTextStart(view,%s+%d);return p<0?0:view.getUint32(p,Endian.little);}\n", ind, name, origin, fl.Offset)
+			g.pf("%sUint8List %sBytes(Uint8List buffer){final p=tableCookTextStart(view,%s+%d);return p<0?Uint8List(0):Uint8List.sublistView(buffer,p+8,p+8+%sLength);}\n", ind, name, origin, fl.Offset, name)
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			g.pf("%s// %s: the USED length, and a view of the bytes it names\n", ind, tableFieldTypeName(f))
 			g.pf("%sint get %sLength {\n", ind, name)

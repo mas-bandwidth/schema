@@ -202,3 +202,35 @@ arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuz
 # Found by the index pass (#33, corpus seed blob_small) of the retention arm at
 # seed 24845619678, on tables-cs-release on hetzner1.
 retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin
+
+# Retained unknown unions carry an explicit arm frame, even for fixed scalars.
+# Dart previously consumed the frame length as payload and lost the field.
+retain_union_arm_frame streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin
+
+# Retaining readers must recognize every reachable byte-blob type like plain readers.
+# Dart omitted bytesBlob initialization and dropped valid nodes as unknown.
+retain_byte_blob_reachability blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_byte_blob_reachability.bin
+
+# Two empty string records have distinct incoming identity despite canonical String values.
+# Dart formerly merged them and refused the valid graph as blob_shared.
+distinct_empty_string_blobs blobdemo Catalog testdata/wire/tables/fuzz-vectors/distinct_empty_string_blobs.bin
+
+# An unknown enum in a counted list is an excluded retained class.
+# Dart counted unknown but omitted retain_lost for this list element.
+retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain_enum_list_unknown.bin
+
+# Retained records in nodes no longer reached by the save count retain_lost.
+# Dart saved the right bytes but omitted the unvisited retained-record count.
+retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
+
+# Replaced map entries discard their retained bodies without reporting loss.
+# The discarded body and an unreachable pointer node have different ownership.
+retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin
+# Final widened key occurrence replaces an earlier incompatible key kind.
+# The neutral oracle and C++ previously retained the earlier mismatch flag.
+map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
+# A malformed child stops its collection before a later non-finite float.
+list_damaged_child_stop listdemo Save testdata/wire/tables/fuzz-vectors/list_damaged_child_stop.bin
+
+# Reserved node-table transport has exactly kind12; a different kind is damage.
+node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin

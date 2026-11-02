@@ -29,11 +29,11 @@ func tableRetainWriteSource() string {
             else { n += RetainElementSize(value, f, 0, ref ids, true); }`,
 		`            int mark = ids.Count; ulong reference = ids.Reference(f.Id);
             long payload = RetainPayloadSize(value, f, ref ids);
-            if (!f.Optional && (f.Kind == 13 && !f.IsArray && payload == 1 || f.KeyId != null && payload == 2))
+            if (!f.Optional && !f.Required && (f.Kind == 13 && !f.IsArray && payload == 1 || f.KeyId != null && payload == 2))
             { ids.Truncate(mark); continue; }
             n += VarSize(reference) + 1 + payload;
             if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13) { n += VarSize((ulong)payload); }`)
-	s = tableReplace(s, "            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));", `            if (!f.Optional && (f.Kind == 13 && !f.IsArray && RetainPayloadSize(value, f, ref ids) == 1 || f.KeyId != null && RetainArraySize(value, f, ref ids) == 2)) { continue; }
+	s = tableReplace(s, "            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));", `            if (!f.Optional && !f.Required && (f.Kind == 13 && !f.IsArray && RetainPayloadSize(value, f, ref ids) == 1 || f.KeyId != null && RetainArraySize(value, f, ref ids) == 2)) { continue; }
             w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));`)
 	// On the emit pass the trailer is already settled. A slot whose only
 	// retained content could not be placed is its default again.
@@ -72,6 +72,7 @@ const tableRetainSaveSource = `
                 }
                 n += 8L * ids.Count + 8;
                 if (ids.Overflow) { return -1; }
+                if (type.Integrity) { n += 4; }
                 if (measure) { return n; }
                 if (n > buffer.Length) { return -1; }
                 long at = 0;
@@ -79,6 +80,7 @@ const tableRetainSaveSource = `
                 Writer w = new Writer(buffer); w.Byte(1); RetainWriteBody(ref w, value, type, ref ids, true); ids.Write(ref w);
                 at = 0;
                 for (int i = 0; i < retain->Count; i++) { if (retain->Bytes[at + 25] == 0) { report.RetainLost++; } at += Retain32(retain->Bytes + at); }
+                if (type.Integrity) { w.Fixed(IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
                 return w.Offset;
             }
         }

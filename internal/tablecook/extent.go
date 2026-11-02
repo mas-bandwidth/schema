@@ -25,6 +25,7 @@ package tablecook
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -42,7 +43,7 @@ func recordHasExtent(u *ir.Unit, st *ir.Struct) bool {
 		return false
 	}
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -74,7 +75,7 @@ func unionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 		if v.F == nil {
 			continue
 		}
-		if v.F.IsMap() || v.F.IsList() {
+		if v.F.IsMap() || v.F.IsList() || v.F.Type.TextUnbounded() {
 			return true
 		}
 		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {
@@ -148,10 +149,28 @@ func (c *carver) record(recordAt int64, st *ir.Struct, inst *tabletext.Instance)
 		return nil
 	}
 	ml := ir.RecordLayout(c.m.Unit, st)
+	guards := tabletext.Guards(st)
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
 		fv := instField(inst, fl.Field)
 		if fv == nil {
+			continue
+		}
+		live := true
+		if terms, guarded := guards[fl.Field.Name]; guarded && !inst.GuardHolds(terms) {
+			live = false
+		}
+		if fl.Field.Type.Optional && !fv.Present {
+			live = false
+		}
+		if !live {
+			probe := &carver{m: c.m}
+			if err := probe.field(0, fl.Field, fv); err != nil {
+				return fmt.Errorf("%s.%s: %w", st.Name, fl.Field.Name, err)
+			}
+			if probe.at != 0 {
+				return fmt.Errorf("%s.%s: absent or unguarded field holds %d bytes of extent: a cook cannot carry storage the walk does not reach (docs/SPEC-TABLES.md §2.3, §7.6)", st.Name, fl.Field.Name, probe.at)
+			}
 			continue
 		}
 		if err := c.field(recordAt+fl.Offset, fl.Field, fv); err != nil {
@@ -171,6 +190,9 @@ func (c *carver) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 	}
 	if f.IsList() {
 		return c.list(pieces[0].Offset, f, fv)
+	}
+	if f.Type.TextUnbounded() {
+		return c.text(pieces[0].Offset, f, fv)
 	}
 	if f.Type.Pointer || f.Type.Blob() {
 		return nil // a pointee and a byte buffer are nodes, not this extent
@@ -343,8 +365,47 @@ func (c *carver) element(at int64, f *ir.Field, cell *tabletext.Cell) error {
 	return nil
 }
 
+// text carves ONE unbounded text value (docs/SPEC-TABLES.md §2.13.1): a blob
+// record in the holder's own node extent at 8-byte alignment, and a
+// self-relative delta in the 8-byte TableRef slot (or RefNull when empty or
+// absent).
+func (c *carver) text(at int64, f *ir.Field, fv *tabletext.Field) error {
+	if f.Type.Optional && !fv.Present {
+		if len(fv.Cell.Str) != 0 {
+			return fmt.Errorf("absent optional text holds %d bytes of extent: a cook cannot carry storage the walk does not reach (docs/SPEC-TABLES.md §7.6)", len(fv.Cell.Str))
+		}
+		if c.w != nil {
+			c.w.putI64(at, RefNull)
+		}
+		return nil
+	}
+	n := int64(len(fv.Cell.Str))
+	if n == 0 {
+		if c.w != nil {
+			c.w.putI64(at, RefNull)
+		}
+		return nil
+	}
+	if uint64(n) > math.MaxUint32 {
+		return fmt.Errorf("text length %d exceeds the cook uint32 length limit", n)
+	}
+	c.at = alignUp(c.at, BlobAlign)
+	start := c.at
+	c.at += alignUp(BlobHeader+n+1, ir.TableRegionAlign(c.m.Unit))
+	if c.w != nil {
+		blob := c.extentAt + start
+		c.w.putI64(at, blob-at)
+		c.w.putU32(blob, uint32(n))
+		copy(c.w.buf[blob+BlobHeader:], fv.Cell.Str)
+	}
+	return nil
+}
+
 // fieldHasExtent reports a field whose by-value storage can hold a container.
 func fieldHasExtent(u *ir.Unit, f *ir.Field) bool {
+	if f.Type.TextUnbounded() {
+		return true
+	}
 	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 		return false
 	}

@@ -147,7 +147,7 @@ func TestImplementationRequiresActualFeatureValues(t *testing.T) {
 	// stand-in manifest flags. Each dormant form must fail despite the same
 	// reachable declaration and the same claimed generator registration.
 	for _, tc := range []struct{ feature, schema, active, dormant string }{
-		{"required", "table Root\n{\n name string(32) | required\n}\n", "{\"name\":\"live\"}", "{}"},
+		{"required", "table Root\n{\n name string(32) | required\n}\n", "{\"name\":\"live\"}", "{\"name\":\"\"}"},
 		{"one-sided-range", "table Root\n{\n n int64 | min = 0\n}\n", "{\"n\":1}", "{}"},
 		{"text-list", "table Root\n{\n names [..4]string(8)\n}\n", "{\"names\":[\"live\"]}", "{\"names\":[]}"},
 		{"text-list-total", "table Root\n{\n names [..4]string(8) | total = 12\n}\n", "{\"names\":[\"live\"]}", "{\"names\":[\"\"]}"},
@@ -330,13 +330,13 @@ func TestImplementationIntegrityCRC32C(t *testing.T) {
 	}
 	// An unsupported form is refused by the neutral form check, before a
 	// checksum comparison. A malformed form-1 body with a bad CRC is instead
-	// rejected by the wrapper before any body/id-table decode.
+	// rejected by the file codec before any body/id-table decode.
 	for _, row := range []struct {
 		wire         []byte
 		want, absent string
 	}{
 		{[]byte{2}, "Refused:true", "integrity_mismatch"},
-		{[]byte{1, 255, 0, 0, 0, 0}, "integrity_mismatch", "positive wire does not decode cleanly"},
+		{[]byte{1, 255, 0, 0, 0, 0}, "integrity_mismatch", "Refused:true"},
 	} {
 		if err := os.WriteFile(inst.Wire, row.wire, 0600); err != nil {
 			t.Fatal(err)
@@ -364,7 +364,7 @@ func TestImplementationIntegrityCRC32C(t *testing.T) {
 
 // This golden is independently pinned by the generated-Go native integrity
 // test (internal/codegen/gotable/integrity_test.go), not constructed by the
-// wrapper under test. The 53-byte plain file plus little-endian 0x1d23b551
+// neutral codec under test. The 53-byte plain file plus little-endian 0x1d23b551
 // locks the polynomial, covered extent, initial/final XOR and byte order.
 func TestImplementationIntegrityMatchesGeneratedGoGolden(t *testing.T) {
 	u := implementationUnit(t, "table Ledger | integrity = \"crc32c\"\n{\n n int64 | min = 0, max = 9007199254740993\n label string(16)\n count uint16\n}\n")
@@ -379,7 +379,7 @@ func TestImplementationIntegrityMatchesGeneratedGoGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(actual, want) {
-		t.Fatalf("wrapper changed independent generated-Go golden: %x", actual)
+		t.Fatalf("neutral codec changed independent generated-Go golden: %x", actual)
 	}
 	if p, n := implementationProbe(t, u, inst, "integrity"); len(p) != 0 || n != 1 {
 		t.Fatalf("golden refused: %v", p)
@@ -392,9 +392,8 @@ func TestImplementationIntegrityMatchesGeneratedGoGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plain, _ := hex.DecodeString(plainHex)
-	if !bytes.Equal(body, plain) {
-		t.Fatalf("canonical decoded body changed: %x", body)
+	if !bytes.Equal(body, want) {
+		t.Fatalf("canonical sealed file changed: %x", body)
 	}
 }
 
@@ -439,7 +438,109 @@ func TestOriginalImplementationUsesAllRequiredConstructs(t *testing.T) {
 		}
 	}
 	var out strings.Builder
-	if err := implementationReport(&out, m, "go"); err == nil || strings.Contains(out.String(), "IMPLEMENTATION_PREREQUISITES_PASS") {
-		t.Fatalf("incomplete real corpus produced success: err=%v, output=%s", err, out.String())
+	if err := implementationReport(&out, m, "go"); err != nil || !strings.Contains(out.String(), "IMPLEMENTATION_PREREQUISITES_PASS") {
+		t.Fatalf("populated real corpus did not qualify: err=%v, output=%s", err, out.String())
+	}
+}
+
+func TestImplementationFormAndIntegrityNeedPopulatedPayload(t *testing.T) {
+	u := implementationUnit(t, `table Root | forms="wire,json", integrity="crc32c" { value int32 }`)
+	for _, input := range []string{"{}", `{"value":7}`} {
+		inst := implementationInput(t, u, "Root", input)
+		model, value, text, err := decodeImplementationWitness(u, inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := activeImplementationConstructs(model, value, text)
+		for _, feature := range []string{"forms", "integrity"} {
+			if got[feature] != (input != "{}") {
+				t.Fatalf("input=%s feature=%s active=%v", input, feature, got)
+			}
+		}
+	}
+}
+
+func TestPopulatedFeatureWitnessesCoverEveryRequiredConstruct(t *testing.T) {
+	t.Chdir("../../..")
+	manifest, err := ReadManifest(defaultManifest, defaultJSONDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := &Manifest{Units: manifest.Units}
+	for _, inst := range manifest.Instances {
+		if inst.Unit == "featurewitnesses" {
+			m.Instances = append(m.Instances, inst)
+		}
+	}
+	if len(m.Instances) != 2 {
+		t.Fatalf("expected two active feature witnesses, found %d", len(m.Instances))
+	}
+	required := compiler.CarryConstructs()
+	problems, count := implementationAudit(m, []string{"go", "js"}, required, compiler.Carried, newUnits(m), compiler.New())
+	if len(problems) != 0 || count != 2 {
+		t.Fatalf("populated witness audit: count=%d problems=%v", count, problems)
+	}
+	// Deleting either populated root must lose real runtime coverage.
+	for i := range m.Instances {
+		less := *m
+		less.Instances = append(append([]Instance{}, m.Instances[:i]...), m.Instances[i+1:]...)
+		problems, _ := implementationAudit(&less, []string{"go"}, required, compiler.Carried, newUnits(&less), compiler.New())
+		if len(problems) == 0 {
+			t.Fatalf("deleting witness %s still passed", m.Instances[i].Name)
+		}
+	}
+}
+
+// Ordinary schema units are implementation obligations too. The special
+// construct registry must not let an otherwise unsupported positive unit hide.
+func TestImplementationGeneratesOrdinaryPositiveUnits(t *testing.T) {
+	feature := implementationUnit(t, "table Feature\n{\n at timestamp\n}\n")
+	plain := implementationUnit(t, "table Plain\n{\n values [2]int32\n}\n")
+	a := implementationInput(t, feature, "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}")
+	a.Unit = "feature"
+	b := implementationInput(t, plain, "Plain", "{\"values\":[1,2]}")
+	b.Unit = "plain"
+	for _, mode := range []string{"ok", "refused", "empty", "damaged"} {
+		t.Run(mode, func(t *testing.T) {
+			input := b
+			if mode == "damaged" {
+				input.Wire = filepath.Join(t.TempDir(), "damaged.bin")
+				if err := os.WriteFile(input.Wire, []byte{255}, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := map[string]int{}
+			gen := implementationGeneratorFunc(func(u *ir.Unit, lang string, opts compiler.Options) (map[string][]byte, error) {
+				key := lang + "/feature"
+				if u == plain {
+					key = lang + "/plain"
+				}
+				calls[key]++
+				if u == plain && mode == "refused" {
+					return nil, errors.New("ordinary shape unsupported")
+				}
+				if u == plain && mode == "empty" {
+					return nil, nil
+				}
+				return implementationGenerated(u, lang, opts)
+			})
+			problems, n := implementationAudit(&Manifest{Instances: []Instance{a, input, input}}, []string{"go", "rust"}, []string{"timestamp"},
+				func(string) ([]string, bool) { return []string{"timestamp"}, true }, implementationUnits{"feature": feature, "plain": plain}, gen)
+			if mode == "ok" {
+				if len(problems) != 0 || n != 1 {
+					t.Fatalf("ordinary positive input: witnesses=%d problems=%v", n, problems)
+				}
+				for _, key := range []string{"go/feature", "go/plain", "rust/feature", "rust/plain"} {
+					if calls[key] != 1 {
+						t.Errorf("generate %s called %d times, want once per unit and language", key, calls[key])
+					}
+				}
+			} else {
+				want := map[string]string{"refused": "ordinary shape unsupported", "empty": "unit plain generated no files", "damaged": "positive wire does not decode cleanly"}[mode]
+				if !strings.Contains(strings.Join(problems, "\n"), want) {
+					t.Fatalf("%s input escaped full implementation prerequisite: %v", mode, problems)
+				}
+			}
+		})
 	}
 }

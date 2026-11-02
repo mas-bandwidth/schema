@@ -68,6 +68,16 @@ BigInt tableCookGetWide(ByteData view, int at, int width, bool signed) {
 // pointer past the region is the caller's problem at the dereference, and in
 // Dart the read after it would be an escaping RangeError — which is not a
 // refusal.
+int tableCookTextStart(ByteData view,int slot) {
+ if(slot<0||slot>view.lengthInBytes-8)return -1;
+ final delta=view.getInt64(slot,Endian.little);
+ if(delta==0||delta < -slot||delta > view.lengthInBytes-slot-8)return -1;
+ final at=slot+delta;
+ final n=view.getUint32(at,Endian.little);
+ if(n>view.lengthInBytes-at-9)return -1;
+ return at;
+}
+
 abstract final class TableCookRef {
   static const int none = -1;
   static const int outside = -2;
@@ -104,6 +114,7 @@ final class TableCookFieldInfo {
   final int arrayBound;
   // an eight-byte SIGNED self-relative reference slot (§6.3)
   final bool isPointer;
+  final bool unboundedText;
   // the int32 used-length companion, or -1
   final int countOffset;
   // the bool presence companion of a ?T, or -1
@@ -133,6 +144,7 @@ final class TableCookFieldInfo {
     required this.isArray,
     required this.arrayBound,
     required this.isPointer,
+    this.unboundedText = false,
     required this.countOffset,
     required this.presentOffset,
     required this.storage,

@@ -148,6 +148,7 @@ export const TableFixedRefusal = Object.freeze({
   // destination write, as it refuses an ill-formed text, and every writer
   // refuses one (the save answers -1).
   NonFiniteFloat: 18,
+  IntegrityMismatch: 19,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -172,6 +173,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
+    case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
     default: return "???";
   }
 }
@@ -2243,7 +2245,7 @@ export function BenchMixedFixedWriteBody(view, at, value) {
   view.setInt32(at + 1232, value.idleTicks, true);
 }
 
-// BenchMixed's floats, every one finite or the save refuses (docs/SPEC-TABLES.md §3.3).
+// BenchMixed's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
 export function BenchMixedFixedCheckBody(value) {
   if (!Number.isFinite(Math.fround(value.aimX))) { return false; }
   if (!Number.isFinite(Math.fround(value.aimY))) { return false; }
@@ -2437,7 +2439,7 @@ export function FixedTableFixedWriteBody(view, at, value) {
   BenchMixedFixedWriteBody(view, at, value.value);
 }
 
-// FixedTable's floats, every one finite or the save refuses (docs/SPEC-TABLES.md §3.3).
+// FixedTable's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
 export function FixedTableFixedCheckBody(value) {
   if (!BenchMixedFixedCheckBody(value.value)) { return false; }
   return true;

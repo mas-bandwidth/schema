@@ -570,18 +570,18 @@ local function layoutOf(root: string, value: any): (any, any)
 			n.size = 8 + buffer.len(n.blob) + (if n.str then 1 else 0)
 		else
 			local layout = C.layout(n.d.name)
-			align = math.max(align, layout.align)
+			align = math.max(align, layout.nodeAlign)
 			n.extent = 0
 			n.record = layout.size
 			if hasExtentRecord(n.d) then
-				n.record = align_up(layout.size, REGION_ALIGN_FLOOR)
+				n.record = layout.extentStart
 				local c = { ctx = ctx, write = false, extentAt = 0, at = 0 }
 				if not carveRecord(c, 0, n.d, n.v) then
 					return nil, ctx.why
 				end
 				n.extent = c.at
 			end
-			offset = align_up(offset, layout.align)
+			offset = align_up(offset, layout.nodeAlign)
 			n.off = offset
 			n.size = n.record + n.extent
 		end

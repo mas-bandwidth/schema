@@ -29,7 +29,8 @@ const (
 	// +10: the message reader and the batch open and close are one shape in every unit, so tables/goruntime carries them and a unit aliases them (variable tables carry no message form)
 	// +25: damage discards the whole load (SPEC-TABLES §4): the tolerant reads reset the value or hand back no root on malformed, and the message batch delivers no body
 	// +2: cycle metadata in the shared type descriptor; directory and wire stay unchanged.
-	goOneTableLineBudget = 9546
+	// +28: TableTextMalformed, TableMalformedField, and (TableReport).Err's malformed-field check live in tables/goruntime so units with and without unbounded text share one TableReport.
+	goOneTableLineBudget = 9574
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -40,7 +41,8 @@ const (
 	// +431: damage discards the whole load (SPEC-TABLES §4): every fixed tolerant read resets its value on malformed, the region, builder and text reads discard, and the message batch delivers no body
 	// +257: iterative all-node cycle check and guarded/container edge walk, measured by TestGoGeneratedSizeBudget.
 	// +1: align the cooked node extent before placing nested containers.
-	goExamplesLineBudget = 59547
+	// +28: TableTextMalformed, TableMalformedField, and (TableReport).Err's malformed-field check live in tables/goruntime so units with and without unbounded text share one TableReport.
+	goExamplesLineBudget = 59575
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

@@ -195,6 +195,21 @@ defmodule Benchtable.CookRuntime do
 
   def bool(region, at), do: uint(region, at, 1) != 0
 
+  # An inline unbounded string's blob belongs to the holder's node extent.
+  def inline_text(region, at) do
+    case deref(region, at) do
+      :null ->
+        ""
+
+      {:ok, blob} when blob + 8 <= byte_size(region) ->
+        used = uint(region, blob, 4)
+        if used < byte_size(region) - blob - 8, do: text(region, blob + 8, used), else: :error
+
+      _ ->
+        :error
+    end
+  end
+
   # a string's or a bytes' USED bytes, without the zero tail (§7.2)
   def text(region, at, used), do: binary_part(region, at, used)
 

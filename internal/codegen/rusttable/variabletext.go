@@ -40,7 +40,7 @@ func (g *gen) emitVariableText(b *strings.Builder) {
 		g.emitTextReadPointer(b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		if g.isVariableRoot(vStruct(g.unit, n)) {
+		if st := vStruct(g.unit, n); g.isVariableRoot(st) && st.CarriesForm("json") {
 			g.emitTextRoots(b, vStruct(g.unit, n))
 		}
 	}
@@ -301,10 +301,15 @@ pub struct Jr<'a> {
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
     pub zero: bool,
+    pub reason: TableReason,
+    pub text_error: &'static str,
+    pub missing_required: u64,
+    pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
@@ -312,7 +317,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, clamped_field: "", duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -432,8 +437,8 @@ impl<'a> Jr<'a> {
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
                             } else {
-                                // a lone lead surrogate rides as itself, and the
-                                // escape after it is read on its own
+                                // A lone surrogate currently normalizes to U+FFFD.
+                                // Strict refusal is deferred by SPEC-TABLES §16.3.
                                 self.p = mark;
                             }
                         }
@@ -967,6 +972,7 @@ func (g *gen) emitTextCount(b *strings.Builder, st *ir.Struct) {
 }
 
 func (g *gen) emitFieldTextCount(b *strings.Builder, f *ir.Field, x, ind string) {
+	emitRequiredRangeCheck(b, f, x, ind, "w.refused = true;")
 	if f.Type.Optional {
 		inner := *f
 		inner.Type.Optional = false
@@ -1013,6 +1019,12 @@ func (g *gen) emitTextWrite(b *strings.Builder, st *ir.Struct) {
 	write := fn(st.Name, "json_write")
 	fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, w: &mut Jw, depth: usize, label: u64) {\n", write, st.Name)
+	if st.JsonArray {
+		fmt.Fprintf(b, "    if depth > JSON_DEPTH_CAP { w.refused = true; }\n")
+		g.emitTextWriteValue(b, st.Fields[0], "v."+ir.RustSnake(st.Fields[0].Name), "depth", "    ")
+		fmt.Fprintf(b, "}\n\n")
+		return
+	}
 	fmt.Fprintf(b, "    if depth > JSON_DEPTH_CAP { w.refused = true; }\n")
 	fmt.Fprintf(b, "    w.out.push('{');\n")
 	fmt.Fprintf(b, "    let mut sep = false;\n")
@@ -1067,6 +1079,15 @@ func (g *gen) fieldKey(f *ir.Field) string {
 // emitTextWriteValue emits the value writer for one field (or, for an array,
 // the array), the value's closing brace or bracket at depth `d`.
 func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind string) {
+	textListTotalCheck(b, f, x, ind, "w.refused = true; return;")
+	if f.Type.Optional {
+		inner := *f
+		inner.Type.Optional = false
+		fmt.Fprintf(b, "%sif let Some(value) = &%s {\n", ind, x)
+		g.emitTextWriteValue(b, &inner, "(*value)", d, ind+"    ")
+		fmt.Fprintf(b, "%s} else { w.out.push_str(\"null\"); }\n", ind)
+		return
+	}
 	if f.KeyEnum != "" && f.KeyEnumRef != nil {
 		g.emitKeyedTextWrite(b, f, x, d, ind)
 		return
@@ -1091,6 +1112,14 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 
 // emitTextWriteOne emits the writer of ONE value of the field.
 func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string) {
+	if f.IsTextList() {
+		g.emitTextWriteValue(b, ir.TextListValue(f), x+".value", d, ind)
+		return
+	}
+	if f.Type.Timestamp {
+		fmt.Fprintf(b, "%sjson_escape(&table_timestamp_text(%s), &mut w.out);\n", ind, x)
+		return
+	}
 	switch classOf(f) {
 	case vBlob:
 		fmt.Fprintf(b, "%smatch %s {\n", ind, borrowOf(x))
@@ -1221,16 +1250,23 @@ func textIntRange(f *ir.Field) (lo, hi string) {
 // <name>_json_fields, which reads its keys and is what a pointer's object
 // continues with after its `&node` label (§16.7).
 func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
+	emitRequiredNames(b, st)
 	read := fn(st.Name, "json_read")
 	fields := fn(st.Name, "json_fields")
 	fmt.Fprintf(b, "#[allow(dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(jr: &mut Jr, v: &mut %s) {\n", read, st.Name)
 	fmt.Fprintf(b, "    jr.space();\n")
-	fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.malformed = true; return; }\n")
 	fmt.Fprintf(b, "    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }\n")
-	fmt.Fprintf(b, "    jr.p += 1;\n")
-	fmt.Fprintf(b, "    jr.depth += 1;\n")
-	fmt.Fprintf(b, "    let _ = %s(jr, v, None);\n", fields)
+	if st.JsonArray {
+		fmt.Fprintf(b, "    if jr.peek() != b'[' { jr.malformed = true; jr.reason = TableReason::JsonRootNotArray; jr.text_error = %q; return; }\n", "json_root_not_array: "+st.Name)
+		fmt.Fprintf(b, "    jr.depth += 1;\n")
+		g.emitTextReadValue(b, st.Fields[0], "v."+ir.RustSnake(st.Fields[0].Name), "    ")
+	} else {
+		fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.malformed = true; return; }\n")
+		fmt.Fprintf(b, "    jr.p += 1;\n")
+		fmt.Fprintf(b, "    jr.depth += 1;\n")
+		fmt.Fprintf(b, "    let _ = %s(jr, v, None);\n", fields)
+	}
 	fmt.Fprintf(b, "    jr.depth -= 1;\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1246,7 +1282,10 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            Some(k) => k,\n")
 	fmt.Fprintf(b, "            None => {\n")
 	fmt.Fprintf(b, "                jr.space();\n")
-	fmt.Fprintf(b, "                if jr.peek() == b'}' { jr.p += 1; return n; }\n")
+	fmt.Fprintf(b, "                if jr.peek() == b'}' {\n")
+	emitRequiredJSONEnd(b, st, "                    ")
+	fmt.Fprintf(b, "                    jr.p += 1; return n;\n")
+	fmt.Fprintf(b, "                }\n")
 	fmt.Fprintf(b, "                let Some(k) = jr.read_string() else { jr.malformed = true; return n; };\n")
 	fmt.Fprintf(b, "                jr.space();\n")
 	fmt.Fprintf(b, "                if jr.peek() != b':' { jr.malformed = true; return n; }\n")
@@ -1267,11 +1306,14 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                jr.skip_value();\n")
 	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "        }\n")
-	fmt.Fprintf(b, "        if jr.malformed { return n; }\n")
+	fmt.Fprintf(b, "        if jr.malformed || jr.missing_required != 0 { return n; }\n")
 	fmt.Fprintf(b, "        jr.space();\n")
 	fmt.Fprintf(b, "        let c = jr.peek();\n")
 	fmt.Fprintf(b, "        if c == b',' { jr.p += 1; continue; }\n")
-	fmt.Fprintf(b, "        if c == b'}' { jr.p += 1; return n; }\n")
+	fmt.Fprintf(b, "        if c == b'}' {\n")
+	emitRequiredJSONEnd(b, st, "            ")
+	fmt.Fprintf(b, "            jr.p += 1; return n;\n")
+	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "        jr.malformed = true;\n")
 	fmt.Fprintf(b, "        return n;\n")
 	fmt.Fprintf(b, "    }\n")
@@ -1289,7 +1331,11 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        b'{' => {\n")
 	fmt.Fprintf(b, "            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "            jr.p += 1;\n")
-	fmt.Fprintf(b, "            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(%s::default())); }\n", st.Name)
+	fmt.Fprintf(b, "            if jr.peek() == b'}' {\n")
+	fmt.Fprintf(b, "                let mut v = %s::default();\n", st.Name)
+	fmt.Fprintf(b, "                let _ = %s(jr, &mut v, None);\n", fn(st.Name, "json_fields"))
+	fmt.Fprintf(b, "                return Some(Rc::new(v));\n")
+	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };\n")
 	fmt.Fprintf(b, "            if jr.peek() != b':' { jr.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "            jr.p += 1;\n")
@@ -1331,7 +1377,13 @@ func (g *gen) emitTextReadField(b *strings.Builder, i int, f *ir.Field, field, i
 	fmt.Fprintf(b, "%s%q => {\n", ind, g.fieldKey(f))
 	fmt.Fprintf(b, "%s    if seen[%d] { jr.duplicate += 1; }\n", ind, i)
 	fmt.Fprintf(b, "%s    seen[%d] = true;\n", ind, i)
+	if f.IsTextList() {
+		fmt.Fprintf(b, "%s    let before_text_clamp = jr.clamped;\n", ind)
+	}
 	g.emitTextReadValue(b, f, field, ind+"    ")
+	if f.IsTextList() {
+		fmt.Fprintf(b, "%s    if jr.clamped != before_text_clamp && jr.clamped_field.is_empty() { jr.clamped_field = %q; }\n", ind, f.TextListElem().MapEntryOf)
+	}
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -1341,7 +1393,13 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		inner.Type.Optional = false
 		fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", in, field)
 		fmt.Fprintf(b, "%selse {\n", in)
-		fmt.Fprintf(b, "%s    let mut tmp = %s;\n", in, fieldDefault(&inner))
+		if f.IsMap() {
+			// A wrong-kind repeat keeps the preceding map. Move its storage
+			// into the temporary; a valid object clears it before replacing it.
+			fmt.Fprintf(b, "%s    let mut tmp: %s = %s.take().unwrap_or_default();\n", in, variableFieldType(&inner), field)
+		} else {
+			fmt.Fprintf(b, "%s    let mut tmp: %s = %s;\n", in, variableFieldType(&inner), fieldDefault(&inner))
+		}
 		g.emitTextReadValue(b, &inner, "tmp", in+"    ")
 		fmt.Fprintf(b, "%s    if !jr.malformed { %s = Some(tmp); }\n", in, field)
 		fmt.Fprintf(b, "%s}\n", in)
@@ -1358,9 +1416,15 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
 		fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 		fmt.Fprintf(b, "%s    %s.clear();\n", in, field)
+		if f.IsTextList() && f.TextTotal > 0 {
+			fmt.Fprintf(b, "%s    let mut text_spent = 0u64; let mut text_total_hit = false;\n", in)
+		}
 		fmt.Fprintf(b, "%s    loop {\n", in)
 		fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 		elem := in + "        "
+		if f.IsTextList() && f.TextTotal > 0 {
+			fmt.Fprintf(b, "%sif text_total_hit { jr.skip_value(); } else {\n", elem)
+		}
 		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 			if f.ArrayBound == 1 {
 				fmt.Fprintf(b, "%sif !%s.is_empty() {\n", elem, field)
@@ -1375,7 +1439,10 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		} else {
 			g.emitTextReadElem(b, f, field, elem)
 		}
-		fmt.Fprintf(b, "%s        if jr.malformed { break; }\n", in)
+		if f.IsTextList() && f.TextTotal > 0 {
+			fmt.Fprintf(b, "%s}\n", elem)
+		}
+		fmt.Fprintf(b, "%s        if jr.malformed || jr.missing_required != 0 { break; }\n", in)
 		fmt.Fprintf(b, "%s        let c = jr.peek();\n", in)
 		fmt.Fprintf(b, "%s        if c == b',' { jr.p += 1; continue; }\n", in)
 		fmt.Fprintf(b, "%s        if c == b']' { jr.p += 1; break; }\n", in)
@@ -1391,7 +1458,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 	case vPointer:
 		fmt.Fprintf(b, "%s%s = %s(jr);\n", in, field, fn(f.Type.Name, "json_ptr"))
 	case vTable:
-		fmt.Fprintf(b, "%sif jr.peek() == b'{' { %s = %s::default(); %s(jr, &mut %s); }\n", in, field, f.Type.Name, fn(f.Type.Name, "json_read"), field)
+		fmt.Fprintf(b, "%sif jr.peek() == b'%c' { %s = %s::default(); %s(jr, &mut %s); }\n", in, tableTextOpening(f), field, f.Type.Name, fn(f.Type.Name, "json_read"), field)
 		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vMap:
 		g.emitMapTextRead(b, f, field, in)
@@ -1405,13 +1472,17 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 
 // emitTextReadElem emits the read of one array element, pushed in place.
 func (g *gen) emitTextReadElem(b *strings.Builder, f *ir.Field, field, ind string) {
+	if f.IsTextList() {
+		g.emitTextListJSONElement(b, f, field, ind)
+		return
+	}
 	switch classOf(f) {
 	case vPointer:
 		fmt.Fprintf(b, "%slet e = %s(jr);\n", ind, fn(f.Type.Name, "json_ptr"))
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vTable:
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", ind, f.Type.Name)
-		fmt.Fprintf(b, "%sif jr.peek() == b'{' { %s(jr, &mut e); } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", ind, fn(f.Type.Name, "json_read"))
+		fmt.Fprintf(b, "%sif jr.peek() == b'%c' { %s(jr, &mut e); } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", ind, tableTextOpening(f), fn(f.Type.Name, "json_read"))
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vUnion:
 		un := unionOf(f)
@@ -1441,6 +1512,13 @@ func scalarOnly(f *ir.Field) *ir.Field {
 // `dst` (§16.2's rows): a value of the wrong JSON type is kind_mismatch,
 // skipped, never coerced.
 func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string) {
+	if f.Type.Timestamp {
+		fmt.Fprintf(b, "%sif jr.peek() == b'\\\"' { if let Some(s) = jr.read_string() { match table_timestamp_parse(&s) {\n", in)
+		fmt.Fprintf(b, "%s    Some(value) => %s = value,\n", in, dst)
+		fmt.Fprintf(b, "%s    None => { jr.malformed = true; jr.reason = TableReason::TimestampNotRfc3339; jr.text_error = %q; }\n", in, "timestamp_not_rfc3339: "+f.Name)
+		fmt.Fprintf(b, "%s} } } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
+		return
+	}
 	switch classOf(f) {
 	case vBlob:
 		fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", in, dst)
@@ -1454,7 +1532,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		}
 		fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vString:
-		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_clamp(s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
+		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_clamp(s, %d, &mut jr.clamped); } }\n", in, dst, rustTextBound(f))
 		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vWString:
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_wide_clamp(&s, %d, &mut jr.clamped); } }\n", in, dst, f.Type.Size)
@@ -1516,11 +1594,15 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			// a value a float32 field cannot hold is kind_mismatch, never
 			// stored as infinity (§16.2)
 			fmt.Fprintf(b, "%sif let Some(x) = jr.read_f32() {\n", in)
-			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x; } else { jr.kind_mismatch += 1; }\n", in, dst)
+			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x;\n", in, dst)
+			emitVariableFloatClamp(b, f, dst, "jr.clamped", in+"        ")
+			fmt.Fprintf(b, "%s    } else { jr.kind_mismatch += 1; }\n", in)
 			fmt.Fprintf(b, "%s}\n", in)
 		case ir.TFloat64:
 			fmt.Fprintf(b, "%sif let Some(x) = jr.read_float() {\n", in)
-			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x; } else { jr.kind_mismatch += 1; }\n", in, dst)
+			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x;\n", in, dst)
+			emitVariableFloatClamp(b, f, dst, "jr.clamped", in+"        ")
+			fmt.Fprintf(b, "%s    } else { jr.kind_mismatch += 1; }\n", in)
 			fmt.Fprintf(b, "%s}\n", in)
 		default:
 			if f.Type.Kind == ir.TFixed || f.Type.Width == 128 {
@@ -1572,17 +1654,24 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// hold ill-formed: bytes that are not well-formed UTF-8 refuse the read\n")
 	fmt.Fprintf(b, "/// (string_not_utf8, docs/SPEC-TABLES.md §16.3) rather than reading as U+FFFD.\n")
 	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
+	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    %s(&mut jr, &mut v);\n", fn(st.Name, "json_read"))
-	fmt.Fprintf(b, "    jr.space();\n")
-	fmt.Fprintf(b, "    if jr.p != jr.b.len() { jr.malformed = true; }\n")
+	fmt.Fprintf(b, "    if jr.missing_required == 0 {\n")
+	fmt.Fprintf(b, "        jr.space();\n")
+	fmt.Fprintf(b, "        if jr.p != jr.b.len() { jr.malformed = true; }\n")
+	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    report.unknown += jr.unknown;\n")
 	fmt.Fprintf(b, "    report.kind_mismatch += jr.kind_mismatch;\n")
 	fmt.Fprintf(b, "    report.clamped += jr.clamped;\n")
+	fmt.Fprintf(b, "    if report.clamped_field.is_empty() { report.clamped_field = jr.clamped_field; }\n")
 	fmt.Fprintf(b, "    report.duplicate += jr.duplicate;\n")
+	fmt.Fprintf(b, "    report.missing_required += jr.missing_required;\n")
+	fmt.Fprintf(b, "    if jr.missing_required != 0 { report.missing_required_fields = jr.missing_required_fields; report.refused = true; }\n")
 	fmt.Fprintf(b, "    report.malformed |= jr.malformed;\n")
-	fmt.Fprintf(b, "    if jr.malformed { None } else { Some(v) }\n")
+	fmt.Fprintf(b, "    if jr.reason != TableReason::None { report.reason = jr.reason; report.text_error = jr.text_error; }\n")
+	fmt.Fprintf(b, "    if jr.malformed || jr.missing_required != 0 { None } else { Some(v) }\n")
 	fmt.Fprintf(b, "}\n\n")
 }
 
@@ -1670,4 +1759,12 @@ func textStorageRange(f *ir.Field) (lo, hi *big.Int) {
 		return lo, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
 	}
 	return new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+}
+
+// Array-root tables keep their declared array shape in every nested position.
+func tableTextOpening(f *ir.Field) byte {
+	if st, ok := f.Type.Ref.(*ir.Struct); ok && st.JsonArray {
+		return '['
+	}
+	return '{'
 }

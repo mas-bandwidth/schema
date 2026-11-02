@@ -278,6 +278,7 @@ pub enum TableFixedReason {
     /// the same rule as the packet wire's, SPEC.md §4.3): the read's finite pass refuses the batch, the report naming the field
     /// in non_finite_float, and nothing lands. The writer refuses one too.
     NonFiniteFloat,
+    IntegrityMismatch,
 }
 
 impl TableFixedReason {
@@ -303,6 +304,7 @@ impl TableFixedReason {
             Self::LayoutTooDeep => "layout_too_deep",
             Self::TextIllFormed => "text_ill_formed",
             Self::NonFiniteFloat => "non_finite_float",
+            Self::IntegrityMismatch => "integrity_mismatch",
         }
     }
 }

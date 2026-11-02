@@ -1,0 +1,11 @@
+package probe
+fixed table Leaf {
+    id int32
+}
+table Maps {
+    labels ?map[string(8)]int32
+    ranks ?map[int64]Leaf
+    nested ?map[uint8]map[string(8)]int32
+    nodes ?map[uint32]*Leaf
+    tail *Leaf
+}

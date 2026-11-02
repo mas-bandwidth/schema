@@ -847,6 +847,9 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string) {
 
 func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	n := st.Name
+	if st.Integrity != "" {
+		g.needHome("TableIntegrityHolds", "TableIntegritySeal", "TableMessageOpenDamaged")
+	}
 	g.pf("// THE THREE BATCH VERBS (§3.3): the primitive is a batch and a single\n")
 	g.pf("// message is the batch of one. Measure sizes the buffer, Save writes one\n")
 	g.pf("// buffer, Load fills the caller's storage and reports how many it read.\n")
@@ -860,26 +863,47 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
-	g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("  return 6 + (w.Bits >> 3);\n}\n\n")
+	} else {
+		g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	}
 
 	g.pf("export function %sSaveMessages(values, buffer, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
 	g.pf("  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, \"batch_too_large\"); return -1; }\n")
-	g.pf("  if (buffer.length < 2) { return -1; }\n")
+	if st.Integrity != "" {
+		g.pf("  if (buffer.length < 6) { return -1; }\n")
+	} else {
+		g.pf("  if (buffer.length < 2) { return -1; }\n")
+	}
 	g.pf("  buffer[0] = 2;\n")
 	g.pf("  buffer[1] = values.length - 1;\n")
-	g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
+	if st.Integrity != "" {
+		g.pf("  const w = new TableBitWriter(buffer.subarray(2, buffer.length - 4), false);\n")
+	} else {
+		g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
+	}
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
 	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { return -1; }\n", n)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
-	g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("  return TableIntegritySeal(buffer, 2 + (w.Bits >> 3));\n}\n\n")
+	} else {
+		g.pf("  return 2 + (w.Bits >> 3);\n}\n\n")
+	}
 
 	g.pf("export function %sLoadMessages(values, vocabulary, data, report) {\n", n)
 	g.pf("  if (report === undefined || report === null) { report = {}; }\n")
 	g.pf("  TableMessageResetReport(report);\n")
+	if st.Integrity != "" {
+		g.pf("  if (data.length > 0 && data[0] === 2) {\n")
+		g.pf("    if (!TableIntegrityHolds(data, 2)) { report.Malformed = true; report.Verdict = TableMessageOpenDamaged; report.Reason = \"integrity_mismatch\"; return -1; }\n")
+		g.pf("    data = data.subarray(0, data.length - 4);\n  }\n")
+	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
 	g.pf("  if (count < 0) { return -1; }\n")
 	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return count; }\n")

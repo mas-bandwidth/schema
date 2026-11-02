@@ -1381,7 +1381,7 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 	// every byte written, through the Go oracle's tableIntegritySeal
 	// (internal/codegen/gotable/integrity.go).
 	if st.Integrity != "" {
-		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+		g.pf("    TableWriter w( buffer, capacity < 4 ? 0 : capacity - 4 );\n")
 	} else {
 		g.pf("    TableWriter w( buffer, capacity );\n")
 	}
@@ -1502,7 +1502,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
-			g.pf("        w.header( ref_%s, %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
+			g.pf("        w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s ); // %[4]s\n", f.Name, tkTable, f.Name, f.Name)
 			g.pf("        if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 		case kind == tkEnum:
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
@@ -1511,7 +1511,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        if ( !TableEnumRef( ids, value.%s, variant_%s ) ) { return false; }\n", f.Name, f.Name)
 			g.pf("        w.header( ref_%s, %d ); w.putleb( variant_%s ); // %s\n", f.Name, tkEnum, f.Name, f.Name)
 		default:
-			g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), kind, f.Name)
+			g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), kind, f.Name)
 			g.emitTableWriteElement(f, kind, "value."+f.Name, "        ", "")
 		}
 		g.pf("    }\n")
@@ -1610,13 +1610,13 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
-		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkString, f.Name)
+		g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkString, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TWString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", f.Name)
-		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkWstring, f.Name)
+		g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkWstring, f.Name)
 		g.pf("        w.putleb( (uint64_t) value.%s_length * 2 ); // L is a BYTE length (§3)\n", f.Name)
 		g.pf("        for ( int32_t i = 0; i < value.%s_length; i++ ) { w.put16( (uint16_t) value.%s[i] ); } // two bytes each, little-endian\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TBytes:
@@ -1624,7 +1624,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.emitBytesDefaultLocal(f)
 		g.pf("    if ( %s )\n    {\n", g.lengthRidesTest(f))
 		g.pf("        const int64_t body_%s = 1 + TableLebBytes( (uint64_t) value.%s_length ) + value.%s_length;\n", f.Name, f.Name, f.Name)
-		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkArray, f.Name)
+		g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkArray, f.Name)
 		g.pf("        w.putleb( (uint64_t) body_%s );\n", f.Name)
 		g.pf("        w.put8( %d ); w.putleb( (uint64_t) value.%s_length );\n", tkU8, f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
@@ -1664,7 +1664,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.noteRef(v.Type)
 		}
 		g.pf("    if ( value.%s.type != %sType::None )\n    {\n", f.Name, un.Name)
-		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), tkUnion, f.Name)
+		g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkUnion, f.Name)
 		g.emitUnionPayloadSave(f, "value."+f.Name, "        ", "return false;", "")
 		g.pf("    }\n")
 	case kind == tkTable:
@@ -1678,7 +1678,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 		g.pf("        if ( body_%s > 1 ) // all-default nested elides\n        {\n", f.Name)
-		g.pf("            w.header( ref_%s, %d );\n            w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
+		g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s ); // %[4]s\n", f.Name, tkTable, f.Name, f.Name)
 		g.pf("            if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        }\n")
 		g.pf("        else { ids.truncate( mark_%s ); }\n", f.Name)
@@ -1695,7 +1695,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.header( ref_%s, %d ); w.putleb( variant_%s ); // %s\n    }\n", f.Name, tkEnum, f.Name, f.Name)
 	default:
 		g.pf("    if ( %s )\n    {\n", g.fieldDiffers(f, "value."+f.Name))
-		g.pf("        w.header( %s, %d ); // %s\n", g.wireRef(id), kind, f.Name)
+		g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), kind, f.Name)
 		g.emitTableWriteElement(f, kind, "value."+f.Name, "        ", "")
 		g.pf("    }\n")
 	}
@@ -1936,12 +1936,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// whole-file DAMAGE named integrity_mismatch, with nothing decoded, as
 		// the Go oracle's tableIntegrityOpen does (internal/codegen/gotable/
 		// integrity.go). The read then proceeds over the file without it.
-		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
+		g.pf("    if ( buffer != NULL && bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
 		g.pf("        %sReset( value );\n", st.Name)
 		g.pf("        to->malformed = true;\n")
 		g.pf("        to->damage_reason = integrity_mismatch;\n")
 		g.pf("        return TableOpenDamaged;\n    }\n")
-		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
+		g.pf("    if ( buffer != NULL && bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
@@ -2301,7 +2301,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.pf("%sr.offset += (int64_t) body_len;\n", ind)
 	case kind == tkEnum:
-		g.emitEnumRefLoad(f, "value."+f.Name, ind, "r", "r.report->malformed = true; return false;")
+		g.emitEnumRefLoad(f, "value."+f.Name, ind, "r", "r.report->malformed = true;\n                    return false;")
 	default:
 		g.emitTableReadScalarFrom(f, kind, "value."+f.Name, ind,
 			"r", "r.report->malformed = true;", "return false;")
@@ -2377,7 +2377,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%s%s.offset += (int64_t) elem_len%s;\n", ind, rdr, sfx)
 	case tkEnum:
 		g.pf("%s{\n", ind)
-		g.emitEnumRefLoad(f, dst, ind+"    ", rdr, "r.report->malformed = true; break;")
+		g.emitEnumRefLoad(f, dst, ind+"    ", rdr, "r.report->malformed = true;\n                                break;")
 		g.pf("%s}\n", ind)
 	default:
 		g.emitTableReadScalarFrom(f, kind, dst, ind,
@@ -3133,4 +3133,14 @@ func (g *tableGen) emitCountedTailReset(f *ir.Field, ind string) {
 	g.emitTableResetOne("value."+f.Name+"[tail]", typ, f)
 	g.indent = saved
 	g.pf("%s}\n", ind)
+}
+
+// cppActionLines reindents a generated failure action at its use site.
+// The same action can occur in a field, an array element, or a nested body.
+func cppActionLines(action, ind string) string {
+	lines := strings.Split(action, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	return strings.Join(lines, "\n"+ind)
 }

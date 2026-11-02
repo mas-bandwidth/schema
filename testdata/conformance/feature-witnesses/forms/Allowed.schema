@@ -1,0 +1,2 @@
+package formwitnesses
+fixed table Allowed | forms="wire,json,block,cook" { child Disabled }

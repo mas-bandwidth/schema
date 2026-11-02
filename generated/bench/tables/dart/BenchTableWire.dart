@@ -23,6 +23,20 @@ const int _kTypeTableChatEvent = -7595037280231051973; // fnv1a64("TableChatEven
 const int _kTypeTablePickupEvent = 8694226076464086509; // fnv1a64("TablePickupEvent")
 const int _kTypeTableMixed = 4871457021464447630; // fnv1a64("TableMixed")
 
+
+final class _TableMissingRequired implements Exception { const _TableMissingRequired(); }
+bool _requiredCollectionKind(TableWireReader r, int expected) {
+ final peek=TableWireReader.sub(r,r.pos,r.limit);
+ final length=peek.readLeb();
+ if(length==null||!peek.has(length))return false;
+ if(length<2)return true;
+ final kind=peek.readByte();
+ return kind==expected||_kindWidens(kind,expected);
+}
+
+int tableTextByteLength(String value) => utf8.encode(value).length;
+bool tableTextValueValid(String value,int bound) =>
+    _wideValid(value.codeUnits) && (utf8.encode(value).length <= (bound < 0 ? 0xffffffff : bound));
 // The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -32,10 +46,15 @@ final class TableWireReport {
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
+  int blobShared = 0;
   bool malformed = false;
+  bool integrityMismatch = false;
   bool refused = false;
   bool _countRefused = false;
+  int missingRequired = 0;
+  String missingFields = '';
   int retained = 0;
   int retainLost = 0;
 
@@ -62,7 +81,9 @@ final class TableWireReport {
   // adding a malformed event. Earlier report events remain available.
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
+    if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
+    if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
@@ -79,6 +100,37 @@ final class _TableWireCountRefusal implements Exception {
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
 final class WireState {
+  // Immutable strings may be canonicalized. Metadata belongs weakly to
+  // decoded owners; node tokens carry no payload or input-buffer references.
+  static final Expando<Map<String, ({String value, Object token})>> _stringBlobOrigins =
+      Expando<Map<String, ({String value, Object token})>>();
+
+  static String? _getStringBlob(Object owner, String field) =>
+      _stringBlobOrigins[owner]?[field]?.value;
+
+  static void _setStringBlob(Object owner, String field, String? value) {
+    if (value == null) {
+      _stringBlobOrigins[owner]?.remove(field);
+      return;
+    }
+    final slots = _stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    // An explicit assignment owns this slot, even for a canonical String
+    // identical to its prior value. Decoders install incoming tokens directly.
+    slots[field] = (value: value, token: Object());
+  }
+
+  static Object _blobIdentity(Object blob, Object? owner, String? field) {
+    if (blob is String && owner != null && field != null) {
+      final slots = _stringBlobOrigins[owner];
+      final origin = slots?[field];
+      if (origin != null) {
+        if (identical(origin.value, blob)) return origin.token;
+        slots!.remove(field);
+      }
+    }
+    return blob;
+  }
+
   final Map<int, int> refs = <int, int>{};
   final List<int> ids = <int>[];
   final List<int> nodeTypes = <int>[];
@@ -137,15 +189,17 @@ final class WireState {
 
   // noteBlob numbers one *bytes/*string blob node (§3.1): record k = node
   // index k + 1, keyed by the blob's IDENTITY — the String or byte list the
-  // field holds — never by its content and never per slot (§2.5, §3.1). A
+  // field holds, or a decoded String slot's incoming node token (§2.5, §3.1). A
   // blob reached twice is one record, because two fields that loaded the same
   // node hold the same object; two distinct blobs carrying equal bytes are two
   // records, as the reference numbers them by pointer
   // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
-  // ids — the node-table write does, in record order (§3). On the web a
-  // String is a value, so two equal strings there are one blob.
-  int noteBlob(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  // ids — the node-table write does, in record order (§3). Authored String
+  // fields own one node per slot; their setters distinguish explicit
+  // reassignment from multiple slots resolving one incoming node.
+  int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
+    final identity = _blobIdentity(blob, owner, field);
+    final found = _blobIndex[identity];
     if (found != null) {
       if (refuseSharedBlob) {
         throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
@@ -156,14 +210,14 @@ final class WireState {
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
     final idx = nodes.length + 1;
-    _blobIndex[blob] = idx;
+    _blobIndex[identity] = idx;
     return idx;
   }
 
   int nodeIndexForBlob(int typeId, Object blob) => noteBlob(typeId, blob);
 
-  int blobIndex(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  int blobIndex(int typeId, Object blob, [Object? owner, String? field]) {
+    final found = _blobIndex[_blobIdentity(blob, owner, field)];
     if (found == null) {
       throw StateError('blob was not numbered (docs/SPEC-TABLES.md §3.1)');
     }
@@ -387,7 +441,7 @@ final class _ExtentScan {
         if (!union(r, f.uni)) return false;
         continue;
       }
-      if (kind != 13 && kind != 14 && kind != 16) {
+      if (kind != 13 && kind != 14 && kind != 16 && !(kind == 12 && f.mode == 3)) {
         if (!r.skipKind(kind)) return true;
         continue;
       }
@@ -398,9 +452,12 @@ final class _ExtentScan {
     }
   }
 
+  bool text(int n){if(n==0)return true;if(n>0xffffffff)return false;at=(at+7)&-8;at+=_round(9+n);return true;}
+
   // field is extentScan.field over the payload [start, end).
   bool field(TableWireReader p, _MF f, int start, int end) {
     if (f.mode == 0) return true;
+    if (f.mode == 3) return text(end-start);
     final r = TableWireReader.sub(p, start, end);
     if (f.mode == 2) return record(r, f.child);
     if (!r.has(2)) return true;
@@ -414,7 +471,7 @@ final class _ExtentScan {
       at = (at + f.align - 1) & -f.align;
       at += count * f.size;
     }
-    if (kind != 13 && kind != 15) return true;
+    if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
     // a count above 2^63 reads negative here; Go's loop runs on to the end of
     // the body, as this one does
     for (var i = 0; (count < 0 || i < count) && r.has(1); i++) {
@@ -425,7 +482,8 @@ final class _ExtentScan {
       }
       final b = _body(r);
       if (b == null) return true;
-      if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
+      if(f.mode==4){if(!text(b.$2-b.$1))return false;}
+      else if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
     }
     return true;
   }
@@ -478,7 +536,7 @@ bool _lebValid(Uint8List d, int off, int len) {
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
-  if (len <= bound) return len;
+  if (bound < 0 || len <= bound) return len;
   var cut = bound;
   while (cut > 0 && (d[off + cut] & 0xC0) == 0x80) {
     cut--;
@@ -497,6 +555,8 @@ final class TableWireReader {
   final List<Uint8List> nodes;
   final Set<int> knownTypes;
   final List<Object?> decoded;
+  final Map<int, Object> stringBlobTokens;
+  final Set<int> namedBlobs;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -521,6 +581,8 @@ final class TableWireReader {
       nodes = <Uint8List>[],
       knownTypes = <int>{},
       decoded = <Object?>[],
+      stringBlobTokens = <int, Object>{},
+      namedBlobs = <int>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
@@ -537,6 +599,8 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -561,6 +625,8 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -797,27 +863,42 @@ final class TableWireReader {
   // A blob record resolves to ONE object however many slots name it (§3.1):
   // the first resolve stores it in decoded, so a save numbers it once again
   // by identity and two distinct records of equal bytes stay two.
-  String? resolveString(int idx) {
+  String? resolveString(int idx, Object owner, String field) {
     final rec = idx - 2;
-    if (rec >= 0 && rec < decoded.length) {
-      final have = decoded[rec];
-      if (have is String) return have;
+    String? value;
+    if (rec >= 0 && rec < decoded.length && decoded[rec] is String) {
+      value = decoded[rec] as String;
+    } else {
+      final b = resolveBlob(idx, _kStringBlobId, stringBlob);
+      if (b != null) {
+        value = utf8.decode(b);
+        decoded[rec] = value;
+      }
     }
-    final b = resolveBlob(idx, _kStringBlobId, stringBlob);
-    if (b == null) return null;
-    final s = utf8.decode(b);
-    decoded[rec] = s;
-    return s;
+    if (value == null) {
+      WireState._stringBlobOrigins[owner]?.remove(field);
+      return null;
+    }
+    if (!namedBlobs.add(idx)) report.blobShared++;
+    final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
+    return value;
   }
 
   Uint8List? resolveBytes(int idx) {
     final rec = idx - 2;
     if (rec >= 0 && rec < decoded.length) {
       final have = decoded[rec];
-      if (have is Uint8List) return have;
+      if (have is Uint8List) {
+        if (!namedBlobs.add(idx)) report.blobShared++;
+        return have;
+      }
     }
     final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
-    if (b != null) decoded[rec] = b;
+    if (b != null) {
+      decoded[rec] = b;
+      if (!namedBlobs.add(idx)) report.blobShared++;
+    }
     return b;
   }
 
@@ -1237,9 +1318,62 @@ final class TableRetain {
   int idUsed = 0;
   int used = 0;
   final List<_RetainRecord> records = <_RetainRecord>[];
+  final Map<Object, List<_RetainRecord>> _byOwner = Map.identity();
+  final Map<Object, Map<String, List<Object>>> _maps = Map.identity();
   TableRetain(this.capacity, this.ids);
+
+  void add(_RetainRecord record) {
+    records.add(record);
+    (_byOwner[record.owner] ??= <_RetainRecord>[]).add(record);
+  }
+
+  void rememberMap(Object owner, String field, Object entry) {
+    final fields = _maps[owner] ??= <String, List<Object>>{};
+    (fields[field] ??= <Object>[]).add(entry);
+  }
+
+  void forgetMap(Object owner, String field) {
+    final entries = _maps[owner]?.remove(field);
+    if (entries != null) {
+      for (final entry in entries) { forget(entry); }
+    }
+  }
+
+  // A replacement supersedes its old body without moving either counter.
+  // Keep byte capacity consumed, as the append-only caller store does.
+  void forget(Object owner) {
+    final pending = <Object>[owner];
+    final seen = Set<Object>.identity();
+    while (pending.isNotEmpty) {
+      final value = pending.removeLast();
+      if (!seen.add(value)) continue;
+      final old = _byOwner.remove(value);
+      if (old != null) {
+        for (final rec in old) { rec.discarded = true; }
+      }
+      final maps = _maps.remove(value);
+      if (maps != null) {
+        for (final entries in maps.values) { pending.addAll(entries); }
+      }
+      switch (value) {
+        case TableMixed v:
+          pending.addAll(v.entities);
+          pending.addAll(v.stats);
+          pending.add(v.gameEvent);
+          break;
+        case TableEvent v:
+          pending.add(v.hit);
+          pending.add(v.chat);
+          pending.add(v.pickup);
+          break;
+        default: break;
+      }
+    }
+  }
   void reset() {
     records.clear();
+    _byOwner.clear();
+    _maps.clear();
     used = 0;
     idUsed = 0;
   }
@@ -1257,6 +1391,8 @@ final class _RetainRecord {
   final int id;
   final int kind;
   final List<int> resolved;
+  bool placed = false;
+  bool discarded = false;
   _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
@@ -1380,7 +1516,7 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
       if (id == null) return null;
       if (!r.has(1)) return null;
       final ak = r.readByte();
-      final sub = _retainResolve(r, ak, depth + 1);
+      final sub = _retainFramed(r, ak, depth);
       if (sub == null) return null;
       return <int>[..._u64le(id), ak, ...sub];
     default:
@@ -1409,8 +1545,12 @@ List<int>? _retainContent(TableWireReader r, int kind, int depth) {
     case 14:
     case 16:
       return _retainArray(r, kind, depth);
-    default:
+    case 15:
+    case 30:
       return _retainResolve(r, kind, depth);
+    default:
+      // The enclosing arm/keyed-slot length already frames scalar content.
+      return _retainRaw(r, r.limit-r.pos);
   }
 }
 
@@ -1543,7 +1683,7 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       if (ref == 0) return null;
       final ak = c.byte();
       if (ak == null) return null;
-      final sub = _retainEmitPayload(state, ak, c, depth + 1);
+      final sub = _retainEmitFramed(state, ak, c, depth);
       if (sub == null) return null;
       final o = <int>[];
       _lebOut(o, ref);
@@ -1577,8 +1717,11 @@ List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int en
     case 14:
     case 16:
       return _retainEmitArray(state, kind, c, end, depth);
-    default:
+    case 15:
+    case 30:
       return _retainEmitPayload(state, kind, c, depth);
+    default:
+      final out=c.b.sublist(c.at,end);c.at=end;return out;
   }
 }
 
@@ -1637,8 +1780,8 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
 void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
-  for (final rec in t.records) {
-    if (!identical(rec.owner, owner)) continue;
+  for (final rec in t._byOwner[owner] ?? const <_RetainRecord>[]) {
+    rec.placed = true;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -2309,7 +2452,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
   if (v.gameEvent.armTag != 0) {
     w.putLeb(w.refFor(3329809749115557776));
     w.putByte(15);
-    _tableEventSaveArm(w, v.gameEvent);
+    if (v.gameEvent.armTag == 0) { w.putLeb(0); } else { _tableEventSaveArm(w, v.gameEvent); }
   }
   if (v.loadout.any((e) => e != 0)) {
     final ref = w.refFor(6294288958393922979);
@@ -2834,7 +2977,7 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -2929,7 +3072,7 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3072,7 +3215,7 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3177,7 +3320,7 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3282,7 +3425,7 @@ void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool ne
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -4098,7 +4241,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -4178,27 +4321,34 @@ Uint8List tableEntityWireSave(TableEntity v) {
 
 TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableEntity();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableEntity;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   try {
     r.pos = 1;
     tableEntityWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableEntity();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     return TableEntity();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableEntity();
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableEntity();
   _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
@@ -4314,11 +4464,16 @@ int tableEntityWireMeasure(Uint8List data) {
 TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
   retain.reset();
   final v = TableEntity();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   r.stringBlob = false;
+  r.bytesBlob = false;
   r.retain = retain;
   r.path = [1];
   r.rootObj = v;
@@ -4330,13 +4485,16 @@ TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableW
     r.scanNodeTable();
     r.pos = 1;
     tableEntityWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    retain.reset();
+    return TableEntity();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     retain.reset();
     return TableEntity();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) {
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
     retain.reset();
     return TableEntity();
   }
@@ -4355,6 +4513,7 @@ TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableW
 
 Uint8List tableEntityWireSaveRetain(TableEntity v, TableRetain retain, TableWireReport report) {
   retain.idUsed = 0;
+  for (final rec in retain.records) { rec.placed = false; }
   final state = WireState()..refuseSharedBlob = true;
   state.retain = retain;
   state.report = report;
@@ -4366,6 +4525,7 @@ Uint8List tableEntityWireSaveRetain(TableEntity v, TableRetain retain, TableWire
   w.putByte(1);
   tableEntityWireSaveBodyFields(w, v);
   _writeNodeTable(w);
+  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
   w.putByte(0);
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
@@ -4394,27 +4554,34 @@ Uint8List tableStatWireSave(TableStat v) {
 
 TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableStat();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableStat;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   try {
     r.pos = 1;
     tableStatWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableStat();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     return TableStat();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableStat();
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableStat();
   _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
@@ -4518,11 +4685,16 @@ int tableStatWireMeasure(Uint8List data) {
 TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
   retain.reset();
   final v = TableStat();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   r.stringBlob = false;
+  r.bytesBlob = false;
   r.retain = retain;
   r.path = [1];
   r.rootObj = v;
@@ -4534,13 +4706,16 @@ TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireR
     r.scanNodeTable();
     r.pos = 1;
     tableStatWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    retain.reset();
+    return TableStat();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     retain.reset();
     return TableStat();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) {
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
     retain.reset();
     return TableStat();
   }
@@ -4559,6 +4734,7 @@ TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireR
 
 Uint8List tableStatWireSaveRetain(TableStat v, TableRetain retain, TableWireReport report) {
   retain.idUsed = 0;
+  for (final rec in retain.records) { rec.placed = false; }
   final state = WireState()..refuseSharedBlob = true;
   state.retain = retain;
   state.report = report;
@@ -4570,6 +4746,7 @@ Uint8List tableStatWireSaveRetain(TableStat v, TableRetain retain, TableWireRepo
   w.putByte(1);
   tableStatWireSaveBodyFields(w, v);
   _writeNodeTable(w);
+  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
   w.putByte(0);
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
@@ -4598,27 +4775,34 @@ Uint8List tableMixedWireSave(TableMixed v) {
 
 TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableMixed();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableMixed;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   try {
     r.pos = 1;
     tableMixedWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableMixed();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     return TableMixed();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableMixed();
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableMixed();
   _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
@@ -4793,11 +4977,16 @@ int tableMixedWireMeasure(Uint8List data) {
 TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
   retain.reset();
   final v = TableMixed();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   r.stringBlob = false;
+  r.bytesBlob = false;
   r.retain = retain;
   r.path = [1];
   r.rootObj = v;
@@ -4809,13 +4998,16 @@ TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWir
     r.scanNodeTable();
     r.pos = 1;
     tableMixedWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    retain.reset();
+    return TableMixed();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     retain.reset();
     return TableMixed();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) {
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
     retain.reset();
     return TableMixed();
   }
@@ -4834,6 +5026,7 @@ TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWir
 
 Uint8List tableMixedWireSaveRetain(TableMixed v, TableRetain retain, TableWireReport report) {
   retain.idUsed = 0;
+  for (final rec in retain.records) { rec.placed = false; }
   final state = WireState()..refuseSharedBlob = true;
   state.retain = retain;
   state.report = report;
@@ -4845,6 +5038,7 @@ Uint8List tableMixedWireSaveRetain(TableMixed v, TableRetain retain, TableWireRe
   w.putByte(1);
   tableMixedWireSaveBodyFields(w, v);
   _writeNodeTable(w);
+  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
   w.putByte(0);
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
@@ -4856,6 +5050,72 @@ int tableMixedWireMeasureRetain(TableMixed v, TableRetain retain) {
   return tableMixedWireSaveRetain(v, retain, report).length;
 }
 
+
+int? _timestampNanos(String s) {
+  int digits(int at,int count) {
+    if(at<0||at+count>s.length)return -1;
+    var value=0;
+    for(var i=at;i<at+count;i++){final c=s.codeUnitAt(i)-48;if(c<0||c>9)return -1;value=value*10+c;}
+    return value;
+  }
+  if(s.length<20||s[4]!='-'||s[7]!='-'||(s[10]!='T'&&s[10]!='t')||s[13]!=':'||s[16]!=':')return null;
+  final y=digits(0,4),m=digits(5,2),d=digits(8,2),h=digits(11,2),minute=digits(14,2),sec=digits(17,2);
+  if(y<1||m<1||m>12||d<1||d>31||h<0||h>23||minute<0||minute>59||sec<0||sec>59)return null;
+  final date=DateTime.utc(y,m,d,h,minute,sec);
+  if(date.year!=y||date.month!=m||date.day!=d)return null;
+  var at=19,fraction=0,count=0;
+  if(s[at]=='.'){
+    at++;final start=at;
+    while(at<s.length){final c=s.codeUnitAt(at)-48;if(c<0||c>9)break;if(count<9){fraction=fraction*10+c;count++;}at++;}
+    if(at==start)return null;
+  }
+  while(count<9){fraction*=10;count++;}
+  var offset=0;
+  if(at==s.length-1&&(s[at]=='Z'||s[at]=='z')){at++;}
+  else if(at==s.length-6&&(s[at]=='+'||s[at]=='-')&&s[at+3]==':'){
+    final oh=digits(at+1,2),om=digits(at+4,2);
+    if(oh<0||oh>23||om<0||om>59)return null;
+    offset=(oh*3600+om*60)*(s[at]=='-'?-1:1);at+=6;
+  }else{return null;}
+  if(at!=s.length)return null;
+  final seconds=date.microsecondsSinceEpoch~/1000000-offset;
+  final value=BigInt.from(seconds)*BigInt.from(1000000000)+BigInt.from(fraction);
+  if(value<-(BigInt.one<<63)||value>(BigInt.one<<63)-BigInt.one)return null;
+  return value.toInt();
+}
+
+int _timestampField(dynamic value,TableTextReport report,[int previous=0]){
+  if(value is! String){report.kindMismatch++;return previous;}
+  final nanos=_timestampNanos(value);
+  if(nanos==null)throw const FormatException('timestamp_not_rfc3339');
+  return nanos;
+}
+
+String _timestampText(int nanos){
+  var seconds=nanos~/1000000000;final fraction=nanos%1000000000;
+  if(nanos<0&&fraction!=0)seconds--;
+  final date=DateTime.fromMicrosecondsSinceEpoch(seconds*1000000,isUtc:true);
+  final text=date.toIso8601String().substring(0,19);
+  if(fraction==0)return '${text}Z';
+  var digits=fraction.toString().padLeft(9,'0');
+  while(digits.endsWith('0')){digits=digits.substring(0,digits.length-1);}
+  return '$text.${digits}Z';
+}
+
+List<T> _jsonTextList<T>(dynamic val,TableTextReport r,int bound,String field,T Function(dynamic) read,int total,int Function(T) length,[List<T>? fallback]) {
+ if(val is! List){r.kindMismatch++;return fallback??<T>[];}
+ final before=r.clamped;
+ final out=<T>[];
+ var spent=0;
+ for(var i=0;i<val.length;i++){
+  if(bound>=0&&i>=bound){r.clamped+=val.length-i;break;}
+  final e=read(val[i]);
+  if(total>0){spent+=length(e);if(spent>total){r.clamped++;break;}}
+  out.add(e);
+ }
+ if(r.clamped!=before&&r.clampedField.isEmpty)r.clampedField=field;
+ return out;
+}
 // ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
 // TableTextReport is a tolerant text read's report (§16.3): the three events
@@ -4865,7 +5125,10 @@ final class TableTextReport {
   int unknown = 0;
   int kindMismatch = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
+  int missingRequired = 0;
+  String missingFields = '';
   final Set<int> textLabels = <int>{};
 }
 
@@ -4912,7 +5175,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune >> 4]);
       b.write(_jsonHex[rune & 0xF]);
     } else {
-      b.write(String.fromCharCode(rune));
+      b.write(String.fromCharCode(rune >= 0xD800 && rune <= 0xDFFF ? 0xFFFD : rune));
     }
   }
   b.write('"');
@@ -4937,7 +5200,10 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
-  return s;
+  // Lone or inverted JSON surrogate escapes normalize until the deferred
+  // string_lone_surrogate card lands (SPEC §16.3).
+  if (_wideValid(s.codeUnits)) return s;
+  return String.fromCharCodes(s.runes.map((r) => r >= 0xD800 && r <= 0xDFFF ? 0xFFFD : r));
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
@@ -4948,7 +5214,8 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
     r.kindMismatch++;
     return def;
   }
-  if (utf8.encode(_jsonText(val)).length <= bound) return val;
+  val = _jsonText(val);
+  if (utf8.encode(val).length <= bound || bound < 0) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -5779,7 +6046,8 @@ String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def 
     r.kindMismatch++;
     return def;
   }
-  if (_jsonText(val).length <= bound) return val;
+  val = _jsonText(val);
+  if (val.length <= bound) return val;
   var keep = bound;
   if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
     keep--;
@@ -5865,8 +6133,9 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
 }
 
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
-  final len = utf8.encode(_jsonText(k)).length;
-  if (len > bound || len > 255) {
+  k = _jsonText(k);
+  final len = utf8.encode(k).length;
+  if (bound >= 0 && (len > bound || len > 255)) {
     r.clamped++;
     return null;
   }
@@ -6880,13 +7149,13 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         for (var index = 0; index < val.length; index++) {
           if (v.entities.length >= 8) { r.clamped += val.length - index; break; }
           final item = val[index];
+          final e = TableEntity();
           if (_jsonEntries(item) != null) {
-            final e = TableEntity();
             tableEntityFromJsonFields(e, item, r, sh);
-            v.entities.add(e);
           } else {
             r.kindMismatch++;
           }
+          v.entities.add(e);
         }
         break;
       case "stats":
@@ -6896,13 +7165,13 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         for (var index = 0; index < val.length; index++) {
           if (v.stats.length >= 80) { r.clamped += val.length - index; break; }
           final item = val[index];
+          final e = TableStat();
           if (_jsonEntries(item) != null) {
-            final e = TableStat();
             tableStatFromJsonFields(e, item, r, sh);
-            v.stats.add(e);
           } else {
             r.kindMismatch++;
           }
+          v.stats.add(e);
         }
         break;
       case "game_event":
@@ -6986,8 +7255,10 @@ String tableEntityToJson(TableEntity v) {
 
 TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableEntity();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableEntity');
   if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
   }
@@ -7005,8 +7276,10 @@ String tableStatToJson(TableStat v) {
 
 TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableStat();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableStat');
   if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
   }
@@ -7024,8 +7297,10 @@ String tableMixedToJson(TableMixed v) {
 
 TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableMixed();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');
   if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
   }

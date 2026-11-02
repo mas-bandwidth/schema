@@ -343,7 +343,7 @@ armEdges = function(T, u, inst, out) {
   shapeEdges(T, p, inst[p.member], out);
 };
 
-local number = function(T, c, root) {
+local number = function(T, c, root, cook = false) {
   local nodes = [];
   local seenBlobs = { s = {}, b = {} };
   local open = [root];
@@ -367,6 +367,8 @@ local number = function(T, c, root) {
       // Squirrel string has no storage identity), so both spot the second
       // naming of one blob.
       if (e.v in seenBlobs[e.kind]) {
+        // Cook attributes a shared blob once; wire ownership still refuses it.
+        if (cook) continue;
         _M.SaveReason <- "blob_shared";
         return null;
       }
@@ -854,3 +856,11 @@ _M.measure <- function(T, rootName, value, retain = null) {
   if (b == null) return -1;
   return b.len();
 };
+
+// Shared canonical traversal for the cooked writer. The public wire surface
+// remains independent; cook-only modules load this private runtime too.
+_M.numberForCook <- function(T, root, value) {
+  _M.SaveReason <- null;
+  return number(T, tableDesc(T, root), value, true);
+};
+_M.mapWriteOrder <- mapWriteOrder;

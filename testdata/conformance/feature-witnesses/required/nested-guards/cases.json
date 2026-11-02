@@ -1,0 +1,14 @@
+[
+  {"root":"R","input":"{\"outer\":false}","fields":[],"value":0},
+  {"root":"R","input":"{\"outer\":true,\"inner\":true,\"yes\":0}","fields":["outer","inner","yes"],"value":0},
+  {"root":"R","input":"{\"outer\":true,\"inner\":false,\"no\":0}","fields":["outer","no"],"value":0},
+  {"root":"R","input":"{\"outer\":true,\"inner\":true,\"yes\":7}","fields":["outer","inner","yes"],"value":7},
+  {"root":"R","input":"{\"outer\":true,\"inner\":false,\"no\":9}","fields":["outer","no"],"value":9},
+  {"root":"R","input":"{\"outer\":true,\"inner\":true}","missing":"yes"},
+  {"root":"R","input":"{\"outer\":true,\"inner\":false}","missing":"no"},
+  {"root":"N","input":"{\"outer\":false,\"inner\":false,\"yes\":7}","fields":["yes"],"value":7},
+  {"root":"N","input":"{\"outer\":false,\"inner\":true,\"no\":9}","fields":["inner","no"],"value":9},
+  {"root":"N","input":"{\"outer\":true}","fields":["outer"],"value":0},
+  {"root":"N","input":"{}","missing":"yes"},
+  {"root":"N","input":"{\"inner\":true}","missing":"no"}
+]

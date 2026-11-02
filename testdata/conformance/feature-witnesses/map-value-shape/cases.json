@@ -1,0 +1,86 @@
+[
+  {
+    "name": "integer-string",
+    "input": "{\"numbers\":{\"a\":\"bad\"}}",
+    "expected": "{\"numbers\":{\"a\":0}}",
+    "mismatch": 1
+  },
+  {
+    "name": "integer-null",
+    "input": "{\"numbers\":{\"a\":null}}",
+    "expected": "{\"numbers\":{\"a\":0}}",
+    "mismatch": 1
+  },
+  {
+    "name": "text-number",
+    "input": "{\"texts\":{\"a\":7}}",
+    "expected": "{\"texts\":{\"a\":\"\"}}",
+    "mismatch": 1
+  },
+  {
+    "name": "text-null",
+    "input": "{\"texts\":{\"a\":null}}",
+    "expected": "{\"texts\":{\"a\":\"\"}}",
+    "mismatch": 1
+  },
+  {
+    "name": "table-array",
+    "input": "{\"nodes\":{\"a\":[]}}",
+    "expected": "{\"nodes\":{\"a\":{}}}",
+    "mismatch": 1
+  },
+  {
+    "name": "pointer-number",
+    "input": "{\"pointers\":{\"a\":7}}",
+    "expected": "{\"pointers\":{\"a\":null}}",
+    "mismatch": 1
+  },
+  {
+    "name": "optional-string",
+    "input": "{\"optionals\":{\"a\":\"bad\"}}",
+    "expected": "{\"optionals\":{\"a\":0}}",
+    "mismatch": 1
+  },
+  {
+    "name": "nested-number",
+    "input": "{\"nested\":{\"a\":7}}",
+    "expected": "{\"nested\":{\"a\":{}}}",
+    "mismatch": 1
+  },
+  {
+    "name": "optional-null",
+    "input": "{\"optionals\":{\"a\":null}}",
+    "expected": "{\"optionals\":{\"a\":null}}"
+  },
+  {
+    "name": "pointer-null",
+    "input": "{\"pointers\":{\"a\":null}}",
+    "expected": "{\"pointers\":{\"a\":null}}"
+  },
+  {
+    "name": "duplicate-last-default",
+    "input": "{\"numbers\":{\"a\":7,\"a\":\"bad\"}}",
+    "expected": "{\"numbers\":{\"a\":0}}",
+    "mismatch": 1,
+    "duplicate": 1
+  },
+  {
+    "name": "malformed-skipped-value",
+    "input": "{\"numbers\":{\"a\":[}",
+    "malformed": true,
+    "mismatch": 1
+  },
+  {
+    "name": "optional-object",
+    "input": "{\"optionals\":{\"a\":{}}}",
+    "expected": "{\"optionals\":{\"a\":0}}",
+    "mismatch": 1
+  },
+  {
+    "name": "optional-duplicate-default",
+    "input": "{\"optionals\":{\"a\":7,\"a\":\"bad\"}}",
+    "expected": "{\"optionals\":{\"a\":0}}",
+    "mismatch": 1,
+    "duplicate": 1
+  }
+]

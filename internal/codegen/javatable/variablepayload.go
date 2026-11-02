@@ -15,6 +15,19 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 		return
 	}
 	kind := ir.TableWireFieldKind(f)
+	if ir.TextListPlain(f) {
+		aw := fmt.Sprintf("payload%d", depth)
+		count := expr + ".size()"
+		if f.Array == ir.ArrayFixed {
+			count = fmt.Sprint(f.ArrayBound)
+		}
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        { int %s=%s.off;%s.put8(12);%s.putLeb(%s);\n", aw, w, w, w, count)
+		fmt.Fprintf(b, "        for(int index%d=0;index%d<%s;index%d++){%sVariable.Value element%d=index%d<%s.size()?%s.get(index%d):null;\n", depth, depth, count, depth, target.Name, depth, depth, expr, expr, depth)
+		fmt.Fprintf(b, "        %s.putUtf8(element%d==null||element%d.value==null?\"\":element%d.value);\n", w, depth, depth, depth)
+		fmt.Fprintf(b, "        } %s.frame(%s); }\n", w, aw)
+		return
+	}
 	if f.Array != ir.ArrayNone {
 		aw := fmt.Sprintf("payload%d", depth)
 		count := expr + ".size()"
@@ -82,6 +95,10 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 func writeVariableRetainedPayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Field, expr, w string, serial int, bodyDepth string) {
 	if f.KeyEnum != "" {
 		fmt.Fprintf(b, "%sVariable.writeKeyedPayloadRetain_%s(%s,graph,%s,retain,report,path,%s);\n", owner, varMember(f), w, expr, bodyDepth)
+		return
+	}
+	if ir.TextListPlain(f) {
+		writeVariablePayload(b, u, owner, f, expr, w, serial)
 		return
 	}
 	if f.Array != ir.ArrayNone {

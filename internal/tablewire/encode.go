@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"math"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -86,7 +87,15 @@ func encodeWith(m *tabletext.Model, inst *tabletext.Instance, rt *retainState) (
 			}
 		}
 	}
-	return binary.LittleEndian.AppendUint64(out, uint64(len(e.ids.ids))), e.retainLost, nil
+	out = binary.LittleEndian.AppendUint64(out, uint64(len(e.ids.ids)))
+	switch inst.Def.Integrity {
+	case "":
+	case "crc32c":
+		out = binary.LittleEndian.AppendUint32(out, crc32.Checksum(out, fileCRC32C))
+	default:
+		return nil, e.retainLost, fmt.Errorf("unsupported integrity %q", inst.Def.Integrity)
+	}
+	return out, e.retainLost, nil
 }
 
 // encoder is one save's context: the closure the walks run over, the

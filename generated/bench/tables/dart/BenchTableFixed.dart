@@ -184,6 +184,7 @@ abstract final class TableFixedRefusal {
   /// a NaN or an infinity in a record refuses the whole
   /// read by name, the report naming the field, and nothing lands.
   static const int nonFiniteFloat = 18;
+  static const int integrityMismatch = 19;
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -224,6 +225,8 @@ abstract final class TableFixedRefusal {
         return 'layout_unsupported';
       case textIllFormed:
         return 'text_ill_formed';
+      case integrityMismatch:
+        return 'integrity_mismatch';
       case nonFiniteFloat:
         return 'non_finite_float';
       default:
@@ -2504,7 +2507,7 @@ int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
-bool tableMessageKnownKind(int kind) => kind <= 33;
+bool tableMessageKnownKind(int kind) => kind >= 0 && (kind <= 33 || kind == 36);
 
 /// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
 /// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
@@ -2548,6 +2551,7 @@ int tableMessageKindWidth(int kind) {
     case 11:
     case 23:
     case 28:
+    case 36:
       return 8;
     case 18:
     case 19:
@@ -2755,6 +2759,9 @@ class TableBitWriter {
     if (measuring) return;
     if ((bits + 7) >> 3 > buffer.length) { overflow = true; return; }
     for (var i = 0; i < n; i++) {
+      // Initialize each output byte when its first bit is written; callers
+      // may reuse a buffer containing arbitrary previous data.
+      if (((at + i) & 7) == 0) buffer[(at + i) >> 3] = 0;
       if (((value >> i) & 1) != 0) {
         buffer[(at + i) >> 3] |= 1 << ((at + i) & 7);
       }
@@ -2957,7 +2964,7 @@ final class TableMessageShape {
     if (kind == 1) {
       return 1;
     }
-    if (kind == 11) {
+    if (kind == 11 || kind == 36) {
       return 64;
     }
     if (kind == 10) {

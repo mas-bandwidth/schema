@@ -58,7 +58,7 @@ const cookMaxAlign = int64(64)
 // why, never a silent absence.
 func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	if len(u.Tables) == 0 {
+	if len(u.Tables) == 0 || !formAllowed(u, "cook") {
 		return out, nil
 	}
 	ck := cookUnitOf(u)
@@ -127,6 +127,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
+		if !st.CarriesForm("cook") {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -166,6 +169,10 @@ func cookWalk(u *ir.Unit, name string, visit func(string, *ir.MemberLayout)) {
 		seen[n] = true
 		visit(n, ir.RecordLayout(u, st))
 		for _, f := range st.Fields {
+			if f.IsMap() {
+				walk(f.MapEntry.Name)
+				continue
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}
@@ -646,6 +653,9 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 	for _, fl := range ml.Fields {
 		f := fl.Field
 		names := "null"
+		if f.IsMap() {
+			names = "() => " + cookInfoSymbol(f.MapEntry.Name)
+		}
 		if f.Type.Kind == ir.TNamed {
 			if ref, ok := f.Type.Ref.(*ir.Struct); ok {
 				names = "() => " + cookInfoSymbol(ref.Name)
@@ -659,7 +669,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 				countOffset = pieces[len(pieces)-2].Offset
 			}
 		}
-		if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
+		if !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			if len(pieces) > 1 {
 				countOffset = pieces[1].Offset
@@ -698,6 +708,9 @@ func cookInfoSymbol(record string) string { return "cookRecord" + record }
 // descriptors name the storage rather than reuse a wire kind, and a walker
 // reads a slot with the width `elemSize` gives and the signedness this names.
 func cookStorageKind(f *ir.Field) string {
+	if f.Type.TextUnbounded() {
+		return "TextReference"
+	}
 	if f.Type.Pointer {
 		return "Reference"
 	}

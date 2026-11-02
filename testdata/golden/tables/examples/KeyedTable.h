@@ -1171,7 +1171,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -6302,8 +6302,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace tabledemo
@@ -10724,7 +10770,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBody( TableWriter & w, TableIds & id
         const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerConfigMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.header( ref_gunner, 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
+        w.header( ref_gunner, 13 );
+            w.putleb( (uint64_t) body_gunner ); // gunner
         if ( !GunnerConfigSaveBody( w, ids, value.gunner ) ) return false;
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -13540,9 +13587,15 @@ constexpr int64_t TeamConfigFixedLayoutBytes = (int64_t) sizeof( TeamConfigFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TeamConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // TeamConfig
-    { 0, 0, 0, 0, 0 }, // spawn_count
-    { 24, 0, 4, 0, 1 }, // banner
+    {
+        0, 0, 0, 0, 0
+    }, // TeamConfig
+    {
+        0, 0, 0, 0, 0
+    }, // spawn_count
+    {
+        24, 0, 4, 0, 1
+    }, // banner
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -13869,9 +13922,15 @@ constexpr int64_t GunnerConfigFixedLayoutBytes = (int64_t) sizeof( GunnerConfigF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst GunnerConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // GunnerConfig
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
+    {
+        0, 0, 0, 0, 0
+    }, // GunnerConfig
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -14199,13 +14258,27 @@ constexpr int64_t TurretConfigFixedLayoutBytes = (int64_t) sizeof( TurretConfigF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TurretConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // TurretConfig
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // cooldown
-    { 0, 0, 16, 0, 0 }, // gunner ?
-    { 8, 0, 0, 0, 0 }, // gunner
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
+    {
+        0, 0, 0, 0, 0
+    }, // TurretConfig
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // cooldown
+    {
+        0, 0, 16, 0, 0
+    }, // gunner ?
+    {
+        8, 0, 0, 0, 0
+    }, // gunner
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
 };
 
 // THE IDENTITY PLAN, coalesced out of 5 leaves by the schema compiler —
@@ -14549,21 +14622,51 @@ constexpr int64_t HullConfigFixedLayoutBytes = (int64_t) sizeof( HullConfigFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst HullConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // HullConfig
-    { 0, 0, 0, 0, 0 }, // health
-    { 4, 0, 0, 0, 0 }, // mass
-    { 8, 20, 0, 0, 0 }, // turrets
-    { 0, 0, 0, 0, 0 }, // Weapon
-    { 0, 0, 0, 0, 0 }, // Cannon
-    { 0, 0, 0, 0, 0 }, // Missile
-    { 0, 0, 0, 0, 0 }, // Mine
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // cooldown
-    { 0, 0, 16, 0, 0 }, // gunner ?
-    { 8, 0, 0, 0, 0 }, // gunner
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
+    {
+        0, 0, 0, 0, 0
+    }, // HullConfig
+    {
+        0, 0, 0, 0, 0
+    }, // health
+    {
+        4, 0, 0, 0, 0
+    }, // mass
+    {
+        8, 20, 0, 0, 0
+    }, // turrets
+    {
+        0, 0, 0, 0, 0
+    }, // Weapon
+    {
+        0, 0, 0, 0, 0
+    }, // Cannon
+    {
+        0, 0, 0, 0, 0
+    }, // Missile
+    {
+        0, 0, 0, 0, 0
+    }, // Mine
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // cooldown
+    {
+        0, 0, 16, 0, 0
+    }, // gunner ?
+    {
+        8, 0, 0, 0, 0
+    }, // gunner
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
 };
 
 // THE IDENTITY PLAN, coalesced out of 17 leaves by the schema compiler —
@@ -14969,42 +15072,114 @@ constexpr int64_t KeyedConfigFixedLayoutBytes = (int64_t) sizeof( KeyedConfigFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst KeyedConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // KeyedConfig
-    { 0, 28, 0, 0, 0 }, // teams
-    { 0, 0, 0, 0, 0 }, // Team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // spawn_count
-    { 24, 0, 4, 0, 1 }, // banner
-    { 84, 68, 0, 0, 0 }, // hulls
-    { 0, 0, 0, 0, 0 }, // Hull
-    { 0, 0, 0, 0, 0 }, // Interceptor
-    { 0, 0, 0, 0, 0 }, // Gunship
-    { 0, 0, 0, 0, 0 }, // Freighter
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // health
-    { 4, 0, 0, 0, 0 }, // mass
-    { 8, 20, 0, 0, 0 }, // turrets
-    { 0, 0, 0, 0, 0 }, // Weapon
-    { 0, 0, 0, 0, 0 }, // Cannon
-    { 0, 0, 0, 0, 0 }, // Missile
-    { 0, 0, 0, 0, 0 }, // Mine
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // cooldown
-    { 0, 0, 16, 0, 0 }, // gunner ?
-    { 8, 0, 0, 0, 0 }, // gunner
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
-    { 288, 0, 0, 0, 0 }, // scores
-    { 0, 4, 0, 0, 0 }, // per_team
-    { 0, 0, 0, 0, 0 }, // Team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // KeyedConfig
+    {
+        0, 28, 0, 0, 0
+    }, // teams
+    {
+        0, 0, 0, 0, 0
+    }, // Team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // spawn_count
+    {
+        24, 0, 4, 0, 1
+    }, // banner
+    {
+        84, 68, 0, 0, 0
+    }, // hulls
+    {
+        0, 0, 0, 0, 0
+    }, // Hull
+    {
+        0, 0, 0, 0, 0
+    }, // Interceptor
+    {
+        0, 0, 0, 0, 0
+    }, // Gunship
+    {
+        0, 0, 0, 0, 0
+    }, // Freighter
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // health
+    {
+        4, 0, 0, 0, 0
+    }, // mass
+    {
+        8, 20, 0, 0, 0
+    }, // turrets
+    {
+        0, 0, 0, 0, 0
+    }, // Weapon
+    {
+        0, 0, 0, 0, 0
+    }, // Cannon
+    {
+        0, 0, 0, 0, 0
+    }, // Missile
+    {
+        0, 0, 0, 0, 0
+    }, // Mine
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // cooldown
+    {
+        0, 0, 16, 0, 0
+    }, // gunner ?
+    {
+        8, 0, 0, 0, 0
+    }, // gunner
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
+    {
+        288, 0, 0, 0, 0
+    }, // scores
+    {
+        0, 4, 0, 0, 0
+    }, // per_team
+    {
+        0, 0, 0, 0, 0
+    }, // Team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // element
 };
 
 // THE IDENTITY PLAN, coalesced out of 58 leaves by the schema compiler —
@@ -15744,7 +15919,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBodyRetain( TableWriter & w, TableRe
         const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerConfigMeasureBodyRetain( ids, value.gunner, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.header( ref_gunner, 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
+        w.header( ref_gunner, 13 );
+            w.putleb( (uint64_t) body_gunner ); // gunner
         if ( !GunnerConfigSaveBodyRetain( w, ids, value.gunner, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) return false;
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

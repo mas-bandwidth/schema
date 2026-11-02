@@ -1607,7 +1607,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -1732,6 +1732,167 @@ inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_doubl
 `
 }
 
+// declaresForms reports whether any table in the unit carries an explicit
+// `forms` declaration (docs/SPEC-TABLES.md §2.12). Synthesized map entries
+// are never the declaring table. The Go oracle is
+// internal/codegen/gotable/gotable.go's formAllowed.
+func declaresForms(u *ir.Unit) bool {
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.DeclaredForms() {
+			return true
+		}
+	}
+	return false
+}
+
+// formAllowed reports whether the unit's tables let the named form be emitted
+// (docs/SPEC-TABLES.md §2.12), the C++ transcription of
+// internal/codegen/gotable/gotable.go's formAllowed: with no `forms`
+// declaration every form is allowed, and with one only a form some table
+// carries is emitted.
+func formAllowed(u *ir.Unit, form string) bool {
+	if !declaresForms(u) {
+		return true
+	}
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterFormsBlocks restricts the block layout surface to the fixed tables
+// that carry the `block` form (docs/SPEC-TABLES.md §2.12), the C++ mirror of
+// internal/codegen/gotable/gotable.go's filterBlocks. A unit with no
+// declaration is returned unchanged.
+func filterFormsBlocks(b *ir.BlockUnit) *ir.BlockUnit {
+	if b == nil {
+		return nil
+	}
+	restricted := false
+	for _, bl := range b.Tables {
+		if bl.Table != nil && !bl.Table.CarriesForm("block") {
+			restricted = true
+			break
+		}
+	}
+	if !restricted {
+		return b
+	}
+	out := &ir.BlockUnit{
+		Members: map[string]*ir.MemberLayout{},
+		Skipped: maps.Clone(b.Skipped),
+	}
+	var add func(name string)
+	add = func(name string) {
+		if _, done := out.Members[name]; done {
+			return
+		}
+		ml := b.Members[name]
+		if ml == nil {
+			return
+		}
+		out.Members[name] = ml
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for _, bl := range b.Tables {
+		if bl.Table == nil || !bl.Table.CarriesForm("block") {
+			if bl.Table != nil {
+				out.Skipped[bl.Table.Name] = "it omits the block form in its forms declaration"
+			}
+			continue
+		}
+		out.Tables = append(out.Tables, bl)
+		for _, arr := range bl.Arrays {
+			add(arr.ElemName)
+		}
+		for _, fl := range bl.Projection.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && !ir.BlockOutOfLine(fl.Field) {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	out.Order = make([]string, 0, len(out.Members))
+	for name := range out.Members {
+		out.Order = append(out.Order, name)
+	}
+	sort.Strings(out.Order)
+	return out
+}
+
+// cookClosure is every record a cook-carrying table's region can reach
+// (docs/SPEC-TABLES.md §2.12, §7): the union of the closures of the tables
+// that carry the `cook` form. A record reachable only from a table that omits
+// cook gets no cook body, which is what keeps the omitted surface out of the
+// header. The Go oracle is internal/codegen/gotable/cook.go's filtering.
+func cookClosure(u *ir.Unit) map[string]bool {
+	seen := map[string]bool{}
+	seenUnion := map[*ir.Union]bool{}
+	var walk func(name string)
+	var walkUnion func(un *ir.Union)
+	walkUnion = func(un *ir.Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	walk = func(name string) {
+		if seen[name] {
+			return
+		}
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			return
+		}
+		seen[name] = true
+		for _, f := range st.Fields {
+			if f.IsMap() {
+				walk(f.MapEntry.Name)
+				continue
+			}
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	for name, st := range u.Tables {
+		if st == nil || st.IsMapEntry() || !st.CarriesForm("cook") {
+			continue
+		}
+		walk(name)
+	}
+	return seen
+}
+
 // Generate emits <Base>Table.h for every unit file when the unit declares
 // tables, and nothing when it does not — a table-free unit's generated tree
 // is byte-identical with or without this package.
@@ -1777,7 +1938,18 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	// kinds it DECLARES, and the list runtime's own extent term is one more
 	// call site for the width.
 	widen := unitWidenCensus(u, closure, anyList)
-	blocks := ir.Blocks(u)
+	// A table's `forms` declaration narrows the block, cook and text surfaces
+	// (docs/SPEC-TABLES.md §2.12); the fixed, message and view surfaces are
+	// outside the forms vocabulary and stay governed by the generate call.
+	blocks := filterFormsBlocks(ir.Blocks(u))
+	declares := declaresForms(u)
+	if declares && (blocks == nil || len(blocks.Tables) == 0) {
+		// a form no table in the unit carries emits no surface file at all
+		// (docs/SPEC-TABLES.md §2.12), so no <Base>Block.h is written
+		blocks = nil
+	}
+	cooks := cookClosure(u)
+	jsonAllowed := formAllowed(u, "json")
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
 	// <Base>Block.h and <Base>Block.cpp: nothing declares it, every fixed
@@ -1875,15 +2047,23 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			// there is no reason for a fixed-class root's answer to depend on
 			// what its neighbors in the unit happen to be.
 			g.emitRetainRefusals(members)
-			g.emitCookSurface(members)
-			g.emitCookWriteSurface(members)
+			// the cooked form is narrowed to the tables that carry it and the
+			// records they reach (docs/SPEC-TABLES.md §2.12)
+			cookMembers := make([]*ir.Struct, 0, len(members))
+			for _, st := range members {
+				if cooks[st.Name] {
+					cookMembers = append(cookMembers, st)
+				}
+			}
+			g.emitCookSurface(cookMembers)
+			g.emitCookWriteSurface(cookMembers)
 			g.emitRelocatabilityPreamble()
 			for _, st := range members {
 				g.pf("static_assert( __is_trivially_copyable( %s ), \"%s must stay relocatable\" );\n", st.Name, st.Name)
 				g.pf("static_assert( __is_standard_layout( %s ), \"%s must stay standard-layout for offsetof\" );\n", st.Name, st.Name)
 			}
 			g.pf("\n")
-			g.emitCookLayoutAsserts(members)
+			g.emitCookLayoutAsserts(cookMembers)
 			g.emitListAlignAsserts(members)
 			g.pf("// ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----\n\n")
 			for _, st := range members {
@@ -1910,22 +2090,32 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			// they call live in <Base>Table.cpp, so a translation unit that
 			// includes this header for the wire codecs or the descriptors pays
 			// nothing for a form it never calls.
-			g.pf("// ---- the text form (docs/SPEC-TABLES.md §16) ----\n\n")
-			for _, st := range members {
-				g.emitJsonDeclarations(st)
+			if jsonAllowed {
+				g.pf("// ---- the text form (docs/SPEC-TABLES.md §16) ----\n\n")
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						g.emitJsonDeclarations(st)
+					}
+				}
 			}
-			g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
-			// One document edit record for the whole package: every file's
-			// header is includable together and they all share this namespace.
-			editGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM_EDIT"
-			g.pf("#ifndef %s\n#define %s\n", editGuard, editGuard)
-			g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
-			g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
-			g.pf("// replacement spelling, one token of this form.\n")
-			g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
-			g.pf("#endif // %s\n\n", editGuard)
-			for _, st := range members {
-				g.emitTextFormDeclarations(st)
+			// §16.9's hand-editable text form has the JSON declaration gate above
+			// (docs/SPEC-TABLES.md §2.12).
+			if jsonAllowed {
+				g.pf("// ---- the hand-editable text form (docs/SPEC-TABLES.md §16.9) ----\n\n")
+				// One document edit record for the whole package: every file's
+				// header is includable together and they all share this namespace.
+				editGuard := strings.ToUpper(u.Package) + "_SCHEMA_TABLE_TEXTFORM_EDIT"
+				g.pf("#ifndef %s\n#define %s\n", editGuard, editGuard)
+				g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
+				g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
+				g.pf("// replacement spelling, one token of this form.\n")
+				g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
+				g.pf("#endif // %s\n\n", editGuard)
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						g.emitTextFormDeclarations(st)
+					}
+				}
 			}
 		} else {
 			for _, un := range unions {
@@ -2057,7 +2247,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// re-parsed by every translation unit that includes the header. A file
 		// with no table member has nothing to define and emits no file, because
 		// the generic-walk gate requires a walker in every generated .cpp.
-		if len(members) > 0 {
+		if len(members) > 0 && jsonAllowed {
 			var c strings.Builder
 			fmt.Fprintf(&c, "// Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n// SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n// your choice. See the LICENSE exception in the schema compiler; the compiler is\n// AGPL-3.0, its output is not.\n", f.Base)
 			fmt.Fprintf(&c, "// package %s — the TABLE wire's text form (docs/SPEC-TABLES.md §16).\n", u.Package)
@@ -2077,10 +2267,14 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 
 				includes: map[string]bool{}, nativeIncludes: map[string]bool{}, idOrdinal: idOrdinal}
 			for _, st := range members {
-				cg.emitJsonDefinitions(st)
+				if !st.IsTable || st.CarriesForm("json") {
+					cg.emitJsonDefinitions(st)
+				}
 			}
 			for _, st := range members {
-				cg.emitTextFormDefinitions(st)
+				if !st.IsTable || st.CarriesForm("json") {
+					cg.emitTextFormDefinitions(st)
+				}
 			}
 			c.WriteString(cg.body.String())
 			fmt.Fprintf(&c, "} // namespace %s\n", u.Package)

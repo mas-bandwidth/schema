@@ -645,8 +645,11 @@ and canonical saved bytes only after a successful read. A failed read emits a
 save failure (`-1`); the partial value must be discarded. This arm does not
 preflight or compare region extents. In particular, an int32 list count-cap
 refusal stops without inventing the region reader's malformed-data event.
-`--builder` cannot be combined with `--message` or `--retain`. The existing
-region and retention arms retain their measurement and bounds checks.
+`--builder --retain` uses the mutable retaining reader and checks both
+retention counters and canonical saved bytes. `--builder` cannot be combined
+with `--message`. The region profiles retain their measurement and bounds
+checks; native heap readers such as Dart use the builder profile and test
+region sizing separately.
 
 For an instance with a Go writer refusal, the manifest may carry the
 go-refusal=<reason> marker. On that Go wire row the driver writes the

@@ -665,10 +665,10 @@ func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
 		g.pf("    return 1;\n}\n")
 		extent, hasExtent := "NULL", 0
 		if g.hasCookExtent(st) {
-			extent = g.sym(st.Name, "cook_extent")
+			extent = g.sym(st.Name, "extent_pack")
 			hasExtent = 1
 		}
-		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s, %d, %d, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"), ir.CookNodeAlign(g.unit, st), hasExtent, g.sym(st.Name, "cook_body"), extent)
+		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s, %d, %d, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"), ir.CookNodeAlign(g.unit, st), hasExtent, g.sym(st.Name, "body_pack"), extent)
 	}
 }
 
@@ -845,12 +845,22 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 		verb, args, buffer, capacity := "save", ", uint8_t * buffer, int64_t capacity", "buffer", "capacity"
 		if measure {
 			verb, args, buffer, capacity = "measure", "", "NULL", "INT64_MAX"
+		} else if st.Integrity != "" {
+			capacity = "capacity - 4"
 		}
 		g.pf("static SCHEMA_UNUSED int64_t %s(const TableCtx * ctx, const %s * root%s, TableAllocator allocator)\n{\n", g.api(n, verb+"_with_allocator"), n, args)
 		if !measure {
-			g.pf("    if (buffer==NULL || capacity<0) { return -1; }\n")
+			if st.Integrity != "" {
+				g.pf("    if (buffer==NULL || capacity<4) { return -1; }\n")
+			} else {
+				g.pf("    if (buffer==NULL || capacity<0) { return -1; }\n")
+			}
 		}
-		g.pf("    return table_graph_save(ctx,root,&%s,%s,%s,allocator);\n}\n", g.graphType(n), buffer, capacity)
+		if st.Integrity != "" {
+			g.pf("    return schema_table_integrity_seal_(%s,table_graph_save(ctx,root,&%s,%s,%s,allocator));\n}\n", buffer, g.graphType(n), buffer, capacity)
+		} else {
+			g.pf("    return table_graph_save(ctx,root,&%s,%s,%s,allocator);\n}\n", g.graphType(n), buffer, capacity)
+		}
 		callArgs := ""
 		if !measure {
 			callArgs = ",buffer,capacity"
@@ -868,16 +878,24 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	if !g.retain {
 		helper := g.sym(n, "wire_blob_shared")
 		g.pf("static SCHEMA_UNUSED int %s(const uint8_t * wire, int64_t bytes, int64_t total);\n", helper)
-		strictShared = fmt.Sprintf("    if(total>=0 && %s(wire,bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }\n", helper)
+		strictShared = fmt.Sprintf("    if(total>=0 && %s(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }\n", helper)
 	}
 	g.pf("static SCHEMA_UNUSED int64_t %s(const uint8_t * wire, int64_t bytes, int64_t * attribution, TableRefuseReason * reason)\n{\n", g.api(n, "load_measure_ex"))
-	g.pf("    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));\n    if (attribution!=NULL) { *attribution=0; }\n")
+	g.pf("    TableReport report; TableReader reader; int64_t data,records,total,file_bytes=bytes; (void)file_bytes; memset(&report,0,sizeof(report));\n    if (attribution!=NULL) { *attribution=0; }\n")
+	if st.Integrity != "" {
+		g.pf("    if (bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,bytes)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; } return -1; }\n")
+		g.pf("    if (bytes>0 && wire!=NULL && wire[0]==1) { bytes-=4; }\n")
+	}
 	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { if(report.refused && reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; } return -1; }\n")
 	g.pf("    report.reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_LENGTH; total=%s(&reader,&data,&records);\n    if(total<0 && reason!=NULL) { *reason=report.reason; }\n", g.sym(n, "load_layout"))
 	g.pf("%s", strictShared)
 	g.pf("    if(total>=0 && attribution!=NULL) { *attribution=(records+1)*(int64_t)sizeof(TableNodeDirEntry); } return total;\n}\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s(const uint8_t * wire, int64_t bytes)\n{\n", g.api(n, "load_measure"))
 	g.pf("    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));\n")
+	if st.Integrity != "" {
+		g.pf("    if (bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,bytes)) { return -1; }\n")
+		g.pf("    if (bytes>0 && wire!=NULL && wire[0]==1) { bytes-=4; }\n")
+	}
 	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }\n")
 	g.pf("    total=%s(&reader,&data,&records); return total>=0 ? total : -1;\n}\n", g.sym(n, "load_layout"))
 	g.emitCycleRoot(st)
@@ -897,7 +915,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	// One fill procedure serves caller-owned regions and editable arenas. Both
 	// passes use the resident directory; following a reference never decodes it.
 	g.pf("static SCHEMA_UNUSED int %s(TableReader * reader, %s * root, TableNodeMap * nodes, TableNodeDirEntry * directory, TableSink * sink)\n{\n", g.sym(n, "load_graph"), n)
-	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;\n    %s(root);\n", g.api(n, "reset"))
+	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats, missing_before=reader->report->missing_required;\n    %s(root);\n", g.api(n, "reset"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n        directory[k+1].type_id=id; directory[k+1].offset=UINT64_MAX;\n", g.sym(n, "node_lookup"))
 	g.pf("        if (type!=NULL && type->blob && body.size>UINT32_MAX) { reader->report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }\n        if (type!=NULL && type->blob==2 && !table_wire_utf8(body.buffer,body.size)) { reader->report->malformed=1; k++; continue; }\n        if (type==NULL) { unknown++; }\n        else if (sink->region!=NULL) {\n            int64_t at=sink->region->used, size=table_node_wire_storage(type,&body);\n            if(size<0 || size>sink->region->capacity-at) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=(uint64_t)at; sink->region->used+=size;\n        } else {\n            uint32_t at=table_worker_alloc(sink->worker,type->blob ? table_node_wire_storage(type,&body) : type->size);\n            if(at==kTableAllocFailed) { reader->report->malformed=1; return 0; }\n            directory[k+1].offset=at;\n        }\n        k++;\n    }\n")
 	retainedUnknown := ""
@@ -925,7 +943,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		retainedRoot = "retention.path=table_retain_root(root,1);"
 	}
-	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { break; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok=0; if(!nodes->refused) { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=table_align_up64((int64_t)sizeof(*root)); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL; }\n      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */\n      if(nodes->good && !nodes->refused && !table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,%s,%s,%s)) { reader->report->malformed=1; return 0; }\n      return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"), g.sym(n, "cycle_ordinal"), g.sym(n, "cycle_node"), g.sym(n, "cycle_id"))
+	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { break; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok=0; if(!nodes->refused) { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=table_align_up64((int64_t)sizeof(*root)); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL; }\n      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */\n      if(nodes->good && !nodes->refused && !table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,%s,%s,%s)) { reader->report->malformed=1; return 0; }\n      return !nodes->refused && (!nodes->arena || (read_ok && reader->report->missing_required==missing_before)); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"), g.sym(n, "cycle_ordinal"), g.sym(n, "cycle_node"), g.sym(n, "cycle_id"))
 	if g.retain {
 		return
 	}
@@ -943,7 +961,12 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	}
 	g.pf("/* %s is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */\n", g.api(n, "load_tolerant"))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", n, g.api(n, "load_tolerant"))
-	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }\n")
+	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableRegionSink place; TableSink sink; int64_t data,records,total; int malformed_before,reason_before; int32_t non_finite_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; reason_before=report->reason; non_finite_before=report->non_finite_floats; report->malformed=0;\n")
+	if st.Integrity != "" {
+		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->malformed=1; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return NULL; }\n")
+		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1) { wire_bytes-=4; }\n")
+	}
+	g.pf("    if(!table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }\n")
 	g.pf("    total=%s(&reader,&data,&records); report->reason=(TableRefuseReason)reason_before;\n", g.sym(n, "load_layout"))
 	g.pf("    if(total<0) {\n        %sBuilder builder; TableNodeScan scan; TableReader body; uint64_t id; %s * root;\n        if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (kTableAlign-1))==0) { memset(region,0,(size_t)region_bytes); }\n        records=0; scan=table_node_scan_begin(&reader); while(table_node_scan_next(&scan,&id,&body)) { records++; }\n        if(records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || !%s(&builder)) { report->malformed=1; return NULL; }\n        root=%s(&builder); directory=(TableNodeDirEntry *)table_allocate(builder.arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));\n        if(root==NULL || directory==NULL) { table_release(builder.arena.allocator,directory); %s(&builder); report->malformed=1; return NULL; }\n        directory[0].offset=(uint64_t)builder.root_ref.value; directory[0].type_id=UINT64_C(0x%016x);\n        memset(&nodes,0,sizeof(nodes)); nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.arena=1;%s\n        sink.region=NULL; sink.worker=&builder.main;\n        (void)%s(&reader,root,&nodes,directory,&sink);\n        table_release(builder.arena.allocator,directory); table_release(builder.arena.allocator,nodes.blob_named); %s(&builder);\n        if(table_non_finite_refused(report,non_finite_before)) { report->malformed=report->malformed||malformed_before; return NULL; }\n        if(nodes.refused && !report->malformed) { report->refused=1; report->reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->malformed=malformed_before; return NULL; }\n        report->malformed=1; return NULL;\n    }\n", n, n, g.api(n, "builder_init"), g.api(n, "builder_root"), g.api(n, "builder_shutdown"), ir.TableWireId(st.WireName()), blobNamedAllocFallback, g.sym(n, "load_graph"), g.api(n, "builder_shutdown"))
 	g.pf("    if(region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }\n    memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);\n")
@@ -955,7 +978,12 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	g.pf("    if(!%s(&reader,(%s *)(void *)region,&nodes,directory,&sink) || report->malformed) { report->malformed=report->malformed||malformed_before; memset(region,0,(size_t)total); table_release(table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */\n    report->malformed=report->malformed||malformed_before; table_release(table_default_allocator(),nodes.blob_named); return (const %s *)(const void *)region;\n}\n", g.sym(n, "load_graph"), n, n)
 	g.pf("/* %s is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */\n", g.api(n, "load_builder_tolerant"))
 	g.pf("static SCHEMA_UNUSED int %s(%sBuilder * builder, const uint8_t * wire, int64_t wire_bytes, TableReport * report)\n{\n", g.api(n, "load_builder_tolerant"), n)
-	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; %s * root; int ok,malformed_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;\n    if(!table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }\n", n)
+	g.pf("    TableReport ignored; TableReader reader; TableNodeMap nodes; TableNodeDirEntry * directory; TableSink sink; TableNodeScan scan; TableReader body; uint64_t id; int64_t records=0; %s * root; int ok,malformed_before;\n    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;\n", n)
+	if st.Integrity != "" {
+		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1 && !schema_table_integrity_holds_(wire,wire_bytes)) { report->malformed=1; report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
+		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1) { wire_bytes-=4; }\n")
+	}
+	g.pf("    if(!table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }\n")
 	g.pf("    scan=table_node_scan_begin(&reader); while(table_node_scan_next(&scan,&id,&body)) { records++; }\n    if(records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1) { report->malformed=1; return 0; }\n")
 	g.pf("    root=%s(builder); if(root==NULL) { report->malformed=1; return 0; }\n", g.api(n, "builder_root"))
 	g.pf("    directory=(TableNodeDirEntry *)table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));\n    if(directory==NULL) { report->malformed=1; return 0; }\n    directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x%016x);\n", ir.TableWireId(st.WireName()))

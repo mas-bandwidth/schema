@@ -19,7 +19,7 @@ func variableStruct(st *ir.Struct) *ir.Struct {
 			continue
 		}
 		one := *f
-		one.Type = ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry}
+		one.Type = ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry, Optional: f.Type.Optional}
 		one.Array = ir.ArrayList
 		copy.Fields[i] = &one
 	}
@@ -50,12 +50,14 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "    static List<%s> order_%s(List<%s> entries) {\n", entry, m, entry)
 		fmt.Fprintf(b, "        java.util.TreeMap<%s,%s> ordered = new java.util.TreeMap<>(%sVariable::compare_%s);\n", entry, entry, st.Name, m)
 		fmt.Fprintf(b, "        for (%s entry : entries) ordered.put(entry,entry);\n        return new ArrayList<>(ordered.values());\n    }\n", entry)
-		fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
-		writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
-		b.WriteString("    }\n")
-		fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v) {\n", m, entry)
-		readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
-		b.WriteString("    }\n")
+		if unitCarriesForm(u, "json") {
+			fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
+			writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
+			b.WriteString("    }\n")
+			fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v) {\n", m, entry)
+			readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
+			b.WriteString("    }\n")
+		}
 
 		rawKey := *key
 		rawKey.HasIntRange = false
@@ -127,7 +129,11 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear();\n", m)
 	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
-		fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
+		if key.Type.TextUnbounded() {
+			b.WriteString("                    entry.key=mapKey;\n")
+		} else {
+			fmt.Fprintf(b, "                    entry.key=mapKey; if(mapKey.getBytes(StandardCharsets.UTF_8).length>%d){accepted=false;in.rep.clamped++;}\n", key.Type.Size)
+		}
 	} else {
 		// A key is parsed at arbitrary precision before narrowing: unsigned 64-bit
 		// magnitudes must never pass through signed-long range checks (§16.1).
@@ -182,7 +188,7 @@ func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	// retain_lost when its path names no body.
 	fmt.Fprintf(b, "                    if(keyReport.widened>0&&!keyWidened){report.widened++;keyWidened=true;}if(keyReport.kindMismatch>0){report.kindMismatch++;v.%s.clear();break;}if(keyReport.malformed||kr.fail||kr.off!=kr.limit){report.malformed=true;break;}\n", m)
 	key := ir.MapKeyField(f)
-	if key.Type.Kind == ir.TString {
+	if key.Type.Kind == ir.TString && !key.Type.TextUnbounded() {
 		fmt.Fprintf(b, "                    if(keyValue.key.getBytes(StandardCharsets.UTF_8).length>%d){report.clamped++;continue;}\n", key.Type.Size)
 	}
 	fmt.Fprintf(b, "                    int order=v.%s.isEmpty()?-1:"+st.Name+"Variable.compare_%s(v.%s.get(v.%s.size()-1),keyValue);if(order>0){report.malformed=true;break;} %s decoded=new %s();int priorWidened=report.widened;\n", m, m, m, m, entry, entry)

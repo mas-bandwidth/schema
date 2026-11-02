@@ -1,0 +1,24 @@
+package probe
+enum Slot { A, B }
+table Leaf { values []int32 }
+table Rows { values []Leaf }
+union Choice {
+ Empty
+ child Leaf
+ list Rows
+ scalar int32
+ pointer *Leaf
+ blob *bytes
+ entries MapRoot
+}
+union Nested { arm Choice }
+table MapRoot { entries map[int32]Leaf }
+table OptionalMapRoot { entries ?map[int32]?Leaf }
+table KeyedRoot { values [Slot]Leaf }
+table UnionRoot { value Choice }
+table UnionListRoot { values []Choice }
+table BoundedUnionRoot { values [..3]Choice }
+table NestedRoot { value Nested }
+table BoundedLeaf { values [..1]Leaf }
+table Holder { nested MapRoot
+ pointer *MapRoot }

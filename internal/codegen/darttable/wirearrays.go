@@ -105,6 +105,9 @@ func (g *wireGen) emitSaveFixed(f *ir.Field, expr, ind string, id uint64) {
 	case ek != wireKindTable:
 		open = fmt.Sprintf("if (%s.any((e) => e != %s)) {", expr, g.elemDefault(f))
 	}
+	if f.Required {
+		open = "{"
+	}
 	g.pf("%s%s\n", ind, open)
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
@@ -156,7 +159,7 @@ func (g *wireGen) emitSaveKeyed(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s\t\tbody.putBytes(eb.buf);\n", ind)
 	g.pf("%s\t\tpairs++;\n", ind)
 	g.pf("%s\t}\n", ind)
-	g.pf("%s\tif (pairs == 0) {\n", ind)
+	g.pf("%s\tif (%v && pairs == 0) {\n", ind, !f.Required)
 	g.pf("%s\t\tw.state.rollback(mark);\n", ind)
 	g.pf("%s\t} else {\n", ind)
 	g.pf("%s\t\tfinal inner = w.sub();\n", ind)

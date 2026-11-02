@@ -117,7 +117,7 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 	// field's own presence on the wire (wirewide.go).
 	if f.Type.Optional {
 		base := nonOptional(f)
-		if base.IsMap() || unionRef(base) != nil || base.KeyEnum != "" || base.Type.Blob() || base.Type.Pointer {
+		if unionRef(base) != nil || base.KeyEnum != "" || base.Type.Blob() || base.Type.Pointer {
 			return false
 		}
 		return cardWireFieldSeen(base, seen)
@@ -459,6 +459,9 @@ func dartListElemType(f *ir.Field) string {
 // from (§4): every kind below it on its own signed (2..5) or unsigned (6..9)
 // ladder, each with its payload width. The declaration's own kind is not here.
 func widenKinds(declKind int, signed bool) []struct{ k, w int } {
+	if declKind == ir.TableKindTimestamp {
+		return nil
+	} // timestamp has no widening ladder
 	lo := wireKindI8
 	if !signed {
 		lo = wireKindU8
@@ -543,6 +546,9 @@ func (g *wireGen) emitConstants() {
 // table of the unit. It invents no contract of its own: the byte framing below
 // is §3's, read down to the card's closure.
 func (g *wireGen) emitRuntime() {
+	g.pf("%s", integrityRuntime(g.unit))
+	g.pf("%s", requiredWireRuntime)
+	g.pf("%s", textListWireRuntime)
 	g.pf("%s", `// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -552,10 +558,15 @@ final class TableWireReport {
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
+  int blobShared = 0;
   bool malformed = false;
+  bool integrityMismatch = false;
   bool refused = false;
   bool _countRefused = false;
+  int missingRequired = 0;
+  String missingFields = '';
   int retained = 0;
   int retainLost = 0;
 
@@ -582,7 +593,9 @@ final class TableWireReport {
   // adding a malformed event. Earlier report events remain available.
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
+    if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
+    if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
@@ -599,6 +612,37 @@ final class _TableWireCountRefusal implements Exception {
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
 final class WireState {
+  // Immutable strings may be canonicalized. Metadata belongs weakly to
+  // decoded owners; node tokens carry no payload or input-buffer references.
+  static final Expando<Map<String, ({String value, Object token})>> _stringBlobOrigins =
+      Expando<Map<String, ({String value, Object token})>>();
+
+  static String? _getStringBlob(Object owner, String field) =>
+      _stringBlobOrigins[owner]?[field]?.value;
+
+  static void _setStringBlob(Object owner, String field, String? value) {
+    if (value == null) {
+      _stringBlobOrigins[owner]?.remove(field);
+      return;
+    }
+    final slots = _stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    // An explicit assignment owns this slot, even for a canonical String
+    // identical to its prior value. Decoders install incoming tokens directly.
+    slots[field] = (value: value, token: Object());
+  }
+
+  static Object _blobIdentity(Object blob, Object? owner, String? field) {
+    if (blob is String && owner != null && field != null) {
+      final slots = _stringBlobOrigins[owner];
+      final origin = slots?[field];
+      if (origin != null) {
+        if (identical(origin.value, blob)) return origin.token;
+        slots!.remove(field);
+      }
+    }
+    return blob;
+  }
+
   final Map<int, int> refs = <int, int>{};
   final List<int> ids = <int>[];
   final List<int> nodeTypes = <int>[];
@@ -657,15 +701,17 @@ final class WireState {
 
   // noteBlob numbers one *bytes/*string blob node (§3.1): record k = node
   // index k + 1, keyed by the blob's IDENTITY — the String or byte list the
-  // field holds — never by its content and never per slot (§2.5, §3.1). A
+  // field holds, or a decoded String slot's incoming node token (§2.5, §3.1). A
   // blob reached twice is one record, because two fields that loaded the same
   // node hold the same object; two distinct blobs carrying equal bytes are two
   // records, as the reference numbers them by pointer
   // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
-  // ids — the node-table write does, in record order (§3). On the web a
-  // String is a value, so two equal strings there are one blob.
-  int noteBlob(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  // ids — the node-table write does, in record order (§3). Authored String
+  // fields own one node per slot; their setters distinguish explicit
+  // reassignment from multiple slots resolving one incoming node.
+  int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
+    final identity = _blobIdentity(blob, owner, field);
+    final found = _blobIndex[identity];
     if (found != null) {
       if (refuseSharedBlob) {
         throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
@@ -676,14 +722,14 @@ final class WireState {
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
     final idx = nodes.length + 1;
-    _blobIndex[blob] = idx;
+    _blobIndex[identity] = idx;
     return idx;
   }
 
   int nodeIndexForBlob(int typeId, Object blob) => noteBlob(typeId, blob);
 
-  int blobIndex(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  int blobIndex(int typeId, Object blob, [Object? owner, String? field]) {
+    final found = _blobIndex[_blobIdentity(blob, owner, field)];
     if (found == null) {
       throw StateError('blob was not numbered (docs/SPEC-TABLES.md §3.1)');
     }
@@ -907,7 +953,7 @@ final class _ExtentScan {
         if (!union(r, f.uni)) return false;
         continue;
       }
-      if (kind != 13 && kind != 14 && kind != 16) {
+      if (kind != 13 && kind != 14 && kind != 16 && !(kind == 12 && f.mode == 3)) {
         if (!r.skipKind(kind)) return true;
         continue;
       }
@@ -918,9 +964,12 @@ final class _ExtentScan {
     }
   }
 
+  bool text(int n){if(n==0)return true;if(n>0xffffffff)return false;at=(at+7)&-8;at+=_round(9+n);return true;}
+
   // field is extentScan.field over the payload [start, end).
   bool field(TableWireReader p, _MF f, int start, int end) {
     if (f.mode == 0) return true;
+    if (f.mode == 3) return text(end-start);
     final r = TableWireReader.sub(p, start, end);
     if (f.mode == 2) return record(r, f.child);
     if (!r.has(2)) return true;
@@ -934,7 +983,7 @@ final class _ExtentScan {
       at = (at + f.align - 1) & -f.align;
       at += count * f.size;
     }
-    if (kind != 13 && kind != 15) return true;
+    if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
     // a count above 2^63 reads negative here; Go's loop runs on to the end of
     // the body, as this one does
     for (var i = 0; (count < 0 || i < count) && r.has(1); i++) {
@@ -945,7 +994,8 @@ final class _ExtentScan {
       }
       final b = _body(r);
       if (b == null) return true;
-      if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
+      if(f.mode==4){if(!text(b.$2-b.$1))return false;}
+      else if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
     }
     return true;
   }
@@ -998,7 +1048,7 @@ bool _lebValid(Uint8List d, int off, int len) {
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
-  if (len <= bound) return len;
+  if (bound < 0 || len <= bound) return len;
   var cut = bound;
   while (cut > 0 && (d[off + cut] & 0xC0) == 0x80) {
     cut--;
@@ -1017,6 +1067,8 @@ final class TableWireReader {
   final List<Uint8List> nodes;
   final Set<int> knownTypes;
   final List<Object?> decoded;
+  final Map<int, Object> stringBlobTokens;
+  final Set<int> namedBlobs;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -1041,6 +1093,8 @@ final class TableWireReader {
       nodes = <Uint8List>[],
       knownTypes = <int>{},
       decoded = <Object?>[],
+      stringBlobTokens = <int, Object>{},
+      namedBlobs = <int>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
@@ -1057,6 +1111,8 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -1081,6 +1137,8 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -1317,27 +1375,42 @@ final class TableWireReader {
   // A blob record resolves to ONE object however many slots name it (§3.1):
   // the first resolve stores it in decoded, so a save numbers it once again
   // by identity and two distinct records of equal bytes stay two.
-  String? resolveString(int idx) {
+  String? resolveString(int idx, Object owner, String field) {
     final rec = idx - 2;
-    if (rec >= 0 && rec < decoded.length) {
-      final have = decoded[rec];
-      if (have is String) return have;
+    String? value;
+    if (rec >= 0 && rec < decoded.length && decoded[rec] is String) {
+      value = decoded[rec] as String;
+    } else {
+      final b = resolveBlob(idx, _kStringBlobId, stringBlob);
+      if (b != null) {
+        value = utf8.decode(b);
+        decoded[rec] = value;
+      }
     }
-    final b = resolveBlob(idx, _kStringBlobId, stringBlob);
-    if (b == null) return null;
-    final s = utf8.decode(b);
-    decoded[rec] = s;
-    return s;
+    if (value == null) {
+      WireState._stringBlobOrigins[owner]?.remove(field);
+      return null;
+    }
+    if (!namedBlobs.add(idx)) report.blobShared++;
+    final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
+    return value;
   }
 
   Uint8List? resolveBytes(int idx) {
     final rec = idx - 2;
     if (rec >= 0 && rec < decoded.length) {
       final have = decoded[rec];
-      if (have is Uint8List) return have;
+      if (have is Uint8List) {
+        if (!namedBlobs.add(idx)) report.blobShared++;
+        return have;
+      }
     }
     final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
-    if (b != null) decoded[rec] = b;
+    if (b != null) {
+      decoded[rec] = b;
+      if (!namedBlobs.add(idx)) report.blobShared++;
+    }
     return b;
   }
 
@@ -1900,11 +1973,23 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	expr := "v." + name
 	id := fieldId(f)
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
+	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
+	if f.Type.TextUnbounded() {
+		guard := ""
+		if f.Type.Optional {
+			guard = "v." + hasMember(f) + " && "
+		}
+		g.pf("%sif(%s!tableTextValueValid(%s,-1))throw StateError('invalid_value: unbounded text');\n", ind, guard, expr)
+		g.pf("%sif(%stableTextByteLength(%s)>0xffffffff)throw StateError('blob_over_size_cap');\n", ind, guard, expr)
+	}
 	switch {
+	case ir.TextListPlain(f):
+		g.emitSavePlainTextList(f, expr, ind, id)
 	case f.Type.Optional: // presence is the payload (§2.3, wirewide.go)
-		g.emitSaveOptional(f, expr, ind, id)
+		g.emitSaveOptional(f, expr, ind, id, ordinal)
 	case f.IsMap(): // a map rides as kind 14 over its entry bodies (§2.8)
-		g.emitSaveMap(f, expr, ind, id, ordinal)
+		g.emitSaveMap(f, expr, ind, id, ordinal, f.Required)
 	case isUnionField(f): // a union rides as kind 15 and its arm header (§2.6, §3)
 		g.emitSaveUnionField(f, expr, ind, id)
 	case isKeyed(f): // [E]T rides as kind 16 (§2.4, §3.2)
@@ -1912,20 +1997,20 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	case isFixedArray(f): // [N]T rides as kind 14, every element (§3)
 		g.emitSaveFixed(f, expr, ind, id)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
-		g.pf("%sif (%s != null) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != null"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\tw.putLeb(w.state.blobIndex(_kStringBlobId, %s!));\n", ind, expr)
+			g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.blobIndex(_kStringBlobId, %s!, %s));\n", ind, expr, expr, stringBlobSlot(expr))
 		} else {
-			g.pf("%s\tw.putLeb(w.state.blobIndex(_kBytesBlobId, %s!));\n", ind, expr)
+			g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.blobIndex(_kBytesBlobId, %s!));\n", ind, expr, expr)
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
-		g.pf("%sif (%s != null) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != null"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
-		g.pf("%s\tw.putLeb(w.state.indexOf(%s!));\n", ind, expr)
+		g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.indexOf(%s!));\n", ind, expr, expr)
 		g.pf("%s}\n", ind)
 	case isByValueTable(f):
 		g.emitSaveByValue(f, expr, ind, id)
@@ -1944,14 +2029,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		// WIDE TEXT TAKES NO SPECIFIED DEFAULT, so the empty value elides; L is
 		// a BYTE length, twice the code-unit count, and each UTF-16 unit rides
 		// little-endian (§3, kind 33)
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindWString)
 		g.pf("%s\tw.putLeb(%s.length * 2);\n", ind, expr)
 		g.pf("%s\tfor (final u in %s.codeUnits) { w.putU16(u); }\n", ind, expr)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.stringDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindString)
 		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
@@ -1962,7 +2047,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		// §5: a declared bytes default is storage, not a field occurrence.
 		// Comparing with emptiness would write the default into an otherwise
 		// empty body and change the Go oracle's canonical wire.
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.stringDefault(f)))
 		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 		g.pf("%s\tfinal b = latin1.encode(%s);\n", ind, expr)
 		g.pf("%s\tfinal s = w.sub();\n", ind)
@@ -1977,7 +2062,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	case isWide(f): // kinds 18-29, the raw integer at its width (§3, §15)
 		g.emitSaveWide(f, expr, ind, id)
 	case f.Type.Kind == ir.TBool:
-		g.pf("%sif (%s != %v) {\n", ind, expr, f.HasDefault && f.DefBool)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, fmt.Sprintf("%s != %v", expr, f.HasDefault && f.DefBool)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindBool)
 		g.pf("%s\tw.putByte(%s ? 1 : 0);\n", ind, expr)
@@ -1996,7 +2081,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		case 4:
 			put = "putU32"
 		}
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.intDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.intDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s);\n", ind, put, expr)
@@ -2013,14 +2098,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			bits = "_f32Write"
 			put = "putU32"
 		}
-		g.pf("%sif (%s) {\n", ind, wireFloatRides(f, expr, g.floatDefault(f)))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, wireFloatRides(f, expr, g.floatDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, expr, g.floatOwner(f))
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.enumDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.enumDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindEnum)
 		// The value is the variant's id reference; the zero variant (None) has
@@ -2052,7 +2137,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal b = w.sub();\n", ind)
 	g.pf("%s\t%sWireSaveBody(b, %s);\n", ind, dartName(ref.Name), expr)
-	g.pf("%s\tif (b.buf.length <= 1) {\n", ind)
+	g.pf("%s\tif (%v && b.buf.length <= 1) {\n", ind, !f.Required)
 	g.pf("%s\t\tw.state.rollback(mark);\n", ind)
 	g.pf("%s\t} else {\n", ind)
 	g.pf("%s\t\tw.putLeb(ref);\n", ind)
@@ -2067,7 +2152,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2087,7 +2172,7 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2113,7 +2198,7 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
@@ -2187,6 +2272,9 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 		g.pf("\t}\n}\n\n")
 	}
 	g.pf("void %s(TableWireReader r, %s v, bool nested) {\n", fn, n)
+	if hasRequired(st) {
+		g.pf("\tfinal requiredSeen = Uint8List(%d);\n", len(st.Fields))
+	}
 	// A BY-VALUE BODY IS THE SAME STORAGE across occurrences and is RESET when
 	// its id comes round again (internal/tablewire field, Refill): the last
 	// occurrence wins whole, so a field only the earlier one carried does not
@@ -2199,7 +2287,13 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null) { r.report.malformed = true; return; }\n")
-	g.pf("\t\tif (ref == 0) return;\n")
+	if hasRequired(st) {
+		g.pf("\t\tif (ref == 0) {\n")
+		g.emitRequiredCheck(st, true, "\t\t\t")
+		g.pf("\t\t\treturn;\n\t\t}\n")
+	} else {
+		g.pf("\t\tif (ref == 0) return;\n")
+	}
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
 	g.pf("\t\tif (id == null) { r.report.malformed = true; return; }\n")
 	g.pf("\t\tif (!r.has(1)) { r.report.malformed = true; return; }\n")
@@ -2247,7 +2341,7 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t\t\t\t\t\tif (r.retain!.used + rec.cost() > r.retain!.capacity) {\n")
 	g.pf("\t\t\t\t\t\t\t\tr.report.retainLost++;\n")
 	g.pf("\t\t\t\t\t\t\t} else {\n")
-	g.pf("\t\t\t\t\t\t\t\tr.retain!.records.add(rec);\n")
+	g.pf("\t\t\t\t\t\t\t\tr.retain!.add(rec);\n")
 	g.pf("\t\t\t\t\t\t\t\tr.retain!.used += rec.cost();\n")
 	g.pf("\t\t\t\t\t\t\t\tr.report.retained++;\n")
 	g.pf("\t\t\t\t\t\t\t}\n")
@@ -2264,6 +2358,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
+	if f.Required {
+		g.pf("%s\tif (%s) requiredSeen[%d] = 1;\n", ind, requiredKindCondition(f), ordinal)
+	}
 	if f.Type.Optional {
 		// the field rode, so the optional is PRESENT (§2.3, §4); its value
 		// reads exactly as the bare field's does, and an occurrence under a
@@ -2281,7 +2378,15 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		had := hadName(f)
 		// an occurrence under a kind the field does not take leaves the field
 		// standing, so it comes back to the presence it had (§4)
-		caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = "+had+";")
+		if f.IsMap() {
+			// Only outer/element-kind mismatch suppresses map presence (§2.8).
+			// An incompatible entry key is an in-body event; the map rode.
+			for _, suffix := range []string{" if (!r.skipKind(kind))", " r.pos = end;"} {
+				caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;"+suffix, "r.report.kindMismatch++; v."+has+" = "+had+";"+suffix)
+			}
+		} else {
+			caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = "+had+";")
+		}
 		rest := g.body.String()[:start]
 		g.body.Reset()
 		g.body.WriteString(rest)
@@ -2312,7 +2417,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (idx == null) { r.report.malformed = true; return; }\n", ind)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\t\tv.%s = r.resolveString(idx);\n", ind, name)
+			g.pf("%s\t\tr.resolveString(idx, v, %q);\n", ind, name)
 		} else {
 			g.pf("%s\t\tv.%s = r.resolveBytes(idx);\n", ind, name)
 		}
@@ -2342,6 +2447,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
+		if f.IsTextList() {
+			g.pf("%s\tfinal beforeTextClamp%d=r.report.clamped;\n", ind, ordinal)
+		}
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
@@ -2388,6 +2496,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// The body spans from after the header to its own end; a header that
 		// ran past that end covers no elements (arrayBody's subTo; \u00a73, \u00a74).
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
+		if f.IsTextList() && f.TextTotal > 0 {
+			g.pf("%s\t\tvar textSpent=0;\n", ind)
+		}
 		g.pf("%s\t\tfor (var i = 0; i < %s; i++) {\n", ind, loop)
 		switch listElementKind(f) {
 		case wireKindUnion:
@@ -2405,6 +2516,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\t%s(sub, e, true);\n", ind, dartName(f.Type.Name)+"WireLoadBody")
 			g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, f.Type.Name)
 			g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
+			if f.IsTextList() {
+				length := "tableTextByteLength(e.value)"
+				if ir.TextListOptional(f) {
+					length = "(e.hasValue ? " + length + " : 0)"
+				}
+				g.emitTextTotalKeep(f, length, ind+"\t\t\t")
+			}
 			g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
 		case wireKindPtr:
 			ref := tableRef(f)
@@ -2417,6 +2535,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
+		if f.IsTextList() {
+			g.pf("%s\tif(r.report.clamped!=beforeTextClamp%d&&r.report.clampedField.isEmpty)r.report.clampedField=%q;\n", ind, ordinal, f.TextListElem().MapEntryOf)
+		}
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TWString:
 		// kind 33 (§3): an odd L is framing damage, ill-formed UTF-16 (a lone
@@ -2446,7 +2567,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.malformed = true; v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
-		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, f.Type.Size)
+		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, textBound(f))
 		g.pf("%s\t\tif (keep != len) r.report.clamped++;\n", ind)
 		g.pf("%s\t\tv.%s = utf8.decode(r.data.sublist(r.pos, r.pos + keep));\n", ind, name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
@@ -2652,7 +2773,15 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\tfinal elen = %s.readLeb();\n", ind, arr)
 		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { r.report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.malformed = true; %s.pos += elen; break; }\n", ind, arr, arr, arr)
-		g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
+		if f.IsTextList() {
+			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, textBound(ir.TextListValue(f)))
+			g.pf("%s\t\t\tif(kept!=elen){r.report.clamped++;if(r.report.clampedField.isEmpty)r.report.clampedField=%q;}\n", ind, f.TextListElem().MapEntryOf)
+			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));\n", ind, f.Type.Name, arr, arr, arr)
+			g.emitTextTotalKeep(f, "kept", ind+"\t\t\t")
+			g.pf("%s\t\t\t%s.add(e);\n", ind, dest)
+		} else {
+			g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
+		}
 		g.pf("%s\t\t\t%s.pos += elen;\n", ind, arr)
 	case wireKindEnum:
 		e := enumRef(f)
@@ -2668,7 +2797,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 			vid := ir.TableWireId(e.VariantWireName(i))
 			g.pf("%s\t\t\t\tcase %s: %s.add(%s);\n", ind, dartU64Literal(vid), dest, g.enumConst(e, i+1))
 		}
-		g.pf("%s\t\t\t\tdefault: %s.add(%s); r.report.unknown++;\n", ind, dest, g.enumConst(e, 0))
+		g.pf("%s\t\t\t\tdefault: %s.add(%s); r.report.unknown++; if (r.retain != null) r.report.retainLost++;\n", ind, dest, g.enumConst(e, 0))
 		g.pf("%s\t\t\t}\n", ind)
 		g.pf("%s\t\t\t}\n", ind)
 	case wireKindBool:
@@ -2856,7 +2985,7 @@ func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	case f.Type.Blob() && f.Array == ir.ArrayNone:
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\ts.noteBlob(_kStringBlobId, %s!);\n", ind, expr)
+			g.pf("%s\ts.noteBlob(_kStringBlobId, %s!, %s);\n", ind, expr, stringBlobSlot(expr))
 		} else {
 			g.pf("%s\ts.noteBlob(_kBytesBlobId, %s!);\n", ind, expr)
 		}
@@ -3024,7 +3153,11 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
-	g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	if st.Integrity != "" {
+		g.pf("\treturn tableIntegritySeal(w.buf);\n")
+	} else {
+		g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	}
 	g.pf("}\n\n")
 }
 
@@ -3037,16 +3170,18 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	fn := dartName(n) + "WireLoad"
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
+	g.pf("\treport ??= TableWireReport();\n\tif (report.integrityMismatch) report.malformed = false;\n\treport.integrityMismatch = false;\n")
+	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.path = [1];\n")
 	g.emitKnownTypes(st, "r", "v")
-	g.pf("\tif (report != null) r.report = report;\n")
+	g.pf("\tr.report = report;\n")
 	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
 	// tableOpen clears its NonFiniteFloat
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	// verdict 3 is framing damage on the root body, not the file's: the body
@@ -3059,13 +3194,14 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	}
 	g.pf("\t\tr.pos = 1;\n")
 	g.pf("\t\t%s(r, v, false);\n", dartName(n)+"WireLoadBody")
+	g.pf("\t} on _TableMissingRequired {\n\t\treturn %s();\n", n)
 	g.pf("\t} on _TableWireCountRefusal {\n")
 	g.pf("\t\tr.report.refused = true;\n\t\tr.report._countRefused = true;\n")
 	g.pf("\t\treturn %s();\n\t}\n", n)
 	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
 	// any damage the walk met (docs/SPEC-TABLES.md §3.3): nothing lands, and
 	// the caller holds the type's defaults.
-	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) return %s();\n", n)
+	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return %s();\n", n)
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load
 	// is refused, and the caller holds the type's defaults.
 	g.pf("\t_collectNodeEdges(r);\n")
@@ -3155,9 +3291,14 @@ func (g *wireGen) measureSpec(root *ir.Struct) measureSpec {
 			single = f.Array == ir.ArrayNone && !f.Type.Pointer
 		}
 		switch {
+		case f.Type.TextUnbounded():
+			mode = 3
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 		case f.IsMap() || f.IsList() || f.Array != ir.ArrayNone || f.KeyEnum != "":
 			mode = 1
+			if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+				mode = 4
+			}
 			elemKind = ir.TableWireElemKind(f)
 			if f.IsMap() {
 				elemKind = ir.TableKindTable
@@ -3239,6 +3380,9 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireMeasure"
 	g.pf("int %s(Uint8List data) {\n", fn)
+	if st.Integrity != "" {
+		g.pf("\tif (data.isNotEmpty && data[0] == 1) {\n\t\tif (!tableIntegrityValid(data, data.length, 5)) return -1;\n\t\tdata = Uint8List.sublistView(data, 0, data.length - 4);\n\t}\n")
+	}
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	// The reference FileRegionMeasure reads the id table from the trailer
 	// (internal/tablewire/extent.go, decode.go trailer) and does NOT walk the
@@ -3371,4 +3515,13 @@ func nonOptionalOf(f *ir.Field) *ir.Field {
 func seenName(f *ir.Field) string {
 	m := fieldMember(f)
 	return "seen" + strings.ToUpper(m[:1]) + m[1:]
+}
+
+// stringBlobSlot identifies a generated field or union arm's owning object.
+func stringBlobSlot(expr string) string {
+	i := lastDot(expr)
+	if i < 1 || i == len(expr)-1 {
+		panic(fmt.Sprintf("darttable: string blob requires an owning field expression, got %q", expr))
+	}
+	return fmt.Sprintf("%s, %q", expr[:i], expr[i+1:])
 }

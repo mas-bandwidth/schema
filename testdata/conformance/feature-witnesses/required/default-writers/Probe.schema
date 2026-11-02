@@ -1,0 +1,25 @@
+package probe
+enum Choice { A, B }
+table Leaf { x int32 }
+table Empty {}
+union U { Empty
+Data Leaf }
+table All {
+ b bool | required
+ i int32 | required
+ f float32 | required
+ s string(8) | required
+ w wstring(8) | required
+ buf bytes(8) | required
+ choice Choice | required
+ u U | required
+ ptr *Leaf | required
+ text *string | required
+ blob *bytes | required
+ leaf Leaf | required
+ list []int32 | required
+ slots [2]int32 | required
+ tags map[uint8]int32 | required
+ keyed [Choice]int32 | required
+}
+table RequiredEmpty { child Empty | required }

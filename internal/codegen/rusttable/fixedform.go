@@ -1211,7 +1211,12 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// and the body at 16 — then the layout behind its u32 length, then the\n")
 	g.pf("/// records back to back to the end of it (§3.4).\n")
 	g.pf("pub const fn %s_fixed_measure(count: usize) -> usize {\n", name)
-	g.pf("    TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
+	if st.Integrity == "crc32c" {
+		g.pf("    4 + ")
+	} else {
+		g.pf("    ")
+	}
+	g.pf("TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
 
 	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	g.pf("/// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or\n")
@@ -1242,6 +1247,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        body.fill(0); // the template's zeros, and every byte of declared slack with them\n")
 	g.pf("        %s(body, value);\n", fn(st.Name, "fixed_write_body"))
 	g.pf("        at += %s_FIXED_RECORD_BYTES;\n    }\n", up)
+	if st.Integrity == "crc32c" {
+		g.pf("    let sum = table_integrity_checksum(&buffer[..at]);\n    buffer[at..at + 4].copy_from_slice(&sum.to_le_bytes());\n")
+	}
 	g.pf("    Some(need)\n}\n\n")
 
 	g.pf("/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when\n")
@@ -1302,6 +1310,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            _ => TableFixedReason::NewerForm,         // a byte no form defines\n")
 	g.pf("        });\n")
 	g.pf("    }\n")
+	if st.Integrity == "crc32c" {
+		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.malformed = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
+	}
 	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
 	g.pf("    if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {\n        report.malformed = true;\n        return None;\n    }\n")

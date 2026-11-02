@@ -1,0 +1,5 @@
+{}
+{"names":["a","é",""],"maybe":["x",null,""],"loose":["u",""],"bounded":[null,"v",""]}
+{"names":["123456789","ééééé","z","tail","tail2"],"maybe":[null,"123456789"]}
+{"names":["a",42,null],"maybe":[false,{},[]]}
+{"names":["x\u0000y"]}

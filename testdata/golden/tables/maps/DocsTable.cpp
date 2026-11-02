@@ -4513,7 +4513,12 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
 inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
-    if ( graph == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    if ( graph == NULL )
+    {
+        in.report->malformed = true;
+        in.bad = true;
+        return false;
+    }
     if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
     if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
     in.pos++;

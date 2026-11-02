@@ -37,7 +37,7 @@ func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]boo
 		}
 	}
 	for _, f := range fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -362,6 +362,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
       {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
     catch
       :invalid -> {:error, :invalid_value}
+      :invalid_value -> {:error, :invalid_value}
     end
   end
 
@@ -372,14 +373,21 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # (docs/SPEC-TABLES.md §2.5, §3.1), so two slots holding equal bytes are two
   # nodes and the record writer finds each slot's own node by its mark.
   defp cook_collect(desc, value, acc) when is_map(value) do
-    Enum.reduce(desc.fields, {value, acc}, fn f, {value, acc} ->
-      case Map.fetch(value, f.name) do
-        {:ok, v} ->
-          {v, acc} = cook_collect_field(f, v, acc)
-          {Map.put(value, f.name, v), acc}
+    validate_record(desc, value)
 
-        :error ->
-          {value, acc}
+    Enum.reduce(desc.fields, {value, acc}, fn f, {value, acc} ->
+      if field_active?(f, desc, value) do
+        case Map.fetch(value, f.name) do
+          {:ok, v} ->
+            {v, acc} = cook_collect_field(f, v, acc)
+            {Map.put(value, f.name, v), acc}
+
+          :error ->
+            {v, acc} = cook_collect_field(f, f.default, acc)
+            {Map.put(value, f.name, v), acc}
+        end
+      else
+        {value, acc}
       end
     end)
   end
@@ -437,6 +445,13 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   end
 
   defp cook_collect_field(%{t: :union, elem: union}, v, acc), do: cook_collect_arm(union, v, acc)
+
+  # Declared ranges constrain live values. Physical storage behind an
+  # inactive guard is still copied, just as it is without Required (§2.3).
+  defp cook_collect_field(%{t: :int} = f, v, acc) do
+    if Map.has_key?(f, :min) and (v < f.min or v > f.max), do: throw(:invalid)
+    {v, acc}
+  end
 
   defp cook_collect_field(_, v, acc), do: {v, acc}
 
@@ -530,9 +545,45 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_walk_record(desc, value, rec, ctx) do
     if desc.has_extent do
-      Enum.reduce(desc.fields, ctx, fn f, ctx -> cook_walk_field(f, value, rec, ctx) end)
+      Enum.reduce(desc.fields, ctx, fn f, ctx ->
+        if field_active?(f, desc, value) do
+          cook_walk_field(f, value, rec, ctx)
+        else
+          probe = %{buf: nil, base: 0, at: 0, index: nil, order: nil}
+          if cook_walk_field(f, value, 0, probe).at != 0, do: throw(:invalid)
+          ctx
+        end
+      end)
     else
       ctx
+    end
+  end
+
+  # Bare text occupies an eight-byte slot; its blob is part of this node's
+  # extent and has no separate directory entry (§2.13.1).
+  defp cook_walk_field(%{t: :string, unbounded: true} = f, value, rec, ctx) do
+    text = Map.get(value, f.name, f.default) || ""
+    if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid)
+    size = byte_size(text)
+    if size > 0xFFFFFFFF, do: throw(:invalid)
+
+    if size == 0 do
+      ctx
+    else
+      start = cook_align(ctx.at, 8)
+      blob = ctx.base + start
+
+      buf =
+        if ctx.buf == nil do
+          nil
+        else
+          ctx.buf
+          |> put_i64(rec + f.cook_off, blob - rec - f.cook_off, ctx.order)
+          |> put_u32(blob, size, ctx.order)
+          |> put_raw(blob + 8, text)
+        end
+
+      %{ctx | at: start + region_round(9 + size), buf: buf}
     end
   end
 
@@ -627,6 +678,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_list(value, f) do
     case Map.get(value, f.name, []) do
       v when is_list(v) -> v
+      v when is_map(v) and f.t == :map -> map_entries(f, v)
       nil -> []
       _ -> throw(:invalid)
     end
@@ -693,7 +745,15 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # a LIST's and a MAP's holder is written by the extent walk, which places
   # the array it points at (§7.6)
   defp cook_field(%{array: :list}, _value, _base, _index, _order, buf), do: buf
-  defp cook_field(%{t: :map}, _value, _base, _index, _order, buf), do: buf
+
+  defp cook_field(%{t: :map} = f, value, base, _index, _order, buf) do
+    if f.present_off >= 0 do
+      present = Map.get(value, f.name) != nil
+      put_u8(buf, base + f.present_off, if(present, do: 1, else: 0))
+    else
+      buf
+    end
+  end
 
   defp cook_field(f, value, base, index, order, buf) do
     # an absent optional reads nil (§2.3)
@@ -729,6 +789,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_value(%{t: :blob, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
     cook_ref(buf, base + off, id, v, index, order)
   end
+
+  defp cook_value(%{t: :string, unbounded: true}, _v, _base, _index, _order, buf), do: buf
 
   defp cook_value(%{t: :pointer, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
     cook_ref(buf, base + off, id, v, index, order)
@@ -780,7 +842,6 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # wire's: a bits(N) is four or eight bytes, a flags mask eight
   defp cook_value(%{t: :int, cook_off: off, cook_width: w} = f, v, base, _index, order, buf) do
     if not is_integer(v), do: throw(:invalid)
-    if Map.has_key?(f, :min) and (v < f.min or v > f.max), do: throw(:invalid)
     put_int(buf, base + off, v, w, Map.get(f, :signed, false), order)
   end
 

@@ -235,6 +235,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			for _, st := range members {
 				g.owner = st
 				g.emitJsonSurface(st)
+				g.emitTextListSurface(st)
 			}
 			g.emitFixedForm(members)
 		}
@@ -252,7 +253,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
 	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
-	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float }\n")
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float, integrity_mismatch }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
@@ -299,8 +300,11 @@ func (g *tableGen) emitRuntime() {
 	g.emitMessages()
 	g.pf("%s", tableDocNone())
 	g.pf("%s", tableBitHelpers())
-	g.pf("%s", tableJsonWalkSource)
+	if anyTableForm(g.unit, "json") {
+		g.pf("%s", tableJsonWalkSource)
+	}
 	g.pf("%s", tableWireSource)
+	g.pf("%s", tableTextListSource)
 	g.emitFixedRuntime()
 }
 
@@ -682,6 +686,7 @@ public sealed class TableReport
     // zero, and <Name>FromJson is what raises it.
     public int Duplicate;
     public int Widened;
+    public int MissingRequired;
     // blob_shared counts each extra slot that names a blob record another slot
     // already names (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
     // node, and every writer refuses the value by that name.
@@ -689,6 +694,7 @@ public sealed class TableReport
     public int Retained, RetainLost;
     public bool Refused;
     public string Reason;
+    public string ClampedField;
     // NonFiniteFloat names the float a read found to be a NaN or an infinity
     // on its raw bits, as <Table>.<field> (docs/SPEC-TABLES.md §3.3): the
     // field is not written, and the load, the tolerant one too, refuses as
@@ -744,6 +750,7 @@ public sealed class TableFieldInfo
     public byte Kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     public bool IsArray;        // fixed or counted array (bytes included)
     public bool Counted;        // a <name>Count/<name>Length companion exists
+    public bool Required;
     public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
     public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
     // the STORAGE width of one element in bytes, C++'s elem_size where it has
@@ -785,10 +792,13 @@ public sealed class TableFieldInfo
     public int[] NativeGuardOffsets;
     public bool[] NativeGuardValues;
     public Func<ulong, TableReport, ulong> ClampRaw;
+    public Func<ulong, TableReport, ulong> ClampJsonInteger;
+    public Func<ulong, bool> RequiredValidRaw;
     public UInt128 DefaultWide;
     public int FracBits;
     public bool WideSigned;
     public Func<UInt128, TableReport, UInt128> ClampWide;
+    public Func<UInt128, bool> RequiredValidWide;
     public Func<object, int, UInt128> GetWide;
     public Action<object, int, UInt128> SetWide;
     public Func<object, char[]> GetChars;
@@ -838,7 +848,9 @@ public sealed class TableFieldInfo
     public Func<object, int, object> GetChild;
     public Action<object, int, object> SetChild;
     public Action<object, int> EnsureCount;
-    public bool Dynamic, Map;
+    public bool Dynamic, Map, TextList, Unbounded;
+    public string TextField;
+    public long TextTotal;
     public int StorageSize, StorageAlign;
     public ulong PointerTypeId;
     public byte BlobKind;
@@ -891,7 +903,9 @@ public sealed class TableTypeInfo
     public Func<object> Create;
     public int StorageSize, StorageAlign, RegionAlign;
     public bool Variable;
+    public bool Integrity;
     public bool JsonArray;
+    internal bool HasRequired = false;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
     public Func<ulong, TableTypeInfo> PointerType;

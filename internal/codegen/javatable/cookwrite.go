@@ -12,7 +12,7 @@ import (
 // only on the cold producer path (docs/SPEC-TABLES.md §7.6).
 func tableCookWriteSource(u *ir.Unit, ck *cookUnit) string {
 	var b strings.Builder
-	b.WriteString(tableCookWriteRuntime)
+	b.WriteString(strings.ReplaceAll(tableCookWriteRuntime, "/*REGION_ALIGN*/8L", fmt.Sprintf("%dL", ir.TableRegionAlign(u))))
 	b.WriteString("    private static TableCookInfo info(long id) {\n")
 	for _, name := range ck.order {
 		st := u.Tables[name]
@@ -133,6 +133,7 @@ public final class TableCookWrite {
     }
 
     private static final long FLOOR = 8; // the region's alignment floor (§7.1)
+    private static final long REGION_ALIGN = /*REGION_ALIGN*/8L;
 
     // where a node's extent begins: its record's size rounded to the greater of
     // the floor and every element alignment its types can hold (§7.6)
@@ -232,6 +233,7 @@ public final class TableCookWrite {
         if (absentRecord(value, f)) { return; }
         Object source = field(value, f.sourceName);
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
             // a holder's elements are walked in the order the array lays them:
             // a list's in index order, a map's entries ascending by key (§2.8)
             for (Object e : elements(source, f)) { discoverValue(p, null, e, f.element); }
@@ -298,7 +300,33 @@ public final class TableCookWrite {
     private static void carveField(Plan p, byte[] out, int order, long at, long base, long[] cursor,
             Object value, TableCookFieldInfo f) throws ReflectiveOperationException {
         if (f.isPointer || absentRecord(value, f)) { return; }
+        if (f.storage == TableCookStorage.STRING && f.countOffset < 0) {
+            long slot = at + f.offset;
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) {
+                Object raw = field(value, f.sourceName);
+                if (raw instanceof String && !((String) raw).isEmpty()) {
+                    throw new IllegalArgumentException("absent optional text holds extent");
+                }
+                put(out, order, slot, 0, 8);
+                return;
+            }
+            String s = (String) field(value, f.sourceName);
+            if (s == null || s.isEmpty()) {
+                put(out, order, slot, 0, 8);
+                return;
+            }
+            byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            int n = bytes.length;
+            cursor[0] = aligned(cursor[0], 8);
+            long blob = base + cursor[0];
+            cursor[0] += aligned(8L + n + 1L, REGION_ALIGN);
+            put(out, order, slot, blob - slot, 8);
+            put(out, order, blob, n, 4);
+            if (out != null) { System.arraycopy(bytes, 0, out, (int) (blob + 8L), n); }
+            return;
+        }
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
             java.util.List<Object> elems = elements(field(value, f.sourceName), f);
             int n = elems.size();
             cursor[0] = aligned(cursor[0], f.extentAlign);
@@ -500,14 +528,14 @@ public final class TableCookWrite {
     // descriptor's offsets: a record's field, or a union's set arm.
     private static void store(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
-        // a LIST's or a MAP's holder is written by the extent's carve, which
-        // places the array it points at (§7.6)
-        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) { return; }
-        Object v = field(source, f.sourceName);
         if (f.presentOffset >= 0) {
             Object present = field(source, f.sourceName + "Present");
             put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
         }
+        // a LIST's or a MAP's holder is written by the extent's carve, which
+        // places the array it points at (§7.6)
+        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP || (f.storage == TableCookStorage.STRING && !f.isPointer && f.countOffset < 0)) { return; }
+        Object v = field(source, f.sourceName);
         long dest = at + f.offset;
         if (absentRecord(source, f)) {
             if (f.countOffset >= 0) { put(out, order, at + f.countOffset, 0, 4); }

@@ -1171,7 +1171,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -6302,8 +6302,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace tabledemo
@@ -14669,25 +14715,63 @@ constexpr int64_t RangedSignedFixedLayoutBytes = (int64_t) sizeof( RangedSignedF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RangedSignedFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RangedSigned
-    { 0, 0, 0, 0, 0 }, // i8_span
-    { 1, 0, 0, 0, 0 }, // i8_low
-    { 2, 0, 0, 0, 0 }, // i8_high
-    { 3, 0, 0, 0, 0 }, // i8_inside
-    { 4, 0, 0, 0, 0 }, // i16_span
-    { 6, 0, 0, 0, 0 }, // i16_low
-    { 8, 0, 0, 0, 0 }, // i16_high
-    { 10, 0, 0, 0, 0 }, // i16_inside
-    { 12, 0, 0, 0, 0 }, // i32_span
-    { 16, 0, 0, 0, 0 }, // i32_low
-    { 20, 0, 0, 0, 0 }, // i32_high
-    { 24, 0, 0, 0, 0 }, // i32_inside
-    { 32, 0, 0, 0, 0 }, // i64_span
-    { 40, 0, 0, 0, 0 }, // i64_low
-    { 48, 0, 0, 0, 0 }, // i64_high
-    { 56, 0, 0, 0, 0 }, // i64_inside
-    { 64, 2, 72, 1, 0 }, // edges
-    { 0, 0, 0, 0, 0 }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // RangedSigned
+    {
+        0, 0, 0, 0, 0
+    }, // i8_span
+    {
+        1, 0, 0, 0, 0
+    }, // i8_low
+    {
+        2, 0, 0, 0, 0
+    }, // i8_high
+    {
+        3, 0, 0, 0, 0
+    }, // i8_inside
+    {
+        4, 0, 0, 0, 0
+    }, // i16_span
+    {
+        6, 0, 0, 0, 0
+    }, // i16_low
+    {
+        8, 0, 0, 0, 0
+    }, // i16_high
+    {
+        10, 0, 0, 0, 0
+    }, // i16_inside
+    {
+        12, 0, 0, 0, 0
+    }, // i32_span
+    {
+        16, 0, 0, 0, 0
+    }, // i32_low
+    {
+        20, 0, 0, 0, 0
+    }, // i32_high
+    {
+        24, 0, 0, 0, 0
+    }, // i32_inside
+    {
+        32, 0, 0, 0, 0
+    }, // i64_span
+    {
+        40, 0, 0, 0, 0
+    }, // i64_low
+    {
+        48, 0, 0, 0, 0
+    }, // i64_high
+    {
+        56, 0, 0, 0, 0
+    }, // i64_inside
+    {
+        64, 2, 72, 1, 0
+    }, // edges
+    {
+        0, 0, 0, 0, 0
+    }, // element
 };
 
 // THE IDENTITY PLAN, coalesced out of 18 leaves by the schema compiler —
@@ -15069,25 +15153,63 @@ constexpr int64_t RangedUnsignedFixedLayoutBytes = (int64_t) sizeof( RangedUnsig
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RangedUnsignedFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RangedUnsigned
-    { 0, 0, 0, 0, 0 }, // u8_span
-    { 1, 0, 0, 0, 0 }, // u8_low
-    { 2, 0, 0, 0, 0 }, // u8_high
-    { 3, 0, 0, 0, 0 }, // u8_inside
-    { 4, 0, 0, 0, 0 }, // u16_span
-    { 6, 0, 0, 0, 0 }, // u16_low
-    { 8, 0, 0, 0, 0 }, // u16_high
-    { 10, 0, 0, 0, 0 }, // u16_inside
-    { 12, 0, 0, 0, 0 }, // u32_span
-    { 16, 0, 0, 0, 0 }, // u32_low
-    { 20, 0, 0, 0, 0 }, // u32_high
-    { 24, 0, 0, 0, 0 }, // u32_inside
-    { 32, 0, 0, 0, 0 }, // u64_span
-    { 40, 0, 0, 0, 0 }, // u64_low
-    { 48, 0, 0, 0, 0 }, // u64_high
-    { 56, 0, 0, 0, 0 }, // u64_inside
-    { 64, 8, 96, 1, 0 }, // counts
-    { 0, 0, 0, 0, 0 }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // RangedUnsigned
+    {
+        0, 0, 0, 0, 0
+    }, // u8_span
+    {
+        1, 0, 0, 0, 0
+    }, // u8_low
+    {
+        2, 0, 0, 0, 0
+    }, // u8_high
+    {
+        3, 0, 0, 0, 0
+    }, // u8_inside
+    {
+        4, 0, 0, 0, 0
+    }, // u16_span
+    {
+        6, 0, 0, 0, 0
+    }, // u16_low
+    {
+        8, 0, 0, 0, 0
+    }, // u16_high
+    {
+        10, 0, 0, 0, 0
+    }, // u16_inside
+    {
+        12, 0, 0, 0, 0
+    }, // u32_span
+    {
+        16, 0, 0, 0, 0
+    }, // u32_low
+    {
+        20, 0, 0, 0, 0
+    }, // u32_high
+    {
+        24, 0, 0, 0, 0
+    }, // u32_inside
+    {
+        32, 0, 0, 0, 0
+    }, // u64_span
+    {
+        40, 0, 0, 0, 0
+    }, // u64_low
+    {
+        48, 0, 0, 0, 0
+    }, // u64_high
+    {
+        56, 0, 0, 0, 0
+    }, // u64_inside
+    {
+        64, 8, 96, 1, 0
+    }, // counts
+    {
+        0, 0, 0, 0, 0
+    }, // element
 };
 
 // THE IDENTITY PLAN, coalesced out of 18 leaves by the schema compiler —
@@ -15456,13 +15578,27 @@ constexpr int64_t RangedWidthsFixedLayoutBytes = (int64_t) sizeof( RangedWidthsF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RangedWidthsFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RangedWidths
-    { 0, 0, 0, 0, 0 }, // b8
-    { 4, 0, 0, 0, 0 }, // b16
-    { 8, 0, 0, 0, 0 }, // b32
-    { 16, 0, 0, 0, 0 }, // b64
-    { 24, 0, 0, 0, 0 }, // b12
-    { 32, 0, 0, 0, 0 }, // b48
+    {
+        0, 0, 0, 0, 0
+    }, // RangedWidths
+    {
+        0, 0, 0, 0, 0
+    }, // b8
+    {
+        4, 0, 0, 0, 0
+    }, // b16
+    {
+        8, 0, 0, 0, 0
+    }, // b32
+    {
+        16, 0, 0, 0, 0
+    }, // b64
+    {
+        24, 0, 0, 0, 0
+    }, // b12
+    {
+        32, 0, 0, 0, 0
+    }, // b48
 };
 
 // THE IDENTITY PLAN, coalesced out of 6 leaves by the schema compiler —

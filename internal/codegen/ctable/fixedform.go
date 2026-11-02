@@ -646,7 +646,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
 	g.pf("   then the layout behind its u32 length, then the records to the end of it. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( int64_t count )\n{\n", g.api(st.Name, "fixed_measure"))
-	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d );\n}\n\n", n, body)
+	fixedTrailer := ""
+	if st.Integrity != "" {
+		fixedTrailer = " + 4"
+	}
+	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d )%s;\n}\n\n", n, body, fixedTrailer)
 
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n",
 		g.api(st.Name, "fixed_save"), st.Name)
@@ -669,7 +673,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        table_fixed_put64( at, %s_fixed_hash );\n", n)
 	g.pf("        memset( at + 8, 0, (size_t) %d ); /* the prefill's zeros */\n", body)
 	g.pf("        %s( at + 8, values + k );\n", g.sym(st.Name, "fixed_write_body"))
-	g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
+	if st.Integrity != "" {
+		g.pf("        at += 8 + %d;\n    }\n    return schema_table_integrity_seal_( buffer, need - 4 );\n}\n\n", body)
+	} else {
+		g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
+	}
 
 	// ---- LOAD(R, file): §5.3'S ELEVEN STEPS, IN ORDER ----
 	//
@@ -737,6 +745,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
 	g.pf("                       : SCHEMA_TABLE_NEWER_FORM;\n")
 	g.pf("        return -1;\n    }\n")
+	if st.Integrity != "" {
+		g.pf("    if ( !schema_table_integrity_holds_( data, bytes ) )\n    {\n")
+		g.pf("        report->malformed = 1;\n")
+		g.pf("        report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;\n")
+		g.pf("        return -1;\n    }\n")
+		g.pf("    bytes -= 4;\n")
+	}
 	// STEP 2: the length, then the seven reserved bytes.
 	g.pf("    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are\n")
 	g.pf("       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */\n")

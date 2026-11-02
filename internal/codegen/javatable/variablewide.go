@@ -134,8 +134,8 @@ const variableWideRuntime = `
         java.math.BigInteger upper=signed?java.math.BigInteger.valueOf(hi):new java.math.BigInteger(Long.toUnsignedString(hi));
         return upper.shiftLeft(64).add(new java.math.BigInteger(Long.toUnsignedString(lo)));
     }
-    static int integerWidth(int kind){switch(kind){case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 22:case 27:return 4;case 5:case 9:case 23:case 28:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
-    static boolean signedKind(int kind){return kind>=2&&kind<=5||kind==18||kind>=20&&kind<=24;}
+    static int integerWidth(int kind){switch(kind){case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 22:case 27:return 4;case 5:case 9:case 23:case 28:case 36:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
+    static boolean signedKind(int kind){return kind>=2&&kind<=5||kind==18||kind>=20&&kind<=24||kind==36;}
     static java.math.BigInteger readInteger(Reader r,int kind){
         int width=integerWidth(kind);if(width==0||!r.has(width)){r.report.malformed=true;r.fail=true;return null;}
         byte[] bytes=new byte[width];for(int i=0;i<width;i++)bytes[width-i-1]=(byte)r.get8();

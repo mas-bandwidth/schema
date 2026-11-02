@@ -47,6 +47,10 @@ pub enum TableReason {
     /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
+    JsonRootNotArray,
+    TimestampNotRfc3339,
+    IntegrityMismatch,
+    MissingRequired,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -82,6 +86,10 @@ impl TableReason {
             TableReason::AllocationFailed => "allocation_failed",
             TableReason::WireDamaged => "wire_damaged",
             TableReason::NonFiniteFloat => "non_finite_float",
+            TableReason::JsonRootNotArray => "json_root_not_array",
+            TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
+            TableReason::IntegrityMismatch => "integrity_mismatch",
+            TableReason::MissingRequired => "missing_required",
         }
     }
 }
@@ -98,12 +106,13 @@ impl TableReason {
 /// §4's events: the form byte this reader does not carry (§3), or one of the
 /// message form's refusals BY NAME, whose reason the message form records
 /// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub widened: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
@@ -134,9 +143,20 @@ pub struct TableReport {
     /// and non_finite_float_id is the id the reader cannot name.
     pub non_finite_float: &'static str,
     pub non_finite_float_id: Option<u64>,
+    /// A named text-form diagnostic, empty after a clean read.
+    pub text_error: &'static str,
+    /// Bodies refused because an active required field was absent (§4).
+    pub missing_required: u64,
+    /// The current refusal's names, in field declaration order.
+    pub missing_required_fields: String,
 }
 
 impl TableReport {
+    pub fn missing_required_reason(&self) -> Option<String> {
+        if self.missing_required_fields.is_empty() { None }
+        else { Some(format!("missing_required: {}", self.missing_required_fields)) }
+    }
+
     pub fn refuse(&mut self, reason: TableReason) -> bool {
         self.malformed = false;
         self.refused = true;
@@ -360,6 +380,7 @@ pub enum TableNodeRecord {
 
 #[derive(Default)]
 pub struct TableNodeGraph {
+    pub invalid_required: bool,
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
@@ -1864,10 +1885,15 @@ pub struct Jr<'a> {
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
     pub zero: bool,
+    pub reason: TableReason,
+    pub text_error: &'static str,
+    pub missing_required: u64,
+    pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
@@ -1875,7 +1901,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, clamped_field: "", duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -1995,8 +2021,8 @@ impl<'a> Jr<'a> {
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
                             } else {
-                                // a lone lead surrogate rides as itself, and the
-                                // escape after it is read on its own
+                                // A lone surrogate currently normalizes to U+FFFD.
+                                // Strict refusal is deferred by SPEC-TABLES §16.3.
                                 self.p = mark;
                             }
                         }

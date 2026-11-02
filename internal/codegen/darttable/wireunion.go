@@ -179,7 +179,7 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		return g.fixedStorageDecl(f, name)
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			return fmt.Sprintf("String? %s;", name)
+			return fmt.Sprintf("String? get %s => WireState._getStringBlob(this, %q);\n  set %s(String? value) => WireState._setStringBlob(this, %q, value);", name, name, name, name)
 		}
 		return fmt.Sprintf("Uint8List? %s;", name)
 	case f.CountedOnWire():
@@ -287,7 +287,7 @@ func (g *wireGen) emitPutPayload(f *ir.Field, expr, p, ind string) {
 		val := expr + "!"
 		if f.Type.Kind == ir.TString {
 			blob = "_kStringBlobId"
-			val = expr + "!"
+			val = expr + "!, " + stringBlobSlot(expr)
 		}
 		g.pf("%s%s.putLeb(%s == null ? 0 : %s.state.blobIndex(%s, %s));\n", ind, p, expr, p, blob, val)
 	case isPointerTable(f):
@@ -496,7 +496,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal idx = %s.readLeb();\n", ind, p)
 		g.pf("%sif (idx == null || %s.pos != %s.limit) %s\n", ind, p, p, bad)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s%s = %s.resolveString(idx);\n", ind, dest, p)
+			g.pf("%s%s.resolveString(idx, %s);\n", ind, p, stringBlobSlot(dest))
 		} else {
 			g.pf("%s%s = %s.resolveBytes(idx);\n", ind, dest, p)
 		}
@@ -600,7 +600,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 	case f.Type.Kind == ir.TString:
 		g.pf("%sfinal len = %s.limit - %s.pos;\n", ind, p, p)
 		g.pf("%sif (!_lebValid(%s.data, %s.pos, len)) %s\n", ind, p, p, bad)
-		g.pf("%sfinal keep = _textBoundary(%s.data, %s.pos, len, %d);\n", ind, p, p, f.Type.Size)
+		g.pf("%sfinal keep = _textBoundary(%s.data, %s.pos, len, %d);\n", ind, p, p, textBound(f))
 		g.pf("%sif (keep != len) %s.report.clamped++;\n", ind, p)
 		g.pf("%s%s = utf8.decode(%s.data.sublist(%s.pos, %s.pos + keep));\n", ind, dest, p, p, p)
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
@@ -847,7 +847,7 @@ func (g *wireGen) emitUnionNumber(un *ir.Union) {
 		case f.Type.Blob():
 			g.pf("\t\tcase %d:\n", i+1)
 			if f.Type.Kind == ir.TString {
-				g.pf("\t\t\tif (%s != null) s.noteBlob(_kStringBlobId, %s!);\n", expr, expr)
+				g.pf("\t\t\tif (%s != null) s.noteBlob(_kStringBlobId, %s!, %s);\n", expr, expr, stringBlobSlot(expr))
 			} else {
 				g.pf("\t\t\tif (%s != null) s.noteBlob(_kBytesBlobId, %s!);\n", expr, expr)
 			}
@@ -1024,8 +1024,12 @@ int _kindWidth(int kind) {
 // length-framed entry body that ALWAYS rides (identity is the key), and an
 // empty map elides under the by-value rule (§3). The field id is interned
 // before the entry bodies.
-func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal int, force bool) {
+	if force {
+		g.pf("%s{\n", ind)
+	} else {
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
+	}
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal sorted = %s;\n", ind, mapSorted(f, expr))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
@@ -1080,7 +1084,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	keyKind := ir.TableWireScalarKind(keyField)
 	keySize := -1
 	if keyField.Type.Kind == ir.TString {
-		keySize = int(keyField.Type.Size)
+		keySize = int(textBound(keyField))
 	}
 	keyWidens := ""
 	for k := 1; k <= 40; k++ {
@@ -1109,6 +1113,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	// Commit a replacement only after its array header is readable and
 	// compatible (internal/tablewire/decode.go mapField): a skipped repeat
 	// preserves the earlier occurrence (§3, §4).
+	g.pf("%s\t\tr.retain?.forgetMap(v, %q);\n", ind, name)
 	g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, en)
 	g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
 	g.pf("%s\t\tvar lastEntry = %s();\n", ind, en)
@@ -1150,9 +1155,13 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\t\torder = %s;\n", ind, mapKeyCompare(f))
 	g.pf("%s\t\t\t\tif (order > 0) { r.report.malformed = true; break; }\n", ind)
 	g.pf("%s\t\t\t}\n", ind)
+	// Index only entries that captured records: known-only maps must not grow
+	// retain metadata independently of the caller's bounded record store.
+	g.pf("%s\t\t\tfinal retainedAt = r.retain?.records.length ?? 0;\n", ind)
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
+	g.pf("%s\t\t\tif ((r.retain?.records.length ?? 0) > retainedAt) r.retain!.rememberMap(v, %q, e);\n", ind, name)
 	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
-	g.pf("%s\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name)
+	g.pf("%s\t\t\tif (order == 0) { r.retain?.forget(v.%s.last); r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name, name)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)
 	g.pf("%s\t\t\tlastLanded = true;\n", ind)
 	g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
@@ -1166,10 +1175,10 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 // absence of the field is the None — and a set arm rides as the field header
 // at kind 15 followed by the arm header.
 func (g *wireGen) emitSaveUnionField(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.armTag != 0) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".armTag != 0"))
 	g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 	g.pf("%s\tw.putByte(%d);\n", ind, wireKindUnion)
-	g.pf("%s\t%s(w, %s);\n", ind, unionFn(unionRef(f), "SaveArm"), expr)
+	g.pf("%s\tif (%s.armTag == 0) { w.putLeb(0); } else { %s(w, %s); }\n", ind, expr, unionFn(unionRef(f), "SaveArm"), expr)
 	g.pf("%s}\n", ind)
 }
 
@@ -1177,7 +1186,7 @@ func (g *wireGen) emitSaveUnionField(f *ir.Field, expr, ind string, id uint64) {
 // over element kind 15 (§3): the live count, then each element's arm header,
 // a None element the single zero byte. An empty array elides (§2.9).
 func (g *wireGen) emitSaveUnionList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindUnion)

@@ -119,6 +119,16 @@ BigInt tableCookGetWide(ByteData view, int at, int width, bool signed) {
 // pointer past the region is the caller's problem at the dereference, and in
 // Dart the read after it would be an escaping RangeError — which is not a
 // refusal.
+int tableCookTextStart(ByteData view,int slot) {
+ if(slot<0||slot>view.lengthInBytes-8)return -1;
+ final delta=view.getInt64(slot,Endian.little);
+ if(delta==0||delta < -slot||delta > view.lengthInBytes-slot-8)return -1;
+ final at=slot+delta;
+ final n=view.getUint32(at,Endian.little);
+ if(n>view.lengthInBytes-at-9)return -1;
+ return at;
+}
+
 abstract final class TableCookRef {
   static const int none = -1;
   static const int outside = -2;
@@ -155,6 +165,7 @@ final class TableCookFieldInfo {
   final int arrayBound;
   // an eight-byte SIGNED self-relative reference slot (§6.3)
   final bool isPointer;
+  final bool unboundedText;
   // the int32 used-length companion, or -1
   final int countOffset;
   // the bool presence companion of a ?T, or -1
@@ -184,6 +195,7 @@ final class TableCookFieldInfo {
     required this.isArray,
     required this.arrayBound,
     required this.isPointer,
+    this.unboundedText = false,
     required this.countOffset,
     required this.presentOffset,
     required this.storage,
@@ -232,7 +244,7 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, Object blob) blobIndex;
+  final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
   ByteData? out;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
@@ -276,11 +288,11 @@ final class TableCookGraph {
 
   // A blob is a node of its own reserved type id, numbered by its identity
   // (§3.1): the String or byte list the field holds.
-  void blob(int slot, int id, Object? blob) {
+  void blob(int slot, int id, Object? blob, [Object? owner, String? field]) {
     final out = this.out;
     if (out == null) return;
     var delta = 0;
-    if (blob != null) delta = 64 + offsets[blobIndex(id, blob) - 1] - slot;
+    if (blob != null) delta = 64 + offsets[blobIndex(id, blob, owner, field) - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }

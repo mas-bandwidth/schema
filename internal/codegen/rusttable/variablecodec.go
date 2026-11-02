@@ -35,6 +35,9 @@ func (g *gen) variableCodecModule() []byte {
 	var b strings.Builder
 	b.WriteString(header(g.file.Base, g.unit.Package, "the variable wire's storage and codecs (docs/SPEC-TABLES.md §3, §3.1, §16)"))
 	b.WriteString("\nuse super::variable_runtime::*;\n")
+	if len(ir.TableIntegrityTables(g.unit)) > 0 {
+		b.WriteString("#[allow(unused_imports)]\nuse super::integrity_runtime::*;\n")
+	}
 	b.WriteString("#[allow(unused_imports)]\nuse std::any::Any;\n")
 	b.WriteString("#[allow(unused_imports)]\nuse std::collections::HashMap;\n")
 	b.WriteString("#[allow(unused_imports)]\nuse std::rc::Rc;\n\n")
@@ -275,7 +278,11 @@ func elemRust(f *ir.Field) string {
 // a Vec of its element (a bounded [..N]T holds at most N, §2.9).
 func variableFieldType(f *ir.Field) string {
 	if f.IsMap() {
-		return "Vec<" + f.MapEntry.Name + ">"
+		t := "Vec<" + f.MapEntry.Name + ">"
+		if f.Type.Optional {
+			return "Option<" + t + ">"
+		}
+		return t
 	}
 	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 		t := "Vec<" + elemRust(f) + ">"
@@ -541,8 +548,13 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 // emitFieldNumber emits one field's step of the numbering walk.
 func (g *gen) emitFieldNumber(b *strings.Builder, f *ir.Field) {
 	x := "v." + ir.RustSnake(f.Name)
+	emitRequiredRangeCheck(b, f, x, bodyIndent, "g.invalid_required = true;")
 	if f.Type.Optional {
 		switch classOf(f) {
+		case vMap:
+			fmt.Fprintf(b, "    if let Some(entries) = &%s {\n", x)
+			g.emitMapNumber(b, f, "entries")
+			fmt.Fprintf(b, "    }\n")
 		case vPointer:
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "    if let Some(arr) = &%s { for n in arr.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }\n", x, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
@@ -701,6 +713,7 @@ func enumRef(f *ir.Field, x string) string {
 // write order (docs/SPEC-TABLES.md §3).
 func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int, x, ind string) {
 	id := ir.TableFieldWireId(f)
+	textListStorageCheck(b, f, x, ind, `ids.refused = Some(String::from("invalid_value: text list")); return;`)
 	kind := fieldWireKind(f)
 	inner := ind + "    "
 	if f.Type.Optional {
@@ -718,7 +731,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	if f.Array != ir.ArrayNone {
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
 		// L, the element kind, the live count, the elements; empty elides.
-		fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
@@ -732,6 +745,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		ein := inner + "    "
 		switch classOf(f) {
 		case vTable:
+			if ir.TextListPlain(f) {
+				fmt.Fprintf(b, "%sleb_write(&mut body, e.value.len() as u64);\n%sbody.extend_from_slice(e.value.as_bytes());\n", ein, ein)
+				break
+			}
 			fmt.Fprintf(b, "%slet mut eb = Vec::new();\n", ein)
 			emitTableBodyInto(b, f, "e", "eb", fmt.Sprintf("path.step(%d, j as u32)", ordinal), ein)
 			fmt.Fprintf(b, "%sleb_write(&mut body, eb.len() as u64);\n", ein)
@@ -764,6 +781,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, g.blob_index(Rc::as_ptr(n) as *const u8 as usize));\n", inner)
+		if f.Required {
+			fmt.Fprintf(b, "%s} else { leb_write(out, ids.id_ref(0x%016x)); out.push(%d); out.push(0);\n", ind, id, kind)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vPointer:
 		// NULL IS INDEX 0, AND NULL IS ELIDED; a non-null pointer always rides (§3.1)
@@ -771,6 +791,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, g.node_index(n));\n", inner)
+		if f.Required {
+			fmt.Fprintf(b, "%s} else { leb_write(out, ids.id_ref(0x%016x)); out.push(%d); out.push(0);\n", ind, id, kind)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vTable:
 		// AN ELIDED FIELD COSTS NOTHING IN THE ID TABLE EITHER (§3): the field
@@ -781,7 +804,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 		emitTableBodyInto(b, f, "&"+x, "body", fmt.Sprintf("path.step(%d, 0)", ordinal), inner)
-		fmt.Fprintf(b, "%sif body.len() <= 1 {\n", inner)
+		fmt.Fprintf(b, "%sif %t && body.len() <= 1 {\n", inner, !f.Required)
 		fmt.Fprintf(b, "%s    ids.rollback(mark);\n", inner)
 		fmt.Fprintf(b, "%s} else {\n", inner)
 		fmt.Fprintf(b, "%s    leb_write(out, r);\n", inner)
@@ -791,12 +814,15 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s}\n", inner)
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vString:
+		if f.Type.TextUnbounded() {
+			fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { ids.refused=Some(String::from(\"invalid_value: unbounded text\")); return; }\n", ind, x, x)
+		}
 		// at its default, empty when none is declared (§3)
 		guard := "!" + x + ".is_empty()"
 		if len(f.DefBytes) > 0 {
 			guard = x + ".as_bytes() != " + rustByteArray(f.DefBytes)
 		}
-		fmt.Fprintf(b, "%sif %s {\n", ind, guard)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, %s.len() as u64);\n", inner, x)
@@ -811,7 +837,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		if len(f.DefBytes) > 0 {
 			guard = x + ".as_slice() != " + rustByteArray(f.DefBytes)
 		}
-		fmt.Fprintf(b, "%sif %s {\n", ind, guard)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 		fmt.Fprintf(b, "%sbody.push(%d); // the element kind: u8\n", inner, ir.TableKindU8)
@@ -823,7 +849,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sout.extend_from_slice(&body);\n", inner)
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vEnum:
-		fmt.Fprintf(b, "%sif %s != %s {\n", ind, x, enumDefault(f))
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, x+" != "+enumDefault(f)))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%slet vref = %s;\n", inner, enumRef(f, x))
@@ -842,7 +868,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 				guard = "!" + x
 			}
 		}
-		fmt.Fprintf(b, "%sif %s {\n", ind, guard)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%s%s\n", inner, g.scalarWrite(f, x, "out"))
@@ -907,6 +933,9 @@ func scalarReadFn(f *ir.Field) string {
 // owner is a float's <Owner>.<field>, the name its non_finite_float refusal
 // carries (§3.3).
 func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind string) {
+	if f.HasFloatRange && strings.HasPrefix(dst, "let ") {
+		dst = "let mut " + strings.TrimPrefix(dst, "let ")
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		// a bool byte that is neither 0 nor 1 keeps true and is MALFORMED on
@@ -920,11 +949,21 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 		// and the load refuses as non_finite_float, the tolerant one included,
 		// so the 0.0 that stands in is never handed to a caller.
 		fmt.Fprintf(b, "%s%s = if table_finite_f32(raw as u32) { f32::from_bits(raw as u32) } else { report.non_finite(%q); 0.0 };\n", ind, dst, owner)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif table_finite_f32(raw as u32) {\n", ind)
+			emitVariableFloatClamp(b, f, dst, "report.clamped", ind+"    ")
+			fmt.Fprintf(b, "%s}\n", ind)
+		}
 		return
 	case ir.TFloat64:
 		// the float rung (kind 10 into a float64) is the ordinary conversion:
 		// every finite float32 widens exactly (§3.3, §4)
 		fmt.Fprintf(b, "%s%s = if %s == %d { if table_finite_f32(raw as u32) { f64::from(f32::from_bits(raw as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(raw) { f64::from_bits(raw) } else { report.non_finite(%q); 0.0 };\n", ind, dst, kvar, ir.TableKindF32, owner, owner)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif if %s == %d {table_finite_f32(raw as u32)} else {table_finite_f64(raw)} {\n", ind, kvar, ir.TableKindF32)
+			emitVariableFloatClamp(b, f, dst, "report.clamped", ind+"    ")
+			fmt.Fprintf(b, "%s}\n", ind)
+		}
 		return
 	}
 	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
@@ -976,9 +1015,19 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    if end > wire.len() { report.malformed = true; return false; }\n")
 	fmt.Fprintf(b, "    // LEBs in this body cannot borrow a byte from the enclosing body.\n")
 	fmt.Fprintf(b, "    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);\n")
+	if hasRequired(st) {
+		fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
+	}
 	fmt.Fprintf(b, "    while *off < end {\n")
 	fmt.Fprintf(b, "        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };\n")
-	fmt.Fprintf(b, "        if r == 0 { return true; }\n")
+	if hasRequired(st) {
+		fmt.Fprintf(b, "        if r == 0 {\n")
+		fmt.Fprintf(b, "            let missing = %s(v, &seen);\n", fn(st.Name, "required_missing"))
+		fmt.Fprintf(b, "            if !missing.is_empty() { report.missing_required += 1; report.missing_required_fields = missing; report.refused = true; report.reason = TableReason::MissingRequired; return false; }\n")
+		fmt.Fprintf(b, "            return true;\n        }\n")
+	} else {
+		fmt.Fprintf(b, "        if r == 0 { return true; }\n")
+	}
 	fmt.Fprintf(b, "        let Some(id) = ref_id(ids, r) else { report.malformed = true; return false; };\n")
 	fmt.Fprintf(b, "        if *off >= end { report.malformed = true; return false; }\n")
 	fmt.Fprintf(b, "        let kind = wire[*off]; *off += 1;\n")
@@ -1087,18 +1136,30 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 	kind := fieldWireKind(f)
 	fmt.Fprintf(b, "%s0x%016x => {\n", ind, id)
 	in := ind + "    "
+	if f.Required {
+		fmt.Fprintf(b, "%slet mut field_skipped = false;\n", in)
+	}
 	if f.Type.Optional {
 		g.emitOptionalLoadField(b, f, ordinal, field, in)
+		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
 	if f.KeyEnum != "" {
 		g.emitKeyedLoad(b, f, ordinal, field, in)
+		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
 	if f.Array != ir.ArrayNone {
+		if f.IsTextList() {
+			fmt.Fprintf(b, "%slet before_text_clamp = report.clamped;\n", in)
+		}
 		g.emitArrayLoad(b, f, ordinal, field, in)
+		if f.IsTextList() {
+			fmt.Fprintf(b, "%sif report.clamped != before_text_clamp && report.clamped_field.is_empty() { report.clamped_field = %q; }\n", in, f.TextListElem().MapEntryOf)
+		}
+		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -1107,7 +1168,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		// A pointer field's payload is a NUMBER: bounds-checked and resolved,
 		// never followed (§3.1). Any other kind is a kind mismatch, skipped by
 		// its own kind's rule, the pointer null.
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(index) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end { report.malformed = true; return false; }\n", in)
@@ -1117,7 +1178,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		// THE BODY IS RESET, not merged, on every occurrence; a body whose
 		// terminator is not the last byte of its L is framing damage, the field
 		// reads its declared defaults and the parent reads on past L (§3, §4)
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -1125,13 +1186,13 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    if let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", in, ordinal)
 		fmt.Fprintf(b, "%s    %s = %s::default();\n", in, field, f.Type.Name)
 		fmt.Fprintf(b, "%s    let mut o = *off;\n", in)
-		fmt.Fprintf(b, "%s    let _ = %s(wire, &mut o, sub, ids, &mut %s, nodes, report, path.step(%d, 0), retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), field, ordinal)
-		fmt.Fprintf(b, "%s    if nodes.count_refused { return false; }\n", in)
+		fmt.Fprintf(b, "%s    let body_ok = %s(wire, &mut o, sub, ids, &mut %s, nodes, report, path.step(%d, 0), retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), field, ordinal)
+		fmt.Fprintf(b, "%s    if !body_ok || nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
 		fmt.Fprintf(b, "%s    if o != sub { report.malformed = true; %s = %s::default(); }\n", in, field, f.Type.Name)
 		fmt.Fprintf(b, "%s    *off = sub;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
 	case vString:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -1139,9 +1200,9 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    let b = &wire[*off..s];\n", in)
 		fmt.Fprintf(b, "%s    // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared default\n", in)
 		fmt.Fprintf(b, "%s    if !text_valid(b) { report.malformed = true; %s = %s; }\n", in, field, fieldDefault(f))
-		fmt.Fprintf(b, "%s    else if b.len() > %d {\n", in, f.Type.Size)
+		fmt.Fprintf(b, "%s    else if b.len() > %d {\n", in, rustTextBound(f))
 		fmt.Fprintf(b, "%s        // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3)\n", in)
-		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, f.Type.Size)
+		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, rustTextBound(f))
 		fmt.Fprintf(b, "%s        while cut > 0 && b[cut] & 0xC0 == 0x80 { cut -= 1; }\n", in)
 		fmt.Fprintf(b, "%s        %s = std::str::from_utf8(&b[..cut]).unwrap().to_string();\n", in, field)
 		fmt.Fprintf(b, "%s        report.clamped += 1;\n", in)
@@ -1154,7 +1215,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 	case vBytes:
 		g.emitArrayLoad(b, f, ordinal, field, in)
 	case vEnum:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		emitEnumDecode(b, f, field, "end", "return false;", in+"    ")
 		fmt.Fprintf(b, "%s}\n", in)
@@ -1171,8 +1232,9 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 			fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
 		}
 		emitScalarConvert(b, f, g.floatOwner(f), field, "kind", in+"    ")
-		fmt.Fprintf(b, "%s} else { %s }\n", in, kindSkip)
+		fmt.Fprintf(b, "%s} else { %s }\n", in, requiredKindSkip(f))
 	}
+	emitRequiredWireSeen(b, f, ordinal, in)
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -1189,7 +1251,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if isBytes {
 		ek = ir.TableKindU8
 	}
-	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, kindSkip)
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, requiredKindSkip(f))
 	fmt.Fprintf(b, "%selse {\n", in)
 	i1 := in + "    "
 	fmt.Fprintf(b, "%slet Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", i1)
@@ -1208,9 +1270,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	cls := classOf(f)
 	widens := cls == vScalar
 	if widens {
-		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.kind_mismatch += 1; }\n", i3, ek, ek)
+		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.kind_mismatch += 1; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	} else {
-		fmt.Fprintf(b, "%sif ek != %d { report.kind_mismatch += 1; }\n", i3, ek)
+		fmt.Fprintf(b, "%sif ek != %d { %sreport.kind_mismatch += 1; }\n", i3, ek, requiredCollectionSkip(f))
 	}
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -1232,6 +1294,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	default: // bytes(N)
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
 	}
+	if f.IsTextList() && f.TextTotal > 0 {
+		fmt.Fprintf(b, "%slet mut text_spent = 0u64;\n", i4)
+	}
 	fmt.Fprintf(b, "%sfor j in 0..keep {\n", i4)
 	i5 := i4 + "    "
 	fmt.Fprintf(b, "%slet _ = j;\n", i5)
@@ -1240,6 +1305,8 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case isBytes:
 		fmt.Fprintf(b, "%sif *off >= sub { report.malformed = true; break; }\n", i5)
 		fmt.Fprintf(b, "%s%s.push(wire[*off]); *off += 1;\n", i5, field)
+	case ir.TextListPlain(f):
+		emitPlainTextListElement(b, f, field, i5)
 	case cls == vTable:
 		fmt.Fprintf(b, "%sif *off >= sub { report.malformed = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(el) = leb_read(wire, off) else { report.malformed = true; break; };\n", i5)
@@ -1247,8 +1314,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet eend = *off + el as usize;\n", i5)
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
-		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, j as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
+		fmt.Fprintf(b, "%slet body_ok = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, j as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", i5)
+		fmt.Fprintf(b, "%sif !body_ok { break; }\n", i5)
 		fmt.Fprintf(b, "%sif o != eend { report.malformed = true; e = %s::default(); }\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%s*off = eend;\n", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
@@ -1268,7 +1336,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		// each element is its own body occurrence (§6.6)
 		g.withArmIndex("j as u32", func() { g.emitUnionDecode(b, f, "e", "sub", ordinal, i5+"    ", true) })
 		fmt.Fprintf(b, "%s    true\n%s})();\n", i5, i5)
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", i5)
 		if f.Array == ir.ArrayFixed {
 			// The oracle resets a fixed union slot as soon as its arm id is
 			// entered. A damaged arm therefore replaces that slot with None,
@@ -1282,6 +1350,13 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, sub, ek) else { report.malformed = true; break; };\n", i5, scalarReadFn(f))
 		emitScalarConvert(b, f, g.floatOwner(f), "let e", "ek", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
+	}
+	if f.IsTextList() && f.TextTotal > 0 {
+		length := "e.value.len()"
+		if ir.TextListOptional(f) {
+			length = "e.value.as_ref().map_or(0, |text| text.len())"
+		}
+		fmt.Fprintf(b, "%slet text_len = %s.last().map_or(0, |e| %s) as u64;\n%sif text_len > %d - text_spent { %s.pop(); report.clamped += 1; break; }\n%stext_spent += text_len;\n", i5, field, length, i5, f.TextTotal, field, i5)
 	}
 	fmt.Fprintf(b, "%s}\n", i4)
 	if f.Array == ir.ArrayFixed {
@@ -1393,7 +1468,7 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "            let mut v = %s::default();\n", st.Name)
 		fmt.Fprintf(b, "            let mut off = start;\n")
 		fmt.Fprintf(b, "            let _ = %s(wire, &mut off, end, ids, &mut v, nodes, report, TableRetainPath::default().step(u32::MAX, k as u32), if retaining { Some(&mut sink) } else { None }, true);\n", fn(st.Name, "load_body"))
-		fmt.Fprintf(b, "            if nodes.count_refused { return; }\n")
+		fmt.Fprintf(b, "            if nodes.count_refused || !report.missing_required_fields.is_empty() { return; }\n")
 		fmt.Fprintf(b, "            Some(Rc::new(v))\n")
 		fmt.Fprintf(b, "        }\n")
 	}
@@ -1482,6 +1557,8 @@ func (g *gen) emitFieldEdges(b *strings.Builder, f *ir.Field) {
 			} else {
 				fmt.Fprintf(b, "        if let Some(n) = &%s { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); }\n", x)
 			}
+		case vMap:
+			fmt.Fprintf(b, "        if let Some(es) = &%s { for e in es.iter() { e.__table_edges(nodes, out); } }\n", x)
 		case vTable, vUnion:
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "        if let Some(arr) = &%s { for e in arr.iter() { e.__table_edges(nodes, out); } }\n", x)
@@ -1519,6 +1596,8 @@ func (g *gen) emitFieldLink(b *strings.Builder, f *ir.Field) {
 			} else {
 				fmt.Fprintf(b, "        if let Some(k) = %s.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { %s = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { %s = None; }\n", x, x, f.Type.Name, x)
 			}
+		case vMap:
+			fmt.Fprintf(b, "        if let Some(es) = &mut %s { for e in es.iter_mut() { e.__table_link(wire, ids, nodes, report); } }\n", x)
 		case vTable, vUnion:
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "        if let Some(arr) = &mut %s { for e in arr.iter_mut() { e.__table_link(wire, ids, nodes, report); } }\n", x)
@@ -1661,6 +1740,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
+	fmt.Fprint(b, "    if g.invalid_required { ids.refused = Some(String::from(\"invalid_value: required range\")); }\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	emitNodeTableWrite(b, false)
 	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
@@ -1668,6 +1748,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    table_integrity_seal(&mut out);\n")
+	}
 	fmt.Fprintf(b, "    out\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1684,6 +1767,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
+	fmt.Fprint(b, "    if g.invalid_required { ids.refused = Some(String::from(\"invalid_value: required range\")); }\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    // every node record's body rides too, and is checked by the same walk\n")
 	emitNodeTableWrite(b, false)
@@ -1691,6 +1775,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    table_integrity_seal(&mut out);\n")
+	}
 	fmt.Fprintf(b, "    Ok(out)\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1711,6 +1798,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
+	fmt.Fprint(b, "    if g.invalid_required { ids.refused = Some(String::from(\"invalid_value: required range\")); }\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, Some(&mut *retain), Some(&mut *report), TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    retain_emit_tail(&mut out, &mut ids, retain, KNOWN_IDS, TableRetainPath::default(), report);\n")
 	emitNodeTableWrite(b, true)
@@ -1720,6 +1808,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    table_integrity_seal(&mut out);\n")
+	}
 	fmt.Fprintf(b, "    out\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1750,10 +1841,14 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// no heap allocation for the id table (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_load_inner(wire: &[u8], retain: Option<&mut TableRetain>, report: &mut TableReport) -> Option<%s> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    // this read's own non-finite float (docs/SPEC-TABLES.md §3.3)\n")
+	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    report.non_finite_float = \"\";\n")
 	fmt.Fprintf(b, "    report.non_finite_float_id = None;\n")
 	fmt.Fprintf(b, "    if wire.is_empty() { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { report.refused = true; report.reason = if wire[0] == 2 { TableReason::MessageFormAsFile } else { TableReason::NewerForm }; return None; }\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { report.malformed = true; report.reason = TableReason::IntegrityMismatch; return None; };\n")
+	}
 	fmt.Fprintf(b, "    if wire.len() < 9 { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().ok()?);\n")
 	fmt.Fprintf(b, "    if count > (wire.len() / 8) as u64 { report.malformed = true; return None; }\n")
@@ -1785,13 +1880,17 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
 	fmt.Fprintf(b, "    let mut retain = retain;\n")
 	if !st.FixedDeclared {
-		fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 {\n", fnName)
+		measure := fnName + "_load_measure"
+		if st.Integrity == "crc32c" {
+			measure += "_body"
+		}
+		fmt.Fprintf(b, "    if %s(wire) < 0 {\n", measure)
 		fmt.Fprintf(b, "        // A FRAMING THE CONTAINER CANNOT OPEN loads nothing (§3, §6.5). A\n")
 		fmt.Fprintf(b, "        // NON-FINITE FLOAT the walk meets before the damage still outranks it\n")
 		fmt.Fprintf(b, "        // (docs/SPEC-TABLES.md §3.3), as in the oracle, whose walk runs ahead\n")
 		fmt.Fprintf(b, "        // of any region measure. The scratch report uses the caller's retention\n")
 		fmt.Fprintf(b, "        // budget to preserve refusal counters, then discards every retained byte.\n")
-		fmt.Fprintf(b, "        let mut scratch = *report;\n")
+		fmt.Fprintf(b, "        let mut scratch = report.clone();\n")
 		fmt.Fprintf(b, "        scratch.refused = false; scratch.reason = TableReason::None;\n")
 		fmt.Fprintf(b, "        let _ = %s_load_walk(wire, end, ids, retain.as_deref_mut(), &mut scratch, true);\n", fnName)
 		fmt.Fprintf(b, "        if let Some(store) = retain { store.bytes.clear(); store.ids.clear(); }\n")
@@ -1870,12 +1969,12 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    // its refusal and diagnostic prefix follow the oracle order (§3.1, §4).\n")
 	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { variable_node_decode(wire, ids, &mut nodes, k, report); }\n")
-	fmt.Fprintf(b, "        if nodes.count_refused { return None; }\n")
+	fmt.Fprintf(b, "        if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    let mut off = 1usize;\n")
 	fmt.Fprintf(b, "    let _ = %s(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);\n", fn(st.Name, "load_body"))
-	fmt.Fprintf(b, "    if nodes.count_refused { return None; }\n")
+	fmt.Fprintf(b, "    if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
 	fmt.Fprintf(b, "    nodes.root_open = false;\n")
 	fmt.Fprintf(b, "    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); nodes.slots.len() + 1];\n")
 	fmt.Fprintf(b, "    v.__table_edges(&nodes, &mut edges[0]);\n")
@@ -1937,7 +2036,15 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
 	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
 	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
-	fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+		fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
+		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return -1; };\n")
+		fmt.Fprintf(b, "    %s_load_measure_body(wire)\n}\n\n", fnName)
+		fmt.Fprintf(b, "fn %s_load_measure_body(wire: &[u8]) -> i64 {\n", fnName)
+	} else {
+		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+	}
 	fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { return -1; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap());\n")
@@ -2118,7 +2225,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 // writer bound (internal/codegen/gotable/write.go's Length > N check).
 func (g *gen) emitWideSaveField(b *strings.Builder, f *ir.Field, x, ind string) {
 	inner := ind + "    "
-	fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+	fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
 	fmt.Fprintf(b, "%slet n = table_wide_fit(ids, &%s, %d, %q);\n", inner, x, f.Type.Size, wideOwner(g.unit, f)+"."+f.Name)
 	fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, ir.TableFieldWireId(f))
 	fmt.Fprintf(b, "%sout.push(%d);\n", inner, ir.TableKindWstring)
@@ -2135,7 +2242,7 @@ func (g *gen) emitWideSaveField(b *strings.Builder, f *ir.Field, x, ind string) 
 // units keeps the longest prefix that does not split a pair and counts one
 // clamp.
 func emitWideLoadField(b *strings.Builder, f *ir.Field, field, in string) {
-	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindWstring, kindSkip)
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindWstring, requiredKindSkip(f))
 	fmt.Fprintf(b, "%selse {\n", in)
 	fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 	fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -2227,4 +2334,22 @@ func wideOwner(u *ir.Unit, f *ir.Field) string {
 		}
 	}
 	return "?"
+}
+
+// requiredWriteGuard preserves field presence even when its value is the default.
+func requiredWriteGuard(f *ir.Field, differs string) string {
+	if f.Required {
+		return "true"
+	}
+	return differs
+}
+
+// File and JSON floats keep IEEE storage; declared compressed ranges clamp on read.
+func emitVariableFloatClamp(b *strings.Builder, f *ir.Field, value, counter, ind string) {
+	if !f.HasFloatRange {
+		return
+	}
+	kind := scalarRust(f)
+	value = strings.TrimPrefix(value, "let mut ")
+	fmt.Fprintf(b, "%sif (%s as f64) < %s { %s = %s as %s; %s += 1; } else if (%s as f64) > %s { %s = %s as %s; %s += 1; }\n", ind, value, fixedFloatLit(f.FMin), value, fixedFloatLit(f.FMin), kind, counter, value, fixedFloatLit(f.FMax), value, fixedFloatLit(f.FMax), kind, counter)
 }

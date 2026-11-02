@@ -200,6 +200,7 @@ func (g *cookGen) emitCookGraphField(f *ir.Field, offset int64, expr, ind string
 // emitCookForm1Field writes one field of a fixed root's form-1 value at the
 // cook's offsets, every piece in the target byte order (§7.2, §7.6).
 func (g *cookGen) emitCookForm1Field(f *ir.Field, offset int64, expr, ind string) {
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "return false;"))
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Type.Optional {
 		// §2.3 on the cooked storage: the presence bool is the LAST piece, and

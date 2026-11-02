@@ -507,7 +507,7 @@ func variableCookUnion(un *ir.Union) string {
 
 func variableCookField(f *ir.Field) bool {
 	if f.Type.Optional {
-		return false
+		return variableCookField(nonOptional(f))
 	}
 	if f.IsMap() {
 		// A MAP (docs/SPEC-TABLES.md §2.8) rides in its holder's node extent
@@ -643,7 +643,7 @@ func recordHasExtentSeen(u *ir.Unit, st *ir.Struct, seenS map[*ir.Struct]bool, s
 	}
 	seenS[st] = true
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() || valueHasExtentSeen(u, f, seenS, seenU) {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() || valueHasExtentSeen(u, f, seenS, seenU) {
 			return true
 		}
 	}
@@ -653,6 +653,9 @@ func recordHasExtentSeen(u *ir.Unit, st *ir.Struct, seenS map[*ir.Struct]bool, s
 // valueHasExtentSeen reports one VALUE of f's declared type — the element of
 // an array or a list — whose by-value storage can hold a list or a map.
 func valueHasExtentSeen(u *ir.Unit, f *ir.Field, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
+	if f != nil && f.Type.TextUnbounded() {
+		return true
+	}
 	if f == nil || f.IsMap() || f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 		return false
 	}
@@ -774,6 +777,14 @@ func addrPlus(addr string, off int64) string {
 // by-value value holds — every element of a bounded array (a counted array's
 // live ones, which in Dart are all it holds), a record, or a union's set arm.
 func (g *cookGen) emitCookExtentField(f *ir.Field, val, addr, ind string, write bool, base string) {
+	if f.Type.TextUnbounded() {
+		g.emitCookTextExtent(f, val, addr, ind, write, base)
+		return
+	}
+	if f.Type.Optional && f.IsMap() {
+		owner := val[:lastDot(val)]
+		g.pf("%sif (!%s.%s && %s.isNotEmpty) return -1;\n", ind, owner, hasMember(f), val)
+	}
 	if f.IsList() || f.IsMap() {
 		g.emitCookExtentHolder(f, val, addr, ind, write, base)
 		return
@@ -1039,11 +1050,19 @@ var (
 )
 
 func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
+	g.pf("%s", textListWriteCheck(f, expr, ind, "wire.", "return false;"))
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "return false;"))
 	pieces := ir.FieldPieces(g.unit, f, offset)
+	if f.Type.Optional {
+		owner := expr[:lastDot(expr)]
+		g.pf("%sout?.setUint8(at + %d, %s.%s ? 1 : 0);\n", ind, pieces[len(pieces)-1].Offset, owner, hasMember(f))
+		g.emitCookVariableField(nonOptional(f), offset, expr, ind)
+		return
+	}
 	switch {
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			g.pf("%sc.blob(at + %d, %s, %s);\n", ind, offset, dartU64Literal(ir.StringWireTypeId), expr)
+			g.pf("%sc.blob(at + %d, %s, %s, %s);\n", ind, offset, dartU64Literal(ir.StringWireTypeId), expr, stringBlobSlot(expr))
 		} else {
 			g.pf("%sc.blob(at + %d, %s, %s);\n", ind, offset, dartU64Literal(ir.BytesWireTypeId), expr)
 		}
@@ -1149,6 +1168,8 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.emitCookRef(ind, fmt.Sprintf("at + %d", offset), expr)
 	case isByValueTable(f):
 		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
+	case f.Type.TextUnbounded():
+		g.pf("%sif(!wire.tableTextValueValid(%s,-1))return false;\n", ind, expr)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needConvert = true
 		text := dartName(f.Name) + "Text"
@@ -1253,7 +1274,7 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, Object blob) blobIndex;
+  final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
   ByteData? out;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
@@ -1297,11 +1318,11 @@ final class TableCookGraph {
 
   // A blob is a node of its own reserved type id, numbered by its identity
   // (§3.1): the String or byte list the field holds.
-  void blob(int slot, int id, Object? blob) {
+  void blob(int slot, int id, Object? blob, [Object? owner, String? field]) {
     final out = this.out;
     if (out == null) return;
     var delta = 0;
-    if (blob != null) delta = 64 + offsets[blobIndex(id, blob) - 1] - slot;
+    if (blob != null) delta = 64 + offsets[blobIndex(id, blob, owner, field) - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }

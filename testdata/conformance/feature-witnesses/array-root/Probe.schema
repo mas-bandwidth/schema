@@ -1,0 +1,7 @@
+package probe
+ table Goal { x int32 }
+ table GoalList | json = "array" { goals [..2]Goal }
+ table Holder { group GoalList
+ groups []GoalList
+ by_name map[string(8)]GoalList
+ maybe ?GoalList }

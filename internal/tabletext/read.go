@@ -1714,7 +1714,11 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			cell.U = uint64(tag)
 		}
 	} else if arm.Body() {
-		if in.valueShape() != 'o' {
+		shape := byte('o')
+		if arm.Ref.JsonArray {
+			shape = 'a'
+		}
+		if in.valueShape() != shape {
 			// the wrong JSON type for the arm's row: the union reads None,
 			// the event is counted, and the enclosing object continues (§16.2)
 			in.report.KindMismatch++
@@ -2082,6 +2086,9 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	case shape != Shape(fv.Def):
 		report.KindMismatch++
 		ok = in.skipValue(0)
+		if ok && fv.Def.Type.Optional {
+			fv.Present = true
+		}
 	default:
 		ok = in.readField(fv, 0)
 		if ok && fv.Def.Type.Optional {
@@ -2325,6 +2332,17 @@ func (in *reader) readMapValue(fv *Field, depth int) bool {
 			return false
 		}
 		in.m.reset(fv)
+		return true
+	}
+	if in.valueShape() != Shape(fv.Def) {
+		in.report.KindMismatch++
+		if !in.skipValue(depth + 1) {
+			return false
+		}
+		// Null is the only absent optional map value (§16.2).
+		if fv.Def.Type.Optional {
+			fv.Present = true
+		}
 		return true
 	}
 	if !in.readField(fv, depth) {

@@ -298,7 +298,7 @@ func t08R28(t *testing.T) {
 	if !strings.Contains(tableFixedRuntime, "constexpr int32_t kTableFixedMaxDepth = 64;") {
 		t.Error("R28: the layout's depth cap is not 64")
 	}
-	if !strings.Contains(tableFixedRuntime, "if ( c.depth > 64 )\n    {\n        c.hostile = true;\n        return;\n    }") {
+	if !strings.Contains(cppSourceSpelling(tableFixedRuntime), "if ( c.depth > 64 ) { c.hostile = true; return; }") {
 		t.Error("R28: the walk does not refuse a chain past 64")
 	}
 }

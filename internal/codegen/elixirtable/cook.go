@@ -49,8 +49,24 @@ func (g *gen) cookModule() []byte {
 	g.body.Reset()
 	g.pf("defmodule %s.%sCook do\n", g.ns, moduleBase(g.file.Base))
 	g.pf("%s", cookModuleBanner)
-	g.pf("  alias %s.CookRuntime, as: C\n\n", g.ns)
-	g.pf("  @build_version %s.BuildVersion.build_version()\n\n", g.ns)
+	anyOpen, needsRuntime := false, false
+	for _, st := range roots {
+		if !g.cookable(st.Name) {
+			continue
+		}
+		anyOpen = anyOpen || !st.IsTable || st.CarriesForm("cook")
+		for _, fl := range ir.RecordLayout(g.unit, st).Fields {
+			for _, accessor := range g.cookAccessors(st, fl) {
+				needsRuntime = needsRuntime || strings.Contains(accessor, "C.")
+			}
+		}
+	}
+	if anyOpen || needsRuntime {
+		g.pf("  alias %s.CookRuntime, as: C\n\n", g.ns)
+	}
+	if anyOpen {
+		g.pf("  @build_version %s.BuildVersion.build_version()\n\n", g.ns)
+	}
 	g.emitCookDescriptors(roots)
 	var handles []*ir.Struct
 	for _, st := range roots {
@@ -289,6 +305,21 @@ const cookRuntimeSource = `  @moduledoc """
 
   def bool(region, at), do: uint(region, at, 1) != 0
 
+  # An inline unbounded string's blob belongs to the holder's node extent.
+  def inline_text(region, at) do
+    case deref(region, at) do
+      :null ->
+        ""
+
+      {:ok, blob} when blob + 8 <= byte_size(region) ->
+        used = uint(region, blob, 4)
+        if used < byte_size(region) - blob - 8, do: text(region, blob + 8, used), else: :error
+
+      _ ->
+        :error
+    end
+  end
+
   # a string's or a bytes' USED bytes, without the zero tail (§7.2)
   def text(region, at, used), do: binary_part(region, at, used)
 
@@ -378,7 +409,12 @@ const cookRuntimeSource = `  @moduledoc """
 // cookRoots is every closure member declared in this file that a cooked region
 // can hold: a root is ANY table, and a record is anything one reaches by value.
 func (g *gen) cookRoots() []*ir.Struct {
-	out := append([]*ir.Struct(nil), orderTables(g.file.Tables)...)
+	var out []*ir.Struct
+	for _, st := range orderTables(g.file.Tables) {
+		if g.closure[st.Name] {
+			out = append(out, st)
+		}
+	}
 	for _, d := range g.file.Decls {
 		if st, ok := d.(*ir.Struct); ok && g.closure[st.Name] {
 			out = append(out, st)
@@ -498,6 +534,8 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 			record = g.cookRecordRef(f.Type.Name)
 		}
 		countOffset = fl.Offset + 8
+	case f.Type.TextUnbounded():
+		storage, elemSize = ":reference", 8
 	case f.Type.Pointer:
 		storage, elemSize = ":reference", 8
 		record = g.cookRecordRef(f.Type.Name)
@@ -525,7 +563,7 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	fmt.Fprintf(&b, "        is_array: %v,\n", isArray)
 	fmt.Fprintf(&b, "        array_bound: %s,\n", exInt(arrayBound))
 	// a holder is a span, never a reference, whatever its elements are
-	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer && !f.IsList() && !f.IsMap())
+	fmt.Fprintf(&b, "        is_pointer: %v,\n", (f.Type.Pointer || f.Type.TextUnbounded()) && !f.IsList() && !f.IsMap())
 	fmt.Fprintf(&b, "        count_offset: %s,\n", exInt(countOffset))
 	fmt.Fprintf(&b, "        present_offset: %s,\n", exInt(presentOffset))
 	fmt.Fprintf(&b, "        storage: %s,\n", storage)
@@ -582,7 +620,7 @@ func cookStorageOf(u *ir.Unit, f *ir.Field) (string, int64) {
 func cookRowMembers(f *ir.Field) []string {
 	names := []string{f.Name}
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer || f.Type.TextUnbounded():
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
@@ -598,6 +636,10 @@ func cookRowMembers(f *ir.Field) []string {
 
 func (g *gen) emitCookHandle(st *ir.Struct) {
 	if !g.cookable(st.Name) {
+		return
+	}
+	if st.IsTable && !st.CarriesForm("cook") {
+		g.emitCookNodeAccessors(st)
 		return
 	}
 	layout := ir.RecordLayout(g.unit, st)
@@ -639,6 +681,10 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("    C.open_reason(data, lead, %s, %s, @build_version)\n", exInt(layout.Size), exInt(layout.Align))
 	g.pf("  end\n\n")
 
+	g.emitCookNodeAccessors(st)
+}
+
+func (g *gen) emitCookNodeAccessors(st *ir.Struct) {
 	g.pf("  # the TYPED slot accessors: each field of a %s node, read at its own\n", st.Name)
 	g.pf("  # offset from the node's base within the region.\n")
 	var items []string
@@ -657,6 +703,14 @@ func (g *gen) cookAccessors(st *ir.Struct, fl ir.FieldLayout) []string {
 	switch {
 	case f.IsMap() || f.IsList():
 		return g.cookHolderAccessors(st, f, fl)
+	case f.Type.TextUnbounded():
+		out := []string{exDefDo("  ", fmt.Sprintf("def %s_node_%s(region, node)", lo, f.Name),
+			fmt.Sprintf("C.inline_text(region, node + %s)", exInt(fl.Offset)))}
+		if f.Type.Optional {
+			out = append(out, exDefDo("  ", fmt.Sprintf("def %s_node_%s_present?(region, node)", lo, f.Name),
+				fmt.Sprintf("C.bool(region, node + %s)", exInt(pieces[len(pieces)-1].Offset))))
+		}
+		return out
 	case f.Type.Pointer:
 		return []string{"  # a REFERENCE: the eight-byte signed self-relative delta of §6.3, and\n" +
 			"  # NULL IS ZERO. :error is a delta that resolves past the region.\n" +
@@ -715,6 +769,11 @@ func (g *gen) cookHolderAccessors(st *ir.Struct, f *ir.Field, fl ir.FieldLayout)
 			exDefDo("  ", fmt.Sprintf("def %s_node_%s(region, node)", lo, f.Name),
 				fmt.Sprintf("C.span(region, node + %s, %s)", exInt(fl.Offset), exInt(stride))),
 		exDefDo("  ", fmt.Sprintf("def %s_node_%s_stride", lo, f.Name), exInt(stride)),
+	}
+	if f.Type.Optional {
+		pieces := ir.BlockFieldPieceOffsets(g.unit, f, fl.Offset, false)
+		out = append(out, exDefDo("  ", fmt.Sprintf("def %s_node_%s_present?(region, node)", lo, f.Name),
+			fmt.Sprintf("C.bool(region, node + %s)", exInt(pieces[len(pieces)-1].Offset))))
 	}
 	if f.IsMap() && g.cookable(f.MapEntry.Name) {
 		entry := f.MapEntry

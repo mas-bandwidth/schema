@@ -22,7 +22,7 @@ func (g *tableGen) mapKeyType(f *ir.Field) string {
 
 func mapPair(f *ir.Field) bool {
 	v := ir.MapValueField(f)
-	return v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TWString || v.Type.Kind == ir.TBytes)
+	return v.Type.Optional || v.Array == ir.ArrayCounted || !v.Type.Pointer && (v.Type.Kind == ir.TString || v.Type.Kind == ir.TWString || v.Type.Kind == ir.TBytes)
 }
 
 func (g *tableGen) mapValueType(f *ir.Field) string {
@@ -189,7 +189,7 @@ func (g *tableGen) emitMapRead(f *ir.Field, dst, bounded string) {
 	}
 	g.pf("                    if(elem_kind!=13) { r->report->kind_mismatch++; break; }\n")
 	g.retainReplace(f, "                    ")
-	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, n, n)
+	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, n, g.sequenceAlign(f))
 	g.pf("                    for(i=0;i<count;i++) {\n                        TableReader item; %s key; %s * entry; int order;\n                        if(!table_reader_span(&sub,&item)) { r->report->malformed=1; break; }\n                        key=%s(item);\n                        if(key.widened && !widened) { widened=1; r->report->widened++; }\n                        if(key.kind_bad) { r->report->kind_mismatch++; memset(&%s,0,sizeof(%s)); break; }\n                        if(key.malformed) { r->report->malformed=1; break; }\n                        if(key.over) { r->report->clamped++; continue; }\n                        order=last ? %s(previous.key,key.key) : -1;\n                        if(order>0) { r->report->malformed=1; break; }\n                        if(order==0) { entry=last; }\n                        else { entry=(%s *)table_sequence_fill_next(&fill); }\n                        if(entry==NULL) { r->report->malformed=1; break; }\n                        %s%s(&item,entry); if(r->nodes!=NULL && r->nodes->refused) { return 0; } if(order==0) { r->report->duplicate++; } last=entry; previous=key;\n                    }\n                    table_sequence_fill_end(&fill);\n                }\n", g.sym(n, "key_read"), n, g.sym(n, "read_key"), dst, dst, g.sym(n, "key_compare"), n, g.retainMapIndex(), g.api(n, "load_body"))
 }
 

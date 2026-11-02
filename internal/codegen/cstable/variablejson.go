@@ -26,7 +26,12 @@ const tableVariableJsonSource = `
         if (f.BlobKind != 0) { return ReadBlob(text, ref input, owner, f, index); }
         if (input.Labels == null || depth + 1 > MaxDepth || Peek(text, ref input) != '{') { input.Bad = true; return false; }
         int start = input.Pos++;
-        if (Peek(text, ref input) == '}') { input.Pos++; f.SetChild(owner, index, f.Table.Create()); return true; }
+        if (Peek(text, ref input) == '}')
+        {
+            input.Pos = start;
+            object empty = f.Table.Create(); f.SetChild(owner, index, empty);
+            return ReadTable(text, ref input, empty, f.Table, depth + 1);
+        }
         Span<byte> key = stackalloc byte[MaxKey];
         if (!ScanString(text, ref input, key, true, out int used)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }

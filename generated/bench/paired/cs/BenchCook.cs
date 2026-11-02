@@ -69,7 +69,8 @@ namespace Bench
         public int ElemSize;    // one element's size, for an array; the field's own otherwise
         public bool IsArray;
         public int ArrayBound;  // the DECLARED bound: a counted array's N, a string's or bytes' length
-        public bool IsPointer;  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
+        public bool IsPointer;
+        public bool Unbounded;  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
         public int CountOffset; // the count companion's offset, or -1 when the field has none
         public int PresentOffset; // an optional's presence bool, or -1
         public TableCookStorage Storage; // what one slot HOLDS, at ElemSize bytes

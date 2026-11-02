@@ -150,6 +150,7 @@ export const TableFixedRefusal = Object.freeze({
   // destination write, as it refuses an ill-formed text, and every writer
   // refuses one (the save answers -1).
   NonFiniteFloat: 18,
+  IntegrityMismatch: 19,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -174,6 +175,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
+    case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
     default: return "???";
   }
 }

@@ -75,7 +75,7 @@ func t03Header(t *testing.T, u *ir.Unit) string {
 // t03Has is a required substring of emitted source, named by the rule it proves.
 func t03Has(t *testing.T, src, want, what string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !strings.Contains(cppSourceSpelling(src), cppSourceSpelling(want)) {
 		t.Errorf("%s: the emitted source does not carry %q", what, want)
 	}
 }

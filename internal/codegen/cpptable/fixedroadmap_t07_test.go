@@ -413,10 +413,10 @@ fixed table Probe {
 	h := cppT07Header(t, src, "w8")
 	blob := "{ 16, 1, 24, 1, 3 }, // blob"
 	label := "{ 12, 0, 0, 0, 1 }, // label"
-	if !strings.Contains(h, blob) {
+	if !strings.Contains(cppSourceSpelling(h), blob) {
 		t.Errorf("W8: bytes(N) takes the array row: the bytes destination row must be the array's — buffer at dst, stride one, live count at aux — got no line %q", blob)
 	}
-	if !strings.Contains(h, label) {
+	if !strings.Contains(cppSourceSpelling(h), label) {
 		t.Errorf("W8: bytes(N) takes the array row: the text row is the CONTROL and must stay the text convention %q", label)
 	}
 }

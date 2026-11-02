@@ -2004,7 +2004,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 
 	g.pf("public static long %sFixedMeasure(long count)\n{\n", name)
-	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", name, name)
+	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes + %d;\n}\n\n", name, name, integrityTrailerBytes(st))
 
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
@@ -2024,7 +2024,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        BinaryPrimitives.WriteUInt64LittleEndian(at, %sFixedHash);\n", name)
 	g.pf("        at.Slice(8, (int)%sFixedBodyBytes).Clear();\n", name)
 	g.pf("        %sFixedWriteBody(at.Slice(8), values[k]);\n", name)
-	g.pf("        at = at.Slice((int)%sFixedRecordBytes);\n    }\n    return need;\n}\n\n", name)
+	g.pf("        at = at.Slice((int)%sFixedRecordBytes);\n    }\n", name)
+	if st.Integrity == "crc32c" {
+		g.pf("    BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice((int)need - 4), TableWire.IntegrityCrc(buffer.Slice(0, (int)need - 4)));\n")
+	}
+	g.pf("    return need;\n}\n\n")
 
 	g.pf("public static long %sFixedSave(%s[] values, Span<byte> buffer)\n{\n", name, name)
 	g.pf("    return %sFixedSave((ReadOnlySpan<%s>)values, buffer);\n}\n\n", name, name)
@@ -2054,6 +2058,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                          : \"newer_form\";\n")
 	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n        }\n")
 	g.pf("        return -1;\n    }\n")
+	if st.Integrity == "crc32c" {
+		g.pf("    if (!TableWire.IntegrityRead(ref data)) { if (report != null) { TableWire.IntegrityDamage(report); } return -1; }\n")
+	}
 	g.pf("    if (data.Length < TableFixedWire.HeaderBytes + 4)\n    {\n")
 	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")

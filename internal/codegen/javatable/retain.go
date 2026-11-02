@@ -80,7 +80,13 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        if (retain == null) { return " + st.Name + "Variable.load(data, report); }\n")
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
-	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
+	if st.Integrity != "" {
+		b.WriteString("        byte[] wire = TableVariable.integrityOpen(data, report);\n")
+		b.WriteString("        if (wire == null) { return null; }\n")
+		b.WriteString("        TableVariable.Reader r = TableVariable.open(wire, report);\n")
+	} else {
+		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
+	}
 	b.WriteString("        if (r == null) { return null; }\n")
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
 	if st.FixedDeclared {
@@ -153,10 +159,35 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	// readFieldsRetain: the variable readFields, with capture in the unknown arm
 	// and the body's path threaded into list elements (§6.6).
 	fmt.Fprintf(&b, "    static void readFieldsRetain(TableVariable.Reader r, %sVariable.Value v, TableVariable.NodeTable nt, TableRetain retain, TableVariable.Report report, int[] path, int depth) {\n", st.Name)
+	hasReq := false
+	for i, f := range st.Fields {
+		if f.Required {
+			hasReq = true
+			fmt.Fprintf(&b, "        boolean reqSeen_%d = false;\n", i)
+		}
+	}
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            long ref = r.leb();\n")
 	b.WriteString("            if (r.fail) { return; }\n")
-	b.WriteString("            if (ref == 0) { return; }\n")
+	if hasReq {
+		b.WriteString("            if (ref == 0) {\n")
+		b.WriteString("                StringBuilder missing = new StringBuilder();\n")
+		for i, f := range st.Fields {
+			if !f.Required {
+				continue
+			}
+			cond := fmt.Sprintf("!reqSeen_%d", i)
+			if g := variableGuard(st, f); g != "" {
+				cond = fmt.Sprintf("(%s) && !reqSeen_%d", g, i)
+			}
+			fmt.Fprintf(&b, "                if (%s) { if (missing.length() > 0) missing.append(\", \"); missing.append(%q); }\n", cond, f.Name)
+		}
+		b.WriteString("                if (missing.length() > 0) { report.missingRequired++; report.refused = true; if (report.reason == null) { report.reason = \"missing_required: \" + missing; } }\n")
+		b.WriteString("                return;\n")
+		b.WriteString("            }\n")
+	} else {
+		b.WriteString("            if (ref == 0) { return; }\n")
+	}
 	b.WriteString("            long id = r.resolve(ref);\n")
 	b.WriteString("            if (r.fail) { return; }\n")
 	b.WriteString("            if (!r.has(1)) { report.malformed = true; return; }\n")
@@ -170,7 +201,20 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		}
 		first = false
 		fmt.Fprintf(&b, "if (id == %sVariable.F_%s) {\n", st.Name, varMember(f))
+		if f.Required {
+			fmt.Fprintf(&b, "                boolean reqMatch = (%s);\n", variableCompatibleKinds(variableWireKind(f), "kind"))
+			if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() {
+				elemKind := variableElemWireKind(f)
+				if f.IsMap() {
+					elemKind = 13
+				}
+				fmt.Fprintf(&b, "                if (reqMatch) { TableVariable.Reader probe = new TableVariable.Reader(r.buf, r.ids, new TableVariable.Report()); probe.off = r.off; probe.limit = r.limit; TableVariable.Reader ar = probe.body(); reqMatch = ar != null; if (ar != null && ar.has(2)) { int pk = ar.get8(); %s; reqMatch = ar.fail || (%s); } }\n", countRead(f, "ar"), variableCompatibleKinds(elemKind, "pk"))
+			}
+		}
 		writeFieldRead(&b, u, st, f, true, i, false)
+		if f.Required {
+			fmt.Fprintf(&b, "                if (!r.fail && reqMatch) { reqSeen_%d = true; }\n", i)
+		}
 	}
 	b.WriteString("            } else if (id == TableVariable.NODE_ID) {\n")
 	if st.FixedDeclared {
@@ -287,6 +331,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
 	// a NaN or an infinity refuses the save (docs/SPEC-TABLES.md §3.3)
+	if st.Integrity != "" {
+		b.WriteString("        if (!w.overflow && !ids.nonFinite) { w.put32(TableVariable.crc32c(w.buf, w.off)); }\n")
+	}
 	b.WriteString("        return w.overflow || ids.nonFinite ? -1 : w.off;\n")
 	b.WriteString("    }\n\n")
 
@@ -374,6 +421,13 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 // list field, the element bodies threaded with the retain path so each carries
 // its own retained tail (docs/SPEC-TABLES.md §6.6).
 func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, ordinal int) {
+	if f.Required {
+		fmt.Fprintf(b, "        {w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);\n", st.Name, varMember(f), variableWireKind(f))
+		fmt.Fprintf(b, "path[2*depth]=%d;path[2*depth+1]=0;\n", ordinal)
+		writeVariableRetainedPayload(b, u, st.Name, f, "v."+varMember(f), "w", 0, "depth+1")
+		b.WriteString("        }\n")
+		return
+	}
 	if f.Type.Optional {
 		fmt.Fprintf(b, "        if(v.%sPresent){w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);\n", varMember(f), st.Name, varMember(f), variableWireKind(f))
 		one := *f
@@ -427,7 +481,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	// AN ARRAY OF SCALARS carries no body and so no retained tail: it is the
 	// codec's own write too, which elides a fixed array that holds only its
 	// defaults where a hand-written copy wrote it whole (map_cells, kind #261)
-	scalar = scalar || isScalarArray(f)
+	scalar = scalar || isScalarArray(f) || ir.TextListPlain(f)
 	if scalar || (!isStruct(f) && f.Type.Kind != ir.TNamed && f.Type.Kind != ir.TString && f.Type.Kind != ir.TWString && f.Type.Kind != ir.TBool && f.Type.Kind != ir.TInt && !isScalarArray(f)) {
 		var body strings.Builder
 		writeFieldSave(&body, u, st, f)

@@ -90,6 +90,7 @@ func cppRuntimeNames() []Name {
 		}},
 		{what: "the message form's runtime: batches, entries, quantization and the skip walk (docs/SPEC-TABLES.md §3.3)", names: []string{
 			"TableMessageArmEntry", "TableMessageBatch", "TableMessageBatchBegin", "TableMessageBatchBytes",
+			"TableMessageBatchCheckIntegrity", "TableMessageBatchOpenSealed", "TableMessageBatchSeal",
 			"TableMessageBatchEnd", "TableMessageDequantize", "TableMessageElementRunBits", "TableMessageFixedKind",
 			"TableMessageIntegerKind", "TableMessageNameEntry", "TableMessageQuantization", "TableMessageQuantize",
 			"TableMessageRefuseBatch", "TableMessageReserved", "TableMessageSkipElement", "TableMessageSkipRun",

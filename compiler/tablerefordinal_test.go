@@ -267,19 +267,20 @@ func TestCppTableRefOrdinalBytes(t *testing.T) {
 	// all, or the comparison below would pass by measuring nothing. Not while
 	// PINNING: the pin is taken from the emitter that had no cache.
 	if os.Getenv("SCHEMA_UPDATE_REFORDINAL_GOLDEN") != "1" {
-		header := string(files["ProbeTable.h"])
+		compact := func(s string) string { return strings.Join(strings.Fields(s), "") }
+		header := compact(string(files["ProbeTable.h"]))
 		for _, want := range []string{
 			"int32_t slot[ kCapacity ]",
 			"ordinal_of[ kCapacity ]",
 			"uint64_t ref_at( int32_t ordinal, uint64_t id )",
 			"ids.ref_at(",
 		} {
-			if !strings.Contains(header, want) {
+			if !strings.Contains(header, compact(want)) {
 				t.Fatalf("the generated save path does not carry %q — this test would prove nothing", want)
 			}
 		}
 		// Selection is dynamic, but the selected switch arm has a known ID.
-		if !strings.Contains(header, "case Slot::Low: ref = ids.ref_at(") {
+		if !strings.Contains(header, compact("case Slot::Low: ref = ids.ref_at(")) {
 			t.Fatal("the enum switch does not use its known variant ordinal")
 		}
 	}

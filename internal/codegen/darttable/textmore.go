@@ -29,8 +29,8 @@ import (
 // needsGenericText reports whether a field's text goes through the generic
 // walk below rather than the card-class emitters in textform.go.
 func needsGenericText(f *ir.Field) bool {
-	return f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
-		isWide(f) || f.Type.Optional || isFlags(f)
+	return f.IsTextList() || f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
+		isWide(f) || f.Type.Optional || isFlags(f) || f.Type.Timestamp
 }
 
 func depthExpr(d int) string {
@@ -428,7 +428,8 @@ String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def 
     r.kindMismatch++;
     return def;
   }
-  if (_jsonText(val).length <= bound) return val;
+  val = _jsonText(val);
+  if (val.length <= bound) return val;
   var keep = bound;
   if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
     keep--;
@@ -514,8 +515,9 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
 }
 
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
-  final len = utf8.encode(_jsonText(k)).length;
-  if (len > bound || len > 255) {
+  k = _jsonText(k);
+  final len = utf8.encode(k).length;
+  if (bound >= 0 && (len > bound || len > 255)) {
     r.clamped++;
     return null;
   }
@@ -713,7 +715,7 @@ func (g *wireGen) emitTextMoreDecls() {
 	}
 	for _, st := range g.closure {
 		g.pf("%s _%sFromJsonValue(dynamic val, TableTextReport r, _Share sh, [%s? def]) {\n", st.Name, dartName(st.Name), st.Name)
-		g.pf("\tif (_jsonEntries(val) != null) {\n")
+		g.pf("\tif (%s) {\n", jsonTableShape(st, "val"))
 		g.pf("\t\tfinal v = %s();\n", st.Name)
 		g.pf("\t\t%sFromJsonFields(v, val, r, sh);\n", dartName(st.Name))
 		g.pf("\t\treturn v;\n")
@@ -744,6 +746,8 @@ func mapKeyText(f *ir.Field, entry string) string {
 func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where string) {
 	e := fmt.Sprintf("e%d", d)
 	switch {
+	case f.IsTextList():
+		g.emitJsonTextList(f, expr, d, ind, where)
 	case f.Type.Optional:
 		g.emitJsonValue(nonOptional(f), expr, d, ind, where)
 	case f.IsMap():
@@ -817,6 +821,8 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%sout.raw(_jsonWide(%s, %d, %v));\n", ind, expr, f.Type.FracBits, k == ir.TableKindI128 || k == ir.TableKindU128)
 	case isFlags(f):
 		g.pf("%s%s(out, %s, %s);\n", ind, flagsFn(flagsRef(f), "ToJson"), expr, depthExpr(d))
+	case f.Type.Timestamp:
+		g.pf("%sout.raw(_jsonString(_timestampText(%s)));\n", ind, expr)
 	case f.Type.Kind == ir.TWString, f.Type.Kind == ir.TString:
 		g.pf("%sout.raw(_jsonString(%s));\n", ind, expr)
 	case f.Type.Kind == ir.TBytes:
@@ -843,12 +849,16 @@ func unionArmShapeCond(f *ir.Field, item string) string {
 		cond = "_jsonEntries(" + item + ") != null"
 	case f.Array != ir.ArrayNone:
 		cond = item + " is List"
-	case unionRef(f) != nil, tableRef(f) != nil:
+	case tableRef(f) != nil:
+		cond = jsonTableShape(tableRef(f), item)
+	case unionRef(f) != nil:
 		cond = "_jsonEntries(" + item + ") != null"
 	case enumRef(f) != nil:
 		cond = item + " is String"
 	case isFlags(f):
 		cond = item + " is List"
+	case f.Type.Timestamp:
+		cond = item + " is String"
 	case f.Type.Kind == ir.TBool:
 		cond = item + " is bool"
 	default:
@@ -874,13 +884,15 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		fbArg = ", " + fb
 	}
 	switch {
+	case f.IsTextList():
+		return g.jsonTextListRead(f, val, d, fbArg)
 	case f.Type.Optional:
 		return g.jsonReadExpr(nonOptional(f), val, d, fallback...)
 	case f.IsMap():
 		key, value := f.MapEntry.Fields[0], f.MapEntry.Fields[1]
 		var keyExpr string
 		if key.Type.Kind == ir.TString {
-			keyExpr = fmt.Sprintf("_jsonStringKey(k%d, %d, r)", d, key.Type.Size)
+			keyExpr = fmt.Sprintf("_jsonStringKey(k%d, %d, r)", d, textBound(key))
 		} else {
 			lo, hi := jsonIntBounds(key)
 			keyExpr = fmt.Sprintf("_jsonIntKey(k%d, r, %s, %s, %s)", d, lo, hi, jsonUnsigned(key))
@@ -888,7 +900,6 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		et := f.MapEntry.Name
 		valMember := fieldMember(value)
 		cmpExpr := fmt.Sprintf("(%s a, %s b) => %s", et, et, mapKeyCompare(f))
-		shapeCond := unionArmShapeCond(value, item)
 		var valBody string
 		if value.Type.Optional {
 			valBody = fmt.Sprintf("if (%s == null) { m%d.%s = false; } else { m%d.%s = true; m%d.%s = %s; }",
@@ -896,8 +907,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		} else {
 			valBody = fmt.Sprintf("m%d.%s = %s;", d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
 		}
-		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; if (!(%s)) throw const FormatException('map value shape mismatch'); final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
-			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, shapeCond, d, et, d, fieldMember(key), d, valBody, d, fbArg)
+		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
+			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, d, et, d, fieldMember(key), d, valBody, d, fbArg)
 	case isKeyed(f):
 		en := f.KeyEnumRef
 		var slots strings.Builder
@@ -943,10 +954,12 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		return fmt.Sprintf("_jsonWideField(%s, r, %d, %v, %s, %s, %s)", val, f.Type.FracBits, ir.TableKindSigned(wideKind(f)), lo, hi, wdef)
 	case isFlags(f):
 		return fmt.Sprintf("%s(%s, r%s)", flagsFn(flagsRef(f), "FromJson"), val, fbArg)
+	case f.Type.Timestamp:
+		return fmt.Sprintf("_timestampField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TWString:
 		return fmt.Sprintf("_jsonWStringField(%s, %d, r%s)", val, f.Type.Size, fbArg)
 	case f.Type.Kind == ir.TString:
-		return fmt.Sprintf("_jsonStringField(%s, %d, r%s)", val, f.Type.Size, fbArg)
+		return fmt.Sprintf("_jsonStringField(%s, %d, r%s)", val, textBound(f), fbArg)
 	case f.Type.Kind == ir.TBytes:
 		return fmt.Sprintf("_jsonBytesField(%s, r, %d%s)", val, f.Type.Size, fbArg)
 	case f.Type.Kind == ir.TBool:

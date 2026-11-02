@@ -1166,7 +1166,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5093,8 +5093,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace messagedemo
@@ -8130,9 +8176,11 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                     {
                         {
                             uint64_t variant_ref = 0;
-                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true;
+                                break; }
                             if ( variant_ref == 0 ) { value.modes[(int32_t) i] = Mode::None; } // the zero reference is the enum's None
-                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                                break; }
                             else if ( !TableEnumValue( r.ids->at( variant_ref ), value.modes[(int32_t) i] ) )
                             {
                                 value.modes[(int32_t) i] = Mode::None;
@@ -10593,9 +10641,11 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.mode = Mode::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.mode ) )
                 {
                     value.mode = Mode::None;
@@ -15023,9 +15073,11 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                     {
                         {
                             uint64_t variant_ref = 0;
-                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true;
+                                break; }
                             if ( variant_ref == 0 ) { value.marks[(int32_t) i] = Mode::None; } // the zero reference is the enum's None
-                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                                break; }
                             else if ( !TableEnumValue( r.ids->at( variant_ref ), value.marks[(int32_t) i] ) )
                             {
                                 value.marks[(int32_t) i] = Mode::None;
@@ -18551,8 +18603,12 @@ constexpr int64_t UserFixedLayoutBytes = (int64_t) sizeof( UserFixedLayout );
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst UserFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // User
-    { 20, 0, 0, 0, 1 }, // name
+    {
+        0, 0, 0, 0, 0
+    }, // User
+    {
+        20, 0, 0, 0, 1
+    }, // name
 };
 
 // THE IDENTITY PLAN, coalesced out of 1 leaves by the schema compiler —
@@ -18896,9 +18952,15 @@ constexpr int64_t ScriptFixedLayoutBytes = (int64_t) sizeof( ScriptFixedLayout )
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst ScriptFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
+    {
+        0, 0, 0, 0, 0
+    }, // Script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -19229,13 +19291,27 @@ constexpr int64_t SelectionFixedLayoutBytes = (int64_t) sizeof( SelectionFixedLa
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst SelectionFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Selection
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
+    {
+        0, 0, 0, 0, 0
+    }, // Selection
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
 };
 
 // THE IDENTITY PLAN, coalesced out of 4 leaves by the schema compiler —
@@ -19598,33 +19674,87 @@ constexpr int64_t InsertTextFixedLayoutBytes = (int64_t) sizeof( InsertTextFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst InsertTextFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // InsertText
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
+    {
+        0, 0, 0, 0, 0
+    }, // InsertText
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
 };
 
 // THE IDENTITY PLAN, coalesced out of 26 leaves by the schema compiler —
@@ -20021,14 +20151,30 @@ constexpr int64_t RemoveTextFixedLayoutBytes = (int64_t) sizeof( RemoveTextFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RemoveTextFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RemoveText
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
+    {
+        0, 0, 0, 0, 0
+    }, // RemoveText
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
 };
 
 // THE IDENTITY PLAN, coalesced out of 4 leaves by the schema compiler —
@@ -20413,52 +20559,144 @@ constexpr int64_t EditFixedLayoutBytes = (int64_t) sizeof( EditFixedLayout );
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst EditFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Edit
-    { 0, 0, 0, 0, 0 }, // revision
-    { 4, 0, 4, 0, 0 }, // body
-    { 4, 0, 0, 0, 0 }, // insert
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 4, 0, 0, 0, 0 }, // remove
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 4, 0, 0, 0, 0 }, // tally
-    { 4, 2, 4, 1, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 1, 4, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
-    { 4, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
+    {
+        0, 0, 0, 0, 0
+    }, // Edit
+    {
+        0, 0, 0, 0, 0
+    }, // revision
+    {
+        4, 0, 4, 0, 0
+    }, // body
+    {
+        4, 0, 0, 0, 0
+    }, // insert
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        4, 0, 0, 0, 0
+    }, // remove
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        4, 0, 0, 0, 0
+    }, // tally
+    {
+        4, 2, 4, 1, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 1, 4, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        4, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
 };
 
 // THE IDENTITY PLAN, coalesced out of 37 leaves by the schema compiler —
@@ -20921,14 +21159,30 @@ constexpr int64_t OpenDocumentFixedLayoutBytes = (int64_t) sizeof( OpenDocumentF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst OpenDocumentFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // OpenDocument
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 76, 0, 0, 0, 0 }, // cursor
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
+    {
+        0, 0, 0, 0, 0
+    }, // OpenDocument
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        76, 0, 0, 0, 0
+    }, // cursor
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
 };
 
 // THE IDENTITY PLAN, coalesced out of 4 leaves by the schema compiler —
@@ -21281,9 +21535,15 @@ constexpr int64_t SaveDocumentFixedLayoutBytes = (int64_t) sizeof( SaveDocumentF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst SaveDocumentFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // SaveDocument
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // force
+    {
+        0, 0, 0, 0, 0
+    }, // SaveDocument
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // force
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -21738,112 +21998,324 @@ constexpr int64_t TransactionFixedLayoutBytes = (int64_t) sizeof( TransactionFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TransactionFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Transaction
-    { 20, 0, 0, 0, 1 }, // reason
-    { 24, 312, 960, 1, 0 }, // edits
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // revision
-    { 4, 0, 4, 0, 0 }, // body
-    { 4, 0, 0, 0, 0 }, // insert
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 4, 0, 0, 0, 0 }, // remove
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 4, 0, 0, 0, 0 }, // tally
-    { 4, 2, 4, 1, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 1, 4, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
-    { 4, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 964, 308, 0, 0, 0 }, // pending
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // insert
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 4, 0, 0, 0, 0 }, // remove
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 4, 0, 0, 0, 0 }, // tally
-    { 4, 2, 4, 1, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 1, 4, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
-    { 4, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 0, 0, 1588, 0, 0 }, // checkpoints ?
-    { 1580, 4, 0, 0, 0 }, // checkpoints
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 1624, 0, 0 }, // snapshots ?
-    { 1592, 16, 0, 0, 0 }, // snapshots
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
+    {
+        0, 0, 0, 0, 0
+    }, // Transaction
+    {
+        20, 0, 0, 0, 1
+    }, // reason
+    {
+        24, 312, 960, 1, 0
+    }, // edits
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // revision
+    {
+        4, 0, 4, 0, 0
+    }, // body
+    {
+        4, 0, 0, 0, 0
+    }, // insert
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        4, 0, 0, 0, 0
+    }, // remove
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        4, 0, 0, 0, 0
+    }, // tally
+    {
+        4, 2, 4, 1, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 1, 4, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        4, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        964, 308, 0, 0, 0
+    }, // pending
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // insert
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        4, 0, 0, 0, 0
+    }, // remove
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        4, 0, 0, 0, 0
+    }, // tally
+    {
+        4, 2, 4, 1, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 1, 4, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        4, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        0, 0, 1588, 0, 0
+    }, // checkpoints ?
+    {
+        1580, 4, 0, 0, 0
+    }, // checkpoints
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 1624, 0, 0
+    }, // snapshots ?
+    {
+        1592, 16, 0, 0, 0
+    }, // snapshots
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
 };
 
 // THE IDENTITY PLAN, coalesced out of 197 leaves by the schema compiler —
@@ -22948,283 +23420,837 @@ constexpr int64_t ToolMessageFixedLayoutBytes = (int64_t) sizeof( ToolMessageFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst ToolMessageFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // ToolMessage
-    { 0, 0, 0, 0, 0 }, // sequence
-    { 8, 0, 8, 0, 0 }, // body
-    { 8, 0, 0, 0, 0 }, // open
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 76, 0, 0, 0, 0 }, // cursor
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // save
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // force
-    { 8, 0, 0, 0, 0 }, // transact
-    { 20, 0, 0, 0, 1 }, // reason
-    { 24, 312, 960, 1, 0 }, // edits
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // revision
-    { 4, 0, 4, 0, 0 }, // body
-    { 4, 0, 0, 0, 0 }, // insert
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 4, 0, 0, 0, 0 }, // remove
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 4, 0, 0, 0, 0 }, // tally
-    { 4, 2, 4, 1, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 1, 4, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
-    { 4, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 964, 308, 0, 0, 0 }, // pending
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // insert
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 4, 0, 0, 0, 0 }, // remove
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 4, 0, 0, 0, 0 }, // tally
-    { 4, 2, 4, 1, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 1, 4, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
-    { 4, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 0, 0, 1588, 0, 0 }, // checkpoints ?
-    { 1580, 4, 0, 0, 0 }, // checkpoints
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 1624, 0, 0 }, // snapshots ?
-    { 1592, 16, 0, 0, 0 }, // snapshots
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // ping
-    { 0, 0, 0, 0, 0 }, // nonce
-    { 8, 0, 0, 0, 0 }, // caps
-    { 8, 4, 0, 0, 0 }, // spans
-    { 0, 0, 0, 0, 0 }, // element
-    { 8, 0, 8, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 0, 0, 0 }, // ack
-    { 1648, 1640, 4928, 1, 0 }, // history
-    { 0, 0, 0, 0, 0 }, // element
-    { 8, 0, 0, 0, 0 }, // open
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 76, 0, 0, 0, 0 }, // cursor
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // save
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // force
-    { 8, 0, 0, 0, 0 }, // transact
-    { 20, 0, 0, 0, 1 }, // reason
-    { 24, 312, 960, 1, 0 }, // edits
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // revision
-    { 4, 0, 4, 0, 0 }, // body
-    { 4, 0, 0, 0, 0 }, // insert
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 4, 0, 0, 0, 0 }, // remove
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 4, 0, 0, 0, 0 }, // tally
-    { 4, 2, 4, 1, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 1, 4, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
-    { 4, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 964, 308, 0, 0, 0 }, // pending
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // insert
-    { 0, 0, 0, 0, 0 }, // at
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 44, 0, 8, 0, 1 }, // text
-    { 48, 0, 48, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 128, 80, 288, 1, 0 }, // origins
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 300, 0, 0 }, // modes ?
-    { 292, 1, 296, 1, 0 }, // modes
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 4, 0, 0, 0, 0 }, // remove
-    { 0, 0, 0, 0, 0 }, // span
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 4, 0, 0, 0, 0 }, // tally
-    { 4, 2, 4, 1, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 4, 1, 4, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
-    { 4, 0, 0, 0, 0 }, // mode
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
-    { 0, 0, 1588, 0, 0 }, // checkpoints ?
-    { 1580, 4, 0, 0, 0 }, // checkpoints
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 1624, 0, 0 }, // snapshots ?
-    { 1592, 16, 0, 0, 0 }, // snapshots
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // start
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // stop
-    { 0, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // column
-    { 8, 0, 0, 0, 0 }, // ping
-    { 0, 0, 0, 0, 0 }, // nonce
-    { 8, 0, 0, 0, 0 }, // caps
-    { 8, 4, 0, 0, 0 }, // spans
-    { 0, 0, 0, 0, 0 }, // element
-    { 8, 0, 8, 0, 0 }, // origin
-    { 4, 0, 0, 0, 0 }, // user
-    { 20, 0, 0, 0, 1 }, // name
-    { 4, 0, 0, 0, 0 }, // script
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 4, 0, 0, 0, 0 }, // pid
-    { 4, 0, 4, 0, 1 }, // note
-    { 0, 0, 0, 0, 0 }, // ack
-    { 0, 0, 5164, 0, 0 }, // trace ?
-    { 4932, 76, 5160, 1, 0 }, // trace
-    { 0, 0, 0, 0, 0 }, // element
-    { 68, 0, 0, 0, 1 }, // path
-    { 72, 0, 0, 0, 0 }, // line
-    { 0, 0, 5167, 0, 0 }, // marks ?
-    { 5165, 1, 0, 0, 0 }, // marks
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Read
-    { 0, 0, 0, 0, 0 }, // Write
+    {
+        0, 0, 0, 0, 0
+    }, // ToolMessage
+    {
+        0, 0, 0, 0, 0
+    }, // sequence
+    {
+        8, 0, 8, 0, 0
+    }, // body
+    {
+        8, 0, 0, 0, 0
+    }, // open
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        76, 0, 0, 0, 0
+    }, // cursor
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // save
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // force
+    {
+        8, 0, 0, 0, 0
+    }, // transact
+    {
+        20, 0, 0, 0, 1
+    }, // reason
+    {
+        24, 312, 960, 1, 0
+    }, // edits
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // revision
+    {
+        4, 0, 4, 0, 0
+    }, // body
+    {
+        4, 0, 0, 0, 0
+    }, // insert
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        4, 0, 0, 0, 0
+    }, // remove
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        4, 0, 0, 0, 0
+    }, // tally
+    {
+        4, 2, 4, 1, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 1, 4, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        4, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        964, 308, 0, 0, 0
+    }, // pending
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // insert
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        4, 0, 0, 0, 0
+    }, // remove
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        4, 0, 0, 0, 0
+    }, // tally
+    {
+        4, 2, 4, 1, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 1, 4, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        4, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        0, 0, 1588, 0, 0
+    }, // checkpoints ?
+    {
+        1580, 4, 0, 0, 0
+    }, // checkpoints
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 1624, 0, 0
+    }, // snapshots ?
+    {
+        1592, 16, 0, 0, 0
+    }, // snapshots
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // ping
+    {
+        0, 0, 0, 0, 0
+    }, // nonce
+    {
+        8, 0, 0, 0, 0
+    }, // caps
+    {
+        8, 4, 0, 0, 0
+    }, // spans
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        8, 0, 8, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 0, 0, 0
+    }, // ack
+    {
+        1648, 1640, 4928, 1, 0
+    }, // history
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        8, 0, 0, 0, 0
+    }, // open
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        76, 0, 0, 0, 0
+    }, // cursor
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // save
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // force
+    {
+        8, 0, 0, 0, 0
+    }, // transact
+    {
+        20, 0, 0, 0, 1
+    }, // reason
+    {
+        24, 312, 960, 1, 0
+    }, // edits
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // revision
+    {
+        4, 0, 4, 0, 0
+    }, // body
+    {
+        4, 0, 0, 0, 0
+    }, // insert
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        4, 0, 0, 0, 0
+    }, // remove
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        4, 0, 0, 0, 0
+    }, // tally
+    {
+        4, 2, 4, 1, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 1, 4, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        4, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        964, 308, 0, 0, 0
+    }, // pending
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // insert
+    {
+        0, 0, 0, 0, 0
+    }, // at
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        44, 0, 8, 0, 1
+    }, // text
+    {
+        48, 0, 48, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        128, 80, 288, 1, 0
+    }, // origins
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 300, 0, 0
+    }, // modes ?
+    {
+        292, 1, 296, 1, 0
+    }, // modes
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        4, 0, 0, 0, 0
+    }, // remove
+    {
+        0, 0, 0, 0, 0
+    }, // span
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        4, 0, 0, 0, 0
+    }, // tally
+    {
+        4, 2, 4, 1, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        4, 1, 4, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        4, 0, 0, 0, 0
+    }, // mode
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
+    {
+        0, 0, 1588, 0, 0
+    }, // checkpoints ?
+    {
+        1580, 4, 0, 0, 0
+    }, // checkpoints
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 1624, 0, 0
+    }, // snapshots ?
+    {
+        1592, 16, 0, 0, 0
+    }, // snapshots
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // start
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // stop
+    {
+        0, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // column
+    {
+        8, 0, 0, 0, 0
+    }, // ping
+    {
+        0, 0, 0, 0, 0
+    }, // nonce
+    {
+        8, 0, 0, 0, 0
+    }, // caps
+    {
+        8, 4, 0, 0, 0
+    }, // spans
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        8, 0, 8, 0, 0
+    }, // origin
+    {
+        4, 0, 0, 0, 0
+    }, // user
+    {
+        20, 0, 0, 0, 1
+    }, // name
+    {
+        4, 0, 0, 0, 0
+    }, // script
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        4, 0, 0, 0, 0
+    }, // pid
+    {
+        4, 0, 4, 0, 1
+    }, // note
+    {
+        0, 0, 0, 0, 0
+    }, // ack
+    {
+        0, 0, 5164, 0, 0
+    }, // trace ?
+    {
+        4932, 76, 5160, 1, 0
+    }, // trace
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        68, 0, 0, 0, 1
+    }, // path
+    {
+        72, 0, 0, 0, 0
+    }, // line
+    {
+        0, 0, 5167, 0, 0
+    }, // marks ?
+    {
+        5165, 1, 0, 0, 0
+    }, // marks
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Read
+    {
+        0, 0, 0, 0, 0
+    }, // Write
 };
 
 // THE IDENTITY PLAN, coalesced out of 652 leaves by the schema compiler —

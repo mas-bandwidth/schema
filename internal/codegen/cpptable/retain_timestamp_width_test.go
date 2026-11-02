@@ -17,7 +17,7 @@ func TestRetainCarriesTheTimestampKind(t *testing.T) {
 	t.Parallel()
 	// The following case 18 distinguishes the capture and emit switches from
 	// their nested width switches without depending on emitted line breaks.
-	src := strings.Join(strings.Fields(cppRetainRuntime), " ")
+	src := cppSourceSpelling(cppRetainRuntime)
 	if got := strings.Count(src, "case 5: case 9: case 11: case 23: case 28: case 36: case 18:"); got != 2 {
 		t.Errorf("kind 36 is a retainable fixed-width kind in %d of the capture and emit switches, want 2", got)
 	}

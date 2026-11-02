@@ -1163,6 +1163,9 @@ public final class MixedEntityVariable {
         if (in.bad) {
             report.malformed = true;
         }
+        if (report.refused) {
+            return null;
+        }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
         if (report.malformed) {
             return null;
@@ -1477,7 +1480,7 @@ public final class MixedEntityVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             String key = in.scanString();
             if (in.bad) {
@@ -1835,7 +1838,7 @@ public final class MixedEntityVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             in.bad = true;
             return;
