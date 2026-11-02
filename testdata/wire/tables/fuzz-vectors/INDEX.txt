@@ -202,3 +202,7 @@ arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuz
 # Found by the index pass (#33, corpus seed blob_small) of the retention arm at
 # seed 24845619678, on tables-cs-release on hetzner1.
 retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin
+
+# Retained unknown unions carry an explicit arm frame, even for fixed scalars.
+# Dart previously consumed the frame length as payload and lost the field.
+retain_union_arm_frame streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin

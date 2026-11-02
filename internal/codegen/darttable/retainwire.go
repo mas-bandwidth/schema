@@ -189,7 +189,7 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
       if (id == null) return null;
       if (!r.has(1)) return null;
       final ak = r.readByte();
-      final sub = _retainResolve(r, ak, depth + 1);
+      final sub = _retainFramed(r, ak, depth);
       if (sub == null) return null;
       return <int>[..._u64le(id), ak, ...sub];
     default:
@@ -218,8 +218,12 @@ List<int>? _retainContent(TableWireReader r, int kind, int depth) {
     case 14:
     case 16:
       return _retainArray(r, kind, depth);
-    default:
+    case 15:
+    case 30:
       return _retainResolve(r, kind, depth);
+    default:
+      // The enclosing arm/keyed-slot length already frames scalar content.
+      return _retainRaw(r, r.limit-r.pos);
   }
 }
 
@@ -352,7 +356,7 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       if (ref == 0) return null;
       final ak = c.byte();
       if (ak == null) return null;
-      final sub = _retainEmitPayload(state, ak, c, depth + 1);
+      final sub = _retainEmitFramed(state, ak, c, depth);
       if (sub == null) return null;
       final o = <int>[];
       _lebOut(o, ref);
@@ -386,8 +390,11 @@ List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int en
     case 14:
     case 16:
       return _retainEmitArray(state, kind, c, end, depth);
-    default:
+    case 15:
+    case 30:
       return _retainEmitPayload(state, kind, c, depth);
+    default:
+      final out=c.b.sublist(c.at,end);c.at=end;return out;
   }
 }
 
