@@ -2082,6 +2082,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	}
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
+		m.reset(fv)
 		report.Malformed = true
 		return false
 	}
@@ -2113,6 +2114,7 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	}
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
+		fv.Elems[slot] = m.elementZero(fv.Def)
 		report.Malformed = true
 		return false
 	}
