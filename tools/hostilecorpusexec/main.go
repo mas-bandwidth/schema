@@ -99,11 +99,7 @@ func main() {
 // defaultJobs leaves half the machine to everything else: each case is a
 // sanitizer build's whole process.
 func defaultJobs() int {
-	n := runtime.NumCPU() / 2
-	if n < 1 {
-		n = 1
-	}
-	return n
+	return max(1, runtime.NumCPU()/2)
 }
 
 func fatal(err error) {
@@ -184,13 +180,11 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 	var wg sync.WaitGroup
 	next := make(chan int)
 	for w := 0; w < jobs; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range next {
 				answers[i], _ = runCase(binary, corpus, cases[i], budget)
 			}
-		}()
+		})
 	}
 	for i := range cases {
 		next <- i
@@ -272,8 +266,7 @@ func runCase(binary, corpus string, c hostilecorpus.Case, budget time.Duration) 
 		}
 	}
 	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
+		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 			return answer{"fail", fmt.Sprintf("crash: %s %s", exit.ProcessState, firstLine(stderr.String()))}, raw
 		}
 		return answer{"fail", "cannot run the case binary: " + err.Error()}, raw
