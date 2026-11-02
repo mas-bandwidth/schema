@@ -229,3 +229,5 @@ retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_
 # Final widened key occurrence replaces an earlier incompatible key kind.
 # The neutral oracle and C++ previously retained the earlier mismatch flag.
 map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
+# A malformed child stops its collection before a later non-finite float.
+list_damaged_child_stop listdemo Save testdata/wire/tables/fuzz-vectors/list_damaged_child_stop.bin
