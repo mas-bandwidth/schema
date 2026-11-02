@@ -621,6 +621,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, ir.CookNodeAlign(g.unit, st), align)
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	if st.JsonArray {
+		g.pf("    info.JsonArray = true;\n")
+	}
 	g.pf("    info.RootElemSlots = %d;\n", rootElemSlots(st))
 	var pt strings.Builder
 	pt.WriteString("info.PointerType = delegate (ulong id) { switch (id) { ")

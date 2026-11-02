@@ -53,7 +53,7 @@ func tableKindWidth(kind int) int {
 		return 2
 	case tkI32, tkU32, tkF32:
 		return 4
-	case tkI64, tkU64, tkF64:
+	case tkI64, tkU64, tkF64, ir.TableKindTimestamp:
 		return 8
 	}
 	return 0
@@ -891,6 +891,7 @@ public sealed class TableTypeInfo
     public Func<object> Create;
     public int StorageSize, StorageAlign, RegionAlign;
     public bool Variable;
+    public bool JsonArray;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
     public Func<ulong, TableTypeInfo> PointerType;

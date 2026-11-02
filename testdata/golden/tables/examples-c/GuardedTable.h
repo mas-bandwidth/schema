@@ -3201,6 +3201,7 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
         slot->value = (int64_t)index;
         return;
     }
+    if ( nodes->blob_named != NULL ) { nodes->blob_named[index-1] |= 2u; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -3212,7 +3213,8 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
    so the directory keeps its 16-byte entry and the framing numbers hold. */
 static SCHEMA_UNUSED void tabledemo_table_node_blob_mark( tabledemo_table_node_map_t * nodes, uint64_t index, tabledemo_table_report_t * report )
 {
-    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count || !( nodes->blob_named[index-1] & 2u ) ) { return; }
+    nodes->blob_named[index-1] &= (uint8_t)~2u;
     if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
@@ -5587,7 +5589,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_extent_(tabledemo_table_re
 }
 static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_wire_storage_(const tabledemo_table_reader_t * r)
 {
-    int64_t at=sizeof(tabledemo_patrol_t); if(!schema_tabledemo_patrol_wire_extent_(*r,&at) || at>INT64_MAX-TABLEDEMO_K_TABLE_ALIGN) { return -1; } return tabledemo_table_align_up64(at);
+    int64_t at=tabledemo_table_align_up64((int64_t)sizeof(tabledemo_patrol_t)); if(!schema_tabledemo_patrol_wire_extent_(*r,&at) || at>INT64_MAX-TABLEDEMO_K_TABLE_ALIGN) { return -1; } return tabledemo_table_align_up64(at);
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_node_save_( tabledemo_table_writer_t * w, const void * storage )
 { return tabledemo_patrol_save_body(w,(const tabledemo_patrol_t *)storage); }
@@ -5788,7 +5790,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_rea
                 void * value=nodes->arena ? tabledemo_table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;
                 tabledemo_table_region_sink_t extent; tabledemo_table_sink_t carve; const tabledemo_table_node_type_t * type=schema_tabledemo_patrol_node_lookup_(id);
                 carve.worker=sink->worker; carve.region=NULL;
-                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=tabledemo_table_node_wire_storage(type,&body); carve.region=&extent; }
+                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=tabledemo_table_align_up64(type->size); extent.capacity=tabledemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
                     default: break;
@@ -5800,7 +5802,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_rea
     }
     reader->nodes=nodes; reader->nested=0;
     { int read_ok=0; if(!nodes->refused) { tabledemo_table_region_sink_t extent; tabledemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
-      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_tabledemo_patrol_wire_storage_(reader); carve.region=&extent; }
+      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=tabledemo_table_align_up64((int64_t)sizeof(*root)); extent.capacity=schema_tabledemo_patrol_wire_storage_(reader); carve.region=&extent; }
       nodes->sink=&carve;  read_ok=tabledemo_patrol_load_body(reader,root); nodes->sink=NULL; }
       /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
       if(tabledemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
@@ -5837,7 +5839,7 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_tolerant(u
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_tabledemo_patrol_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
     if(!schema_tabledemo_patrol_load_graph_(&reader,(tabledemo_patrol_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { report->malformed=report->malformed||malformed_before; memset(region,0,(size_t)total); tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
-    report->malformed=malformed_before; tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return (const tabledemo_patrol_t *)(const void *)region;
+    report->malformed=report->malformed||malformed_before; tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return (const tabledemo_patrol_t *)(const void *)region;
 }
 /* patrol_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int tabledemo_patrol_load_builder_tolerant(tabledemo_patrol_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report)
@@ -5855,7 +5857,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder_tolerant(tabledemo_patrol
     sink.region=NULL; sink.worker=&builder->main;
     ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } tabledemo_table_release(builder->arena.allocator,directory); tabledemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { tabledemo_patrol_reset(root); return 0; } /* damage discards the whole load (§4) */
-    report->malformed=malformed_before; return 1;
+    report->malformed=report->malformed||malformed_before; return 1;
 }
 /* The PLAIN patrol_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report )
@@ -5946,7 +5948,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
                 carve.worker=sink->worker;
                 carve.region=NULL;
                 if(!nodes->arena) { extent.base=(uint8_t *)value;
-                extent.used=type->size;
+                extent.used=tabledemo_table_align_up64(type->size);
                 extent.capacity=tabledemo_table_node_wire_storage(type,&body);
                 carve.region=&extent;
                 }
@@ -5970,7 +5972,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
     carve.worker=sink->worker;
     carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root;
-      extent.used=sizeof(*root);
+      extent.used=tabledemo_table_align_up64((int64_t)sizeof(*root));
       extent.capacity=schema_tabledemo_patrol_wire_storage_(reader);
       carve.region=&extent;
       }
@@ -6084,7 +6086,7 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_retain(uin
  tabledemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
  } /* damage discards the whole load, the retention store too (§4) */
- report->malformed=malformed_before;
+ report->malformed=report->malformed||malformed_before;
  return (const tabledemo_patrol_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_retain_save_node_(tabledemo_table_writer_t * w,const void * value,uint64_t id,tabledemo_table_retain_walk_t retention)
@@ -6131,10 +6133,10 @@ static SCHEMA_UNUSED int64_t tabledemo_patrol_save_retain(const tabledemo_patrol
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_open_ex(const void * bytes,uint64_t length,tabledemo_table_refuse_reason_t * reason)
-{ return (const tabledemo_patrol_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_patrol_t),SCHEMA_TABLE_ALIGNOF(tabledemo_patrol_t),reason); }
+{ return (const tabledemo_patrol_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_patrol_t),4,reason); }
 static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_open( const void * bytes, uint64_t length )
 {
-    return (const tabledemo_patrol_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_patrol_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( tabledemo_patrol_t ) );
+    return (const tabledemo_patrol_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_patrol_t ), (uint64_t) 4 );
 }
 
 static SCHEMA_UNUSED int schema_tabledemo_patrol_cook_body_(struct tabledemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)

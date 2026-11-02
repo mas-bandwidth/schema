@@ -18,7 +18,7 @@ import (
 // carries none at this stage.
 var nonGoCarriers = map[string][]string{
 	"c":    {carryOptionalVariableClosure},
-	"cs":   {carryOptionalVariableClosure},
+	"cs":   {carryTimestamp, carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot},
 	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 	"dart": {carryOptionalVariableClosure},
 	"java": {carryOptionalVariableClosure},

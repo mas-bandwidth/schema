@@ -6283,10 +6283,10 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_load( blockdemo_padded
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_padded_row_t * blockdemo_padded_row_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_padded_row_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_padded_row_t),SCHEMA_TABLE_ALIGNOF(blockdemo_padded_row_t),reason); }
+{ return (const blockdemo_padded_row_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_padded_row_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_padded_row_t * blockdemo_padded_row_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_padded_row_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_padded_row_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_padded_row_t ) );
+    return (const blockdemo_padded_row_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_padded_row_t ), (uint64_t) 8 );
 }
 
 /* padded_frame_open: match the header and POINT. On a match the bytes ARE what this
@@ -6309,10 +6309,10 @@ static SCHEMA_UNUSED const blockdemo_padded_row_t * blockdemo_padded_row_open( c
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_padded_frame_t * blockdemo_padded_frame_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_padded_frame_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_padded_frame_t),SCHEMA_TABLE_ALIGNOF(blockdemo_padded_frame_t),reason); }
+{ return (const blockdemo_padded_frame_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_padded_frame_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_padded_frame_t * blockdemo_padded_frame_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_padded_frame_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_padded_frame_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_padded_frame_t ) );
+    return (const blockdemo_padded_frame_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_padded_frame_t ), (uint64_t) 8 );
 }
 
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)

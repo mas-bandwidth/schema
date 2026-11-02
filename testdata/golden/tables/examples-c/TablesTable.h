@@ -3201,6 +3201,7 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
         slot->value = (int64_t)index;
         return;
     }
+    if ( nodes->blob_named != NULL ) { nodes->blob_named[index-1] |= 2u; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -3212,7 +3213,8 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
    so the directory keeps its 16-byte entry and the framing numbers hold. */
 static SCHEMA_UNUSED void tabledemo_table_node_blob_mark( tabledemo_table_node_map_t * nodes, uint64_t index, tabledemo_table_report_t * report )
 {
-    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count || !( nodes->blob_named[index-1] & 2u ) ) { return; }
+    nodes->blob_named[index-1] &= (uint8_t)~2u;
     if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
@@ -14721,10 +14723,10 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_extent_(tabledemo_table_re
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const tabledemo_weapon_config_t * tabledemo_weapon_config_open_ex(const void * bytes,uint64_t length,tabledemo_table_refuse_reason_t * reason)
-{ return (const tabledemo_weapon_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_weapon_config_t),SCHEMA_TABLE_ALIGNOF(tabledemo_weapon_config_t),reason); }
+{ return (const tabledemo_weapon_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_weapon_config_t),4,reason); }
 static SCHEMA_UNUSED const tabledemo_weapon_config_t * tabledemo_weapon_config_open( const void * bytes, uint64_t length )
 {
-    return (const tabledemo_weapon_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_weapon_config_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( tabledemo_weapon_config_t ) );
+    return (const tabledemo_weapon_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_weapon_config_t ), (uint64_t) 4 );
 }
 
 /* loadout_config_open: match the header and POINT. On a match the bytes ARE what this
@@ -14747,10 +14749,10 @@ static SCHEMA_UNUSED const tabledemo_weapon_config_t * tabledemo_weapon_config_o
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const tabledemo_loadout_config_t * tabledemo_loadout_config_open_ex(const void * bytes,uint64_t length,tabledemo_table_refuse_reason_t * reason)
-{ return (const tabledemo_loadout_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_loadout_config_t),SCHEMA_TABLE_ALIGNOF(tabledemo_loadout_config_t),reason); }
+{ return (const tabledemo_loadout_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_loadout_config_t),8,reason); }
 static SCHEMA_UNUSED const tabledemo_loadout_config_t * tabledemo_loadout_config_open( const void * bytes, uint64_t length )
 {
-    return (const tabledemo_loadout_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_loadout_config_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( tabledemo_loadout_config_t ) );
+    return (const tabledemo_loadout_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_loadout_config_t ), (uint64_t) 8 );
 }
 
 /* profile_config_open: match the header and POINT. On a match the bytes ARE what this
@@ -14773,10 +14775,10 @@ static SCHEMA_UNUSED const tabledemo_loadout_config_t * tabledemo_loadout_config
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const tabledemo_profile_config_t * tabledemo_profile_config_open_ex(const void * bytes,uint64_t length,tabledemo_table_refuse_reason_t * reason)
-{ return (const tabledemo_profile_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_profile_config_t),SCHEMA_TABLE_ALIGNOF(tabledemo_profile_config_t),reason); }
+{ return (const tabledemo_profile_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_profile_config_t),8,reason); }
 static SCHEMA_UNUSED const tabledemo_profile_config_t * tabledemo_profile_config_open( const void * bytes, uint64_t length )
 {
-    return (const tabledemo_profile_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_profile_config_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( tabledemo_profile_config_t ) );
+    return (const tabledemo_profile_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_profile_config_t ), (uint64_t) 8 );
 }
 
 /* root_config_open: match the header and POINT. On a match the bytes ARE what this
@@ -14799,10 +14801,10 @@ static SCHEMA_UNUSED const tabledemo_profile_config_t * tabledemo_profile_config
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const tabledemo_root_config_t * tabledemo_root_config_open_ex(const void * bytes,uint64_t length,tabledemo_table_refuse_reason_t * reason)
-{ return (const tabledemo_root_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_root_config_t),SCHEMA_TABLE_ALIGNOF(tabledemo_root_config_t),reason); }
+{ return (const tabledemo_root_config_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_root_config_t),8,reason); }
 static SCHEMA_UNUSED const tabledemo_root_config_t * tabledemo_root_config_open( const void * bytes, uint64_t length )
 {
-    return (const tabledemo_root_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_root_config_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( tabledemo_root_config_t ) );
+    return (const tabledemo_root_config_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_root_config_t ), (uint64_t) 8 );
 }
 
 static SCHEMA_UNUSED int schema_tabledemo_weapon_config_cook_body_(struct tabledemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)

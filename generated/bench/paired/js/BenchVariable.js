@@ -1671,7 +1671,7 @@ function TableVariableScalar(r, d, kind, report) {
     case 2: case 20: x = r.i8(); break;
     case 3: case 21: x = r.i16(); break;
     case 4: case 22: x = r.i32(); break;
-    case 5: case 23: x = r.i64(); break;
+    case 5: case 23: case 36: x = r.i64(); break;
     case 6: case 25: x = r.u8(); break;
     case 7: case 26: x = r.u16(); break;
     case 8: case 27: x = r.u32(); break;
@@ -2228,6 +2228,7 @@ function TableVariableUnionEdges(u, val, out, everyGuard) {
 function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
   switch (fd.s) {
+    case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
@@ -2287,9 +2288,10 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 }
 
 // A MAP (encodeMap): kind 14 over element kind 13, its entries in ascending key
-// order, each entry ALWAYS riding (identity is the key); an empty map elides
+// order, each entry ALWAYS riding (identity is the key); only a non-optional
+// empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
-  if (val.size === 0) { return true; }
+  if (val.size === 0 && !fd.opt) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
   w.u8(14);
@@ -2855,6 +2857,10 @@ function TableVariableJsonValue(c, v, depth, g, out) {
   // the write path carries the read path's cap of 128: a pointer chain nests as
   // deep as it is long (§16.7)
   if (depth > 128) { return false; }
+  if (c.jsonArray) {
+    const fd = c.fields[0];
+    return TableVariableJsonField(fd, v[fd.n], depth, g, out);
+  }
   const state = { any: false };
   if (!TableVariableJsonFields(c, v, depth, g, out, state)) { return false; }
   if (!state.any) { out.push("{}"); return true; }
@@ -2980,11 +2986,54 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
       return true;
     }
     case "int":
+      if (d.ts !== undefined) {
+        const stamp = TableVariableTimestampText(val);
+        if (stamp === null) { return false; }
+        out.push(TableVariableJsonString(stamp));
+        return true;
+      }
       if (d.k >= 20 && d.k <= 29) { out.push(TableVariableFormatFixed(val, d.frac)); return true; }
       out.push(String(val));
       return true;
   }
   return false;
+}
+
+// RFC3339 section 5.6, using exact nanoseconds rather than Date's
+// millisecond parse. Calendar arithmetic stays inside exact Number integers;
+// the final nanosecond multiplication and signed range check use BigInt.
+function TableVariableTimestampParse(text) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})$/.exec(text);
+  if (m === null || m[0].length !== text.length) { return null; }
+  const y = Number(m[1]), month = Number(m[2]), day = Number(m[3]);
+  const hour = Number(m[4]), minute = Number(m[5]), second = Number(m[6]);
+  const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59) { return null; }
+  const zone = m[8];
+  let offset = 0;
+  if (zone.length > 1) {
+    const zh = Number(zone.slice(1, 3)), zm = Number(zone.slice(4, 6));
+    if (zh > 23 || zm > 59) { return null; }
+    offset = (zh * 3600 + zm * 60) * (zone[0] === "-" ? -1 : 1);
+  }
+  const year = y - (month <= 2 ? 1 : 0), era = Math.floor(year / 400);
+  const yearOfEra = year - era * 400, monthOfYear = month + (month > 2 ? -3 : 9);
+  const dayOfYear = Math.floor((153 * monthOfYear + 2) / 5) + day - 1;
+  const dayOfEra = yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+  const seconds = (era * 146097 + dayOfEra - 719468) * 86400 + hour * 3600 + minute * 60 + second - offset;
+  const fraction = (m[7] || "").slice(0, 9).padEnd(9, "0");
+  const nanos = BigInt(seconds) * 1000000000n + BigInt(fraction);
+  return nanos < -9223372036854775808n || nanos > 9223372036854775807n ? null : nanos;
+}
+
+function TableVariableTimestampText(nanos) {
+  if (typeof nanos !== "bigint" || nanos < -9223372036854775808n || nanos > 9223372036854775807n) { return null; }
+  let seconds = nanos / 1000000000n, fraction = nanos % 1000000000n;
+  if (fraction < 0n) { seconds--; fraction += 1000000000n; }
+  const head = new Date(Number(seconds) * 1000).toISOString().slice(0, 19);
+  const tail = fraction === 0n ? "" : "." + fraction.toString().padStart(9, "0").replace(/0+$/, "");
+  return head + tail + "Z";
 }
 
 // ---- the READ half (tabletext read.go) --------------------------------------
@@ -3203,6 +3252,16 @@ function TableVariableFromJson(c, text, report) {
 
 function TableVariableReadTable(c, inp, v, depth, graph, report) {
   if (depth > 128) { inp.bad = true; return false; }
+  if (c.jsonArray) {
+    if (inp.shape() !== "a") {
+      if (report.reason === "") { report.reason = "json_root_not_array: " + c.name; }
+      inp.bad = true;
+      return false;
+    }
+    const fd = c.fields[0];
+    inp.field = c.name + "." + fd.n;
+    return TableVariableTextField(fd, inp, v, depth, graph, report);
+  }
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   return TableVariableReadKeys(c, inp, v, depth, null, graph, report);
@@ -3565,7 +3624,20 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       holder[key] = x;
       return true;
     }
-    case "int": return TableVariableTextInt(d, inp, holder, key, report);
+    case "int":
+      if (d.ts !== undefined) {
+        const text = inp.str();
+        if (text === null) { return false; }
+        const nanos = TableVariableTimestampParse(text);
+        if (nanos === null) {
+          report.reason = "timestamp_not_rfc3339: " + d.ts;
+          inp.bad = true;
+          return false;
+        }
+        holder[key] = nanos;
+        return true;
+      }
+      return TableVariableTextInt(d, inp, holder, key, report);
   }
   inp.bad = true;
   return false;
