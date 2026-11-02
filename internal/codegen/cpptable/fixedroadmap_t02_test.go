@@ -136,7 +136,7 @@ func t02CppBlock(t *testing.T, src, start, end string) string {
 // t02CppHas is a required substring, named by rule.
 func t02CppHas(t *testing.T, got, want, what string) {
 	t.Helper()
-	if !strings.Contains(got, want) {
+	if !strings.Contains(cppSourceSpelling(got), cppSourceSpelling(want)) {
 		t.Errorf("%s: the generated source does not carry %q", what, want)
 	}
 }

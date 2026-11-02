@@ -35,9 +35,13 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
 {
     switch ( declared )
     {
-        case 3: case 4: case 5: return kind >= 2 && kind < declared;
+        case 3:
+        case 4:
+        case 5: return kind >= 2 && kind < declared;
         case 18: return kind >= 2 && kind <= 5;
-        case 7: case 8: case 9: return kind >= 6 && kind < declared;
+        case 7:
+        case 8:
+        case 9: return kind >= 6 && kind < declared;
         case 19: return kind >= 6 && kind <= 9;
         case 11: return kind == 10;
     }
@@ -57,11 +61,30 @@ inline int64_t TableKindWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -94,10 +117,22 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 {
     switch ( kind )
     {
-        case 6: if ( !r.has( 1 ) ) { return false; } out = r.get8(); return true;
-        case 7: if ( !r.has( 2 ) ) { return false; } out = r.get16(); return true;
-        case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
+        case 6:
+            if ( !r.has( 1 ) ) { return false; }
+            out = r.get8();
+            return true;
+        case 7:
+            if ( !r.has( 2 ) ) { return false; }
+            out = r.get16();
+            return true;
+        case 8:
+            if ( !r.has( 4 ) ) { return false; }
+            out = r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = r.get64();
+            return true;
     }
 }
 `
@@ -278,10 +313,10 @@ func (g *tableGen) emitWidenedScalar(f *ir.Field, declared int, kindExpr, lvalue
 	}
 	if signed {
 		g.pf("%sint64_t widened_v = 0;\n", ind)
-		g.pf("%sif ( !TableReadSignedAt( %s, %s, widened_v ) ) { %s }\n", ind, rdr, kindExpr, onTrunc)
+		g.pf("%sif ( !TableReadSignedAt( %s, %s, widened_v ) ) { %s }\n", ind, rdr, kindExpr, cppActionLines(onTrunc, ind+"    "))
 	} else {
 		g.pf("%suint64_t widened_v = 0;\n", ind)
-		g.pf("%sif ( !TableReadUnsignedAt( %s, %s, widened_v ) ) { %s }\n", ind, rdr, kindExpr, onTrunc)
+		g.pf("%[1]sif ( !TableReadUnsignedAt( %[2]s, %[3]s, widened_v ) )\n%[1]s{\n%[1]s    %[4]s\n%[1]s}\n", ind, rdr, kindExpr, cppActionLines(onTrunc, ind+"    "))
 	}
 	if width == 16 {
 		// the two lanes of serialize's pair, the high one the sign's
@@ -353,7 +388,7 @@ func (g *tableGen) emitWidenedElements(f *ir.Field, declared int, kindExpr, elem
 	g.pf("%sr.report->widened++;\n", ind)
 	g.pf("%suint64_t widened_decoded = 0;\n", ind)
 	g.pf("%sfor ( uint64_t widened_i = 0; widened_i < %s; widened_i++ )\n%s{\n", ind, keepExpr, ind)
-	g.emitWidenedScalar(f, declared, kindExpr, fmt.Sprintf(elems, "(int32_t) widened_i"), ind+"    ", rdr, "r.report->malformed = true; break;")
+	g.emitWidenedScalar(f, declared, kindExpr, fmt.Sprintf(elems, "(int32_t) widened_i"), ind+"    ", rdr, "r.report->malformed = true;\n                                break;")
 	g.pf("%s    widened_decoded = widened_i + 1;\n", ind)
 	g.pf("%s}\n", ind)
 	if count != "" {
