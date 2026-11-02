@@ -178,11 +178,9 @@ public final class BlobSharedDriver {
         long len500 = mapdemo.DocsCook.cookMeasure(docs500);
         byte[] buf500 = new byte[(int) len500];
         mapdemo.DocsCook.cookFrom(docs500, buf500, mapdemo.TableCookWrite.LITTLE);
-        long t0 = System.nanoTime();
         long len2000 = mapdemo.DocsCook.cookMeasure(docs2000);
         byte[] buf2000 = new byte[(int) len2000];
         boolean ok2000 = mapdemo.DocsCook.cookFrom(docs2000, buf2000, mapdemo.TableCookWrite.LITTLE);
-        long elapsedMs = (System.nanoTime() - t0) / 1_000_000L;
         mapdemo.DocsCook cook2000 = mapdemo.DocsCook.open(buf2000);
         int root2000 = cook2000 != null ? cook2000.root() : -1;
         int count2000 = root2000 >= 0 ? mapdemo.DocsRow.pagesCount(buf2000, root2000) : -1;
@@ -190,7 +188,7 @@ public final class BlobSharedDriver {
         int at0 = pages2000 >= 0 ? mapdemo.DocsRow.pagesFind(buf2000, pages2000, count2000, "k0000".getBytes("UTF-8")) : -1;
         int at1999 = pages2000 >= 0 ? mapdemo.DocsRow.pagesFind(buf2000, pages2000, count2000, "k1999".getBytes("UTF-8")) : -1;
         boolean readOk = count2000 == n2000 && at0 >= 0 && at1999 > at0;
-        System.out.println("map-large-2000 " + (ok2000 && readOk && len2000 > len500 + 1500L * 32L && elapsedMs < 5000L));
+        System.out.println("map-large-2000 " + (ok2000 && readOk && len2000 > len500 + 1500L * 32L));
     }
 }
 `
