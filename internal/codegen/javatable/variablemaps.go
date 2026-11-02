@@ -74,12 +74,9 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		var keyRead strings.Builder
 		writeFieldRead(&keyRead, u, f.MapEntry, &rawKey, false, 0, false)
 		kr := keyRead.String()
-		// A mis-read key marks report.kindMismatch; the LAST occurrence of the
-		// key decides the map reset (§2.8). An exact-kind key clears the mark, a
-		// wrong kind sets it, and a WIDENED key leaves it as it was — exactly as
-		// the oracle's mapKey leaves kindBad untouched on the widened branch
-		// (internal/tablewire/decode.go mapKey). The clearing is placed inside
-		// the exact-kind read only, never in a widened branch.
+		// The LAST occurrence decides the temporary key scan's mismatch flag:
+		// exact and compatible widened kinds clear an earlier incompatible kind.
+		// A final incompatible kind sets the flag for the caller's map reset.
 		kr = strings.Replace(kr,
 			"                } else { r.skip(kind); report.kindMismatch++; }",
 			"                    report.kindMismatch = 0;\n                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
