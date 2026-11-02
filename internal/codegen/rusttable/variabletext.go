@@ -1078,6 +1078,7 @@ func (g *gen) fieldKey(f *ir.Field) string {
 // emitTextWriteValue emits the value writer for one field (or, for an array,
 // the array), the value's closing brace or bracket at depth `d`.
 func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind string) {
+	textListTotalCheck(b, f, x, ind, "w.refused = true; return;")
 	if f.Type.Optional {
 		inner := *f
 		inner.Type.Optional = false
@@ -1414,9 +1415,15 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
 		fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 		fmt.Fprintf(b, "%s    %s.clear();\n", in, field)
+		if f.IsTextList() && f.TextTotal > 0 {
+			fmt.Fprintf(b, "%s    let mut text_spent = 0u64; let mut text_total_hit = false;\n", in)
+		}
 		fmt.Fprintf(b, "%s    loop {\n", in)
 		fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 		elem := in + "        "
+		if f.IsTextList() && f.TextTotal > 0 {
+			fmt.Fprintf(b, "%sif text_total_hit { jr.skip_value(); } else {\n", elem)
+		}
 		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 			if f.ArrayBound == 1 {
 				fmt.Fprintf(b, "%sif !%s.is_empty() {\n", elem, field)
@@ -1430,6 +1437,9 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 			fmt.Fprintf(b, "%s}\n", elem)
 		} else {
 			g.emitTextReadElem(b, f, field, elem)
+		}
+		if f.IsTextList() && f.TextTotal > 0 {
+			fmt.Fprintf(b, "%s}\n", elem)
 		}
 		fmt.Fprintf(b, "%s        if jr.malformed || jr.missing_required != 0 { break; }\n", in)
 		fmt.Fprintf(b, "%s        let c = jr.peek();\n", in)

@@ -15,6 +15,7 @@ func textListStorageCheck(b *strings.Builder, f *ir.Field, x, ind, refusal strin
 	if f.Array == ir.ArrayCounted {
 		fmt.Fprintf(b, "%sif %s.len() > %d { %s }\n", ind, x, f.ArrayBound, refusal)
 	}
+	textListTotalCheck(b, f, x, ind, refusal)
 	fmt.Fprintf(b, "%sfor e in &%s {\n", ind, x)
 	if ir.TextListOptional(f) {
 		fmt.Fprintf(b, "%s    let Some(text) = &e.value else { continue; };\n", ind)
@@ -46,5 +47,26 @@ func (g *gen) emitTextListJSONElement(b *strings.Builder, f *ir.Field, field, in
 	} else {
 		g.emitTextReadScalar(b, &value, "e.value", ind)
 	}
-	fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
+	if f.TextTotal > 0 {
+		length := "e.value.len()"
+		if ir.TextListOptional(f) {
+			length = "e.value.as_ref().map_or(0, |text| text.len())"
+		}
+		fmt.Fprintf(b, "%slet text_len = %s as u64;\n%sif text_len > %d - text_spent { jr.clamped += 1; text_total_hit = true; } else { text_spent += text_len; %s.push(e); }\n", ind, length, ind, f.TextTotal, field)
+	} else {
+		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
+	}
+}
+
+// A subtraction against the remaining budget cannot overflow for authored lists.
+func textListTotalCheck(b *strings.Builder, f *ir.Field, x, ind, refusal string) {
+	if !f.IsTextList() || f.TextTotal <= 0 {
+		return
+	}
+	fmt.Fprintf(b, "%s{ let mut text_left = %du64;\n%sfor e in &%s {\n", ind, f.TextTotal, ind, x)
+	length := "e.value.len()"
+	if ir.TextListOptional(f) {
+		length = "e.value.as_ref().map_or(0, |text| text.len())"
+	}
+	fmt.Fprintf(b, "%s    let length = %s as u64;\n%s    if length > text_left { %s }\n%s    text_left -= length;\n%s} }\n", ind, length, ind, refusal, ind, ind)
 }
