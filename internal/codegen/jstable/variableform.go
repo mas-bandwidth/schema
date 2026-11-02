@@ -140,9 +140,8 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	}
 	g.emitRetainRuntime()
 	g.pf("%s", jsVariableCodecRuntime)
-	if ir.UnitHasTextLists(g.unit) {
-		g.pf("%s", jsTextListRuntime)
-	}
+	// The generic codec refers to these helpers even in units without text lists.
+	g.pf("%s", jsTextListRuntime)
 	g.pf("%s", jsVariableArmsRuntime)
 	// THE ONE TEXT WALK (docs/PORTING.md M9): the text form and the four
 	// constructs' text arms, between markers `make tables-js-json-walk`

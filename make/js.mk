@@ -1760,3 +1760,11 @@ tables-js-blob-shared-report: toolchain-js
 		-count=1 -timeout=0 -run '^TestJavaScriptBlobSharedReportCensus$$' ./internal/codegen/jstable/
 
 test-js: tables-js-blob-shared-report
+
+.PHONY: tables-js-helper-closure
+tables-js-helper-closure: toolchain-js
+	SCHEMA_REQUIRE_CORPUS=1 ESLINT=$(ESLINT) \
+		sh test/slowgate/proof tables-js-helper-closure 'TestJavaScriptVariableHelperClosure' \
+		-count=1 -timeout=0 -run '^TestJavaScriptVariableHelperClosure$$' ./internal/codegen/jstable/
+
+test-js: tables-js-helper-closure
