@@ -490,3 +490,57 @@ func TestPopulatedFeatureWitnessesCoverEveryRequiredConstruct(t *testing.T) {
 		}
 	}
 }
+
+// Ordinary schema units are implementation obligations too. The special
+// construct registry must not let an otherwise unsupported positive unit hide.
+func TestImplementationGeneratesOrdinaryPositiveUnits(t *testing.T) {
+	feature := implementationUnit(t, "table Feature\n{\n at timestamp\n}\n")
+	plain := implementationUnit(t, "table Plain\n{\n values [2]int32\n}\n")
+	a := implementationInput(t, feature, "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}")
+	a.Unit = "feature"
+	b := implementationInput(t, plain, "Plain", "{\"values\":[1,2]}")
+	b.Unit = "plain"
+	for _, mode := range []string{"ok", "refused", "empty", "damaged"} {
+		t.Run(mode, func(t *testing.T) {
+			input := b
+			if mode == "damaged" {
+				input.Wire = filepath.Join(t.TempDir(), "damaged.bin")
+				if err := os.WriteFile(input.Wire, []byte{255}, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := map[string]int{}
+			gen := implementationGeneratorFunc(func(u *ir.Unit, lang string, opts compiler.Options) (map[string][]byte, error) {
+				key := lang + "/feature"
+				if u == plain {
+					key = lang + "/plain"
+				}
+				calls[key]++
+				if u == plain && mode == "refused" {
+					return nil, errors.New("ordinary shape unsupported")
+				}
+				if u == plain && mode == "empty" {
+					return nil, nil
+				}
+				return implementationGenerated(u, lang, opts)
+			})
+			problems, n := implementationAudit(&Manifest{Instances: []Instance{a, input, input}}, []string{"go", "rust"}, []string{"timestamp"},
+				func(string) ([]string, bool) { return []string{"timestamp"}, true }, implementationUnits{"feature": feature, "plain": plain}, gen)
+			if mode == "ok" {
+				if len(problems) != 0 || n != 1 {
+					t.Fatalf("ordinary positive input: witnesses=%d problems=%v", n, problems)
+				}
+				for _, key := range []string{"go/feature", "go/plain", "rust/feature", "rust/plain"} {
+					if calls[key] != 1 {
+						t.Errorf("generate %s called %d times, want once per unit and language", key, calls[key])
+					}
+				}
+			} else {
+				want := map[string]string{"refused": "ordinary shape unsupported", "empty": "unit plain generated no files", "damaged": "positive wire does not decode cleanly"}[mode]
+				if !strings.Contains(strings.Join(problems, "\n"), want) {
+					t.Fatalf("%s input escaped full implementation prerequisite: %v", mode, problems)
+				}
+			}
+		})
+	}
+}

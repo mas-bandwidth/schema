@@ -66,9 +66,9 @@ func implementationAudit(m *Manifest, langs, required []string, carried func(str
 			continue
 		}
 		uses := compiler.UnitConstructs(rooted)
-		if len(uses) == 0 {
-			continue
-		}
+		// Every positive unit is required, including ordinary schema shapes
+		// outside the special construct registry. Generate each unit once per
+		// language; duplicate instances do not add compiler work.
 		model, value, jsonVerified, err := decodeImplementationWitness(u, inst)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("implementation witness %s: %v", inst.Name, err))
