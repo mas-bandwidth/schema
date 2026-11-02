@@ -1825,8 +1825,25 @@ func floatRides(f *ir.Field, expr, lit string) string {
 
 func (g *wireGen) floatOwner(f *ir.Field) string { return dartFloatOwner(g.unit, f, g.cur) }
 
+// wireFloatRides compares the stored float32 bits, not Dart's wider double.
+// This also distinguishes signed zero after underflow. Float64 keeps its
+// existing value-and-sign comparison.
+func wireFloatRides(f *ir.Field, expr, lit string) string {
+	if f.Type.Kind == ir.TFloat32 {
+		def := float32(0)
+		if f.HasDefault {
+			def = float32(f.DefFloat)
+		}
+		return fmt.Sprintf("_f32Bits(%s) != %d", expr, math.Float32bits(def))
+	}
+	return floatRides(f, expr, lit)
+}
+
 func (g *wireGen) floatDefault(f *ir.Field) string {
 	if f.HasDefault {
+		if f.Type.Kind == ir.TFloat32 {
+			return fixedFloatLit(float64(float32(f.DefFloat)))
+		}
 		return fmt.Sprintf("%g", f.DefFloat)
 	}
 	return "0.0"
@@ -1996,7 +2013,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			bits = "_f32Write"
 			put = "putU32"
 		}
-		g.pf("%sif (%s) {\n", ind, floatRides(f, expr, g.floatDefault(f)))
+		g.pf("%sif (%s) {\n", ind, wireFloatRides(f, expr, g.floatDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, expr, g.floatOwner(f))

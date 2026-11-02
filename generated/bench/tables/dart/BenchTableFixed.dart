@@ -3698,7 +3698,8 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     w.put(29, tableMessageRefBits);
     w.put(value.frameTick - 0, 48);
   }
-  if (value.serverTime != 0 || value.serverTime.isNegative) {
+  TableBitWriter._float32Cell[0] = value.serverTime;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(30, tableMessageRefBits);
     {
       final f = value.serverTime;
@@ -3770,7 +3771,8 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     w.align();
     w.raw(Uint8List.sublistView(value.payload, 0, value.payloadLength));
   }
-  if (value.aimX != 0 || value.aimX.isNegative) {
+  TableBitWriter._float32Cell[0] = value.aimX;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(37, tableMessageRefBits);
     {
       final f = value.aimX;
@@ -3792,7 +3794,8 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.aimY != 0 || value.aimY.isNegative) {
+  TableBitWriter._float32Cell[0] = value.aimY;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(38, tableMessageRefBits);
     {
       final f = value.aimY;
@@ -3814,7 +3817,8 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.aimZ != 0 || value.aimZ.isNegative) {
+  TableBitWriter._float32Cell[0] = value.aimZ;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(39, tableMessageRefBits);
     {
       final f = value.aimZ;
@@ -3836,7 +3840,8 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.recoil != 0 || value.recoil.isNegative) {
+  TableBitWriter._float32Cell[0] = value.recoil;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(40, tableMessageRefBits);
     {
       final f = value.recoil;
@@ -3862,7 +3867,8 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
     w.put(43, tableMessageRefBits);
     w.put(value.flux - -1000000000000000000, 61);
   }
-  if (value.ping != 0 || value.ping.isNegative) {
+  TableBitWriter._float32Cell[0] = value.ping;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(44, tableMessageRefBits);
     {
       final f = value.ping;

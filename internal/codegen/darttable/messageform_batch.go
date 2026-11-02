@@ -20,6 +20,7 @@ package darttable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -293,6 +294,16 @@ func (g *fixedModule) messageRides(f *ir.Field, expr, ind string) string {
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 		// ELISION COMPARES BITS (docs/SPEC-TABLES.md §3.3): a -0 under a +0
 		// default rides, as on the variable form
+		if f.Type.Kind == ir.TFloat32 {
+			def := float32(0)
+			if f.HasDefault {
+				def = float32(f.DefFloat)
+			}
+			// Keep the conversion at the assignment, using the existing views:
+			// an out-of-line double conversion can box under the Dart JIT.
+			g.pf("%sTableBitWriter._float32Cell[0] = %s;\n", ind, expr)
+			return fmt.Sprintf("TableBitWriter._float32Words[0] != %d", math.Float32bits(def))
+		}
 		return floatRides(f, expr, g.gen.fixedZeroFor(f))
 	}
 	return expr + " != " + g.gen.fixedZeroFor(f)

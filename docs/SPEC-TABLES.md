@@ -640,9 +640,10 @@ Four spellings are Dart's own and the reason is at each site.
   verbs, because a value that measures as unsaveable and a buffer too short
   are one contract in the reference and this port does not split it.
 - **A float32 field's storage is a `double`**, and a plain float's elision
-  compares BIT PATTERNS (§3.3): a value at a nonzero default elides by `==`,
-  and at a zero default by `==` and the sign (`isNegative`), so a `-0` under a
-  `+0` default rides as it does on every leg. A NaN or an infinity is refused
+  compares BIT PATTERNS at the field's declared width (§3.3): float32 values
+  and defaults are compared after conversion to 32 bits; float64 compares all
+  64 bits. Thus a `-0` under a `+0` default rides as it does on every leg,
+  including when conversion to float32 produces zero. A NaN or an infinity is refused
   before any comparison matters (§3.3).
 - **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
   of a per-type `<Name>TableFields` class rather than C++'s offset and width: a

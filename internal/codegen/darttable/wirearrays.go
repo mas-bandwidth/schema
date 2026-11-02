@@ -101,7 +101,7 @@ func (g *wireGen) emitSaveFixed(f *ir.Field, expr, ind string, id uint64) {
 	case ek == wireKindF32 || ek == wireKindF64:
 		// a float element's elision compares BITS (docs/SPEC-TABLES.md §3.3):
 		// one -0 under a +0 default is enough for the array to ride
-		open = fmt.Sprintf("if (%s.any((e) => %s)) {", expr, floatRides(singleOf(f), "e", g.elemDefault(f)))
+		open = fmt.Sprintf("if (%s.any((e) => %s)) {", expr, wireFloatRides(singleOf(f), "e", g.elemDefault(f)))
 	case ek != wireKindTable:
 		open = fmt.Sprintf("if (%s.any((e) => e != %s)) {", expr, g.elemDefault(f))
 	}
@@ -145,7 +145,7 @@ func (g *wireGen) emitSaveKeyed(f *ir.Field, expr, ind string, id uint64) {
 		g.pf("%s\t\tif (eb.buf.length <= 1) { w.state.rollback(slotMark); continue; }\n", ind)
 	case wireKindF32, wireKindF64:
 		// a float slot at its default elides by BITS (docs/SPEC-TABLES.md §3.3)
-		g.pf("%s\t\tif (!(%s)) { w.state.rollback(slotMark); continue; }\n", ind, floatRides(single, "e", g.elemDefault(f)))
+		g.pf("%s\t\tif (!(%s)) { w.state.rollback(slotMark); continue; }\n", ind, wireFloatRides(single, "e", g.elemDefault(f)))
 		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
 	default:
 		g.pf("%s\t\tif (e == %s) { w.state.rollback(slotMark); continue; }\n", ind, g.elemDefault(f))
