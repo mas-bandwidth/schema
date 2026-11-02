@@ -30,6 +30,7 @@ func (g *tableGen) emitRetainRuntime() {
 	load = tableSourceReplace(load, "root.Reset(base)", "root.Reset(base);retain.reset(base,directory)", 1)
 	load = tableSourceReplace(load, "report.Unknown+=unknown", "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", 1)
 	load = tableSourceReplace(load, "t.LoadBody(body,p)", "t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:body,Retain:retain,Path:tableRetainPath{at:p,node:uint32(k+1)}},p)", 1)
+	load = tableSourceReplace(load, "{clear(region);return nil}", "{clear(region);retain.reset(nil,nil);return nil}", 1)
 	load = tableSourceReplace(load, "root.LoadBody(r,base)", "root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader:r,Retain:retain,Path:tableRetainPath{at:base,node:1}},base)", 1)
 	g.pf("%s", load)
 	save := tableRegionSource
