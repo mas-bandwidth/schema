@@ -844,8 +844,8 @@ func (in *reader) readField(fv *Field, depth int) bool {
 		return in.readPointer(fv, depth)
 	case f.Type.Kind == ir.TString:
 		bound := int(f.Type.Size)
-		if f.Type.Pointer {
-			bound = -1 // a *string has no bound to clamp against (§16.2)
+		if f.Type.Pointer || f.Type.TextUnbounded() {
+			bound = -1 // a buffer or unbounded text value has no length clamp (§2.13.1, §16.2)
 		}
 		out, clamped, ok := in.scanStored(bound)
 		if !ok {
@@ -1292,6 +1292,9 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 	}
 	valueF := ir.TextListValue(f)
 	boundM := int(valueF.Type.Size)
+	if valueF.Type.TextUnbounded() {
+		boundM = -1 // the element is unbounded, independently of the list's count
+	}
 	optional := ir.TextListOptional(f)
 	for {
 		c := in.peek()
@@ -2127,6 +2130,9 @@ func (in *reader) readTextListElement(fv *Field, slot int, depth int) bool {
 	f := fv.Def
 	valueF := ir.TextListValue(f)
 	boundM := int(valueF.Type.Size)
+	if valueF.Type.TextUnbounded() {
+		boundM = -1 // the element is unbounded, independently of the list's count
+	}
 	optional := ir.TextListOptional(f)
 	switch {
 	case optional && in.valueShape() == 'z':
@@ -2193,6 +2199,10 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	in.pos++
 	fv.Entries = nil
 	keyField := ir.MapKeyField(f)
+	keyCapacity := maxJsonKey
+	if keyField.Type.TextUnbounded() {
+		keyCapacity = -1 // map identity uses the whole unbounded key (§2.13.1)
+	}
 	// THE DUPLICATE TEST IS A HASH LOOKUP, never a scan of the entries placed
 	// so far: a scan is quadratic in the entry count, so a large map in text
 	// would cost the reader seconds (security/text-form-map-duplicates-quadratic).
@@ -2208,7 +2218,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, over, ok := in.scanStored(maxJsonKey)
+		key, over, ok := in.scanStored(keyCapacity)
 		if !ok {
 			return false
 		}

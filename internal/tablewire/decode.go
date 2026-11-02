@@ -530,7 +530,7 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 			return true
 		}
 		keep := int(n)
-		if bound := int(f.Type.Size); keep > bound {
+		if bound := int(f.Type.Size); !f.Type.TextUnbounded() && keep > bound {
 			// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3): the last whole code
 			// point that fits within the bound
 			keep = textBoundary(r.buf[r.off:r.off+int(n)], bound)
@@ -1154,7 +1154,7 @@ func (r *wireReader) textListElement(fv *tabletext.Field, i int) bool {
 		return false
 	}
 	keep := int(n)
-	if bound := int(ir.TextListValue(f).Type.Size); keep > bound {
+	if bound := int(ir.TextListValue(f).Type.Size); !ir.TextListUnbounded(f) && keep > bound {
 		keep = textBoundary(r.buf[r.off:r.off+int(n)], bound)
 		r.report.Clamped++
 		if r.report.Reason == "" {

@@ -86,9 +86,10 @@ func (m *Model) NewMapEntry(f *ir.Field) *Instance { return m.New(f.MapEntry) }
 // MapKeyFits is the reader's bound on a key, and KEYS NEVER CLAMP: a key past
 // the declaration's capacity drops its whole entry and counts `clamped`, one
 // per entry (docs/SPEC-TABLES.md §2.8), because a clamped key would merge two
-// entries into one identity.
+// entries into one identity. An unbounded key has no declaration-side length
+// limit (section 2.13.1); framing and text validity are checked by the reader.
 func MapKeyFits(f *ir.Field, key MapKey) bool {
-	if !MapKeyIsString(f) {
+	if !MapKeyIsString(f) || ir.MapKeyUnbounded(f) {
 		return true
 	}
 	return len(key.Str) <= int(ir.MapKeyField(f).Type.Size)
