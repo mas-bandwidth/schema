@@ -61,8 +61,11 @@ type wireFuzzOptions struct {
 	// (§3.3).
 	retain  bool
 	builder bool // mutable file reads have no region preflight
-	failed  string
-	vectors string
+	// mixedBuilder preserves the full roster and uses the mutable oracle only
+	// for variable-class file roots; fixed roots and messages keep their oracle.
+	mixedBuilder bool
+	failed       string
+	vectors      string
 	// finiteOwed names the docs/roadmap.sexp card that owes this leg the
 	// finite float rule (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27): until
 	// that card lands, a mutant the oracle refuses as non_finite_float is
@@ -759,6 +762,9 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 			}
 			r.builder = true
 		}
+		if opts.mixedBuilder && r.variable && !message {
+			r.builder = true
+		}
 		if opts.retain {
 			// THE RETENTION ARM'S ROSTER IS THE VARIABLE-CLASS FILE ROOTS AND
 			// NOTHING ELSE (docs/SPEC-TABLES.md §6.6, §3.3).
@@ -856,6 +862,9 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 }
 
 func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
+	if opts.builder && opts.mixedBuilder {
+		return fmt.Errorf("--builder and --mixed-builder are mutually exclusive profiles")
+	}
 	if opts.builder && opts.message {
 		return fmt.Errorf("--builder is a file arm: the message form has no builder load")
 	}
@@ -1030,6 +1039,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.builder {
 		arm = "wire-fuzz-builder"
 	}
+	if opts.mixedBuilder {
+		arm = "wire-fuzz-mixed-builder"
+	}
 	if opts.retain {
 		arm += " retain"
 	}
@@ -1076,6 +1088,9 @@ func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, det
 	form := ""
 	if opts.builder {
 		form = " --builder"
+	}
+	if opts.mixedBuilder {
+		form = " --mixed-builder"
 	}
 	if opts.retain {
 		form += " --retain"
