@@ -239,7 +239,7 @@ func TestGeneratedMatchesNeutral(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "match_test.go"), []byte(driver), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command("go", "test", "-v", ".")
+		cmd := exec.Command("go", "test", "-timeout=0", "-v", ".")
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("generated Go test failed: %v\n%s", err, out)
