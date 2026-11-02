@@ -4,12 +4,16 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -151,11 +155,7 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
 	t.Parallel()
 	u := loadUnitFromSource(t, cppCountRefusalSchema)
 	model := tabletext.NewModel(u)
-	dir := t.TempDir()
-	schemaPath := filepath.Join(dir, "countcheck.schema")
-	if err := os.WriteFile(schemaPath, []byte(cppCountRefusalSchema), 0o600); err != nil {
-		t.Fatal(err)
-	}
+
 	var body strings.Builder
 	body.WriteString(`
     int failures = 0;
@@ -188,6 +188,7 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
                 TableReport report;
                 report.unknown = 7; report.kind_mismatch = 11; report.widened = 13; report.clamped = 17;
                 report.duplicate = 19; report.retained = 23; report.retain_lost = 29; report.malformed = (old_damage != 0);
+                report.refused = true; report.reason = non_finite_float; report.non_finite_floats = 3;
                 TableRetain store; store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.ids = retain_ids; store.id_capacity = 64;
                 store.used = 12; store.id_used = 1; store.count = 1;
                 const void * loaded = retaining
@@ -197,7 +198,7 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
                 CHECK(report.refused && report.reason == count_over_extent_cap, "%s/%d named count refusal");
                 CHECK(report.malformed == (old_damage != 0), "%s/%d damage history");
                 CHECK(report.unknown == %d && report.kind_mismatch == 11 && report.widened == %d &&
-                    report.clamped == 17 && report.duplicate == %d &&
+                    report.clamped == 17 && report.duplicate == %d && report.non_finite_floats == 3 &&
                     report.retained == (retaining ? %d : 23) &&
                     report.retain_lost == (retaining ? %d : 29), "%s/%d counters");
                 CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "%s/%d retained partial state");
@@ -331,8 +332,207 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
 `, cppBytes(wire), shape, report.Unknown, report.Widened, shape, retainingReport.Retained, lostReport.RetainLost, retainingReport.RetainLost, shape, shape, shape)
 	}
 	body.WriteString("    if (failures != 0) return 1;\n")
-	out, err := cppRunCapability(t, schemaPath, "countcheck", body.String())
+	out, err := runCPPCountRefusalProbe(t, u, body.String())
 	if err != nil {
 		t.Fatalf("count-refusal probe: %v\n%s", err, out)
+	}
+}
+
+func runCPPCountRefusalProbe(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
+	t.Helper()
+	cxx := os.Getenv("CXX")
+	if cxx == "" {
+		cxx = "c++"
+	}
+	if _, err := exec.LookPath(cxx); err != nil {
+		t.Skip("generated C++ execution requires c++")
+	}
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := GenerateLineage(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	var headers []string
+	var sources []string
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasSuffix(name, "Table.h") {
+			headers = append(headers, name)
+		}
+		if strings.HasSuffix(name, ".cpp") {
+			sources = append(sources, filepath.Join(dir, name))
+		}
+	}
+	sort.Strings(headers)
+	sort.Strings(sources)
+	var includes strings.Builder
+	for _, h := range headers {
+		fmt.Fprintf(&includes, "#include \"%s\"\n", h)
+	}
+	src := fmt.Sprintf(`#include <cstdio>
+#include <cstring>
+#include <cstdint>
+%s
+using namespace %s;
+
+int main(void) {
+%s
+    return 0;
+}
+`, includes.String(), u.Package, body)
+	mainPath := filepath.Join(dir, "main.cpp")
+	if err := os.WriteFile(mainPath, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exePath := filepath.Join(dir, "probe")
+	args := []string{"-std=c++17", "-Wall", "-Wextra", "-Werror", "-O1", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-I", dir, mainPath}
+	args = append(args, sources...)
+	args = append(args, "-o", exePath)
+	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+		return out, fmt.Errorf("compile: %w", err)
+	}
+	ctx, cancel := slowtest.ProbeContext(t)
+	defer cancel()
+	return exec.CommandContext(ctx, exePath).CombinedOutput()
+}
+
+const cppBomBoundarySchema = `package countcheck
+fixed table FixedLeaf { a int32 = 0 }
+table GraphLeaf { a int32 = 0
+    next *GraphLeaf }
+`
+
+func TestJsonLeadingBOMBoundaryCPP(t *testing.T) {
+	slowtest.Gate(t, "the C++ compiler (c++)")
+	t.Parallel()
+	u := loadUnitFromSource(t, cppBomBoundarySchema)
+	model := tabletext.NewModel(u)
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "plain", text: "{}\n", want: true},
+		{name: "single-bom", text: "\xEF\xBB\xBF{}\n", want: true},
+		{name: "double-bom", text: "\xEF\xBB\xBF\xEF\xBB\xBF{}\n", want: false},
+		{name: "space-then-bom", text: " \xEF\xBB\xBF{}\n", want: false},
+		{name: "truncated-bom", text: "\xEF\xBB{}\n", want: false},
+	}
+	var body strings.Builder
+	body.WriteString(`
+    int failures = 0;
+    #define CHECK(ok, name) do { if (!(ok)) { fprintf(stderr, "FAIL: %s (line %d)\n", (name), __LINE__); failures++; } } while (0)
+`)
+	for _, tc := range cases {
+		canonByRoot := map[string][]byte{}
+		for _, root := range []string{"FixedLeaf", "GraphLeaf"} {
+			var rep tabletext.Report
+			inst := model.New(model.Lookup(root))
+			ok := model.Read(inst, []byte(tc.text), &rep)
+			if ok != tc.want || rep.Malformed != !tc.want {
+				t.Fatalf("%s/%s: unexpected oracle result ok=%v rep=%+v", root, tc.name, ok, rep)
+			}
+			if rep.Unknown != 0 || rep.KindMismatch != 0 || rep.Widened != 0 || rep.Clamped != 0 || rep.Duplicate != 0 || rep.Retained != 0 || rep.RetainLost != 0 {
+				t.Fatalf("%s/%s: unexpected oracle counters %+v", root, tc.name, rep)
+			}
+			if tc.want {
+				canon, err := model.Write(inst)
+				if err != nil || len(canon) == 0 {
+					t.Fatalf("%s/%s: unexpected oracle canonical output err=%v %q", root, tc.name, err, canon)
+				}
+				canonByRoot[root] = append(canon, 0x0a)
+			}
+		}
+		if tc.want {
+			fc := canonByRoot["FixedLeaf"]
+			gc := canonByRoot["GraphLeaf"]
+			fmt.Fprintf(&body, `
+    {
+        static const uint8_t text[] = { %s };
+        static const uint8_t fixed_canon[] = { %s };
+        static const uint8_t graph_canon[] = { %s };
+        FixedLeaf vfs, vft; TableReport rfs, rft; char out_fs[128], out_ft[128];
+        FixedLeafReset(vfs); vfs.a = 42;
+        bool ok_fs = FixedLeafFromJson(vfs, (const char *)text, (int64_t)sizeof(text), &rfs);
+        FixedLeafReset(vft); vft.a = 42;
+        bool ok_ft = FixedLeafFromJsonTolerant(vft, (const char *)text, (int64_t)sizeof(text), &rft);
+        printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
+        CHECK(ok_fs && !rfs.malformed && !rfs.refused && rfs.refuse_reason == TableRefuseReason::ok &&
+            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
+            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict accept");
+        CHECK(ok_ft && !rft.malformed && !rft.refused &&
+            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
+            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant accept");
+        int64_t nfs = FixedLeafToJson(vfs, out_fs, (int64_t)sizeof(out_fs));
+        int64_t nft = FixedLeafToJson(vft, out_ft, (int64_t)sizeof(out_ft));
+        CHECK(nfs == (int64_t)sizeof(fixed_canon) && memcmp(out_fs, fixed_canon, sizeof(fixed_canon)) == 0 &&
+            nft == (int64_t)sizeof(fixed_canon) && memcmp(out_ft, fixed_canon, sizeof(fixed_canon)) == 0, "fixed/%s canonical json");
+
+        GraphLeafBuilder bgs, bgt; TableReport rgs, rgt; char out_gs[128], out_gt[128];
+        bgs.GetRoot()->a = 42;
+        bool ok_gs = GraphLeafFromJson(bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
+        bgt.GetRoot()->a = 42;
+        bool ok_gt = GraphLeafFromJsonTolerant(bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
+        CHECK(ok_gs && !rgs.malformed && !rgs.refused && rgs.refuse_reason == TableRefuseReason::ok &&
+            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
+            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && bgs.GetRoot()->a == 0, "graph/%s strict accept");
+        CHECK(ok_gt && !rgt.malformed && !rgt.refused &&
+            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
+            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && bgt.GetRoot()->a == 0, "graph/%s tolerant accept");
+        int64_t ngs = GraphLeafToJson(bgs.GetRoot(), out_gs, (int64_t)sizeof(out_gs));
+        int64_t ngt = GraphLeafToJson(bgt.GetRoot(), out_gt, (int64_t)sizeof(out_gt));
+        CHECK(ngs == (int64_t)sizeof(graph_canon) && memcmp(out_gs, graph_canon, sizeof(graph_canon)) == 0 &&
+            ngt == (int64_t)sizeof(graph_canon) && memcmp(out_gt, graph_canon, sizeof(graph_canon)) == 0, "graph/%s canonical json");
+    }
+`, cppBytes([]byte(tc.text)), cppBytes(fc), cppBytes(gc), tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
+		} else {
+			fmt.Fprintf(&body, `
+    {
+        static const uint8_t text[] = { %s };
+        FixedLeaf vfs, vft; TableReport rfs, rft;
+        FixedLeafReset(vfs); vfs.a = 42;
+        bool ok_fs = FixedLeafFromJson(vfs, (const char *)text, (int64_t)sizeof(text), &rfs);
+        FixedLeafReset(vft); vft.a = 42;
+        bool ok_ft = FixedLeafFromJsonTolerant(vft, (const char *)text, (int64_t)sizeof(text), &rft);
+        printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
+        CHECK(!ok_fs && rfs.malformed && !rfs.refused && rfs.refuse_reason == TableRefuseReason::malformed &&
+            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
+            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict refuse");
+        CHECK(!ok_ft && rft.malformed && !rft.refused &&
+            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
+            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant refuse");
+
+        GraphLeafBuilder bgs, bgt; TableReport rgs, rgt;
+        bgs.GetRoot()->a = 42;
+        bool ok_gs = GraphLeafFromJson(bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
+        bgt.GetRoot()->a = 42;
+        bool ok_gt = GraphLeafFromJsonTolerant(bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
+        CHECK(!ok_gs && rgs.malformed && !rgs.refused && rgs.refuse_reason == TableRefuseReason::malformed &&
+            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
+            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && bgs.GetRoot()->a == 0, "graph/%s strict refuse");
+        CHECK(!ok_gt && rgt.malformed && !rgt.refused &&
+            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
+            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && bgt.GetRoot()->a == 0, "graph/%s tolerant refuse");
+    }
+`, cppBytes([]byte(tc.text)), tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
+		}
+	}
+	body.WriteString("    if (failures != 0) return 1;\n")
+	out, err := runCPPCountRefusalProbe(t, u, body.String())
+	t.Logf("\n%s", out)
+	if err != nil {
+		t.Fatalf("bom-boundary probe: %v\n%s", err, out)
 	}
 }

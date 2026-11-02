@@ -3740,6 +3740,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
         in.report->malformed = true;
         return false;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     bool ok = TableJsonReadTable( in, value, info, 0 );
     if ( ok )
     {

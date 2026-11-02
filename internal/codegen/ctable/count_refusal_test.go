@@ -247,6 +247,7 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
                 memset(&report, 0, sizeof(report));
                 report.unknown = 7; report.kind_mismatch = 11; report.widened = 13; report.clamped = 17;
                 report.duplicate = 19; report.retained = 23; report.retain_lost = 29; report.malformed = old_damage;
+                report.refused = 1; report.reason = SCHEMA_TABLE_NON_FINITE_FLOAT; report.non_finite_floats = 3;
                 memset(&store, 0, sizeof(store));
                 store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.used = 12;
                 store.ids = retain_ids; store.id_capacity = 64; store.id_used = 1; store.count = 1;
@@ -257,7 +258,7 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
                 CHECK(report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d named count refusal");
                 CHECK(report.malformed == old_damage, "%s/%d damage history");
                 CHECK(report.unknown == %d && report.kind_mismatch == 11 && report.widened == %d &&
-                    report.clamped == 17 && report.duplicate == %d &&
+                    report.clamped == 17 && report.duplicate == %d && report.non_finite_floats == 3 &&
                     report.retained == (retaining ? %d : 23) &&
                     report.retain_lost == (retaining ? %d : 29), "%s/%d counters");
                 CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "%s/%d retained partial state");
@@ -423,5 +424,144 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 	out, err := runCCountRefusalProbe(t, u, body.String())
 	if err != nil {
 		t.Fatalf("count-refusal probe: %v\n%s", err, out)
+	}
+}
+
+const cBomBoundarySchema = `package countcheck
+fixed table FixedLeaf { a int32 = 0 }
+table GraphLeaf { a int32 = 0
+    next *GraphLeaf }
+`
+
+func TestJsonLeadingBOMBoundaryC(t *testing.T) {
+	slowtest.Gate(t, "the C compiler (cc)")
+	t.Parallel()
+	u := unitFrom(t, cBomBoundarySchema)
+	model := tabletext.NewModel(u)
+	cases := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{name: "plain", text: "{}\n", want: true},
+		{name: "single-bom", text: "\xEF\xBB\xBF{}\n", want: true},
+		{name: "double-bom", text: "\xEF\xBB\xBF\xEF\xBB\xBF{}\n", want: false},
+		{name: "space-then-bom", text: " \xEF\xBB\xBF{}\n", want: false},
+		{name: "truncated-bom", text: "\xEF\xBB{}\n", want: false},
+	}
+	var body strings.Builder
+	body.WriteString(`
+    int failures = 0;
+    #define CHECK(ok, name) do { if (!(ok)) { fprintf(stderr, "FAIL: %s (line %d)\n", (name), __LINE__); failures++; } } while (0)
+`)
+	for _, tc := range cases {
+		canonByRoot := map[string][]byte{}
+		for _, root := range []string{"FixedLeaf", "GraphLeaf"} {
+			var rep tabletext.Report
+			inst := model.New(model.Lookup(root))
+			ok := model.Read(inst, []byte(tc.text), &rep)
+			if ok != tc.want || rep.Malformed != !tc.want {
+				t.Fatalf("%s/%s: unexpected oracle result ok=%v rep=%+v", root, tc.name, ok, rep)
+			}
+			if rep.Unknown != 0 || rep.KindMismatch != 0 || rep.Widened != 0 || rep.Clamped != 0 || rep.Duplicate != 0 || rep.Retained != 0 || rep.RetainLost != 0 {
+				t.Fatalf("%s/%s: unexpected oracle counters %+v", root, tc.name, rep)
+			}
+			if tc.want {
+				canon, err := model.Write(inst)
+				if err != nil || len(canon) == 0 {
+					t.Fatalf("%s/%s: unexpected oracle canonical output err=%v %q", root, tc.name, err, canon)
+				}
+				canonByRoot[root] = append(canon, 0x0a)
+			}
+		}
+		if tc.want {
+			fc := canonByRoot["FixedLeaf"]
+			gc := canonByRoot["GraphLeaf"]
+			fmt.Fprintf(&body, `
+    {
+        static const uint8_t text[] = { %s };
+        static const uint8_t fixed_canon[] = { %s };
+        static const uint8_t graph_canon[] = { %s };
+        FixedLeaf vfs, vft; TableReport rfs, rft; char out_fs[128], out_ft[128]; int ok_fs, ok_ft; int64_t nfs, nft;
+        GraphLeafBuilder bgs, bgt; TableReport rgs, rgt; char out_gs[128], out_gt[128]; int ok_gs, ok_gt; int64_t ngs, ngt;
+        fixed_leaf_reset(&vfs); vfs.a = 42; memset(&rfs, 0, sizeof(rfs));
+        ok_fs = fixed_leaf_from_json(&vfs, (const char *)text, (int64_t)sizeof(text), &rfs);
+        fixed_leaf_reset(&vft); vft.a = 42; memset(&rft, 0, sizeof(rft));
+        ok_ft = fixed_leaf_from_json_tolerant(&vft, (const char *)text, (int64_t)sizeof(text), &rft);
+        printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
+        CHECK(ok_fs && !rfs.malformed && !rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
+            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
+            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict accept");
+        CHECK(ok_ft && !rft.malformed && !rft.refused &&
+            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
+            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant accept");
+        nfs = fixed_leaf_to_json(&vfs, out_fs, (int64_t)sizeof(out_fs));
+        nft = fixed_leaf_to_json(&vft, out_ft, (int64_t)sizeof(out_ft));
+        CHECK(nfs == (int64_t)sizeof(fixed_canon) && memcmp(out_fs, fixed_canon, sizeof(fixed_canon)) == 0 &&
+            nft == (int64_t)sizeof(fixed_canon) && memcmp(out_ft, fixed_canon, sizeof(fixed_canon)) == 0, "fixed/%s canonical json");
+
+        CHECK(graph_leaf_builder_init(&bgs) && graph_leaf_builder_init(&bgt), "graph/%s builder init");
+        graph_leaf_builder_root(&bgs)->a = 42; memset(&rgs, 0, sizeof(rgs));
+        ok_gs = graph_leaf_from_json(&bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
+        graph_leaf_builder_root(&bgt)->a = 42; memset(&rgt, 0, sizeof(rgt));
+        ok_gt = graph_leaf_from_json_tolerant(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
+        CHECK(ok_gs && !rgs.malformed && !rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
+            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
+            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict accept");
+        CHECK(ok_gt && !rgt.malformed && !rgt.refused &&
+            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
+            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant accept");
+        ngs = graph_leaf_to_json(graph_leaf_builder_root(&bgs), out_gs, (int64_t)sizeof(out_gs));
+        ngt = graph_leaf_to_json(graph_leaf_builder_root(&bgt), out_gt, (int64_t)sizeof(out_gt));
+        CHECK(ngs == (int64_t)sizeof(graph_canon) && memcmp(out_gs, graph_canon, sizeof(graph_canon)) == 0 &&
+            ngt == (int64_t)sizeof(graph_canon) && memcmp(out_gt, graph_canon, sizeof(graph_canon)) == 0, "graph/%s canonical json");
+        graph_leaf_builder_shutdown(&bgs);
+        graph_leaf_builder_shutdown(&bgt);
+    }
+`, cBytes([]byte(tc.text)), cBytes(fc), cBytes(gc), tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
+		} else {
+			fmt.Fprintf(&body, `
+    {
+        static const uint8_t text[] = { %s };
+        FixedLeaf vf; TableReport rfs, rft; int ok_fs, ok_ft;
+        GraphLeafBuilder bgs, bgt; TableReport rgs, rgt; int ok_gs, ok_gt;
+        fixed_leaf_reset(&vf); vf.a = 42; memset(&rfs, 0, sizeof(rfs));
+        ok_fs = fixed_leaf_from_json(&vf, (const char *)text, (int64_t)sizeof(text), &rfs);
+        CHECK(vf.a == 0, "fixed/%s strict discard");
+        fixed_leaf_reset(&vf); vf.a = 42; memset(&rft, 0, sizeof(rft));
+        ok_ft = fixed_leaf_from_json_tolerant(&vf, (const char *)text, (int64_t)sizeof(text), &rft);
+        CHECK(vf.a == 0, "fixed/%s tolerant discard");
+        printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
+        CHECK(!ok_fs && rfs.malformed && !rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
+            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
+            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0, "fixed/%s strict refuse");
+        CHECK(!ok_ft && rft.malformed && !rft.refused &&
+            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
+            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0, "fixed/%s tolerant refuse");
+
+        CHECK(graph_leaf_builder_init(&bgs) && graph_leaf_builder_init(&bgt), "graph/%s builder init");
+        graph_leaf_builder_root(&bgs)->a = 42; memset(&rgs, 0, sizeof(rgs));
+        ok_gs = graph_leaf_from_json(&bgs, (const char *)text, (int64_t)sizeof(text), &rgs);
+        graph_leaf_builder_root(&bgt)->a = 42; memset(&rgt, 0, sizeof(rgt));
+        ok_gt = graph_leaf_from_json_tolerant(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
+        printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
+        CHECK(!ok_gs && rgs.malformed && !rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
+            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
+            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict refuse");
+        CHECK(!ok_gt && !rgt.refused && rgt.malformed &&
+            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
+            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant refuse");
+        graph_leaf_builder_shutdown(&bgs);
+        graph_leaf_builder_shutdown(&bgt);
+    }
+`, cBytes([]byte(tc.text)), tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name, tc.name)
+		}
+	}
+	body.WriteString("    if (failures != 0) return 1;\n")
+	out, err := runCCountRefusalProbe(t, u, body.String())
+	t.Logf("\n%s", out)
+	if err != nil {
+		t.Fatalf("bom-boundary probe: %v\n%s", err, out)
 	}
 }
