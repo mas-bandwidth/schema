@@ -33,21 +33,24 @@ if [ "$mode" = positive ]; then
         cat "$out/log"; echo 'JavaScript text boundary gate failed' >&2; exit 1
     fi
     grep -E '^json-(read|write|hostile) ' "$out/log"
-    # A valid UTF-8 BOM is preserved exactly as Buffer.toString("utf8") did.
-    # Stripping it must change this tiny private fixture's actual reader result.
-    mkdir -p "$out/bom/input" "$out/bom/strict" "$out/bom/buffer" "$out/bom/stripped"
-    printf '\357\273\277{}\n' > "$out/bom/input/RootConfig.json"
-    printf 'json-hostile bom tabledemo RootConfig %s/bom/input refused\n' "$out" > "$out/bom/manifest"
+    # The reader accepts exactly one leading BOM. Preserve the byte boundary:
+    # stripping one here would let the reader incorrectly accept a double BOM.
+    mkdir -p "$out/bom/single" "$out/bom/double" "$out/bom/strict" "$out/bom/buffer" "$out/bom/stripped"
+    printf '\357\273\277{}\n' > "$out/bom/single/RootConfig.json"
+    printf '\357\273\277\357\273\277{}\n' > "$out/bom/double/RootConfig.json"
+    printf 'json-hostile bom-single tabledemo RootConfig %s/bom/single 0,0,0,0,0,false,read\njson-hostile bom-double tabledemo RootConfig %s/bom/double refused\n' "$out" "$out" > "$out/bom/manifest"
     "${NODE:-node}" "$source" "$out/bom/manifest" json-hostile "$out/bom/strict"
     sed 's/return jsonUTF8.decode(bytes);/return bytes.toString("utf8");/' "$source" > "$out/bom/buffer-main.mjs"
     if cmp -s "$source" "$out/bom/buffer-main.mjs"; then echo "BOM control did not restore the Buffer decoder" >&2; exit 1; fi
     sed 's/ignoreBOM: true/ignoreBOM: false/' "$source" > "$out/bom/stripped-main.mjs"
     "${NODE:-node}" "$out/bom/buffer-main.mjs" "$out/bom/manifest" json-hostile "$out/bom/buffer"
     "${NODE:-node}" "$out/bom/stripped-main.mjs" "$out/bom/manifest" json-hostile "$out/bom/stripped"
-    cmp "$out/bom/strict/bom" "$out/bom/buffer/bom"
-    grep -qx 'refused' "$out/bom/strict/bom"
-    grep -qx '0,0,0,0,0,false,read' "$out/bom/stripped/bom"
-    echo 'JavaScript UTF-8 BOM: strict decoding matches the former Buffer boundary; stripping the BOM changes the reader result'
+    cmp "$out/bom/strict/bom-single" "$out/bom/buffer/bom-single"
+    cmp "$out/bom/strict/bom-double" "$out/bom/buffer/bom-double"
+    grep -qx '0,0,0,0,0,false,read' "$out/bom/strict/bom-single"
+    grep -qx 'refused' "$out/bom/strict/bom-double"
+    grep -qx '0,0,0,0,0,false,read' "$out/bom/stripped/bom-double"
+    echo 'JavaScript UTF-8 BOM: exactly one leading BOM reads; stripping at the adapter would incorrectly accept a double BOM'
     echo 'JavaScript strict UTF-8 boundary: all text claims pass'
     exit 0
 fi

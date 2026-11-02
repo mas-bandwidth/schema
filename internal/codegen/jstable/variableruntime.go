@@ -1879,6 +1879,8 @@ function TableVariableFromJson(c, text, report) {
   const carried = report.malformed;
   report.malformed = false;
   const inp = new TableVariableTextIn(text);
+  // The dialect accepts exactly one BOM at byte zero, never as whitespace.
+  if (text.charCodeAt(0) === 0xfeff) { inp.p = 1; }
   const v = c.make();
   const ok = TableVariableReadTable(c, inp, v, 0, new Map(), report);
   if (ok) {
