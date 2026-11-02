@@ -253,6 +253,9 @@ type oracleAnswer struct {
 	// infinity (docs/SPEC-TABLES.md §3.3): every read refuses it, tolerant
 	// and strict, so the whole of what a leg owes is the refusal itself.
 	nonFinite bool
+	// required distinguishes a semantic refusal from malformed wire. The pipe
+	// carries its refusal verdict; native regressions pin its counter and names.
+	required bool
 }
 
 func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
@@ -324,6 +327,11 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	ok, derr := decode()
 	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](derr); refused {
 		ans.nonFinite = true
+		return ans, nil
+	}
+	if _, refused := errors.AsType[*tabletext.MissingRequired](derr); refused {
+		ans.required, ans.encFail, ans.builderStopped = true, true, r.builder
+		ans.report = Counts{Refused: true}
 		return ans, nil
 	}
 	if r.builder {
@@ -574,6 +582,12 @@ func (l *wireLeg) kill() {
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
 func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
+	if ans.required {
+		if !reply.report.Refused || reply.report.Malformed {
+			return "the oracle refuses missing required fields; the leg must report refusal without malformed wire"
+		}
+		return ""
+	}
 	if ans.nonFinite {
 		// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
 		// §3.3), and the refusal is the answer: a leg says so with the
