@@ -816,9 +816,7 @@ static void test_message_form_five_answers()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::LoginRequestLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused );
-        CHECK( count == 1 ); // k - 1
-        CHECK( out[0].client_build == 100 ); // the first body stands
-        CHECK( out[2].client_build == 999 ); // the third was never read
+        CHECK( count == 0 ); // damage delivers no body (SPEC-TABLES §4)
     }
 
     // AND A POINTERED BATCH TAKES ONE REGION: held by test_message_form_pointered
@@ -827,7 +825,7 @@ static void test_message_form_five_answers()
 // ---- DAMAGE IS TERMINAL FOR THE BATCH (docs/SPEC-TABLES.md §3.3) -----------
 //
 // Damage planted inside the SECOND body of three, and inside a NESTED body of
-// the second. Red if a leg reads the third body, or discards the first.
+// the second. Either damage refuses the entire batch and delivers no body.
 
 static void test_message_form_damage_terminal()
 {
@@ -857,7 +855,7 @@ static void test_message_form_damage_terminal()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::MatchResultLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
-        CHECK( count == 1 && out[0].match_id == 10 && out[2].match_id == 999 );
+        CHECK( count == 0 );
     }
     // inside a NESTED body of the second: the first PlayerRow's score reference
     {
@@ -872,8 +870,7 @@ static void test_message_form_damage_terminal()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::MatchResultLoadMessages( out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
-        CHECK( count == 1 && out[0].match_id == 10 && out[2].match_id == 999 );
-        CHECK( out[1].match_id == 11 ); // the fields decoded before the damage stand, and the COUNT says it is not a body
+        CHECK( count == 0 );
     }
 }
 
@@ -899,8 +896,7 @@ static void test_message_form_pad()
         backenddemo::TableReport pad;
         CHECK( !backenddemo::StorePurchaseLoadMessages( &out, &count, vocabulary, bad_pad, bytes, &pad ) );
         CHECK( pad.malformed && !pad.refused );
-        CHECK( out.quantity == 7 ); // the body decoded before the pad stands, and the count says so
-        CHECK( count == 1 );
+        CHECK( count == 0 ); // damaged padding discards the batch too
     }
     // a byte after the pad
     {
@@ -1296,7 +1292,6 @@ static void test_message_form_reference_bound()
         backenddemo::TableReport damage;
         CHECK( !backenddemo::LoginRequestLoadMessages( &out, &count, vocabulary, damaged, bytes, &damage ) );
         CHECK( damage.malformed && !damage.refused && damage.unknown == 0 );
-        CHECK( out.player_id == 5 ); // the field decoded BEFORE the bad reference stands
         CHECK( count == 0 );
         if ( i == 2 ) { pin_table_golden( "message_reference_past_table", damaged, bytes ); }
     }
