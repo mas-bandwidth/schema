@@ -437,6 +437,8 @@ pub enum TableNodeSlot {
 /// names is decoded once, the first time a slot resolves it, and shared.
 pub struct TableNodeReader {
     pub good: bool,
+    /// This load hit the int32 collection storage cap; report history is not control state.
+    pub count_refused: bool,
     pub root_type: u64,
     pub retaining: bool,
     pub retain_capacity: usize,
@@ -455,6 +457,14 @@ pub struct TableNodeReader {
 }
 
 impl TableNodeReader {
+    /// A storage-cap refusal is terminal but adds no malformed event (§2.9).
+    pub fn refuse_count(&mut self, report: &mut TableReport) -> bool {
+        self.count_refused = true;
+        report.refused = true;
+        report.reason = TableReason::CountOverExtentCap;
+        false
+    }
+
     /// Gather the numbering out of a ROOT body ending at end (§3.1). Framing
     /// damage on the root body ends the gathering scan with what it found and
     /// is counted by the body read, not here. A node table under a kind other than 12, a record
@@ -466,7 +476,7 @@ impl TableNodeReader {
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };
+        let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };

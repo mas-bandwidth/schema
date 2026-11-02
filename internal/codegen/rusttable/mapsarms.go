@@ -584,6 +584,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    let mut tmp = %s::default();\n", in, f.Type.Name)
 		fmt.Fprintf(b, "%s    let mut o = *off;\n", in)
 		fmt.Fprintf(b, "%s    let _ = %s(wire, &mut o, sub, ids, &mut tmp, nodes, report, path.step(%d, 0), retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), ordinal)
+		fmt.Fprintf(b, "%s    if nodes.count_refused { return false; }\n", in)
 		fmt.Fprintf(b, "%s    if o != sub { report.malformed = true; tmp = %s::default(); }\n", in, f.Type.Name)
 		fmt.Fprintf(b, "%s    %s = Some(tmp);\n", in, field)
 		fmt.Fprintf(b, "%s    *off = sub;\n", in)
@@ -711,6 +712,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, slot as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
+		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
 		fmt.Fprintf(b, "%sif o != eend { report.malformed = true; e = %s::default(); }\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	case vPointer:
@@ -775,7 +777,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
 	fmt.Fprintf(b, "%sif ek != %d { report.kind_mismatch += 1; }\n", i3, ir.TableKindTable)
-	fmt.Fprintf(b, "%selse if count > 0x7fffffff { report.malformed = true; }\n", i3)
+	fmt.Fprintf(b, "%selse if count > 0x7fffffff { return nodes.refuse_count(report); }\n", i3)
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
 	fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
@@ -859,6 +861,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%slet slot_idx = if order == std::cmp::Ordering::Equal { %s.len() - 1 } else { %s.len() };\n", i5, field, field)
 	fmt.Fprintf(b, "%sif order == std::cmp::Ordering::Equal && let Some(ret) = retain.as_deref_mut() { retain_discard_body(ret, path.step(%d, slot_idx as u32)); }\n", i5, ordinal)
 	fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, slot_idx as u32), retain.as_deref_mut(), true);\n", i5, fn(f.MapEntry.Name, "load_body"), ordinal)
+	fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
 	fmt.Fprintf(b, "%s*off = eend;\n", i5)
 	fmt.Fprintf(b, "%se.%s = key_val;\n", i5, key)
 	fmt.Fprintf(b, "%sif order == std::cmp::Ordering::Equal {\n", i5)
@@ -944,6 +947,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%slet mut body_val = %s::default();\n", in, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", in)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, %s, ids, &mut body_val, nodes, report, %s, retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), aend, g.armPath(ordinal))
+		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", in)
 		fmt.Fprintf(b, "%sif o != %s { report.malformed = true; %s = %s::None; }\n", in, aend, field, un.Name)
 		fmt.Fprintf(b, "%selse { %s = %s::%s(body_val); }\n", in, field, un.Name, rustVariant(v.Name))
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
@@ -959,6 +963,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%slet inner_ok = (|| -> bool {\n", in)
 		g.emitUnionDecode(b, f, "inner", aend, ordinal, in+"    ", true)
 		fmt.Fprintf(b, "%s    true\n%s})();\n", in, in)
+		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", in)
 		fmt.Fprintf(b, "%sif inner_ok { %s = %s::%s(inner); } else { %s = %s::None; }\n", in, field, un.Name, rustVariant(v.Name), field, un.Name)
 	case f.Array == ir.ArrayNone && classOf(f) == vEnum:
 		emitEnumDecode(b, f, "let slot", aend, "return false;", in)
@@ -1043,7 +1048,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	}
 	switch {
 	case f.Array == ir.ArrayList:
-		fmt.Fprintf(b, "%slet keep = if count > 0x7fffffff { report.malformed = true; 0 } else { count };\n", i3)
+		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i3, i3)
 	case bound > 0:
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i3, bound, bound)
 	default:
@@ -1075,6 +1080,7 @@ func (g *gen) emitElementReadWithKind(b *strings.Builder, f *ir.Field, field, bo
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", ind, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", ind)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, j as u32), retain.as_deref_mut(), true);\n", ind, fn(f.Type.Name, "load_body"), ordinal)
+		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", ind)
 		fmt.Fprintf(b, "%sif o != eend { report.malformed = true; e = %s::default(); }\n", ind, f.Type.Name)
 		fmt.Fprintf(b, "%s*off = eend;\n", ind)
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
