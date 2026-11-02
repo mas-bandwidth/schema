@@ -2823,6 +2823,15 @@ public final class TableJson {
 // absent fields defaulted, kind mismatch reported. The id table, the node table
 // and the first-use ordering are the runtime's; the per-table codec names the
 // field ids and the value shape only.
+func unitCarriesForm(u *ir.Unit, form string) bool {
+	for _, st := range u.Tables {
+		if !st.IsMapEntry() && st.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
 func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	tables := cardVariableTables(u)
 	if len(tables) == 0 {
@@ -2830,7 +2839,9 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	}
 	out := map[string][]byte{
 		"TableVariable.java": javaFile(u, "the VARIABLE FORM's runtime (docs/SPEC-TABLES.md §3), form byte 1", strings.TrimSuffix(tableVariableRuntime, "}\n")+variableWideRuntime+"}\n"),
-		"TableJson.java":     javaFile(u, "the TEXT form's runtime (docs/SPEC-TABLES.md §16), JSON in and out", strings.TrimSuffix(tableJsonRuntime, "}\n")+variableWideJsonRuntime+"}\n"),
+	}
+	if unitCarriesForm(u, "json") {
+		out["TableJson.java"] = javaFile(u, "the TEXT form's runtime (docs/SPEC-TABLES.md §16), JSON in and out", strings.TrimSuffix(tableJsonRuntime, "}\n")+variableWideJsonRuntime+"}\n")
 	}
 	for _, st := range tables {
 		src, err := generateTableVariable(u, st)
@@ -3371,7 +3382,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	}
 
 	writeLoadMeasure(&b, u, st)
-	writeJsonCodec(&b, u, st)
+	if unitCarriesForm(u, "json") {
+		writeJsonCodec(&b, u, st)
+	}
 
 	b.WriteString("}\n")
 	source := b.String()
@@ -3764,34 +3777,41 @@ func writeMeasureUnion(b *strings.Builder, u *ir.Unit, un *ir.Union, noteUnion f
 }
 
 func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
-	fmt.Fprintf(b, "    public static byte[] toJson(Value v) {\n")
-	fmt.Fprintf(b, "        TableVariable.NodeGraph graph = new TableVariable.NodeGraph();\n")
-	fmt.Fprintf(b, "        graph.setOpen(v, true);\n")
-	fmt.Fprintf(b, "        if (!buildGraph(graph, v)) { return null; }\n")
-	fmt.Fprintf(b, "        graph.setOpen(v, false);\n")
-	fmt.Fprintf(b, "        StringBuilder b = new StringBuilder();\n")
-	fmt.Fprintf(b, "        try { jsonFields(b, graph, v, 0); } catch (TableJson.Refused e) { return null; }\n")
-	fmt.Fprintf(b, "        b.append('\\n');\n")
-	fmt.Fprintf(b, "        return b.toString().getBytes(StandardCharsets.UTF_8);\n")
-	fmt.Fprintf(b, "    }\n\n")
+	if !st.IsTable || st.CarriesForm("json") {
+		fmt.Fprintf(b, "    public static byte[] toJson(Value v) {\n")
+		fmt.Fprintf(b, "        TableVariable.NodeGraph graph = new TableVariable.NodeGraph();\n")
+		fmt.Fprintf(b, "        graph.setOpen(v, true);\n")
+		fmt.Fprintf(b, "        if (!buildGraph(graph, v)) { return null; }\n")
+		fmt.Fprintf(b, "        graph.setOpen(v, false);\n")
+		fmt.Fprintf(b, "        StringBuilder b = new StringBuilder();\n")
+		fmt.Fprintf(b, "        try { jsonFields(b, graph, v, 0); } catch (TableJson.Refused e) { return null; }\n")
+		fmt.Fprintf(b, "        b.append('\\n');\n")
+		fmt.Fprintf(b, "        return b.toString().getBytes(StandardCharsets.UTF_8);\n")
+		fmt.Fprintf(b, "    }\n\n")
 
-	fmt.Fprintf(b, "    public static Value fromJson(byte[] text, TableVariable.Report report) {\n")
-	fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
-	fmt.Fprintf(b, "        in.byteOrderMark();\n")
-	fmt.Fprintf(b, "        Value v = new Value();\n")
-	fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
-	fmt.Fprintf(b, "        if (in.bad) { report.malformed = true; }\n")
-	fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
-	fmt.Fprintf(b, "        if (report.malformed) { return null; }\n")
-	fmt.Fprintf(b, "        return v;\n")
-	fmt.Fprintf(b, "    }\n\n")
+		fmt.Fprintf(b, "    public static Value fromJson(byte[] text, TableVariable.Report report) {\n")
+		fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
+		fmt.Fprintf(b, "        in.byteOrderMark();\n")
+		fmt.Fprintf(b, "        Value v = new Value();\n")
+		fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
+		fmt.Fprintf(b, "        if (in.bad) { report.malformed = true; }\n")
+		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
+		fmt.Fprintf(b, "        if (report.malformed) { return null; }\n")
+		fmt.Fprintf(b, "        return v;\n")
+		fmt.Fprintf(b, "    }\n\n")
+	}
 
 	fmt.Fprintf(b, "    static void jsonFields(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
-	b.WriteString("        b.append('{');\n")
-	b.WriteString("        boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);\n")
-	b.WriteString("        if (!empty) TableJson.indent(b, depth);\n")
-	b.WriteString("        b.append('}');\n")
-	b.WriteString("    }\n\n")
+	if st.JsonArray && len(st.Fields) == 1 {
+		writeJsonFieldValue(b, u, st, st.Fields[0])
+		b.WriteString("    }\n\n")
+	} else {
+		b.WriteString("        b.append('{');\n")
+		b.WriteString("        boolean empty = jsonFieldsBody(b, graph, v, depth + 1, true);\n")
+		b.WriteString("        if (!empty) TableJson.indent(b, depth);\n")
+		b.WriteString("        b.append('}');\n")
+		b.WriteString("    }\n\n")
+	}
 
 	fmt.Fprintf(b, "    static boolean jsonFieldsBody(StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth, boolean first) {\n")
 	for _, f := range st.Fields {
@@ -3876,11 +3896,19 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("    }\n\n")
 
 	fmt.Fprintf(b, "    static void jsonReadFields(TableJson.In in, Value v) {\n")
-	b.WriteString("        in.space();\n")
-	b.WriteString("        if (in.peek() != '{') { in.bad = true; return; }\n")
-	b.WriteString("        in.p++;\n")
-	b.WriteString("        jsonReadFieldsBody(in, v);\n")
-	b.WriteString("    }\n\n")
+	if st.JsonArray && len(st.Fields) == 1 {
+		b.WriteString("        in.space();\n")
+		fmt.Fprintf(b, "        if (in.peek() != '[') { if (in.rep != null && in.rep.reason == null) { in.rep.reason = \"json_root_not_array: %s\"; } in.bad = true; return; }\n", st.DeclaredName())
+		fmt.Fprintf(b, "        v.%s.clear();\n", varMember(st.Fields[0]))
+		readJsonFieldValue(b, u, st, st.Fields[0])
+		b.WriteString("    }\n\n")
+	} else {
+		b.WriteString("        in.space();\n")
+		b.WriteString("        if (in.peek() != '{') { in.bad = true; return; }\n")
+		b.WriteString("        in.p++;\n")
+		b.WriteString("        jsonReadFieldsBody(in, v);\n")
+		b.WriteString("    }\n\n")
+	}
 
 	fmt.Fprintf(b, "    static void jsonReadFieldsBody(TableJson.In in, Value v) {\n")
 	// A REPEATED FIELD KEY IS A DUPLICATE KEY (docs/SPEC-TABLES.md §16.2): the
@@ -4346,7 +4374,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                            // takes its label, so a reference reads null (§16.7).\n")
 		b.WriteString("                            in.rep.clamped++;\n")
 		b.WriteString("                            in.skipValue();\n")
-		fmt.Fprintf(b, "                        } else if (ec != '{') { in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); }\n", m, target.Name)
+		elemOpen := "'{'"
+		if target.JsonArray {
+			elemOpen = "'['"
+		}
+		fmt.Fprintf(b, "                        } else if (ec != %s) { in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); }\n", elemOpen, m, target.Name)
 		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
 		b.WriteString("                        idx++;\n")
 		b.WriteString("                        ec = in.peek();\n")
@@ -4372,7 +4404,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "                v.%s = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID);\n", m, target.Name, target.Name)
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		b.WriteString("                if (in.peek() == '{') {\n")
+		elemOpen := "'{'"
+		if target.JsonArray {
+			elemOpen = "'['"
+		}
+		fmt.Fprintf(b, "                if (in.peek() == %s) {\n", elemOpen)
 		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
 		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBytes:
@@ -5116,8 +5152,13 @@ func variableJsonShape(f *ir.Field, peek string) string {
 	case ir.TBool:
 		return "(" + peek + "=='t'||" + peek + "=='f')"
 	case ir.TNamed:
-		switch f.Type.Ref.(type) {
-		case *ir.Struct, *ir.Union:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if !f.Type.Pointer && ref.JsonArray {
+				return peek + "=='['"
+			}
+			return peek + "=='{'"
+		case *ir.Union:
 			return peek + "=='{'"
 		case *ir.Enum:
 			return peek + "=='\"'"
