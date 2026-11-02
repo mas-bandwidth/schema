@@ -117,26 +117,26 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// at its kind's width (§7.6), and §3.4's fixed form lays both out by the
 	// constant-size table. So a wide unit loses only the block form.
 	wide := ir.TableWideFields(u)
-	// AND WIDE TEXT STILL STANDS BOTH ACCELERATORS DOWN. `wstring(N)` rides a
-	// table under kind 33 (docs/SPEC-TABLES.md §3), which the block row and
-	// the cooked node have not been taught here — but §3.4's fixed form lays
-	// it out at its bound, a length in CODE UNITS and 2N bytes behind it, so
-	// the same scoping applies: the accelerators go, the form stays.
+	// AND WIDE TEXT STANDS THE BLOCK FORM DOWN. `wstring(N)` rides a table
+	// under kind 33 (docs/SPEC-TABLES.md §3), which the block row has not been
+	// taught here. The COOKED node carries it (§7.2's char16_t[N+1] and the
+	// used length in code units, written by the variable cook writer), and
+	// §3.4's fixed form lays it out at its bound.
 	text := ir.TableWideTextFields(u)
 	out := map[string][]byte{}
-	if len(text) == 0 {
+	{
 		blocks := ir.Blocks(u)
 		var err error
-		if len(wide) == 0 {
+		if len(wide) == 0 && len(text) == 0 {
 			out, err = generateBlockFiles(u, blocks)
 			if err != nil {
 				return nil, err
 			}
 		}
-		// A wide unit has no BLOCK form to hang a cursor or the build version
-		// on, so the cook emits both itself.
+		// A unit with no BLOCK form has nowhere to hang a cursor or the
+		// build version, so the cook emits both itself.
 		cookBlocks := blocks
-		if len(wide) > 0 {
+		if len(wide) > 0 || len(text) > 0 {
 			cookBlocks = &ir.BlockUnit{}
 		}
 		cooks, err := generateCookFiles(u, cookBlocks)

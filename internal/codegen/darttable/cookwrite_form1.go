@@ -72,7 +72,40 @@ func wireCarries(u *ir.Unit, st *ir.Struct) bool {
 func (g *cookGen) cookGraphRecords(name string) []string {
 	var records []string
 	if !g.form1 {
-		cookWalk(g.unit, name, func(n string, _ *ir.MemberLayout) { records = append(records, n) })
+		// every record the graph's nodes hold, and each MAP's generated entry
+		// (§2.8) with every record it reaches: an entry is no node, but its
+		// writer lays it in the holder's extent, and a record reached only
+		// through an entry (an `Item` a `*Item` value names) is a node
+		seen := map[string]bool{}
+		var walk func(string)
+		walk = func(n string) {
+			cookWalk(g.unit, n, func(r string, _ *ir.MemberLayout) {
+				if seen[r] {
+					return
+				}
+				seen[r] = true
+				records = append(records, r)
+			})
+		}
+		walk(name)
+		for i := 0; i < len(records); i++ {
+			for _, f := range cookMember(g.unit, records[i]).Fields {
+				if f.IsMap() {
+					walk(f.MapEntry.Name)
+				}
+			}
+			if st := cookMember(g.unit, records[i]); st != nil {
+				for _, f := range st.Fields {
+					if un := unionRef(f); un != nil {
+						for _, arm := range un.Variants {
+							if !arm.Void() && arm.F.IsMap() {
+								walk(arm.F.MapEntry.Name)
+							}
+						}
+					}
+				}
+			}
+		}
 		return records
 	}
 	seen := map[string]bool{}

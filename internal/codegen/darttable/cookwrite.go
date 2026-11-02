@@ -345,15 +345,21 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	for _, r := range records {
 		rs := cookMember(g.unit, r)
 		ml := ir.RecordLayout(g.unit, rs)
+		if rs.MapEntryOf != "" {
+			continue // an entry rides in its holder's extent, never a node (§2.8)
+		}
 		if recordHasLists(g.unit, rs) {
-			// A record whose node carries an extent (§7.2) is sized normally its
-			// record rounded to the region's alignment floor, plus the extent
-			// its unbounded arrays take behind it — measured by the same walk
-			// the write carves with.
-			recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
+			// A record whose node carries an extent (§2.8, §7.2) is its record
+			// rounded up to where the extent begins — the greater of the
+			// region's floor and every element alignment its extent can hold
+			// (ir.CookExtentStart) — plus the extent its lists and maps take
+			// behind it, measured by the same walk the write carves with; and
+			// the node aligns to the greater of its record's alignment and
+			// that one (ir.CookNodeAlign), so an array aligned relative to the
+			// extent is aligned in the region.
 			g.pf("          case %s:\n", dartU64Literal(ir.TableWireId(rs.WireName())))
-			g.pf("            size = %d + _extent%s(node as wire.%s, 0);\n", recordBytes, r, r)
-			g.pf("            alignment = %d;\n", ml.Align)
+			g.pf("            size = %d + _extent%s(node as wire.%s, 0);\n", ir.CookExtentStart(g.unit, rs), r, r)
+			g.pf("            alignment = %d;\n", ir.CookNodeAlign(g.unit, rs))
 		} else {
 			g.pf("          case %s:\n", dartU64Literal(ir.TableWireId(rs.WireName())))
 			g.pf("            size = %d;\n            alignment = %d;\n", ml.Size, ml.Align)
@@ -400,8 +406,10 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 	g.pf("    switch (id) {\n")
 	for _, r := range records {
 		rs := cookMember(g.unit, r)
-		ml := ir.RecordLayout(g.unit, rs)
-		recordBytes := (ml.Size + ir.RegionAlignFloor - 1) & -ir.RegionAlignFloor
+		if rs.MapEntryOf != "" {
+			continue
+		}
+		recordBytes := ir.CookExtentStart(g.unit, rs)
 		g.pf("      case %s:\n", dartU64Literal(ir.TableWireId(rs.WireName())))
 		if recordHasLists(g.unit, rs) {
 			// one cast: a second `node as` on the promoted node is refused by
@@ -420,6 +428,7 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		g.emitCookVariableExtent(r)
 		g.emitCookVariableCarve(r)
 	}
+	g.emitCookMapOrders()
 	if !g.form1 && len(g.form1Unions) > 0 {
 		// the element writers of the unions a list of unions queued (§2.6);
 		// a fixed root's form-1 class drains its own queue after this
@@ -497,26 +506,45 @@ func variableCookUnion(un *ir.Union) string {
 }
 
 func variableCookField(f *ir.Field) bool {
-	if f.Type.Optional || f.KeyEnum != "" || f.IsMap() {
+	if f.Type.Optional {
 		return false
+	}
+	if f.IsMap() {
+		// A MAP (docs/SPEC-TABLES.md §2.8) rides in its holder's node extent
+		// as an array of its generated entry, sorted by key; the entry is one
+		// of the writer's records (cookGraphRecords), so its key and value are
+		// judged as that record's fields.
+		return true
 	}
 	if f.IsList() {
 		// An unbounded array (docs/SPEC-TABLES.md §2.9) rides in its holder's
-		// node extent (§7.2, §7.6): a scalar or by-value record element is
-		// carried; a `[]*T`'s elements are reference slots of their own and
-		// stay refused, as a pointer field does.
+		// node extent (§7.2, §7.6): a scalar, 128-bit, enum, flags or by-value
+		// record element, and a `[]*T`'s reference slots, each pointing at
+		// the node §3.1's numbering gave the element.
 		if f.Type.Pointer {
-			return false
-		}
-		switch f.Type.Kind {
-		case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64:
-			return true
-		case ir.TInt:
-			return f.Type.Width != 128
-		case ir.TNamed:
 			return tableRef(f) != nil
 		}
+		switch f.Type.Kind {
+		case ir.TBool, ir.TBits, ir.TFloat32, ir.TFloat64, ir.TInt:
+			return true
+		case ir.TNamed:
+			if tableRef(f) != nil {
+				return true
+			}
+			switch f.Type.Ref.(type) {
+			case *ir.Enum, *ir.Flags:
+				return true
+			}
+		}
 		return false
+	}
+	if f.KeyEnum != "" {
+		// an ENUM-KEYED array (§2.4) is E.Max slots of storage, laid as a
+		// fixed array is, the key k at index k-1
+		single := *f
+		single.KeyEnum = ""
+		single.Array = ir.ArrayFixed
+		return variableCookField(&single)
 	}
 	if f.Type.Blob() {
 		return f.Array == ir.ArrayNone
@@ -532,7 +560,7 @@ func variableCookField(f *ir.Field) bool {
 		// width, carried by the wide write below; arrays of them are another
 		// card's family
 		return f.Array == ir.ArrayNone
-	case ir.TString, ir.TBytes:
+	case ir.TString, ir.TBytes, ir.TWString:
 		return f.Array == ir.ArrayNone
 	case ir.TInt:
 		if f.Type.Width == 128 {
@@ -599,70 +627,93 @@ func (g *cookGen) emitCookVariableRecord(name string) {
 }
 
 // recordHasLists reports a record whose node carries an extent of its own:
-// any unbounded-array field reachable BY VALUE (docs/SPEC-TABLES.md §2.9,
-// §7.2, §7.6). It is recursive like the reference's recordHasExtent
-// (internal/tablecook/extent.go) because a record held by value, or one used as
-// an element, can hold the list even when this record declares none. A pointer
-// reaches its own node, not this one's extent.
+// any list or map reachable BY VALUE (docs/SPEC-TABLES.md §2.8, §2.9, §7.2,
+// §7.6) — through a record held by value, an element of a bounded array, or a
+// union arm held by value. It is the reference's recordHasExtent
+// (internal/tablecook/extent.go): a map's entries ride in the same extent as
+// the lists' elements, one population. A pointer and a blob reach nodes of
+// their own, never this one's extent.
 func recordHasLists(u *ir.Unit, st *ir.Struct) bool {
-	return recordHasListsSeen(u, st, map[*ir.Struct]bool{})
+	return recordHasExtentSeen(u, st, map[*ir.Struct]bool{}, map[*ir.Union]bool{})
 }
 
-func recordHasListsSeen(u *ir.Unit, st *ir.Struct, seen map[*ir.Struct]bool) bool {
-	if st == nil || seen[st] {
+func recordHasExtentSeen(u *ir.Unit, st *ir.Struct, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
+	if st == nil || seenS[st] {
 		return false
 	}
-	seen[st] = true
+	seenS[st] = true
 	for _, f := range st.Fields {
-		if f.IsMap() {
-			continue
-		}
-		if f.IsList() {
-			return true
-		}
-		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
-			continue
-		}
-		if ref, ok := f.Type.Ref.(*ir.Struct); ok && recordHasListsSeen(u, ref, seen) {
+		if f.IsMap() || f.IsList() || valueHasExtentSeen(u, f, seenS, seenU) {
 			return true
 		}
 	}
 	return false
 }
 
-// fieldHasLists reports a by-value field whose own storage holds an extent.
-func fieldHasLists(u *ir.Unit, f *ir.Field) bool {
+// valueHasExtentSeen reports one VALUE of f's declared type — the element of
+// an array or a list — whose by-value storage can hold a list or a map.
+func valueHasExtentSeen(u *ir.Unit, f *ir.Field, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
 	if f == nil || f.IsMap() || f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 		return false
 	}
-	ref, ok := f.Type.Ref.(*ir.Struct)
-	return ok && recordHasLists(u, ref)
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return recordHasExtentSeen(u, ref, seenS, seenU)
+	case *ir.Union:
+		if seenU[ref] {
+			return false
+		}
+		seenU[ref] = true
+		for _, arm := range ref.Variants {
+			if arm.Void() {
+				continue
+			}
+			if arm.F.IsMap() || arm.F.IsList() || valueHasExtentSeen(u, arm.F, seenS, seenU) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// fieldHasLists reports a field one VALUE of which (the field itself, or one
+// element of its array or list) holds an extent: a record or a union whose
+// storage reaches a list or a map by value.
+func fieldHasLists(u *ir.Unit, f *ir.Field) bool {
+	return valueHasExtentSeen(u, f, map[*ir.Struct]bool{}, map[*ir.Union]bool{})
 }
 
 // emitCookVariableExtent writes the measure half of a record's extent walk: the
-// bytes its unbounded arrays take behind it, in pre-order (§7.2), recursing
-// into by-value records and list elements exactly as the reference's carver
-// does (internal/tablecook/extent.go). The running point is a parameter so a
-// nested record's arrays align to the holder's extent offset, not to zero.
+// bytes its lists and maps take behind it, in pre-order (§7.2), recursing into
+// by-value records, union arms, list elements and map entries exactly as the
+// reference's carver does (internal/tablecook/extent.go). The running point is
+// a parameter so a nested record's arrays align to the holder's extent offset,
+// not to zero.
 func (g *cookGen) emitCookVariableExtent(name string) {
 	rs := cookMember(g.unit, name)
 	if !recordHasLists(g.unit, rs) {
 		return
 	}
-	g.pf("  // The extent's measure (§7.2): the holder's unbounded arrays behind its\n")
+	g.pf("  // The extent's measure (§7.2): the holder's lists and maps behind its\n")
 	g.pf("  // record, pre-order, the arithmetic the write carves with.\n")
-	g.pf("  static int _extent%s(wire.%s value, int point) {\n", name, name)
+	if sig := fmt.Sprintf("  static int _extent%s(wire.%s value, int point) {", name, name); len(sig) <= 80 {
+		g.pf("%s\n", sig)
+	} else {
+		g.pf("  static int _extent%s(\n    wire.%s value,\n    int point,\n  ) {\n", name, name)
+	}
+	g.depth = 0
 	g.emitCookExtentFields(rs, "value", "    ", false, "", "")
 	g.pf("    return point;\n  }\n\n")
 }
 
 // emitCookVariableCarve writes the write half of a record's extent walk: it
-// places each unbounded array's elements after the record and points the
-// record's slot at them — a self-relative delta and the count, null for an
-// empty list (§7.2, §7.6) — then carves the arrays its by-value records and
-// list elements hold, in index order, which is the reference's pre-order
-// (internal/tablecook/extent.go). It runs with `c.out` null while the region
-// only measures, and returns the extent it carved.
+// places each list's elements and each map's entries after the record and
+// points the record's slot at them — a self-relative delta and the count,
+// zero for an empty one (§7.2, §7.6) — then carves the arrays those elements
+// and entries hold, in index (for a map, ascending key) order, which is the
+// reference's pre-order (internal/tablecook/extent.go). It runs with `c.out`
+// null while the region only measures, every value check included, and
+// returns the extent it carved, negative when the value is refused.
 func (g *cookGen) emitCookVariableCarve(name string) {
 	rs := cookMember(g.unit, name)
 	if !recordHasLists(g.unit, rs) {
@@ -678,6 +729,7 @@ func (g *cookGen) emitCookVariableCarve(name string) {
 	// a record that only descends into its fields' extents reads neither
 	outer := g.body
 	g.body = strings.Builder{}
+	g.depth = 0
 	g.emitCookExtentFields(rs, "value", "    ", true, "at", "base")
 	fields := g.body.String()
 	g.body = outer
@@ -705,88 +757,269 @@ func maxInt64(a, b int64) int64 {
 func (g *cookGen) emitCookExtentFields(st *ir.Struct, expr, ind string, write bool, at, base string) {
 	ml := ir.RecordLayout(g.unit, st)
 	for _, fl := range ml.Fields {
-		f := fl.Field
-		if f.IsList() {
-			size, align := ir.ListElementLayout(g.unit, f)
-			slotOff := ir.FieldPieces(g.unit, f, fl.Offset)[0].Offset
-			g.pf("%s{\n", ind)
-			g.pf("%s  final l = %s.%s;\n", ind, expr, fieldMember(f))
-			g.pf("%s  final n = l.length;\n", ind)
-			g.pf("%s  point = ((point + %d - 1) & ~(%d - 1));\n", ind, align, align)
-			if write { // only the carve places the array at its start
-				g.pf("%s  final start = point;\n", ind)
-			}
-			g.pf("%s  point += n * %d;\n", ind, size)
-			if write && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && tableRef(f) == nil {
-				// a cooked float element is finite (docs/SPEC-TABLES.md §3.3):
-				// measure and write refuse a NaN or an infinity alike
-				g.pf("%s  for (var i = 0; i < n; i++) {\n", ind)
-				g.cookRefuseUnless(ind+"    ", "l[i].isFinite", "-1")
-				g.pf("%s  }\n", ind)
-			}
-			if write {
-				g.pf("%s  if (out != null) {\n", ind)
-				g.pf("%s    final array = %s + start;\n", ind, base)
-				g.pf("%s    out.setInt64(%s + %d, n > 0 ? array - (%s + %d) : 0, order);\n", ind, at, slotOff, at, slotOff)
-				g.pf("%s    out.setInt32(%s + %d, n, order);\n", ind, at, slotOff+8)
-				g.pf("%s    for (var i = 0; i < n; i++) {\n", ind)
-				if ref := tableRef(f); ref != nil {
-					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, ref.Name, size)
-				} else if un := unionRef(f); un != nil {
-					// a LIST OF UNIONS (§2.6): each element is the union's own
-					// storage, written where it lies by the union's element writer
-					g.queueForm1Union(un)
-					g.pf("%s      if (!_cook%s(l[i], c, array + i * %d)) return -1;\n", ind, un.Name, size)
-				} else {
-					// inside the `if (out != null)` above: out is promoted
-					g.emitCookScalarStore(f, "l[i]", fmt.Sprintf("array + i * %d", size), size, ind+"      ")
-				}
-				g.pf("%s    }\n%s  }\n", ind, ind)
-			}
-			if fieldHasLists(g.unit, f) {
-				ref := tableRef(f)
-				g.pf("%s  for (var i = 0; i < n; i++) {\n", ind)
-				if write {
-					g.pf("%s    point = _carve%s(l[i], c, %s + start + i * %d, %s, point);\n", ind, ref.Name, base, size, base)
-				} else {
-					g.pf("%s    point = _extent%s(l[i], point);\n", ind, ref.Name)
-				}
-				g.pf("%s  }\n", ind)
-			}
-			g.pf("%s}\n", ind)
-			continue
+		g.emitCookExtentField(fl.Field, expr+"."+fieldMember(fl.Field), addrPlus(at, fl.Offset), ind, write, base)
+	}
+}
+
+// addrPlus spells `addr + off`, and addr alone at offset zero.
+func addrPlus(addr string, off int64) string {
+	if off == 0 {
+		return addr
+	}
+	return fmt.Sprintf("%s + %d", addr, off)
+}
+
+// emitCookExtentField emits one field's share of the extent: a list's or a
+// map's array where the field holds one, and otherwise the extents its
+// by-value value holds — every element of a bounded array (a counted array's
+// live ones, which in Dart are all it holds), a record, or a union's set arm.
+func (g *cookGen) emitCookExtentField(f *ir.Field, val, addr, ind string, write bool, base string) {
+	if f.IsList() || f.IsMap() {
+		g.emitCookExtentHolder(f, val, addr, ind, write, base)
+		return
+	}
+	if !fieldHasLists(g.unit, f) {
+		return
+	}
+	if f.KeyEnum != "" || f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
+		bound := maxInt64(f.ArrayBound, 1)
+		stride := ir.FieldPieces(g.unit, f, 0)[0].Size / bound
+		limit := fmt.Sprint(bound)
+		if f.Array == ir.ArrayCounted {
+			limit = val + ".length"
 		}
-		if !fieldHasLists(g.unit, f) {
-			continue
-		}
-		ref := tableRef(f)
-		// A BOUNDED array of records walks its elements too: the reference's
-		// carver descends a counted or fixed array by-value, live entries only
-		// for a counted one (internal/tablecook/extent.go).
-		if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
-			limit := fmt.Sprintf("%s.%s.length", expr, fieldMember(f))
-			if f.Array == ir.ArrayFixed {
-				limit = fmt.Sprint(f.ArrayBound)
-			}
-			stride := ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(f.ArrayBound, 1)
-			if f.Array == ir.ArrayCounted {
-				stride = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / maxInt64(f.ArrayBound, 1)
-			}
-			g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, limit)
-			if write {
-				g.pf("%s  point = _carve%s(%s.%s[i], c, %s + %d + i * %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, stride, base)
-			} else {
-				g.pf("%s  point = _extent%s(%s.%s[i], point);\n", ind, ref.Name, expr, fieldMember(f))
-			}
-			g.pf("%s}\n", ind)
-			continue
-		}
+		g.depth++
+		i := fmt.Sprintf("i%d", g.depth)
+		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, i, i, limit, i)
+		single := *f
+		single.Array = ir.ArrayNone
+		single.ArrayBound = 0
+		single.KeyEnum = ""
+		g.emitCookExtentValue(&single, fmt.Sprintf("%s[%s]", val, i), fmt.Sprintf("%s + %s * %d", addr, i, stride), ind+"  ", write, base)
+		g.pf("%s}\n", ind)
+		g.depth--
+		return
+	}
+	g.emitCookExtentValue(f, val, addr, ind, write, base)
+}
+
+// emitCookExtentValue descends ONE by-value value that holds an extent: a
+// record's own carve, or the set arm of a union, the arm's storage at the
+// union's arm offset (§2.6, §7.2).
+func (g *cookGen) emitCookExtentValue(f *ir.Field, val, addr, ind string, write bool, base string) {
+	if ref := tableRef(f); ref != nil {
 		if write {
-			g.pf("%spoint = _carve%s(%s.%s, c, %s + %d, %s, point);\n", ind, ref.Name, expr, fieldMember(f), at, fl.Offset, base)
+			g.emitDartAssign(ind, "point", "_carve"+ref.Name, val, "c", addr, base, "point")
+			g.pf("%sif (point < 0) return -1;\n", ind)
 		} else {
-			g.pf("%spoint = _extent%s(%s.%s, point);\n", ind, ref.Name, expr, fieldMember(f))
+			g.emitDartAssign(ind, "point", "_extent"+ref.Name, val, "point")
+		}
+		return
+	}
+	un := unionRef(f)
+	if un == nil {
+		return
+	}
+	_, _, _, armOffset := ir.UnionLayout(g.unit, un)
+	g.depth++
+	u := fmt.Sprintf("u%d", g.depth)
+	g.pf("%s{\n", ind)
+	g.pf("%s  final %s = %s;\n", ind, u, val)
+	g.pf("%s  switch (%s.armTag) {\n", ind, u)
+	for i, arm := range un.Variants {
+		if arm.Void() || !(arm.F.IsList() || arm.F.IsMap() || fieldHasLists(g.unit, arm.F)) {
+			continue
+		}
+		g.pf("%s    case %d:\n", ind, i+1)
+		g.emitCookExtentField(arm.F, u+"."+armMember(arm), addrPlus(addr, armOffset), ind+"      ", write, base)
+	}
+	g.pf("%s  }\n%s}\n", ind, ind)
+	g.depth--
+}
+
+// emitCookExtentHolder carves ONE list or map (docs/SPEC-TABLES.md §2.8, §2.9):
+// the whole array first, `count × size` at the element's alignment, the
+// holder's sixteen-byte slot pointed at it, then, element by element (for a
+// map, entry by entry in ASCENDING KEY ORDER), the arrays each holds by value
+// — pre-order, the reference's list and mapEntries (internal/tablecook/extent.go).
+// THE WRITER HOLDS THE SORT: a map's entries are sorted here, from the value,
+// in the measure and in the write alike, whatever order the value holds them in.
+func (g *cookGen) emitCookExtentHolder(f *ir.Field, val, addr, ind string, write bool, base string) {
+	var size, align int64
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.ArrayBound = 0
+	if f.IsMap() {
+		ml := ir.RecordLayout(g.unit, f.MapEntry)
+		size, align = ml.Size, max(ml.Align, 1)
+	} else {
+		size, align = ir.ListElementLayout(g.unit, f)
+	}
+	g.depth++
+	d := g.depth
+	l, n, start, array, i := fmt.Sprintf("l%d", d), fmt.Sprintf("n%d", d), fmt.Sprintf("start%d", d), fmt.Sprintf("array%d", d), fmt.Sprintf("i%d", d)
+	g.pf("%s{\n", ind)
+	in := ind + "  "
+	if f.IsMap() {
+		g.needConvert = g.needConvert || ir.MapKeyField(f).Type.Kind == ir.TString
+		entry := f.MapEntry.Name
+		if line := fmt.Sprintf("%sfinal %s = TableCookGraph.sorted(%s, _order%s);", in, l, val, entry); len(line) <= 80 {
+			g.pf("%s\n", line)
+		} else {
+			g.pf("%sfinal %s = TableCookGraph.sorted(\n%s  %s,\n%s  _order%s,\n%s);\n", in, l, in, val, in, entry, in)
+		}
+		g.queueCookMapOrder(f)
+	} else {
+		g.pf("%sfinal %s = %s;\n", in, l, val)
+	}
+	g.pf("%sfinal %s = %s.length;\n", in, n, l)
+	g.pf("%spoint = (point + %d - 1) & ~(%d - 1);\n", in, align, align)
+	if write {
+		g.pf("%sfinal %s = point;\n", in, start)
+	}
+	g.pf("%spoint += %s * %d;\n", in, n, size)
+	if !write {
+		if f.IsMap() && recordHasLists(g.unit, f.MapEntry) {
+			g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", in, i, i, n, i)
+			g.emitDartAssign(in+"  ", "point", "_extent"+f.MapEntry.Name, fmt.Sprintf("%s[%s]", l, i), "point")
+			g.pf("%s}\n", in)
+		} else if !f.IsMap() && fieldHasLists(g.unit, &elem) {
+			g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", in, i, i, n, i)
+			g.emitCookExtentValue(&elem, fmt.Sprintf("%s[%s]", l, i), "", in+"  ", false, "")
+			g.pf("%s}\n", in)
+		}
+		g.pf("%s}\n", ind)
+		g.depth--
+		return
+	}
+	g.pf("%sfinal %s = %s + %s;\n", in, array, base, start)
+	g.pf("%sif (out != null) {\n", in)
+	g.emitDartCall(in+"  ", "out.setInt64", addr, fmt.Sprintf("%s > 0 ? %s - (%s) : 0", n, array, addr), "order")
+	g.emitDartCall(in+"  ", "out.setInt32", addr+" + 8", n, "order")
+	g.pf("%s}\n", in)
+	at := fmt.Sprintf("%s + %s * %d", array, i, size)
+	g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", in, i, i, n, i)
+	e := fmt.Sprintf("%s[%s]", l, i)
+	switch {
+	case f.IsMap():
+		g.emitDartIfNot(in+"  ", "_cook"+f.MapEntry.Name, "-1", e, "c", at)
+	case f.Type.Pointer:
+		// a `[]*T`'s element is a reference slot (§6.3), the delta to the
+		// element's node, which §3.1's numbering placed
+		g.emitCookRef(in+"  ", at, e)
+	case tableRef(f) != nil:
+		g.emitDartIfNot(in+"  ", "_cook"+tableRef(f).Name, "-1", e, "c", at)
+	case unionRef(f) != nil:
+		// a LIST OF UNIONS (§2.6): each element is the union's own storage,
+		// written where it lies by the union's element writer
+		un := unionRef(f)
+		g.queueForm1Union(un)
+		g.emitDartIfNot(in+"  ", "_cook"+un.Name, "-1", e, "c", at)
+	case isWide(f):
+		// a 128-bit element (§3, §15): sixteen bytes, the low half first on a
+		// little-endian target, at the element's own sixteen-byte alignment
+		g.emitCookVariableWide(&elem, e, at, at+" + 8", size, in+"  ")
+	default:
+		if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+			// a cooked float element is finite (docs/SPEC-TABLES.md §3.3):
+			// measure and write refuse a NaN or an infinity alike
+			g.cookRefuseUnless(in+"  ", e+".isFinite", "-1")
+		}
+		g.pf("%s  if (out != null) {\n", in)
+		g.emitCookScalarStore(&elem, e, at, size, in+"    ")
+		g.pf("%s  }\n", in)
+	}
+	g.pf("%s}\n", in)
+	if f.IsMap() && recordHasLists(g.unit, f.MapEntry) {
+		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", in, i, i, n, i)
+		g.emitDartAssign(in+"  ", "point", "_carve"+f.MapEntry.Name, e, "c", at, base, "point")
+		g.pf("%s  if (point < 0) return -1;\n", in)
+		g.pf("%s}\n", in)
+	} else if !f.IsMap() && fieldHasLists(g.unit, &elem) {
+		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", in, i, i, n, i)
+		g.emitCookExtentValue(&elem, e, at, in+"  ", true, base)
+		g.pf("%s}\n", in)
+	}
+	g.pf("%s}\n", ind)
+	g.depth--
+}
+
+// emitDartAssign writes `lhs = callee(args);` in the spelling `dart format`
+// writes.
+func (g *cookGen) emitDartAssign(ind, lhs, callee string, args ...string) {
+	if one := fmt.Sprintf("%s%s = %s(%s);", ind, lhs, callee, strings.Join(args, ", ")); len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	g.pf("%s%s = %s(\n", ind, lhs, callee)
+	for _, a := range args {
+		g.pf("%s  %s,\n", ind, a)
+	}
+	g.pf("%s);\n", ind)
+}
+
+// emitDartIfNot writes `if (!callee(args)) return ret;` in the spelling
+// `dart format` writes.
+func (g *cookGen) emitDartIfNot(ind, callee, ret string, args ...string) {
+	if one := fmt.Sprintf("%sif (!%s(%s)) return %s;", ind, callee, strings.Join(args, ", "), ret); len(one) <= 80 {
+		g.pf("%s\n", one)
+		return
+	}
+	if head := fmt.Sprintf("%sif (!%s(%s)) {", ind, callee, strings.Join(args, ", ")); len(head) <= 80 {
+		g.pf("%s\n%s  return %s;\n%s}\n", head, ind, ret, ind)
+		return
+	}
+	g.pf("%sif (!%s(\n", ind, callee)
+	for _, a := range args {
+		g.pf("%s  %s,\n", ind, a)
+	}
+	g.pf("%s)) {\n%s  return %s;\n%s}\n", ind, ind, ret, ind)
+}
+
+// queueCookMapOrder records that a map's entry type needs its key order
+// (`_order<Entry>`), emitted once per root writer by emitCookMapOrders.
+func (g *cookGen) queueCookMapOrder(f *ir.Field) {
+	if g.mapOrders == nil {
+		g.mapOrders = map[string]*ir.Field{}
+	}
+	g.mapOrders[f.MapEntry.Name] = f
+}
+
+// emitCookMapOrders writes each queued map's KEY ORDER (docs/SPEC-TABLES.md
+// §2.8), the order the cook lays the entries in and `Find` searches by: a
+// string key by its UTF-8 bytes, unsigned and a prefix first; a signed key by
+// value; an unsigned key by value, a uint64 by its bits with the sign flipped
+// since Dart's int is signed.
+func (g *cookGen) emitCookMapOrders() {
+	for _, name := range sortedKeys(g.mapOrders) {
+		f := g.mapOrders[name]
+		key := ir.MapKeyField(f)
+		k := fieldMember(key)
+		g.pf("  // %s's key order (§2.8), the order its entries are cooked in.\n", f.MapEntry.Name)
+		var expr string
+		switch {
+		case key.Type.Kind == ir.TString:
+			expr = fmt.Sprintf("TableCookGraph.bytesOrder(utf8.encode(a.%s), utf8.encode(b.%s));", k, k)
+		case key.Type.Kind == ir.TInt && key.Type.Signed:
+			expr = fmt.Sprintf("a.%s.compareTo(b.%s);", k, k)
+		default:
+			expr = fmt.Sprintf("(a.%s ^ (1 << 63)).compareTo(b.%s ^ (1 << 63));", k, k)
+		}
+		// the spellings `dart format` writes: one line, the body under the
+		// head, or the parameters one a line with the body after `) =>`
+		sig := fmt.Sprintf("  static int _order%s(wire.%s a, wire.%s b) =>", name, name, name)
+		switch {
+		case len(sig)+1+len(expr) <= 80:
+			g.pf("%s %s\n\n", sig, expr)
+		case len(sig) <= 80:
+			g.pf("%s\n      %s\n\n", sig, expr)
+		case len("  ) => "+expr) <= 80:
+			g.pf("  static int _order%s(\n    wire.%s a,\n    wire.%s b,\n  ) => %s\n\n", name, name, name, expr)
+		default:
+			g.pf("  static int _order%s(\n    wire.%s a,\n    wire.%s b,\n  ) =>\n      %s\n\n", name, name, name, expr)
 		}
 	}
+	g.mapOrders = nil
 }
 
 // emitCookRef writes one pointer slot's c.ref call, in dart format's tall
@@ -843,10 +1076,10 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			g.pf("%s    break;\n", ind)
 		}
 		g.pf("%s}\n", ind)
-	case f.IsList():
-		// An unbounded array's slot — an int64 delta and an int32 count — is
-		// written by the record's extent carve (docs/SPEC-TABLES.md §7.2,
-		// §7.6); the record body leaves it at zero, empty list included.
+	case f.IsList() || f.IsMap():
+		// A list's or a map's slot — an int64 delta and an int32 count — is
+		// written by the record's extent carve (docs/SPEC-TABLES.md §2.8,
+		// §7.2, §7.6); the record body leaves it at zero, empty included.
 		break
 	case f.Array == ir.ArrayCounted:
 		bound := f.ArrayBound
@@ -890,10 +1123,13 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			g.emitCookFixedScalar(f, "e", fmt.Sprintf("at + %d + i * %d", offset, stride), stride, ind+"  ")
 		}
 		g.pf("%s}\n", ind)
-	case f.Array == ir.ArrayFixed:
+	case f.Array == ir.ArrayFixed || f.KeyEnum != "":
+		// a fixed array, or an ENUM-KEYED one (§2.4), whose E.Max slots are
+		// all storage, the key k at index k-1
 		bound := f.ArrayBound
 		stride := pieces[0].Size / bound
 		ref := tableRef(f)
+		g.pf("%sif (%s.length != %d) return false;\n", ind, expr, bound)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
 		switch {
 		case ref != nil && f.Type.Pointer:
@@ -916,12 +1152,29 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needConvert = true
 		text := dartName(f.Name) + "Text"
-		g.pf("%sfinal %s = utf8.encode(%s);\n", ind, text, expr)
+		if f.Type.Kind == ir.TBytes {
+			// bytes(N) is held as a Latin-1 String, one byte a code unit
+			// (§2.5), so its bytes are latin1's, never UTF-8's
+			g.pf("%sfinal %s = latin1.encode(%s);\n", ind, text, expr)
+		} else {
+			g.pf("%sfinal %s = utf8.encode(%s);\n", ind, text, expr)
+		}
 		g.pf("%sif (%s.length > %d) return false;\n", ind, text, f.Type.Size)
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
 		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
 		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, text)
+		g.pf("%s  }\n%s}\n", ind, ind)
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT's cooked storage (§7.2): char16_t[N+1], the String's
+		// UTF-16 code units, then the int32 used length in CODE UNITS
+		text := dartName(f.Name) + "Units"
+		g.pf("%sfinal %s = %s.codeUnits;\n", ind, text, expr)
+		g.pf("%sif (%s.length > %d) return false;\n", ind, text, f.Type.Size)
+		g.pf("%sif (out != null) {\n", ind)
+		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
+		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
+		g.pf("%s    out.setUint16(at + %d + i * 2, %s[i], order);\n", ind, offset, text)
 		g.pf("%s  }\n%s}\n", ind, ind)
 	case isWide(f):
 		g.emitCookVariableWide(f, expr, fmt.Sprintf("at + %d", offset), fmt.Sprintf("at + %d", offset+8), int64(ir.TableKindWidth(wideKind(f))), ind)
@@ -1005,6 +1258,32 @@ final class TableCookGraph {
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
     : offsets = List<int>.filled(count, 0);
+
+  // A map's entries in ASCENDING KEY ORDER (§2.8), a stable sort of a copy:
+  // the writer holds the sort, whatever order the value holds them in, and
+  // the caller's list is not reordered.
+  static List<T> sorted<T>(List<T> entries, int Function(T a, T b) order) {
+    final out = List<T>.of(entries);
+    for (var i = 1; i < out.length; i++) {
+      final x = out[i];
+      var j = i - 1;
+      while (j >= 0 && order(out[j], x) > 0) {
+        out[j + 1] = out[j];
+        j--;
+      }
+      out[j + 1] = x;
+    }
+    return out;
+  }
+
+  // Two string keys by their UTF-8 bytes, unsigned, a prefix first (§2.8).
+  static int bytesOrder(List<int> a, List<int> b) {
+    final n = a.length < b.length ? a.length : b.length;
+    for (var i = 0; i < n; i++) {
+      if (a[i] != b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  }
 
   // A reference slot holds the signed delta from the slot to its target node,
   // and a null is a delta of zero (§6.3).
