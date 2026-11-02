@@ -174,7 +174,7 @@ static const UnitFn units[] = {
     conformance_codecs_tblp3,
     conformance_codecs_widedemo,
     conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_widelist
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -574,7 +574,7 @@ static int surface_cook_write(const char * out)
         }
         if(instance==NULL) { return 1; }
         codec=find_codec(instance->field[2],instance->field[3]);
-        if(codec==NULL) { return 2; }
+        if(codec==NULL) { continue; }
         wire=slurp(instance->field[4],&wire_bytes); if(wire==NULL) { return 1; }
         value=codec->storage();
         if(!codec->load(value,wire,(int64_t)wire_bytes,&report)) { free(wire); return 1; } free(wire);

@@ -827,7 +827,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	if g.anyVariable {
 		h.WriteString("\n")
 		h.WriteString(tableAllocatorRuntime)
-		h.WriteString(tableArenaRuntime(u.Package))
+		h.WriteString(tableArenaRuntime(u))
 		if g.fileWire() {
 			// THE BYTE BUFFER's runtime, and only where the unit DECLARES one
 			// (docs/SPEC-TABLES.md §2.5, §2.2). Every name in these two blocks
