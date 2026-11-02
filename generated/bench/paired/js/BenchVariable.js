@@ -3934,15 +3934,20 @@ function TableVariableMapKeyNumber(kd, s) {
   return { status: "ok", key: kd.big ? x : Number(x) };
 }
 
-// one field read at a holder WITHOUT the key walk's shape gate: what a map's
-// value takes (readMap calls readField directly), null placing a pointer's null
+// Map values retain an entry even when its non-null value has the wrong
+// shape. Only null means optional absence; a skipped value is present-default.
 function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
-  if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
+  const shape = inp.shape();
+  if (shape === "z" && (fd.opt || fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
     if (!inp.literal("null")) { return false; }
     holder[fd.n] = null;
     return true;
   }
-  if (inp.shape() !== fd.js) { inp.bad = true; return false; }
+  holder[fd.n] = TableVariableFieldDefault(fd);
+  if (shape !== fd.js) {
+    report.kindMismatch++;
+    return inp.skip(depth, graph);
+  }
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
 
@@ -4054,7 +4059,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       holder[key] = { arm: arm.name, value: null };
     }
   } else if (arm.body) {
-    if (inp.shape() !== "o") {
+    if (inp.shape() !== (arm.c.jsonArray ? "a" : "o")) {
       report.kindMismatch++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
