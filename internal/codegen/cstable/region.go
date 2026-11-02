@@ -133,7 +133,7 @@ const tableRegionSource = `
             int n = f.IsArray ? f.ArrayBound : 1;
             for (int i = 0; i < n; i++)
             {
-                if (f.Kind == 13) { NativeReset(value.Child(f, i), f.Table); }
+                if (f.Kind == 13 || f.TextList) { NativeReset(value.Child(f, i), f.Table); }
                 else if (f.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear(value.Slot(f, i), (nuint)f.NativeElementSize); }
                 else if (f.GetWide != null) { value.SetWide(f, i, defaults ? f.DefaultWide : 0); }
                 else { value.SetRaw(f, i, defaults ? f.DefaultRaw : 0); }
@@ -145,7 +145,7 @@ const tableRegionSource = `
     static unsafe void NativeResetElement(NativeValue value, TableFieldInfo f, int i)
     {
         if (value.Base == null) { return; }
-        if (f.Kind == 13) { NativeReset(value.Child(f, i), f.Table); }
+        if (f.Kind == 13 || f.TextList) { NativeReset(value.Child(f, i), f.Table); }
         else if (f.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear(value.Slot(f, i), (nuint)f.NativeElementSize); }
         else if (f.GetWide != null) { value.SetWide(f, i, f.DefaultWide); }
         else { value.SetRaw(f, i, f.DefaultRaw); }
@@ -173,7 +173,7 @@ const tableRegionSource = `
         NativePut(slot + 8, 0, 4); state.Next = at + bytes;
         for (int i = 0; i < (int)count; i++)
         {
-            if (f.Kind == 13) { NativeReset(value.Child(f, i), f.Table); }
+            if (f.Kind == 13 || f.TextList) { NativeReset(value.Child(f, i), f.Table); }
             else if (f.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear(value.Slot(f, i), (nuint)f.NativeElementSize); }
             else if (f.GetWide != null) { value.SetWide(f, i, f.DefaultWide); }
             else { value.SetRaw(f, i, f.DefaultRaw); }
@@ -308,6 +308,13 @@ const tableRegionSource = `
     }
     static bool NativeReadElement(ref NativeState state, ref Reader r, NativeValue value, TableFieldInfo f, int index, byte kind, TableReport report, bool framed)
     {
+        if (f.TextList && kind == 12)
+        {
+            Reader text=r;if(framed&&!r.Slice(out text)){return Damage(report);}
+            if(!framed){r.Offset=r.Buffer.Length;}
+            int before=report.Clamped;bool good=NativeReadText(text.Buffer,value.Child(f,index),f.Table.Fields[0],report);
+            if(report.Clamped!=before){TextClamp(report,f);}return good;
+        }
         if (kind == 17)
         {
             if (!r.Var(out ulong indexValue)) { return Damage(report); }
@@ -318,7 +325,8 @@ const tableRegionSource = `
             Reader sub = r;
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             NativeValue child = value.Child(f, index);
-            NativeReadBody(ref state, ref sub, child, f.Table, report, true);
+            int before=report.Clamped;NativeReadBody(ref state, ref sub, child, f.Table, report, true);
+            if(f.TextList&&report.Clamped!=before){TextClamp(report,f);}
             if (state.Refused || report.Refused) { return false; }
             if (sub.Offset != sub.Buffer.Length) { NativeReset(child, f.Table); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
@@ -418,7 +426,7 @@ const tableRegionSource = `
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-            if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
+            if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
             int decoded = 0;
             for (int i = 0; i < keep; i++)
@@ -507,7 +515,7 @@ const tableRegionSource = `
             else
             {
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
-                if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
+                if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
                 // the same rule for a list: damage, then the parent resumes
                 // after the array's L (the Go oracle's collectionCap)
                 if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }
@@ -614,7 +622,7 @@ const tableRegionSource = `
                 }
                 f.SetChild(target, i, child);
             }
-            else if (f.Kind == 13) { NativeCopyBody(source.Child(f, i), f.GetChild(target, i), f.Table, nodes); }
+            else if (f.Kind == 13 || f.TextList) { NativeCopyBody(source.Child(f, i), f.GetChild(target, i), f.Table, nodes); }
             else if (f.Kind == 15)
             {
                 NativeValue union = source.Child(f, i); ulong tag = (ulong)NativeWord(union.Base + union.At, f.Arms.NativeTagSize);

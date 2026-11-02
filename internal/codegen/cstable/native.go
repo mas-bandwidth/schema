@@ -75,7 +75,7 @@ const tableNativeSource = `
     static bool NativeExtent(TableFieldInfo f)
     {
         if (f.Dynamic) { return true; }
-        if (f.Kind == 13) { return NativeExtent(f.Table); }
+        if (f.Kind == 13 || f.TextList) { return NativeExtent(f.Table); }
         if (f.Kind == 15)
         { foreach (TableUnionArmInfo arm in f.Arms.Arms) { if (arm.Field != null && NativeExtent(arm.Field)) { return true; } } }
         return false;
@@ -109,7 +109,7 @@ const tableNativeSource = `
         int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
         if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
-        if (f.Kind == 12)
+        if (f.Kind == 12 && !f.TextList)
         { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
         if (f.Kind == 33)
         { for (int i = 0; i < live; i++) { w.Put(at + i * 2L, f.GetChars(value)[i], 2); } return true; }
@@ -145,7 +145,7 @@ const tableNativeSource = `
             }
             w.Put(at, unchecked((ulong)offset), 8); return true;
         }
-        if (f.Kind == 13) { return NativeRecord(ref w, at, f.GetChild(value, index), f.Table, extentAt, ref extent); }
+        if (f.Kind == 13 || f.TextList) { return NativeRecord(ref w, at, f.GetChild(value, index), f.Table, extentAt, ref extent); }
         if (f.Kind == 15)
         {
             object union = f.GetChild(value, index); ulong tag = f.Arms.GetTag(union);
@@ -211,7 +211,7 @@ const tableNativeSource = `
         if (n < 0 || n > f.ArrayBound && f.IsArray) { return false; }
         for (int i = 0; i < n; i++)
         {
-            if (f.Kind == 13) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
+            if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
             else if (f.Kind == 15)
             {
                 object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);

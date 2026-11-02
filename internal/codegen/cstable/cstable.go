@@ -235,6 +235,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			for _, st := range members {
 				g.owner = st
 				g.emitJsonSurface(st)
+				g.emitTextListSurface(st)
 			}
 			g.emitFixedForm(members)
 		}
@@ -303,6 +304,7 @@ func (g *tableGen) emitRuntime() {
 		g.pf("%s", tableJsonWalkSource)
 	}
 	g.pf("%s", tableWireSource)
+	g.pf("%s", tableTextListSource)
 	g.emitFixedRuntime()
 }
 
@@ -692,6 +694,7 @@ public sealed class TableReport
     public int Retained, RetainLost;
     public bool Refused;
     public string Reason;
+    public string ClampedField;
     // NonFiniteFloat names the float a read found to be a NaN or an infinity
     // on its raw bits, as <Table>.<field> (docs/SPEC-TABLES.md §3.3): the
     // field is not written, and the load, the tolerant one too, refuses as
@@ -845,7 +848,8 @@ public sealed class TableFieldInfo
     public Func<object, int, object> GetChild;
     public Action<object, int, object> SetChild;
     public Action<object, int> EnsureCount;
-    public bool Dynamic, Map;
+    public bool Dynamic, Map, TextList;
+    public string TextField;
     public int StorageSize, StorageAlign;
     public ulong PointerTypeId;
     public byte BlobKind;

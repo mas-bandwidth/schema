@@ -180,7 +180,7 @@ const tableMessageSource = `
             if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
             if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
             shape.Elem = r.Byte();
-            if (!MessageKind(shape.Elem) || shape.Elem == 12 || shape.Elem == 33) { return false; }
+            if (!MessageKind(shape.Elem) || shape.Elem == 33) { return false; }
             // An entry carries its own shape and one element shape. The C++
             // announcement reader does not recursively parse nested arrays.
             if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }

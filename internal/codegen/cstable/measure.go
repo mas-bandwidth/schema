@@ -25,7 +25,7 @@ const tableLoadMeasureSource = `
             if (f.Dynamic)
             {
                 if (n > int.MaxValue) { reason = "count_over_extent_cap"; return false; }
-                int floor = sourceKind == 13 ? 2 : sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
+                int floor = sourceKind == 13 ? 2 : sourceKind == 12 || sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
                 if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
                 at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
             }
@@ -34,7 +34,8 @@ const tableLoadMeasureSource = `
                 Reader source = a;
                 if (f.KeyId != null)
                 { if (!a.Var(out _) || !a.Slice(out source)) { break; } }
-                if (f.Kind == 13)
+                if (f.TextList && sourceKind == 12) { if (!a.Slice(out _)) { break; } }
+                else if (f.Kind == 13)
                 {
                     Reader element = source;
                     if (f.KeyId == null && !a.Slice(out element)) { break; }

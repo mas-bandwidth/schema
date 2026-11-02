@@ -200,6 +200,7 @@ public static class TableJson
     {
         if (f.Map) { return 'o'; }
         if (f.Kind == 17 && !f.IsArray) { return f.BlobKind != 0 ? 's' : 'o'; }
+        if (f.TextList) { return 'a'; }
         if (f.Kind == 12 || f.Kind == 33) { return 's'; }          // string
         if (IsBytes(f)) { return 's'; }            // bytes: base64
         if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
@@ -216,6 +217,7 @@ public static class TableJson
     // the ELEMENT shape of an array field — the same classifier one level down
     static char ElementShape(TableFieldInfo f)
     {
+        if (f.TextList) { return 's'; }
         if (f.Kind == 36) { return 's'; }
         if (f.Kind == 17) { return f.BlobKind != 0 ? 's' : 'o'; }
         if (f.Kind == 13) { return f.Table.JsonArray ? 'a' : 'o'; }
@@ -621,6 +623,12 @@ public static class TableJson
     // (owner, field, index) is the same thing said in this language.
     static bool WriteScalar(ref Out o, object owner, TableFieldInfo f, int index, int depth)
     {
+        if (f.TextList)
+        {
+            object child=f.GetChild(owner,index);TableFieldInfo text=f.Table.Fields[0];
+            if(text.Optional&&!text.GetPresent(child)){o.Text("null");return true;}
+            return WriteField(ref o,child,text,depth);
+        }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
         if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
@@ -732,8 +740,9 @@ public static class TableJson
         {
             WriteChars(ref o, f.GetChars(value).AsSpan(0, Count(value, f))); return true;
         }
-        if (f.Kind == 12)
+        if (f.Kind == 12 && !f.TextList)
         {
+            if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
             WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
             return true;
         }
@@ -1357,6 +1366,14 @@ public static class TableJson
     // place one scalar at one storage slot
     static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
     {
+        if(f.TextList)
+        {
+            object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
+            if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
+            if(field.Optional){field.SetPresent(child,true);}
+            int before=input.Report.Clamped;bool good=ReadField(text,ref input,child,field,depth);
+            if(input.Report.Clamped!=before){TableWire.TextClamp(input.Report,f);}return good;
+        }
         if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
         if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
         if (f.Arms != null)
@@ -1629,7 +1646,7 @@ public static class TableJson
         if (f.Dynamic) { f.ResetField(value); return; }
         for (int i = 0; i < f.ArrayBound; i++)
         {
-            if (f.Kind == 13) { f.Table.Reset(f.GetChild(value, i)); }
+            if (f.Kind == 13 || f.TextList) { f.Table.Reset(f.GetChild(value, i)); }
             else if (f.Kind == 15)
             {
                 // TableJson cannot see the wire reader's ResetUnion (sibling
@@ -1663,7 +1680,7 @@ public static class TableJson
             if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used, stored: true)) { return false; }
             f.SetCount(value, used); return true;
         }
-        if (f.Kind == 12)
+        if (f.Kind == 12 && !f.TextList)
         {
             byte[] storage = f.GetBuffer(value);
             int length;
@@ -1821,10 +1838,10 @@ public static class TableJson
                 {
                     // more elements than the reader's bound: the bounded prefix
                     // is kept and the excess counts, the wire's rule (§4)
-                    input.Report.Clamped++;
+                    input.Report.Clamped++; TableWire.TextClamp(input.Report,f);
                     if (!SkipValue(text, ref input, depth + 1)) { return false; }
                 }
-                else if (ValueShape(text, ref input) != shape && !(f.Kind == 17 && ValueShape(text, ref input) == 'z'))
+                else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                 {
                     if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                     input.Report.KindMismatch++;

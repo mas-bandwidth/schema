@@ -34,6 +34,16 @@ const tableRegionWriteSource = `
     static int RegionCount(NativeValue value, TableFieldInfo f) { return f.Counted ? value.Count(f) : f.ArrayBound; }
     static bool RegionCollectElement(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids)
     {
+        if (f.TextList && f.Kind == 12)
+        {
+            NativeValue child = value.Child(f,i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
+            return count >= 0 && count <= text.ArrayBound && TextValid(child.Buffer(text).Slice(0,count));
+        }
+        if (!f.IsArray && f.Kind == 12)
+        {
+            int count = value.Count(f);
+            return count >= 0 && count <= f.ArrayBound && TextValid(value.Buffer(f).Slice(0,count));
+        }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
         // a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md §3.3)
@@ -91,6 +101,7 @@ const tableRegionWriteSource = `
     }
     static long RegionElementSize(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids, bool framed)
     {
+        if (f.TextList && f.Kind == 12) { long n = value.Child(f,i).Count(f.Table.Fields[0]); return n + (framed ? VarSize((ulong)n) : 0); }
         if (f.Kind == 13)
         {
             long n = RegionBodySize(value.Child(f, i), f.Table, ref ids);
@@ -144,6 +155,11 @@ const tableRegionWriteSource = `
     }
     static void RegionWriteElement(ref Writer w, NativeValue value, TableFieldInfo f, int i, ref RegionIds ids, bool framed)
     {
+        if (f.TextList && f.Kind == 12)
+        {
+            NativeValue child=value.Child(f,i);TableFieldInfo text=f.Table.Fields[0];int count=child.Count(text);
+            if (framed) { w.Var((ulong)count); } w.Raw(child.Buffer(text).Slice(0,count)); return;
+        }
         if (f.Kind == 13)
         {
             NativeValue child = value.Child(f, i);
