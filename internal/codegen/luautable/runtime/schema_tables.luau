@@ -160,6 +160,17 @@ function S.lookup(name: string): any
 	return d
 end
 
+-- lookupTypeId is the optional cook-check's type lookup. It includes every
+-- registered record, so an attributed node is checked even when no edge from
+-- the requested root's declaration can reach that type. This scans build
+-- metadata only; it allocates no state for nodes in the untrusted image.
+function S.lookupTypeId(id: integer): any
+	for _, d in registry do
+		if d.fields ~= nil and d.id == id then return d end
+	end
+	return nil
+end
+
 -- THE KEYED ACCESSOR (docs/PORTING.md M5; docs/SPEC-TABLES.md §2.4). An
 -- enum-keyed array is a plain Luau array with key k at index k, so a bare
 -- `array[key]` answers nil at both ends; the refusal lives here, in one place.

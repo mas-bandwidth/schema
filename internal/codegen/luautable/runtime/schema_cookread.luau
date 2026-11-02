@@ -534,6 +534,191 @@ function C.Check(root: string, bytes: buffer?, build: integer?, base: number?, e
 	return nil
 end
 
+-- CheckWhole is the optional offline cook-check (§7.4), separate from Check's
+-- header-only contract. Pass one proves the attribution directory; pass two
+-- scans every attributed node, including unreachable nodes. References are
+-- checked by binary search and NEVER followed. Thus sharing and cycles cannot
+-- multiply the scan's work or hide a malformed unreachable node.
+function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: number?, extent: number?): string?
+	if bytes == nil then return "unaligned_base" end
+	local b = bytes :: buffer
+	local start = base or 0
+	local n = extent or (buffer.len(b) - start)
+	if start < 0 or start % 1 ~= 0 or n < 0 or n % 1 ~= 0 or start > buffer.len(b) or n > buffer.len(b) - start then return "truncated" end
+	local why = C.Check(root, b, build, start, n)
+	if why ~= nil then return why end
+	local alignment = integer.tonumber(buffer.readinteger(b, start + 40))
+	local data = start + align_up(HEADER_BYTES, alignment)
+	local length = integer.tonumber(buffer.readinteger(b, start + 24))
+	local attrib = data + length
+	local attribLength = start + n - attrib
+	if length % alignment ~= 0 or attribLength == 0 or attribLength % 16 ~= 0 then return "bad_layout" end
+	local entries = attribLength / 16
+	local stringId: integer = 0x704be0d8faaffc58i
+	local bytesId: integer = 0x2f2ec0474f1c4fe4i
+	local function entry(i: number): (integer, integer)
+		local at = attrib + i * 16
+		return buffer.readinteger(b, at), buffer.readinteger(b, at + 8)
+	end
+	local previousEnd = 0
+	for i = 0, entries - 1 do
+		local word, id = entry(i)
+		if integer.ugt(word, integer.create(length)) then return "bad_layout" end
+		local at = integer.tonumber(word)
+		local d = S.lookupTypeId(id)
+		local size, align = 8, 8
+		if d ~= nil then
+			local layout = recordLayout(d.name)
+			size, align = layout.size, layout.align
+		elseif id ~= stringId and id ~= bytesId then return "bad_layout" end
+		if i == 0 and (at ~= 0 or d == nil or d.id ~= S.lookup(root).id) then return "bad_layout" end
+		if at < previousEnd or at % align ~= 0 or size > length - at then return "bad_layout" end
+		previousEnd = at + size
+	end
+	local function ref(at: number, fd: any): boolean
+		local delta = buffer.readinteger(b, data + at)
+		if delta == 0i then return true end
+		-- Compare before converting to a double, so saturated int64 deltas
+		-- cannot round into a legal address or wrap around one.
+		if integer.lt(delta, integer.create(-at)) or integer.lt(integer.create(length - at), delta) then return false end
+		local target = at + integer.tonumber(delta)
+		local lo, hi = 0, entries - 1
+		while lo <= hi do
+			local mid = (lo + hi) // 2
+			local word, id = entry(mid)
+			local offset = integer.tonumber(word)
+			if target < offset then hi = mid - 1
+			elseif target > offset then lo = mid + 1
+			else
+				local want = if fd.s == "bblob" then bytesId elseif fd.s == "sblob" or fd.s == "text" then stringId else S.lookup(fd.t).id
+				return id == want
+			end
+		end
+		return false
+	end
+	local nodeBase, nodeEnd = 0, 0
+	local arrays: { { first: number, last: number } } = {}
+	local nonFinite = false
+	local function placed(at: number, size: number, align: number): (number?, number)
+		local delta = buffer.readinteger(b, data + at)
+		local count = buffer.readi32(b, data + at + 8)
+		if count < 0 then return nil, 0 end
+		if delta == 0i then return if count == 0 then 0 else nil, count end
+		if count == 0 or integer.lt(delta, integer.create(nodeBase - at)) or integer.lt(integer.create(nodeEnd - at), delta) then return nil, 0 end
+		local first = at + integer.tonumber(delta)
+		if first % align ~= 0 or count > (nodeEnd - first) // size then return nil, 0 end
+		local last = first + count * size
+		for _, other in arrays do
+			if first < other.last and other.first < last then return nil, 0 end
+		end
+		arrays[#arrays + 1] = { first = first, last = last }
+		return first, count
+	end
+	local function companion(at: number, bound: number): boolean
+		local count = buffer.readi32(b, data + at)
+		return count >= 0 and count <= bound
+	end
+	local function keyLess(fd: any, a: number, z: number): boolean
+		if fd.s == "str" then
+			local an = buffer.readi32(b, data + align_up(a + fd.bound + 1, 4))
+			local zn = buffer.readi32(b, data + align_up(z + fd.bound + 1, 4))
+			for i = 0, math.min(an, zn) - 1 do
+				local x, y = buffer.readu8(b, data + a + i), buffer.readu8(b, data + z + i)
+				if x ~= y then return x < y end
+			end
+			return an < zn
+		end
+		local width = intWidth(fd)
+		local x, y = i_at(b, data + a, width, fd.signed == true), i_at(b, data + z, width, fd.signed == true)
+		if width == 8 then return if fd.signed then integer.lt(x, y) else integer.ult(x, y) end
+		return x < y
+	end
+	-- One recursive walk handles both fields and by-value records. It never
+	-- recurses through a pointer; those slots go through ref's directory test.
+	local function scanValue(at: number, fd: any, recordName: string?): boolean
+		if recordName ~= nil then
+			local d = S.lookup(recordName)
+			local offsets = recordOffsets(d.fields)
+			for i, nested in d.fields do
+				if not scanValue(at + offsets[i], nested, nil) then return false end
+			end
+			return true
+		end
+		local shape = fd.s
+		if shape == "ptr" or shape == "sblob" or shape == "bblob" or shape == "text" then return ref(at, fd) end
+		if shape == "str" then
+			local width = if fd.wide then 2 else 1
+			return companion(align_up(at + (fd.bound + 1) * width, 4), fd.bound)
+		end
+		if shape == "bytes" then return companion(align_up(at + fd.bound, 4), fd.bound) end
+		if shape == "float" then
+			if not f_finite(b, data + at, fd.f32 == true) then nonFinite = true; return false end
+			return true
+		end
+		if shape == "tab" then return scanValue(at, nil, fd.t) end
+		if shape == "union" then
+			local d = S.lookup(fd.t)
+			local layout = unionLayout(fd.t)
+			local tag = as_number(u_at(b, data + at, layout.tag))
+			if tag == 0 then return true end
+			if tag < 0 or tag > #d.arms then return false end
+			local arm = d.arms[tag]
+			return arm.s == "void" or scanValue(at + layout.armOffset, arm, nil)
+		end
+		if shape == "arr" then
+			local layout = elemLayout(fd.e)
+			local first, count = at, fd.bound or 0
+			if fd.array == "list" then
+				local found, nfound = placed(at, layout.size, layout.align)
+				if found == nil then return false end
+				first, count = found, nfound
+			elseif fd.array == "counted" and not companion(align_up(at + count * layout.size, 4), count) then return false end
+			for i = 0, count - 1 do
+				if not scanValue(first + i * layout.size, fd.e, nil) then return false end
+			end
+			return true
+		end
+		if shape == "map" then
+			local layout = recordLayout(fd.t)
+			local first, count = placed(at, layout.size, layout.align)
+			if first == nil then return false end
+			for i = 0, count - 1 do
+				if not scanValue(first + i * layout.size, nil, fd.t) then return false end
+			end
+			local d = S.lookup(fd.t)
+			local offsets = recordOffsets(d.fields)
+			for i, key in d.fields do
+				if key.id == 0x3dc94a19365b10eci then
+					for j = 1, count - 1 do
+						if not keyLess(key, first + (j - 1) * layout.size + offsets[i], first + j * layout.size + offsets[i]) then return false end
+					end
+					return true
+				end
+			end
+			return false
+		end
+		return true
+	end
+	local function scan(): string?
+		for i = 0, entries - 1 do
+			local word, id = entry(i)
+			nodeBase = integer.tonumber(word)
+			nodeEnd = length
+			if i + 1 < entries then nodeEnd = integer.tonumber((entry(i + 1))) end
+			arrays = {}
+			local d = S.lookupTypeId(id)
+			if d == nil then
+				local size = 8 + buffer.readu32(b, data + nodeBase) + (if id == stringId then 1 else 0)
+				if size > nodeEnd - nodeBase then return "bad_layout" end
+			elseif not scanValue(nodeBase, nil, d.name) then
+				return if nonFinite then "non_finite_float" else "bad_layout"
+			end
+		end
+		return nil
+	end
+	return scan()
+end
+
 -- Open checks the header in §7.4's order and answers the root value read from
 -- the region, or (nil, reason). The caller passes this build's version, the
 -- fact Go's Table source carries as a constant.

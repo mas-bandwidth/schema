@@ -48,11 +48,32 @@ type result struct {
 	// leg may give it.
 	named    int
 	failures []string
+	// outcome is what each CASE came to, by the file the driver writes:
+	// outcomePass, outcomeFail, outcomeAbsent or outcomeNamed. The nightly's
+	// claims and its coverage table read it (test/conformance/README.md, "The
+	// nightly"); the matrix above it still reads the counters.
+	outcome map[string]string
 	// cases is each case's verdict, by the file name the driver writes: pass,
 	// named (the row's named writer refusal), absent or fail. The proof table
 	// (tools/matrix proof) reads it from the --results file, so a cell can name
 	// the exact case that holds it and the exact case that is still absent.
 	cases map[string]string
+}
+
+// The four things a case can come to.
+const (
+	outcomePass   = "pass"
+	outcomeFail   = "fail"
+	outcomeAbsent = "absent" // `<case>.absent`, a missing feature
+	outcomeNamed  = "named"  // the row's named writer refusal (§2.5)
+)
+
+// mark records what one case came to.
+func (r *result) mark(name, outcome string) {
+	if r.outcome == nil {
+		r.outcome = map[string]string{}
+	}
+	r.outcome[name] = outcome
 }
 
 // verdict records one case's verdict.
@@ -467,12 +488,25 @@ func skipSet(list string) (map[string]bool, error) {
 }
 
 func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string) (bool, error) {
-	return runResults(w, m, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip, "")
+	return runWith(w, m, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip, runOptions{})
 }
 
-// runResults is run, and when resultsPath is set it also writes every case'"'"'s
-// verdict there (writeResults), the input tools/matrix proof reads.
-func runResults(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip, resultsPath string) (bool, error) {
+// runOptions is what the NIGHTLY and the proof add to a run
+// (test/conformance/README.md, "The nightly"; tools/matrix proof); the zero
+// value is the per-commit gate exactly as it was.
+type runOptions struct {
+	// claims, when set, turns a CLAIMED case answered ABSENT into a failure:
+	// a case whose unit uses a registered construct the leg's target carries
+	// (compiler/carries.go), on a surface the leg runs.
+	claims *claimSet
+	// coverage, when set, receives one row per leg, surface and class.
+	coverage *[]coverageRow
+	// results, when set, is where every case's verdict is written
+	// (writeResults), the input tools/matrix proof reads.
+	results string
+}
+
+func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
 	drivers, discovered, err := loadDrivers(driversPath)
 	if err != nil {
 		return false, err
@@ -582,6 +616,9 @@ func runResults(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, dr
 					r.verdict(e.name, "fail")
 				}
 				r.failures = append(r.failures, fmt.Sprintf("the driver exited %d\n%s", code, indent(stderr, "    ")))
+				for _, e := range legWant {
+					r.mark(e.name, outcomeFail)
+				}
 				continue
 			}
 			for _, line := range exemptions {
@@ -607,11 +644,17 @@ func runResults(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, dr
 						"losing its own expectation, not a missing feature; the reference answers every case "+
 						"it registers a surface for", r.missing-r.named))
 			}
+			if opts.claims != nil {
+				opts.claims.enforce(d.lang, s, legWant, r)
+			}
 		}
 	}
 
-	if resultsPath != "" {
-		if err := writeResults(resultsPath, langs, results); err != nil {
+	if opts.coverage != nil {
+		*opts.coverage = append(*opts.coverage, coverageRows(langs, results, want, m, opts.claims)...)
+	}
+	if opts.results != "" {
+		if err := writeResults(opts.results, langs, results); err != nil {
 			return false, err
 		}
 	}
@@ -647,23 +690,28 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 	if goWireRefusal := inst.WireRefusal(lang); surface == "wire" && goWireRefusal != "" {
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected named writer refusal %q, got bytes", e.name, goWireRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		} else if !errors.Is(err, os.ErrNotExist) {
 			r.failures = append(r.failures, fmt.Sprintf("%s: checking wire answer: %v", e.name, err))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		marker := answer + ".absent"
 		reason, err := os.ReadFile(marker)
 		if err != nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, goWireRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		if string(reason) != goWireRefusal {
 			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), goWireRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		r.missing++
 		r.named++
+		r.mark(e.name, outcomeNamed)
 		return
 	}
 	// ANOTHER LEG MAY GIVE THE SAME NAMED REFUSAL, and must give it by that
@@ -674,6 +722,7 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			if reason, err := os.ReadFile(answer + ".absent"); err == nil && string(reason) == inst.GoWireRefusal {
 				r.missing++
 				r.named++
+				r.mark(e.name, outcomeNamed)
 				return
 			}
 		}
@@ -684,9 +733,11 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		if _, absent := os.Stat(answer + ".absent"); absent == nil {
 			// An ordinary per-case absence is a missing feature for this leg.
 			r.missing++
+			r.mark(e.name, outcomeAbsent)
 			return
 		}
 		r.failures = append(r.failures, fmt.Sprintf("%s: the driver wrote nothing", e.name))
+		r.mark(e.name, outcomeFail)
 		return
 	}
 	if e.damaged {
@@ -699,9 +750,11 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 	}
 	if !bytes.Equal(got, e.want) {
 		r.failures = append(r.failures, describeDiff(e.name, e.want, got))
+		r.mark(e.name, outcomeFail)
 		return
 	}
 	r.pass++
+	r.mark(e.name, outcomePass)
 }
 
 // answersDamage reports whether a leg's answer opens with a report line that
@@ -713,10 +766,8 @@ func answersDamage(got []byte) bool {
 }
 
 func firstLine(b []byte) string {
-	if i := bytes.IndexByte(b, '\n'); i >= 0 {
-		return string(b[:i])
-	}
-	return string(b)
+	line, _, _ := bytes.Cut(b, []byte{'\n'})
+	return string(line)
 }
 
 // absentReference is what the REFERENCE leg's absence reads as in the failure

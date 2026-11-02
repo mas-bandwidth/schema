@@ -374,7 +374,7 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
         case 1: case 2: case 6: case 20: case 25: width = 1; break;
         case 3: case 7: case 21: case 26: width = 2; break;
         case 4: case 8: case 10: case 22: case 27: width = 4; break;
-        case 5: case 9: case 11: case 23: case 28: width = 8; break;
+        case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break; /* 36 is the timestamp, the i64's eight bytes (§2.11, §3) */
         case 18: case 19: case 24: case 29: width = 16; break;
         case 17: case 30: return table_reader_leb( r, &n );
         case 15:

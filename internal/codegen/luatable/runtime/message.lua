@@ -1,7 +1,7 @@
 -- THE MESSAGE FORM'S RUNTIME (docs/SPEC-TABLES.md §3.3), form byte 2: the
--- announcement reader and the batch verbs, against the module's own descriptor
--- table (the vocabulary is the unit's own closure, emitted by messageform.go as
--- _M.MessageVocabulary in projection order). The wire is the bitpacked batch:
+-- announcement reader and the batch verbs. Receive references use the sender's
+-- announced vocabulary; send references use the unit's own closure, emitted by
+-- messageform.go as _M.MessageVocabulary in projection order. The wire is the bitpacked batch:
 -- form byte 2, an eight-bit count (M-1), then M bodies as one bit stream, then
 -- zero pad to the byte boundary.
 --
@@ -678,7 +678,7 @@ end
 
 local function load_one(R, T, root, vocab)
   local rootval = T["New" .. root]()
-  local ctx = { vocab = vocab, refBits = T.MessageRefBits }
+  local ctx = { vocab = vocab, refBits = vocab.refBits }
   if not load_body(R, T, root, rootval, ctx) then return nil, ctx.nonFinite end
   return rootval
 end
@@ -793,11 +793,12 @@ local function skip_shape(kind, s, at)
   return nil
 end
 
--- vocabulary_entries counts the announced entries without resolving them.
+-- vocabulary_entries retains the sender's slots in announcement order.
 -- tooLarge is the RECEIVER's capacity bound, refused at the entry that passes
 -- it (docs/SPEC-TABLES.md §3.3, "the entry bound is that capacity").
 local function vocabulary_entries(s, maxEntries)
   local at, count = 1, 0
+  local entries, seen = {}, {}
   while at <= #s do
     if at + 8 > #s then return nil, false end
     local id = string.unpack("<I8", s, at)
@@ -805,12 +806,17 @@ local function vocabulary_entries(s, maxEntries)
     at = at + 9
     if id == ANNOUNCE_BUILD_VERSION_ID or id == ANNOUNCE_VOCABULARY_ID then return nil, false end
     if not known_kind(kind) then return nil, false end
+    local start = at - 9
     at = skip_shape(kind, s, at)
     if at == nil then return nil, false end
+    local triple = s:sub(start, at - 1)
+    if seen[triple] then return nil, false end
+    seen[triple] = true
     count = count + 1
     if count > maxEntries then return nil, true end
+    entries[count] = { id = id, kind = kind }
   end
-  return count, false
+  return entries, false
 end
 
 -- announceRead reads one announcement into the receiver's vocabulary
@@ -906,15 +912,10 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
     if tooLarge then return too_large(version) end
     return damage()
   end
-  for i = 1, T.MessageEntries do
-    local e = T.MessageVocabulary[i]
-    vocab[i] = { id = e.id, kind = e.kind, packing = e.packing, bits = e.bits, max = e.max, min = e.min, elem = e.elem }
-  end
-  for i = T.MessageEntries + 1, #vocab do
-    vocab[i] = nil
-  end
-  vocab.count = T.MessageEntries
-  vocab.refBits = T.MessageRefBits
+  for i, e in ipairs(entries) do vocab[i] = e end
+  for i = #entries + 1, #vocab do vocab[i] = nil end
+  vocab.count = #entries
+  vocab.refBits = bits_max(#entries)
   vocab.buildVersion = version
   vocab.announced = true
   return true

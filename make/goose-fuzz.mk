@@ -29,19 +29,23 @@ endef
 # wire and holds the oracle, the compiler's own engine; the Goose leg
 # (test/conformance/goose/wirefuzz.goose, built `goose build -O2` once per unit
 # by make/goose-wirefuzz-build.sh, since two units cannot be one Goose program)
-# loads each mutant, saves what it decoded and answers. Two arms per unit:
+# loads each mutant, saves what it decoded and answers. Three arms per unit:
 # --builder over the variable-class file roots (Goose's load grows its own
 # value table, so it has no caller region and no LoadMeasure — the builder
-# arm's shape) and the region arm over the value-only roots. Every arm must be
+# arm's shape), the region arm over value-only roots, and --builder --retain
+# over variable roots. test-goose uses this combined gate and compiles once;
+# tables-goose-retain-fuzz runs retention alone. Every arm must be
 # green except the ones test/conformance/goose/wirefuzz-known.tsv holds red by
-# name, each with the card that owes it. Measured 2026-10-28 on the author's
-# machine: 28 arms, 31 s, most of it the 28 C compiles, which run in parallel.
-.PHONY: tables-goose-wire-fuzz
-tables-goose-wire-fuzz: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
+# name, each with the card that owes it. Measured 2026-10-31 on hetzner1 with
+# four compile jobs: 37 arms / 320345 mutants, 105 s including native builds;
+# the nine retaining arms account for 8.7 s of reported harness run time.
+.PHONY: tables-goose-wire-fuzz tables-goose-retain-fuzz
+tables-goose-retain-fuzz: GOOSE_FUZZ_DIR := build/goose-retain-fuzz
+tables-goose-wire-fuzz tables-goose-retain-fuzz: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	$(call goose_fuzz_units,$(GOOSE_FUZZ_DIR)/units)
 	@sh make/goose-wirefuzz.sh "$(GOOSE)" ./build/conformance-harness $(GOOSE_FUZZ_DIR)/units \
-		$(GOOSE_FUZZ_DIR)/legs $(GOOSE_FUZZ_SEED) $(GOOSE_FUZZ_N)
+		$(GOOSE_FUZZ_DIR)/legs $(GOOSE_FUZZ_SEED) $(GOOSE_FUZZ_N) $(if $(filter tables-goose-retain-fuzz,$@),retain,all)
 
 # THE WIRE-FUZZ CONTROLS: a check removed from the Goose load, the differential
 # red on exactly that. The table wire's load is a runtime module the compiler
@@ -114,3 +118,13 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 # beside them; the controls run in group goose-wire of the controls leg too.
 test-goose: tables-goose-wire-fuzz schema-goose-runs-hostile-corpus \
 	tables-goose-wire-fuzz-negative-control schema-goose-runs-hostile-corpus-negative-control
+
+# Direct protocol fixtures and runtime controls complement the full retaining
+# differential above (Goose has no caller-region measure).
+.PHONY: tables-goose-retain-fuzz-driver tables-goose-retain-fuzz-negative-control
+tables-goose-retain-fuzz-driver:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseRetaining(FuzzDriver|MapReplacement)$$' ./internal/codegen/goosetable/
+tables-goose-retain-fuzz-negative-control:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseRetaining(FuzzNegativeControl|MapReplacementNegativeControl)$$' ./internal/codegen/goosetable/

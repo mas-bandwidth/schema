@@ -36,23 +36,23 @@ static partial class Program
 
         byte[] badVoid = Fixture(new byte[] { 1,15,2,32,1,99,3,8,42,0,0,0,0 }, "item", "signal", "tail");
         report = new U.TableReport();
-        Check(U.Schema.RootLoad(copy, badVoid, report) && report.Malformed && copy.Item.Type == U.ChoiceType.None && copy.Tail == 42,
-            "void arm: nonzero length clears selection and preserves sibling");
+        Check(!U.Schema.RootLoad(copy, badVoid, report) && report.Malformed && copy.Item.Type == U.ChoiceType.None && copy.Tail == new U.Root().Tail,
+            "void arm: nonzero length is damage and discards the whole load");
 
         Messagedemo.ToolMessage message = new Messagedemo.ToolMessage();
         Messagedemo.TableReport armReport = new Messagedemo.TableReport();
         byte[] badWidth = Fixture(new byte[] { 1,15,2,6,2,1,0,0 }, "body", "caps");
-        Check(Messagedemo.Schema.ToolMessageLoad(message, badWidth, armReport) && armReport.Malformed &&
+        Check(!Messagedemo.Schema.ToolMessageLoad(message, badWidth, armReport) && armReport.Malformed &&
             armReport.Widened == 0 && message.Body.Type == Messagedemo.ToolBodyType.None,
-            "widening arm: damage precedes the widening event");
+            "widening arm: damage precedes the widening event and discards the whole load");
 
         // The later fixed-array element supplies a reference but no complete
         // arm header. It clears the earlier slot and leaves the next field.
         byte[] repeat = Fixture(new byte[] { 1,14,6,15,2,2,32,0,0,1,14,3,15,2,2,3,8,42,0,0,0,0 },
             "pending", "signal", "tail");
         report = new U.TableReport();
-        Check(U.Schema.RootLoad(copy, repeat, report) && report.Malformed && copy.Pending[0].Type == U.ChoiceType.None && copy.Tail == 42,
-            "repeated union array: damaged later header clears the old selection");
+        Check(!U.Schema.RootLoad(copy, repeat, report) && report.Malformed && copy.Pending[0].Type == U.ChoiceType.None && copy.Tail == new U.Root().Tail,
+            "repeated union array: a damaged later header discards the whole load");
 
         // A shorter counted union array must restore the whole element, not the
         // tag only: a list arm under None is the leftover ResetElement left.

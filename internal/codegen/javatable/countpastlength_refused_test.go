@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -22,6 +23,7 @@ import (
 // byte is compared.
 func TestJavaFixCountPastLengthRefused(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "tables", "stream")
 	u := unitFromDir(t, dir)

@@ -161,7 +161,7 @@ func TestRepeatedUnionElement(t *testing.T) {
  for _,name:=range []string{"pinned","n"} {h:=fnv.New64a();h.Write([]byte(name));wire=binary.LittleEndian.AppendUint64(wire,h.Sum64())}
  wire=binary.LittleEndian.AppendUint64(wire,2)
  var v Root;var r TableReport
- if !RootLoadTolerant(&v,wire,&r)||!r.Malformed||v.Pinned[0].Type!=InnerTypeNone {t.Fatalf("stale element: %+v %+v",v.Pinned,r)}
+ if RootLoadTolerant(&v,wire,&r)||!r.Malformed||v.Pinned[0].Type!=InnerTypeNone {t.Fatalf("stale element: damage must discard the whole load: %+v %+v",v.Pinned,r)}
 }
 `)
 }

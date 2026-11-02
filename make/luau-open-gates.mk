@@ -191,3 +191,13 @@ tables-luau-damage-discard-negative-control: toolchain-luau
 	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run '^TestLuauDamageDiscardNegativeControls$$' -count=1
 
 test-luau: tables-luau-damage-discard tables-luau-damage-discard-negative-control
+
+# I3: seeded block bounds and offline cook attribution/region scan oracle.
+.PHONY: tables-luau-forgery-fuzz tables-luau-forgery-fuzz-negative-control
+tables-luau-forgery-fuzz: toolchain-luau
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run 'TestLuauForgeryFuzz$$|TestLuauCookCheckWhole' -count=1
+
+tables-luau-forgery-fuzz-negative-control: toolchain-luau
+	SCHEMA_SLOW=1 go test ./internal/codegen/luautable -run '^TestLuauForgeryFuzzNegativeControl$$' -count=1
+
+test-luau: tables-luau-forgery-fuzz tables-luau-forgery-fuzz-negative-control

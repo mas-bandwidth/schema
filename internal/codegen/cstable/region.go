@@ -651,6 +651,8 @@ const tableRegionSource = `
         int end = bytes.Length - 8 - (int)idsCount * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)idsCount * 8);
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
+        bool malformedBefore = report.Malformed;
+        report.Malformed = false;
         bool good = NodeFrames(root, out Reader records, out int count);
         if (!good) { count = 0; Damage(report); }
         byte* data = (byte*)region; byte* directory = (byte*)attribution;
@@ -693,7 +695,10 @@ const tableRegionSource = `
         state.Next = Align(type.StorageSize, type.RegionAlign); state.End = state.Next + rootExtent;
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
         // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
-        if (NonFiniteRefused(report)) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no root, and the region holds nothing.
+        if (report.Malformed) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }
+        report.Malformed = malformedBefore;
         Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return region;
     }
 `

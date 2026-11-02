@@ -28,6 +28,7 @@ public final class MixedChatEventRetain {
             return null;
         }
         MixedChatEventVariable.Value v = new MixedChatEventVariable.Value();
+        report.rootTypeId = MixedChatEventVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {

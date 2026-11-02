@@ -98,6 +98,12 @@ test-lua: toolchain-lua lua-generated-loads tables-lua-finite-float tables-lua-f
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/lua/ ./internal/codegen/luatable/ -count=1 -timeout 600s -skip '^TestLuaWireFuzz'
 update-goldens-lua: ;
 
+# bin/schema embeds both Lua runtime directories (//go:embed runtime/*.lua in
+# internal/codegen/lua and internal/codegen/luatable). The root Makefile's
+# EMBED_SOURCES already names them; this line is what
+# TestLuaBinaryRebuildsWhenRuntimeChanges reads on its own.
+bin/schema: $(wildcard internal/codegen/luatable/runtime/*.lua) $(wildcard internal/codegen/lua/runtime/*.lua)
+
 # the Lua target: the type surface of the examples units, with the serialize
 # runtime the emitter writes beside every unit (generated Lua is self-contained:
 # no rock, no wiring file). Committed and held by `make generated-current`.

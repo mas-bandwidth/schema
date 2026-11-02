@@ -139,11 +139,6 @@ func TestTheToolsCookCarriesAList(t *testing.T) {
 			t.Errorf("the tool's %s refused a list-bearing unit by construct rather than reading the file: %v", probe.what, probe.err)
 		}
 	}
-	// and the MAP's tool cook half is still OWED, still refused by name
-	if _, _, _, err := c.Cook(unitFromSource(t, mapSrc), "Fleet", nil, CookOptions{}); err == nil ||
-		!strings.Contains(err.Error(), "declares a map") {
-		t.Errorf("the tool's cook did not refuse a map-bearing unit by name: %v", err)
-	}
 }
 
 func cookErr(c *Compiler, u *ir.Unit) error {

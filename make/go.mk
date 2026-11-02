@@ -383,7 +383,7 @@ cards-conformance-go: build/conformance-harness cards-driver-go
 	./build/conformance-harness cards --corpus tables/cards/conformance --driver 'build/cards-driver-go' --require $(CARDS_REQUIRE)
 
 # ONE GATE FOR EVERY LEG (the-cards-page-and-roadmap-name-every-language): runs
-# cards-conformance-go and every cards-<lang>-conformance target across all eleven
+# cards-conformance-go and every cards-<lang>-conformance target across all thirteen
 # carded languages with CARDS_REQUIRE set to all nine surfaces (load, save, render,
 # parse, bounds, upgrade, edit, taskhash, view), continuing after a failure so
 # the full matrix is collected, prints one `<leg> <surface> pass n/m` (or FAIL /
@@ -394,7 +394,7 @@ CARDS_ALL_SURFACES := load,save,render,parse,bounds,upgrade,edit,taskhash,view
 cards-conformance-all:
 	@mkdir -p build/cards-conformance-all
 	@fail=0; \
-	for leg in go c cpp cs rust java js dart elixir lua lobster; do \
+	for leg in go c cpp cs rust java js dart elixir lua luau moo lobster; do \
 		if [ "$$leg" = "go" ]; then target=cards-conformance-go; else target=cards-$$leg-conformance; fi; \
 		log=build/cards-conformance-all/$$leg.log; \
 		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
@@ -769,7 +769,7 @@ test-go: packet-wide-go packet-wide-go-negative-control
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
@@ -984,7 +984,7 @@ GO_FUZZ_DRIVER ?= build/conformance-go
 GO_RELEASE_N ?= 100000
 .PHONY: tables-go-release-fuzz tables-go-release-negative-control
 tables-go-release-fuzz: build/conformance-harness build/conformance-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainSavesWhatTheOracleSaves$$'
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	./build/conformance-harness wire-fuzz --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	$(MAKE) tables-go-builders N=$(GO_RELEASE_N) SEED=$(GO_RELEASE_SEED)
@@ -1258,3 +1258,45 @@ tables-go-message-form-negative-controls:
 		-run '^(TestGoMessageFormGoldensNegativeControl|TestGoMessageFormRefusalsNegativeControl|TestGoMessageFormStrictNegativeControl|TestGoMessageFormVersioningNegativeControl|TestGoMessageFormFixedOnlyNegativeControl|TestGoWireIntegrityMessageFormNegativeControl)$$'
 
 test-go: conformance-negative-control-go-message tables-go-message-form-negative-controls
+
+# DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md §4): each
+# sabotage removes one discard guard from a COPY of the emitter, reached
+# through a Go overlay, and TestDamageDiscardsTheWholeLoadGo must go red on
+# that guard's own line: the fixed LoadTolerant's (read.go) hands back the
+# fixed value it decoded, and the region load's (regions.go) hands back its
+# root. Nothing tracked is written to.
+GO_DISCARD_NC := build/go-discard-nc
+.PHONY: tables-go-discard-negative-control
+tables-go-discard-negative-control:
+	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
+	@sed -e 's|g.pf("\\tif report.Malformed {\\n")|g.pf("\\tif false {\\n") // NEGATIVE CONTROL: the fixed discard is gone|' \
+		internal/codegen/gotable/read.go > $(GO_DISCARD_NC)/read.go.txt
+	@cmp -s internal/codegen/gotable/read.go $(GO_DISCARD_NC)/read.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/read.go":"%s/$(GO_DISCARD_NC)/read.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+			./internal/codegen/gotable > $(GO_DISCARD_NC)/fixed.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go fixed discard is gone and the gate stayed green"; \
+		cat $(GO_DISCARD_NC)/fixed.log; exit 1; \
+	fi
+	@grep -q "fixed: LoadTolerant answered true on damage" $(GO_DISCARD_NC)/fixed.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(GO_DISCARD_NC)/fixed.log; exit 1; }
+	@sed -e 's/if report.Malformed{clear(region);return nil}/if false{clear(region);return nil}/' \
+		internal/codegen/gotable/regions.go > $(GO_DISCARD_NC)/regions.go.txt
+	@cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/gotable/regions.go":"%s/$(GO_DISCARD_NC)/regions.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/region.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+			./internal/codegen/gotable > $(GO_DISCARD_NC)/region.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Go region discard is gone and the gate stayed green"; \
+		cat $(GO_DISCARD_NC)/region.log; exit 1; \
+	fi
+	@grep -q "variable: LoadTolerant handed back a root on damage" $(GO_DISCARD_NC)/region.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the region gate went red for some other reason"; \
+		  cat $(GO_DISCARD_NC)/region.log; exit 1; }
+	@echo "negative control: removing either Go discard guard turns TestDamageDiscardsTheWholeLoadGo RED"
+
+test-go: tables-go-discard-negative-control

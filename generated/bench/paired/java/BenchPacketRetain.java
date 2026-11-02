@@ -28,6 +28,7 @@ public final class BenchPacketRetain {
             return null;
         }
         BenchPacketVariable.Value v = new BenchPacketVariable.Value();
+        report.rootTypeId = BenchPacketVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
             for (TableVariable.NodeRecord rec : nt.recs) {
