@@ -299,7 +299,9 @@ func (g *tableGen) emitRuntime() {
 	g.emitMessages()
 	g.pf("%s", tableDocNone())
 	g.pf("%s", tableBitHelpers())
-	g.pf("%s", tableJsonWalkSource)
+	if anyTableForm(g.unit, "json") {
+		g.pf("%s", tableJsonWalkSource)
+	}
 	g.pf("%s", tableWireSource)
 	g.emitFixedRuntime()
 }

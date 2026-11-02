@@ -2,7 +2,7 @@ package cstable
 
 func (g *tableGen) emitRegionCookSurface(names []string) {
 	for _, n := range names {
-		if g.unit.Tables[n].IsMapEntry() {
+		if g.unit.Tables[n].IsMapEntry() || !g.unit.Tables[n].CarriesForm("cook") {
 			continue
 		}
 		g.pf("public static long %sCookMeasure(IntPtr region, TableAllocator allocator = default) { return TableWire.CookRegion(region, %sTableType(), IntPtr.Zero, 0, TableByteOrder.Little, true, allocator); }\n", n, n)

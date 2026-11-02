@@ -277,6 +277,9 @@ func (g *cookGen) emit() {
 		return // the runtime home the unit has no file for declares nothing
 	}
 	for _, st := range g.file.Tables {
+		if !st.CarriesForm("cook") {
+			continue
+		}
 		if g.cook.opens(st.Name) {
 			g.emitCookHandle(st)
 			continue

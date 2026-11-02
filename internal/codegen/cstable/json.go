@@ -37,7 +37,7 @@ import "github.com/mas-bandwidth/schema/v2/ir"
 // (docs/SPEC-TABLES.md §11), so the variable class's refusal is already made and
 // this emission has no second one to make.
 func (g *tableGen) emitJsonSurface(st *ir.Struct) {
-	if st.IsMapEntry() {
+	if st.IsMapEntry() || !st.CarriesForm("json") || !anyTableForm(g.unit, "json") {
 		return
 	}
 	g.pf("// %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)

@@ -61,7 +61,7 @@ func (g *tableGen) nativeColumns(f *ir.Field) string {
 }
 
 func (g *tableGen) emitNativeSurface(st *ir.Struct) {
-	if st.IsMapEntry() {
+	if st.IsMapEntry() || !st.CarriesForm("cook") || !anyTableForm(g.unit, "cook") {
 		return
 	}
 	n := st.Name

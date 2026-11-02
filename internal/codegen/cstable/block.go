@@ -39,7 +39,7 @@ import (
 // still gets one, saying which table and why.
 func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	if blocks == nil {
+	if blocks == nil || !anyTableForm(u, "block") {
 		return out, nil
 	}
 	// THE BLOCK HOME is <Package>Block.cs — one home per unit, named by the
@@ -62,7 +62,7 @@ func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, er
 	}
 	runtimeWritten := false
 	for _, f := range u.Files {
-		if len(f.Tables) == 0 && f.Base != home {
+		if !fileTableForm(f, "block") && f.Base != home {
 			continue
 		}
 		g := &blockGen{unit: u, file: f, blocks: blocks, home: f.Base == home}
@@ -91,7 +91,7 @@ func anyBlockForm(u *ir.Unit, blocks *ir.BlockUnit) bool {
 	}
 	for _, f := range u.Files {
 		for _, st := range f.Tables {
-			if blocks.Block(st.Name) != nil {
+			if st.CarriesForm("block") && blocks.Block(st.Name) != nil {
 				return true
 			}
 		}
@@ -133,11 +133,17 @@ func (g *blockGen) emit() {
 	// every marked table's PROJECTION is a record too, and it belongs to the
 	// file that declares the table
 	for _, st := range g.file.Tables {
+		if !st.CarriesForm("block") {
+			continue
+		}
 		if bl := g.blocks.Block(st.Name); bl != nil {
 			g.emitProjection(bl)
 		}
 	}
 	for _, st := range g.file.Tables {
+		if !st.CarriesForm("block") {
+			continue
+		}
 		if bl := g.blocks.Block(st.Name); bl != nil {
 			g.emitBlockStorage(bl)
 			g.emitBlockHandle(bl)
@@ -464,6 +470,9 @@ func (g *blockGen) emitLayoutCheck() {
 		g.emitRecordCheck(name, g.blocks.Layout(name), false)
 	}
 	for _, bl := range g.blocks.Tables {
+		if !bl.Table.CarriesForm("block") {
+			continue
+		}
 		g.emitRecordCheck(bl.Table.Name, &bl.Projection, true)
 		// and each array's PITCH CONSTANT, against this runtime's own sizeof.
 		// Without this the constant is emitted and never read, so perturbing
