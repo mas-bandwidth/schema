@@ -249,6 +249,7 @@ function TableVariableUnionEdges(u, val, out, everyGuard) {
 function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
   switch (fd.s) {
+    case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
@@ -308,9 +309,10 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 }
 
 // A MAP (encodeMap): kind 14 over element kind 13, its entries in ascending key
-// order, each entry ALWAYS riding (identity is the key); an empty map elides
+// order, each entry ALWAYS riding (identity is the key); only a non-optional
+// empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
-  if (val.size === 0) { return true; }
+  if (val.size === 0 && !fd.opt) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
   w.u8(14);
