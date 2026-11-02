@@ -1941,7 +1941,8 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	// A table's `forms` declaration narrows the block, cook and text surfaces
 	// (docs/SPEC-TABLES.md §2.12); the fixed, message and view surfaces are
 	// outside the forms vocabulary and stay governed by the generate call.
-	blocks := filterFormsBlocks(ir.Blocks(u))
+	blocks := ir.Blocks(u)
+	blocks = filterFormsBlocks(blocks)
 	declares := declaresForms(u)
 	if declares && (blocks == nil || len(blocks.Tables) == 0) {
 		// a form no table in the unit carries emits no surface file at all
