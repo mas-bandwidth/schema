@@ -1147,6 +1147,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    directory[0].offset = (uint64_t) builder.root_ref.value;\n")
 	g.pf("    directory[0].type_id = 0x%016xull;\n", ir.TableWireId(st.WireName()))
 	g.pf("    TableNodeMap nodes;\n")
+	g.pf("    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check\n")
 	g.pf("    nodes.base = NULL;\n")
 	g.pf("    nodes.entries = directory;\n")
 	g.pf("    nodes.count = records + 1;\n")
@@ -1821,6 +1822,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("    int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );\n")
 	g.pf("    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }\n\n")
 	g.pf("    TableNodeMap nodes;\n")
+	g.pf("    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check\n")
 	g.pf("    nodes.base = region;\n")
 	g.pf("    nodes.entries = (TableNodeDirEntry *) ( region + data );\n")
 	g.pf("    nodes.count = records + 1;\n")
@@ -2027,9 +2029,10 @@ func (g *tableGen) emitCycleSlots(st *ir.Struct) {
 			g.pf("%sif ( !%sCycleSlots( ctx, cycle, %s ) ) { return false; }\n", indent, table, expr.Src)
 		},
 		mapField: func(f *ir.Field) {
-			g.emitMapEntryLoop(f, "value", "return false;", func(entry, elem, ind string) {
-				g.pf("%sif ( !%sCycleSlots( ctx, cycle, %s ) ) { TableMapRelease( cursor_%s ); return false; }\n", ind, entry, elem, f.Name)
-			})
+			entry := mapEntryOf(f).Name
+			g.pf("    if ( !TableMapVisitStored( ctx, value.%s, [&]( const %s & entry )\n    {\n", f.Name, entry)
+			g.pf("        return %sCycleSlots( ctx, cycle, entry );\n", entry)
+			g.pf("    } ) ) { return false; }\n")
 		},
 		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return false;") },
 	})

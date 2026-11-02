@@ -5688,13 +5688,13 @@ CPP_CYCLE_NC := build/cpp-cycle-nc
 .PHONY: tables-cpp-cycle-negative-control
 tables-cpp-cycle-negative-control:
 	@rm -rf $(CPP_CYCLE_NC) && mkdir -p $(CPP_CYCLE_NC)
-	@sed -e 's|    return !c.broken \&\& c.processed == c.vertices; // a node never freed sits on a cycle|    return true; // NEGATIVE CONTROL: the verdict is gone|' \
+	@sed -e 's#    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle#    if ( c.broken ) { return false; } // NEGATIVE CONTROL: the cycle verdict is gone#' \
 		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_NC)/arena.go.txt
 	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_NC)/arena.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ cycle sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_NC)/arena.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_NC)/overlay.json
-	@if go test -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
 			./internal/codegen/cpptable > $(CPP_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the C++ cycle verdict is gone and the gate stayed green"; \
 		cat $(CPP_CYCLE_NC)/log; exit 1; \
@@ -5718,7 +5718,7 @@ tables-cpp-cycle-linear-negative-control:
 		{ echo "NEGATIVE CONTROL: the C++ linear sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_LINEAR_NC)/arena.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_LINEAR_NC)/overlay.json
-	@if go test -count=1 -timeout 300s -overlay $(CPP_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearCPP$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 300s -overlay $(CPP_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearCPP$$' \
 			./internal/codegen/cpptable > $(CPP_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
 		cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; \

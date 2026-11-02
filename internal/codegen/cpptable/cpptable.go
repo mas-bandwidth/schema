@@ -1980,7 +1980,8 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	indeg := make([]int, n)
 	for i, st := range tables {
 		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
+			// Pointer storage is TableRef, so the target is not a by-value dependency.
+			if f.Type.Kind != ir.TNamed || f.Type.Pointer {
 				continue
 			}
 			edge := func(name string) {

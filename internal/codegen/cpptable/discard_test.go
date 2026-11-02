@@ -268,7 +268,7 @@ func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 // cycleProbe is the C++ that loads one wire through the region Load, the
 // retaining Load and the builder Load, and demands the given verdict of all
 // three: refused as damage, or loaded whole.
-func cycleProbe(name string, wire []byte, load bool, onFail string) string {
+func cycleProbe(name string, wire []byte, load bool, onFail string, after ...string) string {
 	want := "false"
 	if load {
 		want = "true"
@@ -297,8 +297,9 @@ func cycleProbe(name string, wire []byte, load bool, onFail string) string {
         TableReport br; memset( &br, 0, sizeof( br ) );
         const bool built = NodeLoadBuilderTolerant( builder, wire, (int64_t) sizeof( wire ), &br );
         if ( built != want || br.malformed == want ) { printf( "%s: the builder load: ok=%%d malformed=%%d\n", (int) built, (int) br.malformed ); return 1; }
+%s
     }
-`, cppBytes(wire), want, onFail, onFail, onFail)
+`, cppBytes(wire), want, onFail, onFail, onFail, strings.Join(after, "\n"))
 }
 
 // TestCyclicWireIsRefusedCPP is the C++ reference's gate for Glenn's ruling
@@ -309,6 +310,7 @@ func cycleProbe(name string, wire []byte, load bool, onFail string) string {
 // loads.
 func TestCyclicWireIsRefusedCPP(t *testing.T) {
 	t.Parallel()
+	t.Run("container slots", testCyclicContainerSlotsCPP)
 	u := loadUnitFromSource(t, cycleUnit)
 	m := tabletext.NewModel(u)
 	var body strings.Builder
@@ -363,6 +365,63 @@ func TestDiamondChainLoadsLinearCPP(t *testing.T) {
 	}
 	wire := cycleEncode(t, m, count, nil, links)
 	out, err := cppHeldRun(t, u, cycleProbe("diamond", wire, true, "diamond: the walk did not finish linear"))
+	if err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// A node reached through a container still participates in the cycle check.
+// Its valid twin must publish usable pointers on all three load paths: saving
+// the loaded graph must recover the engine's original canonical bytes.
+func testCyclicContainerSlotsCPP(t *testing.T) {
+	u := loadUnitFromSource(t, `package cyclecontainers
+table Node
+{
+    left *Node
+    edges map[uint32]*Node
+    links []*Node
+    slots [2]*Node
+}
+`)
+	m := tabletext.NewModel(u)
+	const roundTrip = `
+        std::vector<uint8_t> saved( sizeof( wire ) );
+        if ( NodeMeasure( root ) != (int64_t) sizeof( wire ) ||
+             NodeSave( root, saved.data(), (int64_t) saved.size() ) != (int64_t) sizeof( wire ) ||
+             memcmp( saved.data(), wire, sizeof( wire ) ) != 0 )
+            { printf( "container: region pointers were not published correctly\n" ); return 1; }
+        if ( NodeSave( kept, saved.data(), (int64_t) saved.size() ) != (int64_t) sizeof( wire ) ||
+             memcmp( saved.data(), wire, sizeof( wire ) ) != 0 )
+            { printf( "container: retained pointers were not published correctly\n" ); return 1; }
+        if ( NodeMeasure( builder ) != (int64_t) sizeof( wire ) ||
+             NodeSave( builder, saved.data(), (int64_t) saved.size() ) != (int64_t) sizeof( wire ) ||
+             memcmp( saved.data(), wire, sizeof( wire ) ) != 0 )
+            { printf( "container: builder pointers were not published correctly\n" ); return 1; }
+`
+	var body strings.Builder
+	for _, tc := range []struct{ name, text string }{
+		{"map", `{"edges":{"7":{"left":{}}}}`},
+		{"list", `{"links":[{"left":{}}]}`},
+		{"array", `{"slots":[{"left":{}},null]}`},
+	} {
+		inst := m.New(m.Lookup("Node"))
+		var report tabletext.Report
+		if !m.Read(inst, []byte(tc.text), &report) || report.Malformed {
+			t.Fatalf("%s: valid container text refused: %+v", tc.name, report)
+		}
+		wire, err := tablewire.Encode(m, inst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body.WriteString(cycleProbe(tc.name+" twin", wire, true, "container: valid "+tc.name+" refused", roundTrip))
+		cyclePatch(t, wire, 3, 1) // root -> container child -> root
+		var damaged tabletext.Report
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), wire, &damaged); ok || err != nil || !damaged.Malformed {
+			t.Fatalf("%s: engine did not refuse the cycle: ok=%v err=%v %+v", tc.name, ok, err, damaged)
+		}
+		body.WriteString(cycleProbe(tc.name+" cycle", wire, false, "container: cyclic "+tc.name+" loaded"))
+	}
+	out, err := cppHeldRun(t, u, body.String())
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
