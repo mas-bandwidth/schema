@@ -720,6 +720,12 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	fn := dartName(st.Name) + "ToJsonBody"
 	g.pf("void %s(_JOut out, %s v, int depth, _Share sh, [int? label]) {\n", fn, st.Name)
+	if st.JsonArray {
+		f := st.Fields[0]
+		g.emitJsonValue(f, "v."+fieldMember(f), 0, "\t", st.Name+"."+f.Name)
+		g.pf("}\n\n")
+		return
+	}
 	// an object with nothing written is `{}` (§16.1): a table with no fields,
 	// or one whose every field is an absent optional (§2.3)
 	g.pf("\tout.raw('{');\n")
@@ -871,7 +877,12 @@ func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
 func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJsonFields"
 	g.pf("void %s(%s v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {\n", fn, st.Name)
-	g.pf("\tfinal entries = _jsonEntries(obj);\n")
+	if st.JsonArray {
+		g.pf("\tif (obj is! List) return;\n")
+		g.pf("\tfinal entries = <MapEntry<String, dynamic>>[MapEntry(%s, obj)];\n", strconv.Quote(ir.TableFieldJsonKey(st.Fields[0])))
+	} else {
+		g.pf("\tfinal entries = _jsonEntries(obj);\n")
+	}
 	g.pf("\tif (entries == null) return;\n")
 	if len(st.Fields) > 0 {
 		g.pf("\tfinal seen = <String>{};\n")
@@ -921,7 +932,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case isByValueTable(f):
 		ref := tableRef(f)
-		g.pf("\t\t\t\tif (_jsonEntries(val) != null) { v.%s = %s(); %sFromJsonFields(v.%s, val, r, sh); }\n", name, ref.Name, dartName(ref.Name), name)
+		g.pf("\t\t\t\tif (%s) { v.%s = %s(); %sFromJsonFields(v.%s, val, r, sh); }\n", jsonTableShape(ref, "val"), name, ref.Name, dartName(ref.Name), name)
 		g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
 		g.pf("\t\t\t\tbreak;\n")
 	case f.CountedOnWire():
@@ -935,7 +946,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\t\tfinal item = val[index];\n")
 		switch listElementKind(f) {
 		case wireKindTable:
-			g.pf("\t\t\t\t\tif (_jsonEntries(item) != null) {\n")
+			g.pf("\t\t\t\t\tif (%s) {\n", jsonTableShape(tableRef(f), "item"))
 			g.pf("\t\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
 			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r, sh);\n", dartName(f.Type.Name))
 			g.pf("\t\t\t\t\t\tv.%s.add(e);\n", name)
@@ -1066,9 +1077,20 @@ func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	// Keep source numeric tokens so float32's exact overflow boundary and
 	// wide integer values are decided before dart:convert rounds them.
 	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
-	g.pf("\tif (_jsonEntries(root) != null) {\n")
+	if st.JsonArray {
+		g.pf("\tif (root is! List) throw const FormatException('json_root_not_array: %s');\n", st.Name)
+	}
+	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
 	g.pf("\t}\n")
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
+}
+
+// A json=array table keeps its alternate shape at every by-value occurrence.
+func jsonTableShape(st *ir.Struct, expr string) string {
+	if st != nil && st.JsonArray {
+		return expr + " is List"
+	}
+	return "_jsonEntries(" + expr + ") != null"
 }

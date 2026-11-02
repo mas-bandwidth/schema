@@ -713,7 +713,7 @@ func (g *wireGen) emitTextMoreDecls() {
 	}
 	for _, st := range g.closure {
 		g.pf("%s _%sFromJsonValue(dynamic val, TableTextReport r, _Share sh, [%s? def]) {\n", st.Name, dartName(st.Name), st.Name)
-		g.pf("\tif (_jsonEntries(val) != null) {\n")
+		g.pf("\tif (%s) {\n", jsonTableShape(st, "val"))
 		g.pf("\t\tfinal v = %s();\n", st.Name)
 		g.pf("\t\t%sFromJsonFields(v, val, r, sh);\n", dartName(st.Name))
 		g.pf("\t\treturn v;\n")
@@ -843,7 +843,9 @@ func unionArmShapeCond(f *ir.Field, item string) string {
 		cond = "_jsonEntries(" + item + ") != null"
 	case f.Array != ir.ArrayNone:
 		cond = item + " is List"
-	case unionRef(f) != nil, tableRef(f) != nil:
+	case tableRef(f) != nil:
+		cond = jsonTableShape(tableRef(f), item)
+	case unionRef(f) != nil:
 		cond = "_jsonEntries(" + item + ") != null"
 	case enumRef(f) != nil:
 		cond = item + " is String"
