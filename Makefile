@@ -7534,3 +7534,10 @@ test: vuln-selftest
 
 # Ensure the Go sibling runtime before any tests can enter a Go gate.
 test: deps
+
+# Strict CookCheck is the hostile boundary; generated Open consumes trusted bytes.
+# Exercise accepted cooks in optimized and debug/checkptr Go builds, and prove
+# the gate catches both a weakened checker and a broken native accessor.
+.PHONY: tables-go-checked-cook
+tables-go-checked-cook:
+	SCHEMA_SLOW=1 go test -count=1 -v ./compiler -run '^TestCheckedCookGoConsumers'
