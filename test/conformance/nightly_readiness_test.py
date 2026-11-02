@@ -202,6 +202,9 @@ class Contracts(unittest.TestCase):
                     self.assertIn("./test/conformance/harness",harness_calls[0])
                     self.assertNotIn("-run",harness_calls[0])
                     self.assertIn("native-harness",m.required_phases("cpp"))
+                    prerequisites=next(argv for name,argv,cwd in runner.calls if name=="prerequisites")
+                    self.assertIn("build/c-collections-fuzz",prerequisites)
+                    self.assertIn("build/cpp-collections-fuzz",prerequisites)
                 for name,argv,cwd in runner.calls:
                     if "test" in argv and ("go" in argv):
                         self.assertIn("-timeout=0",argv,(name,argv))
@@ -295,6 +298,8 @@ class Contracts(unittest.TestCase):
             self.assertEqual(runner.env["JAVA"],"/approved/tool/java")
             self.assertEqual(runner.env["SCHEMA_SLOW"],"1")
             self.assertEqual(runner.env["SCHEMA_REQUIRE_CORPUS"],"1")
+            self.assertEqual(runner.env["SCHEMA_C_COLLECTIONS_DRIVER"],str(runner.root/"build/c-collections-fuzz"))
+            self.assertEqual(runner.env["SCHEMA_CPP_COLLECTIONS_DRIVER"],str(runner.root/"build/cpp-collections-fuzz"))
 
     def test_go_packet_overlay_only_removes_outer_suite_limit(self):
         runner=FakeRunner(ROOT,"go")
@@ -335,7 +340,7 @@ class Contracts(unittest.TestCase):
         targets=set()
         for text in [*m.FIXED_GATES.values(),*m.DRIVER_BUILD.values(),*m.WIRE_CONTROLS.values()]:
             targets.update(text.split())
-        targets.update(("bin/schema","build/conformance-harness"))
+        targets.update(("bin/schema","build/conformance-harness","build/c-collections-fuzz","build/cpp-collections-fuzz"))
         for lang in m.LANGUAGES:
             if lang!="cpp":
                 for feature in ("defaults","utf8","wide"):

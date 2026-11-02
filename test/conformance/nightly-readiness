@@ -323,6 +323,8 @@ class Runner:
         self.env["GOMAXPROCS"] = "2"
         self.env["CARGO_BUILD_JOBS"] = "2"
         self.env["ELIXIR_TABLES_EBIN"] = str(root / "build/elixir-tables-ebin")
+        self.env["SCHEMA_C_COLLECTIONS_DRIVER"] = str(root / "build/c-collections-fuzz")
+        self.env["SCHEMA_CPP_COLLECTIONS_DRIVER"] = str(root / "build/cpp-collections-fuzz")
 
     def run(self, name, argv, cwd=None, validate=None, expected=0):
         cwd = cwd or self.root
@@ -637,7 +639,10 @@ def main(argv=None):
         runner.run("readiness-contracts", [sys.executable, "test/conformance/nightly_readiness_test.py"],
                    validate=lambda text: [] if re.search(r"^Ran [1-9][0-9]* tests? in ", text, re.MULTILINE)
                    and re.search(r"^OK$", text, re.MULTILINE) else ["readiness contract tests did not execute"])
-    runner.make("prerequisites", "bin/schema build/conformance-harness")
+    prerequisites = "bin/schema build/conformance-harness"
+    if lang == "cpp":
+        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz"
+    runner.make("prerequisites", prerequisites)
     runner.run("implementation", ["./build/conformance-harness", "implementation", "--lang", lang],
                validate=lambda text: implementation_result(text, lang))
     run_native(runner, lang)
