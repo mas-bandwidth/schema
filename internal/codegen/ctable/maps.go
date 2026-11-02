@@ -163,7 +163,7 @@ func (g *tableGen) emitMapKeyRead(f *ir.Field) {
 	kind := ir.TableWireScalarKind(key)
 	g.pf("typedef struct %s { %s key; int kind_bad,widened,over,malformed; } %s;\n", readType, kt, readType)
 	g.pf("static SCHEMA_UNUSED %s %s(TableReader r)\n{\n    %s out; memset(&out,0,sizeof(out));\n    for(;;) { uint64_t ref,id; uint8_t kind;\n        if(!table_reader_leb(&r,&ref)) { out.malformed=1; return out; } if(ref==0) { out.malformed=r.offset!=r.size; return out; }\n        if(ref>r.id_count || !table_reader_has(&r,1)) { out.malformed=1; return out; }\n        id=table_reader_id_at(&r,ref); kind=table_reader_get8(&r);\n        if(id==UINT64_C(0x%016x)) {\n", readType, g.sym(n, "read_key"), readType, ir.MapKeyWireId)
-	g.pf("            if(kind!=%d && table_kind_widens(kind,%d)) { out.widened=1; } else { out.kind_bad=kind!=%d; }\n", kind, kind, kind)
+	g.pf("            if(kind!=%d && table_kind_widens(kind,%d)) { out.widened=1; out.kind_bad=0; } else { out.kind_bad=kind!=%d; }\n", kind, kind, kind)
 	g.pf("            if(!out.kind_bad) {\n")
 	if key.Type.Kind == ir.TString {
 		g.pf("                TableReader text; if(!table_reader_span(&r,&text) || !table_wire_utf8(text.buffer,text.size)) { out.malformed=1; return out; }\n                out.key.data=(const char *)text.buffer; out.key.length=(int32_t)text.size; out.over=text.size>%d;\n", key.Type.Size)

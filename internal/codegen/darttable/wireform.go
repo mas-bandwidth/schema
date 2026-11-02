@@ -1324,6 +1324,7 @@ final class TableWireReader {
       if (id == keyId) {
         mapKeyAt = s.pos - 1;
         if (kind != keyKind && keyWidens.contains(kind)) {
+          kindBad = false; // the final key occurrence replaces its prior kind
           widened = 4;
           if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
           continue;

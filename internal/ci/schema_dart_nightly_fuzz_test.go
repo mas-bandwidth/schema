@@ -40,12 +40,13 @@ func TestSchemaDartNightlyFuzzWiring(t *testing.T) {
 		}
 	}
 
-	// The corpus is the set of Dart generate directories, not a second list.
+	// The corpus covers the Dart generate directories and shared feature vectors.
 	for _, unit := range []string{
 		"tables/arms", "tables/backend", "tables/blobs", "tables/block",
 		"tables/blockhome", "tables/examples", "tables/lists", "tables/maps",
 		"tables/messages", "tables/pointers", "tables/scalars", "tables/stream",
 		"tables/vocab", "tables/vocab9", "examples-wide",
+		"featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema",
 		"test/tables/V1.schema", "test/tables/V2.schema",
 		"test/tables/W1.schema", "test/tables/W2.schema",
 		"test/tables/R1.schema", "test/tables/R2.schema",

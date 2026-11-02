@@ -844,7 +844,8 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			anyMap = anyMap || field.IsMap()
 		}
 	}
-	blocks := filterFormsBlocks(ir.Blocks(u))
+	blocks := ir.Blocks(u)
+	blocks = filterFormsBlocks(blocks)
 	declares := declaresForms(u)
 	if declares && (blocks == nil || len(blocks.Tables) == 0) {
 		blocks = nil
