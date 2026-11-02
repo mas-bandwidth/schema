@@ -39,11 +39,17 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 		g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity, TableAllocator allocator );\n", g.sym(st.Name, "to_json"), st.Name)
 		// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF
 		// ITS OWN (docs/SPEC-TABLES.md §6.5, §16.2).
-		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report ) { return %s(builder,text,bytes,report); }\n", g.api(st.Name, "from_json_tolerant"), st.Name, g.sym(st.Name, "from_json"))
+		// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a text the
+		// read cannot finish, or damage it stepped over, leaves the root at its
+		// declared defaults and answers 0.
+		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json_tolerant"), st.Name)
+		g.pf("    TableReport ignored;\n    %s * root;\n    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }\n", st.Name)
+		g.pf("    if ( %s( builder, text, bytes, report ) && !report->malformed ) { return 1; }\n", g.sym(st.Name, "from_json"))
+		g.pf("    root = %s( builder ); if ( root != NULL ) { %s( root ); } /* damage discards the whole load (§4) */\n    return 0;\n}\n", g.api(st.Name, "builder_root"), g.api(st.Name, "reset"))
 		g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */\n", g.api(st.Name, "from_json"))
 		g.pf("static SCHEMA_UNUSED int %s( %sBuilder * builder, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
 		g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")
-		g.pf("    decoded = %s( builder, text, bytes, report );\n    return !table_report_strict_refuses( report, decoded );\n}\n", g.sym(st.Name, "from_json"))
+		g.pf("    decoded = %s( builder, text, bytes, report );\n    return !table_report_strict_refuses( report, decoded );\n}\n", g.api(st.Name, "from_json_tolerant"))
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value ) { return %s(value,NULL,0,table_default_allocator()); }\n", g.api(st.Name, "to_json_measure"), st.Name, g.sym(st.Name, "to_json"))
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value, char * buffer, int64_t capacity ) { return %s(value,buffer,capacity,table_default_allocator()); }\n\n", g.api(st.Name, "to_json"), st.Name, g.sym(st.Name, "to_json"))
 		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * value,char * buffer,int64_t capacity,TableAllocator allocator) { return %s(value,buffer,capacity,allocator); }\n", g.api(st.Name, "to_json_with_allocator"), st.Name, g.sym(st.Name, "to_json"))
@@ -57,8 +63,13 @@ func (g *tableGen) emitJsonDeclarations(st *ir.Struct) {
 	g.pf("int64_t %s( const %s * value, char * buffer, int64_t capacity );\n", g.sym(st.Name, "to_json"), st.Name)
 	// THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
 	// OWN (docs/SPEC-TABLES.md §6.5, §16.2).
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a text the read
+	// cannot finish, or damage it stepped over, leaves the value at its declared
+	// defaults and answers 0.
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json_tolerant"), st.Name)
-	g.pf("    return %s( value, text, bytes, report );\n}\n", g.sym(st.Name, "from_json"))
+	g.pf("    TableReport ignored;\n    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }\n")
+	g.pf("    if ( %s( value, text, bytes, report ) && !report->malformed ) { return 1; }\n", g.sym(st.Name, "from_json"))
+	g.pf("    if ( value != NULL ) { %s( value ); } /* damage discards the whole load (§4) */\n    return 0;\n}\n", g.api(st.Name, "reset"))
 	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */\n", g.api(st.Name, "from_json"))
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const char * text, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "from_json"), st.Name)
 	g.pf("    TableReport ignored;\n    int decoded;\n    if ( report == NULL ) { report = &ignored; }\n    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */\n")

@@ -1607,12 +1607,19 @@ public static partial class TableWire
         if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+        bool malformedBefore = report.Malformed;
+        report.Malformed = false;
         if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
         bool complete = ReadBody(ref r, value, type, report, false);
-        if (NonFiniteRefused(report)) { type.Reset(value); return Finish(report, Verdict.Refused); }
+        if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
         if (r.Graph != null && r.Graph.Good && !report.Malformed && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
-        return Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped);
+        // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
+        // walk decoded is handed back, and the verdict is the damage.
+        if (report.Malformed) { type.Reset(value); return Finish(report, Verdict.Damaged); }
+        report.Malformed = malformedBefore;
+        if (!complete) { type.Reset(value); return Finish(report, Verdict.BodyStopped); }
+        return Finish(report, Verdict.Ok);
     }
 }
 // ---- form-1 table wire: end ----

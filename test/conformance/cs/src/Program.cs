@@ -837,6 +837,7 @@ static partial class Program
                 long size = codec.ToJsonMeasure(value);
                 if (size < 0)
                 {
+                    if (f[0] == "framing") { File.WriteAllBytes(Path.Combine(outDir, f[1]), answer); continue; }
                     Console.Error.WriteLine("driver: " + f[1] + " holds a value ToJson refuses");
                     return 1;
                 }
@@ -863,13 +864,13 @@ static partial class Program
         bool regionRefused, builderRefused;
         if (unit == "graphdemo" && root == "ListNode")
         {
-            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.ListNodeLoadMeasure, (data, need, bytes, r) => Graphdemo.Schema.ListNodeLoad(data, need, bytes, r));
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.ListNodeLoadMeasure, (data, need, bytes, r) => (IntPtr)Graphdemo.Schema.ListNodeLoad(data, need, bytes, r));
             using var builder = new Graphdemo.ListNodeBuilder();
             builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
         }
         else if (unit == "graphdemo" && root == "Scene")
         {
-            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.SceneLoadMeasure, (data, need, bytes, r) => Graphdemo.Schema.SceneLoad(data, need, bytes, r));
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.SceneLoadMeasure, (data, need, bytes, r) => (IntPtr)Graphdemo.Schema.SceneLoad(data, need, bytes, r));
             using var builder = new Graphdemo.SceneBuilder();
             builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
         }

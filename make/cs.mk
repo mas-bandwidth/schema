@@ -467,12 +467,14 @@ conformance-negative-control-cs-framing: build-conformance-cs build/conformance-
 		[ -n "$$files" ] || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage matches no generated line"; exit 1; }; \
 		perl -pi -e 's/\Qif (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }\E/if (false) { \/* SABOTAGED: no id-table cap *\/ }/g' $$files
 	@grep -rqF 'SABOTAGED: no id-table cap' $(CS_FRAMING_CONTROL)/generated || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
+	@perl -pi -e 's/\Qif (mark == 1) { return true; }\E/if (mark == 1 && n < 0) { return true; \/* SABOTAGED: no cycle check *\/ }/g' $(CS_FRAMING_CONTROL)/generated/pointers/*.cs
+	@grep -rqF 'SABOTAGED: no cycle check' $(CS_FRAMING_CONTROL)/generated/pointers || { echo "NEGATIVE CONTROL: the cycle sabotage did not apply"; exit 1; }
 	@$(DOTNET) build test/conformance/cs --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated \
 		-p:CardsGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated/cards -p:BaseIntermediateOutputPath=$(CURDIR)/$(CS_FRAMING_CONTROL)/obj/ \
 		-o $(CS_FRAMING_CONTROL)/checker > $(CS_FRAMING_CONTROL)/build.log 2>&1 || \
 		{ cat $(CS_FRAMING_CONTROL)/build.log; echo "NEGATIVE CONTROL: the sabotaged driver does not compile"; exit 1; }
 	sh test/conformance/framing/gate cs "$(DOTNET) $(CURDIR)/$(CS_FRAMING_CONTROL)/checker/schemaconformance.dll" \
-		$(CS_FRAMING_CONTROL)/run frame_entries_4097
+		$(CS_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
 test-cs: conformance-cs-framing
 
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
@@ -621,6 +623,24 @@ tables-cs-leg-map-order-negative-control: bin/schema
 	$(call cs_leg_sabotage,map-order,buildercollections.go,table-cs-map-insert-order,FAILED: map iteration is ordered by signed key)
 tables-cs-leg-region-blob-shared-negative-control: bin/schema
 	$(call cs_leg_sabotage,region-blob-shared,regionwrite.go,table-cs-region-blob-shared,FAILED: blob_shared native region writer refuses the shared blob)
+
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), one control per C#
+# load entry point that holds the discard: the managed load, the native region
+# load (the retaining load is derived from it), and the builder load. Each takes
+# that discard out, and the leg's TestDamageDiscardsTheWholeLoad must go red on
+# the body damaged inside a nested body, which the walk otherwise reads past.
+.PHONY: tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control \
+	tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
+tables-cs-leg-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: nested (fixed|variable): managed load answered true on damage)
+tables-cs-leg-region-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: nested variable: (region|retaining) load handed back a root on damage)
+tables-cs-leg-builder-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: nested variable: builder load answered true on damage)
+tables-cs-leg-cycle-negative-control: bin/schema
+	$(call cs_leg_sabotage,cycle,variable.go,table-cs-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: managed load answers false)
+tables-cs-leg-region-cycle-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-cycle,regiongraph.go,table-cs-region-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: (region|retaining|builder) load)
 
 # THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
 # "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
@@ -846,6 +866,8 @@ tables-cs-release:
 	$(MAKE) tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control
 	$(MAKE) tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control
 	$(MAKE) tables-cs-leg-region-blob-shared-negative-control conformance-cs-absent-negative-control
+	$(MAKE) tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control
+	$(MAKE) tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
 	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control tables-cs-byte-order-negative-control
 	$(MAKE) conformance-negative-control-cs-framing
 

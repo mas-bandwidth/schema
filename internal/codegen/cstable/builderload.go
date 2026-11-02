@@ -8,9 +8,26 @@ const tableBuilderLoadSource = `
         ResetNativeElement((IntPtr)TableListStorage.At((byte*)slot, index, field.NativeElementSize), field);
         return true;
     }
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a builder load
+    // that meets damage answers false with the builder's root back at its
+    // declared defaults, so nothing it decoded can be saved or locked.
     public static bool LoadBuilder(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        bool malformedBefore = report.Malformed;
+        report.Malformed = false;
+        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);
+        if (report.Malformed)
+        {
+            if (pointer != IntPtr.Zero && !worker.Arena.Closed) { NativeReset(new NativeValue((byte*)pointer, 0) { Mutable = true }, type); }
+            if (report.Verdict != Verdict.Refused) { Finish(report, Verdict.Damaged); }
+            return false;
+        }
+        report.Malformed = malformedBefore;
+        return whole;
+    }
+    static bool LoadBuilderWalk(IntPtr pointer, TableTypeInfo type, TableWorker worker, ReadOnlySpan<byte> bytes, TableReport report)
+    {
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null; Finish(report, Verdict.BodyStopped);
         if (pointer == IntPtr.Zero || worker.Arena.Closed) { return false; }
         if (bytes.Length == 0) { Damage(report); Finish(report, Verdict.Damaged); return false; }
@@ -65,9 +82,9 @@ const tableBuilderLoadSource = `
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);
             if (state.Refused) { return false; }
             // a non-finite float refuses the load (docs/SPEC-TABLES.md §3.3)
-            if (NonFiniteRefused(report)) { Finish(report, Verdict.Refused); return false; }
+            if (NonFiniteRefused(report)) { NativeReset(new NativeValue(data, 0) { Mutable = true }, type); Finish(report, Verdict.Refused); return false; }
             // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
-            if (good && !report.Malformed && RegionCyclic(data, directory, count, type, worker.Arena.Allocator, true)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
+            if (good && RegionCyclic(data, directory, count, type, worker.Arena.Allocator, true)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
             Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return complete;
         }
         finally { worker.Arena.Allocator.Release(directory); }

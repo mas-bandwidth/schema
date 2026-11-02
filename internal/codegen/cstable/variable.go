@@ -141,7 +141,7 @@ const tableVariableWireSource = `
                 stack[stack.Count - 1] = (top.Vertex, top.Targets, top.Next + 1);
                 byte mark = t == 0 ? rootMark : graph.Nodes[t - 1].Mark;
                 if (mark == 1) { return true; } // a pointer to an OPEN node: a cycle
-                if (mark == 2) { continue; }    // a pointer to a CLOSED node: a share
+                if (mark != 0) { continue; }    // a pointer to a CLOSED node: a share
                 Enter(t);
             }
         }
