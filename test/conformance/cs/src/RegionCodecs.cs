@@ -6,6 +6,25 @@ static partial class Program
     static unsafe void RegisterRegions()
     {
         {
+            Codec c=Find("widelist","Wide"); var refused=c.PartialLoad;
+            c.PartialLoad=(bytes,report)=>
+            {
+                long need=Widelistdemo.Schema.WideLoadMeasure(bytes);
+                if(need<0) { return refused(bytes,report); }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Widelistdemo.TableReport();
+                    var root=Widelistdemo.Schema.WideLoad((IntPtr)data,need,bytes,inner);
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Widelistdemo.Wide():Widelistdemo.Schema.WideLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
             Codec c=Find("listdemo","Unbounded"); var refused=c.PartialLoad;
             c.PartialLoad=(bytes,report)=>
             {
@@ -735,6 +754,58 @@ static partial class Program
                         byte[] built=new byte[builder.CookMeasure()];
                         if(!builder.Cook(built,big?Graphdemo.TableByteOrder.Big:Graphdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Graphdemo.Scene"); }
                         if(!builder.Lock() || !builder.Cook(built,big?Graphdemo.TableByteOrder.Big:Graphdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Graphdemo.Scene"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("widelist","Wide");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Widelistdemo.Schema.WideLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Widelistdemo.Schema.WideLoad((IntPtr)region,need,bytes,new Widelistdemo.TableReport())==null) { return null; }
+                    long size=Widelistdemo.Schema.WideCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Widelistdemo.Schema.WideCook((IntPtr)region,result,big?Widelistdemo.TableByteOrder.Big:Widelistdemo.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Widelistdemo.WideBuilder())
+                    {
+                        if(!Widelistdemo.Schema.WideLoadBuilder(builder,bytes,new Widelistdemo.TableReport())) { throw new InvalidOperationException("builder load: Widelistdemo.Wide"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Widelistdemo.TableByteOrder.Big:Widelistdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Widelistdemo.Wide"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Widelistdemo.TableByteOrder.Big:Widelistdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Widelistdemo.Wide"); }
+                    }
+                    return result;
+                }
+                finally { NativeMemory.AlignedFree(region); }
+            };
+        }
+        {
+            Codec c=Find("listdemo","Unbounded");
+            c.NativeCook=(bytes,big)=>
+            {
+                long need=Listdemo.Schema.UnboundedLoadMeasure(bytes);
+                if(need<0) { return null; }
+                byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
+                try
+                {
+                    if(Listdemo.Schema.UnboundedLoad((IntPtr)region,need,bytes,new Listdemo.TableReport())==null) { return null; }
+                    long size=Listdemo.Schema.UnboundedCookMeasure((IntPtr)region);
+                    if(size<0) { return null; }
+                    byte[] result=new byte[checked((int)size)];
+                    if(!Listdemo.Schema.UnboundedCook((IntPtr)region,result,big?Listdemo.TableByteOrder.Big:Listdemo.TableByteOrder.Little)) { return null; }
+                    using(var builder=new Listdemo.UnboundedBuilder())
+                    {
+                        if(!Listdemo.Schema.UnboundedLoadBuilder(builder,bytes,new Listdemo.TableReport())) { throw new InvalidOperationException("builder load: Listdemo.Unbounded"); }
+                        byte[] built=new byte[builder.CookMeasure()];
+                        if(!builder.Cook(built,big?Listdemo.TableByteOrder.Big:Listdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("mutable builder cook: Listdemo.Unbounded"); }
+                        if(!builder.Lock() || !builder.Cook(built,big?Listdemo.TableByteOrder.Big:Listdemo.TableByteOrder.Little) || !built.AsSpan().SequenceEqual(result)) { throw new InvalidOperationException("locked builder cook: Listdemo.Unbounded"); }
                     }
                     return result;
                 }

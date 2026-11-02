@@ -2162,7 +2162,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE PER-RECORD HASH CHECK IS FIRST — before the prefill, so a refusal has
 	// written not one destination byte (§5.3, §5.8 row 9).
 	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
-	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            for (int j = 0; j < k; ++j) { TableReset(values[j]); }\n")
+	g.pf("            if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]); }\n", name)
@@ -2174,7 +2175,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        // Specialized per-table twin of TableFixedWire.Run(entries, %sFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.\n", name)
 	g.pf("        string run_why = %sFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("        if (run_why != null)\n        {\n")
-	g.pf("            if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
+	g.pf("            if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
@@ -2185,7 +2187,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        string finite_why = %sFixedFiniteBody(values[k]);\n", name)
 		g.pf("        if (finite_why != null)\n        {\n")
 		g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
-		g.pf("            if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = \"non_finite_float: \" + finite_why; report.Verdict = TableWire.Verdict.Refused; }\n")
+		g.pf("            if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = \"non_finite_float: \" + finite_why; report.Verdict = TableWire.Verdict.Refused; }\n")
 		g.pf("            return -1;\n        }\n")
 	}
 	// STEP 11's BOUNDS(out[rec]): straight-line code after the plan run, over

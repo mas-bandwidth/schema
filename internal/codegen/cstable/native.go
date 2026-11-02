@@ -158,7 +158,7 @@ const tableNativeSource = `
         w.Put(at, raw, f.NativeElementSize); return true;
     }
     static long NativeRecordBytes(TableTypeInfo type)
-    { return NativeExtent(type) ? Align(type.StorageSize, 8) : type.StorageSize; }
+    { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
     static long NativePlace(object value, TableTypeInfo type, Graph graph, out int alignment)
     {
         alignment = Math.Max(8, type.StorageAlign);
