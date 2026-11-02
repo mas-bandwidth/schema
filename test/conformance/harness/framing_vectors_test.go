@@ -136,6 +136,38 @@ func nodeTable(count uint64, records ...[]byte) []byte {
 	return cat(b(4, 12), leb(uint64(len(payload))), payload)
 }
 
+// listNodeRecordNext is a node record of `ListNode { value = v, next = k }`:
+// the value field, the pointer field naming node index k, the terminator.
+func listNodeRecordNext(v int32, next byte) []byte {
+	return cat(b(5, 10, 1, 4), i32(v), b(3, 17, next), b(0))
+}
+
+// The graphdemo Scene-to-TreeNode id table: 1 tree, 2 left, 3 right, 4 the
+// reserved node-table id, 5 TreeNode's type id.
+var sceneTreeIds = []string{"tree", "left", "right", "node-table", "type:TreeNode"}
+
+// diamondLevels is the diamond chain's depth: 2^40 root-to-leaf paths over 82
+// nodes, so a check that re-enters a shared node never finishes.
+const diamondLevels = 40
+
+// diamondChain is a Scene whose tree is a TreeNode DAG: Scene.tree names T0
+// (node index 2), T0 names L1 and R1, and both nodes of level i name both of
+// level i+1 (L_i is node index 2i+1, R_i is 2i+2). Every node below level 1
+// is SHARED and nothing is cyclic, so it is legal (§3.1).
+func diamondChain() []byte {
+	records := [][]byte{b(5, 7, 2, 17, 3, 3, 17, 4, 0)}
+	for i := 1; i <= diamondLevels; i++ {
+		for range 2 {
+			if i == diamondLevels {
+				records = append(records, b(5, 1, 0))
+				continue
+			}
+			records = append(records, b(5, 7, 2, 17, byte(2*(i+1)+1), 3, 17, byte(2*(i+1)+2), 0))
+		}
+	}
+	return cat(b(1, 17, 2), nodeTable(uint64(len(records)), records...), b(0))
+}
+
 var rootValue1 = cat(b(1, 4), i32(1))
 var nextIs2 = b(3, 17, 2)
 
@@ -359,6 +391,19 @@ var framingVectors = []framingVector{
 	// occurrence is the numbering, on R5's last-wins rule, and the earlier one
 	// is stepped over like any repeated field.
 	{name: "node_table_twice", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2)), nodeTable(1, listNodeRecord(3)), b(0))},
+	// T8: a pointer naming a node whose descent is still OPEN is a cycle, and
+	// no writer produces one (§3.1), so it is damage: node 2 naming itself,
+	// and node 2 naming the root.
+	{name: "node_cycle_self", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecordNext(2, 2)), b(0))},
+	{name: "node_cycle_to_root", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecordNext(2, 1)), b(0))},
+	// T8: a back edge to a MID ancestor, root -> 2 -> 3 -> 4 -> 2.
+	{name: "node_cycle_mid", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(3, listNodeRecordNext(2, 3), listNodeRecordNext(3, 4), listNodeRecordNext(4, 2)), b(0))},
+	// T8's legal twin, SHARED: a diamond chain of 82 nodes and 2^40 paths
+	// loads, and a reader that re-enters a shared node does not finish.
+	{name: "node_diamond_chain", unit: "graphdemo", root: "Scene", ids: sceneTreeIds, body: diamondChain()},
+	// T8's legal twin: a chain of two records, each pointer naming a node not
+	// yet reached, reads clean.
+	{name: "node_chain_two", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecordNext(2, 3), listNodeRecord(3)), b(0))},
 	// T6: a reader that cannot name the reserved id counts one unknown.
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
 	// L4 at the node-table field: its L past the root body.

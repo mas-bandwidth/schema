@@ -28,6 +28,89 @@ type decodeState struct {
 	named map[uint64]bool
 }
 
+// The three marks of the loaded graph's cycle check, one per node.
+const (
+	markUnvisited uint8 = iota
+	markOpen            // entered, its descent not finished
+	markClosed          // entered and finished: reaching it again is a share
+)
+
+// cyclic reports whether the LOADED graph holds a cycle (docs/SPEC-TABLES.md
+// §3.1, §4). No writer produces one, so a cyclic wire is damage and the
+// whole load is refused (Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS
+// attack somebody would do on this protocol!").
+//
+// The vertices are the root and every record this reader placed; the edges
+// are every pointer slot a node's by-value closure STORES, a slot under a
+// false guard included, because the load stored it. A cycle anywhere refuses,
+// one the root never reaches included.
+//
+// Each node carries one of three marks and is ENTERED ONCE: a pointer to an
+// OPEN node is a cycle, and a pointer to a CLOSED node is a legal share. So
+// the check is linear in nodes plus slots. A walk that tracked only the open
+// path would re-enter every shared node from every path that reaches it,
+// which is exponential on a diamond chain.
+func (st *decodeState) cyclic(m *tabletext.Model) bool {
+	index := make(map[*tabletext.Instance]int, len(st.nodes)+1)
+	index[st.root] = 0
+	for i, n := range st.nodes {
+		if n.Inst != nil {
+			index[n.Inst] = i + 1
+		}
+	}
+	instAt := func(v int) *tabletext.Instance {
+		if v == 0 {
+			return st.root
+		}
+		return st.nodes[v-1].Inst
+	}
+	targets := func(v int) []int {
+		var out []int
+		visitSlots(m, instAt(v), true, func(target Node, _ string) bool {
+			if target.Inst != nil {
+				if t, ok := index[target.Inst]; ok {
+					out = append(out, t)
+				}
+			}
+			return true
+		})
+		return out
+	}
+	mark := make([]uint8, len(st.nodes)+1)
+	type frame struct {
+		node    int
+		targets []int
+		next    int
+	}
+	var stack []frame
+	for start := range mark {
+		if mark[start] != markUnvisited || instAt(start) == nil {
+			continue
+		}
+		mark[start] = markOpen
+		stack = append(stack[:0], frame{node: start, targets: targets(start)})
+		for len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			if top.next == len(top.targets) {
+				mark[top.node] = markClosed
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			t := top.targets[top.next]
+			top.next++
+			switch mark[t] {
+			case markOpen:
+				return true // a pointer to an OPEN node: a cycle
+			case markClosed:
+				continue // a pointer to a CLOSED node: a share, never re-entered
+			}
+			mark[t] = markOpen
+			stack = append(stack, frame{node: t, targets: targets(t)})
+		}
+	}
+	return false
+}
+
 // resolve places one node index in a pointer slot. Every failure is one of §4's
 // events and none is new; in every one of them the pointer stays null. A BYTE
 // BUFFER's slot resolves the same way, against its reserved type id (§2.5): a
@@ -207,6 +290,9 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 	ok := r.body(inst)
 	if countRefusal {
 		return false, &CountRefusal{}
+	}
+	if st.good && !report.Malformed && st.cyclic(m) {
+		report.Malformed = true // a cyclic wire is damage (§3.1, §4)
 	}
 	return ok, nil
 }
