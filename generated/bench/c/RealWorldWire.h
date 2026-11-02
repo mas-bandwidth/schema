@@ -122,7 +122,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f021_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 20, 12, 0, 25141 ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 21, 12, 0, 25141 ) )
         {
             return 0;
         }
@@ -253,7 +253,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f049_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 2, 14, 0, 3 ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 3, 14, 0, 3 ) )
         {
             return 0;
         }
@@ -333,7 +333,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f066_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 2, 14, 0, 2 ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 3, 14, 0, 2 ) )
         {
             return 0;
         }
@@ -417,7 +417,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int realworld_write_real_packet( seri
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->f084_ufixed;
-        if ( !serialize_write_fixed64( stream, fixed_value, 1, 7, 0, 1 ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 2, 7, 0, 1 ) )
         {
             return 0;
         }
@@ -701,7 +701,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serial
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 20, 12, 0, 25141 ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 21, 12, 0, 25141 ) )
         {
             return 0;
         }
@@ -953,7 +953,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serial
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 2, 14, 0, 3 ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 3, 14, 0, 3 ) )
         {
             return 0;
         }
@@ -1115,7 +1115,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serial
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 2, 14, 0, 2 ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 3, 14, 0, 2 ) )
         {
             return 0;
         }
@@ -1288,7 +1288,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serial
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 1, 7, 0, 1 ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 2, 7, 0, 1 ) )
         {
             return 0;
         }

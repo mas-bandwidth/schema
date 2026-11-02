@@ -138,14 +138,14 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_unsigned_probe( s
 {
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->angle;
-        if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0, 360 ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 17, 16, 0, 360 ) )
         {
             return 0;
         }
     }
     {
         serialize_int128_t fixed_value = serialize_int128_make( 0, value->span );
-        if ( !serialize_write_fixed128( stream, fixed_value, 48, 16, 0, 281474976710655 ) )
+        if ( !serialize_write_fixed128( stream, fixed_value, 49, 16, 0, 281474976710655 ) )
         {
             return 0;
         }
@@ -159,7 +159,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_unsigned_probe( s
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->ticks;
-        if ( !serialize_write_fixed64( stream, fixed_value, 32, 0, 0, 1000000 ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 33, 0, 0, 1000000 ) )
         {
             return 0;
         }
@@ -170,7 +170,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int ludicrous_write_unsigned_probe( s
         {
             {
                 serialize_int64_t fixed_value = (serialize_int64_t) value->samples[i];
-                if ( !serialize_write_fixed64( stream, fixed_value, 16, 16, 0, 16 ) )
+                if ( !serialize_write_fixed64( stream, fixed_value, 17, 16, 0, 16 ) )
                 {
                     return 0;
                 }
@@ -196,7 +196,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( ser
 
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0, 360 ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 17, 16, 0, 360 ) )
         {
             return 0;
         }
@@ -204,7 +204,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( ser
     }
     {
         serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );
-        if ( !serialize_read_fixed128( stream, &fixed_value, 48, 16, 0, 281474976710655 ) )
+        if ( !serialize_read_fixed128( stream, &fixed_value, 49, 16, 0, 281474976710655 ) )
         {
             return 0;
         }
@@ -220,7 +220,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( ser
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 32, 0, 0, 1000000 ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 33, 0, 0, 1000000 ) )
         {
             return 0;
         }
@@ -232,7 +232,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int ludicrous_read_unsigned_probe( ser
         {
             {
                 serialize_int64_t fixed_value = 0;
-                if ( !serialize_read_fixed64( stream, &fixed_value, 16, 16, 0, 16 ) )
+                if ( !serialize_read_fixed64( stream, &fixed_value, 17, 16, 0, 16 ) )
                 {
                     return 0;
                 }
