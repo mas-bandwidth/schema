@@ -1751,3 +1751,12 @@ conformance-negative-control-js-text-boundary: conformance-js-text-boundary
 	sh test/conformance/js/negative-control-text-boundary replacement
 
 test-js: conformance-js-text-boundary
+
+
+.PHONY: tables-js-blob-shared-report
+tables-js-blob-shared-report: toolchain-js
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) \
+		sh test/slowgate/proof tables-js-blob-shared-report 'TestJavaScriptBlobSharedReportCensus' \
+		-count=1 -timeout=0 -run '^TestJavaScriptBlobSharedReportCensus$$' ./internal/codegen/jstable/
+
+test-js: tables-js-blob-shared-report

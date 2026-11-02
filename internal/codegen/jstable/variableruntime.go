@@ -670,11 +670,11 @@ function TableVariableLoad(c, bytes, report, retain) {
         // the record is malformed, and every slot naming it reads null
         const dec = TableVariableUtf8Decode(rec.body);
         if (!dec.ok) { report.malformed = true; st.nodes.push(null); continue; }
-        st.nodes.push({ kind: "s", blob: dec.s, refs: 0, shared: null });
+        st.nodes.push({ kind: "s", blob: dec.s, refs: 0, shared: null, named: false });
         continue;
       }
       if (rec.tid === TableBytesBlobId && place.bytes) {
-        st.nodes.push({ kind: "b", blob: Uint8Array.from(rec.body) });
+        st.nodes.push({ kind: "b", blob: Uint8Array.from(rec.body), named: false });
         continue;
       }
       const nc = place.byType.get(rec.tid);
@@ -752,6 +752,12 @@ function TableVariableResolve(st, report) {
             value = n.v;
           } else {
             report.kindMismatch++;
+          }
+          // Count every extra valid naming, including repeated field events.
+          // The mark belongs to this load's node, so reused reports accumulate
+          // while distinct equal blobs and rejected kinds never become shares.
+          if ((d.s === "sblob" && n.kind === "s") || (d.s === "bblob" && n.kind === "b")) {
+            if (n.named) { report.blobShared++; } else { n.named = true; }
           }
         }
       }

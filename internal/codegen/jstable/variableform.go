@@ -252,6 +252,8 @@ export class TableVariableReport {
     this.widened = 0;
     this.duplicate = 0;
     this.missingRequired = 0;
+    // Extra successful namings of one blob record on a tolerant read (§2.5).
+    this.blobShared = 0;
     this.retained = 0;
     this.retainLost = 0;
     // the first float a read found to be a NaN or an infinity, <Table>.<field>
