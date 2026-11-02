@@ -5009,9 +5009,10 @@ static SCHEMA_UNUSED int tabledemo_team_config_load_body( tabledemo_table_reader
     }
 }
 
-/* team_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* team_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int tabledemo_team_config_load_tolerant( tabledemo_team_config_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -5022,7 +5023,8 @@ static SCHEMA_UNUSED int tabledemo_team_config_load_tolerant( tabledemo_team_con
     non_finite_before = report->non_finite_floats;
     whole = tabledemo_team_config_load_body( &r, value );
     if ( tabledemo_table_non_finite_refused( report, non_finite_before ) ) { tabledemo_team_config_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { tabledemo_team_config_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN team_config_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5333,9 +5335,10 @@ static SCHEMA_UNUSED int tabledemo_gunner_config_load_body( tabledemo_table_read
     }
 }
 
-/* gunner_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* gunner_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int tabledemo_gunner_config_load_tolerant( tabledemo_gunner_config_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -5346,7 +5349,8 @@ static SCHEMA_UNUSED int tabledemo_gunner_config_load_tolerant( tabledemo_gunner
     non_finite_before = report->non_finite_floats;
     whole = tabledemo_gunner_config_load_body( &r, value );
     if ( tabledemo_table_non_finite_refused( report, non_finite_before ) ) { tabledemo_gunner_config_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { tabledemo_gunner_config_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN gunner_config_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5662,9 +5666,10 @@ static SCHEMA_UNUSED int tabledemo_turret_config_load_body( tabledemo_table_read
     }
 }
 
-/* turret_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* turret_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int tabledemo_turret_config_load_tolerant( tabledemo_turret_config_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -5675,7 +5680,8 @@ static SCHEMA_UNUSED int tabledemo_turret_config_load_tolerant( tabledemo_turret
     non_finite_before = report->non_finite_floats;
     whole = tabledemo_turret_config_load_body( &r, value );
     if ( tabledemo_table_non_finite_refused( report, non_finite_before ) ) { tabledemo_turret_config_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { tabledemo_turret_config_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN turret_config_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -6101,9 +6107,10 @@ static SCHEMA_UNUSED int tabledemo_hull_config_load_body( tabledemo_table_reader
     }
 }
 
-/* hull_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* hull_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int tabledemo_hull_config_load_tolerant( tabledemo_hull_config_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -6114,7 +6121,8 @@ static SCHEMA_UNUSED int tabledemo_hull_config_load_tolerant( tabledemo_hull_con
     non_finite_before = report->non_finite_floats;
     whole = tabledemo_hull_config_load_body( &r, value );
     if ( tabledemo_table_non_finite_refused( report, non_finite_before ) ) { tabledemo_hull_config_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { tabledemo_hull_config_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN hull_config_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -6699,9 +6707,10 @@ static SCHEMA_UNUSED int tabledemo_keyed_config_load_body( tabledemo_table_reade
     }
 }
 
-/* keyed_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* keyed_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int tabledemo_keyed_config_load_tolerant( tabledemo_keyed_config_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -6712,7 +6721,8 @@ static SCHEMA_UNUSED int tabledemo_keyed_config_load_tolerant( tabledemo_keyed_c
     non_finite_before = report->non_finite_floats;
     whole = tabledemo_keyed_config_load_body( &r, value );
     if ( tabledemo_table_non_finite_refused( report, non_finite_before ) ) { tabledemo_keyed_config_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { tabledemo_keyed_config_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN keyed_config_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -7208,9 +7218,10 @@ static SCHEMA_UNUSED int tabledemo_score_board_load_body( tabledemo_table_reader
     }
 }
 
-/* score_board_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* score_board_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int tabledemo_score_board_load_tolerant( tabledemo_score_board_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -7221,7 +7232,8 @@ static SCHEMA_UNUSED int tabledemo_score_board_load_tolerant( tabledemo_score_bo
     non_finite_before = report->non_finite_floats;
     whole = tabledemo_score_board_load_body( &r, value );
     if ( tabledemo_table_non_finite_refused( report, non_finite_before ) ) { tabledemo_score_board_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { tabledemo_score_board_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN score_board_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -11069,7 +11081,11 @@ int schema_tabledemo_team_config_from_json_( tabledemo_team_config_t * value, co
 int64_t schema_tabledemo_team_config_to_json_( const tabledemo_team_config_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int tabledemo_team_config_from_json_tolerant( tabledemo_team_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
-    return schema_tabledemo_team_config_from_json_( value, text, bytes, report );
+    tabledemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_team_config_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { tabledemo_team_config_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN team_config_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_team_config_from_json( tabledemo_team_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
@@ -11099,7 +11115,11 @@ int schema_tabledemo_gunner_config_from_json_( tabledemo_gunner_config_t * value
 int64_t schema_tabledemo_gunner_config_to_json_( const tabledemo_gunner_config_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int tabledemo_gunner_config_from_json_tolerant( tabledemo_gunner_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
-    return schema_tabledemo_gunner_config_from_json_( value, text, bytes, report );
+    tabledemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_gunner_config_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { tabledemo_gunner_config_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN gunner_config_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_gunner_config_from_json( tabledemo_gunner_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
@@ -11129,7 +11149,11 @@ int schema_tabledemo_turret_config_from_json_( tabledemo_turret_config_t * value
 int64_t schema_tabledemo_turret_config_to_json_( const tabledemo_turret_config_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int tabledemo_turret_config_from_json_tolerant( tabledemo_turret_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
-    return schema_tabledemo_turret_config_from_json_( value, text, bytes, report );
+    tabledemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_turret_config_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { tabledemo_turret_config_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN turret_config_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_turret_config_from_json( tabledemo_turret_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
@@ -11159,7 +11183,11 @@ int schema_tabledemo_hull_config_from_json_( tabledemo_hull_config_t * value, co
 int64_t schema_tabledemo_hull_config_to_json_( const tabledemo_hull_config_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int tabledemo_hull_config_from_json_tolerant( tabledemo_hull_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
-    return schema_tabledemo_hull_config_from_json_( value, text, bytes, report );
+    tabledemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_hull_config_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { tabledemo_hull_config_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN hull_config_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_hull_config_from_json( tabledemo_hull_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
@@ -11189,7 +11217,11 @@ int schema_tabledemo_keyed_config_from_json_( tabledemo_keyed_config_t * value, 
 int64_t schema_tabledemo_keyed_config_to_json_( const tabledemo_keyed_config_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int tabledemo_keyed_config_from_json_tolerant( tabledemo_keyed_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
-    return schema_tabledemo_keyed_config_from_json_( value, text, bytes, report );
+    tabledemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_keyed_config_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { tabledemo_keyed_config_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN keyed_config_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_keyed_config_from_json( tabledemo_keyed_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
@@ -11219,7 +11251,11 @@ int schema_tabledemo_score_board_from_json_( tabledemo_score_board_t * value, co
 int64_t schema_tabledemo_score_board_to_json_( const tabledemo_score_board_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int tabledemo_score_board_from_json_tolerant( tabledemo_score_board_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
-    return schema_tabledemo_score_board_from_json_( value, text, bytes, report );
+    tabledemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_score_board_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { tabledemo_score_board_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN score_board_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_score_board_from_json( tabledemo_score_board_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )

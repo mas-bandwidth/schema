@@ -4874,9 +4874,10 @@ static SCHEMA_UNUSED int tabledemo_archive_config_load_body( tabledemo_table_rea
     }
 }
 
-/* archive_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* archive_config_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int tabledemo_archive_config_load_tolerant( tabledemo_archive_config_t * value, const uint8_t * buffer, int64_t bytes, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -4887,7 +4888,8 @@ static SCHEMA_UNUSED int tabledemo_archive_config_load_tolerant( tabledemo_archi
     non_finite_before = report->non_finite_floats;
     whole = tabledemo_archive_config_load_body( &r, value );
     if ( tabledemo_table_non_finite_refused( report, non_finite_before ) ) { tabledemo_archive_config_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { tabledemo_archive_config_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN archive_config_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -6122,7 +6124,11 @@ int schema_tabledemo_archive_config_from_json_( tabledemo_archive_config_t * val
 int64_t schema_tabledemo_archive_config_to_json_( const tabledemo_archive_config_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int tabledemo_archive_config_from_json_tolerant( tabledemo_archive_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
-    return schema_tabledemo_archive_config_from_json_( value, text, bytes, report );
+    tabledemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_archive_config_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { tabledemo_archive_config_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN archive_config_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_archive_config_from_json( tabledemo_archive_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
