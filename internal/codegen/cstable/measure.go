@@ -15,6 +15,7 @@ const tableLoadMeasureSource = `
     }
     static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
     {
+        if(f.Unbounded){Reader text=r;if(framed&&!r.Slice(out text)){r.Offset=r.Buffer.Length;return true;}if(text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);}if(!framed){r.Offset=r.Buffer.Length;}return true;}
         if (f.IsArray)
         {
             Reader a = r;
@@ -34,7 +35,7 @@ const tableLoadMeasureSource = `
                 Reader source = a;
                 if (f.KeyId != null)
                 { if (!a.Var(out _) || !a.Slice(out source)) { break; } }
-                if (f.TextList && sourceKind == 12) { if (!a.Slice(out _)) { break; } }
+                if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if(f.Table.Fields[0].Unbounded && text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);} }
                 else if (f.Kind == 13)
                 {
                     Reader element = source;

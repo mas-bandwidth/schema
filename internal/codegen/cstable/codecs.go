@@ -242,6 +242,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		g.tf("    public %s %s;\n", typ, name)
 	case f.Type.Kind == ir.TWString:
 		g.tf("    public char[] %s = new char[%d];\n    public int %sLength;\n", name, f.Type.Size, name)
+	case f.Type.TextUnbounded():
+		g.tf("    public byte[] %s = Array.Empty<byte>();\n    public int %sLength;\n", name, name)
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%d]; // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -858,6 +860,9 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", GetPresent = delegate (object o) { return %s%sPresent; }", cast, name)
 		fmt.Fprintf(&b, ", SetPresent = delegate (object o, bool p) { %s%sPresent = p; }", cast, name)
 	}
+	if f.Type.TextUnbounded() {
+		fmt.Fprintf(&b, ", Unbounded = true, EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s,n); } }", ownerType, name, name)
+	}
 	if f.IsTextList() {
 		fmt.Fprintf(&b, ", TextList = true, TextField = %q, TextTotal = %dL", g.owner.Name+"."+f.Name, f.TextTotal)
 	}
@@ -881,7 +886,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	// names its size (docs/SPEC-TABLES.md §2.4, §8.1)
 	bound := "0"
 	switch {
-	case f.IsMap(), f.IsList():
+	case f.IsMap(), f.IsList(), f.Type.TextUnbounded():
 		bound = "int.MaxValue"
 	case f.KeyEnum != "":
 		bound = fmt.Sprintf("(int)global::%s.Schema.%sMax", capitalize(g.unit.Package), f.KeyEnum)

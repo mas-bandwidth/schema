@@ -19,7 +19,7 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct) {
 		}
 		g.pf("public static unsafe ReadOnlySpan<byte> %sTextAt(%sRow* value, int index, out bool present) { return TableWire.TextAtNative((IntPtr)value, %s, index, out present); }\n", prefix, st.Name, descriptor)
 		args, worker := "", "null"
-		if f.IsList() {
+		if f.IsList() || ir.TextListUnbounded(f) {
 			args, worker = "TableWorker worker, ", "worker"
 		}
 		g.pf("public static unsafe bool %sAppend(%s%sRow* value, ReadOnlySpan<byte> text) { return TableWire.TextAppendNative(%s, (IntPtr)value, %s, text, true); }\n", prefix, args, st.Name, worker, descriptor)
@@ -37,13 +37,6 @@ public static partial class TableWire
         if(field.TextTotal==0){return true;}long spent=extra;
         TableFieldInfo text=field.Table.Fields[0];int count=Count(value,field);
         for(int i=0;i<count;i++){object child=field.GetChild(value,i);if(!text.Optional||text.GetPresent(child)){int length=Count(child,text);if(length<0){return false;}spent+=length;if(spent>field.TextTotal){return false;}}}
-        return spent<=field.TextTotal;
-    }
-    static unsafe bool TextFitsRegion(NativeValue value, TableFieldInfo field, int extra = 0)
-    {
-        if(field.TextTotal==0){return true;}long spent=extra;
-        TableFieldInfo text=field.Table.Fields[0];int count=value.Count(field);
-        for(int i=0;i<count;i++){NativeValue child=value.Child(field,i);if(!text.Optional||child.Present(text)){int length=child.Count(text);if(length<0){return false;}spent+=length;if(spent>field.TextTotal){return false;}}}
         return spent<=field.TextTotal;
     }
     internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
@@ -67,8 +60,19 @@ public static partial class TableWire
         if(!TextFits(value,field,present?bytes.Length:0)){return false;}
         if(field.Dynamic){field.EnsureCount(value,count+1);}
         object child=field.GetChild(value,count);field.Table.Reset(child);
-        if(present){bytes.CopyTo(text.GetBuffer(child));text.SetCount(child,bytes.Length);}
+        if(present){if(text.Unbounded){text.EnsureCount(child,bytes.Length);}bytes.CopyTo(text.GetBuffer(child));text.SetCount(child,bytes.Length);}
         if(text.Optional){text.SetPresent(child,present);}field.SetCount(value,count+1);return true;
+    }
+}
+`
+
+const tableNativeTextListSource = `
+    static unsafe bool TextFitsRegion(NativeValue value, TableFieldInfo field, int extra = 0)
+    {
+        if(field.TextTotal==0){return true;}long spent=extra;
+        TableFieldInfo text=field.Table.Fields[0];int count=value.Count(field);
+        for(int i=0;i<count;i++){NativeValue child=value.Child(field,i);if(!text.Optional||child.Present(text)){int length=child.Count(text);if(length<0){return false;}spent+=length;if(spent>field.TextTotal){return false;}}}
+        return spent<=field.TextTotal;
     }
     public static unsafe ReadOnlySpan<byte> TextAtNative(IntPtr pointer, TableFieldInfo field, int index, out bool present)
     {
@@ -87,8 +91,7 @@ public static partial class TableWire
         if(!TextFitsRegion(value,field,present?bytes.Length:0)){return false;}
         if(field.Dynamic&&(worker==null||!TableListStorage.Reserve(worker,(TableCookList*)(value.Base+value.At+field.NativeOffset),field,count+1))){return false;}
         NativeValue child=value.Child(field,count);NativeReset(child,field.Table);
-        if(present){bytes.CopyTo(child.Buffer(text));child.SetCount(text,bytes.Length);}
+        if(present){if(text.Unbounded){if(!BuilderTextSet(worker,child,text,bytes)){return false;}}else{bytes.CopyTo(child.Buffer(text));child.SetCount(text,bytes.Length);}}
         if(text.Optional){child.SetPresent(text,present);}value.SetCount(field,count+1);return true;
     }
-}
 `

@@ -19,7 +19,7 @@ func (g *tableGen) nativeColumns(f *ir.Field) string {
 	if f.Type.Optional {
 		present = pieces[len(pieces)-1].Offset
 	}
-	if !f.IsList() && !f.IsMap() && (f.CountedOnWire() || !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes)) {
+	if !f.Type.TextUnbounded() && !f.IsList() && !f.IsMap() && (f.CountedOnWire() || !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes)) {
 		count = pieces[1].Offset
 	}
 	element := pieces[0].Size
@@ -74,7 +74,7 @@ const tableNativeSource = `
     { foreach (TableFieldInfo f in type.Fields) { if (NativeExtent(f)) { return true; } } return false; }
     static bool NativeExtent(TableFieldInfo f)
     {
-        if (f.Dynamic) { return true; }
+        if (f.Dynamic || f.Unbounded) { return true; }
         if (f.Kind == 13 || f.TextList) { return NativeExtent(f.Table); }
         if (f.Kind == 15)
         { foreach (TableUnionArmInfo arm in f.Arms.Arms) { if (arm.Field != null && NativeExtent(arm.Field)) { return true; } } }
@@ -109,6 +109,12 @@ const tableNativeSource = `
         int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
         if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
+        if(f.Unbounded)
+        {
+            if(live==0){w.Put(at,0,8);return true;}
+            extent=Align(extent,8);long start=extentAt+extent;extent+=Align(9L+live,8);
+            w.Put(at,unchecked((ulong)(start-at)),8);w.Put(start,(uint)live,4);w.Raw(start+8,f.GetBuffer(value).AsSpan(0,live));return true;
+        }
         if (f.Kind == 12 && !f.TextList)
         { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
         if (f.Kind == 33)
@@ -202,6 +208,7 @@ const tableNativeSource = `
     { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
     static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
     {
+        if(f.Unbounded){int length=f.GetCount(value);if(length<0||length>f.GetBuffer(value).Length){return false;}if(length>0){at=Align(at,8)+Align(9L+length,8);}return true;}
         if (f.Dynamic)
         {
             int count = f.GetCount(value); if (count < 0) { return false; }

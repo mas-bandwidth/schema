@@ -116,7 +116,14 @@ const tableMapJsonSource = `
             if (c == '}') { input.Pos++; return true; }
             int beforeClamp = input.Report.Clamped;
             input.TextField = mapField;
-            if (!ScanString(text, ref input, spelling, true, out int used, stored: true)) { return false; }
+            scoped ReadOnlySpan<byte> actual; int used;
+            if(key.Unbounded)
+            {
+                if(!DecodedStringBody(text,ref input,out actual)){return false;}
+                if(!TableWire.TextValid(actual)){return RefuseText(ref input,"text_holds_zero");}
+                used=actual.Length;
+            }
+            else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
             bool over = input.Report.Clamped != beforeClamp;
             input.Report.Clamped = beforeClamp;
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -126,13 +133,13 @@ const tableMapJsonSource = `
             if (key.Kind == 12)
             {
                 if (over || used > key.ArrayBound) { input.Report.Clamped++; drop = true; }
-                else { spelling.Slice(0, used).CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
+                else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
             }
             else if (over) { input.Report.KindMismatch++; drop = true; }
             else
             {
                 In probe = new In { Report = new TableReport() };
-                ReadOnlySpan<byte> token = spelling.Slice(0, used);
+                ReadOnlySpan<byte> token = actual;
                 Space(token, ref probe);
                 if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
                 { input.Bad = true; return false; }

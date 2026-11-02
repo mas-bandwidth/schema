@@ -1453,7 +1453,7 @@ public static partial class TableWire
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
-            int decoded = 0; long textSpent = 0;
+            int decoded = 0;
             for (int i = 0; i < keep; i++)
             {
                 if (f.Dynamic) { if (!r.Has(1)) { Damage(report); break; } f.EnsureCount(value, i + 1); }
@@ -1475,7 +1475,7 @@ public static partial class TableWire
             keep = f.ArrayBound; report.Clamped++;
             while (keep > 0 && (text[keep] & 0xc0) == 0x80) { keep--; }
         }
-        if (value != null) { text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
+        if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
         return true;
     }
     static bool ReadChars(ReadOnlySpan<byte> text, object value, TableFieldInfo f, TableReport report)

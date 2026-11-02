@@ -848,7 +848,7 @@ public sealed class TableFieldInfo
     public Func<object, int, object> GetChild;
     public Action<object, int, object> SetChild;
     public Action<object, int> EnsureCount;
-    public bool Dynamic, Map, TextList;
+    public bool Dynamic, Map, TextList, Unbounded;
     public string TextField;
     public long TextTotal;
     public int StorageSize, StorageAlign;
@@ -905,7 +905,7 @@ public sealed class TableTypeInfo
     public bool Variable;
     public bool Integrity;
     public bool JsonArray;
-    internal bool HasRequired;
+    internal bool HasRequired = false;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
     public Func<ulong, TableTypeInfo> PointerType;

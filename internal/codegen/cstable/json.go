@@ -987,7 +987,7 @@ public static class TableJson
     // ASCII is its own decoding and is read in place; any other body is
     // decoded once, so an escape spells what it spells and the base64 grammar
     // or timestamp grammar judges the decoded string, as the Go reader does.
-    static bool DecodedStringBody(ReadOnlySpan<byte> text, ref In input, out ReadOnlySpan<byte> body)
+    static bool DecodedStringBody(ReadOnlySpan<byte> text, scoped ref In input, out ReadOnlySpan<byte> body)
     {
         body = ReadOnlySpan<byte>.Empty;
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1005,7 +1005,7 @@ public static class TableJson
             {
                 plain = false;
                 int want = c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
-                if (want == 0 || want > text.Length - at || !TableWire.TextValid(text.Slice(at, want))) { input.Bad = true; return false; }
+                if (want == 0 || want > text.Length - at || !TableWire.TextValid(text.Slice(at, want))) { return RefuseText(ref input, "string_not_utf8"); }
                 at += want; continue;
             }
             at++;
@@ -1680,6 +1680,12 @@ public static class TableJson
         {
             if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used, stored: true)) { return false; }
             f.SetCount(value, used); return true;
+        }
+        if (f.Unbounded)
+        {
+            if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}
+            if(!TableWire.TextValid(body)){return RefuseText(ref input,"text_holds_zero");}
+            f.EnsureCount(value,body.Length);body.CopyTo(f.GetBuffer(value));f.SetCount(value,body.Length);return true;
         }
         if (f.Kind == 12 && !f.TextList)
         {
