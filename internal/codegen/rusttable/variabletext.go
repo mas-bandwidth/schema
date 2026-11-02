@@ -40,7 +40,7 @@ func (g *gen) emitVariableText(b *strings.Builder) {
 		g.emitTextReadPointer(b, vStruct(g.unit, n))
 	}
 	for _, n := range names {
-		if g.isVariableRoot(vStruct(g.unit, n)) {
+		if st := vStruct(g.unit, n); g.isVariableRoot(st) && st.CarriesForm("json") {
 			g.emitTextRoots(b, vStruct(g.unit, n))
 		}
 	}

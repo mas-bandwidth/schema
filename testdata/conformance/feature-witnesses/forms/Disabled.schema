@@ -1,0 +1,2 @@
+package formwitnesses
+fixed table Disabled | forms="wire" { value int32 }
