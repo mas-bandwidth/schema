@@ -1799,3 +1799,15 @@ tables-dart-discard-negative-control:
 	@echo 'negative control: removing each Dart discard (load, retain, message batch) turns the whole-load gate RED'
 
 test-dart: tables-dart-discard tables-dart-discard-negative-control
+
+# Keep the JSON byte boundary strict before invoking generated String readers.
+.PHONY: conformance-dart-text-boundary conformance-negative-control-dart-text-boundary
+conformance-dart-text-boundary: build/conformance-harness build/conformance-dart
+	go test -timeout=0 -count=1 -run '^TestDartTextBoundaryBOMOracle$$' ./test/conformance/harness
+	sh test/conformance/dart/negative-control-text-boundary positive "$(DART)"
+
+conformance-negative-control-dart-text-boundary: conformance-dart-text-boundary
+	sh test/conformance/dart/negative-control-text-boundary replacement "$(DART)"
+	sh test/conformance/dart/negative-control-text-boundary reader "$(DART)"
+
+test-dart: conformance-dart-text-boundary

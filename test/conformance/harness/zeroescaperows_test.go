@@ -71,7 +71,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		// the harness's own expectations, not a second copy of the rule
 		byLang := map[string]expectation{}
 		exemptNamed := map[string]bool{}
-		for _, lang := range []string{"go", "rust", "cs", "js", "cpp"} {
+		for _, lang := range []string{"go", "rust", "cs", "js", "dart", "cpp"} {
 			legWant, exemptions := hostileExpectations(m, lang)
 			for _, e := range legWant {
 				if e.name == caseName {
@@ -90,7 +90,7 @@ func TestHostileZeroEscapeRows(t *testing.T) {
 		if !exemptNamed["cpp"] {
 			t.Fatalf("%s: cpp is exempted but the harness names no exemption on its line; it must never skip the row in silence", caseName)
 		}
-		for _, lang := range []string{"rust", "cs", "js"} {
+		for _, lang := range []string{"rust", "cs", "js", "dart"} {
 			if exemptNamed[lang] {
 				t.Fatalf("%s: %s carries the rule and must not be exempted", caseName, lang)
 			}

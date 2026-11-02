@@ -88,6 +88,17 @@ import '../../../build/tables-generated-dart/widelist/WidelistdemoWire.dart' as 
 import '../../../build/tables-generated-dart/widelist/WidesCook.dart' as widelistcook;
 import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 
+// Decode JSON bytes before entering a generated String reader. Dart's UTF-8
+// decoder skips one leading BOM, matching the Go reader's whole-text boundary.
+String? readJsonTextFile(String path) {
+  final bytes = File(path).readAsBytesSync();
+  try {
+    return utf8.decode(bytes, allowMalformed: false);
+  } on FormatException {
+    return null;
+  }
+}
+
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
 final List<List<String>> lines = [];
@@ -1698,7 +1709,9 @@ int surfaceJsonRead(String outDir) {
       spillAbsent(outDir, f[1]);
       continue;
     }
-    final saved = jsonReadSave(f[2], f[3], File(textPath).readAsStringSync());
+    final text = readJsonTextFile(textPath);
+    if (text == null) throw FormatException('invalid UTF-8 in $textPath');
+    final saved = jsonReadSave(f[2], f[3], text);
     if (saved == null) {
       spillAbsent(outDir, f[1]);
       continue;
@@ -1766,7 +1779,7 @@ String? jsonHostileReport(String unit, String root, String text) {
       default:
         return null;
     }
-  } catch (_) {
+  } on FormatException {
     return 'refused\n';
   }
   return '${r.unknown},${r.kindMismatch},0,${r.clamped},${r.duplicate},false,read\n';
@@ -1774,7 +1787,11 @@ String? jsonHostileReport(String unit, String root, String text) {
 
 int surfaceJsonHostile(String outDir) {
   for (final f in kind('json-hostile')) {
-    final text = utf8.decode(File('${f[4]}/${f[3]}.json').readAsBytesSync(), allowMalformed: true);
+    final text = readJsonTextFile('${f[4]}/${f[3]}.json');
+    if (text == null) {
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+      continue;
+    }
     final verdict = jsonHostileReport(f[2], f[3], text);
     if (verdict == null) {
       spillAbsent(outDir, f[1]);
