@@ -907,7 +907,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_union(_union, _f, _v, _at, _index, _order, _buf), do: throw(:invalid)
 
-  defp cook_ord(%{ords: _ords}, nil), do: 0
+  # Optional enums distinguish absent nil from the present reserved None variant.
+  defp cook_ord(%{ords: _ords}, v) when v in [nil, "None"], do: 0
 
   defp cook_ord(%{ords: ords}, v) when is_binary(v) do
     case Map.fetch(ords, v) do

@@ -1904,11 +1904,11 @@ defmodule Bench.Table do
     else
       {ref, ids, order} = intern(ids, order, f.id)
 
-      # the nil variant is reference 0, as read_payload reads it: a tolerant
-      # text read of "None" or an unknown name over a non-nil default holds nil
+      # The zero variant is reference 0. Optional fields use reserved "None"
+      # for a present zero, keeping nil available for absence.
       {vref, ids, order} =
         case v do
-          nil -> {0, ids, order}
+          v when v in [nil, "None"] -> {0, ids, order}
           _ -> intern(ids, order, Map.fetch!(f.by_name, v))
         end
 
@@ -1962,8 +1962,11 @@ defmodule Bench.Table do
 
   # SPEC-TABLES §2.3: absence is the lack of a field line. A present optional
   # must write even its zero/default value, while nil never becomes a payload.
+  # An optional enum has two zero states: absent nil and present reserved None.
+  defp enum_none(f), do: if(Map.get(f, :optional, false), do: "None", else: nil)
+
   defp emit_scalar?(%{optional: true}, v), do: v != nil
-  defp emit_scalar?(f, v), do: not same?(v, f.default)
+  defp emit_scalar?(f, v), do: not same_field?(f, v, f.default)
 
   # ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3, the 10-15 rule):
   # -0.0 == 0.0 on the BEAM, so a -0 under a +0 default would be dropped and
@@ -1973,15 +1976,31 @@ defmodule Bench.Table do
   defp same?(a, b) when is_float(a) and is_float(b), do: a === b
   defp same?(a, b), do: a == b
 
+  # Compare the stored width: BEAM inputs and schema literals are binary64.
+  defp same_field?(%{t: :float, width: 4}, a, b),
+    do: float_bytes(a, 4) == float_bytes(b, 4)
+
+  defp same_field?(_f, a, b), do: same?(a, b)
+
   # SPEC-TABLES §2.3, §3: a present optional array always writes; a [N]T of
   # tables always writes; any other [N]T elides when every element is the
   # declared default, and a counted or unbounded array elides when empty.
   defp list_elides?(f, elements) do
     cond do
-      Map.get(f, :optional, false) -> false
-      Map.has_key?(f, :fixed_array) and f.elem_kind == 13 -> false
-      Map.has_key?(f, :fixed_array) -> Enum.all?(elements, &same?(&1, f.elem_default))
-      true -> elements == []
+      Map.get(f, :optional, false) ->
+        false
+
+      Map.has_key?(f, :fixed_array) and f.elem_kind == 13 ->
+        false
+
+      Map.has_key?(f, :fixed_array) and f.elem_kind == 10 ->
+        Enum.all?(elements, &(float_bytes(&1, 4) == float_bytes(f.elem_default, 4)))
+
+      Map.has_key?(f, :fixed_array) ->
+        Enum.all?(elements, &same?(&1, f.elem_default))
+
+      true ->
+        elements == []
     end
   end
 
@@ -2004,7 +2023,9 @@ defmodule Bench.Table do
   end
 
   defp keyed_elem(item, v, idx_map, ids, order) do
-    if same?(v, item.default), do: :elide, else: emit_element(item, v, idx_map, ids, order)
+    if same_field?(item, v, item.default),
+      do: :elide,
+      else: emit_element(item, v, idx_map, ids, order)
   end
 
   # one arm header (docs/SPEC-TABLES.md §2.6, §3): the arm id's reference, the
@@ -2151,9 +2172,6 @@ defmodule Bench.Table do
                 blob_namings(fn -> decode_directory(desc, fields, nodes, ids) end)
               end)
 
-            report = if :malformed in nodes, do: %{report | malformed: true}, else: report
-            unknown = Enum.count(nodes, &(&1 == :unknown))
-            report = %{report | unknown: report.unknown + unknown}
             report = Map.put(report, :blob_shared, shared)
 
             # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
@@ -2166,6 +2184,9 @@ defmodule Bench.Table do
         end
     end
   catch
+    {:count_over_extent_cap, report} ->
+      {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
+
     # A NaN OR AN INFINITY REFUSES THE READ (docs/SPEC-TABLES.md §3.3), the
     # tolerant one too, and outranks any damage the walk would have met after
     # it: nothing lands, and the reason names the first such field.
@@ -2192,6 +2213,9 @@ defmodule Bench.Table do
     do: Map.put(report, :reason, if(report.malformed, do: "wire_damaged", else: ""))
 
   defp reasoned(report, :newer_form), do: Map.put(report, :reason, "unknown_form")
+
+  defp reasoned(report, :count_over_extent_cap),
+    do: Map.put(report, :reason, "count_over_extent_cap")
 
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
@@ -2529,19 +2553,34 @@ defmodule Bench.Table do
     end
   end
 
+  defp directory_report(nodes, report, retaining) do
+    unknown = Enum.count(nodes, &(&1 == :unknown))
+
+    %{
+      report
+      | unknown: report.unknown + unknown,
+        retain_lost: report.retain_lost + if(retaining, do: unknown, else: 0),
+        malformed: report.malformed or :malformed in nodes
+    }
+  end
+
   defp decode_directory(desc, fields, nodes, ids) do
-    {root, report} = decode(desc, fields, nodes, ids)
+    # The directory census precedes every body; placed nodes precede the root.
+    # A refusal must retain exactly the diagnostic prefix already earned.
+    report = directory_report(nodes, empty_report(), false)
 
     {records, report} =
       nodes
       |> Enum.with_index(2)
-      |> Enum.reduce({%{1 => root}, report}, fn
+      |> Enum.reduce({%{}, report}, fn
         {{:table, name, body}, idx}, {records, report} ->
           {node_desc, node_fields} = decoded_fields(name, body, ids)
 
           {value, own_report} =
-            in_read_holder(idx, fn ->
-              decode(node_desc, node_fields, nodes, ids)
+            carry_count_report(report, fn ->
+              in_read_holder(idx, fn ->
+                decode(node_desc, node_fields, nodes, ids)
+              end)
             end)
 
           {Map.put(records, idx, value), merge_report(report, own_report)}
@@ -2550,6 +2589,9 @@ defmodule Bench.Table do
           state
       end)
 
+    {root, own_report} = carry_count_report(report, fn -> decode(desc, fields, nodes, ids) end)
+    report = merge_report(report, own_report)
+    records = Map.put(records, 1, root)
     value = if report.malformed, do: %{}, else: assemble_directory(records)
     {value, report}
   end
@@ -2713,7 +2755,7 @@ defmodule Bench.Table do
   defp read_payload(%{t: :enum} = f, payload, _nodes, ids, report) do
     case leb(payload) do
       {0, _} ->
-        {:cont, nil, report}
+        {:cont, enum_none(f), report}
 
       {vref, _} ->
         case resolve(ids, vref) do
@@ -2725,7 +2767,7 @@ defmodule Bench.Table do
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
               {:ok, name} -> {:cont, name, report}
-              :error -> {:cont, nil, %{report | unknown: report.unknown + 1}}
+              :error -> {:cont, enum_none(f), %{report | unknown: report.unknown + 1}}
             end
         end
     end
@@ -2803,7 +2845,11 @@ defmodule Bench.Table do
         # a nested body reads as an element does (§3, §4), and its events FOLD
         # into the holder's: a fresh report here would drop every event the
         # holder counted before it
-        {value, nested} = read_element(Map.fetch!(@tables, f.elem), body, nodes, ids)
+        {value, nested} =
+          carry_count_report(report, fn ->
+            read_element(Map.fetch!(@tables, f.elem), body, nodes, ids)
+          end)
+
         {:cont, value, merge_report(report, nested)}
 
       :error ->
@@ -2846,7 +2892,7 @@ defmodule Bench.Table do
   defp read_payload(%{t: :map} = f, payload, nodes, ids, report) do
     # SPEC-TABLES §2.8, §3: kind 14 contains framed entry tables. A map's
     # public keys use their JSON spelling; its wire keys remain typed.
-    case read_payload(%{f | t: :list}, payload, nodes, ids, report) do
+    case read_payload(Map.put(%{f | t: :list}, :map_entry, true), payload, nodes, ids, report) do
       {:cont, :inert, report} ->
         {:cont, :inert, report}
 
@@ -2942,6 +2988,7 @@ defmodule Bench.Table do
                         %{report | widened: report.widened + 1}
                       end
 
+                    check_wire_count(n, f, report)
                     reader = %{f | elem_kind: elem_kind}
                     {n, report} = clamp_count(n, f, report)
                     {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
@@ -2962,6 +3009,17 @@ defmodule Bench.Table do
       :error ->
         {:cont, [], %{report | malformed: true}}
     end
+  end
+
+  # Admit each map key before decoding its value, even if value precedes key
+  # on wire. A descending entry is damage; its value cannot introduce a refusal.
+  # This is a per-entry scan, so earlier admitted values keep their precedence.
+  defp map_entry_admitted?(_desc, _sub, [], _nodes, _ids), do: true
+
+  defp map_entry_admitted?(desc, sub, [previous | _], nodes, ids) do
+    [kf | _] = desc.fields
+    {entry, _report} = read_element(%{desc | fields: [kf]}, sub, nodes, ids)
+    Map.get(entry, "key", kf.default) >= Map.get(previous, "key", kf.default)
   end
 
   # a map's wire keys ascend; a key below the one before it is DESCENDING
@@ -3080,7 +3138,11 @@ defmodule Bench.Table do
 
       {v, report} =
         if f.elem_kind == 13 do
-          {v, elem_report} = read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+          {v, elem_report} =
+            carry_count_report(report, fn ->
+              read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+            end)
+
           {v, merge_report(report, elem_report)}
         else
           case read_list_elements(item, elem, 1, nodes, ids, [], report) do
@@ -3105,6 +3167,24 @@ defmodule Bench.Table do
     else
       _ -> {:cont, acc, %{report | malformed: true}}
     end
+  end
+
+  # Storage refusal is terminal and distinct from body damage. Bounded arrays
+  # keep their declared clamp contract; unbounded extents must fit int32.
+  defp check_wire_count(n, f, report) do
+    if n > 0x7FFFFFFF and not Map.has_key?(f, :max_count),
+      do: throw({:count_over_extent_cap, report})
+
+    :ok
+  end
+
+  # Nested plain reads start their own counters. Fold their terminal report
+  # into the enclosing read exactly where a successful child would be folded.
+  defp carry_count_report(report, fun) do
+    fun.()
+  catch
+    {:count_over_extent_cap, child} ->
+      throw({:count_over_extent_cap, merge_report(report, child)})
   end
 
   # a count past a bounded array's declared bound reads the first bound
@@ -3176,17 +3256,26 @@ defmodule Bench.Table do
         sub = binary_part(body, 0, len)
         after_sub = binary_part(body, len, byte_size(body) - len)
 
-        {value, elem_report} = read_element(Map.fetch!(@tables, f.elem), sub, nodes, ids)
+        desc = Map.fetch!(@tables, f.elem)
 
-        read_list_elements(
-          f,
-          after_sub,
-          n - 1,
-          nodes,
-          ids,
-          [value | acc],
-          merge_report(report, elem_report)
-        )
+        if Map.get(f, :map_entry, false) and not map_entry_admitted?(desc, sub, acc, nodes, ids) do
+          {Enum.reverse(acc), %{report | malformed: true}}
+        else
+          {value, elem_report} =
+            carry_count_report(report, fn ->
+              read_element(Map.fetch!(@tables, f.elem), sub, nodes, ids)
+            end)
+
+          read_list_elements(
+            f,
+            after_sub,
+            n - 1,
+            nodes,
+            ids,
+            [value | acc],
+            merge_report(report, elem_report)
+          )
+        end
 
       _ ->
         # the element's L framing is damaged: the walk stops, one malformed
@@ -4165,31 +4254,45 @@ defmodule Bench.Table do
     {value, _seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
                                                                  {value, seen, report} ->
-        if String.starts_with?(k, "&") do
-          Process.put(:elixir_json_bad, true)
-          {value, seen, %{report | malformed: true}}
+        if report.malformed or Process.get(:elixir_json_bad, false) do
+          {value, seen, report}
         else
-          case Enum.find(desc.fields, fn f -> f.json == k end) do
-            nil ->
-              json_skip_value(raw)
-              {value, seen, %{report | unknown: report.unknown + 1}}
+          if String.starts_with?(k, "&") do
+            Process.put(:elixir_json_bad, true)
+            {value, seen, %{report | malformed: true}}
+          else
+            case Enum.find(desc.fields, fn f -> f.json == k end) do
+              nil ->
+                json_skip_value(raw)
+                {value, seen, %{report | unknown: report.unknown + 1}}
 
-            f ->
-              report =
-                if MapSet.member?(seen, f.name) do
-                  Map.update(report, :duplicate, 1, &(&1 + 1))
+              f ->
+                report =
+                  if MapSet.member?(seen, f.name) do
+                    Map.update(report, :duplicate, 1, &(&1 + 1))
+                  else
+                    report
+                  end
+
+                seen = MapSet.put(seen, f.name)
+
+                if Map.get(f, :optional, false) and raw == nil do
+                  {Map.delete(value, f.name), seen, report}
                 else
-                  report
+                  case json_read_field(f, raw, report) do
+                    {:skip, report} ->
+                      value =
+                        if Map.get(f, :optional, false),
+                          do: Map.put_new(value, f.name, json_present_default(f)),
+                          else: value
+
+                      {value, seen, report}
+
+                    {v, report} ->
+                      {Map.put(value, f.name, v), seen, report}
+                  end
                 end
-
-              seen = MapSet.put(seen, f.name)
-
-              if Map.get(f, :optional, false) and raw == nil do
-                {Map.delete(value, f.name), seen, report}
-              else
-                {v, report} = json_read_field(f, raw, report)
-                {Map.put(value, f.name, v), seen, report}
-              end
+            end
           end
         end
       end)
@@ -4227,6 +4330,22 @@ defmodule Bench.Table do
   # a JSON number with a fraction or an exponent arrives as its decimal text
   # (json_number below): a fixed-point field reads that text exactly (§3,
   # §4.12), every other field reads it as the double it spells (§16.2).
+  # Wide integers accept integral decimal/exponent tokens without a double.
+  defp json_read_field(%{t: :int, width: 16} = f, {:decimal, _} = raw, report)
+       when not is_map_key(f, :frac) do
+    case fixed_raw(raw, 0) do
+      {:ok, value} -> clamp_json_int(value, f, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_field(%{t: :float, width: 4} = f, {:decimal, _} = raw, report) do
+    case json_decimal_f32(raw) do
+      {:ok, value} -> json_read_field(f, value, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
   defp json_read_field(f, {:decimal, _} = raw, report) when not is_map_key(f, :frac),
     do: json_read_field(f, json_decimal_float(raw), report)
 
@@ -4244,7 +4363,7 @@ defmodule Bench.Table do
 
   defp json_read_field(%{t: :string}, raw, report) do
     json_skip_value(raw)
-    {"", %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :enum} = f, raw, report) when is_binary(raw) do
@@ -4253,18 +4372,24 @@ defmodule Bench.Table do
     # exactly as value 0 does on the wire, and is never an unknown name.
     case raw do
       "None" ->
-        {nil, report}
+        {enum_none(f), report}
 
       _ ->
         case Map.fetch(f.by_name, raw) do
           {:ok, _id} -> {raw, report}
-          :error -> {nil, %{report | unknown: report.unknown + 1}}
+          :error -> {enum_none(f), %{report | unknown: report.unknown + 1}}
         end
     end
   end
 
   # a union field reads one arm object (docs/SPEC-TABLES.md §2.6, §16.2)
-  defp json_read_field(%{t: :union} = f, raw, report), do: json_read_arm(f.elem, raw, report)
+  defp json_read_field(%{t: :union} = f, {:obj, _} = raw, report),
+    do: json_read_arm(f.elem, raw, report)
+
+  defp json_read_field(%{t: :union}, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
 
   # wstring(N) (docs/SPEC-TABLES.md §3, §16.2): the text is UTF-8; past N
   # UTF-16 code units it clamps and counts.
@@ -4273,7 +4398,17 @@ defmodule Bench.Table do
     units = utf16(raw)
 
     if div(byte_size(units), 2) > f.size do
+      # A clamp keeps a code-point prefix, never half of a surrogate pair.
       cut = binary_part(units, 0, f.size * 2)
+      size = byte_size(cut)
+
+      cut =
+        if size > 0 do
+          <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
+          if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
+        else
+          cut
+        end
 
       {:unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
        %{report | clamped: report.clamped + 1}}
@@ -4282,34 +4417,45 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_field(%{t: :wstring} = f, raw, report) do
+  defp json_read_field(%{t: :wstring}, raw, report) do
     json_skip_value(raw)
-    {Map.get(f, :default, ""), %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   # an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2, §16.2) is an object
   # keyed by variant name; a name the key enum does not have counts unknown.
   defp json_read_field(%{t: :keyed} = f, {:obj, pairs}, report) do
-    Enum.reduce(pairs, {%{}, report}, fn {name, input}, {acc, report} ->
-      if Map.has_key?(f.key_ids, name) do
-        # a repeated slot name is counted and the last occurrence wins (§16.2)
-        report =
-          if Map.has_key?(acc, name),
-            do: Map.update(report, :duplicate, 1, &(&1 + 1)),
-            else: report
+    {values, _seen, report} =
+      Enum.reduce(pairs, {%{}, MapSet.new(), report}, fn {name, input}, {acc, seen, report} ->
+        if report.malformed or Process.get(:elixir_json_bad, false) do
+          {acc, seen, report}
+        else
+          if Map.has_key?(f.key_ids, name) do
+            # A rejected occurrence is still a seen slot, but cannot replace it.
+            report =
+              if MapSet.member?(seen, name),
+                do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+                else: report
 
-        {v, report} = json_read_field(f.item, input, report)
-        {Map.put(acc, name, v), report}
-      else
-        json_skip_value(input)
-        {acc, %{report | unknown: report.unknown + 1}}
-      end
-    end)
+            seen = MapSet.put(seen, name)
+
+            case json_read_field(f.item, input, report) do
+              {:skip, report} -> {acc, seen, report}
+              {v, report} -> {Map.put(acc, name, v), seen, report}
+            end
+          else
+            json_skip_value(input)
+            {acc, seen, %{report | unknown: report.unknown + 1}}
+          end
+        end
+      end)
+
+    {values, report}
   end
 
   defp json_read_field(%{t: :keyed}, raw, report) do
     json_skip_value(raw)
-    {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   # a flags mask (docs/SPEC-TABLES.md §3, §16.2) is the list of its set names;
@@ -4323,9 +4469,9 @@ defmodule Bench.Table do
     end)
   end
 
-  defp json_read_field(%{t: :int, flags: _} = f, raw, report) do
+  defp json_read_field(%{t: :int, flags: _}, raw, report) do
     json_skip_value(raw)
-    {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   # a fixed-point field (docs/SPEC-TABLES.md §3, §4.12) stores the exact
@@ -4338,13 +4484,13 @@ defmodule Bench.Table do
 
       :error ->
         json_skip_value(raw)
-        {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
 
   defp json_read_field(%{t: :enum}, raw, report) do
     json_skip_value(raw)
-    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :int} = f, raw, report) when is_integer(raw) do
@@ -4355,26 +4501,26 @@ defmodule Bench.Table do
     if Float.floor(raw) == raw do
       clamp_json_int(trunc(raw), f, report)
     else
-      {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+      {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
 
-  defp json_read_field(%{t: :int} = f, raw, report) do
+  defp json_read_field(%{t: :int}, raw, report) do
     json_skip_value(raw)
-    {Map.get(f, :default, 0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}
 
-  defp json_read_field(%{t: :bool} = f, raw, report) do
+  defp json_read_field(%{t: :bool}, raw, report) do
     json_skip_value(raw)
-    {Map.get(f, :default, false), %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :blob, blob: :bytes}, raw, report) when is_binary(raw) do
     case json_decode_base64(raw) do
       {:ok, bytes} -> {bytes, report}
-      :error -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
 
@@ -4385,7 +4531,7 @@ defmodule Bench.Table do
 
   defp json_read_field(%{t: :blob}, raw, report) do
     json_skip_value(raw)
-    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :bytes} = f, raw, report) when is_binary(raw) do
@@ -4397,13 +4543,13 @@ defmodule Bench.Table do
         {binary_part(bytes, 0, f.size), %{report | clamped: report.clamped + 1}}
 
       :error ->
-        {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
 
-  defp json_read_field(%{t: :bytes} = f, raw, report) do
+  defp json_read_field(%{t: :bytes}, raw, report) do
     json_skip_value(raw)
-    {Map.get(f, :default, <<>>), %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :table} = f, {:obj, pairs}, report) do
@@ -4411,37 +4557,53 @@ defmodule Bench.Table do
     {v, merge_report(report, elem_report)}
   end
 
-  # a map (docs/SPEC-TABLES.md §2.8, §16.2) is an object keyed by the key's
-  # text; entries read in the map's own ascending key order, the order the
-  # writer emits, so a "&node" defined under one key and named under a later
-  # one resolves the way the document spells it.
+  # A map reads entries in input order, so node labels keep their document
+  # meaning. Its writer sorts the admitted keys. Each occurrence is a fresh
+  # entry: a rejected value leaves that entry's default, replacing a duplicate.
   defp json_read_field(%{t: :map} = f, {:obj, pairs}, report) do
-    value_field = Map.fetch!(@tables, f.elem).fields |> Enum.at(1)
+    [key_field, value_field | _] = Map.fetch!(@tables, f.elem).fields
 
-    pairs
-    |> Enum.sort_by(fn {key, _} -> map_sort_key(f, key) end)
-    |> Enum.reduce({%{}, report}, fn {key, input}, {acc, report} ->
-      # a map key is a JSON string whatever its kind, bound for text storage
+    Enum.reduce_while(pairs, {%{}, report}, fn {key, input}, {acc, report} ->
       report = json_text_zero(f, key, report)
-      # a repeated key is counted and the last occurrence wins (§2.8)
-      report =
-        if Map.has_key?(acc, key),
-          do: Map.update(report, :duplicate, 1, &(&1 + 1)),
-          else: report
 
-      {value, report} = json_read_field(value_field, input, report)
-      {Map.put(acc, key, value), report}
+      if report.malformed do
+        {:halt, {acc, report}}
+      else
+        case json_map_key(key_field, key) do
+          {:ok, identity} ->
+            {value, report} = json_map_value(value_field, input, report)
+
+            if report.malformed or Process.get(:elixir_json_bad, false) do
+              {:halt, {acc, report}}
+            else
+              report =
+                if Map.has_key?(acc, identity),
+                  do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+                  else: report
+
+              {:cont, {Map.put(acc, identity, value), report}}
+            end
+
+          {:skip, counter} ->
+            json_skip_value(input)
+            {:cont, {acc, Map.update!(report, counter, &(&1 + 1))}}
+
+          :malformed ->
+            Process.put(:elixir_json_bad, true)
+            {:halt, {acc, %{report | malformed: true}}}
+        end
+      end
     end)
   end
 
   defp json_read_field(%{t: :map}, raw, report) do
     json_skip_value(raw)
-    {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :table}, raw, report) do
     json_skip_value(raw)
-    {%{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :pointer} = _f, nil, report), do: {nil, report}
@@ -4452,13 +4614,13 @@ defmodule Bench.Table do
 
   defp json_read_field(%{t: :pointer}, raw, report) do
     json_skip_value(raw)
-    {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :float} = f, raw, report) when is_number(raw) do
     case json_float_in_width(raw, f.width) do
       :error ->
-        {Map.get(f, :default, 0.0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
       {:ok, v} ->
         case f do
@@ -4474,9 +4636,9 @@ defmodule Bench.Table do
     end
   end
 
-  defp json_read_field(%{t: :float} = f, raw, report) do
+  defp json_read_field(%{t: :float}, raw, report) do
     json_skip_value(raw)
-    {Map.get(f, :default, 0.0), %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
@@ -4484,17 +4646,21 @@ defmodule Bench.Table do
 
     {elems, _placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
-        if bound > 0 and placed >= bound do
-          json_skip_value(e)
-          {acc, placed, %{report | clamped: report.clamped + 1}}
+        if report.malformed or Process.get(:elixir_json_bad, false) do
+          {acc, placed, report}
         else
-          case json_read_list_elem(f, e, report) do
-            {:skip, report} ->
-              json_skip_value(e)
-              {acc, placed + 1, report}
+          if bound > 0 and placed >= bound do
+            json_skip_value(e)
+            {acc, placed, %{report | clamped: report.clamped + 1}}
+          else
+            case json_read_list_elem(f, e, report) do
+              {:skip, report} ->
+                json_skip_value(e)
+                {[json_element_default(f) | acc], placed + 1, report}
 
-            {v, report} ->
-              {[v | acc], placed + 1, report}
+              {v, report} ->
+                {[v | acc], placed + 1, report}
+            end
           end
         end
       end)
@@ -4504,8 +4670,86 @@ defmodule Bench.Table do
 
   defp json_read_field(%{t: :list}, raw, report) do
     json_skip_value(raw)
-    {[], %{report | kind_mismatch: report.kind_mismatch + 1}}
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
+
+  # Map values enter their field reader directly. A wrong JSON shape is
+  # malformed here; an inexact number is an accepted default-valued entry.
+  defp json_map_value(f, raw, report) do
+    shape =
+      case f do
+        %{t: :int, flags: _} -> is_list(raw)
+        %{t: kind} when kind in [:string, :wstring, :bytes, :blob, :enum] -> is_binary(raw)
+        %{t: :bool} -> is_boolean(raw)
+        %{t: kind} when kind in [:int, :float] -> is_number(raw) or match?({:decimal, _}, raw)
+        %{t: :list} -> is_list(raw)
+        _ -> match?({:obj, _}, raw)
+      end
+
+    cond do
+      raw == nil and (Map.get(f, :optional, false) or f.t in [:pointer, :blob]) ->
+        {nil, report}
+
+      shape ->
+        case json_read_field(f, raw, report) do
+          {:skip, report} -> {json_present_default(f), report}
+          pair -> pair
+        end
+
+      true ->
+        Process.put(:elixir_json_bad, true)
+        {nil, %{report | malformed: true}}
+    end
+  end
+
+  # A map key is an identity: reject, never clamp it into another key.
+  # The text key scanner's shared capacity is 255 decoded UTF-8 bytes.
+  defp json_map_key(field, key) do
+    cond do
+      field.t == :string ->
+        if byte_size(key) > min(field.size, 255), do: {:skip, :clamped}, else: {:ok, key}
+
+      byte_size(key) > 255 ->
+        {:skip, :kind_mismatch}
+
+      true ->
+        case json_number(key) do
+          {:ok, raw, ""} ->
+            case fixed_raw(raw, 0) do
+              {:ok, value} ->
+                {lo, hi} = int_domain_bounds(field)
+
+                if value >= lo and value <= hi,
+                  do: {:ok, Integer.to_string(value)},
+                  else: {:skip, :kind_mismatch}
+
+              :error ->
+                {:skip, :kind_mismatch}
+            end
+
+          _ ->
+            :malformed
+        end
+    end
+  end
+
+  defp json_present_default(%{t: kind}) when kind in [:table, :map, :keyed], do: %{}
+  defp json_present_default(%{t: :list}), do: []
+  defp json_present_default(%{t: :enum} = f), do: enum_none(f)
+  defp json_present_default(%{t: kind}) when kind in [:pointer, :blob, :union], do: nil
+  defp json_present_default(%{t: kind}) when kind in [:string, :wstring, :bytes], do: ""
+  defp json_present_default(%{t: :bool}), do: false
+  defp json_present_default(%{t: :float}), do: 0.0
+  defp json_present_default(_f), do: 0
+
+  # Array elements are positional: a rejected element keeps its default slot.
+  defp json_element_default(%{elem_default: value}), do: value
+  defp json_element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp json_element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
+  defp json_element_default(%{elem_kind: 12}), do: ""
+  defp json_element_default(%{elem_kind: 1}), do: false
+  defp json_element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
+  defp json_element_default(_f), do: 0
 
   # json_text_zero is the one rule for a zero in text (docs/SPEC-TABLES.md
   # §16.2, "A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT"):
@@ -4621,16 +4865,13 @@ defmodule Bench.Table do
   # below it still rounds to the largest float32, which is what it stores, since
   # its nearest double is the midpoint itself and that would narrow to infinity.
   defp json_float_in_width(raw, 4) when is_integer(raw) do
-    cond do
-      abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448 -> :error
-      raw * 1.0 >= 3.4028235677973366e38 -> {:ok, 3.4028234663852886e38}
-      raw * 1.0 <= -3.4028235677973366e38 -> {:ok, -3.4028234663852886e38}
-      true -> {:ok, raw * 1.0}
-    end
+    json_ratio_f32(abs(raw), 1, if(raw < 0, do: 1, else: 0))
   end
 
   defp json_float_in_width(raw, 4) do
-    if abs(raw) >= 3.4028235677973366e38, do: :error, else: {:ok, raw * 1.0}
+    if abs(raw) >= 3.4028235677973366e38,
+      do: :error,
+      else: {:ok, json_float_narrow(raw * 1.0, 4)}
   end
 
   defp json_float_in_width(raw, _width) do
@@ -4645,6 +4886,21 @@ defmodule Bench.Table do
   defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
        do: {0, report}
+
+  defp json_read_list_elem(%{elem_kind: kind} = f, {:decimal, _} = e, report)
+       when kind in [18, 19] do
+    case fixed_raw(e, 0) do
+      {:ok, value} -> json_clamp_elem(value, f, report)
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
+
+  defp json_read_list_elem(%{elem_kind: 10}, {:decimal, _} = e, report) do
+    case json_decimal_f32(e) do
+      {:ok, value} -> {value, report}
+      :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
+  end
 
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
     do: json_read_list_elem(f, json_decimal_float(e), report)
@@ -4742,9 +4998,10 @@ defmodule Bench.Table do
           before = report.kind_mismatch
           {v, report} = json_read_field(a, input, report)
 
-          if report.kind_mismatch > before and a.t not in [:table, :list, :union, :keyed],
-            do: {nil, report},
-            else: {{name, v}, report}
+          if v == :skip or
+               (report.kind_mismatch > before and a.t not in [:table, :list, :union, :keyed]),
+             do: {nil, report},
+             else: {{name, v}, report}
         end
     end
   end
@@ -5003,8 +5260,24 @@ defmodule Bench.Table do
              {:ok, hc} <- hex_digit(c),
              {:ok, hd} <- hex_digit(d) do
           code = ha * 4096 + hb * 256 + hc * 16 + hd
-          point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
-          json_string(r, [<<point::utf8>> | acc])
+
+          case r do
+            <<"\\u", e, f, g, h, tail::binary>> when code in 0xD800..0xDBFF ->
+              with {:ok, he} <- hex_digit(e),
+                   {:ok, hf} <- hex_digit(f),
+                   {:ok, hg} <- hex_digit(g),
+                   {:ok, hh} <- hex_digit(h),
+                   low when low in 0xDC00..0xDFFF <- he * 4096 + hf * 256 + hg * 16 + hh do
+                point = 0x10000 + (code - 0xD800) * 1024 + low - 0xDC00
+                json_string(tail, [<<point::utf8>> | acc])
+              else
+                _ -> json_string(r, [<<0xFFFD::utf8>> | acc])
+              end
+
+            _ ->
+              point = if code in 0xD800..0xDFFF, do: 0xFFFD, else: code
+              json_string(r, [<<point::utf8>> | acc])
+          end
         else
           _ -> :error
         end
@@ -5116,6 +5389,62 @@ defmodule Bench.Table do
 
   defp json_digits(<<c, rest::binary>>, acc) when c in ?0..?9, do: json_digits(rest, [c | acc])
   defp json_digits(rest, acc), do: {:ok, acc |> Enum.reverse() |> IO.iodata_to_binary(), rest}
+
+  # Round a decimal directly to binary32. Going through binary64 first loses
+  # which side of a binary32 halfway point an exact decimal token occupies.
+  defp json_decimal_f32({:decimal, token}) do
+    [mantissa | exponent] = String.split(token, ~r/[eE]/, parts: 2)
+    power = if exponent == [], do: 0, else: String.to_integer(hd(exponent))
+    sign = if String.starts_with?(mantissa, "-"), do: 1, else: 0
+    [whole | tail] = String.split(String.trim_leading(mantissa, "-"), ".", parts: 2)
+    fraction = if tail == [], do: "", else: hd(tail)
+    digits = String.trim_leading(whole <> fraction, "0")
+    shift = power - byte_size(fraction)
+    order = byte_size(digits) + shift
+
+    cond do
+      digits == "" or order < -50 ->
+        json_f32_bits(sign <<< 31)
+
+      order > 40 ->
+        :error
+
+      true ->
+        n = String.to_integer(digits)
+
+        {n, d} =
+          if shift >= 0,
+            do: {n * Integer.pow(10, shift), 1},
+            else: {n, Integer.pow(10, -shift)}
+
+        json_ratio_f32(n, d, sign)
+    end
+  end
+
+  # Both integer and decimal tokens use exact rounding, so a large integer
+  # one unit away from a binary32 midpoint cannot lose that unit in binary64.
+  defp json_ratio_f32(n, d, sign) do
+    e = byte_size(Integer.to_string(n, 2)) - byte_size(Integer.to_string(d, 2))
+    below = if e >= 0, do: n < d <<< e, else: n <<< -e < d
+    e = max(if(below, do: e - 1, else: e), -126)
+    scale = 23 - e
+    {n, d} = if scale >= 0, do: {n <<< scale, d}, else: {n, d <<< -scale}
+    q = div(n, d)
+    twice = rem(n, d) * 2
+    q = if twice > d or (twice == d and rem(q, 2) == 1), do: q + 1, else: q
+    {q, e} = if q == 1 <<< 24, do: {q >>> 1, e + 1}, else: {q, e}
+
+    cond do
+      e > 127 -> :error
+      q < 1 <<< 23 -> json_f32_bits(sign <<< 31 ||| q)
+      true -> json_f32_bits(sign <<< 31 ||| (e + 127) <<< 23 ||| q - (1 <<< 23))
+    end
+  end
+
+  defp json_f32_bits(bits) do
+    <<value::float-32>> = <<bits::unsigned-32>>
+    {:ok, value}
+  end
 
   # json_decimal_float is the double a decimal text spells; one past the
   # double's range is :overflow_float, which no field accepts (§16.2).
@@ -5896,7 +6225,8 @@ defmodule Bench.Table do
 
   defp cook_union(_union, _f, _v, _at, _index, _order, _buf), do: throw(:invalid)
 
-  defp cook_ord(%{ords: _ords}, nil), do: 0
+  # Optional enums distinguish absent nil from the present reserved None variant.
+  defp cook_ord(%{ords: _ords}, v) when v in [nil, "None"], do: 0
 
   defp cook_ord(%{ords: ords}, v) when is_binary(v) do
     case Map.fetch(ords, v) do
@@ -6026,17 +6356,6 @@ defmodule Bench.Table do
               end)
 
             report = Map.put(report, :blob_shared, shared)
-            report = if :malformed in nodes, do: %{report | malformed: true}, else: report
-            # an unknown NODE RECORD whose type id this reader cannot name is an
-            # excluded class (§6.6): one retain_lost, counted once at the record
-            unknown = Enum.count(nodes, &(&1 == :unknown))
-
-            report = %{
-              report
-              | unknown: report.unknown + unknown,
-                retain_lost: report.retain_lost + unknown
-            }
-
             # the records were kept newest first; they are saved in the order
             # retained
             retain = %{Map.delete(retain, :memo) | records: Enum.reverse(retain.records)}
@@ -6056,6 +6375,10 @@ defmodule Bench.Table do
         end
     end
   catch
+    {:count_over_extent_cap, refused_report} ->
+      {:error, :count_over_extent_cap, reasoned(refused_report, :count_over_extent_cap),
+       %{retain | records: [], used: 0, ids: []}}
+
     # a NaN or an infinity refuses the retaining read as it does the plain one
     # (docs/SPEC-TABLES.md §3.3): nothing lands and nothing is retained
     {:non_finite_float, name} ->
@@ -6263,7 +6586,7 @@ defmodule Bench.Table do
   end
 
   defp keyed_elem_retain(item, v, {idx_map, ids, order, retain, report} = s, _path) do
-    if v == item.default do
+    if same_field?(item, v, item.default) do
       {:elide, s}
     else
       {elem, ids, order} = emit_element(item, v, idx_map, ids, order)
@@ -6464,9 +6787,12 @@ defmodule Bench.Table do
 
     with {_len, <<13, count_rest::binary>>} <- leb(payload),
          {n, elems} <- leb(count_rest) do
+      check_wire_count(n, f, report)
+      {n, report} = clamp_count(n, f, report)
+
       {value, report, retain} =
         read_elements_retain(
-          Map.fetch!(@tables, f.elem),
+          Map.put(Map.fetch!(@tables, f.elem), :map_entry, Map.get(f, :map_entry, false)),
           elems,
           n,
           nodes,
@@ -6498,6 +6824,8 @@ defmodule Bench.Table do
        ) do
     with {_len, <<17, count_rest::binary>>} <- leb(payload),
          {n, elems} <- leb(count_rest) do
+      check_wire_count(n, f, report)
+      {n, report} = clamp_count(n, f, report)
       {value, report, retain} = read_pointers_retain(f, elems, n, nodes, ids, [], report, retain)
       clamp_retain(value, f, report, retain)
     else
@@ -6564,7 +6892,15 @@ defmodule Bench.Table do
   # field is whole, because a key written twice is the later entry's (§2.8)
   # and its slot is the address a save walks (§6.6).
   defp read_payload_retain(%{t: :map} = f, payload, nodes, ids, report, retain, path) do
-    case read_payload_retain(%{f | t: :list}, payload, nodes, ids, report, retain, path) do
+    case read_payload_retain(
+           Map.put(%{f | t: :list}, :map_entry, true),
+           payload,
+           nodes,
+           ids,
+           report,
+           retain,
+           path
+         ) do
       {:cont, entries, report, retain} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
         # DESCENDING keys are not a map any conforming writer produced: damage,
@@ -6632,7 +6968,7 @@ defmodule Bench.Table do
   defp read_payload_retain(%{t: :enum} = f, payload, _nodes, ids, report, retain, _path) do
     case leb(payload) do
       {0, _} ->
-        {:cont, nil, report, retain}
+        {:cont, enum_none(f), report, retain}
 
       {vref, _} ->
         case resolve(ids, vref) do
@@ -6648,7 +6984,7 @@ defmodule Bench.Table do
                 # an unknown ENUM variant in a KNOWN field is excluded (§6.6):
                 # the field is the reader's, so it is reported as loss, never
                 # retained silently.
-                {:cont, nil,
+                {:cont, enum_none(f),
                  %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
                  retain}
             end
@@ -6833,7 +7169,11 @@ defmodule Bench.Table do
 
   defp read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
     if f.elem_kind == 13 do
-      {v, elem_report} = read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+      {v, elem_report} =
+        carry_count_report(report, fn ->
+          read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+        end)
+
       {v, merge_report(report, elem_report)}
     else
       case read_list_elements(item, elem, 1, nodes, ids, [], report) do
@@ -6882,12 +7222,12 @@ defmodule Bench.Table do
     do: {node_value(nodes, idx, ids), report, retain}
 
   defp decode_directory_retain(desc, fields, nodes, ids, retain, report) do
-    {root, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
+    report = directory_report(nodes, report, true)
 
     {records, report, retain} =
       nodes
       |> Enum.with_index(2)
-      |> Enum.reduce({%{1 => root}, report, retain}, fn
+      |> Enum.reduce({%{}, report, retain}, fn
         {{:table, name, body}, idx}, {records, report, retain} ->
           {node_desc, node_fields} = decoded_fields(name, body, ids)
 
@@ -6903,6 +7243,8 @@ defmodule Bench.Table do
           state
       end)
 
+    {root, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
+    records = Map.put(records, 1, root)
     value = if report.malformed, do: %{}, else: assemble_directory(records)
     {value, report, retain}
   end
@@ -6916,21 +7258,26 @@ defmodule Bench.Table do
         sub = binary_part(body, 0, len)
         after_sub = binary_part(body, len, byte_size(body) - len)
 
-        {value, report, retain} =
-          read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
+        if Map.get(desc, :map_entry, false) and
+             not map_entry_admitted?(desc, sub, acc, nodes, ids) do
+          {Enum.reverse(acc), %{report | malformed: true}, retain}
+        else
+          {value, report, retain} =
+            read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
 
-        read_elements_retain(
-          desc,
-          after_sub,
-          n - 1,
-          nodes,
-          ids,
-          [value | acc],
-          report,
-          retain,
-          ordinal,
-          path
-        )
+          read_elements_retain(
+            desc,
+            after_sub,
+            n - 1,
+            nodes,
+            ids,
+            [value | acc],
+            report,
+            retain,
+            ordinal,
+            path
+          )
+        end
 
       _ ->
         {Enum.reverse(acc), %{report | malformed: true}, retain}
