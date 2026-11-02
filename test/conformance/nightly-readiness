@@ -295,7 +295,7 @@ def fuzz_result(text, arm, seed, lang=""):
         errors.append("wire roster or finite-value exemption was reported")
     if arm != "retain" and "seeds outside the arm" in text:
         errors.append("plain wire-fuzz unexpectedly excluded seeds")
-    prefix = "wire-fuzz" + ("-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
+    prefix = "wire-fuzz" + ("-mixed-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
     pattern = (r"^" + re.escape(prefix) + r": seed (\d+), (\d+) seeds over (\d+) roots"
                r"(?:, \d+ seeds outside the arm)?, (\d+) enumerated \+ (\d+) random = "
                r"(\d+) mutants, 0 divergences, [0-9.]+ s, [0-9.]+ mutants/s$")
@@ -555,10 +555,10 @@ def run_fuzz(runner, lang):
                     "--driver", driver_command(runner.root, lang),
                     "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
                     "--failed", str(runner.out / (name + ".bin"))]
-            # Dart exposes the mutable builder load; its count-cap verdict
-            # follows Decode, not the immutable region-measure profile.
+            # Dart uses mutable variable-file loads, with the full fixed/message
+            # roster still exercising its existing form-specific readers.
             if lang == "dart":
-                args.append("--builder")
+                args.append("--mixed-builder")
             if arm == "retain":
                 args.append("--retain")
             # No --finite-owed, absent-root exclusion, replay-only pass or custom

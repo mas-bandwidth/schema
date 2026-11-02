@@ -47,6 +47,11 @@ fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
 already run in their complete packages, without the legacy filtered targets'
 600-second or 20-minute suite limits.
 
+Dart's six wire phases use `--mixed-builder`: variable-file roots use the
+mutable reader oracle, while fixed and message roots keep their existing
+oracles in the full plain roster. The variable-only `--builder` summary is
+rejected; only the retaining arm may report seeds outside its retention domain.
+
 Wire controls are the existing `tables[-<lang>]-wire-fuzz-negative-control`
 targets, with C#'s pack control and Elixir's refusal control. Retention controls
 are C++'s retaining differential pair; C's dropped retained field; C#'s
