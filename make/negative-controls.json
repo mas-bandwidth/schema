@@ -853,7 +853,9 @@
         "conformance-rust-absent-negative-control",
         "conformance-negative-control-rust-framing",
         "tables-rust-finite-float-negative-control",
-        "tables-rust-cook-map-negative-control"
+        "tables-rust-cook-map-negative-control",
+        "tables-rust-discard-negative-control",
+        "tables-rust-fixed-discard-negative-control"
       ],
       "rust": "stable"
     },
