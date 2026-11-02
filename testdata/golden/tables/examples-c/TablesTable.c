@@ -325,9 +325,11 @@ static SCHEMA_UNUSED char tabledemo_table_json_shape( const tabledemo_table_fiel
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
     if ( tabledemo_table_json_is_enum( f ) ) { return 's'; }
     if ( tabledemo_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -337,9 +339,11 @@ static SCHEMA_UNUSED char tabledemo_table_json_element_shape( const tabledemo_ta
 {
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }
     if ( tabledemo_table_json_is_enum( f ) ) { return 's'; }
     if ( tabledemo_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -714,6 +718,57 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_float( tabledemo_table_json_
     return 1;
 }
 
+static SCHEMA_UNUSED void schema_tabledemo_table_json_civil_from_days_( int64_t z, int * year, int * month, int * day )
+{
+    int64_t era, doe, yoe, y, doy, mp, d, m;
+    z += 719468;
+    era = ( z >= 0 ? z : z - 146096 ) / 146097;
+    doe = z - era * 146097;
+    yoe = ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;
+    y = yoe + era * 400;
+    doy = doe - ( 365 * yoe + yoe / 4 - yoe / 100 );
+    mp = ( 5 * doy + 2 ) / 153;
+    d = doy - ( 153 * mp + 2 ) / 5 + 1;
+    m = mp < 10 ? mp + 3 : mp - 9;
+    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
+    *month = (int) m;
+    *day = (int) d;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_write_timestamp_( tabledemo_table_json_out_t * out, const void * storage )
+{
+    int64_t nanos = 0, seconds, fraction, days, second_of_day;
+    int year = 0, month = 0, day = 0, hour, minute, second, length;
+    char text[48];
+    memcpy( &nanos, storage, sizeof( nanos ) );
+    seconds = nanos / 1000000000;
+    fraction = nanos % 1000000000;
+    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    days = seconds / 86400;
+    second_of_day = seconds % 86400;
+    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    schema_tabledemo_table_json_civil_from_days_( days, &year, &month, &day );
+    hour = (int) ( second_of_day / 3600 );
+    minute = (int) ( ( second_of_day / 60 ) % 60 );
+    second = (int) ( second_of_day % 60 );
+    length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
+    if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
+    tabledemo_table_json_put( out, '"' );
+    tabledemo_table_json_raw( out, text, length );
+    if ( fraction != 0 )
+    {
+        char digits[32];
+        int placed = 9;
+        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        while ( placed > 1 && digits[placed - 1] == '0' ) { placed--; }
+        tabledemo_table_json_put( out, '.' );
+        tabledemo_table_json_raw( out, digits, placed );
+    }
+    tabledemo_table_json_put( out, 'Z' );
+    tabledemo_table_json_put( out, '"' );
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_write_value( tabledemo_table_json_out_t * out, const void * base, const tabledemo_table_type_info_t * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
@@ -834,6 +889,8 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
             memcpy( &v, storage, sizeof( v ) );
             return tabledemo_table_json_write_float( out, v, 0 );
         }
+        case 36:
+            return schema_tabledemo_table_json_write_timestamp_( out, storage );
         case 2: case 3: case 4: case 5:
             tabledemo_table_json_write_signed( out, tabledemo_table_json_get_signed( storage, f->elem_size ) );
             return 1;
@@ -952,6 +1009,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_fields( tabledemo_table_json
 static SCHEMA_UNUSED int tabledemo_table_json_write_value( tabledemo_table_json_out_t * out, const void * base, const tabledemo_table_type_info_t * info, int32_t depth )
 {
     int any = 0;
+    if ( info->json_array && info->num_fields == 1 ) { return tabledemo_table_json_write_field( out, base, &info->fields[0], depth ); }
     if ( !tabledemo_table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
     if ( !any ) { tabledemo_table_json_raw(out,"{}",2); return 1; }
     tabledemo_table_json_line(out,depth); tabledemo_table_json_put(out,'}'); return 1;
@@ -1783,6 +1841,157 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list(tabledemo_table_json_in_
 static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t * in,void * storage,const tabledemo_table_field_info_t * f,int32_t depth);
 #endif
 #endif
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_digit_( char c )
+{
+    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_leap_( int year )
+{
+    return year % 4 == 0 && ( year % 100 != 0 || year % 400 == 0 );
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_month_days_( int year, int month )
+{
+    switch ( month )
+    {
+        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
+        case 4: case 6: case 9: case 11: return 30;
+        case 2: return schema_tabledemo_table_json_timestamp_leap_( year ) ? 29 : 28;
+    }
+    return 0;
+}
+
+static SCHEMA_UNUSED int64_t schema_tabledemo_table_json_timestamp_days_( int year, int month, int day )
+{
+    int64_t y = (int64_t) year;
+    const int64_t m = (int64_t) month;
+    int64_t era, year_of_era, month_of_year, day_of_year, day_of_era;
+    if ( m <= 2 ) { y--; }
+    era = y / 400;
+    if ( y < 0 && y % 400 != 0 ) { era--; }
+    year_of_era = y - era * 400;
+    month_of_year = m + 9;
+    if ( m > 2 ) { month_of_year = m - 3; }
+    day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    return era * 146097 + day_of_era - 719468;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_parse_( tabledemo_table_json_in_t * in, int64_t * out )
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0, digits = 0, offset_sign = 0, offset_hour = 0, offset_minute = 0, phase = 0;
+    int64_t fraction = 0, offset, seconds;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    uint64_t total;
+    if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    in->pos++;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        char c;
+        if ( !tabledemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( unit_length == 0 ) { break; }
+        if ( unit_length != 1 ) { return 0; }
+        c = unit[0];
+        if ( phase == 0 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return 0; } }
+            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return 0; } }
+            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return 0; } }
+            else
+            {
+                if ( digit < 0 ) { return 0; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else { second = second * 10 + digit; }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' ) { phase = 2; continue; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return 0; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 ) { if ( c != ':' ) { return 0; } phase = 7; continue; }
+        if ( phase == 7 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return 0;
+    }
+    if ( phase != 10 ) { return 0; }
+    if ( month < 1 || month > 12 ) { return 0; }
+    if ( day < 1 || day > schema_tabledemo_table_json_timestamp_month_days_( year, month ) ) { return 0; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return 0; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return 0; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    seconds = schema_tabledemo_table_json_timestamp_days_( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    if ( seconds < min_second || seconds > max_second ) { return 0; }
+    if ( seconds == min_second && fraction < min_nanos ) { return 0; }
+    if ( seconds == max_second && fraction > max_nanos ) { return 0; }
+    total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_in_t * in, void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
     char token[TABLEDEMO_K_TABLE_JSON_MAX_NUMBER];
@@ -1923,6 +2132,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
         if ( c == 't' ) { if ( !tabledemo_table_json_literal( in, "true" ) ) { return 0; } tabledemo_table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
         if ( !tabledemo_table_json_literal( in, "false" ) ) { return 0; }
         tabledemo_table_json_set_raw( storage, f->elem_size, 0 );
+        return 1;
+    }
+    if ( f->kind == 36 )
+    {
+        int64_t nanos = 0;
+        if ( !schema_tabledemo_table_json_timestamp_parse_( in, &nanos ) ) { in->bad = 1; return 0; }
+        tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
     if ( !tabledemo_table_json_scan_number( in, token, TABLEDEMO_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
@@ -2244,6 +2460,23 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
+static SCHEMA_UNUSED int schema_tabledemo_table_json_require_seen_( tabledemo_table_json_in_t * in, const void * base, const tabledemo_table_type_info_t * info, const uint64_t * seen )
+{
+    int32_t i;
+    for ( i = 0; i < info->num_fields && i < 512; i++ )
+    {
+        const tabledemo_table_field_info_t * f = &info->fields[i];
+        if ( !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !tabledemo_table_json_guard_holds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( (uint64_t) 1 << ( i & 63 ) ) ) == 0 )
+        {
+            in->report->missing_required++;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key )
 {
     /* duplicate tracking, bounded and allocation-free: a table with more
@@ -2261,7 +2494,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
         else
         {
             c = tabledemo_table_json_peek(in);
-            if ( c == '}' ) { in->pos++; return 1; }
+            if ( c == '}' ) { in->pos++; return schema_tabledemo_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
@@ -2305,8 +2538,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
             {
                 if ( !tabledemo_table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
-                   occurrence is null must not leave an earlier value standing */
-                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                   occurrence is null must not leave an earlier value standing.
+                   A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                   ENTRY table its descriptor names (docs/SPEC-TABLES.md §2.8, §16.2). */
+                if ( f->sequence == 2 ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
                 tabledemo_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
@@ -2330,7 +2566,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
         }
         c = tabledemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
-        if ( c == '}' ) { in->pos++; return 1; }
+        if ( c == '}' ) { in->pos++; return schema_tabledemo_table_json_require_seen_( in, base, info, seen ); }
         in->bad = 1;
         return 0;
     }
@@ -2340,7 +2576,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
 
 static SCHEMA_UNUSED int tabledemo_table_json_read_table( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth )
 {
-    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH || tabledemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( tabledemo_table_json_peek(in) != '[' ) { in->bad = 1; return 0; }
+        return tabledemo_table_json_read_field( in, base, &info->fields[0], depth );
+    }
+    if ( tabledemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
     return tabledemo_table_json_read_table_keys(in,base,info,depth,NULL);
 }
@@ -2350,6 +2592,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
     tabledemo_table_report_t ignored;
     tabledemo_table_json_in_t in;
     int ok;
+    int32_t missing_before;
     memset( &ignored, 0, sizeof( ignored ) );
     in.text = text;
     in.size = bytes;
@@ -2364,6 +2607,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
         return 0;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    missing_before = in.report->missing_required;
     ok = tabledemo_table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
@@ -2372,7 +2616,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = 1;
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; }
         return 0;
     }
     return 1;
@@ -2568,9 +2812,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
     in->pos++; c = tabledemo_table_json_peek(in);
     if ( c == '}' )
     {
-        in->pos++;
-        if ( tabledemo_table_json_emplace(graph,slot,f->table) == NULL ) { in->bad = 1; return 0; }
-        return 1;
+        node = tabledemo_table_json_emplace(graph,slot,f->table);
+        if ( node == NULL ) { in->bad = 1; return 0; }
+        return tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL);
     }
     if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
     key[length] = 0;
@@ -2681,10 +2925,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_graph( tabledemo_table_worker
     if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->malformed = 1; return 0; }
     info->reset(root);
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
-    ok = tabledemo_table_json_read_table(&in,root,info,0);
-    if ( ok ) { tabledemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
-    tabledemo_table_release(graph.labels.allocator,graph.labels.entries);
-    if ( in.bad || !ok ) { in.report->malformed = 1; return 0; }
+    {
+        int32_t missing_before = in.report->missing_required;
+        ok = tabledemo_table_json_read_table(&in,root,info,0);
+        if ( ok ) { tabledemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
+        tabledemo_table_release(graph.labels.allocator,graph.labels.entries);
+        if ( in.bad || !ok ) { if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; } return 0; }
+    }
     return 1;
 }
 
@@ -2822,7 +3069,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_map(tabledemo_table_json_out
             else { tabledemo_table_json_write_unsigned(out,tabledemo_table_json_get_raw(entry+key->offset,key->elem_size)); }
             tabledemo_table_json_put(out,'"');
         }
-        tabledemo_table_json_raw(out,": ",2); if(!tabledemo_table_json_write_field(out,entry,value,depth+1)) { return 0; }
+        tabledemo_table_json_raw(out,": ",2); if(value->optional && !tabledemo_table_json_get_raw(entry+value->present_offset,1)) { tabledemo_table_json_raw(out,"null",4); } else if(!tabledemo_table_json_write_field(out,entry,value,depth+1)) { return 0; }
     }
     if(map->count) { tabledemo_table_json_line(out,depth); } tabledemo_table_json_put(out,'}'); return 1;
 }
@@ -2860,9 +3107,14 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t
         if(entry!=NULL && map->count==before) { in->report->duplicate++; }
         c=tabledemo_table_json_value_shape(in);
         if(entry==NULL) { if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; } }
-        else if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
-            in->report->kind_mismatch++; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
-        } else if(!tabledemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
+        else if(value->optional && c=='z') {
+            if(!tabledemo_table_json_literal(in,"null")) { return 0; }
+        } else {
+            if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
+                in->report->kind_mismatch++; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
+            } else if(!tabledemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
+            if(value->optional) { tabledemo_table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
+        }
         c=tabledemo_table_json_peek(in); if(c==',') { in->pos++; continue; } if(c=='}') { in->pos++; return 1; }
         in->bad=1; return 0;
     }
@@ -2882,15 +3134,15 @@ static const tabledemo_table_union_info_t schema_tabledemo_weapon_config_effect_
 static const char * const schema_tabledemo_weapon_config_damage_tags_[] = { "ui_slider", "hot", "tuning" };
 static const char * const schema_tabledemo_weapon_config_tags_[] = { "designer_facing" };
 static const tabledemo_table_field_info_t schema_tabledemo_weapon_config_fields_[] = {
-    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, damage ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", 3, schema_tabledemo_weapon_config_damage_tags_, 0, NULL },
-    { "speed", "speed", "float32", 0x1733055702acb1d2ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, speed ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "penetration", "penetration", "int32", 0x4f31c5309e13e932ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, penetration ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->penetration ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "channel", "channel", "bits(6)", 0xa5013e9ad5caeda4ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, channel ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 63.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, homing ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->homing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, effect ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->effect ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_tabledemo_weapon_config_effect_variants_, 1, NULL, NULL, -1, &schema_tabledemo_weapon_config_effect_union_, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, damage ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", 3, schema_tabledemo_weapon_config_damage_tags_, 0, NULL },
+    { "speed", "speed", "float32", 0x1733055702acb1d2ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, speed ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->speed ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "penetration", "penetration", "int32", 0x4f31c5309e13e932ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, penetration ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->penetration ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "channel", "channel", "bits(6)", 0xa5013e9ad5caeda4ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, channel ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 63.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, homing ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->homing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_weapon_config_t, effect ), (uint32_t) sizeof( ( (tabledemo_weapon_config_t *) 0 )->effect ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_tabledemo_weapon_config_effect_variants_, 1, NULL, NULL, -1, &schema_tabledemo_weapon_config_effect_union_, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_weapon_config_info_ = { "WeaponConfig", (uint32_t) sizeof( tabledemo_weapon_config_t ), 6, schema_tabledemo_weapon_config_fields_, schema_tabledemo_weapon_config_reset_raw_, 0, "One weapon's tuning. A designer edits this table and nothing else.", 1, schema_tabledemo_weapon_config_tags_ };
+const tabledemo_table_type_info_t schema_tabledemo_weapon_config_info_ = { "WeaponConfig", (uint32_t) sizeof( tabledemo_weapon_config_t ), 6, schema_tabledemo_weapon_config_fields_, schema_tabledemo_weapon_config_reset_raw_, 0, "One weapon's tuning. A designer edits this table and nothing else.", 1, schema_tabledemo_weapon_config_tags_, 0 };
 
 static const tabledemo_table_variant_info_t schema_tabledemo_loadout_config_grade_variants_[] = {
     { "None", 0x0000000000000000ull },
@@ -2916,61 +3168,61 @@ static const tabledemo_table_variant_info_t schema_tabledemo_loadout_config_perk
     { "Turbo", 0 },
 };
 static const tabledemo_table_field_info_t schema_tabledemo_loadout_config_fields_[] = {
-    { "grade", "grade", "Grade", 0x32a89b2977c48ad4ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_loadout_config_t, grade ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->grade ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_loadout_config_grade_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, 1, 0, 1, 0, 4, (uint32_t) offsetof( tabledemo_loadout_config_t, grades ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->grades[0] ), (uint32_t) offsetof( tabledemo_loadout_config_t, grades_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_loadout_config_grades_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "podium", "podium", "Grade", 0xb46ff45a23d72549ull, 30, 1, 0, 0, 0, 3, (uint32_t) offsetof( tabledemo_loadout_config_t, podium ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->podium[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_loadout_config_podium_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "perks", "perks", "Perks", 0x4b06f5847096e54aull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_loadout_config_t, perks ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->perks ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_tabledemo_loadout_config_perks_variants_, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "primary", "primary", "WeaponConfig", 0xbf31137ff783e939ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_loadout_config_t, primary ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->primary ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, 1, 0, 0, 0, 2, (uint32_t) offsetof( tabledemo_loadout_config_t, backups ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->backups[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, 1, 0, 1, 0, 8, (uint32_t) offsetof( tabledemo_loadout_config_t, attachments ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->attachments[0] ), (uint32_t) offsetof( tabledemo_loadout_config_t, attachments_count ), 0xffffffffu, &schema_tabledemo_attachment_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "grade", "grade", "Grade", 0x32a89b2977c48ad4ull, 30, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_loadout_config_t, grade ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->grade ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_loadout_config_grade_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_loadout_config_t, grades ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->grades[0] ), (uint32_t) offsetof( tabledemo_loadout_config_t, grades_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_loadout_config_grades_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "podium", "podium", "Grade", 0xb46ff45a23d72549ull, 30, 1, 0, 0, 0, 0, 3, (uint32_t) offsetof( tabledemo_loadout_config_t, podium ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->podium[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_tabledemo_loadout_config_podium_variants_, 1, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "perks", "perks", "Perks", 0x4b06f5847096e54aull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_loadout_config_t, perks ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->perks ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_tabledemo_loadout_config_perks_variants_, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "primary", "primary", "WeaponConfig", 0xbf31137ff783e939ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_loadout_config_t, primary ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->primary ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, 1, 0, 0, 0, 0, 2, (uint32_t) offsetof( tabledemo_loadout_config_t, backups ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->backups[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, 1, 0, 1, 0, 0, 8, (uint32_t) offsetof( tabledemo_loadout_config_t, attachments ), (uint32_t) sizeof( ( (tabledemo_loadout_config_t *) 0 )->attachments[0] ), (uint32_t) offsetof( tabledemo_loadout_config_t, attachments_count ), 0xffffffffu, &schema_tabledemo_attachment_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_loadout_config_info_ = { "LoadoutConfig", (uint32_t) sizeof( tabledemo_loadout_config_t ), 7, schema_tabledemo_loadout_config_fields_, schema_tabledemo_loadout_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_loadout_config_info_ = { "LoadoutConfig", (uint32_t) sizeof( tabledemo_loadout_config_t ), 7, schema_tabledemo_loadout_config_fields_, schema_tabledemo_loadout_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_profile_config_fields_[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 32, (uint32_t) offsetof( tabledemo_profile_config_t, name ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->name ), (uint32_t) offsetof( tabledemo_profile_config_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "icon", "icon", "bytes", 0xdbff4cc56c2092f0ull, 6, 1, 0, 1, 0, 16, (uint32_t) offsetof( tabledemo_profile_config_t, icon ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->icon[0] ), (uint32_t) offsetof( tabledemo_profile_config_t, icon_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "experience", "experience", "uint32", 0xab8b6d521f80b969ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, experience ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->experience ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "tilt", "tilt", "int8", 0x1e5088ef2e9bafc6ull, 2, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, tilt ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->tilt ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "heading", "heading", "int16", 0xb128829190ca0f75ull, 3, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, heading ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->heading ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "timestamp", "timestamp", "int64", 0x5ddc92338ef53403ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, timestamp ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->timestamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "badge", "badge", "uint8", 0x10bda981fe095518ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, badge ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->badge ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "port", "port", "uint16", 0x8c2cdb0da8933fa6ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, port ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->port ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "epoch", "epoch", "uint64", 0xfc9697d1196e6ba6ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, epoch ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->epoch ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, precision ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->precision ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, 1, 0, 0, 0, 4, (uint32_t) offsetof( tabledemo_profile_config_t, ratings ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, has_loadout ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->has_loadout ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, loadout ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->loadout ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_loadout_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 32, (uint32_t) offsetof( tabledemo_profile_config_t, name ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->name ), (uint32_t) offsetof( tabledemo_profile_config_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "icon", "icon", "bytes", 0xdbff4cc56c2092f0ull, 6, 1, 0, 1, 0, 0, 16, (uint32_t) offsetof( tabledemo_profile_config_t, icon ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->icon[0] ), (uint32_t) offsetof( tabledemo_profile_config_t, icon_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "experience", "experience", "uint32", 0xab8b6d521f80b969ull, 8, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, experience ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->experience ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "tilt", "tilt", "int8", 0x1e5088ef2e9bafc6ull, 2, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, tilt ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->tilt ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "heading", "heading", "int16", 0xb128829190ca0f75ull, 3, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, heading ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->heading ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "timestamp", "timestamp", "int64", 0x5ddc92338ef53403ull, 5, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, timestamp ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->timestamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "badge", "badge", "uint8", 0x10bda981fe095518ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, badge ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->badge ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "port", "port", "uint16", 0x8c2cdb0da8933fa6ull, 7, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, port ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->port ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "epoch", "epoch", "uint64", 0xfc9697d1196e6ba6ull, 9, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, epoch ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->epoch ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, precision ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->precision ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, 1, 0, 0, 0, 0, 4, (uint32_t) offsetof( tabledemo_profile_config_t, ratings ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, has_loadout ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->has_loadout ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_profile_config_t, loadout ), (uint32_t) sizeof( ( (tabledemo_profile_config_t *) 0 )->loadout ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_loadout_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_profile_config_info_ = { "ProfileConfig", (uint32_t) sizeof( tabledemo_profile_config_t ), 13, schema_tabledemo_profile_config_fields_, schema_tabledemo_profile_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_profile_config_info_ = { "ProfileConfig", (uint32_t) sizeof( tabledemo_profile_config_t ), 13, schema_tabledemo_profile_config_fields_, schema_tabledemo_profile_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_root_config_fields_[] = {
-    { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, 0, 0, 1, 0, 16, (uint32_t) offsetof( tabledemo_root_config_t, version_note ), (uint32_t) sizeof( ( (tabledemo_root_config_t *) 0 )->version_note ), (uint32_t) offsetof( tabledemo_root_config_t, version_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, 1, 0, 1, 0, 8, (uint32_t) offsetof( tabledemo_root_config_t, weapons ), (uint32_t) sizeof( ( (tabledemo_root_config_t *) 0 )->weapons[0] ), (uint32_t) offsetof( tabledemo_root_config_t, weapons_count ), 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, 1, 0, 1, 0, 4, (uint32_t) offsetof( tabledemo_root_config_t, profiles ), (uint32_t) sizeof( ( (tabledemo_root_config_t *) 0 )->profiles[0] ), (uint32_t) offsetof( tabledemo_root_config_t, profiles_count ), 0xffffffffu, &schema_tabledemo_profile_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, 0, 0, 1, 0, 0, 16, (uint32_t) offsetof( tabledemo_root_config_t, version_note ), (uint32_t) sizeof( ( (tabledemo_root_config_t *) 0 )->version_note ), (uint32_t) offsetof( tabledemo_root_config_t, version_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, 1, 0, 1, 0, 0, 8, (uint32_t) offsetof( tabledemo_root_config_t, weapons ), (uint32_t) sizeof( ( (tabledemo_root_config_t *) 0 )->weapons[0] ), (uint32_t) offsetof( tabledemo_root_config_t, weapons_count ), 0xffffffffu, &schema_tabledemo_weapon_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_root_config_t, profiles ), (uint32_t) sizeof( ( (tabledemo_root_config_t *) 0 )->profiles[0] ), (uint32_t) offsetof( tabledemo_root_config_t, profiles_count ), 0xffffffffu, &schema_tabledemo_profile_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_root_config_info_ = { "RootConfig", (uint32_t) sizeof( tabledemo_root_config_t ), 3, schema_tabledemo_root_config_fields_, schema_tabledemo_root_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_root_config_info_ = { "RootConfig", (uint32_t) sizeof( tabledemo_root_config_t ), 3, schema_tabledemo_root_config_fields_, schema_tabledemo_root_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_attachment_fields_[] = {
-    { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, slot ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, power ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->power ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, slot ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_attachment_t, power ), (uint32_t) sizeof( ( (tabledemo_attachment_t *) 0 )->power ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_attachment_info_ = { "Attachment", (uint32_t) sizeof( tabledemo_attachment_t ), 2, schema_tabledemo_attachment_fields_, schema_tabledemo_attachment_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_attachment_info_ = { "Attachment", (uint32_t) sizeof( tabledemo_attachment_t ), 2, schema_tabledemo_attachment_fields_, schema_tabledemo_attachment_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_buff_fields_[] = {
-    { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_buff_t, multiplier ), (uint32_t) sizeof( ( (tabledemo_buff_t *) 0 )->multiplier ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_buff_t, multiplier ), (uint32_t) sizeof( ( (tabledemo_buff_t *) 0 )->multiplier ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_buff_info_ = { "Buff", (uint32_t) sizeof( tabledemo_buff_t ), 1, schema_tabledemo_buff_fields_, schema_tabledemo_buff_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_buff_info_ = { "Buff", (uint32_t) sizeof( tabledemo_buff_t ), 1, schema_tabledemo_buff_fields_, schema_tabledemo_buff_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const tabledemo_table_field_info_t schema_tabledemo_debuff_fields_[] = {
-    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_debuff_t, amount ), (uint32_t) sizeof( ( (tabledemo_debuff_t *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_debuff_t, amount ), (uint32_t) sizeof( ( (tabledemo_debuff_t *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_debuff_info_ = { "Debuff", (uint32_t) sizeof( tabledemo_debuff_t ), 1, schema_tabledemo_debuff_fields_, schema_tabledemo_debuff_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_debuff_info_ = { "Debuff", (uint32_t) sizeof( tabledemo_debuff_t ), 1, schema_tabledemo_debuff_fields_, schema_tabledemo_debuff_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_tabledemo_weapon_config_from_json_( tabledemo_weapon_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {

@@ -100,6 +100,23 @@ final class _TableWireCountRefusal implements Exception {
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
 final class WireState {
+  // Immutable strings may be canonicalized. Metadata belongs weakly to
+  // decoded owners; node tokens carry no payload or input-buffer references.
+  static final Expando<Map<String, ({String value, Object token})>> _stringBlobOrigins =
+      Expando<Map<String, ({String value, Object token})>>();
+
+  static Object _blobIdentity(Object blob, Object? owner, String? field) {
+    if (blob is String && owner != null && field != null) {
+      final slots = _stringBlobOrigins[owner];
+      final origin = slots?[field];
+      if (origin != null) {
+        if (identical(origin.value, blob)) return origin.token;
+        slots!.remove(field);
+      }
+    }
+    return blob;
+  }
+
   final Map<int, int> refs = <int, int>{};
   final List<int> ids = <int>[];
   final List<int> nodeTypes = <int>[];
@@ -158,15 +175,17 @@ final class WireState {
 
   // noteBlob numbers one *bytes/*string blob node (§3.1): record k = node
   // index k + 1, keyed by the blob's IDENTITY — the String or byte list the
-  // field holds — never by its content and never per slot (§2.5, §3.1). A
+  // field holds, or a decoded String slot's incoming node token (§2.5, §3.1). A
   // blob reached twice is one record, because two fields that loaded the same
   // node hold the same object; two distinct blobs carrying equal bytes are two
   // records, as the reference numbers them by pointer
   // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
-  // ids — the node-table write does, in record order (§3). On the web a
-  // String is a value, so two equal strings there are one blob.
-  int noteBlob(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  // ids — the node-table write does, in record order (§3). Authored String
+  // fields without input metadata retain Dart's object identity semantics;
+  // canonical authored strings cannot express distinct node ownership.
+  int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
+    final identity = _blobIdentity(blob, owner, field);
+    final found = _blobIndex[identity];
     if (found != null) {
       if (refuseSharedBlob) {
         throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
@@ -177,14 +196,14 @@ final class WireState {
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
     final idx = nodes.length + 1;
-    _blobIndex[blob] = idx;
+    _blobIndex[identity] = idx;
     return idx;
   }
 
   int nodeIndexForBlob(int typeId, Object blob) => noteBlob(typeId, blob);
 
-  int blobIndex(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  int blobIndex(int typeId, Object blob, [Object? owner, String? field]) {
+    final found = _blobIndex[_blobIdentity(blob, owner, field)];
     if (found == null) {
       throw StateError('blob was not numbered (docs/SPEC-TABLES.md §3.1)');
     }
@@ -522,6 +541,7 @@ final class TableWireReader {
   final List<Uint8List> nodes;
   final Set<int> knownTypes;
   final List<Object?> decoded;
+  final Map<int, Object> stringBlobTokens;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -546,6 +566,7 @@ final class TableWireReader {
       nodes = <Uint8List>[],
       knownTypes = <int>{},
       decoded = <Object?>[],
+      stringBlobTokens = <int, Object>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
@@ -562,6 +583,7 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -586,6 +608,7 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -822,17 +845,25 @@ final class TableWireReader {
   // A blob record resolves to ONE object however many slots name it (§3.1):
   // the first resolve stores it in decoded, so a save numbers it once again
   // by identity and two distinct records of equal bytes stay two.
-  String? resolveString(int idx) {
+  String? resolveString(int idx, Object owner, String field) {
     final rec = idx - 2;
-    if (rec >= 0 && rec < decoded.length) {
-      final have = decoded[rec];
-      if (have is String) return have;
+    String? value;
+    if (rec >= 0 && rec < decoded.length && decoded[rec] is String) {
+      value = decoded[rec] as String;
+    } else {
+      final b = resolveBlob(idx, _kStringBlobId, stringBlob);
+      if (b != null) {
+        value = utf8.decode(b);
+        decoded[rec] = value;
+      }
     }
-    final b = resolveBlob(idx, _kStringBlobId, stringBlob);
-    if (b == null) return null;
-    final s = utf8.decode(b);
-    decoded[rec] = s;
-    return s;
+    if (value == null) {
+      WireState._stringBlobOrigins[owner]?.remove(field);
+      return null;
+    }
+    final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
+    return value;
   }
 
   Uint8List? resolveBytes(int idx) {
@@ -4488,6 +4519,7 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   if (r.report.missingFields.isNotEmpty) r.report.refused = false;
   r.report.missingFields = '';
   r.stringBlob = false;
+  r.bytesBlob = false;
   r.retain = retain;
   r.path = [1];
   r.rootObj = v;
@@ -5517,9 +5549,20 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = 
   return def;
 }
 
-String? _jsonStringBlob(dynamic val, TableTextReport r, [String? def]) {
-  if (val == null) return null;
-  if (val is String) return _jsonText(val);
+String? _jsonStringBlob(dynamic val, TableTextReport r,
+    [String? def, Object? owner, String? field]) {
+  if (val == null) {
+    if (owner != null && field != null) WireState._stringBlobOrigins[owner]?.remove(field);
+    return null;
+  }
+  if (val is String) {
+    final value = _jsonText(val);
+    if (owner != null && field != null) {
+      final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+      slots[field] = (value: value, token: Object());
+    }
+    return value;
+  }
   r.kindMismatch++;
   return def;
 }

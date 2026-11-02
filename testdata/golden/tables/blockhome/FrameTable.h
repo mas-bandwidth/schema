@@ -4705,6 +4705,51 @@ inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
     return n + 4;
 }
 
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
+}
+
 } // namespace blockhome
 
 #endif // BLOCKHOME_SCHEMA_TABLE_PRIMITIVES

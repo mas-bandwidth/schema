@@ -71,6 +71,8 @@ typedef struct blockdemo_table_report_t
        (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
        id twice is legal input whose last occurrence wins, silently (§3). */
     int32_t duplicate;
+    /* required fields (docs/SPEC-TABLES.md §2.3) the body omitted. */
+    int32_t missing_required;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
@@ -85,6 +87,7 @@ typedef struct blockdemo_table_report_t
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    int damage_reason;
     /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
        an infinity is refused on its raw bits by every read, the tolerant one
        included, so a read that moves this answers refused, reason
@@ -174,6 +177,7 @@ typedef struct blockdemo_table_field_info_t
     int is_array;           /* fixed or counted array (bytes included) */
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
     int optional;           /* a ?T field: a _present companion decides whether it rides */
+    int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
@@ -233,6 +237,9 @@ typedef struct blockdemo_table_type_info_t
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    /* | json = "array" (docs/SPEC-TABLES.md §16.10): the one-field table
+       whose text form is that field's array directly */
+    int json_array;
 } blockdemo_table_type_info_t;
 
 
@@ -2359,6 +2366,45 @@ static SCHEMA_UNUSED int blockdemo_table_non_finite_refused( blockdemo_table_rep
     report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
     return 1;
 }
+static SCHEMA_UNUSED uint32_t schema_blockdemo_table_crc32c_( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xffffffffu;
+    int64_t i;
+    int k;
+    for ( i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82f63b78u & mask );
+        }
+    }
+    return crc ^ 0xffffffffu;
+}
+static SCHEMA_UNUSED int schema_blockdemo_table_integrity_holds_( const uint8_t * data, int64_t bytes )
+{
+    int64_t n;
+    uint32_t got;
+    if ( data == NULL || bytes < 5 ) { return 0; }
+    n = bytes - 4;
+    got = (uint32_t) data[n] | ( (uint32_t) data[n + 1] << 8 ) | ( (uint32_t) data[n + 2] << 16 ) | ( (uint32_t) data[n + 3] << 24 );
+    return got == schema_blockdemo_table_crc32c_( data, n );
+}
+static SCHEMA_UNUSED int64_t schema_blockdemo_table_integrity_seal_( uint8_t * buffer, int64_t n )
+{
+    uint32_t crc;
+    if ( n < 0 ) { return -1; }
+    if ( buffer != NULL )
+    {
+        crc = schema_blockdemo_table_crc32c_( buffer, n );
+        buffer[n] = (uint8_t) crc;
+        buffer[n + 1] = (uint8_t) ( crc >> 8 );
+        buffer[n + 2] = (uint8_t) ( crc >> 16 );
+        buffer[n + 3] = (uint8_t) ( crc >> 24 );
+    }
+    return n + 4;
+}
 
 #endif /* SCHEMA_BLOCKDEMO_TABLE_PRIMITIVES */
 
@@ -2390,7 +2436,8 @@ enum {
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED=24
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED=24,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED=25
 };
 static SCHEMA_UNUSED const uint8_t * blockdemo_table_cook_refuse(blockdemo_table_refuse_reason_t * out,blockdemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
@@ -2408,6 +2455,8 @@ static SCHEMA_UNUSED int blockdemo_table_report_strict_refuses( blockdemo_table_
     if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
     else if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
     else if ( report->refused ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( report->damage_reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH; }
+    else if ( report->missing_required > 0 && !report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED; }
     else if ( report->clamped > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_CLAMPED; }
@@ -2710,7 +2759,7 @@ static SCHEMA_UNUSED int64_t blockdemo_table_message_kind_bits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64;
         default: return 128;
     }
 }
@@ -2787,7 +2836,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_fixed_kind( uint8_t kind ) { re
 
 static SCHEMA_UNUSED int blockdemo_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 
@@ -2823,7 +2872,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_leb(const uint8_t * in,int64_t 
 static SCHEMA_UNUSED int64_t blockdemo_table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
 {
  if(kind==1)return 1;
- if(kind==11)return 64;
+ if(kind==11||kind==36)return 64;
  if(kind==10)return packing==2?bits:32;
  if(blockdemo_table_message_integer_kind(kind)||blockdemo_table_message_fixed_kind(kind))return packing==1?bits:blockdemo_table_message_kind_bits(kind);
  return -1;
@@ -3260,8 +3309,8 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_measure( const blockdemo_pad
 static SCHEMA_UNUSED  int blockdemo_padded_frame_save_body( blockdemo_table_writer_t * w, const blockdemo_padded_frame_t * value );
 static SCHEMA_UNUSED  int blockdemo_padded_frame_load_body( blockdemo_table_reader_t * r, blockdemo_padded_frame_t * value );
 
-static SCHEMA_UNUSED int schema_blockdemo_padded_row_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_padded_frame_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_padded_row_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_padded_frame_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int blockdemo_padded_row_save_message_body(blockdemo_table_bit_writer_t *,const blockdemo_padded_row_t *);
 static SCHEMA_UNUSED int blockdemo_padded_frame_save_message_body(blockdemo_table_bit_writer_t *,const blockdemo_padded_frame_t *);
 static SCHEMA_UNUSED int blockdemo_padded_row_load_message_body(blockdemo_table_message_reader_t *,blockdemo_padded_row_t *);
@@ -6315,7 +6364,7 @@ static SCHEMA_UNUSED const blockdemo_padded_frame_t * blockdemo_padded_frame_ope
     return (const blockdemo_padded_frame_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_padded_frame_t ), (uint64_t) 8 );
 }
 
-static SCHEMA_UNUSED int schema_blockdemo_padded_row_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_padded_row_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_padded_row_t * value=(const blockdemo_padded_row_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
@@ -6341,18 +6390,18 @@ static SCHEMA_UNUSED int blockdemo_padded_row_cook(const blockdemo_padded_row_t 
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<144) { return 0; }
     memset(raw,0,144);
-    if(!schema_blockdemo_padded_row_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_padded_row_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+136,UINT64_C(0x1d3a1648d6207581),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,64,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_padded_frame_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_padded_frame_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_padded_frame_t * value=(const blockdemo_padded_frame_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     blockdemo_table_cook_put(at+0,(uint64_t)value->marker,1,order);
     blockdemo_table_cook_put(at+8,(uint64_t)value->stamp,8,order);
     { int32_t cook_i1; for(cook_i1=0;cook_i1<64;cook_i1++) {
-        if(!schema_blockdemo_padded_row_cook_body_(n,at+16+cook_i1*64,&value->rows[cook_i1],order)) { return 0; }
+        if(!schema_blockdemo_padded_row_body_pack_(n,at+16+cook_i1*64,&value->rows[cook_i1],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+16+4096,(uint32_t)value->rows_count,4,order);
     blockdemo_table_cook_bytes(at+4116,value->blob,value->blob_length,12);
@@ -6365,7 +6414,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_cook(const blockdemo_padded_fram
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<4216) { return 0; }
     memset(raw,0,4216);
-    if(!schema_blockdemo_padded_frame_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,4216); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_padded_frame_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,4216); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+4208,UINT64_C(0xbf050ec6de1ec3e0),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,4136,1,8,order); return 1;
 }

@@ -186,7 +186,7 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, Object blob) blobIndex;
+  final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
   ByteData? out;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
@@ -230,11 +230,11 @@ final class TableCookGraph {
 
   // A blob is a node of its own reserved type id, numbered by its identity
   // (§3.1): the String or byte list the field holds.
-  void blob(int slot, int id, Object? blob) {
+  void blob(int slot, int id, Object? blob, [Object? owner, String? field]) {
     final out = this.out;
     if (out == null) return;
     var delta = 0;
-    if (blob != null) delta = 64 + offsets[blobIndex(id, blob) - 1] - slot;
+    if (blob != null) delta = 64 + offsets[blobIndex(id, blob, owner, field) - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }

@@ -682,7 +682,7 @@ public final class MixedHitEventVariable {
             report.malformed = true;
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
-        if (report.malformed) {
+        if (report.refused || report.malformed) {
             return null;
         }
         return v;
@@ -853,7 +853,7 @@ public final class MixedHitEventVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             String key = in.scanString();
             if (in.bad) {
@@ -963,7 +963,7 @@ public final class MixedHitEventVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             in.bad = true;
             return;

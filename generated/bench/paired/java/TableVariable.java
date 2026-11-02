@@ -52,6 +52,7 @@ public final class TableVariable {
         public boolean malformed;
         public int widened;
         public int duplicate;
+        public int missingRequired;
         public boolean refused;
         public String reason;
         public int retained;
@@ -71,6 +72,8 @@ public final class TableVariable {
             clamped = 0;
             malformed = false;
             widened = 0;
+            duplicate = 0;
+            missingRequired = 0;
             refused = false;
             reason = null;
             retained = 0;
@@ -767,6 +770,44 @@ public final class TableVariable {
             v |= (long) (b[at + i] & 0xff) << (8 * i);
         }
         return v;
+    }
+
+    public static int crc32c(byte[] data, int len) {
+        int crc = 0xffffffff;
+        for (int i = 0; i < len; i++) {
+            crc ^= data[i] & 0xff;
+            for (int k = 0; k < 8; k++) {
+                crc = (crc >>> 1) ^ ((crc & 1) != 0 ? 0x82f63b78 : 0);
+            }
+        }
+        return ~crc;
+    }
+
+    public static boolean integrityHolds(byte[] data) {
+        if (data == null || data.length < 5) {
+            return false;
+        }
+        int n = data.length - 4;
+        int want =
+                (data[n] & 0xff)
+                        | ((data[n + 1] & 0xff) << 8)
+                        | ((data[n + 2] & 0xff) << 16)
+                        | ((data[n + 3] & 0xff) << 24);
+        return want == crc32c(data, n);
+    }
+
+    public static byte[] integrityOpen(byte[] data, Report report) {
+        if (data == null || data.length == 0 || (data[0] & 0xff) != 1) {
+            return data;
+        }
+        if (integrityHolds(data)) {
+            return java.util.Arrays.copyOf(data, data.length - 4);
+        }
+        if (report != null) {
+            report.malformed = true;
+            report.reason = "integrity_mismatch";
+        }
+        return null;
     }
 
     // bodyExtent walks the framing of the body in [off, limit) to the zero
@@ -1944,6 +1985,7 @@ public final class TableVariable {
             case 9:
             case 23:
             case 28:
+            case 36:
                 return 8;
             case 18:
             case 19:
@@ -1956,7 +1998,7 @@ public final class TableVariable {
     }
 
     static boolean signedKind(int kind) {
-        return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24;
+        return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24 || kind == 36;
     }
 
     static java.math.BigInteger readInteger(Reader r, int kind) {

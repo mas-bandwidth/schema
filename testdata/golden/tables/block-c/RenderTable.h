@@ -70,6 +70,8 @@ typedef struct blockdemo_table_report_t
        (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
        id twice is legal input whose last occurrence wins, silently (§3). */
     int32_t duplicate;
+    /* required fields (docs/SPEC-TABLES.md §2.3) the body omitted. */
+    int32_t missing_required;
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     /* a blob record another slot already named (docs/SPEC-TABLES.md §2.5):
@@ -84,6 +86,7 @@ typedef struct blockdemo_table_report_t
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    int damage_reason;
     /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
        an infinity is refused on its raw bits by every read, the tolerant one
        included, so a read that moves this answers refused, reason
@@ -173,6 +176,7 @@ typedef struct blockdemo_table_field_info_t
     int is_array;           /* fixed or counted array (bytes included) */
     int counted;            /* a _count/_length int32 companion exists (counted arrays, strings, bytes) */
     int optional;           /* a ?T field: a _present companion decides whether it rides */
+    int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
@@ -232,6 +236,9 @@ typedef struct blockdemo_table_type_info_t
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    /* | json = "array" (docs/SPEC-TABLES.md §16.10): the one-field table
+       whose text form is that field's array directly */
+    int json_array;
 } blockdemo_table_type_info_t;
 
 
@@ -2358,6 +2365,45 @@ static SCHEMA_UNUSED int blockdemo_table_non_finite_refused( blockdemo_table_rep
     report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
     return 1;
 }
+static SCHEMA_UNUSED uint32_t schema_blockdemo_table_crc32c_( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xffffffffu;
+    int64_t i;
+    int k;
+    for ( i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82f63b78u & mask );
+        }
+    }
+    return crc ^ 0xffffffffu;
+}
+static SCHEMA_UNUSED int schema_blockdemo_table_integrity_holds_( const uint8_t * data, int64_t bytes )
+{
+    int64_t n;
+    uint32_t got;
+    if ( data == NULL || bytes < 5 ) { return 0; }
+    n = bytes - 4;
+    got = (uint32_t) data[n] | ( (uint32_t) data[n + 1] << 8 ) | ( (uint32_t) data[n + 2] << 16 ) | ( (uint32_t) data[n + 3] << 24 );
+    return got == schema_blockdemo_table_crc32c_( data, n );
+}
+static SCHEMA_UNUSED int64_t schema_blockdemo_table_integrity_seal_( uint8_t * buffer, int64_t n )
+{
+    uint32_t crc;
+    if ( n < 0 ) { return -1; }
+    if ( buffer != NULL )
+    {
+        crc = schema_blockdemo_table_crc32c_( buffer, n );
+        buffer[n] = (uint8_t) crc;
+        buffer[n + 1] = (uint8_t) ( crc >> 8 );
+        buffer[n + 2] = (uint8_t) ( crc >> 16 );
+        buffer[n + 3] = (uint8_t) ( crc >> 24 );
+    }
+    return n + 4;
+}
 
 #endif /* SCHEMA_BLOCKDEMO_TABLE_PRIMITIVES */
 
@@ -2389,7 +2435,8 @@ enum {
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_BASE64_NOT_CANONICAL=21,
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
     SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT=23,
-    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED=24
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED=24,
+    SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED=25
 };
 static SCHEMA_UNUSED const uint8_t * blockdemo_table_cook_refuse(blockdemo_table_refuse_reason_t * out,blockdemo_table_refuse_reason_t reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
@@ -2407,6 +2454,8 @@ static SCHEMA_UNUSED int blockdemo_table_report_strict_refuses( blockdemo_table_
     if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
     else if ( report->refused && report->reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
     else if ( report->refused ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( report->damage_reason == SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_INTEGRITY_MISMATCH; }
+    else if ( report->missing_required > 0 && !report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_MISSING_REQUIRED; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_BLOB_SHARED; }
     else if ( report->clamped > 0 ) { reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_CLAMPED; }
@@ -2709,7 +2758,7 @@ static SCHEMA_UNUSED int64_t blockdemo_table_message_kind_bits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64;
         default: return 128;
     }
 }
@@ -2786,7 +2835,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_fixed_kind( uint8_t kind ) { re
 
 static SCHEMA_UNUSED int blockdemo_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 
@@ -2822,7 +2871,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_leb(const uint8_t * in,int64_t 
 static SCHEMA_UNUSED int64_t blockdemo_table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
 {
  if(kind==1)return 1;
- if(kind==11)return 64;
+ if(kind==11||kind==36)return 64;
  if(kind==10)return packing==2?bits:32;
  if(blockdemo_table_message_integer_kind(kind)||blockdemo_table_message_fixed_kind(kind))return packing==1?bits:blockdemo_table_message_kind_bits(kind);
  return -1;
@@ -3574,18 +3623,18 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_measure( const blockdem
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int blockdemo_render_quaternion_save_body( blockdemo_table_writer_t * w, const blockdemo_render_quaternion_t * value );
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int blockdemo_render_quaternion_load_body( blockdemo_table_reader_t * r, blockdemo_render_quaternion_t * value );
 
-static SCHEMA_UNUSED int schema_blockdemo_render_camera_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_ship_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_turret_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_missile_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_laser_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_explosion_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_frame_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_vector3_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
-static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_camera_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_vector3_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
+static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int blockdemo_render_camera_save_message_body(blockdemo_table_bit_writer_t *,const blockdemo_render_camera_t *);
 static SCHEMA_UNUSED int blockdemo_render_ship_save_message_body(blockdemo_table_bit_writer_t *,const blockdemo_render_ship_t *);
 static SCHEMA_UNUSED int blockdemo_render_turret_save_message_body(blockdemo_table_bit_writer_t *,const blockdemo_render_turret_t *);
@@ -16286,12 +16335,12 @@ static SCHEMA_UNUSED const blockdemo_render_frame_t * blockdemo_render_frame_ope
     return (const blockdemo_render_frame_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_frame_t ), (uint64_t) 8 );
 }
 
-static SCHEMA_UNUSED int schema_blockdemo_render_camera_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_camera_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_camera_t * value=(const blockdemo_render_camera_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+24,&value->rotation,order)) { return 0; }
     blockdemo_table_cook_put(at+56,(uint64_t)value->camera_id,4,order);
     blockdemo_table_cook_put(at+60,(uint64_t)value->camera_type,4,order);
     blockdemo_table_cook_put(at+64,(uint64_t)value->target_object_id,4,order);
@@ -16304,16 +16353,16 @@ static SCHEMA_UNUSED int blockdemo_render_camera_cook(const blockdemo_render_cam
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<152) { return 0; }
     memset(raw,0,152);
-    if(!schema_blockdemo_render_camera_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_camera_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+144,UINT64_C(0x11c6b29d15f30306),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_ship_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_ship_t * value=(const blockdemo_render_ship_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+24,&value->rotation,order)) { return 0; }
     blockdemo_table_cook_put(at+56,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+64,(uint64_t)value->object_id,4,order);
     blockdemo_table_cook_put(at+68,(uint64_t)value->target_object_id,4,order);
@@ -16331,15 +16380,15 @@ static SCHEMA_UNUSED int blockdemo_render_ship_cook(const blockdemo_render_ship_
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<168) { return 0; }
     memset(raw,0,168);
-    if(!schema_blockdemo_render_ship_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,168); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_ship_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,168); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+160,UINT64_C(0x5b00edd93fad6007),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,88,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_turret_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_turret_t * value=(const blockdemo_render_turret_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+0,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+0,&value->rotation,order)) { return 0; }
     blockdemo_table_cook_put(at+32,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+40,(uint64_t)value->object_id,4,order);
     blockdemo_table_cook_put(at+44,(uint64_t)value->parent_object_id,4,order);
@@ -16356,16 +16405,16 @@ static SCHEMA_UNUSED int blockdemo_render_turret_cook(const blockdemo_render_tur
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<144) { return 0; }
     memset(raw,0,144);
-    if(!schema_blockdemo_render_turret_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_turret_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+136,UINT64_C(0x4034181fa408c29f),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,64,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_missile_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_missile_t * value=(const blockdemo_render_missile_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+24,&value->rotation,order)) { return 0; }
     blockdemo_table_cook_put(at+56,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+64,(uint64_t)value->object_id,4,order);
     blockdemo_table_cook_put(at+68,(uint64_t)value->object_sequence,1,order);
@@ -16379,16 +16428,16 @@ static SCHEMA_UNUSED int blockdemo_render_missile_cook(const blockdemo_render_mi
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<152) { return 0; }
     memset(raw,0,152);
-    if(!schema_blockdemo_render_missile_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_missile_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+144,UINT64_C(0x93dab31114da135b),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_dynamic_prop_t * value=(const blockdemo_render_dynamic_prop_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+24,&value->rotation,order)) { return 0; }
     blockdemo_table_cook_put(at+56,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+64,(uint64_t)value->object_id,4,order);
     blockdemo_table_cook_put(at+68,(uint64_t)value->object_sequence,1,order);
@@ -16402,16 +16451,16 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_cook(const blockdemo_rend
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<152) { return 0; }
     memset(raw,0,152);
-    if(!schema_blockdemo_render_dynamic_prop_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_dynamic_prop_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,152); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+144,UINT64_C(0xcca6d00e1bb40147),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,72,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_static_prop_t * value=(const blockdemo_render_static_prop_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+24,&value->rotation,order)) { return 0; }
     { uint64_t bits; memcpy(&bits,&value->scale,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+56,bits,8,order); }
     blockdemo_table_cook_put(at+64,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+72,(uint64_t)value->static_prop_id,4,order);
@@ -16425,16 +16474,16 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_cook(const blockdemo_rende
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<160) { return 0; }
     memset(raw,0,160);
-    if(!schema_blockdemo_render_static_prop_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_static_prop_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+152,UINT64_C(0xc19ad62b865276fe),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_cosmetic_prop_t * value=(const blockdemo_render_cosmetic_prop_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+24,&value->rotation,order)) { return 0; }
     { uint64_t bits; memcpy(&bits,&value->scale,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+56,bits,8,order); }
     blockdemo_table_cook_put(at+64,(uint64_t)value->flags,8,order);
     blockdemo_table_cook_put(at+72,(uint64_t)value->cosmetic_prop_id,4,order);
@@ -16449,16 +16498,16 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_cook(const blockdemo_ren
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<160) { return 0; }
     memset(raw,0,160);
-    if(!schema_blockdemo_render_cosmetic_prop_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_cosmetic_prop_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+152,UINT64_C(0x5ff5bdbae776636f),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_laser_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_laser_t * value=(const blockdemo_render_laser_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->start,order)) { return 0; }
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+24,&value->finish,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->start,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+24,&value->finish,order)) { return 0; }
     { uint64_t bits; memcpy(&bits,&value->t,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+48,bits,8,order); }
     blockdemo_table_cook_put(at+56,(uint64_t)value->laser_id,4,order);
     blockdemo_table_cook_put(at+60,(uint64_t)value->laser_type,1,order);
@@ -16471,16 +16520,16 @@ static SCHEMA_UNUSED int blockdemo_render_laser_cook(const blockdemo_render_lase
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<144) { return 0; }
     memset(raw,0,144);
-    if(!schema_blockdemo_render_laser_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_laser_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,144); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+136,UINT64_C(0xb0947dbe6c23d994),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,64,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_explosion_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_explosion_t * value=(const blockdemo_render_explosion_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
-    if(!schema_blockdemo_render_vector3_cook_body_(n,at+0,&value->position,order)) { return 0; }
-    if(!schema_blockdemo_render_quaternion_cook_body_(n,at+24,&value->rotation,order)) { return 0; }
+    if(!schema_blockdemo_render_vector3_body_pack_(n,at+0,&value->position,order)) { return 0; }
+    if(!schema_blockdemo_render_quaternion_body_pack_(n,at+24,&value->rotation,order)) { return 0; }
     { uint64_t bits; memcpy(&bits,&value->t,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+56,bits,8,order); }
     blockdemo_table_cook_put(at+64,(uint64_t)value->explosion_id,4,order);
     blockdemo_table_cook_put(at+68,(uint64_t)value->parent_object_id,4,order);
@@ -16494,49 +16543,49 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_cook(const blockdemo_render_
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<160) { return 0; }
     memset(raw,0,160);
-    if(!schema_blockdemo_render_explosion_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_explosion_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,160); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+152,UINT64_C(0x0cc738b585c9e5f8),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,80,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_frame_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_frame_t * value=(const blockdemo_render_frame_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     blockdemo_table_cook_put(at+0,(uint64_t)value->version,8,order);
     { int32_t cook_i1; for(cook_i1=0;cook_i1<1;cook_i1++) {
-        if(!schema_blockdemo_render_camera_cook_body_(n,at+8+cook_i1*72,&value->cameras[cook_i1],order)) { return 0; }
+        if(!schema_blockdemo_render_camera_body_pack_(n,at+8+cook_i1*72,&value->cameras[cook_i1],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+8+72,(uint32_t)value->cameras_count,4,order);
     { int32_t cook_i2; for(cook_i2=0;cook_i2<4096;cook_i2++) {
-        if(!schema_blockdemo_render_ship_cook_body_(n,at+88+cook_i2*88,&value->ships[cook_i2],order)) { return 0; }
+        if(!schema_blockdemo_render_ship_body_pack_(n,at+88+cook_i2*88,&value->ships[cook_i2],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+88+360448,(uint32_t)value->ships_count,4,order);
     { int32_t cook_i3; for(cook_i3=0;cook_i3<1024;cook_i3++) {
-        if(!schema_blockdemo_render_turret_cook_body_(n,at+360544+cook_i3*64,&value->turrets[cook_i3],order)) { return 0; }
+        if(!schema_blockdemo_render_turret_body_pack_(n,at+360544+cook_i3*64,&value->turrets[cook_i3],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+360544+65536,(uint32_t)value->turrets_count,4,order);
     { int32_t cook_i4; for(cook_i4=0;cook_i4<4096;cook_i4++) {
-        if(!schema_blockdemo_render_missile_cook_body_(n,at+426088+cook_i4*72,&value->missiles[cook_i4],order)) { return 0; }
+        if(!schema_blockdemo_render_missile_body_pack_(n,at+426088+cook_i4*72,&value->missiles[cook_i4],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+426088+294912,(uint32_t)value->missiles_count,4,order);
     { int32_t cook_i5; for(cook_i5=0;cook_i5<4096;cook_i5++) {
-        if(!schema_blockdemo_render_dynamic_prop_cook_body_(n,at+721008+cook_i5*72,&value->dynamic_props[cook_i5],order)) { return 0; }
+        if(!schema_blockdemo_render_dynamic_prop_body_pack_(n,at+721008+cook_i5*72,&value->dynamic_props[cook_i5],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+721008+294912,(uint32_t)value->dynamic_props_count,4,order);
     { int32_t cook_i6; for(cook_i6=0;cook_i6<20000;cook_i6++) {
-        if(!schema_blockdemo_render_static_prop_cook_body_(n,at+1015928+cook_i6*80,&value->static_props[cook_i6],order)) { return 0; }
+        if(!schema_blockdemo_render_static_prop_body_pack_(n,at+1015928+cook_i6*80,&value->static_props[cook_i6],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+1015928+1600000,(uint32_t)value->static_props_count,4,order);
     { int32_t cook_i7; for(cook_i7=0;cook_i7<8192;cook_i7++) {
-        if(!schema_blockdemo_render_cosmetic_prop_cook_body_(n,at+2615936+cook_i7*80,&value->cosmetic_props[cook_i7],order)) { return 0; }
+        if(!schema_blockdemo_render_cosmetic_prop_body_pack_(n,at+2615936+cook_i7*80,&value->cosmetic_props[cook_i7],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+2615936+655360,(uint32_t)value->cosmetic_props_count,4,order);
     { int32_t cook_i8; for(cook_i8=0;cook_i8<32000;cook_i8++) {
-        if(!schema_blockdemo_render_laser_cook_body_(n,at+3271304+cook_i8*64,&value->lasers[cook_i8],order)) { return 0; }
+        if(!schema_blockdemo_render_laser_body_pack_(n,at+3271304+cook_i8*64,&value->lasers[cook_i8],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+3271304+2048000,(uint32_t)value->lasers_count,4,order);
     { int32_t cook_i9; for(cook_i9=0;cook_i9<32000;cook_i9++) {
-        if(!schema_blockdemo_render_explosion_cook_body_(n,at+5319312+cook_i9*80,&value->explosions[cook_i9],order)) { return 0; }
+        if(!schema_blockdemo_render_explosion_body_pack_(n,at+5319312+cook_i9*80,&value->explosions[cook_i9],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+5319312+2560000,(uint32_t)value->explosions_count,4,order);
     return 1;
@@ -16547,11 +16596,11 @@ static SCHEMA_UNUSED int blockdemo_render_frame_cook(const blockdemo_render_fram
     uint8_t * raw=(uint8_t *)output;
     if(value==NULL || raw==NULL || capacity<7879400) { return 0; }
     memset(raw,0,7879400);
-    if(!schema_blockdemo_render_frame_cook_body_(NULL,raw+64,value,order)) { memset(raw,0,7879400); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
+    if(!schema_blockdemo_render_frame_body_pack_(NULL,raw+64,value,order)) { memset(raw,0,7879400); return 0; } /* a NaN or an infinity writes no cook (§3.3) */
     blockdemo_table_cook_put(raw+7879392,UINT64_C(0x9b2749fb3fc30f4e),8,order);
     blockdemo_table_cook_header(raw,SCHEMA_BLOCKDEMO_BUILD_VERSION_VALUE,7879320,1,8,order); return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_vector3_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_vector3_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_vector3_t * value=(const blockdemo_render_vector3_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
@@ -16560,7 +16609,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_vector3_cook_body_(struct block
     { uint64_t bits; memcpy(&bits,&value->z,8); if(!blockdemo_table_bits_finite64(bits)) { return 0; } blockdemo_table_cook_put(at+16,bits,8,order); }
     return 1;
 }
-static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
+static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_body_pack_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
 {
     const blockdemo_render_quaternion_t * value=(const blockdemo_render_quaternion_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
