@@ -19,9 +19,13 @@ func TestJavaScriptTextTotalTailConstruct(t *testing.T) {
 	u := unitFrom(t, `package probe
  table Wide { a [..4]string(16)
  b [..4]?string(16)
+ c []string(16)
+ d []?string(16)
  }
  table Totals { a [..3]string(5) | total=5
  b [..3]?string(5) | total=5
+ c []string(5) | total=5
+ d []?string(5) | total=5
  }
  `)
 	files, err := golang.Generate(u)
@@ -70,15 +74,18 @@ import("bytes";"encoding/hex";"encoding/json";"fmt";"os";"testing";"unsafe";"str
 func TestTail(t *testing.T){
  type row struct{Input,Wire,Text string;Clamped,JSONClamped int}
  var rows []row
- for _,field:=range []string{"a","b"}{
-  for _,tail:=range []string{"toolong","BAD","COUNT"}{
-   input:=fmt.Sprintf("{%q:[%q,%q,%q]}",field,"abcde","xyz",tail)
+ for _,field:=range []string{"a","b","c","d"}{
+  for _,tail:=range []string{"toolong","BAD","COUNT","BODY"}{
+   if tail=="BODY"&&field!="b"&&field!="d"{continue}
+   textTail:=tail;if tail=="BODY"{textTail="BAD"}
+   input:=fmt.Sprintf("{%q:[%q,%q,%q]}",field,"abcde","xyz",textTail)
    wantWire,wantJSON:=1,1
-   if tail=="COUNT"{input=fmt.Sprintf("{%q:[%q,%q,%q,%q]}",field,"ééé","a","z","tail");wantWire,wantJSON=3,2}
+   if tail=="COUNT"{input=fmt.Sprintf("{%q:[%q,%q,%q,%q]}",field,"ééé","a","z","tail");wantWire,wantJSON=3,2;if field=="c"||field=="d"{wantWire=2}}
    var source WideBuilder;source.Init();var r TableReport
    if !WideFromJSON(&source,[]byte(input),&r){t.Fatal(r)}
    size:=WideMeasure(source.GetRoot(),&source.Arena);wire:=make([]byte,size);if WideSave(source.GetRoot(),wire,&source.Arena)!=size{t.Fatal("save")};source.Shutdown()
    if tail=="BAD"{at:=bytes.Index(wire,[]byte("BAD"));if at<0{t.Fatal("marker")};wire[at]=0;input=fmt.Sprintf("{%q:[%q,%q,%q]}",field,"abcde","xyz","\x00AD")}
+   if tail=="BODY"{at:=bytes.Index(wire,[]byte("BAD"));if at<0{t.Fatal("marker")};wire[at+3]=255}
    input=strings.ReplaceAll(input,"\\x00","\\u0000")
    size=TotalsLoadMeasure(wire);region:=make([]byte,size+64);at:=0;for uintptr(unsafe.Pointer(&region[at]))%64!=0{at++}
    r=TableReport{};v:=TotalsLoadTolerant(region[at:],wire,&r)
