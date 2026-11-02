@@ -30,6 +30,7 @@ table Exact { ver uint8 | min = 7, max = 7, required }
 table ExactFloat { amount float32 | min = 0.5, max = 1.5, resolution = 0.1, required }
 table ExactWide { amount int128 | min = 7, max = 8, required }
 table RequiredRows { values [..4]Other | required }
+table RequiredArray { values [..4]int32 | required }
 table Other { ver uint8 }
 table RequiredEmpty { value Other | required }
 table Inner { id int32 | required }
@@ -50,7 +51,7 @@ table EmptyFields {
 }
 `
 	oracle := requiredGoWitnesses(t, schema)
-	runCarryCS(t, schema, []string{`{}`}, strings.NewReplacer("GO_ZERO", oracle["zero"], "GO_EMPTY", oracle["empty"]).Replace(`unsafe {
+	runCarryCS(t, schema, []string{`{}`}, strings.NewReplacer("GO_ZERO", oracle["zero"], "GO_EMPTY", oracle["empty"], "GO_BAD_ARRAY", oracle["bad_array"]).Replace(`unsafe {
  void CheckJSON(TableTypeInfo type, string text, string missing, int mismatch = 0) {
   var value = type.Create(); var report = new TableReport();
   bool ok = Schema.TableJson.Read(value, type, Encoding.UTF8.GetBytes(text), report);
@@ -98,6 +99,8 @@ table EmptyFields {
  CheckJSON(type, """{"a":0,"b":0}""", null);
  CheckJSON(type, """{"a":null,"b":0}""", null, 1);
  CheckWire(type, absent, "a, b");
+ CheckWire(Schema.RequiredArrayTableType(), Convert.FromHexString("GO_BAD_ARRAY"), "values", 1);
+ CheckJSON(Schema.RequiredArrayTableType(), """{"values":{}}""", null, 1);
  CheckWire(type, zero, null);
  CheckWire(type, Wire(new byte[]{1,1,1,2,4,0,0,0,0,0}, type.Fields[0].Id,type.Fields[1].Id), "a", 1);
  var defaultValue = new RequiredValue();
@@ -210,13 +213,17 @@ func requiredGoWitnesses(t *testing.T, schema string) map[string]string {
 	runtime := slowtest.SerializeGo(t, "../../../")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["oracle_test.go"] = []byte(fmt.Sprintf(`package probe
-import("encoding/hex";"encoding/json";"os";"testing")
+import("encoding/binary";"encoding/hex";"encoding/json";"os";"testing")
 func TestRequiredOracle(t *testing.T) {
  values:=map[string]string{}
  var zero RequiredValue
  b:=make([]byte,RequiredValueMeasure(&zero));if RequiredValueSave(&zero,b)!=int64(len(b)){t.Fatal("zero save")};values["zero"]=hex.EncodeToString(b)
  var empty EmptyFields
  b=make([]byte,EmptyFieldsMeasure(&empty));if EmptyFieldsSave(&empty,b)!=int64(len(b)){t.Fatal("empty save")};values["empty"]=hex.EncodeToString(b)
+ bad:=[]byte{1,1,14,2,1,0,0};var id [8]byte;binary.LittleEndian.PutUint64(id[:],RequiredArrayTableFields[0].ID);bad=append(bad,id[:]...);bad=append(bad,1,0,0,0,0,0,0,0)
+ var builder RequiredArrayBuilder;if !builder.Init(){t.Fatal("init")};defer builder.Shutdown();var report TableReport
+ if RequiredArrayLoadBuilderTolerant(&builder,bad,&report)||report.MissingRequired!=1||report.KindMismatch!=1||report.Malformed||report.Reason!="missing_required: values" {t.Fatal("required array element-kind contract",report)}
+ values["bad_array"]=hex.EncodeToString(bad)
  encoded,err:=json.Marshal(values);if err!=nil{t.Fatal(err)};if err=os.WriteFile(%q,encoded,0600);err!=nil{t.Fatal(err)}
 }
 `, output))

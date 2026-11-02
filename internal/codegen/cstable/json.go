@@ -1269,6 +1269,7 @@ public static class TableJson
         if (depth > MaxDepth) { input.Bad = true; return false; }
         input.Pos++; // the opening bracket
         bool first = true;
+        Span<byte> key = stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1276,7 +1277,6 @@ public static class TableJson
             if (c == 0) { input.Bad = true; return false; }
             if (close == '}')
             {
-                Span<byte> key = stackalloc byte[MaxKey];
                 if (!ScanString(text, ref input, key, true, out int used)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
@@ -1449,6 +1449,7 @@ public static class TableJson
             if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
             ulong bits = 0;
+            Span<byte> name = stackalloc byte[MaxKey];
             for (; ; )
             {
                 byte c = Peek(text, ref input);
@@ -1461,7 +1462,6 @@ public static class TableJson
                 }
                 else
                 {
-                    Span<byte> name = stackalloc byte[MaxKey];
                     int nameLength;
                     if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
                     bool found = false;
@@ -1751,12 +1751,12 @@ public static class TableJson
             // reads, its repeats simply stop being counted.
             Span<ulong> seen = stackalloc ulong[8];
             seen.Clear();
+            Span<byte> key = stackalloc byte[MaxKey];
             for (; ; )
             {
                 byte c = Peek(text, ref input);
                 if (c == '}') { input.Pos++; break; }
                 if (c == 0) { input.Bad = true; return false; }
-                Span<byte> key = stackalloc byte[MaxKey];
                 int keyLength;
                 if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -1873,12 +1873,12 @@ public static class TableJson
         int words = (info.NumFields + 63) / 64;
         Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
         seen.Clear();
+        Span<byte> key = stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
             if (c == 0) { input.Bad = true; return false; }
-            Span<byte> key = stackalloc byte[MaxKey];
             int keyLength;
             if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }

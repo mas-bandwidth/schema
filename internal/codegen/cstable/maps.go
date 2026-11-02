@@ -109,11 +109,11 @@ const tableMapJsonSource = `
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
         string mapField = input.TextField;
+        Span<byte> spelling = stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return true; }
-            Span<byte> spelling = stackalloc byte[MaxKey];
             int beforeClamp = input.Report.Clamped;
             input.TextField = mapField;
             if (!ScanString(text, ref input, spelling, true, out int used, stored: true)) { return false; }
