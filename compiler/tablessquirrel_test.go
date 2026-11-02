@@ -263,7 +263,7 @@ func TestSquirrelRefusesUnportedConstructsByName(t *testing.T) {
 			if err := refuseTextForms(u, "squirrel"); err != nil {
 				t.Errorf("%s: squirrel carries the construct, but refuseTextForms refused it: %v", tc.name, err)
 			}
-			if err := refuseTextForms(u, "c"); err == nil || !strings.Contains(err.Error(), "c") {
+			if err := refuseTextForms(u, "cs"); err == nil || !strings.Contains(err.Error(), "cs") {
 				t.Errorf("%s: an unregistered target was not refused by name: %v", tc.name, err)
 			}
 		}

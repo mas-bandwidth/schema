@@ -338,10 +338,22 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		if count != "" {
 			g.pf("%s        %s = 0;\n", ind, count)
 		}
+		if f.IsTextList() && f.TextTotal > 0 {
+			g.pf("%s        int64_t spent = 0;\n", ind)
+		}
 		g.pf("%s        for ( i = 0; i < kept; i++ )\n%s        {\n", ind, ind)
 		g.retainIndex(f, "i", ind+"            ")
 		bad := "r->report->malformed = 1; goto end_" + f.Name + ";"
 		switch kind {
+		case tkString:
+			val := ir.TextListValue(f)
+			g.pf("%s            TableReader elem; uint64_t keep;\n", ind)
+			g.pf("%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, bad)
+			g.pf("%s            if ( !table_wire_utf8( elem.buffer, (uint64_t) elem.size ) ) { %s( &%s[i] ); %s }\n", ind, g.api(f.Type.Name, "reset"), dst, bad)
+			g.pf("%s            keep = (uint64_t) elem.size;\n", ind)
+			g.pf("%s            if ( keep > %d ) { keep = table_wire_utf8_clamp( elem.buffer, keep, %d ); r->report->clamped++; }\n", ind, val.Type.Size, val.Type.Size)
+			g.pf("%s            memset( %s[i].value, 0, sizeof( %s[i].value ) );\n", ind, dst, dst)
+			g.pf("%s            memcpy( %s[i].value, elem.buffer, (size_t) keep ); %s[i].value[keep] = 0; %s[i].value_length = (int32_t) keep;\n", ind, dst, dst, dst)
 		case tkTable:
 			g.pf("%s            TableReader elem;\n%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, ind, bad)
 			g.pf("%s            %s( &elem, &%s[i] );\n", ind, g.api(f.Type.Name, "load_body"), dst)
@@ -353,6 +365,14 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			g.pf("%s                %s }\n", ind, bad)
 		default:
 			g.wireScalarRead(f, dst+"[i]", "sub", "elem_kind", ind+"            ", bad)
+		}
+		if f.IsTextList() && f.TextTotal > 0 {
+			if ir.TextListOptional(f) {
+				g.pf("%s            if ( %s[i].value_present && %s[i].value_length > 0 ) { spent += (int64_t) %s[i].value_length; }\n", ind, dst, dst, dst)
+			} else {
+				g.pf("%s            if ( %s[i].value_length > 0 ) { spent += (int64_t) %s[i].value_length; }\n", ind, dst, dst)
+			}
+			g.pf("%s            if ( spent > %d ) { r->report->clamped++; %s( &%s[i] ); goto end_%s; }\n", ind, f.TextTotal, g.api(f.Type.Name, "reset"), dst, f.Name)
 		}
 		if count != "" {
 			g.pf("%s            %s = (int32_t) i + 1;\n", ind, count)
