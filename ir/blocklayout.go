@@ -902,6 +902,10 @@ func BlockFieldOf(u *Unit, f *Field, fieldOffset int64, projection bool) BlockFi
 	switch {
 	case (f.Type.Pointer && f.Array == ArrayNone) || f.Type.TextUnbounded():
 		facts.ElemSize = pieces[0].Size
+	case f.Type.TextUnbounded():
+		// A bare text element or map key is one reference slot; its used
+		// length belongs to the referenced blob, not an inline companion.
+		facts.ElemSize = pieces[0].Size
 	case f.Type.Kind == TString:
 		// char[N+1] buffer, then the int32 used length. A string is not an
 		// ARRAY — §8.1's descriptors say the same — but it is COUNTED, and
