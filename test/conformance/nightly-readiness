@@ -145,11 +145,15 @@ def tool(name, fallback):
     return shlex.split(os.environ.get(name, fallback))
 
 
+# Shared semantic oracles and CI controls run once, independently of writer count.
+SHARED_PACKAGES = ("compiler", "harness", "tabletext", "tablewire", "fixedtwin", "ci")
+
+
 def required_phases(lang):
     """Independent completion contract: omitting a runner call cannot turn green."""
     required = {"prerequisites", "implementation", "external-table-gates",
                 "wire-driver-build", "wire-retain-controls", "packet-build", "packet-features"}
-    for package in ("lockfile", *PACKAGES[lang], *(("compiler", "harness") if lang == "cpp" else ())):
+    for package in ("lockfile", *PACKAGES[lang], *(SHARED_PACKAGES if lang == "cpp" else ())):
         required |= {"native-list-" + package, "native-" + package}
     if lang == "cpp":
         required.add("readiness-contracts")
@@ -178,7 +182,9 @@ def required_phases(lang):
 
 def package_path(package):
     return {"compiler": "compiler", "lockfile": "internal/lockfile",
-            "harness": "test/conformance/harness"}.get(
+            "harness": "test/conformance/harness", "tabletext": "internal/tabletext",
+            "tablewire": "internal/tablewire", "fixedtwin": "tools/fixedtwin",
+            "ci": "internal/ci"}.get(
         package, "internal/codegen/" + package)
 
 
@@ -392,7 +398,7 @@ class Runner:
 def run_native(runner, lang):
     packages = ["lockfile", *PACKAGES[lang]]
     if lang == "cpp":
-        packages.extend(("compiler", "harness"))  # Shared regressions once, not per writer.
+        packages.extend(SHARED_PACKAGES)
     for package in packages:
         path = "./" + package_path(package)
         listed_text, status = runner.run("native-list-" + package,
