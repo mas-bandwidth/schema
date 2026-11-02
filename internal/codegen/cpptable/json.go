@@ -326,7 +326,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         char token[kTableJsonMaxKey];
         int32_t token_length = 0;
         bool key_over = false; // longer than THIS buffer: never truncated into a key
-        if ( !TableJsonScanString( in, token, kTableJsonMaxKey - 1, &token_length, &key_over ) ) { return false; }
+        if ( !TableJsonScanString( in, token, kTableJsonMaxKey - 1, &token_length, &key_over, true ) ) { return false; }
         token[token_length] = 0;
         if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
         in.pos++;
@@ -2427,7 +2427,8 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
             // form built has to be storage the wire can carry (§5).
             if ( !TableUtf8Valid( (const uint8_t *) unit, unit_length ) )
             {
-                unit_length = TableJsonEncodeUtf8( 0xfffd, unit );
+                in.bad = true;
+                return false;
             }
         }
     }
@@ -2447,7 +2448,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
 // because a key never clamps: a key this buffer could not hold whole is not a
 // shorter key, and its entry drops instead (§2.8).
 inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
-    bool * clamped_out = NULL )
+    bool * clamped_out = NULL, bool text = false )
 {
     if ( TableJsonPeek( in ) != '"' )
     {
@@ -2463,6 +2464,11 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         int32_t unit_length = 0;
         if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
         if ( unit_length == 0 ) { break; }
+        if ( text && unit[0] == 0 )
+        {
+            in.bad = true;
+            return false;
+        }
         if ( out == NULL )
         {
             placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
@@ -2659,6 +2665,11 @@ inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capa
         if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
         if ( unit_length == 0 ) { break; }
         const uint32_t code = TableJsonDecodeUtf8( unit, unit_length );
+        if ( code == 0 )
+        {
+            in.bad = true;
+            return false;
+        }
         char16_t units[2];
         int32_t units_length = 1;
         if ( code < 0x10000 )
@@ -3966,7 +3977,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     if ( f->kind == 12 )
     {
         int32_t length = 0;
-        if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length ) ) { return false; }
+        if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length, NULL, true ) ) { return false; }
         storage[length] = 0;
         TableJsonSetCount( base, f, length );
         return true;
@@ -4414,6 +4425,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
         in.report->malformed = true;
         return false;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     bool ok = TableJsonReadTable( in, value, info, 0 );
     if ( ok )
     {
@@ -4629,7 +4641,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
     {
         const int64_t mark = in.pos;
         int32_t length = 0;
-        if ( !TableJsonScanString( in, NULL, 0, &length ) ) { return false; }
+        if ( !TableJsonScanString( in, NULL, 0, &length, NULL, true ) ) { return false; }
         in.pos = mark;
         char * data = TableStringEmplace( *graph->worker, *ref, NULL, (int64_t) length );
         if ( data == NULL )
@@ -4639,7 +4651,7 @@ inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldIn
             return false;
         } // the arena refused
         int32_t placed = 0;
-        return TableJsonScanString( in, data, length, &placed );
+        return TableJsonScanString( in, data, length, &placed, NULL, true );
     }
     // base64: the alphabet characters decide the length, six bits apiece
     in.pos++;
@@ -4984,6 +4996,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
         in.report->malformed = true;
         return false;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     bool ok = TableJsonReadTable( in, root, info, 0 );
     if ( ok )
     {

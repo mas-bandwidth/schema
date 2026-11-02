@@ -2452,6 +2452,7 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
         in.report->malformed = 1;
         return 0;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     ok = table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {

@@ -1319,7 +1319,6 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s            // elided field of the repeat reads as its default. The map's\n", ind)
 	g.pf("%s            // count excludes it.\n", ind)
 	g.pf("%s            slot = TableMapFillLast( fill );\n", ind)
-	g.pf("%s            r.report->duplicate++;\n", ind)
 	g.pf("%s        }\n%s        else\n%s        {\n", ind, ind, ind)
 	g.pf("%s            slot = TableMapFillNext( fill ); // ASCENDING: the next slot\n", ind)
 	g.pf("%s        }\n", ind)
@@ -1331,6 +1330,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 		g.emitLoadRefusal(n, ind+"            ")
 	})
 	g.pf("%s        }\n", ind)
+	g.pf("%s        if ( order == 0 ) { r.report->duplicate++; }\n", ind)
 	if mapKeyIsString(f) {
 		g.pf("%s        last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND\n", ind)
 	} else {

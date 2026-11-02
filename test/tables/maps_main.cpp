@@ -1024,28 +1024,18 @@ static void test_text()
         CHECK( r.malformed );
     }
     {
-        // A KEY IS DATA AND A LENGTH, never a run to the first NUL (§2.8, §3):
-        // the wire and the text both carry an interior U+0000 in a string(N)
-        // key, so "a" and "a\0b" are TWO keys. A lookup that recomputes the
-        // length merges them and relabels the entry it found, which is a
-        // deletion the report never mentions.
         const char * t = "{\"entries\":{\"a\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 2 );
-        CHECK_EQ( r.duplicate, 0 );
-        CHECK_EQ( r.clamped, 0 );
+        CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
-        // and the SAME interior-zero key twice IS one key: one entry, counted
-        // duplicate, never a second entry wearing an identity the map holds
         const char * t = "{\"entries\":{\"a\\u0000b\":{\"count\":1},\"a\\u0000b\":{\"count\":2}}}";
         RowBuilder rb;
         TableReport r;
-        CHECK( RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
-        CHECK_EQ( rb.GetRoot()->entries.count, 1 );
-        CHECK_EQ( r.duplicate, 1 );
+        CHECK( !RowFromJsonTolerant( rb, t, (int64_t) strlen( t ), &r ) );
+        CHECK( r.malformed );
     }
     {
         // A KEY THE WALKER CANNOT HOLD WHOLE MUST NOT BECOME A DIFFERENT KEY

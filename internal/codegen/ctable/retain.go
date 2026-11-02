@@ -119,7 +119,7 @@ static SCHEMA_UNUSED const void * table_retain_at(const TableRetain * retain,con
 static SCHEMA_UNUSED int table_retain_under(const TableRetain * retain,const uint8_t * record,const TableRetainPath * path,int field,uint32_t ordinal)
 {
  uint32_t depth=table_retain_u32(record+8);int32_t i;const uint8_t * steps=record+SCHEMA_TABLE_RETAIN_HEADER;
- if(path->depth<0||path->depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||table_retain_at(retain,record)!=path->at)return 0;
+ if(path->depth<0||path->depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||(path->node?table_retain_u32(record+4)!=path->node:table_retain_at(retain,record)!=path->at))return 0;
  if(depth<(uint32_t)path->depth||(field&&depth==(uint32_t)path->depth))return 0;
  for(i=0;i<path->depth;i++)if(table_retain_u32(steps+8*i)!=path->steps[i].ordinal||table_retain_u32(steps+8*i+4)!=path->steps[i].index)return 0;
  return !field||table_retain_u32(steps+8*path->depth)==ordinal;
