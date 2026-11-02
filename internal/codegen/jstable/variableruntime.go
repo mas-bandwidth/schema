@@ -607,11 +607,16 @@ function TableVariableOpen(bytes, report) {
 // every body is read, then resolves against the ONE numbering (§3.1). A record
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
+function TableVariableCountRefused(report) {
+  return report.refused && report.reason === "count_over_extent_cap";
+}
+
 function TableVariableLoad(c, bytes, report, retain) {
   // a caller that passed no report still gets the refusal: the read keeps one
   if (report === undefined || report === null) { report = new TableVariableReport(); }
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
+  if (TableVariableCountRefused(report)) { report.refused = 0; report.reason = null; }
   // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): this read judges
   // its own damage, so a report a caller hands in already marked malformed
   // stays marked and does not refuse a clean wire.
@@ -659,6 +664,7 @@ function TableVariableLoad(c, bytes, report, retain) {
       // the node's own identity, so its unknown fields ride back into the same
       // record's tail on the save.
       TableVariableBodyRead(n.codec, new TableVariableReader(n.body, 0, n.body.length), table, n.v, report, st, true, retain, TableVariableRetainNodePath(n.v));
+      if (TableVariableCountRefused(report)) { break; }
     }
   }
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
@@ -667,6 +673,12 @@ function TableVariableLoad(c, bytes, report, retain) {
   if (report.nonFiniteFloat) {
     report.refused = 1;
     report.reason = "non_finite_float: " + report.nonFiniteFloat;
+    if (retain !== null) { retain.reset(); }
+    return null;
+  }
+  // A storage cap refuses the whole read without adding a damage event.
+  if (TableVariableCountRefused(report)) {
+    report.malformed = carried || report.malformed;
     if (retain !== null) { retain.reset(); }
     return null;
   }
@@ -819,6 +831,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
   // which is what keeps a duplicate map entry from leaving two records.
   if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, false, 0); }
   for (;;) {
+    if (TableVariableCountRefused(report)) { return false; }
     const ref = r.leb();
     if (r.bad) { report.malformed = true; return false; }
     if (ref === 0) { return true; }
@@ -1015,6 +1028,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       if (path !== null) { path.push({ o: fd.o, i: 0 }); }
       TableVariableBodyRead(fd.c, sub, table, inst, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
+      if (TableVariableCountRefused(report)) { return false; }
       // a body whose terminator is not the last byte of its L is damage: the
       // field reads its declared defaults and the parent continues past L
       if (sub.at !== sub.end) { report.malformed = true; v[fd.n] = fd.c.make(); }
@@ -1080,7 +1094,7 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     }
     let keep = count;
     if (fd.list) {
-      if (count > 0x7fffffff) { v[fd.n] = []; report.malformed = true; return false; }
+      if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; return false; }
     } else if (count > fd.bound) {
       keep = fd.bound;
       report.clamped++;
@@ -1155,6 +1169,7 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
       if (path !== null) { path.push({ o: fd.o, i: i }); }
       TableVariableBodyRead(e.c, sub, table, inst, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
+      if (TableVariableCountRefused(report)) { return false; }
       if (sub.at !== sub.end) { report.malformed = true; inst = e.c.make(); }
       r.at += L;
       out[i] = inst;
@@ -1860,6 +1875,7 @@ class TableVariableTextIn {
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is malformed.
 function TableVariableFromJson(c, text, report) {
+  report.reason = ""; report.refused = 0;
   const carried = report.malformed;
   report.malformed = false;
   const inp = new TableVariableTextIn(text);
@@ -1925,8 +1941,9 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
         if (shape !== fd.js) {
           report.kindMismatch++;
           if (!inp.skip(depth + 1, graph)) { return false; }
-        } else if (!TableVariableTextField(fd, inp, v, depth, graph, report)) {
-          return false;
+        } else {
+          inp.field = c.name + "." + fd.n;
+          if (!TableVariableTextField(fd, inp, v, depth, graph, report)) { return false; }
         }
         if (fd.opt && fd.s === "enum" && v[fd.n] === null) { v[fd.n] = "None"; }
       }
@@ -1967,11 +1984,21 @@ function TableVariableBase64Read(inp, bound, report) {
   return { bad: false, bytes: new Uint8Array(out) };
 }
 
+function TableVariableStoredText(s, inp, report) {
+  if (s === null) { return false; }
+  if (s.includes("\u0000")) {
+    report.reason = "text_holds_zero: " + inp.field;
+    inp.bad = true;
+    return false;
+  }
+  return true;
+}
+
 function TableVariableTextField(fd, inp, v, depth, graph, report) {
   switch (fd.s) {
     case "sblob": {
       const s = inp.str();
-      if (s === null) { return false; }
+      if (!TableVariableStoredText(s, inp, report)) { return false; }
       v[fd.n] = s;
       return true;
     }
@@ -1984,7 +2011,7 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
     }
     case "str": {
       const s = inp.str();
-      if (s === null) { return false; }
+      if (!TableVariableStoredText(s, inp, report)) { return false; }
       const b = TableVariableUtf8Encode(s);
       if (b.length > fd.bound) {
         // A CLAMP IS A PREFIX, cut between code points (§16.2)
@@ -2002,7 +2029,7 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
       // TRANSCODED at the boundary — a JavaScript string already is UTF-16 —
       // and clamped at N CODE UNITS with a pair never split
       const s = inp.str();
-      if (s === null) { return false; }
+      if (!TableVariableStoredText(s, inp, report)) { return false; }
       if (s.length > fd.bound) { report.clamped++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
       else { v[fd.n] = s; }
       return true;

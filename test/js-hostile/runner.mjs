@@ -156,7 +156,8 @@ const DAMAGED = { verdict: "refuse", detail: "damaged" };
 
 function reasonName(r) {
   const i = r.indexOf(": ");
-  return i < 0 ? r : r.slice(0, i);
+  const name = i < 0 ? r : r.slice(0, i);
+  return name === "count_over_extent_cap" ? "count_refusal" : name;
 }
 
 // A unit is every module the generator wrote for one schema, loaded once.
@@ -253,7 +254,11 @@ class Reader {
       return DAMAGED;
     }
     const report = new m.TableVariableReport();
-    return this.tableVerdict(m, T, m[`${T}FromJson`](text, report), report, null);
+    const value = m[`${T}FromJson`](text, report);
+    // Text syntax/storage refusals are malformed in the engine protocol,
+    // even when the public reader supplies a useful diagnostic reason.
+    if (report.malformed) { return DAMAGED; }
+    return this.tableVerdict(m, T, value, report, null);
   }
 
   wire(schema, T, payload) {
