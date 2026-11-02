@@ -162,6 +162,9 @@ func encodeBodyFields(e *encoder, inst *tabletext.Instance) ([]byte, error) {
 		if terms, guarded := guards[fv.Def.Name]; guarded && !inst.GuardHolds(terms) {
 			continue
 		}
+		if err := tabletext.ValidateRequiredValue(fv); err != nil {
+			return nil, err
+		}
 		if err := encodeField(e, w, inst, fv); err != nil {
 			return nil, err
 		}
@@ -199,7 +202,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		if f.Type.Blob() {
 			index = e.g.BlobIndex(fv.Cell.Blob)
 		}
-		if index == ir.NodeWireIndexNull {
+		if !f.Required && index == ir.NodeWireIndexNull {
 			return nil
 		}
 		e.header(w, id, ir.TableKindPointer)
@@ -250,7 +253,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return encodeKeyed(e, w, fv, id, kind)
 
 	case f.Type.Kind == ir.TString:
-		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+		if !f.Required && bytes.Equal(fv.Cell.Str, f.DefBytes) {
 			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindString)
@@ -261,7 +264,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		// WIDE TEXT TAKES NO SPECIFIED DEFAULT (SPEC.md §4.12), so the empty
 		// value is what elides. `L` is a BYTE length like every `L` on this
 		// wire (§3), which is twice the code unit count.
-		if len(fv.Cell.Units) == 0 {
+		if !f.Required && len(fv.Cell.Units) == 0 {
 			return nil
 		}
 		e.header(w, id, ir.TableKindWstring)
@@ -270,7 +273,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	case f.Type.Kind == ir.TBytes:
-		if bytes.Equal(fv.Cell.Str, f.DefBytes) {
+		if !f.Required && bytes.Equal(fv.Cell.Str, f.DefBytes) {
 			return nil // at its default, empty when none is declared (§3, SPEC §4.2)
 		}
 		e.header(w, id, ir.TableKindArray)
@@ -288,7 +291,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): the
 		// same kind 14 body, the same element kind, the same count, and the
 		// same elision of an empty one under §3's by-value elision rule.
-		if fv.Count == 0 {
+		if !f.Required && fv.Count == 0 {
 			return nil
 		}
 		return encodeArray(e, w, fv, id, kind, fv.Count)
@@ -308,7 +311,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 				break
 			}
 		}
-		if allDefault {
+		if !f.Required && allDefault {
 			return nil
 		}
 		return encodeArray(e, w, fv, id, kind, int(f.ArrayBound))
@@ -316,6 +319,10 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 	case kind == ir.TableKindUnion:
 		un := tabletext.UnionOf(f)
 		if fv.Cell.U == 0 {
+			if f.Required {
+				e.header(w, id, ir.TableKindUnion)
+				w.leb(0)
+			}
 			return nil // None elides — the absence of the field is the None
 		}
 		if int(fv.Cell.U) > len(un.Variants) {
@@ -342,7 +349,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		if err != nil {
 			return err
 		}
-		if len(body) <= 1 {
+		if !f.Required && len(body) <= 1 {
 			e.ids.rollback(mark) // an all-default nested table elides
 			return nil
 		}
@@ -353,7 +360,7 @@ func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Fie
 		return nil
 
 	default:
-		if cellIsDefault(e, f, &fv.Cell) {
+		if !f.Required && cellIsDefault(e, f, &fv.Cell) {
 			return nil
 		}
 		return encodeSimple(e, w, f, id, kind, &fv.Cell)
@@ -459,7 +466,7 @@ func encodeKeyed(e *encoder, w *buf, fv *tabletext.Field, id uint64, kind int) e
 		body.raw(elem)
 		pairs++
 	}
-	if pairs == 0 {
+	if pairs == 0 && !f.Required {
 		e.ids.rollback(mark)
 		return nil
 	}
@@ -772,7 +779,7 @@ func encodeMap(e *encoder, w *buf, fv *tabletext.Field, id uint64) error {
 		if !fv.Present {
 			return nil
 		}
-	} else if len(fv.Entries) == 0 {
+	} else if len(fv.Entries) == 0 && !f.Required {
 		return nil
 	}
 	order := MapEntryOrder(f, fv)

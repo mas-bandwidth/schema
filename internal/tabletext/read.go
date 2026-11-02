@@ -64,10 +64,11 @@ type labelEntry struct {
 // its declared defaults with nothing the read placed.
 func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	priorMalformed := report.Malformed
+	missingBefore := report.MissingRequired
 	report.Malformed = false
 	ok := m.read(inst, text, report)
 	if !ok || report.Malformed {
-		report.Malformed = true
+		report.Malformed = priorMalformed || report.Malformed || report.MissingRequired == missingBefore
 		m.Clear(inst)
 		return false
 	}
@@ -76,6 +77,7 @@ func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 }
 
 func (m *Model) read(inst *Instance, text []byte, report *Report) bool {
+	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}
@@ -89,7 +91,7 @@ func (m *Model) read(inst *Instance, text []byte, report *Report) bool {
 		}
 	}
 	if in.bad || !ok {
-		report.Malformed = true
+		report.Malformed = in.bad || report.MissingRequired == missingBefore
 		return false
 	}
 	return true
@@ -723,7 +725,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			c = in.peek()
 			if c == '}' {
 				in.pos++
-				return true
+				return in.report.RequireSeen(inst, func(i int) bool { return seen[i] })
 			}
 			if c == 0 {
 				in.bad = true
@@ -802,7 +804,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 		}
 		if c == '}' {
 			in.pos++
-			return true
+			return in.report.RequireSeen(inst, func(i int) bool { return seen[i] })
 		}
 		in.bad = true
 		return false
@@ -979,7 +981,7 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		// an empty object: a node at its defaults, named once
 		in.pos++
 		cell.Node = in.m.New(st)
-		return true
+		return in.report.RequireSeen(cell.Node, func(int) bool { return false })
 	}
 	if c == 0 {
 		in.bad = true
@@ -2054,6 +2056,7 @@ func integerInDomain(n jsonInteger, signed bool, bytes int) (int64, bool) {
 // checked before the value is placed, presence of the FILE is presence for a
 // `?T`, and nothing is coerced.
 func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
+	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	m.reset(fv)
@@ -2080,7 +2083,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		m.reset(fv)
-		report.Malformed = true
+		report.Malformed = report.Malformed || in.bad || report.MissingRequired == missingBefore
 		return false
 	}
 	return true
@@ -2090,6 +2093,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 // `<Variant>.json` under an enum-keyed field's directory, or one of the files
 // that become a bounded array's elements in name order.
 func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bool {
+	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
@@ -2112,7 +2116,7 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
 		fv.Elems[slot] = m.elementZero(fv.Def)
-		report.Malformed = true
+		report.Malformed = report.Malformed || in.bad || report.MissingRequired == missingBefore
 		return false
 	}
 	return true
