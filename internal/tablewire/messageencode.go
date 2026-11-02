@@ -10,7 +10,9 @@
 package tablewire
 
 import (
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"math/big"
 
@@ -67,7 +69,11 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 		}
 	}
 	w.align() // THE FINAL FLUSH ZERO-FILLS to the next byte boundary
-	return append([]byte{ir.TableWireMessageForm}, w.b...), nil
+	out := append([]byte{ir.TableWireMessageForm}, w.b...)
+	if insts[0].Def.Integrity == "crc32c" {
+		out = binary.LittleEndian.AppendUint32(out, crc32.Checksum(out, fileCRC32C))
+	}
+	return out, nil
 }
 
 // EncodeMessage is the BATCH OF ONE, which is the only sense in which this

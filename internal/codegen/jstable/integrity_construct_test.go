@@ -1,10 +1,8 @@
 package jstable
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"hash/crc32"
 	"maps"
 	"strings"
 	"testing"
@@ -38,9 +36,6 @@ func TestJavaScriptIntegrityConstruct(t *testing.T) {
  }
  `)
 	model := tabletext.NewModel(u)
-	seal := func(wire []byte) string {
-		return hex.EncodeToString(binary.LittleEndian.AppendUint32(wire, crc32.Checksum(wire, crc32.MakeTable(crc32.Castagnoli))))
-	}
 	var variable []string
 	for _, input := range []string{`{}`, `{"n":7,"child":{"x":9}}`} {
 		value := model.New(u.Tables["Root"])
@@ -52,8 +47,6 @@ func TestJavaScriptIntegrityConstruct(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Encode already appends the declared file CRC. Only the message
-		// oracle below still needs its explicit checksum adapter.
 		variable = append(variable, hex.EncodeToString(wire))
 	}
 	var values []*tabletext.Instance
@@ -84,7 +77,7 @@ func TestJavaScriptIntegrityConstruct(t *testing.T) {
 		PlainFixed   string   `json:"plainFixed"`
 		Message      string   `json:"message"`
 		Announcement string   `json:"announcement"`
-	}{variable, jsIntegrityFixedGolden, jsIntegrityPlainFixedGolden, seal(message), hex.EncodeToString(ir.TableAnnouncement(u))}
+	}{variable, jsIntegrityFixedGolden, jsIntegrityPlainFixedGolden, hex.EncodeToString(message), hex.EncodeToString(ir.TableAnnouncement(u))}
 	out := runJSConstructProbe(t, files, runtimeHome(u)+"Variable.js", jsIntegrityDriver, spec)
 	if !strings.Contains(out, "INTEGRITY OK\n") {
 		t.Fatalf("missing native integrity proof: %s", out)
