@@ -233,7 +233,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		g.pf("%sn := %sMeasureBody(&%s, w.Ids)\n", i, f.Type.Name, expr)
 		g.pf("%sif n < 0 || w.Ids.Overflow { return false }\n", i)
 		cond := "n > 1"
-		if f.Type.Optional {
+		if f.Type.Optional || f.Required {
 			cond = "true"
 		}
 		g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+tableLebBytes(uint64(n))+n) } else {\n%s  w.Ids.Truncate(start)\n", i, cond, i, i)
@@ -253,7 +253,7 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		empty = 3
 	}
 	cond := fmt.Sprintf("payload.Offset > %d", empty)
-	if f.Type.Optional {
+	if f.Type.Optional || f.Required {
 		cond = "true"
 	}
 	g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+payload.Offset) } else {\n%s  w.Ids.Truncate(start); if !w.headerPair(ref, %d) { w.headerRest(ref, %d) }\n", i, cond, i, i, kind, kind)
