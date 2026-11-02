@@ -120,6 +120,20 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 			if err != nil {
 				t.Fatalf("cook-write probe: %v\n%s", err, out)
 			}
+			if strings.HasPrefix(fam.name, "guarded-") {
+				executable := filepath.Join(dir, "cook_every_probe")
+				compile := exec.Command(dartBinary(t), "compile", "exe", "-o", executable, "cook_every_probe.dart")
+				compile.Dir = dir
+				if build, err := compile.CombinedOutput(); err != nil {
+					t.Fatalf("guarded cook native compile: %v\n%s", err, build)
+				}
+				native := exec.Command(executable)
+				native.Dir = dir
+				nativeOut, err := native.CombinedOutput()
+				if err != nil || !bytes.Equal(nativeOut, out) {
+					t.Fatalf("guarded cook native differs: %v\nJIT %s\nAOT %s", err, out, nativeOut)
+				}
+			}
 			model := tabletext.NewModel(fu)
 			value := model.New(fu.Tables["Root"])
 			fam.mutate(t, model, value)
