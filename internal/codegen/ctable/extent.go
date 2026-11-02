@@ -37,11 +37,14 @@ func (g *tableGen) emitExtentBodies(members []*ir.Struct) {
 		guards := tableGuardExprs(st)
 		for _, f := range st.Fields {
 			if guard := guards[f.Name]; guard != "" {
-				g.pf("    if(%s) {\n", guard)
-			}
-			g.emitExtentField(f, "value->"+f.Name, "out->"+f.Name, "    ", &step)
-			if guards[f.Name] != "" {
-				g.pf("    }\n")
+				step++
+				u := fmt.Sprintf("extent_g%d", step)
+				g.pf("    { int64_t %s=0; int64_t * %s_at=at; uint8_t * %s_target=target;\n", u, u, u)
+				g.pf("      if(!(%s)) { target=NULL; at=&%s; }\n", guard, u)
+				g.emitExtentField(f, "value->"+f.Name, "out->"+f.Name, "      ", &step)
+				g.pf("      if(!(%s)) { target=%s_target; at=%s_at; if(%s!=0) { return 0; } }\n    }\n", guard, u, u, u)
+			} else {
+				g.emitExtentField(f, "value->"+f.Name, "out->"+f.Name, "    ", &step)
 			}
 		}
 		g.pf("    return 1;\n}\n")
@@ -88,8 +91,12 @@ func (g *tableGen) fieldHasExtent(f *ir.Field) bool {
 }
 
 func (g *tableGen) emitExtentField(f *ir.Field, src, dst, ind string, step *int) {
+	var optLabel string
 	if f.Type.Optional {
-		g.pf("%sif(%s_present) {\n", ind, src)
+		*step++
+		optLabel = fmt.Sprintf("extent_o%d", *step)
+		g.pf("%s{ int64_t %s=0; int64_t * %s_at=at; uint8_t * %s_target=target;\n", ind, optLabel, optLabel, optLabel)
+		g.pf("%s  if(!(%s_present)) { target=NULL; at=&%s; }\n", ind, src, optLabel)
 	}
 	switch {
 	case f.IsList() || f.IsMap():
@@ -140,7 +147,7 @@ func (g *tableGen) emitExtentField(f *ir.Field, src, dst, ind string, step *int)
 		}
 	}
 	if f.Type.Optional {
-		g.pf("%s}\n", ind)
+		g.pf("%s  if(!(%s_present)) { target=%s_target; at=%s_at; if(%s!=0) { return 0; } }\n%s}\n", ind, src, optLabel, optLabel, optLabel, ind)
 	}
 }
 

@@ -73,6 +73,25 @@ const cTimestampFixedProbe = `
     static const int64_t nanos[] = { 0ll, 1740736445000000000ll, -1ll, (-9223372036854775807ll - 1), 9223372036854775807ll };
     static uint8_t file[ 512 ];
     int k;
+    {
+        TableFixedLayoutView view;
+        int why = 0, saw_timestamp = 0, saw_tag = 0, i;
+        const TableTypeInfo * info = root_table_type();
+        uint64_t at_id = 0, tag_id = 0;
+        if ( !table_fixed_parse_layout( root_fixed_known[ 0 ].layout, root_fixed_known[ 0 ].layout_bytes, &view, &why ) ) { printf( "fixed: the layout does not parse\n" ); return 1; }
+        for ( i = 0; i < info->num_fields; ++i )
+        {
+            if ( strcmp( info->fields[ i ].name, "at" ) == 0 ) { at_id = info->fields[ i ].id; }
+            if ( strcmp( info->fields[ i ].name, "tag" ) == 0 ) { tag_id = info->fields[ i ].id; }
+        }
+        for ( i = 0; i < view.count; ++i )
+        {
+            const TableFixedLayoutEntry e = table_fixed_entry_at( &view, i );
+            if ( e.id == at_id ) { saw_timestamp = 1; if ( e.kind != 5 || e.size != 8u ) { printf( "fixed: the timestamp layout entry is kind %u size %u, want 5 / 8\n", (unsigned) e.kind, (unsigned) e.size ); return 1; } }
+            if ( e.id == tag_id ) { saw_tag = 1; if ( e.kind != 5 || e.size != 8u ) { printf( "fixed: the int64 layout entry moved\n" ); return 1; } }
+        }
+        if ( !saw_timestamp || !saw_tag ) { printf( "fixed: the layout does not carry both fields\n" ); return 1; }
+    }
     for ( k = 0; k < 5; ++k )
     {
         Root v, back;

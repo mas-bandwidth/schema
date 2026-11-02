@@ -156,8 +156,9 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 		if g.hasCookExtent(st) {
 			g.pf("%s\n{\n    const %s * value=(const %s *)storage;\n    (void)n; (void)value; (void)record; (void)extent; (void)at; (void)order;\n", g.cookExtentSignature(st), st.Name, st.Name)
 			step = 0
+			guards := tableGuardExprs(st)
 			for _, fl := range ir.RecordLayout(g.unit, st).Fields {
-				g.cookExtentField(fl.Field, "value->"+fl.Field.Name, fmt.Sprintf("(record!=NULL ? record+%d : NULL)", fl.Offset), "    ", &step)
+				g.cookExtentField(fl.Field, guards[fl.Field.Name], "value->"+fl.Field.Name, fmt.Sprintf("(record!=NULL ? record+%d : NULL)", fl.Offset), "    ", &step)
 			}
 			g.pf("    return 1;\n}\n")
 		}
@@ -173,9 +174,6 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 }
 
 func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind string, step *int) {
-	if f.IsMap() || f.IsList() {
-		return
-	} // zero until the extent writer places the array
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if len(pieces) == 0 {
 		return
@@ -183,6 +181,9 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	if f.Type.Optional {
 		g.pf("%stable_cook_put(%s+%d,%s_present ? 1 : 0,1,order);\n", ind, at, pieces[len(pieces)-1].Offset-offset, src)
 	}
+	if f.IsMap() || f.IsList() {
+		return
+	} // zero until the extent writer places the array
 	if f.Array != ir.ArrayNone {
 		*step++
 		i := fmt.Sprintf("cook_i%d", *step)
@@ -252,13 +253,28 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	}
 }
 
-func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int) {
+func (g *tableGen) cookExtentField(f *ir.Field, guard, src, dst, ind string, step *int) {
 	if !g.cookFieldExtent(f) {
 		return
 	}
 	*step++
 	label := fmt.Sprintf("cook_extent%d", *step)
-	g.pf("%suint8_t * %s_slot=%s;\n", ind, label, dst)
+	cond := guard
+	if f.Type.Optional {
+		present := src + "_present"
+		if cond == "" {
+			cond = present
+		} else {
+			cond = "(" + cond + ") && " + present
+		}
+	}
+	if cond != "" {
+		g.pf("%sint64_t %s_unreached=0; int64_t * %s_unreached_at=at;\n", ind, label, label)
+		g.pf("%suint8_t * %s_slot=(%s) ? %s : NULL;\n", ind, label, cond, dst)
+		g.pf("%sif(!(%s)) { at=&%s_unreached; }\n", ind, cond, label)
+	} else {
+		g.pf("%suint8_t * %s_slot=%s;\n", ind, label, dst)
+	}
 	dst = label + "_slot"
 	switch {
 	case f.IsList() || f.IsMap():
@@ -274,7 +290,7 @@ func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int)
 		g.pf("%s    if(%s_array!=NULL) {\n", ind, label)
 		g.cookField(elem, "(*"+label+"_in)", out, 0, ind+"        ", step)
 		g.pf("%s    }\n", ind)
-		g.cookExtentField(elem, "(*"+label+"_in)", out, ind+"    ", step)
+		g.cookExtentField(elem, "", "(*"+label+"_in)", out, ind+"    ", step)
 		g.pf("%s  }\n%s}\n", ind, ind)
 	case f.Array != ir.ArrayNone:
 		count := fmt.Sprint(f.ArrayBound)
@@ -285,13 +301,13 @@ func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int)
 		pieces := ir.FieldPieces(g.unit, f, 0)
 		stride := pieces[0].Size / f.ArrayBound
 		g.pf("%s{ int32_t %s; for(%s=0;%s<%s && %s<%d;%s++) {\n", ind, label, label, label, count, label, f.ArrayBound, label)
-		g.cookExtentField(elem, src+"["+label+"]", fmt.Sprintf("(%s!=NULL ? %s+%s*%d : NULL)", dst, dst, label, stride), ind+"    ", step)
+		g.cookExtentField(elem, "", src+"["+label+"]", fmt.Sprintf("(%s!=NULL ? %s+%s*%d : NULL)", dst, dst, label, stride), ind+"    ", step)
 		g.pf("%s}\n", ind)
 		if f.Array == ir.ArrayCounted {
 			// A hidden container has no place in the region. Measure that
 			// slot independently and refuse even when its shape is invalid.
 			g.pf("%sfor(;%s<%d;%s++) { int64_t %s_hidden=0; int64_t * %s_saved_at=at; at=&%s_hidden;\n", ind, label, f.ArrayBound, label, label, label, label)
-			g.cookExtentField(elem, src+"["+label+"]", "((uint8_t *)NULL)", ind+"    ", step)
+			g.cookExtentField(elem, "", src+"["+label+"]", "((uint8_t *)NULL)", ind+"    ", step)
 			g.pf("%s    at=%s_saved_at; if(%s_hidden!=0) { return 0; }\n%s}\n", ind, label, label, ind)
 		}
 		g.pf("%s}\n", ind)
@@ -305,12 +321,15 @@ func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int)
 			for _, v := range ref.Variants {
 				if !v.Void() && g.cookFieldExtent(v.F) {
 					g.pf("%scase %s: {\n", ind, enumConst(ref.Name+"Type", v.Name))
-					g.cookExtentField(v.F, armValue(src, v), fmt.Sprintf("(%s!=NULL ? %s+%d : NULL)", dst, dst, offset), ind+"    ", step)
+					g.cookExtentField(v.F, "", armValue(src, v), fmt.Sprintf("(%s!=NULL ? %s+%d : NULL)", dst, dst, offset), ind+"    ", step)
 					g.pf("%s    break; }\n", ind)
 				}
 			}
 			g.pf("%sdefault: break;\n%s}\n", ind, ind)
 		}
+	}
+	if cond != "" {
+		g.pf("%sif(!(%s)) { at=%s_unreached_at; if(%s_unreached!=0) { return 0; } }\n", ind, cond, label, label)
 	}
 }
 
