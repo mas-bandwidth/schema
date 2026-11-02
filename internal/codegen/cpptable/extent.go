@@ -269,16 +269,18 @@ func (g *tableGen) emitListElementExtents(f *ir.Field, element edgeExpr, ev edge
 // emitExtent emits `<T>ExtentAt`: the running offset every array reachable by
 // value from one record takes, in the order the pack lays them, and
 // `<T>Extent`, the whole extent from a fresh offset.
+// The optional mode selects canonical scalar array layout; the default retains
+// native pack layout. Its name uses the already reserved schema_ prefix.
 func (g *tableGen) emitExtent(st *ir.Struct) {
 	g.pf("// %sExtentAt: the node extent %s's lists and maps take, PRE-ORDER, advancing\n", st.Name, st.Name)
-	g.pf("// the running offset exactly as %sExtentPack advances it (§2.8, §2.9).\n", st.Name)
-	g.pf("template <typename Ctx>\ninline bool %sExtentAt( const Ctx & ctx, const %s & value, int64_t & at )\n{\n", st.Name, st.Name)
+	g.pf("// the default native mode advances exactly as %sExtentPack (§2.8, §2.9).\n", st.Name)
+	g.pf("template <typename Ctx, bool schema_cook_extent = false>\ninline bool %sExtentAt( const Ctx & ctx, const %s & value, int64_t & at )\n{\n", st.Name, st.Name)
 	if !g.hasExtent(st) {
 		g.pf("    (void) ctx;\n    (void) value;\n    (void) at; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
 		// a variable member with no extent of its own is still a root Lock and
 		// a cook size from, so its whole extent is spelled, and it is zero
-		g.pf("template <typename Ctx>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
+		g.pf("template <typename Ctx, bool schema_cook_extent = false>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
 		g.pf("    (void) ctx;\n    (void) value; // no list or map below this record\n")
 		g.pf("    return 0;\n}\n\n")
 		return
@@ -295,7 +297,7 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, entry.Name)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
+				g.pf("%s        if ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
@@ -306,22 +308,28 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s{\n", ind)
 			g.pf("%s    TableListCursor<%s> cursor = TableListElements( ctx, %s );\n", ind, elem, expr.Src)
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
-			g.pf("%s    at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
-			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, elem)
+			size, align := ir.ListElementLayout(g.unit, f)
+			g.pf("%s    if constexpr ( schema_cook_extent )\n%s    {\n", ind, ind)
+			g.pf("%s        at = ( at + %d ) & ~(int64_t) %d;\n", ind, align-1, align-1)
+			g.pf("%s        at += (int64_t) cursor.count * %d; // canonical cook layout\n", ind, size)
+			g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
+			g.pf("%s        at = ( at + (int64_t) alignof( %s ) - 1 ) & ~( (int64_t) alignof( %s ) - 1 );\n", ind, elem, elem)
+			g.pf("%s        at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // native pack layout\n", ind, elem)
+			g.pf("%s    }\n", ind)
 			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]"}, ev, v, ind, " // then, element by element in index order")
 			g.pf("%s}\n", ind)
 		},
 		descend: func(table string, expr edgeExpr, ind string) {
-			g.pf("%sif ( !%sExtentAt( ctx, %s, at ) ) { return false; }\n", ind, table, expr.Src)
+			g.pf("%sif ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, %s, at ) ) { return false; }\n", ind, table, expr.Src)
 		},
 	}
 	g.emitExtentWalk(st, ev, v)
 	g.pf("    return true;\n}\n\n")
 	g.pf("// the whole extent of one node, from a fresh offset: what a pack reserves\n")
 	g.pf("// for it beside the record's own storage.\n")
-	g.pf("template <typename Ctx>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
+	g.pf("template <typename Ctx, bool schema_cook_extent = false>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    int64_t at = 0;\n")
-	g.pf("    if ( !%sExtentAt( ctx, value, at ) ) { return -1; }\n", st.Name)
+	g.pf("    if ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }\n", st.Name)
 	g.pf("    return at;\n}\n\n")
 }
 
@@ -777,7 +785,7 @@ func (g *tableGen) emitCookNode(st *ir.Struct) {
 		return
 	}
 	g.pf("    if ( !%sCookExtent( ctx, region, at + %d, extent_at, at, value, order ) ) { return false; }\n", st.Name, record)
-	g.pf("    return extent_at == %sExtent( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)
+	g.pf("    return extent_at == %sExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written\n}\n\n", st.Name)
 }
 
 // emitCookExtentSurface emits the extent writer and the node writer for every
@@ -814,7 +822,7 @@ func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
 		return
 	}
 	g.pf("%s{\n", ind)
-	g.pf("%s    const int64_t extent = %sExtent( ctx, %s );\n", ind, st.Name, expr)
+	g.pf("%s    const int64_t extent = %sExtent<Ctx, true>( ctx, %s );\n", ind, st.Name, expr)
 	g.pf("%s    if ( extent < 0 ) { %s }\n", ind, onBad)
 	g.pf("%s    size = %d + extent;\n%s    node_align = %d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ind, ir.CookNodeAlign(g.unit, st))
 	g.pf("%s}\n", ind)
