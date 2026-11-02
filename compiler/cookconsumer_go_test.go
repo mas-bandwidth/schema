@@ -297,7 +297,7 @@ import("bytes";"fmt";"os";"path/filepath";"runtime";"testing";"unsafe")
 func TestAcceptedCookConsumers(t *testing.T) {
  files,err:=filepath.Glob(filepath.Join(FIXTURE_DIRECTORY,"*.cook"));if err!=nil{t.Fatal(err)}
  semanticRefusals:=0
- bounded:=func(n int64)int64{if n>1<<20{t.Fatalf("small fixture expanded to %d bytes",n)};return n}
+ bounded:=func(t *testing.T,n int64)int64{t.Helper();if n>1<<20{t.Fatalf("fixture expanded beyond test budget to %d bytes",n)};return n}
  for _,path:=range files {
   original,err:=os.ReadFile(path);if err!=nil{t.Fatal(err)}
   name,_:=os.ReadFile(path+".name")
@@ -327,23 +327,23 @@ func TestAcceptedCookConsumers(t *testing.T) {
     for j:=int32(0);j<node.Samples.Count;j++{_=*node.Samples.At(j)}
     pending=append(pending,NodeAt(&node.Next),NodeAt(&node.Other))
    }
-   jsonSize,jsonErr:=RootToJSONMeasureReason(root);bounded(jsonSize)
+   jsonSize,jsonErr:=RootToJSONMeasureReason(root);bounded(t,jsonSize)
    if string(name)=="valid"&&jsonSize<0{t.Fatal("valid fixture JSON refused")}
-   if jsonSize<0{semanticRefusals++;if jsonErr==nil{t.Fatal("JSON refusal without reason")};t.Logf("safe refusal JSON %s: %v",name,jsonErr)}else{
+   if jsonSize<0{semanticRefusals++;if jsonErr==nil{t.Fatal("JSON refusal without reason")};if RootToJSON(root,make([]byte,1<<20))>=0{t.Fatal("JSON measure/write refusal differs")};t.Logf("safe refusal JSON %s: %v",name,jsonErr)}else{
     dst:=make([]byte,jsonSize);if RootToJSON(root,dst)!=jsonSize{t.Fatal("JSON write")}
    }
-   wireSize,wireErr:=RootMeasureReason(root);bounded(wireSize)
+   wireSize,wireErr:=RootMeasureReason(root);bounded(t,wireSize)
    if string(name)=="valid"&&wireSize<0{t.Fatal("valid fixture wire refused")}
-   if wireSize<0{semanticRefusals++;if wireErr==nil{t.Fatal("wire refusal without reason")};t.Logf("safe refusal wire %s: %v",name,wireErr)}else{
+   if wireSize<0{semanticRefusals++;if wireErr==nil{t.Fatal("wire refusal without reason")};if RootSave(root,make([]byte,1<<20))>=0{t.Fatal("wire measure/write refusal differs")};t.Logf("safe refusal wire %s: %v",name,wireErr)}else{
     wire:=make([]byte,wireSize);if RootSave(root,wire)!=wireSize{t.Fatal("wire write")}
-    size:=bounded(RootLoadMeasure(wire));if size<0{t.Fatal("saved wire measure")}
+    size:=bounded(t,RootLoadMeasure(wire));if size<0{t.Fatal("saved wire measure")}
     buf:=make([]byte,size+63);start:=(-uintptr(unsafe.Pointer(&buf[0])))&63
     var report TableReport
     if RootLoad(buf[start:start+uintptr(size)],wire,&report)==nil||report!=(TableReport{}){t.Fatalf("saved wire load: %+v",report)}
    }
-   size,cookErr:=RootCookMeasureReason(root);bounded(size)
+   size,cookErr:=RootCookMeasureReason(root);bounded(t,size)
    if string(name)=="valid"&&size<0{t.Fatal("valid fixture cook refused")}
-   if size<0{semanticRefusals++;if cookErr==nil{t.Fatal("cook refusal without reason")};t.Logf("safe refusal cook: %v",cookErr)}else{
+   if size<0{semanticRefusals++;if cookErr==nil{t.Fatal("cook refusal without reason")};if RootCookFrom(root,make([]byte,1<<20),TableByteOrderLittle){t.Fatal("cook measure/write refusal differs")};t.Logf("safe refusal cook: %v",cookErr)}else{
     dst:=make([]byte,size);if !RootCookFrom(root,dst,TableByteOrderLittle){t.Fatal("recook")}
     if err:=os.WriteFile(path+".recook",dst,0600);err!=nil{t.Fatal(err)}
    }
