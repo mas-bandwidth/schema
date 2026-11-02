@@ -1024,8 +1024,12 @@ int _kindWidth(int kind) {
 // length-framed entry body that ALWAYS rides (identity is the key), and an
 // empty map elides under the by-value rule (§3). The field id is interned
 // before the entry bodies.
-func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal int, force bool) {
+	if force {
+		g.pf("%s{\n", ind)
+	} else {
+		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	}
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal sorted = %s;\n", ind, mapSorted(f, expr))
 	g.pf("%s\tfinal s = w.sub();\n", ind)

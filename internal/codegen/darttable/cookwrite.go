@@ -507,7 +507,7 @@ func variableCookUnion(un *ir.Union) string {
 
 func variableCookField(f *ir.Field) bool {
 	if f.Type.Optional {
-		return false
+		return variableCookField(nonOptional(f))
 	}
 	if f.IsMap() {
 		// A MAP (docs/SPEC-TABLES.md §2.8) rides in its holder's node extent
@@ -1040,6 +1040,12 @@ var (
 
 func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
 	pieces := ir.FieldPieces(g.unit, f, offset)
+	if f.Type.Optional {
+		owner := expr[:lastDot(expr)]
+		g.pf("%sout?.setUint8(at + %d, %s.%s ? 1 : 0);\n", ind, pieces[len(pieces)-1].Offset, owner, hasMember(f))
+		g.emitCookVariableField(nonOptional(f), offset, expr, ind)
+		return
+	}
 	switch {
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {

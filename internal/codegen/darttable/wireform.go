@@ -117,7 +117,7 @@ func cardWireFieldSeen(f *ir.Field, seen map[string]bool) bool {
 	// field's own presence on the wire (wirewide.go).
 	if f.Type.Optional {
 		base := nonOptional(f)
-		if base.IsMap() || unionRef(base) != nil || base.KeyEnum != "" || base.Type.Blob() || base.Type.Pointer {
+		if unionRef(base) != nil || base.KeyEnum != "" || base.Type.Blob() || base.Type.Pointer {
 			return false
 		}
 		return cardWireFieldSeen(base, seen)
@@ -1905,9 +1905,9 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	id := fieldId(f)
 	switch {
 	case f.Type.Optional: // presence is the payload (§2.3, wirewide.go)
-		g.emitSaveOptional(f, expr, ind, id)
+		g.emitSaveOptional(f, expr, ind, id, ordinal)
 	case f.IsMap(): // a map rides as kind 14 over its entry bodies (§2.8)
-		g.emitSaveMap(f, expr, ind, id, ordinal)
+		g.emitSaveMap(f, expr, ind, id, ordinal, false)
 	case isUnionField(f): // a union rides as kind 15 and its arm header (§2.6, §3)
 		g.emitSaveUnionField(f, expr, ind, id)
 	case isKeyed(f): // [E]T rides as kind 16 (§2.4, §3.2)

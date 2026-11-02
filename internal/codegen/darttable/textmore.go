@@ -894,7 +894,6 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		et := f.MapEntry.Name
 		valMember := fieldMember(value)
 		cmpExpr := fmt.Sprintf("(%s a, %s b) => %s", et, et, mapKeyCompare(f))
-		shapeCond := unionArmShapeCond(value, item)
 		var valBody string
 		if value.Type.Optional {
 			valBody = fmt.Sprintf("if (%s == null) { m%d.%s = false; } else { m%d.%s = true; m%d.%s = %s; }",
@@ -902,8 +901,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		} else {
 			valBody = fmt.Sprintf("m%d.%s = %s;", d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
 		}
-		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; if (!(%s)) throw const FormatException('map value shape mismatch'); final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
-			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, shapeCond, d, et, d, fieldMember(key), d, valBody, d, fbArg)
+		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
+			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, d, et, d, fieldMember(key), d, valBody, d, fbArg)
 	case isKeyed(f):
 		en := f.KeyEnumRef
 		var slots strings.Builder

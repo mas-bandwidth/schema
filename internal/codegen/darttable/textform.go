@@ -912,7 +912,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		// the constructs textmore.go reads (§16.2, §16.3); an optional's null
 		// or missing key is ABSENT (§2.3)
 		if f.Type.Optional {
-			g.pf("\t\t\t\tif (val == null) { v.%s = false; break; }\n", hasMember(f))
+			if f.IsMap() {
+				g.pf("\t\t\t\tif (val == null) { v.%s = false; v.%s = []; break; }\n", hasMember(f), fieldMember(f))
+			} else {
+				g.pf("\t\t\t\tif (val == null) { v.%s = false; break; }\n", hasMember(f))
+			}
 			g.pf("\t\t\t\tv.%s = true;\n", hasMember(f))
 		}
 		g.pf("\t\t\t\tv.%s = %s;\n", name, g.jsonReadExpr(f, "val", 1, "v."+name))

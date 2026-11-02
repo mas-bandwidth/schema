@@ -173,10 +173,15 @@ func hasMember(f *ir.Field) string { return "has" + capitalize(fieldMember(f)) }
 // or type with its body even when that body is its terminator alone, and a
 // scalar, string or enum with its payload even at its default. The field's id
 // is interned before anything its payload interns (first-use order, §3).
-func (g *wireGen) emitSaveOptional(f *ir.Field, expr, ind string, id uint64) {
+func (g *wireGen) emitSaveOptional(f *ir.Field, expr, ind string, id uint64, ordinal int) {
 	base := nonOptional(f)
 	g.pf("%sif (v.%s) {\n", ind, hasMember(f))
 	in := ind + "\t"
+	if base.IsMap() {
+		g.emitSaveMap(base, expr, in, id, ordinal, true)
+		g.pf("%s}\n", ind)
+		return
+	}
 	g.pf("%sfinal ref = w.refFor(%s);\n", in, dartU64Literal(id))
 	switch {
 	case base.Array != ir.ArrayNone:
