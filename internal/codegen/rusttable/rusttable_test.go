@@ -485,37 +485,26 @@ table Wide
 }
 `
 
-// TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire holds
-// docs/SPEC-TABLES.md §15's refusal to the two things that owe it. THE BLOCK
-// AND THE COOK owe it: they name a kind's storage column and its reflection
-// descriptor, and they do not carry these two families yet. THE FIXED FORM
-// (§3.4) does not owe it: a field there is a store of its width at its offset,
-// so a 128-bit field is a `u128` store and a fixed-point one is its raw
-// integer, and the block entry carries the kind byte the reader compares.
-//
-// The row types are the load-bearing half and they are not asserted here
-// alone: emitCookLayout's const asserts hold every one of them to
-// ir.RecordLayout at COMPILE TIME, so a row that spelled a 128-bit field u64
-// fails the build rather than laying a record down at the wrong offsets.
-func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
+// TestWideKindsAreCarriedByEveryForm holds docs/SPEC-TABLES.md §15 on this
+// backend: the fixed-point and 128-bit kinds ride the fixed form, the cooked
+// form and the block form, and a unit that declares them with no fixed root is
+// generated rather than refused. The row types are the load-bearing half:
+// emitCookLayout's const asserts hold every one of them to ir.RecordLayout at
+// COMPILE TIME, so a row that spelled a 128-bit field u64 fails the build.
+func TestWideKindsAreCarriedByEveryForm(t *testing.T) {
 	out := generate(t, wideKinds)
 
 	if _, ok := out["probe_fixed.rs"]; !ok {
 		t.Fatalf("a fixed root declaring the wide kinds got no fixed form; got %v", keysOf(out))
 	}
-	if _, ok := out[FixedRuntimeModule+".rs"]; !ok {
-		t.Errorf("no %s.rs beside the fixed form", FixedRuntimeModule)
-	}
-
-	// the accelerators stood down, and BOTH of them
-	for _, name := range []string{"probe_cook.rs", CookRuntimeModule + ".rs", "probe_block.rs", BlockRuntimeModule + ".rs"} {
-		if _, ok := out[name]; ok {
-			t.Errorf("%s rode into a unit whose kinds it does not carry", name)
+	for _, name := range []string{FixedRuntimeModule + ".rs", "probe_cook.rs", CookRuntimeModule + ".rs", "probe_block.rs", BlockRuntimeModule + ".rs"} {
+		if _, ok := out[name]; !ok {
+			t.Errorf("%s did not ride into a unit whose kinds this backend carries; got %v", name, keysOf(out))
 		}
 	}
 
-	// the rows the fixed form's value IS: the raw integer at the declared
-	// storage width, signed by `fixed` against `ufixed`, and 128 bits native
+	// the rows the value IS: the raw integer at the declared storage width,
+	// signed by `fixed` against `ufixed`, and 128 bits native
 	rows := string(out["probe_records.rs"])
 	for _, want := range []string{
 		"pub server_time: i32,",
@@ -532,15 +521,15 @@ func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
 		}
 	}
 
-	// AND THE REFUSAL IS STILL THE WHOLE ANSWER where nothing is left to
-	// emit — BY NAME, naming every field, exactly as §15 states it.
-	_, err := Generate(unitFrom(t, wideKindsNoFixedRoot))
-	if err == nil {
-		t.Fatal("a wide-kind unit with no fixed root generated; §15's refusal is owed")
+	// AND A UNIT WITH NO FIXED ROOT is generated too: its variable wire, its
+	// cook and its row types
+	none, err := Generate(unitFrom(t, wideKindsNoFixedRoot))
+	if err != nil {
+		t.Fatalf("a wide-kind unit with no fixed root was refused: %v", err)
 	}
-	for _, want := range []string{"Wide.wide_key uint128", "docs/SPEC-TABLES.md §3, §15"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not name %q: %v", want, err)
+	for _, name := range []string{FixedRuntimeModule + ".rs", CookRuntimeModule + ".rs"} {
+		if _, ok := none[name]; !ok {
+			t.Errorf("a wide-kind unit with no fixed root got no %s; got %v", name, keysOf(none))
 		}
 	}
 }

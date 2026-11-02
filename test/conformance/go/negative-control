@@ -25,8 +25,8 @@ message)
 cycle)
     # a load's refusal of a pointer naming an open node (docs/SPEC-TABLES.md
     # §3.1, §4) taken out of the generated graphdemo reader
-    source=$(grep -l '^[[:space:]]*return w\.cycle$' build/tables-generated-go/pointers/*.go)
-    sed 's/^\([[:space:]]*\)return w\.cycle$/\1return false \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
+    source=$(grep -l '^func tableCycleCheck(' build/tables-generated-go/pointers/*.go)
+    sed 's/if visited != vertices {/if false { \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
     ;;
 walk)
     source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)

@@ -724,7 +724,8 @@ func PatrolLoadMeasureReason(wire []byte) (int64, error) {
 }
 
 // PatrolLoadTolerant is the TOLERANT region read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every wire the
-// framing walk accepts and returns the recovered root, with the counters counted onto the report passed.
+// framing walk accepts and returns its root, with the counters counted onto the report passed; damage
+// returns nil and hands back nothing (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 func PatrolLoadTolerant(region, wire []byte, report *TableReport) *Patrol {
 	return (*Patrol)(tableRegionLoad(region, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report))
 }
@@ -742,8 +743,9 @@ func PatrolSave(value *Patrol, buffer []byte, context ...TableWriteContext) int6
 	return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), buffer, false, arena, allocator)
 }
 
-// PatrolLoadBuilderTolerant is the TOLERANT builder read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it keeps the recovered
-// value in the builder, with the counters counted onto the report passed.
+// PatrolLoadBuilderTolerant is the TOLERANT builder read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it reads the value into
+// the builder, with the counters counted onto the report passed; damage answers false with the builder's
+// root at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
 func PatrolLoadBuilderTolerant(b *PatrolBuilder, wire []byte, report *TableReport) bool {
 	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report)
 }
@@ -969,7 +971,7 @@ var PatrolTableFields = []TableFieldInfo{
 var PatrolTableInfo TableTypeInfo
 
 func init() {
-	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
+	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CycleIndex: 12, CycleType: tableCycleType, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil

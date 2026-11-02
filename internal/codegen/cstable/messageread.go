@@ -282,9 +282,18 @@ const tableMessageReadSource = `
             // §3.3), outranking damage met after it: no body is delivered.
             if (NonFiniteRefused(report))
             { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-            if (!good) { Damage(report); return Finish(report, Verdict.Damaged); }
+            if (!good) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
         }
-        if (!r.Align() || r.At != r.End) { Damage(report); return Finish(report, Verdict.Damaged); }
+        if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
         return Finish(report, Verdict.Ok);
+    }
+    // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
+    // the read touched goes back to its declared defaults and the count is zero,
+    // so nothing decoded before the damage is a value to use.
+    static Verdict DiscardBatch(object[] values, TableTypeInfo type, TableReport report, ref int count, int last)
+    {
+        for (int j = 0; j <= last && j < values.Length; j++) { type.Reset(values[j]); }
+        count = 0;
+        return Finish(report, Verdict.Damaged);
     }
 `

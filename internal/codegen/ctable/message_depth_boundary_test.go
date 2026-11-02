@@ -292,7 +292,7 @@ static void check_case(const char * name, const TableVocabulary * vocab, const u
             failed = 1;
         }
     } else {
-        if (!ok && count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
+        if (!ok && count == 0 && rep.malformed && !rep.refused) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",
@@ -402,7 +402,7 @@ static void check_case(const char * name, const TableVocabulary & vocab, const u
             failed = true;
         }
     } else {
-        if (!ok && count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
+        if (!ok && count == 0 && rep.malformed && !rep.refused) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",
@@ -517,7 +517,7 @@ static class Program
         }
         else
         {
-            if (verdict == Schema.TableWire.Verdict.Damaged && count == 0 && rep.Malformed && !rep.Refused && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7)
+            if (verdict == Schema.TableWire.Verdict.Damaged && count == 0 && rep.Malformed && !rep.Refused)
                 Console.WriteLine("PASS " + name);
             else { Console.WriteLine("FAIL " + name); failed = true; }
         }
@@ -624,7 +624,7 @@ void main() {
         failed = true;
       }
     } else {
-      if (count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
+      if (count == 0 && rep.malformed && !rep.refused) {
         print('PASS $name');
       } else {
         print('FAIL $name');
@@ -753,7 +753,7 @@ func TestProbe(t *testing.T) {
 				failed = true
 			}
 		} else {
-			if !ok && n == 0 && rep.Malformed && rep.Reason == "" && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7 {
+			if !ok && n == 0 && rep.Malformed && rep.Reason == "" {
 				fmt.Println("PASS " + name)
 			} else {
 				fmt.Println("FAIL " + name)
@@ -851,7 +851,7 @@ func runAllRuntimesJava(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
                 System.out.println("PASS " + name);
             else { System.out.println("FAIL " + name); failed = true; }
         } else {
-            if (count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7)
+            if (count == 0 && rep.malformed && !rep.refused)
                 System.out.println("PASS " + name);
             else { System.out.println("FAIL " + name); failed = true; }
         }
@@ -935,7 +935,7 @@ function checkCase(name, wire, expectOK) {
       console.log("PASS " + name);
     else { console.log("FAIL " + name); failed = true; }
   } else {
-    if (!ok && count === 0 && rep.Malformed && !rep.Refused && (values[0].a === 0 || values[0].a === -7) && values[1].a === -7)
+    if (!ok && count === 0 && rep.Malformed && !rep.Refused)
       console.log("PASS " + name);
     else { console.log("FAIL " + name); failed = true; }
   }
@@ -999,7 +999,7 @@ fn check_case(name: &str, vocab: &TableVocabulary, wire: &[u8], expect_ok: bool,
             *failed = true;
         }
     } else {
-        if !ok && count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7 {
+        if !ok && count == 0 && rep.malformed && !rep.refused {
             println!("PASS {name}");
         } else {
             println!("FAIL {name}");

@@ -38,13 +38,13 @@ static partial class Program
             Fields = original.Fields,
             Reset = o => { if (ReferenceEquals(o, value)) { resets++; } original.Reset(o); }
         };
-        void Load(byte[] bytes, V1.Schema.TableWire.Verdict expected, int a, string label)
+        void Load(byte[] bytes, V1.Schema.TableWire.Verdict expected, int a, string label, int expectedResets = 1)
         {
             DirtyResetTarget(value); resets = 0;
             V1.TableReport report = new V1.TableReport();
             Check(V1.Schema.TableWire.Load(value, type, bytes, report) == expected && report.Verdict == expected,
                 "root reset verdict: " + label);
-            Check(resets == 1 && ResetTargetDefaults(value, a), "one root reset and expected storage: " + label);
+            Check(resets == expectedResets && ResetTargetDefaults(value, a), "root resets and expected storage: " + label);
             Check(report.Malformed == (expected == V1.Schema.TableWire.Verdict.Damaged || expected == V1.Schema.TableWire.Verdict.BodyStopped) &&
                 report.Refused == (expected == V1.Schema.TableWire.Verdict.Refused) &&
                 report.Unknown == 0 && report.KindMismatch == 0 && report.Clamped == 0 && report.Widened == 0 && report.Duplicate == 0,
@@ -55,7 +55,8 @@ static partial class Program
         Load(Fixture(new byte[] { 0 }), V1.Schema.TableWire.Verdict.Ok, 5, "absent fields");
         byte[] field = Join(new byte[] { 1,4 }, U32(42));
         Load(Fixture(Join(field, new byte[] { 0 }), "a"), V1.Schema.TableWire.Verdict.Ok, 42, "present scalar");
-        Load(Fixture(field, "a"), V1.Schema.TableWire.Verdict.BodyStopped, 42, "unterminated body keeps decoded prefix");
+        // DAMAGE DISCARDS THE WHOLE LOAD (§4): the walk's prefix is reset away
+        Load(Fixture(field, "a"), V1.Schema.TableWire.Verdict.Damaged, 5, "unterminated body discards the whole load", 2);
         Load(Array.Empty<byte>(), V1.Schema.TableWire.Verdict.Damaged, 5, "empty input");
         Load(new byte[] { 2 }, V1.Schema.TableWire.Verdict.Refused, 5, "message form");
         Load(new byte[] { 3 }, V1.Schema.TableWire.Verdict.Refused, 5, "newer form");

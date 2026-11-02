@@ -77,3 +77,161 @@ func TestOpenNode(t *testing.T){
 `, cyclic, shared)
 	runGenerated(t, openNodeUnit, test)
 }
+
+// TestGoCycleWalkCoversStoredGraph covers the graph the loader actually
+// placed, including guards, disconnected records and container slots.
+func TestGoCycleWalkCoversStoredGraph(t *testing.T) {
+	t.Parallel()
+	const src = `package graphcheck
+table Graph {
+ a int32
+ on bool
+ next *Graph
+ also *Graph
+ if on { side *Graph }
+ pointers []*Graph
+ mapping map[int32]*Graph
+ pair [2]*Graph
+}
+`
+	u := unitFrom(t, src)
+	m := tabletext.NewModel(u)
+	encode := func(text string) []byte {
+		v := m.New(m.Lookup("Graph"))
+		var r tabletext.Report
+		if !m.Read(v, []byte(text), &r) {
+			t.Fatalf("text %s: %+v", text, r)
+		}
+		b, e := tablewire.Encode(m, v)
+		if e != nil {
+			t.Fatal(e)
+		}
+		return b
+	}
+	patch := func(b []byte, from, to byte) {
+		p := []byte{byte(ir.TableKindPointer), from}
+		if bytes.Count(b, p) != 1 {
+			t.Fatalf("pointer %d does not occur once", from)
+		}
+		b[bytes.Index(b, p)+1] = to
+	}
+	type vector struct {
+		name string
+		wire []byte
+		good bool
+	}
+	var vectors []vector
+	for _, tc := range []struct{ name, text string }{
+		{"direct", `{"a":9,"next":{"a":8,"next":{"a":7}}}`},
+		{"list", `{"pointers":[{"pointers":[{}]}]}`},
+		{"map", `{"mapping":{"1":{"mapping":{"2":{}}}}}`},
+		{"array", `{"pair":[{"pair":[{},null]},null]}`},
+		{"guard", `{"next":{"on":true,"side":{}}}`},
+	} {
+		wire := encode(tc.text)
+		if tc.name == "guard" {
+			found := false
+			for i := 0; i+1 < len(wire); i++ {
+				if wire[i] != byte(ir.TableKindBool) || wire[i+1] != 1 {
+					continue
+				}
+				probe := append([]byte(nil), wire...)
+				probe[i+1] = 0
+				v := m.New(m.Lookup("Graph"))
+				var r tabletext.Report
+				ok, e := tablewire.Decode(m, v, probe, &r)
+				if !ok || e != nil || r.Malformed {
+					continue
+				}
+				next, _ := v.FieldByKey("next")
+				if next.Cell.Node == nil {
+					continue
+				}
+				on, _ := next.Cell.Node.FieldByKey("on")
+				side, _ := next.Cell.Node.FieldByKey("side")
+				if !on.Cell.B && side.Cell.Node != nil {
+					wire = probe
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatal("guard byte not found")
+			}
+		}
+		vectors = append(vectors, vector{tc.name + " legal", append([]byte(nil), wire...), true})
+		if tc.name == "list" || tc.name == "array" {
+			count := byte(1)
+			if tc.name == "array" {
+				count = 2
+			}
+			p := []byte{byte(ir.TableKindPointer), count, 3}
+			if bytes.Count(wire, p) != 1 {
+				t.Fatalf("%s container pointer not unique", tc.name)
+			}
+			wire[bytes.Index(wire, p)+2] = 2
+		} else {
+			patch(wire, 3, 2)
+		}
+		vectors = append(vectors, vector{tc.name + " cycle", wire, false})
+	}
+	unreached := encode(`{"next":{"next":{}}}`)
+	patch(unreached, 2, 0)
+	vectors = append(vectors, vector{"unreached legal", append([]byte(nil), unreached...), true})
+	patch(unreached, 3, 2)
+	vectors = append(vectors, vector{"unreached cycle", unreached, false})
+	// A long chain is not a Go stack depth; a diamond is not a path count.
+	graph := func(n int, diamond bool) []byte {
+		nodes := make([]*tabletext.Instance, n)
+		for i := range nodes {
+			nodes[i] = m.New(m.Lookup("Graph"))
+		}
+		for i := 0; i+1 < n; i++ {
+			f, _ := nodes[i].FieldByKey("next")
+			f.Cell.Node = nodes[i+1]
+			if diamond && i+2 < n {
+				f, _ = nodes[i].FieldByKey("also")
+				f.Cell.Node = nodes[i+2]
+			}
+		}
+		b, e := tablewire.Encode(m, nodes[0])
+		if e != nil {
+			t.Fatal(e)
+		}
+		return b
+	}
+	vectors = append(vectors, vector{"chain", graph(2048, false), true}, vector{"diamond", graph(82, true), true})
+	var cases bytes.Buffer
+	for _, v := range vectors {
+		fmt.Fprintf(&cases, "{name:%q,wire:%#v,good:%v},\n", v.name, v.wire, v.good)
+	}
+	test := fmt.Sprintf(`package graphcheck
+import("testing";"unsafe";"runtime/debug";"bytes")
+func aligned(n int)[]byte{raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;return raw[off:off+uintptr(n)]}
+func TestStoredGraph(t *testing.T){
+ old:=debug.SetMaxStack(128<<10);defer debug.SetMaxStack(old)
+ for _,tc:=range []struct{name string;wire []byte;good bool}{%s}{
+  size:=GraphLoadMeasure(tc.wire);if size<0{t.Fatalf("%%s measure",tc.name)}
+  region:=aligned(int(size));var r TableReport
+  v:=GraphLoadTolerant(region,tc.wire,&r)
+  if (v!=nil)!=tc.good||r.Malformed==tc.good{t.Fatalf("%%s region: %%+v",tc.name,r)}
+  if !tc.good&&!bytes.Equal(region,make([]byte,len(region))){t.Fatalf("%%s region not discarded",tc.name)}
+  if tc.good {
+   rr:=TableReport{};if n:=testing.AllocsPerRun(10,func(){rr=TableReport{};if GraphLoadTolerant(region,tc.wire,&rr)==nil{panic("load")}});n!=0{t.Fatalf("%%s region allocated %%v",tc.name,n)}
+   if tc.name=="direct legal"||tc.name=="list legal"||tc.name=="map legal"||tc.name=="array legal" {
+    out:=make([]byte,len(tc.wire));if GraphSave(v,out)!=int64(len(out))||!bytes.Equal(out,tc.wire){t.Fatalf("%%s resolved references changed wire",tc.name)}
+   }
+  }
+  retain:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainID,1024)}
+  r=TableReport{};v=GraphLoadRetain(region,tc.wire,&retain,&r)
+  if (v!=nil)!=tc.good||r.Malformed==tc.good{t.Fatalf("%%s retain: %%+v",tc.name,r)}
+  if !tc.good&&(retain.Used!=0||retain.Count!=0){t.Fatalf("%%s retain not discarded",tc.name)}
+  var b GraphBuilder;if !b.Init(){t.Fatal("init")}
+  r=TableReport{};ok:=GraphLoadBuilderTolerant(&b,tc.wire,&r)
+  if ok!=tc.good||r.Malformed==tc.good{t.Fatalf("%%s builder: %%+v",tc.name,r)}
+  b.Shutdown()
+ }
+}
+`, cases.String())
+	runGenerated(t, src, test)
+}

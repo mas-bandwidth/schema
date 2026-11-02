@@ -52,10 +52,8 @@ static partial class Program
         var report=new Streamdemo.TableReport();
         try
         {
-            Check(Streamdemo.Schema.FeedLoadRetain((IntPtr)region,need,wire,ref retain,report)!=null && report.Malformed,"damaged retained union arm");
-            Check(report.Retained==1 && report.RetainLost==0,"damaged arm retains its load event");
-            byte[] saved=new byte[Streamdemo.Schema.FeedMeasureRetain((IntPtr)region,ref retain)];
-            Check(Streamdemo.Schema.FeedSaveRetain((IntPtr)region,ref retain,saved,report)==saved.Length && report.RetainLost==1,"damaged arm's missing path counts at save");
+            Check(Streamdemo.Schema.FeedLoadRetain((IntPtr)region,need,wire,ref retain,report)==null && report.Malformed,"damaged retained union arm discards the whole load");
+            Check(retain.Used==0 && retain.Count==0,"damaged retained union arm leaves the store empty");
         }
         finally { NativeMemory.AlignedFree(region); }
     }

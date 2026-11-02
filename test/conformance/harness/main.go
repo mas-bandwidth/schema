@@ -10,6 +10,8 @@
 //	harness run                   run every registered driver, print the matrix
 //	harness matrix                print the CI matrix the registry implies
 //	harness wire-fuzz             fuzz one language's tolerant wire read against the engine
+//	harness cross-read            the C++ reference reads what one leg wrote (the nightly)
+//	harness coverage              the nightly's coverage table, from its rows
 //
 // Flags are the same for both so a Makefile line reads the same way; see usage.
 package main
@@ -56,7 +58,17 @@ func usage() {
 
   matrix     print the CI matrix as JSON: one row per registered driver, from
              test/conformance/<lang>/ci.json (README.md, "Registering a
-             language").
+             language"). --ports leaves the reference leg out.
+
+  cross-read the nightly's second direction (README.md, "The nightly"): the
+             C++ reference loads every answer --lang left under --writes
+             (a copy of build/conformance/out/<lang>) on the surfaces that
+             write a form it reads back, must accept each and re-save it
+             byte-identical, and each must equal C++'s own canonical write.
+             --coverage writes its rows. Exits nonzero on any failure.
+
+  coverage   read every coverage row under --in and print the nightly's
+             coverage table as markdown (README.md, "The nightly").
 
   wire-fuzz  mutate every pinned wire in the corpus, feed each mutant to one
              language's leg on a pipe (--driver) and to the compiler's own
@@ -84,6 +96,15 @@ flags:
                       separated, each printed by name; the Makefile fills it
                       from SCHEMA_SKIP_LEGS and the reference leg is refused
                       (run only)
+  --claims            fail a case the leg CLAIMS and answers ABSENT: its unit
+                      uses a construct the leg's target registers as carried
+                      (compiler/carries_<target>.go); build the harness with
+                      every schema_leg_<lang> tag (run only)
+  --coverage <path>   write the run's coverage rows as JSON (run, cross-read)
+  --lang <lang>       the leg whose writes are re-read (cross-read only)
+  --writes <dir>      that leg's answers, <surface>/<case> (cross-read only)
+  --in <dir>          where the coverage rows are (coverage only)
+  --ports             leave the reference leg out of the matrix (matrix only)
   --results <path>    write every case's verdict as JSON, the input of
                       "go run ./tools/matrix proof" (run only)
   --driver <cmd>      the leg to fuzz (wire-fuzz), or the reference driver
@@ -125,16 +146,34 @@ func main() {
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
 	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
+	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
+	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
+	lang := fs.String("lang", "", "the leg whose writes are re-read (cross-read only)")
+	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
+	in := fs.String("in", "", "where the coverage rows are (coverage only)")
+	ports := fs.Bool("ports", false, "leave the reference leg out (matrix only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
 
 	if command == "matrix" {
-		out, err := matrix(*drivers)
+		out, err := matrix(*drivers, *ports)
 		if err != nil {
 			fatalf("%v", err)
 		}
 		fmt.Println(string(out))
+		return
+	}
+
+	if command == "coverage" {
+		if *in == "" {
+			fatalf("coverage: --in names no directory")
+		}
+		rows, fixed, err := readCoverage(*in)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		coverageMarkdown(os.Stdout, rows, fixed)
 		return
 	}
 
@@ -203,9 +242,47 @@ func main() {
 			os.Exit(1)
 		}
 	case "run":
-		ok, err := runResults(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, *resultsOut)
+		var opts runOptions
+		var rows []coverageRow
+		if *coverage != "" {
+			opts.coverage = &rows
+		}
+		if *claims || *coverage != "" {
+			set, err := claimsFor(m, *drivers, *only, *claims)
+			if err != nil {
+				fatalf("%v", err)
+			}
+			opts.claims = set
+		}
+		opts.results = *resultsOut
+		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
 		if err != nil {
 			fatalf("%v", err)
+		}
+		if *coverage != "" {
+			if err := writeCoverage(*coverage, rows); err != nil {
+				fatalf("%v", err)
+			}
+		}
+		if !ok {
+			os.Exit(1)
+		}
+	case "cross-read":
+		if *lang == "" || *writes == "" {
+			fatalf("cross-read: --lang and --writes name the leg and its answers")
+		}
+		set, err := buildClaims(m, nil)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		rows, ok, err := crossRead(os.Stdout, m, *reports, *drivers, *work, *lang, *writes, set)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if *coverage != "" {
+			if err := writeCoverage(*coverage, rows); err != nil {
+				fatalf("%v", err)
+			}
 		}
 		if !ok {
 			os.Exit(1)
@@ -246,4 +323,30 @@ func indent(text string, by string) string {
 		lines[i] = by + lines[i]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// claimsFor builds the claim for the legs a run exercises. enforcing is
+// --claims: without it the set only classes the coverage rows, and a leg with
+// no carries registration in this build is not an error.
+func claimsFor(m *Manifest, driversPath, only string, enforcing bool) (*claimSet, error) {
+	drivers, _, err := loadDrivers(driversPath)
+	if err != nil {
+		return nil, err
+	}
+	var langs []string
+	for _, d := range drivers {
+		if only != "" && d.lang != only {
+			continue
+		}
+		langs = append(langs, d.lang)
+	}
+	if !enforcing {
+		set, err := buildClaims(m, nil)
+		if err != nil {
+			return nil, err
+		}
+		set.carried = map[string]map[string]bool{} // classes only: nothing is claimed
+		return set, nil
+	}
+	return buildClaims(m, langs)
 }

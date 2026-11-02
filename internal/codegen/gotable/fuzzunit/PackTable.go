@@ -341,9 +341,10 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // GunnerSettingsLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. GunnerSettingsLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. GunnerSettingsLoad is the strict read; call this one by name.
 func GunnerSettingsLoadTolerant(value *GunnerSettings, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -378,9 +379,11 @@ func GunnerSettingsLoadTolerant(value *GunnerSettings, data []byte, report *Tabl
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !GunnerSettingsLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			GunnerSettingsReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -397,6 +400,10 @@ func GunnerSettingsLoadTolerant(value *GunnerSettings, data []byte, report *Tabl
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			GunnerSettingsReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -407,6 +414,12 @@ func GunnerSettingsLoadTolerant(value *GunnerSettings, data []byte, report *Tabl
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		GunnerSettingsReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -414,7 +427,7 @@ func GunnerSettingsLoadTolerant(value *GunnerSettings, data []byte, report *Tabl
 // whatever GunnerSettingsReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. GunnerSettingsLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. GunnerSettingsLoadTolerant also reads past an evolution event.
 func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -1066,9 +1079,10 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // ShipEntryLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. ShipEntryLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. ShipEntryLoad is the strict read; call this one by name.
 func ShipEntryLoadTolerant(value *ShipEntry, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -1103,9 +1117,11 @@ func ShipEntryLoadTolerant(value *ShipEntry, data []byte, report *TableReport) b
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !ShipEntryLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			ShipEntryReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -1122,6 +1138,10 @@ func ShipEntryLoadTolerant(value *ShipEntry, data []byte, report *TableReport) b
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			ShipEntryReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -1132,6 +1152,12 @@ func ShipEntryLoadTolerant(value *ShipEntry, data []byte, report *TableReport) b
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		ShipEntryReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -1139,7 +1165,7 @@ func ShipEntryLoadTolerant(value *ShipEntry, data []byte, report *TableReport) b
 // whatever ShipEntryReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. ShipEntryLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. ShipEntryLoadTolerant also reads past an evolution event.
 func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -1966,9 +1992,10 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // GlobalSettingsLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. GlobalSettingsLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. GlobalSettingsLoad is the strict read; call this one by name.
 func GlobalSettingsLoadTolerant(value *GlobalSettings, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -2003,9 +2030,11 @@ func GlobalSettingsLoadTolerant(value *GlobalSettings, data []byte, report *Tabl
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !GlobalSettingsLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			GlobalSettingsReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -2022,6 +2051,10 @@ func GlobalSettingsLoadTolerant(value *GlobalSettings, data []byte, report *Tabl
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			GlobalSettingsReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -2032,6 +2065,12 @@ func GlobalSettingsLoadTolerant(value *GlobalSettings, data []byte, report *Tabl
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		GlobalSettingsReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -2039,7 +2078,7 @@ func GlobalSettingsLoadTolerant(value *GlobalSettings, data []byte, report *Tabl
 // whatever GlobalSettingsReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. GlobalSettingsLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. GlobalSettingsLoadTolerant also reads past an evolution event.
 func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -3294,9 +3333,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // PackConfigLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. PackConfigLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. PackConfigLoad is the strict read; call this one by name.
 func PackConfigLoadTolerant(value *PackConfig, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -3331,9 +3371,11 @@ func PackConfigLoadTolerant(value *PackConfig, data []byte, report *TableReport)
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !PackConfigLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			PackConfigReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -3350,6 +3392,10 @@ func PackConfigLoadTolerant(value *PackConfig, data []byte, report *TableReport)
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			PackConfigReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -3360,6 +3406,12 @@ func PackConfigLoadTolerant(value *PackConfig, data []byte, report *TableReport)
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		PackConfigReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -3367,7 +3419,7 @@ func PackConfigLoadTolerant(value *PackConfig, data []byte, report *TableReport)
 // whatever PackConfigReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. PackConfigLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. PackConfigLoadTolerant also reads past an evolution event.
 func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -6218,7 +6270,7 @@ func init() {
 		return GunnerSettingsSaveBodyRetain(w, (*GunnerSettings)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GunnerSettingsLoadBodyRetain(&r, (*GunnerSettings)(p))
-	}, CookSize: 36, CookAlign: 4}
+	}, CycleIndex: 7, CycleType: tableCycleType, CookSize: 36, CookAlign: 4}
 }
 
 // GunnerSettingsTableType returns GunnerSettings's reflection descriptor.
@@ -6292,7 +6344,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 var ShipEntryTableInfo TableTypeInfo
 
 func init() {
-	ShipEntryTableInfo = TableTypeInfo{Name: "ShipEntry", Size: uint32(unsafe.Sizeof(ShipEntry{})), NumFields: 5, Fields: ShipEntryTableFields, Reset: func(storage unsafe.Pointer) { ShipEntryReset((*ShipEntry)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1d1a9911da171a29, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ShipEntrySaveBody(w, (*ShipEntry)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ShipEntryLoadBody(&r, (*ShipEntry)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return ShipEntrySaveBodyRetain(w, (*ShipEntry)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return ShipEntryLoadBodyRetain(&r, (*ShipEntry)(p)) }, CookSize: 108, CookAlign: 4}
+	ShipEntryTableInfo = TableTypeInfo{Name: "ShipEntry", Size: uint32(unsafe.Sizeof(ShipEntry{})), NumFields: 5, Fields: ShipEntryTableFields, Reset: func(storage unsafe.Pointer) { ShipEntryReset((*ShipEntry)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1d1a9911da171a29, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ShipEntrySaveBody(w, (*ShipEntry)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ShipEntryLoadBody(&r, (*ShipEntry)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return ShipEntrySaveBodyRetain(w, (*ShipEntry)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return ShipEntryLoadBodyRetain(&r, (*ShipEntry)(p)) }, CycleIndex: 19, CycleType: tableCycleType, CookSize: 108, CookAlign: 4}
 }
 
 // ShipEntryTableType returns ShipEntry's reflection descriptor.
@@ -6358,7 +6410,7 @@ func init() {
 		return GlobalSettingsSaveBodyRetain(w, (*GlobalSettings)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GlobalSettingsLoadBodyRetain(&r, (*GlobalSettings)(p))
-	}, CookSize: 72, CookAlign: 4}
+	}, CycleIndex: 5, CycleType: tableCycleType, CookSize: 72, CookAlign: 4}
 }
 
 // GlobalSettingsTableType returns GlobalSettings's reflection descriptor.
@@ -6436,7 +6488,7 @@ func init() {
 		return PackConfigSaveBodyRetain(w, (*PackConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return PackConfigLoadBodyRetain(&r, (*PackConfig)(p))
-	}, CookSize: 740, CookAlign: 4}
+	}, CycleIndex: 11, CycleType: tableCycleType, CookSize: 740, CookAlign: 4}
 }
 
 // PackConfigTableType returns PackConfig's reflection descriptor.
