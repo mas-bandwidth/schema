@@ -2427,6 +2427,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// The body spans from after the header to its own end; a header that
 		// ran past that end covers no elements (arrayBody's subTo; \u00a73, \u00a74).
 		g.pf("%s\t\tfinal arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);\n", ind)
+		if f.IsTextList() && f.TextTotal > 0 {
+			g.pf("%s\t\tvar textSpent=0;\n", ind)
+		}
 		g.pf("%s\t\tfor (var i = 0; i < %s; i++) {\n", ind, loop)
 		switch listElementKind(f) {
 		case wireKindUnion:
@@ -2444,6 +2447,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\t\t%s(sub, e, true);\n", ind, dartName(f.Type.Name)+"WireLoadBody")
 			g.pf("%s\t\t\tif (sub.pos != sub.limit) { r.report.malformed = true; e = %s(); }\n", ind, f.Type.Name)
 			g.pf("%s\t\t\tarr.pos = arr.pos + elen;\n", ind)
+			if f.IsTextList() {
+				length := "tableTextByteLength(e.value)"
+				if ir.TextListOptional(f) {
+					length = "(e.hasValue ? " + length + " : 0)"
+				}
+				g.emitTextTotalKeep(f, length, ind+"\t\t\t")
+			}
 			g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)
 		case wireKindPtr:
 			ref := tableRef(f)
@@ -2697,7 +2707,9 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		if f.IsTextList() {
 			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, ir.TextListValue(f).Type.Size)
 			g.pf("%s\t\t\tif(kept!=elen){r.report.clamped++;if(r.report.clampedField.isEmpty)r.report.clampedField=%q;}\n", ind, f.TextListElem().MapEntryOf)
-			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));%s.add(e);\n", ind, f.Type.Name, arr, arr, arr, dest)
+			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));\n", ind, f.Type.Name, arr, arr, arr)
+			g.emitTextTotalKeep(f, "kept", ind+"\t\t\t")
+			g.pf("%s\t\t\t%s.add(e);\n", ind, dest)
 		} else {
 			g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
 		}
