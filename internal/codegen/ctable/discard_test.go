@@ -348,7 +348,6 @@ func TestDamageDiscardsTheWholeLoadCNegativeControl(t *testing.T) {
 	}
 }
 
-
 func cHeldRun(t *testing.T, u *ir.Unit, body string) (string, error) {
 	t.Helper()
 	cc := os.Getenv("CC")
@@ -700,5 +699,116 @@ func TestDiamondChainLoadsLinearC(t *testing.T) {
 	out, err := cHeldRun(t, u, cycleProbe(wire, true, "diamond: the walk did not finish linear"))
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// TestCycleOrdinalBoundaryC verifies that table_cycle_begin accepts the maximum
+// 14-bit type ordinal (0x3fff) and refuses an ordinal beyond the 14-bit field
+// (0x4000) fail-closed before mutating the directory entry.
+func TestCycleOrdinalBoundaryC(t *testing.T) {
+	slowtest.Gate(t, "the C compiler (cc)")
+	t.Parallel()
+	cc := os.Getenv("CC")
+	if cc == "" {
+		var err error
+		cc, err = exec.LookPath("cc")
+		if err != nil {
+			t.Skip("generated C execution requires cc")
+		}
+	}
+	u := unitFrom(t, discardProbeSchema)
+	files, err := cgen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	var cfile string
+	for name := range tables {
+		if strings.HasSuffix(name, "Table.c") {
+			cfile = name
+			break
+		}
+	}
+	source := fmt.Sprintf(`#include %q
+#include <stdio.h>
+
+static uint32_t ordinal_max( uint64_t type_id ) { (void)type_id; return 0x3FFFu; }
+static uint32_t ordinal_overflow( uint64_t type_id ) { (void)type_id; return 0x4000u; }
+static uint64_t restore_id( uint32_t ordinal ) { return ordinal == 0x3FFFu ? UINT64_C(0x123456789ABCDEF0) : 0u; }
+
+int main( void )
+{
+    TableNodeDirEntry e;
+    TableCycle c;
+
+    e.offset = 64u;
+    e.type_id = UINT64_C(0x123456789ABCDEF0);
+    memset( &c, 0, sizeof( c ) );
+    c.entries = &e;
+    c.count = 1;
+    if ( !table_cycle_begin( &c, ordinal_max ) || c.broken || c.vertices != 1 )
+    {
+        printf( "ordinal 0x3fff was refused\n" );
+        return 1;
+    }
+    if ( table_cycle_ordinal_at( &c, 0 ) != 0x3FFFu )
+    {
+        printf( "ordinal 0x3fff read back as %%u\n", (unsigned)table_cycle_ordinal_at( &c, 0 ) );
+        return 1;
+    }
+    table_cycle_restore( &c, restore_id );
+    if ( e.offset != 64u || e.type_id != UINT64_C(0x123456789ABCDEF0) )
+    {
+        printf( "ordinal 0x3fff did not restore entry\n" );
+        return 1;
+    }
+
+    e.offset = 64u;
+    e.type_id = UINT64_C(0x123456789ABCDEF0);
+    memset( &c, 0, sizeof( c ) );
+    c.entries = &e;
+    c.count = 1;
+    if ( table_cycle_begin( &c, ordinal_overflow ) || !c.broken || c.vertices != 0 )
+    {
+        printf( "ordinal 0x4000 was not refused\n" );
+        return 1;
+    }
+    if ( e.offset != 64u || e.type_id != UINT64_C(0x123456789ABCDEF0) )
+    {
+        printf( "ordinal 0x4000 mutated entry before refusing\n" );
+        return 1;
+    }
+    table_cycle_restore( &c, restore_id );
+    if ( e.offset != 64u || e.type_id != UINT64_C(0x123456789ABCDEF0) )
+    {
+        printf( "ordinal 0x4000 restore corrupted entry\n" );
+        return 1;
+    }
+    return 0;
+}
+`, cfile)
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2", "-fsanitize=address,undefined", "-fno-sanitize-recover=all"}
+	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, "-I", dir, filepath.Join(dir, "main.c"), "-lm", "-o", filepath.Join(dir, "probe"))
+	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+		t.Fatalf("compile: %v\n%s", err, output)
+	}
+	ctx, cancel := slowtest.ProbeContext(t)
+	defer cancel()
+	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
+		t.Fatalf("run: %v\n%s", err, output)
 	}
 }

@@ -2030,7 +2030,7 @@ C_CYCLE_LINEAR_NC := build/c-cycle-linear-nc
 .PHONY: tables-c-cycle tables-c-cycle-negative-control tables-c-cycle-linear-negative-control
 tables-c-cycle:
 	@mkdir -p build/c-cycle
-	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC|DiamondChainLoadsLinearC)$$' > build/c-cycle/pin.log 2>&1 || \
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC|DiamondChainLoadsLinearC|CycleOrdinalBoundaryC)$$' > build/c-cycle/pin.log 2>&1 || \
 		{ cat build/c-cycle/pin.log; exit 1; }
 	@! grep -q -- '--- SKIP' build/c-cycle/pin.log || \
 		{ echo "tables-c-cycle: the pin was skipped, so it held nothing"; cat build/c-cycle/pin.log; exit 1; }
