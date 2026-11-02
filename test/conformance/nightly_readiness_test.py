@@ -197,7 +197,7 @@ class Contracts(unittest.TestCase):
                 runner=FakeRunner.instances[-1]
                 self.assertEqual({row["phase"] for row in runner.results},m.required_phases(lang))
                 for package,path in {"tabletext":"internal/tabletext", "tablewire":"internal/tablewire",
-                                     "fixedtwin":"tools/fixedtwin"}.items():
+                                     "tablepack":"internal/tablepack", "fixedtwin":"tools/fixedtwin"}.items():
                     calls=[argv for name,argv,cwd in runner.calls if name=="native-"+package]
                     self.assertEqual(len(calls),1 if lang=="cpp" else 0)
                     if calls:
