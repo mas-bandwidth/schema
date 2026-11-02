@@ -172,7 +172,11 @@ int main(){uint8_t buf[4096];const char *names[]={"negative","min","max"};int64_
 	if err := os.WriteFile(filepath.Join(dir, "probe.cpp"), []byte(source), 0600); err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := filepath.Abs("../../../../serialize")
+	runtime := os.Getenv("SERIALIZE")
+	if runtime == "" {
+		runtime = "../../../../serialize"
+	}
+	runtime, err = filepath.Abs(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}

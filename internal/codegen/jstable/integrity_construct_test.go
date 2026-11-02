@@ -52,7 +52,9 @@ func TestJavaScriptIntegrityConstruct(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		variable = append(variable, seal(wire))
+		// Encode already appends the declared file CRC. Only the message
+		// oracle below still needs its explicit checksum adapter.
+		variable = append(variable, hex.EncodeToString(wire))
 	}
 	var values []*tabletext.Instance
 	for i, label := range []string{"ok", "", "eight ch"} {
