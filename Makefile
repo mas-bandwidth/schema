@@ -5679,6 +5679,78 @@ tables-cpp-region-discard-negative-control:
 	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
 
+# NOTHING OF A REFUSED BUILDER LOAD IS USED (docs/SPEC-TABLES.md §4): the control
+# removes the root reset from a COPY of pointers.go, so a damaged builder load
+# leaves its root holding what it decoded.
+TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR := build/tables-cpp-builder-discard-negative-control
+.PHONY: tables-cpp-builder-discard-negative-control
+tables-cpp-builder-discard-negative-control:
+	@rm -rf $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)
+	@sed -e 's#if ( out->malformed || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestDamageDiscardsTheWholeLoadCPP stayed green"; \
+		cat $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "builder: a damaged load left a usable root" $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "usable root" $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestDamageDiscardsTheWholeLoadCPP RED"
+
+# A REFUSED RETAINING LOAD KEEPS NOTHING (docs/SPEC-TABLES.md §3.3, §6.6): the
+# control removes the store reset from the non-finite exit of a COPY of
+# pointers.go, so a NaN leaves the retention store holding records.
+TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-retain-refusal-negative-control
+.PHONY: tables-cpp-retain-refusal-negative-control
+tables-cpp-retain-refusal-negative-control:
+	@rm -rf $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)
+	@sed -e 's|malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }|malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the store reset is gone|' \
+		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestRefusedLoadsHandBackNothingCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestRefusedLoadsHandBackNothingCPP stayed green"; \
+		cat $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "nan: the retention store kept" $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "retention store kept" $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestRefusedLoadsHandBackNothingCPP RED"
+
+# A REFUSED FIXED BATCH KEEPS NOTHING (docs/SPEC-TABLES.md §4, §6.5): the control
+# removes the no_layout reset from a COPY of fixedform.go, so record 0 of a
+# batch refused at record 1 stays decoded.
+TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-fixed-refusal-negative-control
+.PHONY: tables-cpp-fixed-refusal-negative-control
+tables-cpp-fixed-refusal-negative-control:
+	@rm -rf $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)
+	@sed -e 's|for ( int64_t j = 0; j < k; ++j ) { %sReset( values\[j\] ); }|for ( int64_t j = 0; j < 0; ++j ) { %sReset( values[j] ); } // NEGATIVE CONTROL: the reset is gone|' \
+		internal/codegen/cpptable/fixedform.go > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/fixedform.go $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/fixedform.go":"%s/$(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestFixedRefusalHandsBackNothingCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestFixedRefusalHandsBackNothingCPP stayed green"; \
+		cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "fixed: no_layout left record 0 usable" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "left record 0" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestFixedRefusalHandsBackNothingCPP RED"
+
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
 # ORACLE is taught the opposite reading, a nested-union arm whose L runs past

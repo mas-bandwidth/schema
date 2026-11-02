@@ -1201,13 +1201,16 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }\n")
 	if g.anyExtent {
 		g.pf("    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md\n")
-		g.pf("    // §2.9): the partial builder is the caller's to discard, and the report\n")
-		g.pf("    // holds what it held when the count was met\n")
+		g.pf("    // §2.9): the same whole-load outcome as damage, the root reset below\n")
 		g.pf("    ok = ok && !nodes.refused;\n")
 	}
 	g.pf("    table_release( allocator, directory );\n")
-	g.pf("    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder\n")
-	g.pf("    // holds nothing to use, and false says so\n")
+	g.pf("    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does\n")
+	g.pf("    // every refusal: the root goes back to its declared defaults, so no\n")
+	g.pf("    // node the walk placed is reachable from it and the builder holds\n")
+	g.pf("    // nothing to use. The nodes stay in the arena, unreachable, until the\n")
+	g.pf("    // builder is destroyed; Lock packs from the root and never sees them.\n")
+	g.pf("    if ( out->malformed || !ok ) { %sReset( *root ); }\n", n)
 	g.pf("    if ( out->malformed ) { return false; }\n")
 	g.pf("    out->malformed = malformed_before;\n")
 	g.pf("    return ok;\n}\n\n")
@@ -1231,6 +1234,8 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
 	g.pf("            else { out->refuse_reason = wire_damaged; }\n")
 	g.pf("        }\n")
+	g.pf("        %s * refused_root = builder.GetRoot();\n", n)
+	g.pf("        if ( refused_root != NULL ) { %sReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)\n", n)
 	g.pf("        return false;\n    }\n")
 	g.pf("    out->refuse_reason = ok;\n")
 	g.pf("    return true;\n}\n\n")
@@ -1743,9 +1748,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	g.pf("// %s%s: decode the tolerant wire into the caller's exact-sized region and\n", n, loadName)
 	g.pf("// return the root. LOAD IS A SCAN, and that is the whole of its bound: it\n")
 	g.pf("// follows no reference, so there is no depth cap, no visited set and no\n")
-	g.pf("// ordering rule on the indices. Partial results are kept, as everywhere on\n")
-	g.pf("// this wire — the report says what happened. NULL means the CALLER's buffer\n")
-	g.pf("// was wrong.\n")
+	g.pf("// ordering rule on the indices. DAMAGE DISCARDS THE WHOLE LOAD\n")
+	g.pf("// (docs/SPEC-TABLES.md §4): NULL is a refusal, a damaged wire or a region the\n")
+	g.pf("// caller sized wrong, and the region then holds nothing to use.\n")
 	if g.retain {
 		g.pf("// UNDER RETENTION it also fills the caller's two stores with the fields\n")
 		g.pf("// this build cannot name, and the report carries what it could not keep\n")
@@ -1909,7 +1914,11 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	}
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing\n")
 	g.pf("    // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)\n")
-	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
+	if g.retain {
+		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }\n")
+	} else {
+		g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }\n")
+	}
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the region
 	// holds no root and the retention store holds nothing.
 	if g.retain {

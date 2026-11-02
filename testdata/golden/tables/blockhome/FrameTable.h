@@ -5649,9 +5649,17 @@ inline int64_t PartRowFixedLoadTolerant( PartRow * values, int64_t capacity, con
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         PartRowReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { PartRowReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PartRowFixedGuards );
         if ( !PartRowFixedFiniteBody( values[k] ) )
@@ -6428,9 +6436,17 @@ inline int64_t PartFrameFixedLoadTolerant( PartFrame * values, int64_t capacity,
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         PartFrameReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { PartFrameReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PartFrameFixedGuards );
         if ( !PartFrameFixedFiniteBody( values[k] ) )
