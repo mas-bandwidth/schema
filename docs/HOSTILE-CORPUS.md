@@ -84,7 +84,7 @@ case and fails if any verdict differs from the committed manifest. A per-port
 card (`schema-<port>-runs-hostile-corpus`) follows the same shape with that
 port's decoder and the same manifest.
 
-Three ports carry one today. Java: `make schema-java-runs-hostile-corpus`
+The ports with runners include Java: `make schema-java-runs-hostile-corpus`
 (`test/java-hostile/Runner.java`, the units the manifest names compiled with
 `javac --release 17 -Xlint:all -Werror`). Elixir: `make schema-elixir-runs-hostile-corpus`
 (`test/elixir-hostile/runner.exs`). Dart: `make schema-dart-runs-hostile-corpus`
@@ -92,7 +92,11 @@ Three ports carry one today. Java: `make schema-java-runs-hostile-corpus`
 `<Package>Fixed.dart` readers, every carrier). Rust: `make schema-rust-runs-hostile-corpus`
 (`test/rust-hostile`, one generated crate per schema the manifest names, run
 in the release and the debug profile, each case in a child process on a
-512 KiB stack with a 5 s budget). Each carries the disagreements
+512 KiB stack with a 5 s budget). C#: `make schema-cs-runs-hostile-corpus`
+(`test/cs-hostile/Runner.cs`; `test/cs-hostile/gen` writes the dispatch from the
+manifest, and each case runs in a pooled worker process on a 512 KiB stack
+thread, so a stack overflow or a hang fails only its own case; a variable
+root's `wire` case must agree on the managed and the native region load). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.

@@ -930,6 +930,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
 		"ci-full.yml:pins",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
@@ -989,6 +990,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	for _, wantKey := range []string{
 		"ci-full.yml:pins",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-java-runs-hostile-corpus.yml:corpus",
@@ -1016,6 +1018,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		for _, wantKey := range []string{
 			"ci-full.yml:go-test",
 			"ci-full.yml:pins",
+			"schema-cs-runs-hostile-corpus.yml:corpus",
 			"schema-dart-generated-strict-analyze-gate.yml:fast",
 			"schema-elixir-runs-hostile-corpus.yml:corpus",
 			"schema-go-generated-golangci-lint-gate.yml:gate",
@@ -1048,6 +1051,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	for _, wantKey := range []string{
 		"ci-full.yml:go-test",
 		"ci-full.yml:pins",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
+		"schema-cs-runs-hostile-corpus.yml:negative-control",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-dart-generated-strict-analyze-gate.yml:nightly",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
@@ -1119,6 +1124,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:cpp-writes",
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
+		"schema-cs-runs-hostile-corpus.yml:corpus",
+		"schema-cs-runs-hostile-corpus.yml:negative-control",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-dart-generated-strict-analyze-gate.yml:nightly",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
