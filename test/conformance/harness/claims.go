@@ -22,6 +22,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -341,32 +342,47 @@ func writeCoverage(path string, rows []coverageRow) error {
 func readCoverage(dir string) ([]coverageRow, map[string]string, error) {
 	var rows []coverageRow
 	fixed := map[string]string{}
+	var problems []error
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
+		if err != nil {
+			problems = append(problems, err)
+			return nil // retain every other readable record for diagnostics
+		}
+		if d.IsDir() {
+			return nil
 		}
 		base := filepath.Base(path)
 		switch {
 		case (strings.HasPrefix(base, "coverage-") || strings.HasPrefix(base, "crossread-")) && strings.HasSuffix(base, ".json"):
 			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
 			var some []coverageRow
-			if err := json.Unmarshal(data, &some); err != nil {
-				return fmt.Errorf("%s: %w", path, err)
+			if err == nil {
+				err = json.Unmarshal(data, &some)
+			}
+			if err != nil {
+				problems = append(problems, fmt.Errorf("%s: %w", path, err))
+				return nil
 			}
 			rows = append(rows, some...)
 		case strings.HasPrefix(base, "fixedform-") && strings.HasSuffix(base, ".txt"):
 			data, err := os.ReadFile(path)
 			if err != nil {
-				return err
+				problems = append(problems, err)
+				return nil
 			}
-			fixed[strings.TrimSuffix(strings.TrimPrefix(base, "fixedform-"), ".txt")] = strings.TrimSpace(string(data))
+			lang := strings.TrimSuffix(strings.TrimPrefix(base, "fixedform-"), ".txt")
+			if _, exists := fixed[lang]; exists {
+				problems = append(problems, fmt.Errorf("%s: duplicate fixed-form record for %s", path, lang))
+				return nil
+			}
+			fixed[lang] = strings.TrimSpace(string(data))
 		}
 		return nil
 	})
-	return rows, fixed, err
+	if err != nil {
+		problems = append(problems, err)
+	}
+	return rows, fixed, errors.Join(problems...)
 }
 
 // coverageMarkdown is the table the nightly writes to its job summary: one
