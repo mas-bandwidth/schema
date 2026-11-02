@@ -3760,7 +3760,8 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
     w.align();
     w.raw(Uint8List.sublistView(value.payload, 0, value.payloadLength));
   }
-  if (value.aimX != 0 || value.aimX.isNegative) {
+  TableBitWriter._float32Cell[0] = value.aimX;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(16, tableMessageRefBits);
     {
       final f = value.aimX;
@@ -3782,7 +3783,8 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.aimY != 0 || value.aimY.isNegative) {
+  TableBitWriter._float32Cell[0] = value.aimY;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(17, tableMessageRefBits);
     {
       final f = value.aimY;
@@ -3804,7 +3806,8 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.aimZ != 0 || value.aimZ.isNegative) {
+  TableBitWriter._float32Cell[0] = value.aimZ;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(18, tableMessageRefBits);
     {
       final f = value.aimZ;
@@ -3826,7 +3829,8 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
       w.put(index, 8);
     }
   }
-  if (value.recoil != 0 || value.recoil.isNegative) {
+  TableBitWriter._float32Cell[0] = value.recoil;
+  if (TableBitWriter._float32Words[0] != 0) {
     w.put(19, tableMessageRefBits);
     {
       final f = value.recoil;

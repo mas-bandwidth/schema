@@ -462,6 +462,9 @@ func (g *fixedGen) fixedZeroFor(f *ir.Field) string {
 	switch t.Kind {
 	case ir.TFloat32, ir.TFloat64:
 		if f.HasDefault {
+			if t.Kind == ir.TFloat32 {
+				return fixedFloatLit(float64(float32(f.DefFloat)))
+			}
 			return fixedFloatLit(f.DefFloat)
 		}
 		return "0.0"
