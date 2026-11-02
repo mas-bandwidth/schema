@@ -64,6 +64,9 @@ public final class Runner {
     }
 
     private static String refuse(String reason) {
+        if (reason != null && reason.startsWith("non_finite_float:")) {
+            reason = "non_finite_float";
+        }
         return "refuse " + reason;
     }
 
@@ -127,11 +130,11 @@ public final class Runner {
         // malformed read (no name) is the corpus's `damaged`, and a clean read
         // is accepted with the digest of its canonical text.
         String verdict(Object value, Object report) throws ReflectiveOperationException, NoSuchAlgorithmException {
-            if (flag(report, "refused") || value == null) {
+            if (flag(report, "refused")) {
                 String r = reason(report);
                 return refuse(r == null || r.isEmpty() ? "damaged" : r);
             }
-            if (flag(report, "malformed")) {
+            if (flag(report, "malformed") || value == null) {
                 return refuse("damaged");
             }
             return digest(value);

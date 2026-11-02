@@ -316,7 +316,6 @@ func runDiscardJava(t *testing.T, edit func(map[string][]byte) int) (string, err
 func TestDamageDiscardsTheWholeLoadJava(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	out, err := runDiscardJava(t, nil)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -332,7 +331,6 @@ func TestDamageDiscardsTheWholeLoadJava(t *testing.T) {
 // gate's driver to go red on exactly that entry point.
 func TestDamageDiscardsTheWholeLoadJavaNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	cases := []struct {
 		name  string

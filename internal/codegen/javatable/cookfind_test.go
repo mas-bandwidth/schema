@@ -1,11 +1,11 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COOKED MAP HAS FIND (docs/PORTING.md M19; docs/SPEC-TABLES.md §2.8): a binary
@@ -49,7 +49,6 @@ public final class CookFindProbe {
 `
 
 func runCookFind(t *testing.T, plant bool) (string, bool) {
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	files := cookUnitFiles(t, filepath.Join("..", "..", "..", "tables", "maps"))
