@@ -527,6 +527,9 @@
         "tables-wire-fuzz-discard-negative-control",
         "tables-cpp-discard-negative-control",
         "tables-cpp-region-discard-negative-control",
+        "tables-cpp-builder-discard-negative-control",
+        "tables-cpp-retain-refusal-negative-control",
+        "tables-cpp-fixed-refusal-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]

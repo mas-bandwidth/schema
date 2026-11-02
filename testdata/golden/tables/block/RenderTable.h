@@ -16367,9 +16367,17 @@ inline int64_t RenderCameraFixedLoadTolerant( RenderCamera * values, int64_t cap
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderCameraReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderCameraReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderCameraFixedGuards );
         if ( !RenderCameraFixedFiniteBody( values[k] ) )
@@ -16775,15 +16783,21 @@ inline int64_t RenderShipFixedLoadTolerant( RenderShip * values, int64_t capacit
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderShipReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderShipReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderShipFixedGuards );
         if ( !RenderShipFixedFiniteBody( values[k] ) )
         {
@@ -16796,8 +16810,9 @@ inline int64_t RenderShipFixedLoadTolerant( RenderShip * values, int64_t capacit
                                     (uint8_t *) &values[k], report );
         if ( !RenderShipFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderShipReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -17170,15 +17185,21 @@ inline int64_t RenderTurretFixedLoadTolerant( RenderTurret * values, int64_t cap
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderTurretReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderTurretReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderTurretFixedGuards );
         if ( !RenderTurretFixedFiniteBody( values[k] ) )
         {
@@ -17191,8 +17212,9 @@ inline int64_t RenderTurretFixedLoadTolerant( RenderTurret * values, int64_t cap
                                     (uint8_t *) &values[k], report );
         if ( !RenderTurretFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderTurretReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -17573,15 +17595,21 @@ inline int64_t RenderMissileFixedLoadTolerant( RenderMissile * values, int64_t c
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderMissileReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderMissileReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderMissileFixedGuards );
         if ( !RenderMissileFixedFiniteBody( values[k] ) )
         {
@@ -17594,8 +17622,9 @@ inline int64_t RenderMissileFixedLoadTolerant( RenderMissile * values, int64_t c
                                     (uint8_t *) &values[k], report );
         if ( !RenderMissileFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderMissileReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -17979,15 +18008,21 @@ inline int64_t RenderDynamicPropFixedLoadTolerant( RenderDynamicProp * values, i
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderDynamicPropReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderDynamicPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderDynamicPropFixedGuards );
         if ( !RenderDynamicPropFixedFiniteBody( values[k] ) )
         {
@@ -18000,8 +18035,9 @@ inline int64_t RenderDynamicPropFixedLoadTolerant( RenderDynamicProp * values, i
                                     (uint8_t *) &values[k], report );
         if ( !RenderDynamicPropFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderDynamicPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -18385,15 +18421,21 @@ inline int64_t RenderStaticPropFixedLoadTolerant( RenderStaticProp * values, int
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderStaticPropReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderStaticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderStaticPropFixedGuards );
         if ( !RenderStaticPropFixedFiniteBody( values[k] ) )
         {
@@ -18406,8 +18448,9 @@ inline int64_t RenderStaticPropFixedLoadTolerant( RenderStaticProp * values, int
                                     (uint8_t *) &values[k], report );
         if ( !RenderStaticPropFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderStaticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -18794,15 +18837,21 @@ inline int64_t RenderCosmeticPropFixedLoadTolerant( RenderCosmeticProp * values,
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderCosmeticPropReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderCosmeticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderCosmeticPropFixedGuards );
         if ( !RenderCosmeticPropFixedFiniteBody( values[k] ) )
         {
@@ -18815,8 +18864,9 @@ inline int64_t RenderCosmeticPropFixedLoadTolerant( RenderCosmeticProp * values,
                                     (uint8_t *) &values[k], report );
         if ( !RenderCosmeticPropFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderCosmeticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -19191,15 +19241,21 @@ inline int64_t RenderLaserFixedLoadTolerant( RenderLaser * values, int64_t capac
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderLaserReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderLaserReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderLaserFixedGuards );
         if ( !RenderLaserFixedFiniteBody( values[k] ) )
         {
@@ -19212,8 +19268,9 @@ inline int64_t RenderLaserFixedLoadTolerant( RenderLaser * values, int64_t capac
                                     (uint8_t *) &values[k], report );
         if ( !RenderLaserFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderLaserReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -19594,15 +19651,21 @@ inline int64_t RenderExplosionFixedLoadTolerant( RenderExplosion * values, int64
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderExplosionReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderExplosionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderExplosionFixedGuards );
         if ( !RenderExplosionFixedFiniteBody( values[k] ) )
         {
@@ -19615,8 +19678,9 @@ inline int64_t RenderExplosionFixedLoadTolerant( RenderExplosion * values, int64
                                     (uint8_t *) &values[k], report );
         if ( !RenderExplosionFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderExplosionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
