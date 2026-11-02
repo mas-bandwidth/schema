@@ -1595,6 +1595,16 @@ below.
 
 **Negative control.** None for the C-family formatter, which is its own oracle. The C++ gate's two halves each go red on a planted fault in the packet emitter, built under a Go overlay: one K&R struct brace for the format half, one C-style placement-new cast for the warnings half (`tools/sabotage/cpp_clean.go`; both registered in `make/negative-controls.json`), each behind a guard that the unsabotaged output is green.
 
+**One-time widelist warning inventory.** The new fixture's three warning-bearing
+paths were absent from the census. Their initial 16 path/kind pairs come from
+existing table, view, reflection and list emitter forms. Schema-specific casts
+vary their field/type/ID bindings; in particular, the scalar list pack template
+instantiates uint64 and uint128 where existing fixtures instantiate int32 and
+TableRef. This records inherited warning debt without changing layout or runtime
+code. The admission is limited to the observed kinds in `make/cpp-warn-allow.txt`;
+the normal shrink-only rule, new-kind rejection, stale-entry rejection and source
+negative control remain in force. The format inventory is unchanged.
+
 **Targets:** clean
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua |
