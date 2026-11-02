@@ -20,13 +20,13 @@ public final class MixedHitEventRetain {
             return MixedHitEventVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         MixedHitEventVariable.Value v = new MixedHitEventVariable.Value();
         report.rootTypeId = MixedHitEventVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
@@ -63,6 +63,9 @@ public final class MixedHitEventRetain {
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
         if (report.refused) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
@@ -71,15 +74,30 @@ public final class MixedHitEventRetain {
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
             }
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
+        nt.from = 1;
         MixedHitEventVariable.resolveNodes(v, nt, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) {
-                if (rec.table != null)
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
+                if (rec.table != null) {
+                    nt.from = i + 2;
                     MixedHitEventVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, MixedHitEventVariable.TYPE_ID, report);
+                }
             }
+        }
+        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        if (TableVariable.cyclic(nt)) {
+            report.malformed = true;
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
         }
         return v;
     }

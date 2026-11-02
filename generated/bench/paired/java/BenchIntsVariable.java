@@ -829,13 +829,21 @@ public final class BenchIntsVariable {
             }
             return null;
         }
+        nt.from = 1;
         resolveNodes(v, nt, v, TYPE_ID, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) {
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
                 if (rec.table != null) {
+                    nt.from = i + 2;
                     resolveNodePointers(rec.table, rec.typeId, nt, v, TYPE_ID, report);
                 }
             }
+        }
+        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        if (TableVariable.cyclic(nt)) {
+            report.malformed = true;
+            return null;
         }
         return v;
     }

@@ -1521,6 +1521,93 @@ public final class TableVariable {
         // no counter (§3.1). It is false when the field is absent — an empty
         // but valid numbering — or was read whole.
         public boolean bad;
+        // THE POINTER EDGES the resolve met, as (from, to) node index pairs:
+        // from is the node whose fields are resolving (1 the root, k >= 2 the
+        // record), to the node a pointer named. cyclic() walks them (§3.1).
+        public long from = 1;
+        long[] edges = new long[16];
+        int edgeCount;
+
+        void edge(long to) {
+            if (edgeCount + 2 > edges.length) {
+                edges = java.util.Arrays.copyOf(edges, edges.length * 2);
+            }
+            edges[edgeCount++] = from;
+            edges[edgeCount++] = to;
+        }
+    }
+
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
+    // produces one, so the load walks the resolved graph, the root first and
+    // then every record the root did not reach, and a pointer that reaches a
+    // node whose descent is still OPEN (a back edge) refuses the whole load; a
+    // pointer to a CLOSED node is a share and legal and is never re-entered.
+    // Three marks per node (unvisited, open, closed), each node entered once:
+    // linear, iterative, nothing recursed.
+    public static boolean cyclic(NodeTable nt) {
+        int pairs = nt.edgeCount / 2;
+        if (pairs == 0) {
+            return false;
+        }
+        int n = (nt.recs == null ? 0 : nt.recs.length) + 2;
+        int[] start = new int[n + 1];
+        for (int i = 0; i < pairs; i++) {
+            start[(int) nt.edges[2 * i] + 1]++;
+        }
+        for (int i = 0; i < n; i++) {
+            start[i + 1] += start[i];
+        }
+        int[] to = new int[pairs];
+        int[] fill = java.util.Arrays.copyOf(start, n);
+        for (int i = 0; i < pairs; i++) {
+            to[fill[(int) nt.edges[2 * i]]++] = (int) nt.edges[2 * i + 1];
+        }
+        byte[] state = new byte[n]; // 0 unvisited, 1 open, 2 closed
+        int[] stack = new int[n];
+        int[] next = new int[n];
+        for (int root = 1; root < n; root++) {
+            if (state[root] != 0) {
+                continue;
+            }
+            int depth = 0;
+            stack[depth++] = root;
+            state[root] = 1;
+            next[root] = start[root];
+            while (depth > 0) {
+                int at = stack[depth - 1];
+                if (next[at] == start[at + 1]) {
+                    state[at] = 2;
+                    depth--;
+                    continue;
+                }
+                int t = to[next[at]++];
+                if (state[t] == 1) {
+                    return true;
+                }
+                if (state[t] == 0) {
+                    state[t] = 1;
+                    next[t] = start[t];
+                    stack[depth++] = t;
+                }
+            }
+        }
+        return false;
+    }
+
+    // resolveTable against the load's NodeTable: the record's table, and the
+    // edge recorded for cyclic().
+    public static <T> T resolveTable(
+            NodeTable nt,
+            long index,
+            long targetTypeId,
+            Object root,
+            long rootTypeId,
+            Report report) {
+        T t = resolveTable(nt.recs, index, targetTypeId, root, rootTypeId, report);
+        if (t != null) {
+            nt.edge(index);
+        }
+        return t;
     }
 
     @SuppressWarnings("unchecked")
