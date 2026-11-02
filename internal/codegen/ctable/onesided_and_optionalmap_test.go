@@ -265,3 +265,120 @@ func TestCOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 		t.Logf("reverted branch red: %s", strings.TrimSpace(out))
 	})
 }
+
+func TestCMapOptionalValues(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C compiler")
+	src := "package probe\n\n" +
+		"table Child\n{\n" +
+		"    n int32\n" +
+		"}\n\n" +
+		"table Root\n{\n" +
+		"    lookup map[string(8)]?int32\n" +
+		"    ints   map[uint32]?Child\n" +
+		"    names  map[string(8)]?Child\n" +
+		"}\n"
+	u := unitFrom(t, src)
+	out, err := cHeldRun(t, u, `
+    #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
+    RootBuilder b;
+    const Root * v;
+    const RootLookupEntry * e;
+    const RootIntsEntry * ie;
+    const RootNamesEntry * ne;
+    TableReport report;
+    static char json_buf[4096];
+    SCHEMA_C_ALIGN16 static uint8_t wire_buf[4096];
+    SCHEMA_C_ALIGN16 static uint8_t load_region[4096];
+    int64_t jn, wn;
+    const Root * loaded;
+
+    /* 1. Explicit null vs present integer in map[string(8)]?int32 */
+    CHECK(root_builder_init(&b));
+    memset(&report, 0, sizeof(report));
+    { const char * s = "{\"lookup\":{\"a\":null,\"b\":7}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(!report.malformed && !report.refused && report.kind_mismatch == 0);
+    CHECK(root_builder_lock(&b));
+    v = (const Root *)(const void *)b.region;
+    e = root_lookup_find(&v->lookup, "a");
+    CHECK(e != NULL && e->value_present == 0 && e->value == 0);
+    e = root_lookup_find(&v->lookup, "b");
+    CHECK(e != NULL && e->value_present == 1 && e->value == 7);
+    jn = root_to_json(v, json_buf, (int64_t)sizeof(json_buf));
+    CHECK(jn > 0);
+    json_buf[jn] = 0;
+    CHECK(strstr(json_buf, "\"a\": null") != NULL);
+    CHECK(strstr(json_buf, "\"b\": 7") != NULL);
+    root_builder_shutdown(&b);
+
+    /* 2. Non-null wrong-shape value sets value_present = 1 with default value 0 */
+    CHECK(root_builder_init(&b));
+    memset(&report, 0, sizeof(report));
+    { const char * s = "{\"lookup\":{\"a\":\"bad\"}}"; CHECK(root_from_json_tolerant(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(!report.malformed && report.kind_mismatch == 1);
+    CHECK(root_builder_lock(&b));
+    v = (const Root *)(const void *)b.region;
+    e = root_lookup_find(&v->lookup, "a");
+    CHECK(e != NULL && e->value_present == 1 && e->value == 0);
+    jn = root_to_json(v, json_buf, (int64_t)sizeof(json_buf));
+    CHECK(jn > 0);
+    json_buf[jn] = 0;
+    CHECK(strstr(json_buf, "\"a\": 0") != NULL);
+    root_builder_shutdown(&b);
+
+    /* 3. Duplicate key where second occurrence has wrong shape -> present default 0 */
+    CHECK(root_builder_init(&b));
+    memset(&report, 0, sizeof(report));
+    { const char * s = "{\"lookup\":{\"a\":5,\"a\":\"bad\"}}"; CHECK(root_from_json_tolerant(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(!report.malformed && report.duplicate == 1 && report.kind_mismatch == 1);
+    CHECK(root_builder_lock(&b));
+    v = (const Root *)(const void *)b.region;
+    e = root_lookup_find(&v->lookup, "a");
+    CHECK(e != NULL && e->value_present == 1 && e->value == 0);
+    root_builder_shutdown(&b);
+
+    /* 4. Duplicate key where second occurrence is null -> absent default 0 */
+    CHECK(root_builder_init(&b));
+    memset(&report, 0, sizeof(report));
+    { const char * s = "{\"lookup\":{\"a\":5,\"a\":null}}"; CHECK(root_from_json_tolerant(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(!report.malformed && report.duplicate == 1 && report.kind_mismatch == 0);
+    CHECK(root_builder_lock(&b));
+    v = (const Root *)(const void *)b.region;
+    e = root_lookup_find(&v->lookup, "a");
+    CHECK(e != NULL && e->value_present == 0 && e->value == 0);
+    root_builder_shutdown(&b);
+
+    /* 5. map[K]?Child JSON -> wire -> load -> JSON round-trip */
+    CHECK(root_builder_init(&b));
+    memset(&report, 0, sizeof(report));
+    {
+        const char * doc = "{\"ints\":{\"5\":null,\"2\":{\"n\":7}},\"names\":{\"a\":null,\"z\":{}}}";
+        CHECK(root_from_json(&b, doc, (int64_t)strlen(doc), &report));
+    }
+    CHECK(root_builder_lock(&b));
+    v = (const Root *)(const void *)b.region;
+    wn = root_save(NULL, v, wire_buf, (int64_t)sizeof(wire_buf));
+    CHECK(wn > 0);
+    memset(&report, 0, sizeof(report));
+    loaded = root_load(load_region, (int64_t)sizeof(load_region), wire_buf, wn, &report);
+    CHECK(loaded != NULL && !report.malformed && !report.refused);
+    ie = root_ints_find(&loaded->ints, 5u);
+    CHECK(ie != NULL && ie->value_present == 0);
+    ie = root_ints_find(&loaded->ints, 2u);
+    CHECK(ie != NULL && ie->value_present == 1 && ie->value.n == 7);
+    ne = root_names_find(&loaded->names, "a");
+    CHECK(ne != NULL && ne->value_present == 0);
+    ne = root_names_find(&loaded->names, "z");
+    CHECK(ne != NULL && ne->value_present == 1 && ne->value.n == 0);
+    jn = root_to_json(loaded, json_buf, (int64_t)sizeof(json_buf));
+    CHECK(jn > 0);
+    json_buf[jn] = 0;
+    CHECK(strstr(json_buf, "\"5\": null") != NULL);
+    CHECK(strstr(json_buf, "\"a\": null") != NULL);
+    root_builder_shutdown(&b);
+    #undef CHECK
+`)
+	if err != nil {
+		t.Fatalf("optional map values probe failed: %v\n%s", err, out)
+	}
+}
