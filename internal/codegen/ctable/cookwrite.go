@@ -59,9 +59,9 @@ static SCHEMA_UNUSED int64_t table_cook_layout(TableNumbering * n,int64_t * alig
         int64_t size=type->size, node_align=type->alignment;
         if(type->blob) { size=8+(int64_t)((const TableBlob *)entry->value)->length+(type->blob==2); }
         else if(type->has_extent) {
-            int64_t extent=0;
-            if(!type->cook_extent(n,entry->value,NULL,NULL,&extent,TableByteOrder_Little) || size>INT64_MAX-7) { return -1; }
-            size=(size+7)&~INT64_C(7); if(extent>INT64_MAX-size) { return -1; } size+=extent;
+            int64_t extent=0, extent_align=node_align>8 ? node_align : 8;
+            if(!type->cook_extent(n,entry->value,NULL,NULL,&extent,TableByteOrder_Little) || size>INT64_MAX-(extent_align-1)) { return -1; }
+            size=(size+extent_align-1)&~(extent_align-1); if(extent>INT64_MAX-size) { return -1; } size+=extent;
         }
         if(node_align<1 || total>INT64_MAX-(node_align-1)) { return -1; }
         total=(total+node_align-1)&~(node_align-1);
@@ -92,7 +92,7 @@ static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * 
             int64_t extent=0;
             if(!entry->type->cook_body(&n,at,entry->value,order)) { goto done; }
             if(entry->type->has_extent) {
-                int64_t expected=0,record=(entry->type->size+7)&~INT64_C(7);
+                int64_t expected=0,extent_align=entry->type->alignment>8 ? entry->type->alignment : 8,record=(entry->type->size+extent_align-1)&~(extent_align-1);
                 if(!entry->type->cook_extent(&n,entry->value,NULL,NULL,&expected,order) ||
                    !entry->type->cook_extent(&n,entry->value,at,at+record,&extent,order) || extent!=expected) { goto done; }
             }
@@ -316,7 +316,7 @@ func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int)
 
 func (g *tableGen) emitCookFixedRoot(st *ir.Struct) {
 	ml := ir.RecordLayout(g.unit, st)
-	align := ir.RegionAlignOf(ml.Align)
+	align := ir.RegionAlignOf(ir.CookNodeAlign(g.unit, st))
 	bytes := cookAlignUp(ml.Size, align)
 	need := 64 + bytes + 16
 	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * value) { (void)value; return %d; }\n", g.api(st.Name, "cook_measure"), st.Name, need)
