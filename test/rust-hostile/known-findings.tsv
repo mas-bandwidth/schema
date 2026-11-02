@@ -1,0 +1,6 @@
+# carried findings: name	slug	input	one line
+# every line is a FIX-CARD the rust port owes; the runner fails if one goes green (test/rust-hostile/src/main.rs)
+# a name of the form <case>@release or <case>@debug is owed in that build profile only
+wire-count-refusal	rust-hostile-wire-count-refusal	inputs/wire-count-refusal.bin	a collection count past the int32 storage cap is refused as damaged (malformed, no reason) where the engine names count_refusal
+wire-form-02	rust-hostile-wire-form-02	inputs/wire-form-02.bin	the message form offered as a file is refused as unknown_form where the engine names message_form_as_file
+wire-form-ff	rust-hostile-wire-form-ff	inputs/wire-form-ff.bin	a form byte above the one the reader carries is refused as unknown_form where the engine names newer_form

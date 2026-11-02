@@ -1,0 +1,77 @@
+name: schema-rust-runs-hostile-corpus
+
+# THE RUST PORT RUNS THE SHARED HOSTILE CORPUS (docs/HOSTILE-CORPUS.md).
+# The fast part runs on every push and pull request: generate one Rust crate per
+# schema the manifest names against the pinned serialize.rs, build the runner in
+# the release and the debug profile, and check every input's verdict against the
+# committed oracle in both. The planted-bad-pattern control changes one
+# committed verdict in a scratch copy of the manifest and requires the runner to
+# go red; it runs on schedule and workflow_dispatch because it certifies the
+# gate has a blade rather than the corpus's content.
+
+on:
+  push:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  pull_request:
+    branches: [ main, dev, fixed-table-form, 'sprint/**' ]
+  schedule:
+    - cron: "47 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOFLAGS: -mod=readonly
+  NOVA_TEST_NO_HOST: '1'
+  SERIALIZE_RS_TAG: v5.0.0
+
+jobs:
+  corpus:
+    # Fleet only: a fork pull request has no fleet runner and is skipped before
+    # it can reach one.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A self-hosted runner's workspace parent persists between runs: the
+      # sibling runtime is removed and re-cloned at the pinned tag every time.
+      - name: the pinned serialize.rs
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # no Actions cache: the fleet runner keeps its own warm Go cache
+          cache: false
+      # the fleet's schema runners carry rust on PATH (the toolchains role)
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: runner.environment == 'github-hosted'
+      - name: the corpus gate (release and debug)
+        run: make schema-rust-runs-hostile-corpus RUSTUP_BIN="$(dirname "$(command -v cargo)")"
+
+  negative-control:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, linux, x64, schema]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: the pinned serialize.rs
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: runner.environment == 'github-hosted'
+      - name: the planted-bad-pattern control
+        run: make schema-rust-runs-hostile-corpus-negative-control RUSTUP_BIN="$(dirname "$(command -v cargo)")"

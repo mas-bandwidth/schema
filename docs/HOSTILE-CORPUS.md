@@ -89,7 +89,10 @@ Three ports carry one today. Java: `make schema-java-runs-hostile-corpus`
 `javac --release 17 -Xlint:all -Werror`). Elixir: `make schema-elixir-runs-hostile-corpus`
 (`test/elixir-hostile/runner.exs`). Dart: `make schema-dart-runs-hostile-corpus`
 (`test/dart-hostile/runner.dart`, the generated `<Package>Wire.dart` and
-`<Package>Fixed.dart` readers, every carrier). Each carries the disagreements
+`<Package>Fixed.dart` readers, every carrier). Rust: `make schema-rust-runs-hostile-corpus`
+(`test/rust-hostile`, one generated crate per schema the manifest names, run
+in the release and the debug profile, each case in a child process on a
+512 KiB stack with a 5 s budget). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
