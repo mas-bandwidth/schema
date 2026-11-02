@@ -1156,7 +1156,7 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int bench_write_bench_mixed( serializ
     }
     {
         serialize_int64_t fixed_value = (serialize_int64_t) value->ping;
-        if ( !serialize_write_fixed64( stream, fixed_value, 8, 8, 0, 250 ) )
+        if ( !serialize_write_fixed64( stream, fixed_value, 9, 8, 0, 250 ) )
         {
             return 0;
         }
@@ -1403,7 +1403,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int bench_read_bench_mixed( serialize_
     }
     {
         serialize_int64_t fixed_value = 0;
-        if ( !serialize_read_fixed64( stream, &fixed_value, 8, 8, 0, 250 ) )
+        if ( !serialize_read_fixed64( stream, &fixed_value, 9, 8, 0, 250 ) )
         {
             return 0;
         }
