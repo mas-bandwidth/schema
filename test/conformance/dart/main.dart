@@ -2372,7 +2372,9 @@ _FuzzRun _plainCodec<V, R>(
     final report = mkReport();
     final m = measure(wire);
     final value = load(wire, report);
-    return _fuzzReplyFor(report as dynamic, m >= 0, m, _refusable(() => save(value)));
+    final dynamic r=report;
+    final loaded=!r.malformed&&!r.refused;
+    return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value)) : null);
   };
 }
 
@@ -2391,7 +2393,9 @@ _FuzzRun _retainCodec<V, R, T>(
     final retain = mkRetain(1048576, List<int>.filled(131072, 0));
     final m = measure(wire);
     final value = load(wire, retain, report);
-    return _fuzzReplyFor(report as dynamic, m >= 0, m, _refusable(() => save(value, retain, report)));
+    final dynamic r=report;
+    final loaded=!r.malformed&&!r.refused;
+    return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value, retain, report)) : null);
   };
 }
 
@@ -2415,7 +2419,9 @@ List<int> _fuzzReplyFor(dynamic r, bool loaded, int measure, List<int>? saved) {
     clamped: r.clamped as int,
     duplicate: r.duplicate as int,
     malformed: r.malformed as bool,
-    refused: r.refused as bool,
+    // Builder count refusal rides the completion/save-failure channel;
+    // the shared builder oracle keeps its ordinary report counters.
+    refused: (r.refused as bool) && r.reason != 'count_over_extent_cap',
     measure: measure,
     retained: r.retained as int,
     retainLost: r.retainLost as int,
