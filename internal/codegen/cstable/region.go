@@ -262,7 +262,7 @@ const tableRegionSource = `
             int slot = order == 0 ? landed - 1 : landed;
             if (!NativeEnsure(ref state, value, f, slot)) { return false; }
             NativeReadBody(ref state, ref body, value.Child(f, slot), f.Table, report, true);
-            if (state.Refused) { return false; }
+            if (state.Refused || report.Refused) { return false; }
             if (order == 0) { report.Duplicate++; } else { last = key; landed++; }
         }
         value.SetCount(f, landed); return true;
@@ -319,7 +319,7 @@ const tableRegionSource = `
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             NativeValue child = value.Child(f, index);
             NativeReadBody(ref state, ref sub, child, f.Table, report, true);
-            if (state.Refused) { return false; }
+            if (state.Refused || report.Refused) { return false; }
             if (sub.Offset != sub.Buffer.Length) { NativeReset(child, f.Table); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
             return true;
@@ -395,7 +395,7 @@ const tableRegionSource = `
         if (kind == 13)
         {
             NativeReadBody(ref state, ref r, value.Child(f, 0), f.Table, report, true);
-            if (state.Refused) { return false; }
+            if (state.Refused || report.Refused) { return false; }
             return r.Offset == r.Buffer.Length || Damage(report);
         }
         if (kind == 15) { return NativeReadElement(ref state, ref r, value, f, 0, kind, report, true); }
@@ -525,13 +525,28 @@ const tableRegionSource = `
         }
         return NativeReadElement(ref state, ref r, value, f, 0, kind, report, true);
     }
+    static bool NativeRequireSeen(NativeValue value, TableTypeInfo type, ReadOnlySpan<ulong> seen, TableReport report)
+    {
+        if (!type.HasRequired) { return !report.Refused; }
+        System.Text.StringBuilder missing = null;
+        foreach (TableFieldInfo f in type.Fields)
+        {
+            if (!f.Required || !value.Guard(f) || (seen[f.Ordinal >> 6] & (1ul << (f.Ordinal & 63))) != 0) { continue; }
+            if (missing == null) { missing = new System.Text.StringBuilder(); } else { missing.Append(", "); }
+            missing.Append(f.Name);
+        }
+        return RequiredMissing(report, missing?.ToString());
+    }
     static bool NativeReadBody(ref NativeState state, ref Reader r, NativeValue value, TableTypeInfo type, TableReport report, bool nested)
     {
+        int words = type.HasRequired ? (type.NumFields + 63) / 64 : 0;
+        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
+        seen.Clear();
         NativeReset(value, type);
         for (; ; )
         {
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
-            if (reference == 0) { return true; }
+            if (reference == 0) { return NativeRequireSeen(value, type, seen, report); }
             if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
             if (!r.Has(1)) { return Damage(report); }
             byte kind = r.Byte();
@@ -553,7 +568,8 @@ const tableRegionSource = `
             }
             if (field.MapKey) { report.Widened = beforeWidened; }
             if (!NativeReadField(ref state, ref r, value, field, kind, report, out bool placed)) { return false; }
-            if (state.Refused) { return false; }
+            if (state.Refused || report.Refused) { return false; }
+            if (field.Required && placed) { seen[field.Ordinal >> 6] |= 1ul << (field.Ordinal & 63); }
             if (field.Optional && placed) { value.SetPresent(field, true); }
         }
     }
@@ -695,7 +711,7 @@ const tableRegionSource = `
         state.Next = Align(type.StorageSize, type.RegionAlign); state.End = state.Next + rootExtent;
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
         // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
-        if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        if (NonFiniteRefused(report) || report.Refused) { report.Malformed |= malformedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
         if (good && RegionCyclic(data, directory, count, type, default, false)) { Damage(report); }
         // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no root, and the region holds nothing.

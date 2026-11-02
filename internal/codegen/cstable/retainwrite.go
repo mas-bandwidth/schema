@@ -29,11 +29,11 @@ func tableRetainWriteSource() string {
             else { n += RetainElementSize(value, f, 0, ref ids, true); }`,
 		`            int mark = ids.Count; ulong reference = ids.Reference(f.Id);
             long payload = RetainPayloadSize(value, f, ref ids);
-            if (!f.Optional && (f.Kind == 13 && !f.IsArray && payload == 1 || f.KeyId != null && payload == 2))
+            if (!f.Optional && !f.Required && (f.Kind == 13 && !f.IsArray && payload == 1 || f.KeyId != null && payload == 2))
             { ids.Truncate(mark); continue; }
             n += VarSize(reference) + 1 + payload;
             if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13) { n += VarSize((ulong)payload); }`)
-	s = tableReplace(s, "            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));", `            if (!f.Optional && (f.Kind == 13 && !f.IsArray && RetainPayloadSize(value, f, ref ids) == 1 || f.KeyId != null && RetainArraySize(value, f, ref ids) == 2)) { continue; }
+	s = tableReplace(s, "            w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));", `            if (!f.Optional && !f.Required && (f.Kind == 13 && !f.IsArray && RetainPayloadSize(value, f, ref ids) == 1 || f.KeyId != null && RetainArraySize(value, f, ref ids) == 2)) { continue; }
             w.Var(ids.Reference(f.Id)); w.Byte(Kind(f));`)
 	// On the emit pass the trailer is already settled. A slot whose only
 	// retained content could not be placed is its default again.

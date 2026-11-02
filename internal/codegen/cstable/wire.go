@@ -1,5 +1,5 @@
 // The form-1 fixed-table wire. Descriptor walks use the generated,
-// typed storage accessors; no reflection, boxing, or per-read scratch allocation.
+// typed storage accessors; common-schema presence scratch stays on the stack.
 package cstable
 
 import (
@@ -11,7 +11,7 @@ import (
 )
 
 func isCleanScalarLeaf(f *ir.Field) bool {
-	if f.Array != ir.ArrayNone || f.Type.Optional || f.Guard != "" || f.IsMap() || f.IsList() || f.Type.Pointer {
+	if f.Required || f.Array != ir.ArrayNone || f.Type.Optional || f.Guard != "" || f.IsMap() || f.IsList() || f.Type.Pointer {
 		return false
 	}
 	switch f.Type.Kind {
@@ -38,7 +38,7 @@ func isScalarLeafStruct(st *ir.Struct) bool {
 }
 
 func isChildScalarArray(f *ir.Field) (*ir.Struct, bool) {
-	if !f.IsMap() && !f.IsList() && f.KeyEnum == "" && !f.Type.Pointer && f.Guard == "" && !f.Type.Optional && (f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted) && f.Type.Kind == ir.TNamed {
+	if !f.Required && !f.IsMap() && !f.IsList() && f.KeyEnum == "" && !f.Type.Pointer && f.Guard == "" && !f.Type.Optional && (f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted) && f.Type.Kind == ir.TNamed {
 		if st, ok := f.Type.Ref.(*ir.Struct); ok && isScalarLeafStruct(st) {
 			return st, true
 		}
@@ -364,6 +364,9 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		b.WriteString(messageSlot(g.unit, f))
 	}
 	b.WriteString(g.nativeColumns(f))
+	if f.Required {
+		b.WriteString(", Required = true")
+	}
 	if f.IsList() || f.IsMap() {
 		size, align := int64(0), int64(0)
 		if f.IsMap() {
@@ -421,6 +424,22 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	}
 	if kind == tkBool || enumRef(f) != nil {
 		return b.String()
+	}
+	if f.Required && f.HasIntRange && tableKindWidth(kind) <= 8 {
+		typ := csFieldType(f.Type)
+		value := strings.TrimSuffix(strings.TrimPrefix(csRawSet("v", "raw", f.Type), "v = "), ";")
+		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		width := tableKindWidth(kind)
+		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { %s v = %s; return v >= %s && v <= %s; }", typ, value, csIntLit(f.IntMin, signed, width), csIntLit(f.IntMax, signed, width))
+	}
+	if f.Required && f.HasFloatRange {
+		typ := csFieldType(f.Type)
+		value := strings.TrimSuffix(strings.TrimPrefix(csRawSet("v", "raw", f.Type), "v = "), ";")
+		lit := formatFloat64
+		if kind == tkF32 {
+			lit = formatFloat32
+		}
+		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { %s v = %s; return v >= %s && v <= %s; }", typ, value, lit(f.FMin), lit(f.FMax))
 	}
 	var c strings.Builder
 	typ := csFieldType(f.Type)
@@ -787,6 +806,7 @@ public static partial class TableWire
     {
         if (f.WireGuard != null && !f.WireGuard(value)) { return false; }
         if (f.Optional) { return f.GetPresent(value); }
+        if (f.Required) { return true; }
         if (f.Counted)
         {
             int n = f.GetCount(value);
@@ -801,6 +821,8 @@ public static partial class TableWire
     public static int Count(object value, TableFieldInfo f) { return f.Counted ? f.GetCount(value) : f.ArrayBound; }
     static bool CollectElement(object value, TableFieldInfo f, int i, ref Ids ids)
     {
+        if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
+        if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
         // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
         // §3.3): collect precedes measure and the first output byte, so Measure
         // and Save both answer -1.
@@ -1223,7 +1245,7 @@ public static partial class TableWire
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             object child = f.GetChild(value, index);
             ReadBody(ref sub, child, f.Table, report, true);
-            if (CountRefused(report)) { return false; }
+            if (report.Refused) { return false; }
             if (sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
             return true;
@@ -1255,7 +1277,7 @@ public static partial class TableWire
             if (!Compatible(armKind, expected, report)) { return true; }
             f.Arms.SetTag(union, (ulong)tag);
             if (!ReadArm(ref arm, union, info.Field, armKind, report)) { f.Arms.SetTag(union, 0); }
-            if (CountRefused(report)) { return false; }
+            if (report.Refused) { return false; }
             return true;
         }
         return ReadScalar(ref r, value, f, index, kind, report);
@@ -1331,7 +1353,7 @@ public static partial class TableWire
         if (kind == 13)
         {
             ReadBody(ref r, f.GetChild(value, 0), f.Table, report, true);
-            if (CountRefused(report)) { return false; }
+            if (report.Refused) { return false; }
             return r.Offset == r.Buffer.Length || Damage(report);
         }
         if (kind == 15) { return ReadElement(ref r, value, f, 0, kind, report, true); }
@@ -1458,7 +1480,7 @@ public static partial class TableWire
                     int slot = FindVariant(f, id, true);
                     if (slot == 0) { report.Unknown++; continue; }
                     ReadElement(ref element, value, f, slot - 1, elementKind, report, false);
-                    if (CountRefused(report)) { return false; }
+                    if (report.Refused) { return false; }
                 }
             }
             else
@@ -1525,16 +1547,38 @@ public static partial class TableWire
         foreach (TableFieldInfo f in type.Fields) { if (f.Id == id) { return f; } }
         return null;
     }
+    internal static bool RequiredMissing(TableReport report, string missing)
+    {
+        if (missing == null) { return !report.Refused; }
+        if (!report.Refused) { report.MissingRequired++; report.Reason = "missing_required: " + missing; }
+        report.Refused = true;
+        return false;
+    }
+    internal static bool RequireSeen(object value, TableTypeInfo type, ReadOnlySpan<ulong> seen, TableReport report)
+    {
+        if (!type.HasRequired) { return !report.Refused; }
+        System.Text.StringBuilder missing = null;
+        foreach (TableFieldInfo f in type.Fields)
+        {
+            if (!f.Required || f.WireGuard != null && !f.WireGuard(value) || (seen[f.Ordinal >> 6] & (1ul << (f.Ordinal & 63))) != 0) { continue; }
+            if (missing == null) { missing = new System.Text.StringBuilder(); } else { missing.Append(", "); }
+            missing.Append(f.Name);
+        }
+        return RequiredMissing(report, missing?.ToString());
+    }
     static bool ReadBody(ref Reader r, object value, TableTypeInfo type, TableReport report, bool nested)
     {
         // Load resets the root before even the framing checks. Every nested
         // occurrence still replaces its target, including repeated fields.
         if (nested) { type.Reset(value); }
+        int words = type.HasRequired ? (type.NumFields + 63) / 64 : 0;
+        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
+        seen.Clear();
         for (; ; )
         {
-            if (CountRefused(report)) { return false; }
+            if (report.Refused) { return false; }
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
-            if (reference == 0) { return true; }
+            if (reference == 0) { return RequireSeen(value, type, seen, report); }
             if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
             if (!r.Has(1)) { return Damage(report); }
             byte kind = r.Byte();
@@ -1556,6 +1600,7 @@ public static partial class TableWire
             }
             if (field.MapKey) { report.Widened = beforeWidened; }
             if (!ReadField(ref r, value, field, kind, report, out bool placed)) { return false; }
+            if (field.Required && placed) { seen[field.Ordinal >> 6] |= 1ul << (field.Ordinal & 63); }
             if (field.Optional && placed) { field.SetPresent(value, true); }
         }
     }
@@ -1626,7 +1671,7 @@ public static partial class TableWire
         if (type.Variable) { r.Graph = ReadGraph(r, value, type, report); }
         bool complete = ReadBody(ref r, value, type, report, false);
         if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
-        if (CountRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+        if (report.Refused) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
         if (r.Graph != null && r.Graph.Good && !report.Malformed && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
         // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the

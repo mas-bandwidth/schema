@@ -611,6 +611,12 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.Id = 0x%016xul;\n", identity)
 	g.pf("    info.NumFields = %d;\n", len(st.Fields))
+	for _, f := range st.Fields {
+		if f.Required {
+			g.pf("    info.HasRequired = true;\n")
+			break
+		}
+	}
 	g.pf("    info.Create = delegate { return new global::%s.%s(); };\n", capitalize(g.unit.Package), st.Name)
 	layout := ir.RecordLayout(g.unit, st)
 	align := int64(8)

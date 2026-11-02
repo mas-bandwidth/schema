@@ -682,6 +682,7 @@ public sealed class TableReport
     // zero, and <Name>FromJson is what raises it.
     public int Duplicate;
     public int Widened;
+    public int MissingRequired;
     // blob_shared counts each extra slot that names a blob record another slot
     // already names (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
     // node, and every writer refuses the value by that name.
@@ -744,6 +745,7 @@ public sealed class TableFieldInfo
     public byte Kind;           // table-wire kind; for arrays/strings/bytes, the ELEMENT kind
     public bool IsArray;        // fixed or counted array (bytes included)
     public bool Counted;        // a <name>Count/<name>Length companion exists
+    public bool Required;
     public bool Optional;       // a ?T field: a <name>Present bool decides whether it rides
     public int ArrayBound;      // array capacity / string max length; 0 for plain scalars
     // the STORAGE width of one element in bytes, C++'s elem_size where it has
@@ -785,10 +787,12 @@ public sealed class TableFieldInfo
     public int[] NativeGuardOffsets;
     public bool[] NativeGuardValues;
     public Func<ulong, TableReport, ulong> ClampRaw;
+    public Func<ulong, bool> RequiredValidRaw;
     public UInt128 DefaultWide;
     public int FracBits;
     public bool WideSigned;
     public Func<UInt128, TableReport, UInt128> ClampWide;
+    public Func<UInt128, bool> RequiredValidWide;
     public Func<object, int, UInt128> GetWide;
     public Action<object, int, UInt128> SetWide;
     public Func<object, char[]> GetChars;
@@ -892,6 +896,7 @@ public sealed class TableTypeInfo
     public int StorageSize, StorageAlign, RegionAlign;
     public bool Variable;
     public bool JsonArray;
+    internal bool HasRequired;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
     public Func<ulong, TableTypeInfo> PointerType;

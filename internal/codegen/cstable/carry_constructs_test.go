@@ -4,12 +4,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -71,6 +73,25 @@ func runCarryCS(t *testing.T, schema string, inputs []string, extra ...string) {
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
+	}
+	var packetRuntime []string
+	if len(u.Enums) != 0 || len(u.Structs) != 0 || len(u.Unions) != 0 {
+		packet, err := csharp.Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		maps.Copy(files, packet)
+		runtimeDir, err := filepath.Abs("../../../../serialize.cs/src")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"Serialize.cs", "Int128Pair.cs"} {
+			path := filepath.Join(runtimeDir, name)
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("C# packet runtime prerequisite: %v", err)
+			}
+			packetRuntime = append(packetRuntime, path)
+		}
 	}
 	model := tabletext.NewModel(u)
 	type result struct {
@@ -152,6 +173,7 @@ class CarryProbe {
 		t.Fatal(err)
 	}
 	sources = append(sources, main)
+	sources = append(sources, packetRuntime...)
 	csc, refs, runtime := csDotnetToolchain(t)
 	args := append([]string{"exec", csc, "-nologo", "-unsafe", "-nowarn:CS8500", "-out:" + filepath.Join(dir, "probe.dll")}, sources...)
 	for _, ref := range refs {

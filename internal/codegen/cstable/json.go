@@ -621,6 +621,8 @@ public static class TableJson
     // (owner, field, index) is the same thing said in this language.
     static bool WriteScalar(ref Out o, object owner, TableFieldInfo f, int index, int depth)
     {
+        if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
+        if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
         if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
         if (f.Arms != null)
         {
@@ -1871,14 +1873,15 @@ public static class TableJson
             return ReadField(text, ref input, value, info.Fields[0], depth);
         }
         if (!opened) { if (Peek(text, ref input) != '{') { input.Bad = true; return false; } input.Pos++; }
-        // duplicate tracking, bounded and allocation-free: a table with more
-        // fields than this still reads, its repeats simply stop being counted
-        Span<ulong> seen = stackalloc ulong[8];
+        // The descriptor fixes this size; input cannot grow it. Keep common
+        // tables on the stack, and track every field even beyond 512.
+        int words = (info.NumFields + 63) / 64;
+        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
         seen.Clear();
         for (; ; )
         {
             byte c = Peek(text, ref input);
-            if (c == '}') { input.Pos++; return true; }
+            if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
             if (c == 0) { input.Bad = true; return false; }
             Span<byte> key = stackalloc byte[MaxKey];
             int keyLength;
@@ -1908,7 +1911,7 @@ public static class TableJson
             {
                 TableFieldInfo f = info.Fields[index];
                 input.TextField = info.Name + "." + f.Name;
-                if (index < 512)
+                if (index < info.NumFields)
                 {
                     ulong bit = 1ul << (index & 63);
                     if ((seen[index >> 6] & bit) != 0) { input.Report.Duplicate++; }
@@ -1949,7 +1952,7 @@ public static class TableJson
             }
             c = Peek(text, ref input);
             if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
-            if (c == '}') { input.Pos++; return true; }
+            if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
             input.Bad = true;
             return false;
         }
@@ -1982,6 +1985,7 @@ public static class TableJson
             Space(text, ref input);
             if (input.Pos != text.Length) { input.Bad = true; }
         }
+        if (input.Report.Refused) { info.Reset(value); return false; }
         if (input.Bad || !ok)
         {
             // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
