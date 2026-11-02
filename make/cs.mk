@@ -765,8 +765,8 @@ test-cs: tables-cs-fixed-rows
 .PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
 tables-cs-json-differential:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
-		'TestCsTextDifferential' \
-		./internal/codegen/cstable -run '^TestCsTextDifferential$$' -count=1 -timeout 600s
+		'TestCsTextDifferential TestJsonLeadingBOMBoundaryCS' \
+		./internal/codegen/cstable -run '^(TestCsTextDifferential|TestJsonLeadingBOMBoundaryCS)$$' -count=1 -timeout 600s
 	@grep -h 'cs text differential: ' build/slowgate/tables-cs-json-differential.log | sed 's/^ *//'
 tables-cs-json-differential-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential-negative-control \
