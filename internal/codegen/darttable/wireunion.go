@@ -1155,8 +1155,11 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\t\torder = %s;\n", ind, mapKeyCompare(f))
 	g.pf("%s\t\t\t\tif (order > 0) { r.report.malformed = true; break; }\n", ind)
 	g.pf("%s\t\t\t}\n", ind)
+	// Index only entries that captured records: known-only maps must not grow
+	// retain metadata independently of the caller's bounded record store.
+	g.pf("%s\t\t\tfinal retainedAt = r.retain?.records.length ?? 0;\n", ind)
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
-	g.pf("%s\t\t\tr.retain?.rememberMap(v, %q, e);\n", ind, name)
+	g.pf("%s\t\t\tif ((r.retain?.records.length ?? 0) > retainedAt) r.retain!.rememberMap(v, %q, e);\n", ind, name)
 	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
 	g.pf("%s\t\t\tif (order == 0) { r.retain?.forget(v.%s.last); r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name, name)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)

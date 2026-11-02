@@ -25,6 +25,11 @@ table Root { entries map[int32]Value }
 	if err != nil {
 		t.Fatal(err)
 	}
+	for name, code := range files {
+		if strings.HasSuffix(name, "Wire.dart") {
+			files[name] = append(code, []byte("\nint retainedMapEntriesForTest(TableRetain r) => r._maps.values.fold(0, (n, fields) => n + fields.values.fold(0, (m, entries) => m + entries.length));\n")...)
+		}
+	}
 	maps.Copy(files, packetFiles(t, u))
 	m := tabletext.NewModel(u)
 	entry := func(unknown, pointer bool) []byte {
@@ -45,15 +50,21 @@ table Root { entries map[int32]Value }
 		return append(out, 0)
 	}
 	field := func(entries ...[]byte) []byte {
-		payload := []byte{13, byte(len(entries))}
+		payload := binary.AppendUvarint([]byte{13}, uint64(len(entries)))
 		for _, e := range entries {
-			payload = append(payload, byte(len(e)))
+			payload = binary.AppendUvarint(payload, uint64(len(e)))
 			payload = append(payload, e...)
 		}
-		return append([]byte{1, 14, byte(len(payload))}, payload...)
+		return append(binary.AppendUvarint([]byte{1, 14}, uint64(len(payload))), payload...)
 	}
 	first := entry(true, false)
 	last := entry(false, false)
+	const knownEntries = 2048
+	known := make([][]byte, knownEntries)
+	for i := range known {
+		known[i] = entry(false, false)
+		binary.LittleEndian.PutUint32(known[i][2:6], uint32(i))
+	}
 	var b strings.Builder
 	b.WriteString(dartClosurePrelude)
 	for _, tc := range []struct {
@@ -61,6 +72,7 @@ table Root { entries map[int32]Value }
 		body                               []byte
 		unknown, duplicate, mismatch, lost int
 	}{
+		{"known_only_large", field(known...), 0, 0, 0, 0},
 		{"duplicate", field(first, last), 2, 1, 0, 0},
 		{"replace_empty", append(field(first), field()...), 2, 0, 0, 0},
 		{"inert_repeat", append(field(first), 1, 14, 2, 8, 0), 2, 0, 1, 0},
@@ -87,6 +99,8 @@ table Root { entries map[int32]Value }
 		}
 		fmt.Fprintf(&b, `{final data=bytes(%q);final store=w.TableRetain(65536,List.filled(1024,0));final r=w.TableWireReport();final v=w.rootWireLoadRetain(data,store,r);
  check(!r.malformed&&!r.refused&&r.unknown==%d&&r.retained==%d&&r.retainLost==0&&r.duplicate==%d&&r.kindMismatch==%d,'map replacement read %s');
+ check(w.retainedMapEntriesForTest(store)<=r.retained,'retained map metadata bound');
+ if(r.retained==0){final empty=w.TableRetain(0,List.filled(0,0));final er=w.TableWireReport();w.rootWireLoadRetain(data,empty,er);check(!er.malformed&&!er.refused&&er.retained==0&&w.retainedMapEntriesForTest(empty)==0,'zero-capacity map metadata');}
  for(var repeat=0;repeat<3;repeat++){
  final sr=w.TableWireReport();final saved=w.rootWireSaveRetain(v,store,sr);
  check(sr.retainLost==%d&&hex(saved)==%q,'map replacement save %s');
