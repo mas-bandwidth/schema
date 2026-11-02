@@ -9,8 +9,8 @@
 //
 // DAMAGE IS TERMINAL FOR THE BATCH. A byte-framed body has a place to resume
 // and a bit stream does not, so a reader that has lost its position has lost
-// it for the rest of the buffer: the fields decoded before it stand, ONE
-// `malformed` counts, and nothing after it is read.
+// it for the rest of the buffer: the whole batch is discarded,
+// `malformed` is reported, and nothing after it is read.
 package tablewire
 
 import (
@@ -78,6 +78,10 @@ func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte
 	report.Malformed = false
 	n, ok, err := decodeMessagesWalk(m, insts, data, v, report)
 	if refusal := refusedNonFinite(report); refusal != nil {
+		// A refused later body also discards every earlier body in the batch.
+		for _, inst := range insts {
+			m.Clear(inst)
+		}
 		report.Malformed = report.Malformed || priorMalformed
 		return 0, false, refusal
 	}
