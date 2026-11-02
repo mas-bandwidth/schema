@@ -387,6 +387,10 @@ public final class BenchPacketRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.bits7 & 0xffffffffL) > 127L) {
+                        v.bits7 = (int) 127L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -408,6 +412,10 @@ public final class BenchPacketRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.bits13 & 0xffffffffL) > 8191L) {
+                        v.bits13 = (int) 8191L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -438,6 +446,10 @@ public final class BenchPacketRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.bits23 & 0xffffffffL) > 8388607L) {
+                        v.bits23 = (int) 8388607L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

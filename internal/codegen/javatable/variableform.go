@@ -4703,7 +4703,7 @@ func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	case ir.TInt, ir.TBits:
 		lo, hi := variableRawBounds(f)
 		clamp := ""
-		if f.HasIntRange {
+		if f.HasIntRange || (f.Type.Kind == ir.TBits && f.Type.Width < 64) {
 			clamp = fmt.Sprintf("raw = TableVariable.clampInteger(raw, %s, %s, report); ", lo, hi)
 		}
 		fmt.Fprintf(b, "%s{ for (long i = 0; i < n; i++) { java.math.BigInteger raw = TableVariable.readInteger(ar, ek); if (raw == null) break; %s%s; } }", refusePrefix("TableVariable.integerWidth(ek)"), clamp, place(variableRawStorage(f, "raw")))
@@ -4818,6 +4818,13 @@ func writeIntFieldRead(b *strings.Builder, f *ir.Field, m string) {
 				}
 				fmt.Fprintf(b, "                    if (!r.fail && (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0)) { if (Long.compareUnsigned(v.%s, %s) < 0) { v.%s = %s; } else { v.%s = %s; } report.clamped++; }\n", m, min, m, max, m, min, m, min, m, max)
 			}
+		}
+	} else if f.Type.Kind == ir.TBits && width < 64 {
+		maxBits := (uint64(1) << uint(width)) - 1
+		if width <= 32 {
+			fmt.Fprintf(b, "                    if (!r.fail && ((long) v.%s & 0xffffffffL) > %dL) { v.%s = (int) %dL; report.clamped++; }\n", m, maxBits, m, maxBits)
+		} else {
+			fmt.Fprintf(b, "                    if (!r.fail && Long.compareUnsigned(v.%s, 0x%xL) > 0) { v.%s = 0x%xL; report.clamped++; }\n", m, maxBits, m, maxBits)
 		}
 	}
 	b.WriteString("                } else { r.skip(kind); report.kindMismatch++; }\n")

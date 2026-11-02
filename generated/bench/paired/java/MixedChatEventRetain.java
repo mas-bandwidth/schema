@@ -319,6 +319,10 @@ public final class MixedChatEventRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.speaker & 0xffffffffL) > 4095L) {
+                        v.speaker = (int) 4095L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
