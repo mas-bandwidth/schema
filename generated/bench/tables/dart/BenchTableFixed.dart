@@ -184,6 +184,7 @@ abstract final class TableFixedRefusal {
   /// a NaN or an infinity in a record refuses the whole
   /// read by name, the report naming the field, and nothing lands.
   static const int nonFiniteFloat = 18;
+  static const int integrityMismatch = 19;
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -224,6 +225,8 @@ abstract final class TableFixedRefusal {
         return 'layout_unsupported';
       case textIllFormed:
         return 'text_ill_formed';
+      case integrityMismatch:
+        return 'integrity_mismatch';
       case nonFiniteFloat:
         return 'non_finite_float';
       default:
@@ -2756,6 +2759,9 @@ class TableBitWriter {
     if (measuring) return;
     if ((bits + 7) >> 3 > buffer.length) { overflow = true; return; }
     for (var i = 0; i < n; i++) {
+      // Initialize each output byte when its first bit is written; callers
+      // may reuse a buffer containing arbitrary previous data.
+      if (((at + i) & 7) == 0) buffer[(at + i) >> 3] = 0;
       if (((value >> i) & 1) != 0) {
         buffer[(at + i) >> 3] |= 1 << ((at + i) & 7);
       }

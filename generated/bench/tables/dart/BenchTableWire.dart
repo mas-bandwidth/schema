@@ -23,6 +23,16 @@ const int _kTypeTableChatEvent = -7595037280231051973; // fnv1a64("TableChatEven
 const int _kTypeTablePickupEvent = 8694226076464086509; // fnv1a64("TablePickupEvent")
 const int _kTypeTableMixed = 4871457021464447630; // fnv1a64("TableMixed")
 
+
+final class _TableMissingRequired implements Exception { const _TableMissingRequired(); }
+bool _requiredCollectionKind(TableWireReader r, int expected) {
+ final peek=TableWireReader.sub(r,r.pos,r.limit);
+ final length=peek.readLeb();
+ if(length==null||!peek.has(length))return false;
+ if(length<2)return true;
+ final kind=peek.readByte();
+ return kind==expected||_kindWidens(kind,expected);
+}
 // The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -34,8 +44,11 @@ final class TableWireReport {
   int clamped = 0;
   int duplicate = 0;
   bool malformed = false;
+  bool integrityMismatch = false;
   bool refused = false;
   bool _countRefused = false;
+  int missingRequired = 0;
+  String missingFields = '';
   int retained = 0;
   int retainLost = 0;
 
@@ -62,7 +75,9 @@ final class TableWireReport {
   // adding a malformed event. Earlier report events remain available.
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
+    if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
+    if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
@@ -2309,7 +2324,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
   if (v.gameEvent.armTag != 0) {
     w.putLeb(w.refFor(3329809749115557776));
     w.putByte(15);
-    _tableEventSaveArm(w, v.gameEvent);
+    if (v.gameEvent.armTag == 0) { w.putLeb(0); } else { _tableEventSaveArm(w, v.gameEvent); }
   }
   if (v.loadout.any((e) => e != 0)) {
     final ref = w.refFor(6294288958393922979);
@@ -4178,27 +4193,34 @@ Uint8List tableEntityWireSave(TableEntity v) {
 
 TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableEntity();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableEntity;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   try {
     r.pos = 1;
     tableEntityWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableEntity();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     return TableEntity();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableEntity();
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableEntity();
   _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
@@ -4314,10 +4336,14 @@ int tableEntityWireMeasure(Uint8List data) {
 TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
   retain.reset();
   final v = TableEntity();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4330,13 +4356,16 @@ TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableW
     r.scanNodeTable();
     r.pos = 1;
     tableEntityWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    retain.reset();
+    return TableEntity();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     retain.reset();
     return TableEntity();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) {
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
     retain.reset();
     return TableEntity();
   }
@@ -4394,27 +4423,34 @@ Uint8List tableStatWireSave(TableStat v) {
 
 TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableStat();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableStat;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   try {
     r.pos = 1;
     tableStatWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableStat();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     return TableStat();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableStat();
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableStat();
   _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
@@ -4518,10 +4554,14 @@ int tableStatWireMeasure(Uint8List data) {
 TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
   retain.reset();
   final v = TableStat();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4534,13 +4574,16 @@ TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireR
     r.scanNodeTable();
     r.pos = 1;
     tableStatWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    retain.reset();
+    return TableStat();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     retain.reset();
     return TableStat();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) {
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
     retain.reset();
     return TableStat();
   }
@@ -4598,27 +4641,34 @@ Uint8List tableMixedWireSave(TableMixed v) {
 
 TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableMixed();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableMixed;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
   try {
     r.pos = 1;
     tableMixedWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableMixed();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     return TableMixed();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableMixed();
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableMixed();
   _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
@@ -4793,10 +4843,14 @@ int tableMixedWireMeasure(Uint8List data) {
 TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
   retain.reset();
   final v = TableMixed();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4809,13 +4863,16 @@ TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWir
     r.scanNodeTable();
     r.pos = 1;
     tableMixedWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    retain.reset();
+    return TableMixed();
   } on _TableWireCountRefusal {
     r.report.refused = true;
     r.report._countRefused = true;
     retain.reset();
     return TableMixed();
   }
-  if (r.report.nonFiniteFloat.isNotEmpty) {
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
     retain.reset();
     return TableMixed();
   }
@@ -4917,6 +4974,8 @@ final class TableTextReport {
   int kindMismatch = 0;
   int clamped = 0;
   int duplicate = 0;
+  int missingRequired = 0;
+  String missingFields = '';
   final Set<int> textLabels = <int>{};
 }
 
@@ -7037,8 +7096,10 @@ String tableEntityToJson(TableEntity v) {
 
 TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableEntity();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableEntity');
   if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
   }
@@ -7056,8 +7117,10 @@ String tableStatToJson(TableStat v) {
 
 TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableStat();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableStat');
   if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
   }
@@ -7075,8 +7138,10 @@ String tableMixedToJson(TableMixed v) {
 
 TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableMixed();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');
   if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
   }
