@@ -59,7 +59,7 @@ func (g *wireGen) jsonTextListRead(f *ir.Field, val string, d int, fallback stri
 		bound = f.ArrayBound
 	}
 	et := f.Type.Name
-	read := fmt.Sprintf("if(item is String && !_wideValid(_jsonText(item).codeUnits))throw const FormatException('string_lone_surrogate');e.value=_jsonStringField(item,%d,r);", ir.TextListValue(f).Type.Size)
+	read := fmt.Sprintf("e.value=_jsonStringField(item,%d,r);", ir.TextListValue(f).Type.Size)
 	if ir.TextListOptional(f) {
 		read = fmt.Sprintf("if(item is String){e.hasValue=true;%s}else if(item!=null){r.kindMismatch++;}", read)
 	}

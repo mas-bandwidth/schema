@@ -208,7 +208,10 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
-  return s;
+  // Lone or inverted JSON surrogate escapes normalize until the deferred
+  // string_lone_surrogate card lands (SPEC §16.3).
+  if (_wideValid(s.codeUnits)) return s;
+  return String.fromCharCodes(s.runes.map((r) => r >= 0xD800 && r <= 0xDFFF ? 0xFFFD : r));
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
@@ -219,7 +222,8 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
     r.kindMismatch++;
     return def;
   }
-  if (utf8.encode(_jsonText(val)).length <= bound) return val;
+  val = _jsonText(val);
+  if (utf8.encode(val).length <= bound) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {

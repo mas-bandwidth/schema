@@ -42,13 +42,11 @@ String hex(List<int>b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();
 Uint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.parse(s.substring(i,i+2),radix:16)]);
 void main(){
 `)
-	for i, input := range []string{`{}`, `{"names":["a","é",""],"maybe":["x",null,""],"loose":["u",""],"bounded":[null,"v",""]}`, `{"names":["123456789","ééééé","z","tail","tail2"],"maybe":[null,"123456789"]}`, `{"names":["a",42,null],"maybe":[false,{},[]]}`, `{"names":["x\u0000y"]}`, `{"maybe":["\ud800"]}`} {
+	for i, input := range []string{`{}`, `{"names":["a","é",""],"maybe":["x",null,""],"loose":["u",""],"bounded":[null,"v",""]}`, `{"names":["123456789","ééééé","z","tail","tail2"],"maybe":[null,"123456789"]}`, `{"names":["a",42,null],"maybe":[false,{},[]]}`, `{"names":["x\u0000y"]}`, `{"maybe":["\ud800"]}`, `{"maybe":["\udfff"]}`, `{"maybe":["\udc00\ud800"]}`, `{"maybe":["\ud83d\ude00"]}`} {
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
 		ok := m.Read(v, []byte(input), &r)
-		// SPEC §16.3 refuses lone surrogate escapes; the old neutral reader
-		// still replaces them, so it cannot supply this verdict.
-		if !ok || input == `{"maybe":["\ud800"]}` {
+		if !ok {
 			fmt.Fprintf(&b, "{var refused=false;try{w.rootFromJson(%q);}on FormatException{refused=true;}check(refused,'invalid JSON text%d');}\n", input, i)
 			continue
 		}

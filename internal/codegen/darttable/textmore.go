@@ -428,7 +428,8 @@ String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def 
     r.kindMismatch++;
     return def;
   }
-  if (_jsonText(val).length <= bound) return val;
+  val = _jsonText(val);
+  if (val.length <= bound) return val;
   var keep = bound;
   if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
     keep--;
@@ -514,7 +515,8 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
 }
 
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
-  final len = utf8.encode(_jsonText(k)).length;
+  k = _jsonText(k);
+  final len = utf8.encode(k).length;
   if (len > bound || len > 255) {
     r.clamped++;
     return null;
