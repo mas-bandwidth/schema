@@ -476,20 +476,20 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
     return fallback ?? List<T>.generate(n, (_) => def());
   }
   final out = List<T>.generate(n, (_) => def());
+  final seen = <int>{};
   for (final entry in entries) {
     final slot = slots[entry.key];
     if (slot == null) {
-      final extra = r.duplicateKeys.remove(entry.key);
-      if (extra != null) r.duplicate -= extra;
       r.unknown++;
       continue;
     }
+    if (!seen.add(slot)) r.duplicate++;
     out[slot] = f(entry.value, out[slot]);
   }
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, T Function(String, dynamic) f, [List<T>? fallback]) {
+List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.kindMismatch++;
@@ -499,25 +499,118 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, T 
   final seen = <Object, int>{};
   for (final entry in entries) {
     final item = f(entry.key, entry.value);
+    if (item == null) continue;
     final k = keyOf(item);
     final at = seen[k];
     if (at != null) {
+      r.duplicate++;
       out[at] = item;
     } else {
       seen[k] = out.length;
       out.add(item);
     }
   }
-  return out;
+  return _stableSorted(out, cmp);
 }
 
-int _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
-  final v = int.tryParse(k);
-  if (v == null) {
-    r.kindMismatch++;
-    return 0;
+String? _jsonStringKey(String k, int bound, TableTextReport r) {
+  final len = utf8.encode(_jsonText(k)).length;
+  if (len > bound || len > 255) {
+    r.clamped++;
+    return null;
   }
-  return _jsonIntField(v, r, lo, hi, unsigned);
+  return k;
+}
+
+int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
+  _jsonText(k);
+  if (utf8.encode(k).length > 255) {
+    r.kindMismatch++;
+    return null;
+  }
+  var i = 0;
+  var negative = false;
+  if (i < k.length && k.codeUnitAt(i) == 0x2d) {
+    negative = true;
+    i++;
+  }
+  if (i >= k.length) throw const FormatException('invalid integer map key');
+  final intStart = i;
+  final c0 = k.codeUnitAt(i);
+  if (c0 == 0x30) {
+    i++;
+  } else if (c0 >= 0x31 && c0 <= 0x39) {
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+  } else {
+    throw const FormatException('invalid integer map key');
+  }
+  final intDigits = k.substring(intStart, i);
+  var fracDigits = '';
+  if (i < k.length && k.codeUnitAt(i) == 0x2e) {
+    i++;
+    final fracStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+    if (i == fracStart) throw const FormatException('invalid integer map key');
+    fracDigits = k.substring(fracStart, i);
+  }
+  var exp = 0;
+  if (i < k.length && (k.codeUnitAt(i) == 0x65 || k.codeUnitAt(i) == 0x45)) {
+    i++;
+    var expNeg = false;
+    if (i < k.length && (k.codeUnitAt(i) == 0x2b || k.codeUnitAt(i) == 0x2d)) {
+      expNeg = k.codeUnitAt(i) == 0x2d;
+      i++;
+    }
+    final expStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (k.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (i == expStart) throw const FormatException('invalid integer map key');
+    if (expNeg) exp = -exp;
+  }
+  if (i != k.length) throw const FormatException('invalid integer map key');
+  var digits = intDigits + fracDigits;
+  var point = intDigits.length + exp;
+  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
+    digits = digits.substring(1);
+    point--;
+  }
+  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
+    digits = digits.substring(0, digits.length - 1);
+  }
+  BigInt mag;
+  if (digits.isEmpty) {
+    mag = BigInt.zero;
+    negative = false;
+  } else if (point < digits.length || point > 20) {
+    r.kindMismatch++;
+    return null;
+  } else {
+    mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
+  }
+  if (unsigned) {
+    if (negative) {
+      r.kindMismatch++;
+      return null;
+    }
+    final minU = lo != null ? BigInt.from(lo).toUnsigned(64) : BigInt.zero;
+    final maxU = hi != null ? BigInt.from(hi).toUnsigned(64) : (BigInt.one << 64) - BigInt.one;
+    if (mag < minU || mag > maxU) {
+      r.kindMismatch++;
+      return null;
+    }
+    final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
+    return signed.toInt();
+  }
+  final val = negative ? -mag : mag;
+  final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
+  final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
+  if (val < minS || val > maxS) {
+    r.kindMismatch++;
+    return null;
+  }
+  return val.toInt();
 }
 
 `)
@@ -600,7 +693,7 @@ func (g *wireGen) emitTextMoreDecls() {
 				g.pf("\t\t\t}\n")
 			}
 		}
-		g.pf("\t\tdefault:\n\t\t\tfinal extra = r.duplicateKeys.remove(entries.first.key);\n\t\t\tif (extra != null) r.duplicate -= extra;\n\t\t\tr.unknown++;\n")
+		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n")
 		g.pf("\t}\n")
 		g.pf("\treturn v;\n")
 		g.pf("}\n\n")
@@ -787,18 +880,24 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		key, value := f.MapEntry.Fields[0], f.MapEntry.Fields[1]
 		var keyExpr string
 		if key.Type.Kind == ir.TString {
-			keyExpr = fmt.Sprintf("_jsonStringField(k%d, %d, r)", d, key.Type.Size)
+			keyExpr = fmt.Sprintf("_jsonStringKey(k%d, %d, r)", d, key.Type.Size)
 		} else {
-			lo, hi := "null", "null"
-			if key.HasIntRange {
-				lo, hi = dartBoundLiteral(key.IntMin), dartBoundLiteral(key.IntMax)
-			}
+			lo, hi := jsonIntBounds(key)
 			keyExpr = fmt.Sprintf("_jsonIntKey(k%d, r, %s, %s, %s)", d, lo, hi, jsonUnsigned(key))
 		}
 		et := f.MapEntry.Name
 		valMember := fieldMember(value)
-		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, (k%d, %s) { final m%d = %s(); m%d.%s = %s; m%d.%s = %s; return m%d; }%s)",
-			et, val, d, d, fieldMember(key), d, item, d, et, d, fieldMember(key), keyExpr, d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)), d, fbArg)
+		cmpExpr := fmt.Sprintf("(%s a, %s b) => %s", et, et, mapKeyCompare(f))
+		shapeCond := unionArmShapeCond(value, item)
+		var valBody string
+		if value.Type.Optional {
+			valBody = fmt.Sprintf("if (%s == null) { m%d.%s = false; } else { m%d.%s = true; m%d.%s = %s; }",
+				item, d, hasMember(value), d, hasMember(value), d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
+		} else {
+			valBody = fmt.Sprintf("m%d.%s = %s;", d, valMember, g.jsonReadExpr(value, item, d+1, fmt.Sprintf("m%d.%s", d, valMember)))
+		}
+		return fmt.Sprintf("_jsonMap<%s>(%s, r, (m%d) => m%d.%s, %s, (k%d, %s) { final kk%d = %s; if (kk%d == null) return null; if (!(%s)) throw const FormatException('map value shape mismatch'); final m%d = %s(); m%d.%s = kk%d; %s return m%d; }%s)",
+			et, val, d, d, fieldMember(key), cmpExpr, d, item, d, keyExpr, d, shapeCond, d, et, d, fieldMember(key), d, valBody, d, fbArg)
 	case isKeyed(f):
 		en := f.KeyEnumRef
 		var slots strings.Builder

@@ -4809,7 +4809,6 @@ final class TableTextReport {
   int kindMismatch = 0;
   int clamped = 0;
   int duplicate = 0;
-  final Map<String, int> duplicateKeys = <String, int>{};
   final Set<int> textLabels = <int>{};
 }
 
@@ -5358,10 +5357,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     while (j < clean.length && clean[j] <= 0x20) j++;
     if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
     final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (!stack.last!.add(key)) {
-      r.duplicate++;
-      r.duplicateKeys[key] = (r.duplicateKeys[key] ?? 0) + 1;
-    }
     if (key == '&node') {
       var at = j + 1;
       while (at < clean.length && clean[at] <= 0x20) at++;
@@ -5775,20 +5770,20 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
     return fallback ?? List<T>.generate(n, (_) => def());
   }
   final out = List<T>.generate(n, (_) => def());
+  final seen = <int>{};
   for (final entry in entries) {
     final slot = slots[entry.key];
     if (slot == null) {
-      final extra = r.duplicateKeys.remove(entry.key);
-      if (extra != null) r.duplicate -= extra;
       r.unknown++;
       continue;
     }
+    if (!seen.add(slot)) r.duplicate++;
     out[slot] = f(entry.value, out[slot]);
   }
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, T Function(String, dynamic) f, [List<T>? fallback]) {
+List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.kindMismatch++;
@@ -5798,25 +5793,118 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, T 
   final seen = <Object, int>{};
   for (final entry in entries) {
     final item = f(entry.key, entry.value);
+    if (item == null) continue;
     final k = keyOf(item);
     final at = seen[k];
     if (at != null) {
+      r.duplicate++;
       out[at] = item;
     } else {
       seen[k] = out.length;
       out.add(item);
     }
   }
-  return out;
+  return _stableSorted(out, cmp);
 }
 
-int _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
-  final v = int.tryParse(k);
-  if (v == null) {
-    r.kindMismatch++;
-    return 0;
+String? _jsonStringKey(String k, int bound, TableTextReport r) {
+  final len = utf8.encode(_jsonText(k)).length;
+  if (len > bound || len > 255) {
+    r.clamped++;
+    return null;
   }
-  return _jsonIntField(v, r, lo, hi, unsigned);
+  return k;
+}
+
+int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
+  _jsonText(k);
+  if (utf8.encode(k).length > 255) {
+    r.kindMismatch++;
+    return null;
+  }
+  var i = 0;
+  var negative = false;
+  if (i < k.length && k.codeUnitAt(i) == 0x2d) {
+    negative = true;
+    i++;
+  }
+  if (i >= k.length) throw const FormatException('invalid integer map key');
+  final intStart = i;
+  final c0 = k.codeUnitAt(i);
+  if (c0 == 0x30) {
+    i++;
+  } else if (c0 >= 0x31 && c0 <= 0x39) {
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+  } else {
+    throw const FormatException('invalid integer map key');
+  }
+  final intDigits = k.substring(intStart, i);
+  var fracDigits = '';
+  if (i < k.length && k.codeUnitAt(i) == 0x2e) {
+    i++;
+    final fracStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+    if (i == fracStart) throw const FormatException('invalid integer map key');
+    fracDigits = k.substring(fracStart, i);
+  }
+  var exp = 0;
+  if (i < k.length && (k.codeUnitAt(i) == 0x65 || k.codeUnitAt(i) == 0x45)) {
+    i++;
+    var expNeg = false;
+    if (i < k.length && (k.codeUnitAt(i) == 0x2b || k.codeUnitAt(i) == 0x2d)) {
+      expNeg = k.codeUnitAt(i) == 0x2d;
+      i++;
+    }
+    final expStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (k.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (i == expStart) throw const FormatException('invalid integer map key');
+    if (expNeg) exp = -exp;
+  }
+  if (i != k.length) throw const FormatException('invalid integer map key');
+  var digits = intDigits + fracDigits;
+  var point = intDigits.length + exp;
+  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
+    digits = digits.substring(1);
+    point--;
+  }
+  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
+    digits = digits.substring(0, digits.length - 1);
+  }
+  BigInt mag;
+  if (digits.isEmpty) {
+    mag = BigInt.zero;
+    negative = false;
+  } else if (point < digits.length || point > 20) {
+    r.kindMismatch++;
+    return null;
+  } else {
+    mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
+  }
+  if (unsigned) {
+    if (negative) {
+      r.kindMismatch++;
+      return null;
+    }
+    final minU = lo != null ? BigInt.from(lo).toUnsigned(64) : BigInt.zero;
+    final maxU = hi != null ? BigInt.from(hi).toUnsigned(64) : (BigInt.one << 64) - BigInt.one;
+    if (mag < minU || mag > maxU) {
+      r.kindMismatch++;
+      return null;
+    }
+    final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
+    return signed.toInt();
+  }
+  final val = negative ? -mag : mag;
+  final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
+  final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
+  if (val < minS || val > maxS) {
+    r.kindMismatch++;
+    return null;
+  }
+  return val.toInt();
 }
 
 String tableWeaponName(int v) {
@@ -5967,8 +6055,6 @@ TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [Table
         r.kindMismatch++;
       }
     default:
-      final extra = r.duplicateKeys.remove(entries.first.key);
-      if (extra != null) r.duplicate -= extra;
       r.unknown++;
   }
   return v;
@@ -6151,6 +6237,7 @@ void tableEntityToJsonBody(_JOut out, TableEntity v, int depth, _Share sh, [int?
 void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
   final entries = _jsonEntries(obj);
   if (entries == null) return;
+  final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
@@ -6159,50 +6246,62 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "entity_id":
+        if (!seen.add(key)) r.duplicate++;
         v.entityId = _jsonIntField(val, r, null, 4095, true, v.entityId);
         break;
       case "pos_x":
+        if (!seen.add(key)) r.duplicate++;
         v.posX = _jsonIntField(val, r, -16383, 16383, false, v.posX);
         break;
       case "pos_y":
+        if (!seen.add(key)) r.duplicate++;
         v.posY = _jsonIntField(val, r, -16383, 16383, false, v.posY);
         break;
       case "pos_z":
+        if (!seen.add(key)) r.duplicate++;
         v.posZ = _jsonIntField(val, r, -16383, 16383, false, v.posZ);
         break;
       case "yaw":
+        if (!seen.add(key)) r.duplicate++;
         v.yaw = _jsonIntField(val, r, null, 511, true, v.yaw);
         break;
       case "pitch":
+        if (!seen.add(key)) r.duplicate++;
         v.pitch = _jsonIntField(val, r, null, 511, true, v.pitch);
         break;
       case "vel_x":
+        if (!seen.add(key)) r.duplicate++;
         v.velX = _jsonIntField(val, r, -2048, 2047, false, v.velX);
         break;
       case "vel_y":
+        if (!seen.add(key)) r.duplicate++;
         v.velY = _jsonIntField(val, r, -2048, 2047, false, v.velY);
         break;
       case "vel_z":
+        if (!seen.add(key)) r.duplicate++;
         v.velZ = _jsonIntField(val, r, -2048, 2047, false, v.velZ);
         break;
       case "health":
+        if (!seen.add(key)) r.duplicate++;
         v.health = _jsonIntField(val, r, 0, 1000, false, v.health);
         break;
       case "weapon":
+        if (!seen.add(key)) r.duplicate++;
         v.weapon = tableWeaponFromName(val, r, v.weapon);
         break;
       case "damage":
+        if (!seen.add(key)) r.duplicate++;
         v.damage = _tableDamageFromJson(val, r, v.damage);
         break;
       case "moving":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.moving = val; } else { r.kindMismatch++; }
         break;
       case "firing":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.firing = val; } else { r.kindMismatch++; }
         break;
       default:
-        final extra = r.duplicateKeys.remove(key);
-        if (extra != null) r.duplicate -= extra;
         r.unknown++;
     }
   }
@@ -6239,6 +6338,7 @@ void tableStatToJsonBody(_JOut out, TableStat v, int depth, _Share sh, [int? lab
 void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
   final entries = _jsonEntries(obj);
   if (entries == null) return;
+  final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
@@ -6247,14 +6347,14 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "stat_id":
+        if (!seen.add(key)) r.duplicate++;
         v.statId = _jsonIntField(val, r, null, 255, true, v.statId);
         break;
       case "delta":
+        if (!seen.add(key)) r.duplicate++;
         v.delta = _jsonIntField(val, r, -512, 511, false, v.delta);
         break;
       default:
-        final extra = r.duplicateKeys.remove(key);
-        if (extra != null) r.duplicate -= extra;
         r.unknown++;
     }
   }
@@ -6303,6 +6403,7 @@ void tableHitEventToJsonBody(_JOut out, TableHitEvent v, int depth, _Share sh, [
 void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
   final entries = _jsonEntries(obj);
   if (entries == null) return;
+  final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
@@ -6311,20 +6412,22 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "target_id":
+        if (!seen.add(key)) r.duplicate++;
         v.targetId = _jsonIntField(val, r, null, 4095, true, v.targetId);
         break;
       case "damage":
+        if (!seen.add(key)) r.duplicate++;
         v.damage = _jsonIntField(val, r, 0, 4095, false, v.damage);
         break;
       case "hit_kind":
+        if (!seen.add(key)) r.duplicate++;
         v.hitKind = _jsonIntField(val, r, 0, 7, false, v.hitKind);
         break;
       case "crit":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.crit = val; } else { r.kindMismatch++; }
         break;
       default:
-        final extra = r.duplicateKeys.remove(key);
-        if (extra != null) r.duplicate -= extra;
         r.unknown++;
     }
   }
@@ -6361,6 +6464,7 @@ void tableChatEventToJsonBody(_JOut out, TableChatEvent v, int depth, _Share sh,
 void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
   final entries = _jsonEntries(obj);
   if (entries == null) return;
+  final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
@@ -6369,14 +6473,14 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "channel":
+        if (!seen.add(key)) r.duplicate++;
         v.channel = _jsonIntField(val, r, 0, 3, false, v.channel);
         break;
       case "speaker":
+        if (!seen.add(key)) r.duplicate++;
         v.speaker = _jsonIntField(val, r, null, 4095, true, v.speaker);
         break;
       default:
-        final extra = r.duplicateKeys.remove(key);
-        if (extra != null) r.duplicate -= extra;
         r.unknown++;
     }
   }
@@ -6413,6 +6517,7 @@ void tablePickupEventToJsonBody(_JOut out, TablePickupEvent v, int depth, _Share
 void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
   final entries = _jsonEntries(obj);
   if (entries == null) return;
+  final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
@@ -6421,14 +6526,14 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "item_id":
+        if (!seen.add(key)) r.duplicate++;
         v.itemId = _jsonIntField(val, r, null, 1023, true, v.itemId);
         break;
       case "amount":
+        if (!seen.add(key)) r.duplicate++;
         v.amount = _jsonIntField(val, r, 0, 255, false, v.amount);
         break;
       default:
-        final extra = r.duplicateKeys.remove(key);
-        if (extra != null) r.duplicate -= extra;
         r.unknown++;
     }
   }
@@ -6663,6 +6768,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
 void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
   final entries = _jsonEntries(obj);
   if (entries == null) return;
+  final seen = <String>{};
   for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
@@ -6671,36 +6777,47 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "protocol_magic":
+        if (!seen.add(key)) r.duplicate++;
         v.protocolMagic = _jsonIntField(val, r, 0, 65535, true, v.protocolMagic);
         break;
       case "sequence":
+        if (!seen.add(key)) r.duplicate++;
         v.sequence = _jsonIntField(val, r, null, 65535, true, v.sequence);
         break;
       case "ack_sequence":
+        if (!seen.add(key)) r.duplicate++;
         v.ackSequence = _jsonIntField(val, r, 0, 65535, false, v.ackSequence);
         break;
       case "ack_bits":
+        if (!seen.add(key)) r.duplicate++;
         v.ackBits = _jsonIntField(val, r, null, 4294967295, true, v.ackBits);
         break;
       case "session_id":
+        if (!seen.add(key)) r.duplicate++;
         v.sessionId = _jsonIntField(val, r, null, null, true, v.sessionId);
         break;
       case "client_id":
+        if (!seen.add(key)) r.duplicate++;
         v.clientId = _jsonIntField(val, r, 0, 4294967295, true, v.clientId);
         break;
       case "nonce":
+        if (!seen.add(key)) r.duplicate++;
         v.nonce = _jsonIntField(val, r, 1, 9223372036854775807, true, v.nonce);
         break;
       case "world_time":
+        if (!seen.add(key)) r.duplicate++;
         v.worldTime = _jsonIntField(val, r, -1000000000000, 1000000000000, false, v.worldTime);
         break;
       case "frame_tick":
+        if (!seen.add(key)) r.duplicate++;
         v.frameTick = _jsonIntField(val, r, null, 281474976710655, true, v.frameTick);
         break;
       case "server_time":
+        if (!seen.add(key)) r.duplicate++;
         v.serverTime = _jsonFloatField(val, r, true, v.serverTime);
         break;
       case "entities":
+        if (!seen.add(key)) r.duplicate++;
         if (val is! List) { r.kindMismatch++; break; }
         v.entities = <TableEntity>[];
         for (var index = 0; index < val.length; index++) {
@@ -6716,6 +6833,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         }
         break;
       case "stats":
+        if (!seen.add(key)) r.duplicate++;
         if (val is! List) { r.kindMismatch++; break; }
         v.stats = <TableStat>[];
         for (var index = 0; index < val.length; index++) {
@@ -6731,56 +6849,70 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         }
         break;
       case "game_event":
+        if (!seen.add(key)) r.duplicate++;
         v.gameEvent = _tableEventFromJson(val, r, sh, v.gameEvent);
         break;
       case "loadout":
+        if (!seen.add(key)) r.duplicate++;
         v.loadout = _jsonFixed<int>(val, r, 4, () => 0, (i1, p1) => _jsonIntField(i1, r, 0, 255, true, p1), v.loadout);
         break;
       case "player_name":
+        if (!seen.add(key)) r.duplicate++;
         v.playerName = _jsonStringField(val, 15, r, v.playerName);
         break;
       case "payload":
+        if (!seen.add(key)) r.duplicate++;
         v.payload = _jsonBytesField(val, r, 16, v.payload);
         break;
       case "aim_x":
+        if (!seen.add(key)) r.duplicate++;
         v.aimX = _jsonFloatField(val, r, true, v.aimX);
         break;
       case "aim_y":
+        if (!seen.add(key)) r.duplicate++;
         v.aimY = _jsonFloatField(val, r, true, v.aimY);
         break;
       case "aim_z":
+        if (!seen.add(key)) r.duplicate++;
         v.aimZ = _jsonFloatField(val, r, true, v.aimZ);
         break;
       case "recoil":
+        if (!seen.add(key)) r.duplicate++;
         v.recoil = _jsonFloatField(val, r, true, v.recoil);
         break;
       case "drift":
+        if (!seen.add(key)) r.duplicate++;
         v.drift = _jsonFloatField(val, r, false, v.drift);
         break;
       case "wide_key":
+        if (!seen.add(key)) r.duplicate++;
         v.wideKey = _jsonIntField(val, r, null, null, true, v.wideKey);
         break;
       case "flux":
+        if (!seen.add(key)) r.duplicate++;
         v.flux = _jsonIntField(val, r, -1000000000000000000, 1000000000000000000, false, v.flux);
         break;
       case "ping":
+        if (!seen.add(key)) r.duplicate++;
         v.ping = _jsonFloatField(val, r, true, v.ping);
         break;
       case "crc_hint":
+        if (!seen.add(key)) r.duplicate++;
         v.crcHint = _jsonIntField(val, r, null, 16777215, true, v.crcHint);
         break;
       case "has_extra":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.hasExtra = val; } else { r.kindMismatch++; }
         break;
       case "extra":
+        if (!seen.add(key)) r.duplicate++;
         v.extra = _jsonIntField(val, r, 0, 255, false, v.extra);
         break;
       case "idle_ticks":
+        if (!seen.add(key)) r.duplicate++;
         v.idleTicks = _jsonIntField(val, r, 0, 15, false, v.idleTicks);
         break;
       default:
-        final extra = r.duplicateKeys.remove(key);
-        if (extra != null) r.duplicate -= extra;
         r.unknown++;
     }
   }

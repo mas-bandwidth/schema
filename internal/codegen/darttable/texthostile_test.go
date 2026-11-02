@@ -79,6 +79,7 @@ func TestDartTextHostile(t *testing.T) {
 		name      string
 		json      string
 		wantExtra string
+		refused   bool
 	}{
 		{
 			name:      "arm-scalar-null",
@@ -190,6 +191,46 @@ func TestDartTextHostile(t *testing.T) {
 			json:      `{"wide2": "a\uD83D\uDE00"}`,
 			wantExtra: "wide2=a,clamped=1",
 		},
+		{
+			name:      "root-known-duplicate-nested-unknown",
+			json:      `{"val": 1, "val": 2, "sub": {"val": 3}}`,
+			wantExtra: "val=2,unk=1,dup=1",
+		},
+		{
+			name:      "nested-known-duplicate-root-unknown",
+			json:      `{"sub": {"x": 1, "x": 2}, "x": 3}`,
+			wantExtra: "sub=2/20,unk=1,dup=1",
+		},
+		{
+			name:      "nested-unknown-duplicate-root-known",
+			json:      `{"sub": {"val": 1, "val": 2}, "val": 3}`,
+			wantExtra: "val=3,unk=2,dup=0",
+		},
+		{
+			name:      "unknown-subtree-duplicates",
+			json:      `{"unk": {"a": 1, "a": 2, "nested": {"b": 3, "b": 4}}}`,
+			wantExtra: "unk=1,dup=0",
+		},
+		{
+			name:      "map-typed-key-2-and-2-dot-0",
+			json:      `{"entries": {"2": 10, "2.0": 20}}`,
+			wantExtra: "map=1:2->20",
+		},
+		{
+			name:      "map-int32-key-out-of-range-dropped",
+			json:      `{"entries": {"2147483648": 10}}`,
+			wantExtra: "map=0",
+		},
+		{
+			name:    "map-invalid-numeric-key-refused",
+			json:    `{"entries": {"abc": 10}}`,
+			refused: true,
+		},
+		{
+			name:    "map-quoted-int-value-refused",
+			json:    `{"entries": {"1": "5"}}`,
+			refused: true,
+		},
 	}
 
 	dir := t.TempDir()
@@ -205,6 +246,7 @@ func TestDartTextHostile(t *testing.T) {
 
 	var args []string
 	type oracleExpected struct {
+		refused  bool
 		report   string
 		wireHex  string
 		canonHex string
@@ -220,7 +262,15 @@ func TestDartTextHostile(t *testing.T) {
 
 		inst := model.New(def)
 		var rep tabletext.Report
-		if !model.Read(inst, []byte(tc.json), &rep) {
+		ok := model.Read(inst, []byte(tc.json), &rep)
+		if tc.refused {
+			if ok || !rep.Malformed {
+				t.Fatalf("%s: Go oracle unexpectedly accepted input %s (ok=%v rep=%+v)", tc.name, tc.json, ok, rep)
+			}
+			expected[i] = oracleExpected{refused: true}
+			continue
+		}
+		if !ok {
 			t.Fatalf("%s: Go oracle unexpectedly refused input %s", tc.name, tc.json)
 		}
 		wireBytes, err := tablewire.Encode(model, inst)
@@ -273,10 +323,12 @@ String extraFor(int idx, Root v, TableTextReport r) {
     case 11:
       return 'hard=${v.keyed[1]}';
     case 12:
+    case 26:
       return 'map=${v.entries.length}:${v.entries[0].key}->${v.entries[0].value}';
     case 13:
       return 'ver=${v.version},flag=${v.flag}';
     case 14:
+    case 25:
       return 'unk=${r.unknown},dup=${r.duplicate}';
     case 15:
     case 16:
@@ -288,6 +340,13 @@ String extraFor(int idx, Root v, TableTextReport r) {
       return 'wide1=${v.wide1},clamped=${r.clamped}';
     case 21:
       return 'wide2=${v.wide2},clamped=${r.clamped}';
+    case 22:
+    case 24:
+      return 'val=${v.val},unk=${r.unknown},dup=${r.duplicate}';
+    case 23:
+      return 'sub=${v.sub.x}/${v.sub.y},unk=${r.unknown},dup=${r.duplicate}';
+    case 27:
+      return 'map=${v.entries.length}';
     default:
       return '';
   }
@@ -297,11 +356,15 @@ void main(List<String> args) {
   for (var i = 0; i < args.length; i++) {
     final text = File(args[i]).readAsStringSync();
     final r = TableTextReport();
-    final v = rootFromJson(text, r);
-    final wire = rootWireSave(v);
-    final canon = utf8.encode(rootToJson(v).trimRight());
-    final rep = 'u=${r.unknown},km=${r.kindMismatch},c=${r.clamped},d=${r.duplicate}';
-    stdout.writeln('$rep|${toHex(wire)}|${toHex(canon)}|${extraFor(i, v, r)}');
+    try {
+      final v = rootFromJson(text, r);
+      final wire = rootWireSave(v);
+      final canon = utf8.encode(rootToJson(v).trimRight());
+      final rep = 'u=${r.unknown},km=${r.kindMismatch},c=${r.clamped},d=${r.duplicate}';
+      stdout.writeln('$rep|${toHex(wire)}|${toHex(canon)}|${extraFor(i, v, r)}');
+    } on FormatException {
+      stdout.writeln('REFUSED|||');
+    }
   }
 }
 `
@@ -328,6 +391,12 @@ void main(List<String> args) {
 		}
 		gotRep, gotWire, gotCanon, gotExtra := parts[0], parts[1], parts[2], parts[3]
 		want := expected[i]
+		if want.refused {
+			if gotRep != "REFUSED" {
+				t.Errorf("%s: expected REFUSED, got %s", tc.name, lines[i])
+			}
+			continue
+		}
 		if gotRep != want.report {
 			t.Errorf("%s: report mismatch: got %s, want %s", tc.name, gotRep, want.report)
 		}

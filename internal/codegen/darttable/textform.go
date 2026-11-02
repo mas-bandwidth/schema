@@ -122,7 +122,6 @@ final class TableTextReport {
   int kindMismatch = 0;
   int clamped = 0;
   int duplicate = 0;
-  final Map<String, int> duplicateKeys = <String, int>{};
   final Set<int> textLabels = <int>{};
 }
 
@@ -672,10 +671,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     while (j < clean.length && clean[j] <= 0x20) j++;
     if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
     final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (!stack.last!.add(key)) {
-      r.duplicate++;
-      r.duplicateKeys[key] = (r.duplicateKeys[key] ?? 0) + 1;
-    }
     if (key == '&node') {
       var at = j + 1;
       while (at < clean.length && clean[at] <= 0x20) at++;
@@ -878,6 +873,9 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("void %s(%s v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {\n", fn, st.Name)
 	g.pf("\tfinal entries = _jsonEntries(obj);\n")
 	g.pf("\tif (entries == null) return;\n")
+	if len(st.Fields) > 0 {
+		g.pf("\tfinal seen = <String>{};\n")
+	}
 	g.pf("\tfor (final entry in entries) {\n")
 	g.pf("\t\tfinal key = entry.key;\n")
 	g.pf("\t\tfinal val = entry.value;\n")
@@ -886,7 +884,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	for _, f := range st.Fields {
 		g.emitTextFromJsonField(f)
 	}
-	g.pf("\t\t\tdefault:\n\t\t\t\tfinal extra = r.duplicateKeys.remove(key);\n\t\t\t\tif (extra != null) r.duplicate -= extra;\n\t\t\t\tr.unknown++;\n")
+	g.pf("\t\t\tdefault:\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.pf("}\n\n")
@@ -896,6 +894,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\t\t\tcase %s:\n", strconv.Quote(key))
+	g.pf("\t\t\t\tif (!seen.add(key)) r.duplicate++;\n")
 	switch {
 	case needsGenericText(f):
 		// the constructs textmore.go reads (§16.2, §16.3); an optional's null
