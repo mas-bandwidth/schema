@@ -1874,7 +1874,8 @@ pub struct Jr<'a> {
 #[allow(dead_code)]
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
-        Jr { b, p: 0, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
+        let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
