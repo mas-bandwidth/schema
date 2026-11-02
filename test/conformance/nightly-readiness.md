@@ -60,15 +60,17 @@ runs may use N=0; they never stand in for the six positive release runs.
 
 - Native JSON events, not a package's exit code alone, identify executed tests.
   Empty lists, missing terminal events, failing tests and skips are incomplete.
-- The three named Go test retirements and 49 exact native-program retirement
+- The three named Go test retirements and 51 exact native-program retirement
   messages have explicit replacement test requirements in the script. Every
   replacement must actually pass in the current run, including the lockfile
   validation rules; a historical receipt is not acceptance. Retirements are
   printed as retired and are never counted as passed. Live owed rulings,
   UNPORTED rows, unsupported shapes and absent toolchains/corpora fail.
-  Four old native controls still lack an established equivalent: C's
-  fixed_fx2_bytes_row_control, Dart's fuCase, and Rust's two compiled
-  text-under-an-arm halves. Those markers are not allowed exceptions.
+  Two old native controls still lack an established equivalent: C's
+  fixed_fx2_bytes_row_control and Dart's fuCase. Those markers are not allowed
+  exceptions. Rust's two text-under-an-arm retirements require actual current-run
+  FU1-to-FU2 lineage probes: second-arm text/neighbors and noncanonical
+  bool/presence bytes, with zero-byte controls.
 - Each strict fuzz summary must name the requested arm/seed, nonempty roots and
   seeds, a nonempty enumerated pass, exactly 100000 random mutants, consistent
   totals and zero divergences. An absent seed or finite exemption is incomplete.

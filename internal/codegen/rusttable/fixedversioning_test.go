@@ -303,6 +303,16 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 	versionAssert(t, out, "v_lineage_merge")
 }
 
+// The old compiled-plan fixture now needs the writer's locked lineage.
+// Exercise its second-arm text and noncanonical true bytes on that real path.
+func TestFixedVersioningTextUnderArm(t *testing.T) {
+	versionAssert(t, versionRun(t), "v_text_under_arm")
+}
+
+func TestFixedVersioningTextUnderArmTrueBytes(t *testing.T) {
+	versionAssert(t, versionRun(t), "v_text_under_arm_true_bytes")
+}
+
 // ---- the probes -------------------------------------------------------------
 
 // versionProbe is ONE generated crate: the reader's unit, the lineage the build
@@ -711,6 +721,72 @@ fn v_lineage_merge() {
 }
 `, filepath.Join(corpus, "a_lineage_merge.bin"), filepath.Join(corpus, "b_lineage_merge.bin"))),
 	})
+
+	for _, tc := range []struct {
+		name      string
+		trueBytes bool
+	}{
+		{"text_under_arm", false},
+		{"text_under_arm_true_bytes", true},
+	} {
+		mutate := ""
+		if tc.trueBytes {
+			mutate = `    let layout_bytes = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
+    let body = 20 + layout_bytes + 8;
+    data[body] = 2;
+    data[body + 1] = 7;`
+		}
+		probes = append(probes, versionProbe{
+			name: "probe_" + tc.name, reader: "FU2", older: []string{"FU1"},
+			src: versionProbeSource(fmt.Sprintf(`
+#[test]
+fn v_%[1]s() {
+    let mut data = std::fs::read(%[2]q).expect("C++ fu1.bin");
+    %[3]s
+    let mut values = vec![ROWTYPE::default(); 3];
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
+    assert!(!report.refused && !report.malformed, "{:?}", report);
+    assert_eq!(report.clamped, 0);
+    assert_eq!(report.kind_mismatch, 0);
+    assert_eq!(report.widened, 6); // signed integer and float, three records
+    assert!(values[0].flag && values[0].note_present);
+    assert_eq!(values[0].note, 44);
+    let arm = values[0].pick.labelled().expect("second arm");
+    assert_eq!(arm.lead, 101);
+    assert_eq!(arm.label_length, 5);
+    assert_eq!(&arm.label[..5], b"hello");
+    assert!(arm.label[5..].iter().all(|b| *b == 0));
+    assert_eq!(arm.trail, 202);
+    assert_eq!(values[0].tail, 11);
+    assert_eq!(values[0].extra, 11);
+    assert_eq!(values[0].mark, -1);
+    assert_eq!(values[0].heat, f32::from_bits(1) as f64);
+    assert!(!values[1].flag && !values[1].note_present);
+    assert_eq!(values[1].pick.plain().expect("first arm").n, 303);
+    assert_eq!(values[1].tail, 12);
+    assert_eq!(values[1].mark, -32768);
+    assert_eq!(values[1].heat.to_bits(), (-0.0f64).to_bits());
+    let empty = values[2].pick.labelled().expect("second arm with empty text");
+    assert_eq!(empty.label_length, 0);
+    assert_eq!(empty.lead, -5);
+    assert_eq!(empty.trail, 606);
+    assert_eq!(values[2].tail, 13);
+
+    // A real zero-byte control rules out treating every bool/presence as true.
+    let layout_bytes = u32::from_le_bytes(data[16..20].try_into().unwrap()) as usize;
+    let body = 20 + layout_bytes + 8;
+    data[body] = 0;
+    data[body + 1] = 0;
+    assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
+    assert!(!values[0].flag && !values[0].note_present);
+    assert_eq!(values[0].pick.labelled().unwrap().label_length, 5);
+}
+`, tc.name, filepath.Join(corpus, "fu1.bin"), mutate)),
+		})
+	}
 
 	return probes
 }
