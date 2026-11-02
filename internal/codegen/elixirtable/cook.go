@@ -49,8 +49,24 @@ func (g *gen) cookModule() []byte {
 	g.body.Reset()
 	g.pf("defmodule %s.%sCook do\n", g.ns, moduleBase(g.file.Base))
 	g.pf("%s", cookModuleBanner)
-	g.pf("  alias %s.CookRuntime, as: C\n\n", g.ns)
-	g.pf("  @build_version %s.BuildVersion.build_version()\n\n", g.ns)
+	anyOpen, needsRuntime := false, false
+	for _, st := range roots {
+		if !g.cookable(st.Name) {
+			continue
+		}
+		anyOpen = anyOpen || !st.IsTable || st.CarriesForm("cook")
+		for _, fl := range ir.RecordLayout(g.unit, st).Fields {
+			for _, accessor := range g.cookAccessors(st, fl) {
+				needsRuntime = needsRuntime || strings.Contains(accessor, "C.")
+			}
+		}
+	}
+	if anyOpen || needsRuntime {
+		g.pf("  alias %s.CookRuntime, as: C\n\n", g.ns)
+	}
+	if anyOpen {
+		g.pf("  @build_version %s.BuildVersion.build_version()\n\n", g.ns)
+	}
 	g.emitCookDescriptors(roots)
 	var handles []*ir.Struct
 	for _, st := range roots {
@@ -378,7 +394,12 @@ const cookRuntimeSource = `  @moduledoc """
 // cookRoots is every closure member declared in this file that a cooked region
 // can hold: a root is ANY table, and a record is anything one reaches by value.
 func (g *gen) cookRoots() []*ir.Struct {
-	out := append([]*ir.Struct(nil), orderTables(g.file.Tables)...)
+	var out []*ir.Struct
+	for _, st := range orderTables(g.file.Tables) {
+		if g.closure[st.Name] {
+			out = append(out, st)
+		}
+	}
 	for _, d := range g.file.Decls {
 		if st, ok := d.(*ir.Struct); ok && g.closure[st.Name] {
 			out = append(out, st)
@@ -600,6 +621,10 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	if !g.cookable(st.Name) {
 		return
 	}
+	if st.IsTable && !st.CarriesForm("cook") {
+		g.emitCookNodeAccessors(st)
+		return
+	}
 	layout := ir.RecordLayout(g.unit, st)
 	align := ir.RegionAlignOf(g.cookRegionAligns(st)...)
 	lo := ir.RustSnake(st.Name)
@@ -639,6 +664,10 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("    C.open_reason(data, lead, %s, %s, @build_version)\n", exInt(layout.Size), exInt(layout.Align))
 	g.pf("  end\n\n")
 
+	g.emitCookNodeAccessors(st)
+}
+
+func (g *gen) emitCookNodeAccessors(st *ir.Struct) {
 	g.pf("  # the TYPED slot accessors: each field of a %s node, read at its own\n", st.Name)
 	g.pf("  # offset from the node's base within the region.\n")
 	var items []string

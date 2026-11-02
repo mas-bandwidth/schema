@@ -14,6 +14,12 @@ func TestDeclaredFormsRefusedByOtherTargets(t *testing.T) {
 	c := New()
 	for _, lang := range []string{"c", "cpp", "dart", "elixir", "java", "rust"} {
 		_, err := c.Generate(u, lang, nil)
+		if carries(lang, carryForms) {
+			if err != nil {
+				t.Errorf("target %s honours declared forms: %v", lang, err)
+			}
+			continue
+		}
 		if err == nil {
 			t.Errorf("target %s accepted a forms declaration", lang)
 			continue

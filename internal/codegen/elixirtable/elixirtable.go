@@ -69,7 +69,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, scope.Refusal
 	}
 	out := map[string][]byte{}
-	closure := ir.TableClosure(u)
+	closure := cookFormClosure(u)
 	blocks := ir.Blocks(u)
 	ns := ir.GoExportName(u.Package)
 

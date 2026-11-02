@@ -168,8 +168,10 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  def descriptors, do: @tables\n\n")
 	uncarried := uncarriedRootNames(u)
 	b.WriteString(uncarriedAttribute(uncarried))
-	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
-	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
+	if anyTableForm(u, "cook") {
+		fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
+		fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
+	}
 	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
 	anyArrayRoot := false
 	for _, st := range u.Tables {
@@ -194,11 +196,15 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	if len(unionNames) > 0 {
 		retain = withRetainArmKinds(retain, armKinds)
 	}
+	attrs, runtime, cook := restrictFormRuntime(u, names, runtime, cook)
+	b.WriteString(attrs)
 	b.WriteString(runtime)
 	// the formatter keeps a blank line between the runtime's last `end` and
 	// the cook writer's leading comment
-	b.WriteString("\n")
-	b.WriteString(cook)
+	if cook != "" {
+		b.WriteString("\n")
+		b.WriteString(cook)
+	}
 	b.WriteString(retain)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
@@ -533,14 +539,18 @@ func withRetainArmKinds(retain string, kinds map[string]bool) string {
 
 // dropTopLevel removes every module-level item of an emitted Elixir source
 // whose head line `drop` names. An item starts at a line indented exactly two
-// spaces (anything but `end`) and runs to the next such line, so it carries its
+// spaces (except function continuations) and runs to the next such line, carrying its
 // own body and the blank line after it; a run of `#` lines directly above a
 // head belongs to that head's item and goes with it.
 func dropTopLevel(src string, drop func(head string) bool) string {
 	lines := strings.SplitAfter(src, "\n")
 	starts := func(l string) bool {
-		return strings.HasPrefix(l, "  ") && len(l) > 2 && l[2] != ' ' && l[2] != '\n' &&
-			!strings.HasPrefix(l, "  end\n") && !strings.HasPrefix(l, "  end)")
+		for _, continuation := range []string{"  end\n", "  end)", "  rescue\n", "  catch\n", "  after\n", "  else\n"} {
+			if strings.HasPrefix(l, continuation) {
+				return false
+			}
+		}
+		return strings.HasPrefix(l, "  ") && len(l) > 2 && l[2] != ' ' && l[2] != '\n'
 	}
 	var b strings.Builder
 	for i := 0; i < len(lines); {
