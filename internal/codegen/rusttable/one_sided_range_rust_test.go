@@ -3,6 +3,7 @@ package rusttable
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,7 +63,7 @@ func TestRustOneSidedRangeNative(t *testing.T) {
 		clamps              int
 	}
 	var rustRangeCases []rangeCase
-	for _, line := range strings.Split(string(cases), "\n") {
+	for line := range strings.SplitSeq(string(cases), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -206,9 +207,7 @@ func rustRangeFixedOracle(t *testing.T, u *ir.Unit, body string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range tables {
-		files[name] = data
-	}
+	maps.Copy(files, tables)
 	runtime := slowtest.SerializeGo(t, "../../..")
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
 	files["oracle_test.go"] = []byte("package probe\nimport (\"encoding/binary\";\"os\";\"testing\")\nfunc int64Value(v int64) int64{return v}\nfunc TestWrite(t *testing.T){\n" + body + "\n}\n")
