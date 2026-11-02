@@ -276,6 +276,7 @@ const tableVariableWireSource = `
             if (node.Type == null || node.Value == null) { continue; }
             Reader body = new Reader(payload.Buffer.Slice(node.Offset, node.Length), root.Vocabulary) { Graph = graph };
             ReadBody(ref body, node.Value, node.Type, report, true);
+            if (CountRefused(report)) { break; }
         }
         return graph;
     }

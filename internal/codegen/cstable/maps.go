@@ -53,6 +53,7 @@ const tableMapWireSource = `
         if (!header.Var(out ulong count)) { Damage(report); return true; }
         a.Offset = Math.Min(a.Buffer.Length, header.Offset);
         if (kind != 13) { report.KindMismatch++; return true; }
+        if (count > int.MaxValue) { return CollectionCap(report); }
         f.ResetField(value);
         int landed = 0; bool widened = false; MapKey last = default;
         TableFieldInfo keyField = f.Table.Fields[0];
@@ -70,6 +71,7 @@ const tableMapWireSource = `
             f.EnsureCount(value, slot + 1);
             object entry = f.Table.Create(); f.SetChild(value, slot, entry);
             ReadBody(ref body, entry, f.Table, report, true);
+            if (CountRefused(report)) { return false; }
             if (order == 0) { report.Duplicate++; }
             else { last = KeyOf(entry, keyField); landed++; }
         }
