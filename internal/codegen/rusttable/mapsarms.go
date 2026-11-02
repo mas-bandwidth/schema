@@ -252,7 +252,7 @@ func (g *gen) emitFixedArraySave(b *strings.Builder, f *ir.Field, ordinal int, x
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
-	fmt.Fprintf(b, "%sif %s.iter().take(%d).any(|e| %s) {\n", ind, x, f.ArrayBound, elemNonDefaultExpr(f, "e"))
+	fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, fmt.Sprintf("%s.iter().take(%d).any(|e| %s)", x, f.ArrayBound, elemNonDefaultExpr(f, "e"))))
 	fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 	fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 	g.emitArrayBodyWrite(b, f, x, "body", ordinal, inner)
@@ -349,7 +349,7 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 	fmt.Fprintf(b, "%sbody.extend_from_slice(&eb);\n", ein)
 	fmt.Fprintf(b, "%spairs += 1;\n", ein)
 	fmt.Fprintf(b, "%s}\n", inner)
-	fmt.Fprintf(b, "%sif pairs == 0 {\n", inner)
+	fmt.Fprintf(b, "%sif %t && pairs == 0 {\n", inner, !f.Required)
 	fmt.Fprintf(b, "%s    ids.rollback(mark);\n", inner)
 	fmt.Fprintf(b, "%s} else {\n", inner)
 	fmt.Fprintf(b, "%s    let mut inner_body = Vec::new();\n", inner)
@@ -369,7 +369,7 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 func (g *gen) emitMapSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind string) {
 	id := ir.TableFieldWireId(f)
 	inner := ind + "    "
-	if f.Type.Optional {
+	if f.Type.Optional || f.Required {
 		fmt.Fprintf(b, "%s{\n", ind)
 	} else {
 		fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
@@ -413,7 +413,11 @@ func (g *gen) emitUnionSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 	id := ir.TableFieldWireId(f)
 	inner := ind + "    "
 	fmt.Fprintf(b, "%smatch %s {\n", ind, borrowOf(x))
-	fmt.Fprintf(b, "%s    %s::None => {}\n", ind, un.Name)
+	if f.Required {
+		fmt.Fprintf(b, "%s    %s::None => { leb_write(out, ids.id_ref(0x%016x)); out.push(%d); out.push(0); },\n", ind, un.Name, id, ir.TableKindUnion)
+	} else {
+		fmt.Fprintf(b, "%s    %s::None => {}\n", ind, un.Name)
+	}
 	for _, v := range un.Variants {
 		fmt.Fprintf(b, "%s    %s::%s", ind, un.Name, rustVariant(v.Name))
 		if v.Void() {
