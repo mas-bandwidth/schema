@@ -1209,7 +1209,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 // emitMapReadField decodes one map field, and it is where every reader rule
 // §2.8 states lands: the key before the slot, ascending against the key of the
 // last entry that LANDED, a duplicate that resets the slot it took, a
-// descending key that stops the map and lets the parent read on, a key that
+// descending key that is damage and discards the whole load (§4), a key that
 // does not fit skipped by its L and counted clamped, and a key kind the
 // reader does not declare emptying the map for one kind_mismatch.
 func (g *tableGen) emitMapReadField(f *ir.Field) {

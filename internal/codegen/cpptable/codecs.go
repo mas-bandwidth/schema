@@ -2293,9 +2293,8 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    %s;\n", ind, g.loadCall(f, f.Type.Name, "sub", "value."+f.Name))
 		g.emitLoadRefusal(f.Type.Name, ind+"    ")
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
-		// terminator is not the last byte of its `L` is framing damage —
-		// the payload stops, the field reads its declared defaults, and the
-		// enclosing body continues past it by `L`.
+		// terminator is not the last byte of its `L` is framing damage, and
+		// damage discards the whole load (§4).
 		g.pf("%s    if ( sub.offset != sub.size )\n%s    {\n", ind, ind)
 		g.pf("%s        r.report->malformed = true;\n", ind)
 		g.pf("%s        %sReset( value.%s );\n", ind, f.Type.Name, f.Name)
@@ -2389,7 +2388,8 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 // emitTableReadScalarFrom decodes one fixed-width scalar from the named
 // reader into a storage lvalue, with range clamps where the schema declares
 // them. onTrunc is the truncation action: a scalar FIELD stops the decode
-// (outer framing damage), an array ELEMENT keeps the prefix and breaks.
+// and an array ELEMENT breaks, both flagging damage, which discards the whole
+// load (docs/SPEC-TABLES.md §4).
 func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, rdr, onTrunc string) {
 	width := tableKindWidth(kind)
 	g.pf("%sif ( !%s.has( %d ) ) { %s }\n", ind, rdr, width, onTrunc)

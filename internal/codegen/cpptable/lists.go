@@ -588,10 +588,10 @@ template <typename T> inline typename TableList<T>::Element * TableListFillNext(
     return TableListPlace( *fill.worker, *fill.list );
 }
 
-// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9, §4): the array keeps
-// what it decoded, and an element whose own framing gave out before one byte
-// of it decoded was not decoded. The region's form uncounts it, and the builder's
-// marks it dead, which is what the storage rule allows mid-build.
+// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9): an element whose own
+// framing gave out was not decoded. That is damage, and the load that met it is
+// discarded whole (§4); until it is, the region's form uncounts the slot and the
+// builder's marks it dead, which is what the storage rule allows mid-build.
 template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
 {
     typedef typename TableList<T>::Element Element;

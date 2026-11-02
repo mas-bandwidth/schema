@@ -342,9 +342,9 @@ static void test_bounded_elements()
     const tblv1::TableFieldInfo * a = v1_field( tblv1::CfgTableType(), "a" );
     CHECK( items != NULL && a != NULL );
 
-    // body_len = 5 covers only elem_kind + count; count claims 2 elements —
-    // the elements would have to come from the NEXT field's bytes. They must
-    // not: prefix kept (empty), malformed flagged, and a = 42 still decodes.
+    // The body covers only elem_kind + count; count claims 2 elements.
+    // Reading them would cross into the next field. This is damage, so the
+    // whole load is refused (SPEC-TABLES §4), with no usable prefix.
     uint8_t wire[64];
     int64_t n = 0;
     {
@@ -361,12 +361,10 @@ static void test_bounded_elements()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( report.malformed );        // the lie is framing damage, flagged
-    CHECK( out.items_count == 0 );    // no fabricated elements
-    CHECK( out.a == 42 );             // the parent continued at the next field
+    CHECK( !tblv1::CfgLoadTolerant( out, wire, n, &report ) );
+    CHECK( report.malformed );
 
-    // a body covering one full element plus slack: the decoded PREFIX is kept
+    // A body covering one full element plus slack also refuses the whole load.
     {
         WireBuilder b;
         b.field( items->id, 14 );
@@ -383,10 +381,8 @@ static void test_bounded_elements()
 
     tblv1::TableReport report2;
     tblv1::Cfg out2;
-    CHECK( tblv1::CfgLoadTolerant( out2, wire, n, &report2 ) );
+    CHECK( !tblv1::CfgLoadTolerant( out2, wire, n, &report2 ) );
     CHECK( report2.malformed );
-    CHECK( out2.items_count == 1 && out2.items[0] == 10 ); // bounded prefix
-    CHECK( out2.a == 42 );
 }
 
 // ---- all-default: everything elides, decode restores every default ----
@@ -883,8 +879,8 @@ static void test_wide_extents()
     CHECK( out.payload_length == 70000 && out.payload[69999] == (uint8_t) ( 69999 & 0xff ) );
     CHECK( out.samples_count == 70000 && out.samples[69999] == (uint16_t) 69999 );
 
-    // the wide case of the bounded-elements rule: a u32 count the body cannot
-    // cover yields the bounded PREFIX and malformed, never a fabricated value
+    // The wide case of the bounded-elements rule: a count the body cannot
+    // cover is damage and refuses the whole load, regardless of earlier fields.
     const tabledemo::TableFieldInfo * samples = demo_field( tabledemo::WideBlobTableType(), "samples" );
     const tabledemo::TableFieldInfo * label = demo_field( tabledemo::WideBlobTableType(), "label" );
     CHECK( samples != NULL && label != NULL );
@@ -908,11 +904,8 @@ static void test_wide_extents()
 
     tabledemo::TableReport report2;
     static tabledemo::WideBlob out2;
-    CHECK( tabledemo::WideBlobLoadTolerant( out2, wire, n, &report2 ) );
-    CHECK( report2.malformed );                                  // the lie is framing damage
-    CHECK( out2.samples_count == 2 );                            // the bounded prefix, nothing fabricated
-    CHECK( out2.samples[0] == 11 && out2.samples[1] == 22 );
-    CHECK( out2.label_length == 2 && strcmp( out2.label, "ok" ) == 0 ); // the parent read on
+    CHECK( !tabledemo::WideBlobLoadTolerant( out2, wire, n, &report2 ) );
+    CHECK( report2.malformed );
 
     free( buffer );
 }
@@ -1049,7 +1042,7 @@ static void test_malformed()
     CHECK( !tblv1::CfgLoadTolerant( out, truncated, truncated_bytes, &report2 ) );
     CHECK( report2.malformed );
 
-    // damage after good fields: the good prefix survives (partial result). The
+    // Damage after good fields still refuses the whole load. The
     // id table is the last thing in the file and a reader finds it from the
     // END, so the cut is made in the BODY and the trailer written after it.
     tblv1::Cfg src;
@@ -1067,7 +1060,7 @@ static void test_malformed()
     tblv1::TableReport report3;
     tblv1::Cfg out3;
     CHECK( !tblv1::CfgLoadTolerant( out3, cut, cut_bytes, &report3 ) );
-    CHECK( report3.malformed && out3.a == 42 );
+    CHECK( report3.malformed );
 }
 
 // ---- reflection: walk, identify, and read fields with no schema files ----
@@ -2792,9 +2785,8 @@ static void test_keyed_none_key_is_malformed()
     CHECK( saved > empty_wire_bytes );
 
     // a second occurrence carrying TWO pairs: the null key, then a perfectly
-    // good one behind it. Damage STOPS the body (§3.2, §4), so the good pair
-    // behind the damage must NOT land — the reader keeps what it decoded and
-    // reads on past the field's length, it does not step over the bad pair.
+    // good one behind it. Damage refuses the whole load (§3.2, §4); neither
+    // earlier fields nor the good pair behind the damage are usable.
     WireBuilder b;
     b.seed( wire, saved );
     b.field( tokens->id, 16 );                   // the keyed kind
@@ -2811,10 +2803,8 @@ static void test_keyed_none_key_is_malformed()
 
     tblv1::TableReport report;
     tblv1::Cfg out;
-    CHECK( tblv1::CfgLoadTolerant( out, wire, n, &report ) );
-    CHECK( report.malformed );                   // damage, not an unknown name
-    CHECK( report.unknown == 0 );
-    CHECK( out.tokens[tblv1::Slot::Delta] == 0 ); // and the body stopped at the damage
+    CHECK( !tblv1::CfgLoadTolerant( out, wire, n, &report ) );
+    CHECK( report.malformed );
 }
 
 // ---- #261: a repeated enum-ARRAY id whose second occurrence carries an
@@ -7666,7 +7656,7 @@ static void test_arm_kind_pins()
         CHECK( out.id == 11 && out.tail == 22 ); // the siblings still land
     }
     // AND THE LENGTH PIN: a kind 30 arm whose L is not the byte count of the
-    // reference it frames is MALFORMED, the union None, the parent reading on
+    // reference it frames is MALFORMED, refusing the whole load.
     {
         uint8_t wire[256];
         WireBuilder b;
@@ -7684,10 +7674,8 @@ static void test_arm_kind_pins()
         pin_table_golden( "a2_arm_length_off_width", wire, n );
         tbla2::Root out;
         tbla2::TableReport report;
-        CHECK( tbla2::RootLoadTolerant( out, wire, n, &report ) );
-        CHECK( report.malformed && report.kind_mismatch == 0 );
-        CHECK( out.value.type == tbla2::ValueType::None );
-        CHECK( out.id == 11 && out.tail == 22 );
+        CHECK( !tbla2::RootLoadTolerant( out, wire, n, &report ) );
+        CHECK( report.malformed );
     }
 }
 
@@ -7749,9 +7737,8 @@ static void test_pointer_arrays_count_past_bound()
     if ( loaded != NULL ) CHECK( loaded->parts_count == 4 );
 }
 
-// AN INDEX OUT OF RANGE is malformed and THAT SLOT reads null, the rest of the
-// array unaffected (§3.1): index 7 where no node exists. The wire is pinned as
-// a shared report row every leg reads.
+// AN INDEX OUT OF RANGE is malformed and refuses the whole load (§3.1, §4):
+// index 7 where no node exists. The wire stays pinned for cross-language checks.
 static void test_pointer_arrays_index_out_of_range()
 {
     uint8_t wire[64];
@@ -7774,14 +7761,8 @@ static void test_pointer_arrays_index_out_of_range()
     std::vector<uint8_t> region( (size_t) region_need );
     streamdemo::TableReport report;
     const streamdemo::Feed * loaded = streamdemo::FeedLoadTolerant( region.data(), region_need, wire, n, &report );
-    CHECK( loaded != NULL );
-    CHECK( report.malformed );        // the index, not the array
-    if ( loaded != NULL )
-    {
-        CHECK( loaded->parts_count == 2 ); // the array keeps its count
-        CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[0] ) == NULL );
-        CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[1] ) == NULL );
-    }
+    CHECK( loaded == NULL );
+    CHECK( report.malformed );
 }
 
 // ---- ARRAYS OF UNIONS (docs/SPEC-TABLES.md §2.6, §3) -----------------------

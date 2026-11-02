@@ -8067,22 +8067,29 @@ inline int64_t HeaderFixedLoadTolerant( Header * values, int64_t capacity, const
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         HeaderReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { HeaderReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, HeaderFixedGuards );
         TableFixedClampKnownRanges( HeaderFixedKnownRanges[lineage_at], HeaderFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !HeaderFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { HeaderReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -8926,9 +8933,9 @@ inline int64_t ChunkLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
 // ChunkLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// ordering rule on the indices. DAMAGE DISCARDS THE WHOLE LOAD
+// (docs/SPEC-TABLES.md §4): NULL is a refusal, a damaged wire or a region the
+// caller sized wrong, and the region then holds nothing to use.
 inline const Chunk * ChunkLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -9181,8 +9188,12 @@ inline bool ChunkLoadBuilderTolerant( ChunkBuilder & builder, const uint8_t * wi
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { ChunkReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -9211,6 +9222,8 @@ inline bool ChunkLoadBuilder( ChunkBuilder & builder, const uint8_t * wire_file,
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        Chunk * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { ChunkReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -9563,9 +9576,9 @@ inline int64_t FeedLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
 // FeedLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// ordering rule on the indices. DAMAGE DISCARDS THE WHOLE LOAD
+// (docs/SPEC-TABLES.md §4): NULL is a refusal, a damaged wire or a region the
+// caller sized wrong, and the region then holds nothing to use.
 inline const Feed * FeedLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -9818,8 +9831,12 @@ inline bool FeedLoadBuilderTolerant( FeedBuilder & builder, const uint8_t * wire
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { FeedReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -9848,6 +9865,8 @@ inline bool FeedLoadBuilder( FeedBuilder & builder, const uint8_t * wire_file, i
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        Feed * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { FeedReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -10807,9 +10826,9 @@ inline void ChunkNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 // ChunkLoadRetain: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// ordering rule on the indices. DAMAGE DISCARDS THE WHOLE LOAD
+// (docs/SPEC-TABLES.md §4): NULL is a refusal, a damaged wire or a region the
+// caller sized wrong, and the region then holds nothing to use.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -10945,7 +10964,7 @@ inline const Chunk * ChunkLoadRetain( uint8_t * region, int64_t region_bytes, co
     ChunkLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -11072,9 +11091,9 @@ inline void FeedNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
 // FeedLoadRetain: decode the tolerant wire into the caller's exact-sized region and
 // return the root. LOAD IS A SCAN, and that is the whole of its bound: it
 // follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// ordering rule on the indices. DAMAGE DISCARDS THE WHOLE LOAD
+// (docs/SPEC-TABLES.md §4): NULL is a refusal, a damaged wire or a region the
+// caller sized wrong, and the region then holds nothing to use.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -11210,7 +11229,7 @@ inline const Feed * FeedLoadRetain( uint8_t * region, int64_t region_bytes, cons
     FeedLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
