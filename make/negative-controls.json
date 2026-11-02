@@ -993,6 +993,7 @@
       "dart": "3.13.2",
       "targets": [
         "conformance-negative-control-dart-walk",
+        "conformance-negative-control-dart-text-boundary",
         "conformance-negative-control-dart-zero",
         "conformance-negative-control-dart-framing",
         "conformance-negative-control-dart-share",
