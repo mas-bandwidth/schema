@@ -78,6 +78,12 @@ fn accept(digest: &str) -> String {
 }
 
 fn refuse(reason: &str) -> String {
+    // The corpus names the storage-cap refusal across ports.
+    let reason = if reason == "count_over_extent_cap" {
+        "count_refusal"
+    } else {
+        reason
+    };
     format!("refuse {reason}")
 }
 
