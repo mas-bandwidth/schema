@@ -49,6 +49,7 @@ final class TableWireReport {
   int clamped = 0;
   String clampedField = '';
   int duplicate = 0;
+  int blobShared = 0;
   bool malformed = false;
   bool integrityMismatch = false;
   bool refused = false;
@@ -104,6 +105,20 @@ final class WireState {
   // decoded owners; node tokens carry no payload or input-buffer references.
   static final Expando<Map<String, ({String value, Object token})>> _stringBlobOrigins =
       Expando<Map<String, ({String value, Object token})>>();
+
+  static String? _getStringBlob(Object owner, String field) =>
+      _stringBlobOrigins[owner]?[field]?.value;
+
+  static void _setStringBlob(Object owner, String field, String? value) {
+    if (value == null) {
+      _stringBlobOrigins[owner]?.remove(field);
+      return;
+    }
+    final slots = _stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    // An explicit assignment owns this slot, even for a canonical String
+    // identical to its prior value. Decoders install incoming tokens directly.
+    slots[field] = (value: value, token: Object());
+  }
 
   static Object _blobIdentity(Object blob, Object? owner, String? field) {
     if (blob is String && owner != null && field != null) {
@@ -181,8 +196,8 @@ final class WireState {
   // records, as the reference numbers them by pointer
   // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
   // ids — the node-table write does, in record order (§3). Authored String
-  // fields without input metadata retain Dart's object identity semantics;
-  // canonical authored strings cannot express distinct node ownership.
+  // fields own one node per slot; their setters distinguish explicit
+  // reassignment from multiple slots resolving one incoming node.
   int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
     final identity = _blobIdentity(blob, owner, field);
     final found = _blobIndex[identity];
@@ -542,6 +557,7 @@ final class TableWireReader {
   final Set<int> knownTypes;
   final List<Object?> decoded;
   final Map<int, Object> stringBlobTokens;
+  final Set<int> namedBlobs;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -567,6 +583,7 @@ final class TableWireReader {
       knownTypes = <int>{},
       decoded = <Object?>[],
       stringBlobTokens = <int, Object>{},
+      namedBlobs = <int>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
@@ -584,6 +601,7 @@ final class TableWireReader {
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
       stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -609,6 +627,7 @@ final class TableWireReader {
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
       stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -861,6 +880,7 @@ final class TableWireReader {
       WireState._stringBlobOrigins[owner]?.remove(field);
       return null;
     }
+    if (!namedBlobs.add(idx)) report.blobShared++;
     final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
     slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
     return value;
@@ -870,10 +890,16 @@ final class TableWireReader {
     final rec = idx - 2;
     if (rec >= 0 && rec < decoded.length) {
       final have = decoded[rec];
-      if (have is Uint8List) return have;
+      if (have is Uint8List) {
+        if (!namedBlobs.add(idx)) report.blobShared++;
+        return have;
+      }
     }
     final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
-    if (b != null) decoded[rec] = b;
+    if (b != null) {
+      decoded[rec] = b;
+      if (!namedBlobs.add(idx)) report.blobShared++;
+    }
     return b;
   }
 
@@ -1293,9 +1319,75 @@ final class TableRetain {
   int idUsed = 0;
   int used = 0;
   final List<_RetainRecord> records = <_RetainRecord>[];
+  final Map<Object, List<_RetainRecord>> _byOwner = Map.identity();
+  final Map<Object, Map<String, List<Object>>> _maps = Map.identity();
   TableRetain(this.capacity, this.ids);
+
+  void add(_RetainRecord record) {
+    records.add(record);
+    (_byOwner[record.owner] ??= <_RetainRecord>[]).add(record);
+  }
+
+  void rememberMap(Object owner, String field, Object entry) {
+    final fields = _maps[owner] ??= <String, List<Object>>{};
+    (fields[field] ??= <Object>[]).add(entry);
+  }
+
+  void forgetMap(Object owner, String field) {
+    final entries = _maps[owner]?.remove(field);
+    if (entries != null) {
+      for (final entry in entries) { forget(entry); }
+    }
+  }
+
+  // A replacement supersedes its old body without moving either counter.
+  // Keep byte capacity consumed, as the append-only caller store does.
+  void forget(Object owner) {
+    final pending = <Object>[owner];
+    final seen = Set<Object>.identity();
+    while (pending.isNotEmpty) {
+      final value = pending.removeLast();
+      if (!seen.add(value)) continue;
+      final old = _byOwner.remove(value);
+      if (old != null) {
+        for (final rec in old) { rec.discarded = true; }
+      }
+      final maps = _maps.remove(value);
+      if (maps != null) {
+        for (final entries in maps.values) { pending.addAll(entries); }
+      }
+      switch (value) {
+        case MixedEntity v:
+          break;
+        case MixedStat v:
+          break;
+        case MixedHitEvent v:
+          break;
+        case MixedChatEvent v:
+          break;
+        case MixedPickupEvent v:
+          break;
+        case BenchMixed v:
+          pending.addAll(v.entities);
+          pending.addAll(v.stats);
+          pending.add(v.gameEvent);
+          break;
+        case FixedTable v:
+          pending.add(v.value);
+          break;
+        case MixedEvent v:
+          pending.add(v.hit);
+          pending.add(v.chat);
+          pending.add(v.pickup);
+          break;
+        default: break;
+      }
+    }
+  }
   void reset() {
     records.clear();
+    _byOwner.clear();
+    _maps.clear();
     used = 0;
     idUsed = 0;
   }
@@ -1313,6 +1405,8 @@ final class _RetainRecord {
   final int id;
   final int kind;
   final List<int> resolved;
+  bool placed = false;
+  bool discarded = false;
   _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
@@ -1700,8 +1794,8 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
 void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
-  for (final rec in t.records) {
-    if (!identical(rec.owner, owner)) continue;
+  for (final rec in t._byOwner[owner] ?? const <_RetainRecord>[]) {
+    rec.placed = true;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -2922,7 +3016,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3017,7 +3111,7 @@ void mixedStatWireLoadBody(TableWireReader r, MixedStat v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3160,7 +3254,7 @@ void mixedHitEventWireLoadBody(TableWireReader r, MixedHitEvent v, bool nested) 
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3265,7 +3359,7 @@ void mixedChatEventWireLoadBody(TableWireReader r, MixedChatEvent v, bool nested
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3370,7 +3464,7 @@ void mixedPickupEventWireLoadBody(TableWireReader r, MixedPickupEvent v, bool ne
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -4158,7 +4252,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -4217,7 +4311,7 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -4559,6 +4653,7 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
 
 Uint8List fixedTableWireSaveRetain(FixedTable v, TableRetain retain, TableWireReport report) {
   retain.idUsed = 0;
+  for (final rec in retain.records) { rec.placed = false; }
   final state = WireState()..refuseSharedBlob = true;
   state.retain = retain;
   state.report = report;
@@ -4570,6 +4665,7 @@ Uint8List fixedTableWireSaveRetain(FixedTable v, TableRetain retain, TableWireRe
   w.putByte(1);
   fixedTableWireSaveBodyFields(w, v);
   _writeNodeTable(w);
+  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
   w.putByte(0);
   for (final id in state.ids) { w.putU64(id); }
   w.putU64(state.ids.length);
@@ -5549,20 +5645,9 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = 
   return def;
 }
 
-String? _jsonStringBlob(dynamic val, TableTextReport r,
-    [String? def, Object? owner, String? field]) {
-  if (val == null) {
-    if (owner != null && field != null) WireState._stringBlobOrigins[owner]?.remove(field);
-    return null;
-  }
-  if (val is String) {
-    final value = _jsonText(val);
-    if (owner != null && field != null) {
-      final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
-      slots[field] = (value: value, token: Object());
-    }
-    return value;
-  }
+String? _jsonStringBlob(dynamic val, TableTextReport r, [String? def]) {
+  if (val == null) return null;
+  if (val is String) return _jsonText(val);
   r.kindMismatch++;
   return def;
 }
