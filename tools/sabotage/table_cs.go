@@ -144,4 +144,16 @@ func init() {
 		old: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Malformed)\n",
 		new: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Malformed && bytes.Length < 0) // SABOTAGED: the builder discard is gone\n",
 	}}
+	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the managed
+	// three-mark walk blinded to an open vertex, and the native Kahn check
+	// blinded to unprocessed vertices (so it resolves cyclic pointer slots and
+	// answers false).
+	sabotages["table-cs-cycle"] = []edit{{
+		old: `if (mark == 1) { return true; } // a pointer to an OPEN node: a cycle`,
+		new: `if (mark == 1 && n < 0) { return true; } // SABOTAGED: no cycle check`,
+	}}
+	sabotages["table-cs-region-cycle"] = []edit{{
+		old: `if (processed < vertices) { return true; }`,
+		new: `if (processed < vertices && count < 0) { return true; } // SABOTAGED: no region cycle check`,
+	}}
 }

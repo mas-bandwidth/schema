@@ -783,7 +783,8 @@
       "when": "pull-request",
       "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. The native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots name. Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
       "targets": [
-        "tables-cs-leg-region-blob-shared-negative-control"
+        "tables-cs-leg-region-blob-shared-negative-control",
+        "tables-cs-leg-cycle-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -802,7 +803,8 @@
       "when": "pull-request",
       "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder load's discard taken out, so a builder load damaged inside a nested body answers true with the decoded root.",
       "targets": [
-        "tables-cs-leg-builder-discard-negative-control"
+        "tables-cs-leg-builder-discard-negative-control",
+        "tables-cs-leg-region-cycle-negative-control"
       ],
       "dotnet": "pin"
     },

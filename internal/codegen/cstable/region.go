@@ -200,7 +200,7 @@ const tableRegionSource = `
                 { if (id != f.PointerTypeId) { report.KindMismatch++; } else { target = offset; } }
             }
         }
-        value.SetRaw(f, index, target == long.MinValue ? 0 : unchecked((ulong)(target - (value.Slot(f, index) - value.Base))));
+        value.SetRaw(f, index, target == long.MinValue ? 0 : (f.BlobKind == 0 ? node : unchecked((ulong)(target - (value.Slot(f, index) - value.Base)))));
     }
     ref struct NativeMapKey
     {
@@ -696,6 +696,8 @@ const tableRegionSource = `
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
         // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
         if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
+        // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
+        if (good && RegionCyclic(data, directory, count, type, default, false)) { Damage(report); }
         // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no root, and the region holds nothing.
         if (report.Malformed) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }
         report.Malformed = malformedBefore;

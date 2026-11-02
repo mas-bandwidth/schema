@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using C2 = Cscollections2;
 using G = Graphdemo;
 using L = Listdemo;
 using R1 = Tblr1;
@@ -26,6 +27,7 @@ static unsafe partial class Program
     static void TestDamageDiscardsTheWholeLoad()
     {
         DiscardFramingVectors();
+        DiscardCycleVectors();
         DiscardNestedFixed();
         DiscardNestedVariable();
         DiscardText();
@@ -164,8 +166,10 @@ static unsafe partial class Program
         byte[] t0 = new byte[G.Schema.ListNodeToJsonMeasure(v)]; G.Schema.ListNodeToJson(v, t0);
         var report = new G.TableReport();
         Check(!G.Schema.ListNodeLoad(v, wire, report) && report.Malformed, Discard + name + ": managed load answers false, malformed");
-        byte[] t1 = new byte[G.Schema.ListNodeToJsonMeasure(v)]; G.Schema.ListNodeToJson(v, t1);
-        Check(t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
+        long m1 = G.Schema.ListNodeToJsonMeasure(v);
+        byte[] t1 = m1 >= 0 ? new byte[m1] : Array.Empty<byte>();
+        if (m1 >= 0) { G.Schema.ListNodeToJson(v, t1); }
+        Check(m1 >= 0 && t0.AsSpan().SequenceEqual(t1), Discard + name + ": managed load hands back the declared defaults");
         DiscardNativeG(name, wire,
             (r, c, w, rep) => (IntPtr)G.Schema.ListNodeLoad(r, c, w, rep),
             (IntPtr r, long c, byte[] w, ref G.TableRetain s, G.TableReport rep) => (IntPtr)G.Schema.ListNodeLoadRetain(r, c, w, ref s, rep));
@@ -291,5 +295,191 @@ static unsafe partial class Program
         var report = new V1.TableReport();
         Check(!V1.Schema.CfgFromJson(v, text, report) && report.Malformed, Discard + "text: the read answered true on damage");
         Check(v.A == 5, Discard + "text: a damaged text read handed back a=" + v.A);
+    }
+
+    static byte[] CycleWire(byte[] rootBody, params (ulong TypeId, byte[] Body)[] nodes)
+    {
+        string[] names = { "id", "active", "next", "guarded", "links", "edges", "key", "value", "CycleNode" };
+        using var into = new MemoryStream();
+        into.WriteByte(1);
+        into.Write(rootBody);
+        if (nodes.Length > 0)
+        {
+            using var table = new MemoryStream();
+            table.Write(Var((ulong)nodes.Length));
+            foreach (var n in nodes)
+            {
+                table.Write(Var(n.TypeId));
+                table.Write(Var((ulong)n.Body.Length));
+                table.Write(n.Body);
+            }
+            byte[] payload = table.ToArray();
+            into.Write(Var((ulong)(names.Length + 1)));
+            into.WriteByte(12);
+            into.Write(Var((ulong)payload.Length));
+            into.Write(payload);
+        }
+        into.WriteByte(0);
+        foreach (string name in names)
+        {
+            ulong h = FieldId(name);
+            for (int i = 0; i < 8; i++) { into.WriteByte((byte)h); h >>= 8; }
+        }
+        ulong max = ulong.MaxValue;
+        for (int i = 0; i < 8; i++) { into.WriteByte((byte)max); max >>= 8; }
+        ulong count = (ulong)names.Length + 1;
+        for (int i = 0; i < 8; i++) { into.WriteByte((byte)count); count >>= 8; }
+        return into.ToArray();
+    }
+
+    static void DiscardCycleNode(string name, byte[] wire, bool wantCyclic)
+    {
+        C2.CycleNode v = new C2.CycleNode { Id = 99 };
+        var report = new C2.TableReport();
+        bool ok = C2.Schema.CycleNodeLoad(v, wire, report);
+        if (wantCyclic)
+        {
+            Check(!ok && report.Malformed, Discard + name + ": managed load answers false, malformed");
+            Check(v.Id == 7 && v.Next == null && v.Guarded == null && v.LinksCount == 0 && v.EdgesCount == 0,
+                Discard + name + ": managed load hands back the declared defaults");
+        }
+        else
+        {
+            Check(ok && !report.Malformed && v.Id == 42, Discard + name + ": acyclic managed load succeeds with id=42");
+        }
+
+        byte* region = (byte*)NativeMemory.AlignedAlloc(DiscardRegion, 64);
+        byte* bytes = (byte*)NativeMemory.Alloc(4096);
+        C2.TableRetain.Id* ids = (C2.TableRetain.Id*)NativeMemory.Alloc((nuint)(64 * sizeof(C2.TableRetain.Id)));
+        try
+        {
+            var r = new C2.TableReport();
+            C2.CycleNodeRow* row = C2.Schema.CycleNodeLoad((IntPtr)region, DiscardRegion, wire, r);
+            var store = new C2.TableRetain { Bytes = bytes, Capacity = 4096, Ids = ids, IdCapacity = 64, Used = 7, Count = 1, IdUsed = 1 };
+            var rr = new C2.TableReport();
+            C2.CycleNodeRow* rrow = C2.Schema.CycleNodeLoadRetain((IntPtr)region, DiscardRegion, wire, ref store, rr);
+            if (wantCyclic)
+            {
+                Check(row == null && r.Malformed, Discard + name + ": region load hands back no root, malformed");
+                Check(rrow == null && rr.Malformed, Discard + name + ": retaining load hands back no root, malformed");
+                Check(store.Used == 0 && store.Count == 0 && store.IdUsed == 0, Discard + name + ": retaining load leaves the store empty");
+            }
+            else
+            {
+                Check(row != null && !r.Malformed && row->Id == 42, Discard + name + ": acyclic region load succeeds");
+                Check(rrow != null && !rr.Malformed && rrow->Id == 42, Discard + name + ": acyclic retaining load succeeds");
+            }
+        }
+        finally { NativeMemory.AlignedFree(region); NativeMemory.Free(bytes); NativeMemory.Free(ids); }
+
+        using (var builder = new C2.CycleNodeBuilder())
+        {
+            builder.GetRoot()->Id = 99;
+            var b = new C2.TableReport();
+            bool bok = C2.Schema.CycleNodeLoadBuilder(builder, wire, b);
+            if (wantCyclic)
+            {
+                Check(!bok && b.Malformed, Discard + name + ": builder load answers false, malformed");
+                Check(builder.GetRoot()->Id == 7 && builder.GetRoot()->Next == 0 && builder.GetRoot()->Guarded == 0,
+                    Discard + name + ": builder root is back at its declared defaults");
+            }
+            else
+            {
+                Check(bok && !b.Malformed && builder.GetRoot()->Id == 42, Discard + name + ": acyclic builder load succeeds");
+            }
+        }
+    }
+
+    static void DiscardCycleVectors()
+    {
+        // Vocab indices in CycleWire: 1=id, 2=active, 3=next, 4=guarded, 5=links, 6=edges, 7=key, 8=value, 9=CycleNode
+        byte[] id42 = Join(new byte[] { 1, 4 }, U32(42));
+        byte[] leaf = Join(new byte[] { 1, 4 }, U32(10), new byte[] { 0 });
+
+        // 1. Overwritten self-edge in one body: next=&root (node 1) then next=null (node 0) -> acyclic!
+        byte[] overwritten = CycleWire(Join(id42, new byte[] { 3, 17, 1, 3, 17, 0 }));
+        DiscardCycleNode("cycle_overwritten_self", overwritten, false);
+
+        // 2. Unreached cycle: root has next=null, while node 2 and node 3 point to each other
+        byte[] n2 = new byte[] { 3, 17, 3, 0 };
+        byte[] n3 = new byte[] { 3, 17, 2, 0 };
+        byte[] unreached = CycleWire(id42, (9, n2), (9, n3));
+        DiscardCycleNode("cycle_unreached", unreached, true);
+
+        // 3. False-guard pointer slot: active=false (0), guarded=&root (node 1) -> cyclic; guarded=&leaf (node 2) -> acyclic
+        byte[] falseGuardCycle = CycleWire(Join(id42, new byte[] { 2, 1, 0, 4, 17, 1 }));
+        DiscardCycleNode("cycle_false_guard", falseGuardCycle, true);
+        byte[] falseGuardAcyclic = CycleWire(Join(id42, new byte[] { 2, 1, 0, 4, 17, 2 }), (9, leaf));
+        DiscardCycleNode("acyclic_false_guard", falseGuardAcyclic, false);
+
+        // 4. []*CycleNode list pointer slot: links=[&root] -> cyclic; links=[&leaf] -> acyclic
+        byte[] listCycle = CycleWire(Join(id42, new byte[] { 5, 14, 3, 17, 1, 1 }));
+        DiscardCycleNode("cycle_list_slot", listCycle, true);
+        byte[] listAcyclic = CycleWire(Join(id42, new byte[] { 5, 14, 3, 17, 1, 2 }), (9, leaf));
+        DiscardCycleNode("acyclic_list_slot", listAcyclic, false);
+
+        // 5. map[int32]*CycleNode map pointer slot: edges={1: &root} -> cyclic; edges={1: &leaf} -> acyclic
+        byte[] entrySelf = Join(new byte[] { 7, 4 }, U32(1), new byte[] { 8, 17, 1, 0 });
+        byte[] mapPayloadSelf = Join(new byte[] { 13, 1 }, Var((ulong)entrySelf.Length), entrySelf);
+        byte[] mapCycle = CycleWire(Join(id42, new byte[] { 6, 14 }, Var((ulong)mapPayloadSelf.Length), mapPayloadSelf));
+        DiscardCycleNode("cycle_map_slot", mapCycle, true);
+
+        byte[] entryLeaf = Join(new byte[] { 7, 4 }, U32(1), new byte[] { 8, 17, 2, 0 });
+        byte[] mapPayloadLeaf = Join(new byte[] { 13, 1 }, Var((ulong)entryLeaf.Length), entryLeaf);
+        byte[] mapAcyclic = CycleWire(Join(id42, new byte[] { 6, 14 }, Var((ulong)mapPayloadLeaf.Length), mapPayloadLeaf), (9, leaf));
+        DiscardCycleNode("acyclic_map_slot", mapAcyclic, false);
+
+        // 6. Manifest acyclic twins (node_chain_two and node_diamond_chain) load cleanly across all 4 entry points
+        string manifest = DiscardManifest();
+        if (manifest != null)
+        {
+            string root = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(manifest))));
+            foreach (string line in File.ReadAllLines(manifest))
+            {
+                string[] f = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                if (f.Length < 6 || f[0] != "framing") { continue; }
+                string row = f[1];
+                if (row == "node_chain_two")
+                {
+                    byte[] wire = File.ReadAllBytes(Path.Combine(root, f[4]));
+                    var mrep = new G.TableReport();
+                    var mv = new G.ListNode();
+                    Check(G.Schema.ListNodeLoad(mv, wire, mrep) && !mrep.Malformed && mv.Next != null, Discard + row + ": managed load succeeds");
+                    long need = G.Schema.ListNodeLoadMeasure(wire, out _, out _, out _);
+                    Check(need > 0, Discard + row + ": LoadMeasure succeeds");
+                    byte* reg = (byte*)NativeMemory.AlignedAlloc((nuint)(need + 64), 64);
+                    try
+                    {
+                        var rrep = new G.TableReport();
+                        G.ListNodeRow* rroot = G.Schema.ListNodeLoad((IntPtr)reg, need, wire, rrep);
+                        Check(rroot != null && !rrep.Malformed && rroot->Next != 0, Discard + row + ": region load succeeds");
+                    }
+                    finally { NativeMemory.AlignedFree(reg); }
+                    using var bld = new G.ListNodeBuilder();
+                    var brep = new G.TableReport();
+                    Check(G.Schema.ListNodeLoadBuilder(bld, wire, brep) && !brep.Malformed && bld.GetRoot()->Next != 0, Discard + row + ": builder load succeeds");
+                }
+                else if (row == "node_diamond_chain")
+                {
+                    byte[] wire = File.ReadAllBytes(Path.Combine(root, f[4]));
+                    var mrep = new G.TableReport();
+                    var mv = new G.Scene();
+                    Check(G.Schema.SceneLoad(mv, wire, mrep) && !mrep.Malformed && mv.Tree != null, Discard + row + ": managed load succeeds");
+                    long need = G.Schema.SceneLoadMeasure(wire, out _, out _, out _);
+                    Check(need > 0, Discard + row + ": LoadMeasure succeeds");
+                    byte* reg = (byte*)NativeMemory.AlignedAlloc((nuint)(need + 64), 64);
+                    try
+                    {
+                        var rrep = new G.TableReport();
+                        G.SceneRow* rroot = G.Schema.SceneLoad((IntPtr)reg, need, wire, rrep);
+                        Check(rroot != null && !rrep.Malformed && rroot->Tree != 0, Discard + row + ": region load succeeds");
+                    }
+                    finally { NativeMemory.AlignedFree(reg); }
+                    using var bld = new G.SceneBuilder();
+                    var brep = new G.TableReport();
+                    Check(G.Schema.SceneLoadBuilder(bld, wire, brep) && !brep.Malformed && bld.GetRoot()->Tree != 0, Discard + row + ": builder load succeeds");
+                }
+            }
+        }
     }
 }
