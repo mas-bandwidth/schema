@@ -1110,7 +1110,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	// compatible (internal/tablewire/decode.go mapField): a skipped repeat
 	// preserves the earlier occurrence (§3, §4).
 	g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, en)
-	g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+	g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
 	g.pf("%s\t\tvar lastEntry = %s();\n", ind, en)
 	g.pf("%s\t\tvar lastLanded = false;\n", ind)
 	g.pf("%s\t\tvar mapWidened = false;\n", ind)
@@ -1135,43 +1135,24 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	// entry never becomes the last landed key (internal/tablewire mapField
 	// `if !tabletext.MapKeyFits(f, key) { r.report.Clamped++; continue }`).
 	g.pf("%s\t\t\tif ((scan & 8) != 0) { r.report.clamped++; continue; }\n", ind)
-	// The Go reference judges the key's ORDER before it decodes the body, so a
-	// DESCENDING entry's body is never read and nothing inside it counts. The
-	// Dart order compares decoded entries, so the counters are kept here and
-	// put back when the order stops the map (§2.8, §6.6; internal/tablewire
-	// mapField).
-	g.pf("%s\t\t\tfinal pre = TableWireReport()\n", ind)
-	g.pf("%s\t\t\t\t..unknown = r.report.unknown\n", ind)
-	g.pf("%s\t\t\t\t..kindMismatch = r.report.kindMismatch\n", ind)
-	g.pf("%s\t\t\t\t..widened = r.report.widened\n", ind)
-	g.pf("%s\t\t\t\t..clamped = r.report.clamped\n", ind)
-	g.pf("%s\t\t\t\t..duplicate = r.report.duplicate\n", ind)
-	g.pf("%s\t\t\t\t..malformed = r.report.malformed\n", ind)
-	g.pf("%s\t\t\t\t..refused = r.report.refused\n", ind)
-	g.pf("%s\t\t\t\t..retained = r.report.retained\n", ind)
-	g.pf("%s\t\t\t\t..retainLost = r.report.retainLost;\n", ind)
-	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
+	// Order admits an entry before its body can add events or refuse a
+	// nested allocation (§2.8). The final key may follow the value on wire.
+	g.pf("%s\t\t\tvar order = -1;\n", ind)
 	g.pf("%s\t\t\tif (lastLanded) {\n", ind)
-	g.pf("%s\t\t\t\tfinal a = lastEntry;\n", ind)
-	g.pf("%s\t\t\t\tfinal b = e;\n", ind)
-	g.pf("%s\t\t\t\tfinal order = %s;\n", ind, mapKeyCompare(f))
-	g.pf("%s\t\t\t\tif (order > 0) {\n", ind)
-	g.pf("%s\t\t\t\t\t// DESCENDING: the body is not read (§2.8, internal/tablewire mapField)\n", ind)
-	g.pf("%s\t\t\t\t\tr.report\n", ind)
-	g.pf("%s\t\t\t\t\t\t..unknown = pre.unknown\n", ind)
-	g.pf("%s\t\t\t\t\t\t..kindMismatch = pre.kindMismatch\n", ind)
-	g.pf("%s\t\t\t\t\t\t..widened = pre.widened\n", ind)
-	g.pf("%s\t\t\t\t\t\t..clamped = pre.clamped\n", ind)
-	g.pf("%s\t\t\t\t\t\t..duplicate = pre.duplicate\n", ind)
-	g.pf("%s\t\t\t\t\t\t..refused = pre.refused\n", ind)
-	g.pf("%s\t\t\t\t\t\t..retained = pre.retained\n", ind)
-	g.pf("%s\t\t\t\t\t\t..retainLost = pre.retainLost\n", ind)
-	g.pf("%s\t\t\t\t\t\t..malformed = true;\n", ind)
-	g.pf("%s\t\t\t\t\tbreak;\n", ind)
+	g.pf("%s\t\t\t\tfinal key = %s();\n", ind, en)
+	g.pf("%s\t\t\t\tif (sub.mapKeyAt >= 0) {\n", ind)
+	g.pf("%s\t\t\t\t\tfinal keyReader = TableWireReader.sub(sub, sub.mapKeyAt, sub.limit);\n", ind)
+	g.pf("%s\t\t\t\t\tkeyReader.report = TableWireReport();\n", ind)
+	g.pf("%s\t\t\t\t\t%sWireLoadKey(keyReader, key);\n", ind, dartName(en))
 	g.pf("%s\t\t\t\t}\n", ind)
-	g.pf("%s\t\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
-	g.pf("%s\t\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name)
+	g.pf("%s\t\t\t\tfinal a = lastEntry;\n", ind)
+	g.pf("%s\t\t\t\tfinal b = key;\n", ind)
+	g.pf("%s\t\t\t\torder = %s;\n", ind, mapKeyCompare(f))
+	g.pf("%s\t\t\t\tif (order > 0) { r.report.malformed = true; break; }\n", ind)
 	g.pf("%s\t\t\t}\n", ind)
+	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
+	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
+	g.pf("%s\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)
 	g.pf("%s\t\t\tlastLanded = true;\n", ind)
 	g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)

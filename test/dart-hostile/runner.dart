@@ -127,11 +127,24 @@ Answer _text(String schema, String table, Uint8List payload) {
 
 // ---- the wire carriers ----
 
+// Normalize the public report vocabulary to the corpus's shared categories.
+// open() uses unknown_form only for a form byte other than1; the byte itself
+// distinguishes a message offered as a file from a newer file form.
+String wireRefusalReason(String reason, Uint8List payload) {
+  if (reason.startsWith('non_finite_float:')) return 'non_finite_float';
+  if (reason == 'count_over_extent_cap') return 'count_refusal';
+  if (reason == 'unknown_form' && payload.isNotEmpty) {
+    if (payload[0] == 2) return 'message_form_as_file';
+    if (payload[0] > 2) return 'newer_form';
+  }
+  return reason;
+}
+
 Answer _wire(String schema, String table, Uint8List payload, {required bool retain}) {
   final loaded =
       retain ? dispatch.wireLoadRetain(schema, table, payload) : dispatch.wireLoad(schema, table, payload);
   if (loaded == null) return _unbound(retain ? 'wire_retain' : 'wire');
-  if (loaded.refused) return Answer('refuse', loaded.reason);
+  if (loaded.refused) return Answer('refuse', wireRefusalReason(loaded.reason, payload));
   if (loaded.malformed) return _damaged;
   return _after(_accepted(loaded.written()), retain ? 'WireMeasureRetain/WireSaveRetain' : 'WireMeasure/WireSave',
       loaded.exercise);
