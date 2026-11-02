@@ -7583,6 +7583,12 @@ defmodule Benchtable.Table do
     end
   end
 
+  # A union array uses the element index followed by the arm ordinal, exactly
+  # as its retaining writer does. Walk once with an explicit index.
+  defp read_payload_retain(%{t: :list, elem_kind: 15} = f, p, ns, ids, r, rt, path) do
+    read_union_list_retain(f, p, ns, ids, r, rt, path)
+  end
+
   # a union field: the arm is the step pair {ordinal, arm ordinal}.
   defp read_payload_retain(%{t: :union} = f, payload, nodes, ids, report, retain, path) do
     retain = retain_reset(retain, path, f.ordinal, nil)
@@ -7642,6 +7648,23 @@ defmodule Benchtable.Table do
     end
   end
 
+  # Unknown enum references in known array slots are excluded just like a
+  # known scalar enum field (§6.6). Only that array's new unknowns count.
+  defp read_payload_retain(
+         %{t: :list, elem_kind: 30} = f,
+         payload,
+         nodes,
+         ids,
+         report,
+         retain,
+         _path
+       ) do
+    unknown_before = report.unknown
+    {:cont, value, report} = read_payload(f, payload, nodes, ids, report)
+    report = %{report | retain_lost: report.retain_lost + report.unknown - unknown_before}
+    {:cont, value, report, retain}
+  end
+
   defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
     {:cont, v, report} = read_payload(f, payload, nodes, ids, report)
     {:cont, v, report, retain}
@@ -7667,6 +7690,60 @@ defmodule Benchtable.Table do
 
       _ ->
         {%{}, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_union_list_retain(f, payload, nodes, ids, report, retain, path) do
+    retain = retain_reset(retain, path, f.ordinal, nil)
+
+    with {_len, <<15, count_rest::binary>>} <- leb(payload),
+         {n, elems} <- leb(count_rest) do
+      check_wire_count(n, f, report)
+      {n, report} = clamp_count(n, f, report)
+
+      {value, report, retain} =
+        read_unions_retain(f, elems, n, nodes, ids, [], report, retain, path, 0)
+
+      clamp_retain(value, f, report, retain)
+    else
+      {_len, _other} -> {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+      _ -> {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_unions_retain(_f, _rest, 0, _nodes, _ids, acc, report, retain, _path, _index),
+    do: {Enum.reverse(acc), report, retain}
+
+  defp read_unions_retain(f, rest, n, nodes, ids, acc, report, retain, path, index) do
+    case slice(rest, 15) do
+      {:ok, header, after_sub} ->
+        {_, value, report, retain} =
+          read_arm_retain(
+            f.elem,
+            f.ordinal,
+            header,
+            nodes,
+            ids,
+            report,
+            retain,
+            path ++ [{f.ordinal, index}]
+          )
+
+        read_unions_retain(
+          f,
+          after_sub,
+          n - 1,
+          nodes,
+          ids,
+          [value | acc],
+          report,
+          retain,
+          path,
+          index + 1
+        )
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}, retain}
     end
   end
 
@@ -7812,7 +7889,14 @@ defmodule Benchtable.Table do
         slot
       )
     else
+      unknown_before = report.unknown
       {v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+
+      report =
+        if f.elem_kind == 30,
+          do: %{report | retain_lost: report.retain_lost + report.unknown - unknown_before},
+          else: report
+
       {v, report, retain}
     end
   end
