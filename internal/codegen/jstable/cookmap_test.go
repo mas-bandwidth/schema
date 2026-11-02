@@ -2,6 +2,7 @@ package jstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,6 +79,7 @@ func runNodeScript(t *testing.T, node, dir, script string) map[string]string {
 // the entries in the Map's own order reds here
 // (tables-js-cook-map-unsorted-negative-control).
 func TestCookMapWriterHoldsTheSortJavaScript(t *testing.T) {
+	slowtest.Gate(t, "node (map/list cooked extents)")
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -170,6 +172,7 @@ for (const c of cases) {
 // The inner maps of loadouts are searched through the entry row's own Find,
 // so a search at depth is held too.
 func TestCookMapFindJavaScript(t *testing.T) {
+	slowtest.Gate(t, "node (map/list cooked extents)")
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
