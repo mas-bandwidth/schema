@@ -521,7 +521,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) { report.malformed = true; r.at = end; return true; }
-    if (ek !== 13) { report.kindMismatch++; r.at = end; return true; }
+    if (ek !== 13) { report.kindMismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
@@ -576,7 +576,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   if (r.bad) { report.malformed = true; r.at = end; return true; }
   const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
-    if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return true; }
+    if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return undefined; }
     report.widened++;
   }
   const arr = v[fd.n];

@@ -102,6 +102,11 @@ func TestJavaScriptRequiredConstruct(t *testing.T) {
 		n := 2 + len(payloads[i])/2
 		cut := append(append([]byte{}, body[:at]...), body[at+n:]...)
 		cases = append(cases, row{Name: "missing-" + f.Name, Root: "All", Wire: pack(cut), Missing: f.Name})
+		if f.Name == "buf" || f.Name == "list" || f.Name == "slots" || f.Name == "tags" || f.Name == "keyed" {
+			foreign := append([]byte{}, body...)
+			foreign[at+3] = 1
+			cases = append(cases, row{Name: "foreign-element-" + f.Name, Root: "All", Wire: pack(foreign), Missing: f.Name})
+		}
 		at += n
 	}
 	// A wrong-kind field is missing on the binary form, while a widening satisfies it.
@@ -183,11 +188,17 @@ expect(wrongShape!==null && rr.kindMismatch===1 && rr.missingRequired===0,"JSON 
 func TestJavaScriptRequiredFixedConstruct(t *testing.T) {
 	slowtest.Gate(t, "node (it executes required no-default fixed storage)")
 	const src = `package probe
-table T { n int32 | min=5, required }
+table T { n int32 | min=5, required
+ wide uint64 | min=9007199254740993, required
+}
+table Guarded { active bool
+ if active { n int32 | min=5, required }
+}
 fixed table Other { x int32 }
 `
 	const probe = `
 const exports=await import("./ProbeTable.js");
+if(exports.GuardedFixedSave!==undefined){fail("guarded ordinary table acquired fixed positional API");}
 for(const name of Object.keys(exports)){
  if(name.startsWith("T") && name.includes("Message") && !name.startsWith("Table")) {fail("required table leaked message surface "+name);}
 }
@@ -195,9 +206,12 @@ const value=new T();InitT(value);
 const wire=new Uint8Array(TMeasure(1));
 if(TSave([value],1,wire)!==-1){fail("required storage zero outside range accepted by fixed writer");}
 value.n=5;
+value.wide=9007199254740992n;
+if(TSave([value],1,wire)!==-1){fail("required uint64 preflight rounded its minimum");}
+value.wide=9007199254740993n;
 if(TSave([value],1,wire)!==wire.length){fail("required initialized fixed value rejected");}
 const back=[new T()];InitT(back[0]);const report=new TableFixedReport();
-if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].n!==5 || report.malformed || report.refused!==0){fail("required fixed roundtrip");}
+if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].n!==5 || back[0].wide!==9007199254740993n || report.malformed || report.refused!==0){fail("required fixed roundtrip");}
 `
 	if out, err := jsRunVersionProbe(t, jsNode(t), src, nil, 0, "T", probe); err != nil {
 		t.Fatalf("required fixed: %v\n%s", err, out)

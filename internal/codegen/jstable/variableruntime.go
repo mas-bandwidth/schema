@@ -896,8 +896,9 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       if (!TableVariableSkip(r, kind)) { report.malformed = true; return false; }
       continue;
     }
-    if (!TableVariableReadField(fd, r, table, v, report, st, retain, path)) { return false; }
-    if (fd.req) { seen.add(fd); }
+    const placed = TableVariableReadField(fd, r, table, v, report, st, retain, path);
+    if (placed === false) { return false; }
+    if (fd.req && placed !== undefined) { seen.add(fd); }
     // the field rode, so an optional is PRESENT; a None it holds is "None" (§2.3)
     if (fd.opt && fd.s === "enum" && v[fd.n] === null) { v[fd.n] = "None"; }
   }
@@ -1095,9 +1096,12 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.malformed = true; return false; }
   const end = r.at + L;
-  TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path);
+  const mismatchBefore = report.kindMismatch;
+  const selected = TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path);
   r.at = end;
-  return true;
+  // undefined means a tolerant skip, distinct from damage (false) and a
+  // compatible field (true); a skipped field cannot satisfy Required.
+  return !selected && report.kindMismatch !== mismatchBefore ? undefined : true;
 }
 
 // AN ARRAY BODY between r.at and end — a FIELD's after its own L, an ARM's
