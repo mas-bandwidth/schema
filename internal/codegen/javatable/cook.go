@@ -768,7 +768,7 @@ func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]boo
 		}
 	}
 	for _, f := range fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {

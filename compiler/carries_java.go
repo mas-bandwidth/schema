@@ -10,5 +10,8 @@ func init() {
 		carryOptionalMap,
 		carryRequired,
 		carryIntegrity,
+		carryTextList,
+		carryTextListTotal,
+		carryUnboundedText,
 	)
 }

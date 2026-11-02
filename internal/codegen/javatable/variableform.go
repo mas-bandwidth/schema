@@ -1003,6 +1003,32 @@ public final class TableVariable {
         return off + w <= limit ? off + w : -1;
     }
 
+    public static long utf8Len(String s) {
+        if (s == null) {
+            return 0;
+        }
+        int n = s.length();
+        long len = 0;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c < 0x80) {
+                len += 1;
+            } else if (c < 0x800) {
+                len += 2;
+            } else if (Character.isHighSurrogate(c)
+                    && i + 1 < n
+                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                len += 4;
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                len += 1;
+            } else {
+                len += 3;
+            }
+        }
+        return len;
+    }
+
     // textValid reports whether a kind-12 payload is well-formed UTF-8 with no
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
@@ -3813,6 +3839,18 @@ func writeMeasureWalk(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			b.WriteString("                continue;\n")
 			b.WriteString("            }\n")
 		}
+		if f.Type.TextUnbounded() && f.Array == ir.ArrayNone {
+			rAlign := ir.TableRegionAlign(u)
+			fmt.Fprintf(b, "            if (id == F_%s && kind == %d) {\n", varMember(f), ir.TableKindString)
+			b.WriteString("                int end = r.bodyEnd();\n")
+			b.WriteString("                if (end < 0) { return at; }\n")
+			b.WriteString("                long n = (long) (end - r.off);\n")
+			b.WriteString("                r.off = end;\n")
+			fmt.Fprintf(b, "                if (n > 0) { at = (at + 7L) & -8L; at += ((9L + n) + %dL - 1L) & -%dL; }\n", rAlign, rAlign)
+			b.WriteString("                continue;\n")
+			b.WriteString("            }\n")
+			continue
+		}
 		wk := ir.TableWireFieldKind(f)
 		if !measureFieldActs(f) || (wk != ir.TableKindTable && wk != ir.TableKindArray && wk != ir.TableKindKeyed) {
 			continue
@@ -3853,6 +3891,9 @@ func writeMeasureWalk(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 func measureFieldActs(f *ir.Field) bool {
 	if f.Type.Pointer && f.Array == ir.ArrayNone {
 		return false
+	}
+	if f.Type.TextUnbounded() {
+		return true
 	}
 	if f.IsMap() || f.IsList() || f.Array != ir.ArrayNone || f.KeyEnum != "" {
 		return true
@@ -3944,6 +3985,19 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 	for _, k := range accepted {
 		walksTable = walksTable || k == ir.TableKindTable
 		walksUnion = walksUnion || k == ir.TableKindUnion
+	}
+	if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+		rAlign := ir.TableRegionAlign(u)
+		b.WriteString("        for (long i = 0; Long.compareUnsigned(i, count) < 0 && r.has(1); i++) {\n")
+		b.WriteString("            int end = r.bodyEnd();\n")
+		b.WriteString("            if (end < 0) { return at; }\n")
+		b.WriteString("            long n = (long) (end - r.off);\n")
+		b.WriteString("            r.off = end;\n")
+		fmt.Fprintf(b, "            if (n > 0) { at = (at + 7L) & -8L; at += ((9L + n) + %dL - 1L) & -%dL; }\n", rAlign, rAlign)
+		b.WriteString("        }\n")
+		b.WriteString("        return at;\n")
+		b.WriteString("    }\n\n")
+		return
 	}
 	if !walksTable && !walksUnion {
 		b.WriteString("        return at;\n")
@@ -4066,8 +4120,9 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        Value v = new Value();\n")
 		fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
 		fmt.Fprintf(b, "        if (in.bad) { report.malformed = true; }\n")
+		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
-		fmt.Fprintf(b, "        if (report.refused || report.malformed) { return null; }\n")
+		fmt.Fprintf(b, "        if (report.malformed) { return null; }\n")
 		fmt.Fprintf(b, "        return v;\n")
 		fmt.Fprintf(b, "    }\n\n")
 	}
@@ -4541,6 +4596,23 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		b.WriteString("            TableJson.indent(b, depth);\n")
 		b.WriteString("            b.append(']');\n")
 		b.WriteString("        }\n")
+	case f.IsTextList():
+		target := f.Type.Ref.(*ir.Struct)
+		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
+		b.WriteString("            b.append('[');\n")
+		fmt.Fprintf(b, "            for (int i = 0; i < v.%s.size(); i++) {\n", m)
+		b.WriteString("                if (i > 0) { b.append(','); }\n")
+		b.WriteString("                TableJson.indent(b, depth + 1);\n")
+		fmt.Fprintf(b, "                %sVariable.Value elem = v.%s.get(i);\n", target.Name, m)
+		if ir.TextListOptional(f) {
+			b.WriteString("                if (elem == null || !elem.valuePresent) { b.append(\"null\"); } else { TableJson.esc(b, elem.value == null ? \"\" : elem.value); }\n")
+		} else {
+			b.WriteString("                TableJson.esc(b, elem == null || elem.value == null ? \"\" : elem.value);\n")
+		}
+		b.WriteString("            }\n")
+		b.WriteString("            TableJson.indent(b, depth);\n")
+		b.WriteString("            b.append(']');\n")
+		b.WriteString("        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
@@ -4656,6 +4728,82 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        in.bad = true; break;\n")
 		b.WriteString("                    }\n")
 		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
+	case f.IsTextList():
+		target := f.Type.Ref.(*ir.Struct)
+		valueF := ir.TextListValue(f)
+		optional := ir.TextListOptional(f)
+		b.WriteString("                if (in.peek() == '[') {\n")
+		b.WriteString("                    in.p++;\n")
+		b.WriteString("                    int placed = 0;\n")
+		if f.Array != ir.ArrayList {
+			fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)
+		} else {
+			b.WriteString("                    int ab = -1;\n")
+		}
+		if f.TextTotal > 0 {
+			b.WriteString("                    long spent = 0;\n")
+			b.WriteString("                    boolean full = false;\n")
+		}
+		b.WriteString("                    while (true) {\n")
+		b.WriteString("                        int ec = in.peek();\n")
+		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
+		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
+		if f.TextTotal > 0 {
+			b.WriteString("                        int before = placed;\n")
+			b.WriteString("                        if (full) {\n")
+			b.WriteString("                            in.skipValue();\n")
+			b.WriteString("                        } else if (ab >= 0 && placed >= ab) {\n")
+		} else {
+			b.WriteString("                        if (ab >= 0 && placed >= ab) {\n")
+		}
+		b.WriteString("                            in.rep.clamped++;\n")
+		b.WriteString("                            in.skipValue();\n")
+		if optional {
+			fmt.Fprintf(b, "                        } else if (ec == 'n') {\n                            if (in.lit(\"null\")) { v.%s.add(new %sVariable.Value()); placed++; }\n", m, target.Name)
+		}
+		fmt.Fprintf(b, "                        } else if (ec != '\"') {\n                            in.skipValue(); in.rep.kindMismatch++; v.%s.add(new %sVariable.Value()); placed++;\n", m, target.Name)
+		b.WriteString("                        } else {\n")
+		if valueF.Type.TextUnbounded() {
+			b.WriteString("                            String s = in.scanStored();\n")
+			b.WriteString("                            if (!in.bad && s != null) {\n")
+		} else {
+			fmt.Fprintf(b, "                            String s = in.readString(%d);\n", valueF.Type.Size)
+			b.WriteString("                            if (!in.bad) {\n")
+		}
+		fmt.Fprintf(b, "                                %sVariable.Value e = new %sVariable.Value();\n", target.Name, target.Name)
+		b.WriteString("                                e.value = s;\n")
+		if optional {
+			b.WriteString("                                e.valuePresent = true;\n")
+		}
+		fmt.Fprintf(b, "                                v.%s.add(e);\n", m)
+		b.WriteString("                                placed++;\n")
+		b.WriteString("                            }\n")
+		b.WriteString("                        }\n")
+		if f.TextTotal > 0 {
+			b.WriteString("                        if (placed > before && !in.bad) {\n")
+			fmt.Fprintf(b, "                            %sVariable.Value last = v.%s.get(placed - 1);\n", target.Name, m)
+			if optional {
+				b.WriteString("                            long elemBytes = (last == null || !last.valuePresent || last.value == null) ? 0L : TableVariable.utf8Len(last.value);\n")
+			} else {
+				b.WriteString("                            long elemBytes = (last == null || last.value == null) ? 0L : TableVariable.utf8Len(last.value);\n")
+			}
+			fmt.Fprintf(b, "                            if (elemBytes > %dL - spent) {\n", f.TextTotal)
+			b.WriteString("                                in.rep.clamped++;\n")
+			fmt.Fprintf(b, "                                if (in.rep.reason == null) { in.rep.reason = %q; }\n", "clamped: "+f.TextListElem().MapEntryOf)
+			fmt.Fprintf(b, "                                v.%s.remove(placed - 1);\n", m)
+			b.WriteString("                                placed--;\n")
+			b.WriteString("                                full = true;\n")
+			b.WriteString("                            } else {\n")
+			b.WriteString("                                spent += elemBytes;\n")
+			b.WriteString("                            }\n")
+			b.WriteString("                        }\n")
+		}
+		b.WriteString("                        ec = in.peek();\n")
+		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
+		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
+		b.WriteString("                        in.bad = true; break;\n")
+		b.WriteString("                    }\n")
+		b.WriteString("                } else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		b.WriteString("                if (in.peek() == '[') {\n")
@@ -4717,7 +4865,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.clamped++;}catch(IllegalArgumentException invalid){in.rep.kindMismatch++;}}}else {in.skipValue();in.rep.kindMismatch++;}\n", f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
+		if f.Type.TextUnbounded() {
+			fmt.Fprintf(b, "                if (in.peek() == '\"') { String s = in.scanStored(); v.%s = s == null ? \"\" : s; }\n", m)
+		} else {
+			fmt.Fprintf(b, "                if (in.peek() == '\"') { v.%s = in.readString(%d); }\n", m, f.Type.Size)
+		}
 		b.WriteString("                else { in.skipValue(); in.rep.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBool:
 		b.WriteString("                if (in.peek() == 't') { in.lit(\"true\"); v." + m + " = true; }\n")
@@ -4862,6 +5014,12 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                } else { r.skip(kind); report.kindMismatch++; }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		expectedEk := 13
+		floorDiv := " / 2"
+		if ir.TextListPlain(f) {
+			expectedEk = 12
+			floorDiv = ""
+		}
 		fmt.Fprintf(b, "                if (kind == 14) {\n")
 		fmt.Fprintf(b, "                    TableVariable.Reader ar = r.body();\n")
 		fmt.Fprintf(b, "                    if (ar != null && ar.has(2)) {\n")
@@ -4869,36 +5027,69 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// the count is read with the kind byte, before either is judged:
 		// a damaged count is framing damage whatever the kind (arrayBody, §4)
 		fmt.Fprintf(b, "                        long n = %s;\n", countRead(f, "ar"))
-		fmt.Fprintf(b, "                        if (!ar.fail && ek != 13) { report.kindMismatch++; } else {\n")
+		fmt.Fprintf(b, "                        if (!ar.fail && ek != %d) { report.kindMismatch++; } else {\n", expectedEk)
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else {\n")
 		} else {
-			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off) / 2) {\n")
+			fmt.Fprintf(b, "                            if (ar.fail) { /* malformed count keeps the prefix (§3, §4) */ } else if (n >= 0 && n <= 0x7FFFFFFFL && n <= (long) (ar.limit - ar.off)%s) {\n", floorDiv)
 		}
 		if retain {
 			fmt.Fprintf(b, "                                retain.discardField(path, depth, %d);\n", ordinal)
 		}
 		if f.ArrayBound > 0 {
-			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+			if f.IsTextList() {
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; if (report.reason == null) { report.reason = %q; } }\n", f.ArrayBound, f.ArrayBound, "clamped: "+f.TextListElem().MapEntryOf)
+			} else {
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.clamped++; }\n", f.ArrayBound, f.ArrayBound)
+			}
 		}
 		if f.Array != ir.ArrayFixed {
 			fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 		}
-		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
-		fmt.Fprintf(b, "                                    TableVariable.Reader er = ar.body();\n")
-		fmt.Fprintf(b, "                                    if (er == null) break;\n")
-		fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
-		if retain {
-			fmt.Fprintf(b, "                                    path[2 * depth] = %d; path[2 * depth + 1] = (int) i;\n", ordinal)
-			fmt.Fprintf(b, "                                    %sRetain.readFieldsRetain(er, elem, nt, retain, report, path, depth + 1);\n", target.Name)
-		} else {
-			fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+		if f.TextTotal > 0 {
+			fmt.Fprintf(b, "                                long spent = 0;\n")
 		}
-		fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
-		if f.Array == ir.ArrayFixed {
-			fmt.Fprintf(b, "                                    TableVariable.put(v.%s, (int) i, elem);\n", m)
-		} else {
+		fmt.Fprintf(b, "                                for (long i = 0; i < n; i++) {\n")
+		if ir.TextListPlain(f) {
+			fmt.Fprintf(b, "                                    long L = ar.leb();\n")
+			fmt.Fprintf(b, "                                    int len = (int) L;\n")
+			fmt.Fprintf(b, "                                    if (ar.fail) { break; }\n")
+			fmt.Fprintf(b, "                                    if (L < 0 || !ar.has(len)) { report.malformed = true; ar.fail = true; break; }\n")
+			fmt.Fprintf(b, "                                    if (!TableVariable.textValid(ar.buf, ar.off, len)) { report.malformed = true; break; }\n")
+			fmt.Fprintf(b, "                                    int keep = len;\n")
+			if !ir.TextListUnbounded(f) {
+				bound := ir.TextListValue(f).Type.Size
+				fmt.Fprintf(b, "                                    if (keep > %d) { keep = %d; while (keep > 0 && (ar.buf[ar.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; if (report.reason == null) { report.reason = %q; } }\n", bound, bound, "clamped: "+f.TextListElem().MapEntryOf)
+			}
+			if f.TextTotal > 0 {
+				fmt.Fprintf(b, "                                    if ((long) keep > %dL - spent) { report.clamped++; if (report.reason == null) { report.reason = %q; } break; }\n", f.TextTotal, "clamped: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                    spent += (long) keep;\n")
+			}
+			fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
+			fmt.Fprintf(b, "                                    elem.value = new String(ar.buf, ar.off, keep, StandardCharsets.UTF_8);\n")
+			fmt.Fprintf(b, "                                    ar.off += len;\n")
 			fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
+		} else {
+			fmt.Fprintf(b, "                                    TableVariable.Reader er = ar.body();\n")
+			fmt.Fprintf(b, "                                    if (er == null) break;\n")
+			fmt.Fprintf(b, "                                    %sVariable.Value elem = new %sVariable.Value();\n", target.Name, target.Name)
+			if retain {
+				fmt.Fprintf(b, "                                    path[2 * depth] = %d; path[2 * depth + 1] = (int) i;\n", ordinal)
+				fmt.Fprintf(b, "                                    %sRetain.readFieldsRetain(er, elem, nt, retain, report, path, depth + 1);\n", target.Name)
+			} else {
+				fmt.Fprintf(b, "                                    %sVariable.readFields(er, elem, nt, report);\n", target.Name)
+			}
+			fmt.Fprintf(b, "                                    if (er.off != er.limit) { report.malformed = true; elem = new %sVariable.Value(); } // §4: a body's unclaimed bytes reset this element.\n", target.Name)
+			if f.TextTotal > 0 {
+				fmt.Fprintf(b, "                                    long elemBytes = (elem.value == null || !elem.valuePresent) ? 0L : TableVariable.utf8Len(elem.value);\n")
+				fmt.Fprintf(b, "                                    if (elemBytes > %dL - spent) { report.clamped++; if (report.reason == null) { report.reason = %q; } break; }\n", f.TextTotal, "clamped: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                    spent += elemBytes;\n")
+			}
+			if f.Array == ir.ArrayFixed {
+				fmt.Fprintf(b, "                                    TableVariable.put(v.%s, (int) i, elem);\n", m)
+			} else {
+				fmt.Fprintf(b, "                                    v.%s.add(elem);\n", m)
+			}
 		}
 		fmt.Fprintf(b, "                                }\n")
 		if f.ArrayBound > 0 {
@@ -4954,7 +5145,11 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "                if(kind==14){long L=r.leb();if(r.fail||L<0||L>r.limit-r.off){report.malformed=true;r.fail=true;}else if(L<2){r.off+=(int)L;}else {int end=r.off+(int)L;int ek=r.get8();long n=r.leb();if(r.fail){r.fail=false;report.malformed=true;}else if(ek!=6){report.kindMismatch++;}else {long keep=n;if(Long.compareUnsigned(keep,%dL)>0){keep=%dL;report.clamped++;}int avail=end-r.off;if(avail<0)avail=0;int take=(int)keep<avail?(int)keep:avail;v.%s=java.util.Arrays.copyOfRange(r.buf,r.off,r.off+take);if(take<(int)keep)report.malformed=true;}r.off=end;}}else {r.skip(kind);report.kindMismatch++;}\n", f.Type.Size, f.Type.Size, m)
 	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
+		if f.Type.TextUnbounded() {
+			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { v.%s = new String(r.buf, r.off, n, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), m)
+		} else {
+			fmt.Fprintf(b, "                if (kind == 12) { long L = r.leb(); int n = (int) L; if (!r.fail && r.has(n)) { if (!TableVariable.textValid(r.buf, r.off, n)) { report.malformed = true; v.%s = %s; } else { int keep = n; if (keep > %d) { keep = %d; while (keep > 0 && (r.buf[r.off + keep] & 0xc0) == 0x80) { keep--; } report.clamped++; } v.%s = new String(r.buf, r.off, keep, StandardCharsets.UTF_8); } r.off += n; } else if (!r.fail) { report.malformed = true; r.fail = true; } }\n", m, variableDefault(f), f.Type.Size, f.Type.Size, m)
+		}
 		fmt.Fprintf(b, "                else { r.skip(kind); report.kindMismatch++; }\n")
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { int bv = r.get8(); if (bv > 1) { report.malformed = true; } v.%s = bv != 0; } else { report.malformed = true; r.fail = true; } }\n", m)
@@ -5314,14 +5509,23 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
-		fmt.Fprintf(b, "            w.put8(13); w.putLeb(v.%s.size());\n", m)
-		fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
-		fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", target.Name, m)
-		fmt.Fprintf(b, "                int body = w.off;\n")
-		fmt.Fprintf(b, "                %sVariable.writeFields(w, graph, e);\n", target.Name)
-		fmt.Fprintf(b, "                w.put8(0);\n")
-		fmt.Fprintf(b, "                w.frame(body);\n")
-		fmt.Fprintf(b, "            }\n")
+		if ir.TextListPlain(f) {
+			fmt.Fprintf(b, "            w.put8(12); w.putLeb(v.%s.size());\n", m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
+			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", target.Name, m)
+			fmt.Fprintf(b, "                String s = (e == null || e.value == null) ? \"\" : e.value;\n")
+			fmt.Fprintf(b, "                w.putUtf8(s);\n")
+			fmt.Fprintf(b, "            }\n")
+		} else {
+			fmt.Fprintf(b, "            w.put8(13); w.putLeb(v.%s.size());\n", m)
+			fmt.Fprintf(b, "            for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
+			fmt.Fprintf(b, "                %sVariable.Value e = v.%s.get(i);\n", target.Name, m)
+			fmt.Fprintf(b, "                int body = w.off;\n")
+			fmt.Fprintf(b, "                %sVariable.writeFields(w, graph, e);\n", target.Name)
+			fmt.Fprintf(b, "                w.put8(0);\n")
+			fmt.Fprintf(b, "                w.frame(body);\n")
+			fmt.Fprintf(b, "            }\n")
+		}
 		fmt.Fprintf(b, "            w.frame(list);\n")
 		fmt.Fprintf(b, "        }\n")
 	case isScalarArray(f):
@@ -5456,8 +5660,30 @@ func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
 		fmt.Fprintf(b, "        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		if f.IsTextList() {
+			if f.ArrayBound > 0 {
+				fmt.Fprintf(b, "        if (v.%s.size() > %d) return false;\n", m, f.ArrayBound)
+			}
+			if f.TextTotal > 0 {
+				fmt.Fprintf(b, "        long spent_%s = 0;\n", m)
+			}
+		}
 		fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
 		fmt.Fprintf(b, "            %sVariable.Value elem = v.%s.get(i);\n", target.Name, m)
+		if f.IsTextList() {
+			if ir.TextListOptional(f) {
+				b.WriteString("            long elemBytes = (elem == null || !elem.valuePresent || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n")
+			} else {
+				b.WriteString("            long elemBytes = (elem == null || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n")
+			}
+			if !ir.TextListUnbounded(f) {
+				fmt.Fprintf(b, "            if (elemBytes > %dL) return false;\n", ir.TextListValue(f).Type.Size)
+			}
+			if f.TextTotal > 0 {
+				fmt.Fprintf(b, "            spent_%s += elemBytes;\n", m)
+				fmt.Fprintf(b, "            if (spent_%s > %dL) return false;\n", m, f.TextTotal)
+			}
+		}
 		fmt.Fprintf(b, "            if (elem != null) { if (!%sVariable.buildGraph(g, elem)) return false; }\n", target.Name)
 		fmt.Fprintf(b, "        }\n")
 	case isStruct(f):

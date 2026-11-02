@@ -21,7 +21,7 @@ var nonGoCarriers = map[string][]string{
 	"cs":   {carryOptionalVariableClosure},
 	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 	"dart": {carryOptionalVariableClosure},
-	"java": {carryOptionalVariableClosure},
+	"java": {carryOptionalVariableClosure, carryOneSidedRange, carryForms, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText},
 	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
 	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine
