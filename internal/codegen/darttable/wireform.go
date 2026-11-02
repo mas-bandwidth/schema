@@ -543,7 +543,7 @@ func (g *wireGen) emitConstants() {
 // table of the unit. It invents no contract of its own: the byte framing below
 // is §3's, read down to the card's closure.
 func (g *wireGen) emitRuntime() {
-	g.pf(`// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
+	g.pf("%s", `// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
 // with Go's last-wins whole semantics.
