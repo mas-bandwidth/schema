@@ -35,9 +35,21 @@ frame-cap)
     sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
     ;;
 absent)
-    # both writers of the marker: the bare one and the one carrying a reason
+    # Model two explicit missing cases before suppressing their markers.
+    # Neither control may depend on a naturally unsupported feature surviving
+    # as this backend gains coverage. First prove these markers are accepted.
     source=test/conformance/go/main.go
-    sed 's|return os.WriteFile(filepath.Join(dir, name+".absent"), nil, 0o644)|return nil // SABOTAGED: an absent case writes nothing|' "$source" > "$out/source.gotext"
+    sed '/^func surfaceWire(/,/^}/ {
+        /c := findCodec(f\[2\], f\[3\])/a\
+        if f[1] == "root_full" { if err := spillAbsentReason(out, f[1], "negative-control missing case"); err != nil { return err }; continue }
+    }
+    /^func surfaceFraming(/,/^}/ {
+        /c := findCodec(f\[2\], f\[3\])/a\
+        if f[1] == "frame_empty_table" { c = nil }
+    }' "$source" > "$out/present.gotext"
+    grep -Fq 'negative-control missing case' "$out/present.gotext"
+    grep -Fq 'if f[1] == "frame_empty_table" { c = nil }' "$out/present.gotext"
+    sed 's|return os.WriteFile(filepath.Join(dir, name+".absent"), nil, 0o644)|return nil // SABOTAGED: an absent case writes nothing|' "$out/present.gotext" > "$out/source.gotext"
     source2=test/conformance/go/messages.go
     sed 's|return os.WriteFile(filepath.Join(dir, name+".absent"), \[\]byte(reason), 0o644)|_ = filepath.Join; return nil // SABOTAGED: an absent case writes nothing|' "$source2" > "$out/source2.gotext"
     if cmp -s "$source2" "$out/source2.gotext"; then
@@ -56,6 +68,16 @@ if [ -n "${source2:-}" ]; then
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext","%s/%s":"%s/%s/source2.gotext"}}\n' "$root" "$source" "$root" "$out" "$root" "$source2" "$root" "$out" > "$out/overlay.json"
 else
     printf '{"Replace":{"%s/%s":"%s/%s/source.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+fi
+if [ "$mode" = absent ]; then
+    printf '{"Replace":{"%s/%s":"%s/%s/present.gotext"}}\n' "$root" "$source" "$root" "$out" > "$out/present-overlay.json"
+    (cd test/conformance/go && go build -overlay "$root/$out/present-overlay.json" -o "$root/$out/present-driver" .)
+    printf 'go %s/present-driver\n' "$out" > "$out/present-drivers.txt"
+    if ! build/conformance-harness run --drivers "$out/present-drivers.txt" --work "$out/present-work" > "$out/present-log" 2>&1; then
+        echo "negative control baseline failed: explicit absence markers must be accepted" >&2
+        cat "$out/present-log" >&2
+        exit 1
+    fi
 fi
 (cd test/conformance/go && go build -overlay "$root/$out/overlay.json" -o "$root/$out/driver-bin" .)
 
@@ -88,8 +110,8 @@ else
         grep -q 'go / framing: frame_entries_4097: damaged input owes the refusal' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = absent ]; then
-        grep -q 'go / wire: blob_shared: .*driver wrote nothing' "$out/log"
-        grep -q 'go / framing: .*: the driver wrote nothing' "$out/log"
+        grep -q 'go / wire: root_full: .*driver wrote nothing' "$out/log"
+        grep -q 'go / framing: frame_empty_table: the driver wrote nothing' "$out/log"
         grep -q 'json-read     pass' "$out/log"
     else
         grep -q 'go / json-hostile:' "$out/log"
