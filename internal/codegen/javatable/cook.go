@@ -787,4 +787,3 @@ func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]boo
 	}
 	return false
 }
-
