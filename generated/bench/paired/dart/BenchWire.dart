@@ -240,8 +240,8 @@ final class TableWireWriter {
   int refFor(int id) => state.refFor(id);
 }
 
-// _round is the region's 8-byte alignment (§6.2).
-int _round(int n) => (n + 7) & -8;
+// _round is the region's alignment (§6.2, ir.TableRegionAlign).
+int _round(int n) => (n + 15) & -16;
 
 // _kindFloor is the minimum byte cost of one element of a counted array body,
 // the floor the count sanity check divides by (docs/SPEC-TABLES.md §6.2,
@@ -505,6 +505,7 @@ final class TableWireReader {
   // the graph cyclic() checks once the load is done.
   int owner = 1;
   final List<int> edges;
+  final Map<Object, int> nodeIndex;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -514,6 +515,7 @@ final class TableWireReader {
       knownTypes = <int>{},
       decoded = <Object?>[],
       edges = <int>[],
+      nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -538,7 +540,8 @@ final class TableWireReader {
       rootObj = parent.rootObj,
       rootType = parent.rootType,
       owner = parent.owner,
-      edges = parent.edges;
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
   // over reads one node-record body against the parent's numbering. The bytes
   // are the record, not a slice of the file, so the cursor starts at 0 (§3.1).
@@ -561,7 +564,8 @@ final class TableWireReader {
       rootObj = parent.rootObj,
       rootType = parent.rootType,
       owner = parent.owner,
-      edges = parent.edges;
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
   bool has(int n) => n >= 0 && pos + n <= limit;
 
@@ -829,9 +833,6 @@ final class TableWireReader {
         report.kindMismatch++;
         return null;
       }
-      edges
-        ..add(owner)
-        ..add(1);
       return rootObj;
     }
     final rec = idx - 2;
@@ -856,29 +857,19 @@ final class TableWireReader {
       return null;
     }
     final have = decoded[rec];
-    if (have != null) {
+    if (have != null) return have;
+    report.kindMismatch++;
+    return null;
+  }
+
+  void noteEdge(int from, Object? to) {
+    if (to == null) return;
+    final idx = nodeIndex[to];
+    if (idx != null) {
       edges
-        ..add(owner)
+        ..add(from)
         ..add(idx);
-      return have;
     }
-    final obj = _newNode(wantType);
-    if (obj == null) {
-      report.kindMismatch++;
-      return null;
-    }
-    edges
-      ..add(owner)
-      ..add(idx);
-    decoded[rec] = obj;
-    final sub = TableWireReader.over(nodes[rec], this)..owner = idx;
-    // A node record's body is read to its zero reference, and the reference
-    // stops the body: bytes left after it inside the record's own length are
-    // kept and do not damage the node (docs/SPEC-TABLES.md §3.1, "the body is
-    // an ordinary table body"; internal/tablewire/decodenodes.go leaves
-    // records[i].Body after pass two unchecked, unlike a by-value field's L).
-    _loadNodeBody(sub, wantType, obj);
-    return obj;
   }
 
   // open resolves the id table from the END of the wire (§3), then walks the
@@ -1065,12 +1056,16 @@ final class TableWireReader {
       final typeId = nodeTypes[rec];
       if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
       if (!knownTypes.contains(typeId)) continue;
-      if (decoded[rec] != null) continue;
       final obj = _newNode(typeId);
       if (obj == null) continue;
       decoded[rec] = obj;
+      nodeIndex[obj] = rec + 2;
+    }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final obj = decoded[rec];
+      if (obj == null) continue;
       final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
-      _loadNodeBody(sub, typeId, obj);
+      _loadNodeBody(sub, nodeTypes[rec], obj);
     }
   }
 
@@ -1713,6 +1708,32 @@ void _loadNodeBody(TableWireReader r, int typeId, Object obj) {
   }
 }
 
+void _nodeEdges(TableWireReader r, int owner, int typeId, Object obj) {
+  switch (typeId) {
+    case _kTypeMixedEntity: mixedEntityEdges(r, owner, obj as MixedEntity); break;
+    case _kTypeMixedStat: mixedStatEdges(r, owner, obj as MixedStat); break;
+    case _kTypeMixedHitEvent: mixedHitEventEdges(r, owner, obj as MixedHitEvent); break;
+    case _kTypeMixedChatEvent: mixedChatEventEdges(r, owner, obj as MixedChatEvent); break;
+    case _kTypeMixedPickupEvent: mixedPickupEventEdges(r, owner, obj as MixedPickupEvent); break;
+    case _kTypeBenchMixed: benchMixedEdges(r, owner, obj as BenchMixed); break;
+    case _kTypeFixedTable: fixedTableEdges(r, owner, obj as FixedTable); break;
+  }
+}
+
+void _collectNodeEdges(TableWireReader r) {
+  r.edges.clear();
+  final root = r.rootObj;
+  if (root != null) {
+    r.nodeIndex[root] = 1;
+    _nodeEdges(r, 1, r.rootType, root);
+  }
+  for (var rec = 0; rec < r.nodes.length; rec++) {
+    final obj = r.decoded[rec];
+    if (obj == null) continue;
+    _nodeEdges(r, rec + 2, r.nodeTypes[rec], obj);
+  }
+}
+
 // _bytesCompare orders two keys by their UTF-8 bytes (docs/SPEC-TABLES.md §2.8).
 int _bytesCompare(List<int> a, List<int> b) {
   final n = a.length < b.length ? a.length : b.length;
@@ -1994,6 +2015,20 @@ void _mixedEventNumber(WireState s, MixedEvent v, Set<Object> open) {
       break;
     case 3:
       mixedPickupEventNumber(s, v.pickup, open);
+      break;
+  }
+}
+
+void _mixedEventEdges(TableWireReader r, int owner, MixedEvent v) {
+  switch (v.armTag) {
+    case 1:
+      mixedHitEventEdges(r, owner, v.hit);
+      break;
+    case 2:
+      mixedChatEventEdges(r, owner, v.chat);
+      break;
+    case 3:
+      mixedPickupEventEdges(r, owner, v.pickup);
       break;
   }
 }
@@ -4150,6 +4185,35 @@ void fixedTableNumber(WireState s, FixedTable v, Set<Object> open) {
   benchMixedNumber(s, v.value, open);
 }
 
+void mixedEntityEdges(TableWireReader r, int owner, MixedEntity v) {
+}
+
+void mixedStatEdges(TableWireReader r, int owner, MixedStat v) {
+}
+
+void mixedHitEventEdges(TableWireReader r, int owner, MixedHitEvent v) {
+}
+
+void mixedChatEventEdges(TableWireReader r, int owner, MixedChatEvent v) {
+}
+
+void mixedPickupEventEdges(TableWireReader r, int owner, MixedPickupEvent v) {
+}
+
+void benchMixedEdges(TableWireReader r, int owner, BenchMixed v) {
+  for (final e in v.entities) {
+    mixedEntityEdges(r, owner, e);
+  }
+  for (final e in v.stats) {
+    mixedStatEdges(r, owner, e);
+  }
+  _mixedEventEdges(r, owner, v.gameEvent);
+}
+
+void fixedTableEdges(TableWireReader r, int owner, FixedTable v) {
+  benchMixedEdges(r, owner, v.value);
+}
+
 Uint8List fixedTableWireSave(FixedTable v) {
   final state = WireState()..refuseSharedBlob = true;
   state.indexRoot(v);
@@ -4181,10 +4245,12 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   r.pos = 1;
   fixedTableWireLoadBody(r, v, false);
   if (r.report.nonFiniteFloat.isNotEmpty) return FixedTable();
+  _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
     return FixedTable();
   }
+  if (r.report.malformed) return FixedTable();
   return v;
 }
 
@@ -4374,8 +4440,13 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
     retain.reset();
     return FixedTable();
   }
+  _collectNodeEdges(r);
   if (r.cyclic()) {
     r.report.malformed = true;
+    retain.reset();
+    return FixedTable();
+  }
+  if (r.report.malformed) {
     retain.reset();
     return FixedTable();
   }

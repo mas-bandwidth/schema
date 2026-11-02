@@ -506,6 +506,9 @@ func (g *wireGen) emit() {
 	for _, st := range g.closure {
 		g.emitNumber(st)
 	}
+	for _, st := range g.closure {
+		g.emitEdges(st)
+	}
 	// §16: a declared table can be named directly in a text tree even when
 	// another table holds it by value. Give every carried declaration public
 	// entry points; generated map-entry tables remain implementation details.
@@ -756,8 +759,8 @@ final class TableWireWriter {
   int refFor(int id) => state.refFor(id);
 }
 
-// _round is the region's 8-byte alignment (§6.2).
-int _round(int n) => (n + 7) & -8;
+// _round is the region's alignment (§6.2, ir.TableRegionAlign).
+int _round(int n) => (n + ` + fmt.Sprintf("%d", ir.TableRegionAlign(g.unit)-1) + `) & -` + fmt.Sprintf("%d", ir.TableRegionAlign(g.unit)) + `;
 
 // _kindFloor is the minimum byte cost of one element of a counted array body,
 // the floor the count sanity check divides by (docs/SPEC-TABLES.md §6.2,
@@ -1021,6 +1024,7 @@ final class TableWireReader {
   // the graph cyclic() checks once the load is done.
   int owner = 1;
   final List<int> edges;
+  final Map<Object, int> nodeIndex;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -1030,6 +1034,7 @@ final class TableWireReader {
       knownTypes = <int>{},
       decoded = <Object?>[],
       edges = <int>[],
+      nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -1054,7 +1059,8 @@ final class TableWireReader {
       rootObj = parent.rootObj,
       rootType = parent.rootType,
       owner = parent.owner,
-      edges = parent.edges;
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
   // over reads one node-record body against the parent's numbering. The bytes
   // are the record, not a slice of the file, so the cursor starts at 0 (§3.1).
@@ -1077,7 +1083,8 @@ final class TableWireReader {
       rootObj = parent.rootObj,
       rootType = parent.rootType,
       owner = parent.owner,
-      edges = parent.edges;
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
   bool has(int n) => n >= 0 && pos + n <= limit;
 
@@ -1345,9 +1352,6 @@ final class TableWireReader {
         report.kindMismatch++;
         return null;
       }
-      edges
-        ..add(owner)
-        ..add(1);
       return rootObj;
     }
     final rec = idx - 2;
@@ -1372,29 +1376,19 @@ final class TableWireReader {
       return null;
     }
     final have = decoded[rec];
-    if (have != null) {
+    if (have != null) return have;
+    report.kindMismatch++;
+    return null;
+  }
+
+  void noteEdge(int from, Object? to) {
+    if (to == null) return;
+    final idx = nodeIndex[to];
+    if (idx != null) {
       edges
-        ..add(owner)
+        ..add(from)
         ..add(idx);
-      return have;
     }
-    final obj = _newNode(wantType);
-    if (obj == null) {
-      report.kindMismatch++;
-      return null;
-    }
-    edges
-      ..add(owner)
-      ..add(idx);
-    decoded[rec] = obj;
-    final sub = TableWireReader.over(nodes[rec], this)..owner = idx;
-    // A node record's body is read to its zero reference, and the reference
-    // stops the body: bytes left after it inside the record's own length are
-    // kept and do not damage the node (docs/SPEC-TABLES.md §3.1, "the body is
-    // an ordinary table body"; internal/tablewire/decodenodes.go leaves
-    // records[i].Body after pass two unchecked, unlike a by-value field's L).
-    _loadNodeBody(sub, wantType, obj);
-    return obj;
   }
 
   // open resolves the id table from the END of the wire (§3), then walks the
@@ -1581,12 +1575,16 @@ final class TableWireReader {
       final typeId = nodeTypes[rec];
       if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
       if (!knownTypes.contains(typeId)) continue;
-      if (decoded[rec] != null) continue;
       final obj = _newNode(typeId);
       if (obj == null) continue;
       decoded[rec] = obj;
+      nodeIndex[obj] = rec + 2;
+    }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final obj = decoded[rec];
+      if (obj == null) continue;
       final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
-      _loadNodeBody(sub, typeId, obj);
+      _loadNodeBody(sub, nodeTypes[rec], obj);
     }
   }
 
@@ -2900,6 +2898,77 @@ func (g *wireGen) emitNodeDispatch() {
 		g.pf("\t\tcase %s: %sWireLoadBody(r, obj as %s, true); break;\n", typeConst(st), dartName(st.Name), st.Name)
 	}
 	g.pf("\t}\n}\n\n")
+	g.pf("void _nodeEdges(TableWireReader r, int owner, int typeId, Object obj) {\n")
+	g.pf("\tswitch (typeId) {\n")
+	for _, st := range g.closure {
+		g.pf("\t\tcase %s: %sEdges(r, owner, obj as %s); break;\n", typeConst(st), dartName(st.Name), st.Name)
+	}
+	g.pf("\t}\n}\n\n")
+	g.pf("void _collectNodeEdges(TableWireReader r) {\n")
+	g.pf("\tr.edges.clear();\n")
+	g.pf("\tfinal root = r.rootObj;\n")
+	g.pf("\tif (root != null) {\n")
+	g.pf("\t\tr.nodeIndex[root] = 1;\n")
+	g.pf("\t\t_nodeEdges(r, 1, r.rootType, root);\n")
+	g.pf("\t}\n")
+	g.pf("\tfor (var rec = 0; rec < r.nodes.length; rec++) {\n")
+	g.pf("\t\tfinal obj = r.decoded[rec];\n")
+	g.pf("\t\tif (obj == null) continue;\n")
+	g.pf("\t\t_nodeEdges(r, rec + 2, r.nodeTypes[rec], obj);\n")
+	g.pf("\t}\n")
+	g.pf("}\n\n")
+}
+
+func (g *wireGen) emitEdges(st *ir.Struct) {
+	g.pf("void %sEdges(TableWireReader r, int owner, %s v) {\n", dartName(st.Name), st.Name)
+	for _, f := range st.Fields {
+		// Stored slots under false guards are included on load (§3.1, §4).
+		g.emitFieldEdges(f, "\t")
+	}
+	g.pf("}\n\n")
+}
+
+func (g *wireGen) emitFieldEdges(f *ir.Field, ind string) {
+	expr := "v." + fieldMember(f)
+	if f.Type.Optional {
+		g.pf("%sif (v.%s) {\n", ind, hasMember(f))
+		g.emitFieldEdges(nonOptional(f), ind+"\t")
+		g.pf("%s}\n", ind)
+		return
+	}
+	switch {
+	case f.IsMap():
+		g.pf("%sfor (final e in %s) {\n", ind, expr)
+		g.pf("%s\t%sEdges(r, owner, e);\n", ind, dartName(f.MapEntry.Name))
+		g.pf("%s}\n", ind)
+	case isUnionField(f):
+		g.pf("%s%s(r, owner, %s);\n", ind, unionFn(unionRef(f), "Edges"), expr)
+	case f.Array == ir.ArrayFixed:
+		g.emitEdgesArray(f, expr, ind)
+	case f.CountedOnWire() && unionRef(f) != nil:
+		g.pf("%sfor (final e in %s) {\n", ind, expr)
+		g.pf("%s\t%s(r, owner, e);\n", ind, unionFn(unionRef(f), "Edges"))
+		g.pf("%s}\n", ind)
+	case isPointerTable(f):
+		g.pf("%sr.noteEdge(owner, %s);\n", ind, expr)
+	case isByValueTable(f):
+		ref := tableRef(f)
+		g.pf("%s%sEdges(r, owner, %s);\n", ind, dartName(ref.Name), expr)
+	case f.CountedOnWire():
+		ref := tableRef(f)
+		if ref == nil {
+			return
+		}
+		if f.Type.Pointer {
+			g.pf("%sfor (final e in %s) {\n", ind, expr)
+			g.pf("%s\tr.noteEdge(owner, e);\n", ind)
+			g.pf("%s}\n", ind)
+		} else {
+			g.pf("%sfor (final e in %s) {\n", ind, expr)
+			g.pf("%s\t%sEdges(r, owner, e);\n", ind, dartName(ref.Name))
+			g.pf("%s}\n", ind)
+		}
+	}
 }
 
 func (g *wireGen) emitSave(st *ir.Struct) {
@@ -2957,6 +3026,7 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) return %s();\n", n)
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load
 	// is refused, and the caller holds the type's defaults.
+	g.pf("\t_collectNodeEdges(r);\n")
 	g.pf("\tif (r.cyclic()) {\n\t\tr.report.malformed = true;\n\t\treturn %s();\n\t}\n", n)
 	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
 	// met damage anywhere hands back nothing it decoded, only the type's

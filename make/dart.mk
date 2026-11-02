@@ -1775,7 +1775,7 @@ test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 DART_DISCARD_NC := build/dart-discard-nc
 .PHONY: tables-dart-discard tables-dart-discard-negative-control
 tables-dart-discard:
-	DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadDart$$'
+	SCHEMA_SLOW=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadDart$$'
 	@echo 'tables Dart discard: every damaged load hands back nothing it decoded'
 tables-dart-discard-negative-control:
 	@rm -rf $(DART_DISCARD_NC) && mkdir -p $(DART_DISCARD_NC)
@@ -1789,7 +1789,7 @@ tables-dart-discard-negative-control:
 			internal/codegen/darttable/$$file > $$d/$$file.txt; \
 		if cmp -s internal/codegen/darttable/$$file $$d/$$file.txt; then echo "NEGATIVE CONTROL: the $$file sabotage patched nothing"; exit 1; fi; \
 		printf '{"Replace":{"%s/internal/codegen/darttable/%s":"%s/%s/%s.txt"}}\n' "$(CURDIR)" "$$file" "$(CURDIR)" "$$d" "$$file" > $$d/overlay.json; \
-		if DART=$(DART) go test -count=1 -overlay $$d/overlay.json -run '^TestDamageDiscardsTheWholeLoadDart$$' \
+		if SCHEMA_SLOW=1 DART=$(DART) go test -count=1 -overlay $$d/overlay.json -run '^TestDamageDiscardsTheWholeLoadDart$$' \
 				./internal/codegen/darttable > $$d/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$file discard is gone and the gate stayed green"; cat $$d/log; exit 1; \
 		fi; \

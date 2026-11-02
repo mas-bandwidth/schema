@@ -415,3 +415,21 @@ func (g *wireGen) emitNumberArray(f *ir.Field, expr, ind string) {
 	}
 	g.pf("%s}\n", ind)
 }
+
+func (g *wireGen) emitEdgesArray(f *ir.Field, expr, ind string) {
+	if un := unionRef(f); un != nil {
+		g.pf("%sfor (final e in %s) { %s(r, owner, e); }\n", ind, expr, unionFn(un, "Edges"))
+		return
+	}
+	ref := tableRef(f)
+	if ref == nil {
+		return
+	}
+	g.pf("%sfor (final e in %s) {\n", ind, expr)
+	if f.Type.Pointer {
+		g.pf("%s\tr.noteEdge(owner, e);\n", ind)
+	} else {
+		g.pf("%s\t%sEdges(r, owner, e);\n", ind, dartName(ref.Name))
+	}
+	g.pf("%s}\n", ind)
+}

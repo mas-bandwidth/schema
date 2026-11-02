@@ -5571,6 +5571,9 @@ int tableEntityFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
+      for (var j = 0; j < k; j++) {
+        initTableEntity(values[j]);
+      }
       report.refused = runWhy;
       return -1;
     }
@@ -5640,14 +5643,18 @@ int tableEntityLoadMessages(
   }
   for (var i = 0; i < count; i++) {
     if (!tableEntityLoadMessageBody(r, values[i])) {
-      if (report.nonFiniteFloat.isEmpty) return i;
       for (var j = 0; j <= i; j++) {
         initTableEntity(values[j]);
       }
       return 0;
     }
   }
-  if (!tableMessageBatchClose(r)) return count;
+  if (!tableMessageBatchClose(r)) {
+    for (var j = 0; j < count; j++) {
+      initTableEntity(values[j]);
+    }
+    return 0;
+  }
   return count;
 }
 
@@ -6015,6 +6022,9 @@ int tableStatFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
+      for (var j = 0; j < k; j++) {
+        initTableStat(values[j]);
+      }
       report.refused = runWhy;
       return -1;
     }
@@ -6084,14 +6094,18 @@ int tableStatLoadMessages(
   }
   for (var i = 0; i < count; i++) {
     if (!tableStatLoadMessageBody(r, values[i])) {
-      if (report.nonFiniteFloat.isEmpty) return i;
       for (var j = 0; j <= i; j++) {
         initTableStat(values[j]);
       }
       return 0;
     }
   }
-  if (!tableMessageBatchClose(r)) return count;
+  if (!tableMessageBatchClose(r)) {
+    for (var j = 0; j < count; j++) {
+      initTableStat(values[j]);
+    }
+    return 0;
+  }
   return count;
 }
 
@@ -6854,6 +6868,9 @@ int tableMixedFixedLoad(
       report,
     );
     if (runWhy != TableFixedRefusal.none) {
+      for (var j = 0; j < k; j++) {
+        initTableMixed(values[j]);
+      }
       report.refused = runWhy;
       return -1;
     }
@@ -6937,13 +6954,17 @@ int tableMixedLoadMessages(
   }
   for (var i = 0; i < count; i++) {
     if (!tableMixedLoadMessageBody(r, values[i])) {
-      if (report.nonFiniteFloat.isEmpty) return i;
       for (var j = 0; j <= i; j++) {
         initTableMixed(values[j]);
       }
       return 0;
     }
   }
-  if (!tableMessageBatchClose(r)) return count;
+  if (!tableMessageBatchClose(r)) {
+    for (var j = 0; j < count; j++) {
+      initTableMixed(values[j]);
+    }
+    return 0;
+  }
   return count;
 }

@@ -858,6 +858,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
+    case 'widelist Wide':
+      return widelist.wideWireSave(widelist.wideWireLoad(wire));
     case 'listdemo Army':
       return listdemo.armyWireSave(listdemo.armyWireLoad(wire));
     case 'listdemo Mixed':
@@ -952,6 +954,8 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       return widedemo.captionWireSave(widedemo.captionFromJson(text));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampFromJson(text));
+    case 'widelist Wide':
+      return widelist.wideWireSave(widelist.wideFromJson(text));
     case 'listdemo Army':
       return listdemo.armyWireSave(listdemo.armyFromJson(text));
     case 'listdemo Mixed':
@@ -1064,6 +1068,8 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return widedemo.captionToJson(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampToJson(widedemo.stampWireLoad(wire));
+    case 'widelist Wide':
+      return widelist.wideToJson(widelist.wideWireLoad(wire));
     case 'listdemo Army':
       return listdemo.armyToJson(listdemo.armyWireLoad(wire));
     case 'listdemo Mixed':
@@ -2584,6 +2590,10 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoad, widedemo.stampWireSave),
           retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoadRetain, widedemo.stampWireSaveRetain));
+    case 'widelist Wide':
+      return _FuzzRoot(
+          _plainCodec(widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoad, widelist.wideWireSave),
+          retain: _retainCodec(widelist.TableRetain.new, widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoadRetain, widelist.wideWireSaveRetain));
   }
   return null;
 }

@@ -9,7 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"bytes"
+
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestCyclicWireIsDamageDart holds docs/SPEC-TABLES.md §3.1's ruling on the
@@ -31,6 +36,7 @@ func TestCyclicWireIsDamageDart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the cycle probe failed: %v\n%s", err, out)
 	}
+	runCycleSlotKindsProbe(t)
 }
 
 // TestCyclicWireIsDamageDartNegativeControl is the gate's reversed witness
@@ -128,6 +134,35 @@ void main(List<String> args) {
     final rv = g.listNodeWireLoadRetain(wire(row), retain, rr);
     check(rr.malformed, '$row: the retaining load did not report the cycle as damage');
     check(rv.next == null, '$row: a refused retaining load handed back a value');
+    check(retain.used == 0 && retain.idUsed == 0, '$row: a refused retaining load left retained bytes or ids');
+  }
+  // Unreached cycle: zero the root's next pointer (byte 9: 2 -> 0) in node_cycle_mid
+  // so records 2 and 3 form a cycle the root never reaches (§3.1).
+  {
+    final unreached = Uint8List.fromList(wire('node_cycle_mid'));
+    unreached[9] = 0;
+    final r = g.TableWireReport();
+    final v = g.listNodeWireLoad(unreached, r);
+    check(r.malformed && v.next == null, 'unreached_cycle: did not refuse as damage');
+  }
+  // Overwritten self-edge in the same body: next = 1 (self) followed by next = 0 (null)
+  // in the root body must load cleanly with next == null because only final stored
+  // slots belong to the loaded graph (§3.1).
+  {
+    final base = wire('node_cycle_self');
+    final over = Uint8List(base.length + 3);
+    over.setRange(0, 7, base, 0);
+    over.setRange(7, 13, const <int>[3, 17, 1, 3, 17, 0]);
+    over.setRange(13, over.length, base, 10);
+    for (var i = 13; i + 2 < over.length; i++) {
+      if (over[i] == 3 && over[i + 1] == 17 && over[i + 2] == 2) {
+        over[i + 2] = 0;
+        break;
+      }
+    }
+    final r = g.TableWireReport();
+    final v = g.listNodeWireLoad(over, r);
+    check(!r.malformed && v.next == null, 'overwritten_self_cycle: refused or next != null');
   }
   {
     final r = g.TableWireReport();
@@ -148,3 +183,153 @@ void main(List<String> args) {
   stdout.writeln('ok: three cyclic rows refused through both loads, a chain and a diamond chain loaded');
 }
 `
+
+const cycleSlotKindsSchema = `package cyclecheck
+table Root
+{
+    head *Node
+}
+table Node
+{
+    a      int32 = 0
+    on     bool
+    left   *Node
+    right  *Node
+    items  []*Node
+    lookup map[int32]*Node
+    if on
+    {
+        side *Node
+    }
+}
+`
+
+func runCycleSlotKindsProbe(t *testing.T) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "cyclecheck.schema")
+	if err := os.WriteFile(path, []byte(cycleSlotKindsSchema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, path)
+	cm := tabletext.NewModel(u)
+	makeGraph := func(kind string) ([]byte, []byte) {
+		nodes := make([]*tabletext.Instance, 4)
+		for i := range nodes {
+			nodes[i] = cm.New(cm.Lookup("Node"))
+		}
+		f0, _ := nodes[0].FieldByKey("left")
+		f0.Cell.Node = nodes[1]
+		f1, _ := nodes[1].FieldByKey("left")
+		f1.Cell.Node = nodes[2]
+		switch kind {
+		case "list":
+			f2, _ := nodes[2].FieldByKey("items")
+			f2.Elems = []tabletext.Cell{{Node: nodes[3]}}
+			f2.Count = 1
+		case "map":
+			f2, _ := nodes[2].FieldByKey("lookup")
+			ent := cm.NewMapEntry(f2.Def)
+			ent.Fields[0].Cell.I = 1
+			ent.Fields[1].Cell.Node = nodes[3]
+			f2.Entries = []tabletext.Cell{{Tab: ent}}
+		case "guard":
+			on, _ := nodes[2].FieldByKey("on")
+			on.Cell.B = true
+			f2, _ := nodes[2].FieldByKey("side")
+			f2.Cell.Node = nodes[3]
+		}
+		twin, err := tablewire.Encode(cm, nodes[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind == "guard" {
+			for i := 0; i+2 < len(twin); i++ {
+				if twin[i+1] == byte(ir.TableKindBool) && twin[i+2] == 1 {
+					try := bytes.Clone(twin)
+					try[i+2] = 0
+					inst := cm.New(cm.Lookup("Node"))
+					var rep tabletext.Report
+					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil && !rep.Malformed {
+						twin = try
+						break
+					}
+				}
+			}
+		}
+		cyc := bytes.Clone(twin)
+		if kind == "list" {
+			pat := []byte{byte(ir.TableKindPointer), 1, 4}
+			if bytes.Count(cyc, pat) != 1 {
+				t.Fatalf("list pattern count != 1")
+			}
+			cyc[bytes.Index(cyc, pat)+2] = 2
+		} else {
+			pat := []byte{byte(ir.TableKindPointer), 4, 0}
+			if bytes.Count(cyc, pat) != 1 {
+				t.Fatalf("%s pattern count != 1", kind)
+			}
+			cyc[bytes.Index(cyc, pat)+1] = 2
+		}
+		return twin, cyc
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := map[string][]byte{}
+	for name, src := range packetFiles(t, u) {
+		if !strings.Contains(name, "/") {
+			set[name] = src
+		}
+	}
+	for name, src := range files {
+		if !strings.Contains(name, "/") {
+			set[name] = src
+		}
+	}
+	listTwin, listCycle := makeGraph("list")
+	mapTwin, mapCycle := makeGraph("map")
+	guardTwin, guardCycle := makeGraph("guard")
+	set["list-twin.bin"] = listTwin
+	set["list-cycle.bin"] = listCycle
+	set["map-twin.bin"] = mapTwin
+	set["map-cycle.bin"] = mapCycle
+	set["guard-twin.bin"] = guardTwin
+	set["guard-cycle.bin"] = guardCycle
+	set["slot_probe.dart"] = []byte(`import 'dart:io';
+import 'dart:typed_data';
+import 'CyclecheckWire.dart' as c;
+
+void main() {
+  for (final (name, wantLoad) in [
+    ('list-twin.bin', true), ('list-cycle.bin', false),
+    ('map-twin.bin', true), ('map-cycle.bin', false),
+    ('guard-twin.bin', true), ('guard-cycle.bin', false),
+  ]) {
+    final wire = Uint8List.fromList(File(name).readAsBytesSync());
+    final r = c.TableWireReport();
+    final v = c.nodeWireLoad(wire, r);
+    if (wantLoad) {
+      if (r.malformed || v.left == null) {
+        stderr.writeln('FAIL: $name did not load (malformed=${r.malformed})');
+        exit(1);
+      }
+    } else {
+      if (!r.malformed || v.left != null) {
+        stderr.writeln('FAIL: $name loaded (malformed=${r.malformed})');
+        exit(1);
+      }
+    }
+  }
+}
+`)
+	dir := t.TempDir()
+	writeFiles(t, dir, set)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, dartBinary(t), "--enable-asserts", "slot_probe.dart")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("slot kinds cycle probe failed: %v\n%s", err, out)
+	}
+}
