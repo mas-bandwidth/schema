@@ -15912,7 +15912,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, while a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape currently decodes to `U+FFFD` across all nine original ports (pending the stricter named refusal `string_lone_surrogate` under deferred card `sprint-out/schema-go-json-refuses-lone-surrogates`, §16.3, §16.12). So an unpaired surrogate in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) is `kind_mismatch`, the field at its default. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string makes the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -16161,14 +16161,28 @@ text's integrity without saying so. Refusing also keeps §5's guarantee for the
 text as it holds for the wire: an instance a read produced is always one the
 reference can re-save. §16.12 holds both readers to it over an outside corpus. What remains is an instance
 built in code, and the writer answers for it rather than emitting a text no
-conforming parser can read. Held first in Go, in both of its text readers:
-the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
-pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
-`scanStored` and `scanWString`), which refuses with the same `Malformed` and
-the same `Reason`. The C walk carries it too (`table_json_scan_unit`; C's report
-has no `Reason` text, so it answers `Malformed`), and so does the Rust reader
-(`Jr::read_string` under `<root>_from_json_bytes`, answering `Malformed`); every
-other backend keeps its behaviour until its port.
+conforming parser can read.
+The two named refusals stand at different stages today:
+`string_not_utf8` is held now in Go — in both the generated walk
+(`internal/codegen/gotable/json.go`, `scanText`) and the pack text reader
+`schema pack` reads a tree with (`internal/tabletext/read.go`, `scanStored` and
+`scanWString`), which refuses with the same `Malformed` and the same `Reason` —
+and in the C (`table_json_scan_unit`), Rust (`Jr::read_string` under
+`<root>_from_json_bytes`), C# (`TableJson.ScanText`), Java, and Elixir
+byte-accepting text readers (plus the JavaScript conformance byte boundary);
+every other backend keeps its UTF-8 input boundary until its port.
+`string_lone_surrogate`, by contrast, is **pending** under deferred card
+`sprint-out/schema-go-json-refuses-lone-surrogates` (`docs/roadmap.sexp`,
+`testdata/jsontestsuite/PENDING.tsv`, §16.12): until that card lands, a
+well-formed `\uXXXX\uYYYY` surrogate pair decodes to its supplementary scalar
+value, and a lone or out-of-order `\uD800`..`\uDFFF` escape currently reads as
+`U+FFFD` across `internal/tabletext/read.go` and all nine original ports (`go`,
+`cpp`, `c`, `cs`, `rust`, `java`, `js`, `dart`, `elixir`), as pinned by
+conformance rows `str-lone-lead-surrogate` and `str-lone-trail-surrogate`
+(`testdata/conformance/tables/MANIFEST.txt`) and hostile-corpus rows
+`conformance-str-lone-lead-surrogate`, `conformance-str-lone-trail-surrogate`,
+and `fuzz-text-lone_lead_surrogate`
+(`internal/ci/hostilecorpus/corpus/manifest.tsv`).
 **The refusal comes BEFORE any clamp**: an ill-formed byte at or past a
 field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
@@ -17208,7 +17222,12 @@ emits one.
 that are not well-formed UTF-8, `string_lone_surrogate` for a lone or
 out-of-order surrogate escape, at every string site. A silent `U+FFFD` would
 make two texts one value; this is the security rule, and it is not traded for
-leniency.
+leniency. `string_not_utf8` is met today; the ten `string_lone_surrogate` rows
+in the table below remain pending under deferred card
+`sprint-out/schema-go-json-refuses-lone-surrogates` (`testdata/jsontestsuite/PENDING.tsv`),
+while the current readers across `internal/tabletext/read.go` and all nine
+original ports decode a lone or out-of-order `\uD800`..`\uDFFF` escape as
+`U+FFFD` (§16.2, §16.3).
 
 The table below is read by `internal/jsontestsuite` out of this file, which is
 its one source; no test carries a copy. A file with no row takes its prefix's
@@ -17242,16 +17261,16 @@ verdict.
 | `i_string_overlong_sequence_6_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) |
 | `i_string_overlong_sequence_6_bytes_null.json` | refuse | `string_not_utf8`: an overlong encoding of zero (§16.3) |
 | `i_string_truncated-utf-8.json` | refuse | `string_not_utf8`: a sequence cut short (§16.3) |
-| `i_object_key_lone_2nd_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone, in a key (§16.3) |
-| `i_string_1st_surrogate_but_2nd_missing.json` | refuse | `string_lone_surrogate`: a high surrogate escape with no low half (§16.3) |
-| `i_string_1st_valid_surrogate_2nd_invalid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by a non-surrogate escape (§16.3) |
-| `i_string_incomplete_surrogate_and_escape_valid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by another escape (§16.3) |
-| `i_string_incomplete_surrogate_pair.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
-| `i_string_incomplete_surrogates_escape_valid.json` | refuse | `string_lone_surrogate`: two high surrogate escapes (§16.3) |
-| `i_string_invalid_lonely_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape alone (§16.3) |
-| `i_string_invalid_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
-| `i_string_inverted_surrogates_U+1D11E.json` | refuse | `string_lone_surrogate`: the low half escaped before the high (§16.3) |
-| `i_string_lone_second_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone (§16.3) |
+| `i_object_key_lone_2nd_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone, in a key (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_1st_surrogate_but_2nd_missing.json` | refuse | `string_lone_surrogate`: a high surrogate escape with no low half (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_1st_valid_surrogate_2nd_invalid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by a non-surrogate escape (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_incomplete_surrogate_and_escape_valid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by another escape (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_incomplete_surrogate_pair.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_incomplete_surrogates_escape_valid.json` | refuse | `string_lone_surrogate`: two high surrogate escapes (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_invalid_lonely_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape alone (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_invalid_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_inverted_surrogates_U+1D11E.json` | refuse | `string_lone_surrogate`: the low half escaped before the high (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_lone_second_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
 | `i_string_UTF-16LE_with_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a UTF-16 mark starts no value |
 | `i_string_utf16BE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte starts no value |
 | `i_string_utf16LE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte inside an array is not JSON |
@@ -17260,9 +17279,10 @@ verdict.
 
 **PENDING.** `testdata/jsontestsuite/PENDING.tsv` names each file a reader at
 this commit does not yet meet, one per line as `<file>` TAB `<card>`, with the
-card that meets it. A pending file may disagree with its row and the harness
-lists it; a pending file that AGREES is a failure, "met: remove it from
-PENDING", so the list cannot outlive the gap it names.
+card that meets it (currently the ten `i_*surrogate*.json` rows above under
+`schema-go-json-refuses-lone-surrogates`). A pending file may disagree with its
+row and the harness lists it; a pending file that AGREES is a failure, "met:
+remove it from PENDING", so the list cannot outlive the gap it names.
 
 **Held by test.** `TestJSONTestSuiteEngine` drives every file through the
 engine's layer in its own package; `TestJSONTestSuiteGenerated` drives every
