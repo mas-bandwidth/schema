@@ -1,0 +1,229 @@
+[
+  {
+    "name": "map_empty",
+    "root": "MapRoot",
+    "wire": "01000000000000000000",
+    "region": 32,
+    "input": "{}"
+  },
+  {
+    "name": "map_values",
+    "root": "MapRoot",
+    "wire": "01010e1b0d0118020401000000030d0e040e0a0402010000000200000000000053a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27210400000000000000",
+    "region": 64,
+    "input": "{\"entries\":{\"1\":{\"values\":[1,2]}}}"
+  },
+  {
+    "name": "map_multiple",
+    "root": "MapRoot",
+    "wire": "01010e340d021c0204feffffff030d12040e0e0403010000000200000003000000000014020409000000030d0a040e0604010400000000000053a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27210400000000000000",
+    "region": 96,
+    "input": "{\"entries\":{\"-2\":{\"values\":[1,2,3]},\"9\":{\"values\":[4]}}}"
+  },
+  {
+    "name": "optional_absent",
+    "root": "OptionalMapRoot",
+    "wire": "01000000000000000000",
+    "region": 40,
+    "input": "{}"
+  },
+  {
+    "name": "optional_empty",
+    "root": "OptionalMapRoot",
+    "wire": "01010e020d000053a245082ca7b2c50100000000000000",
+    "region": 40,
+    "input": "{\"entries\":{}}"
+  },
+  {
+    "name": "optional_values",
+    "root": "OptionalMapRoot",
+    "wire": "01010e270d0207020401000000001c020402000000030d12040e0e040307000000080000000900000000000053a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27210400000000000000",
+    "region": 120,
+    "input": "{\"entries\":{\"1\":null,\"2\":{\"values\":[7,8,9]}}}"
+  },
+  {
+    "name": "keyed_empty",
+    "root": "KeyedRoot",
+    "wire": "01000000000000000000",
+    "region": 48,
+    "input": "{}"
+  },
+  {
+    "name": "keyed_values",
+    "root": "KeyedRoot",
+    "wire": "010110120d01020e010e0a040201000000020000000000fb674d1acf7b2721ec2202864cfc63af0200000000000000",
+    "region": 56,
+    "input": "{\"values\":{\"A\":{\"values\":[1,2]}}}"
+  },
+  {
+    "name": "keyed_multiple",
+    "root": "KeyedRoot",
+    "wire": "010110260d02020e010e0a04020100000002000000000312010e0e04030300000004000000050000000000fb674d1acf7b2721ec2202864cfc63af052802864cff63af0300000000000000",
+    "region": 72,
+    "input": "{\"values\":{\"A\":{\"values\":[1,2]},\"B\":{\"values\":[3,4,5]}}}"
+  },
+  {
+    "name": "union_none",
+    "root": "UnionRoot",
+    "wire": "01000000000000000000",
+    "region": 40,
+    "input": "{}"
+  },
+  {
+    "name": "union_void",
+    "root": "UnionRoot",
+    "wire": "01010f02200000ea0ce83094fde47c0e0532421ad70f500200000000000000",
+    "region": 40,
+    "input": "{\"value\":{\"Empty\":null}}"
+  },
+  {
+    "name": "union_scalar",
+    "root": "UnionRoot",
+    "wire": "01010f0204040700000000ea0ce83094fde47cdd7b6b21b801ab5d0200000000000000",
+    "region": 40,
+    "input": "{\"value\":{\"scalar\":7}}"
+  },
+  {
+    "name": "union_table",
+    "root": "UnionRoot",
+    "wire": "01010f020d0e030e0a040201000000020000000000ea0ce83094fde47c9d48002576342462fb674d1acf7b27210300000000000000",
+    "region": 48,
+    "input": "{\"value\":{\"child\":{\"values\":[1,2]}}}"
+  },
+  {
+    "name": "union_list_arm",
+    "root": "UnionRoot",
+    "wire": "01010f020d20030e1c0d020e030e0a04020100000002000000000a030e06040103000000000000ea0ce83094fde47c41817469ad9a77bffb674d1acf7b27210300000000000000",
+    "region": 88,
+    "input": "{\"value\":{\"list\":{\"values\":[{\"values\":[1,2]},{\"values\":[3]}]}}}"
+  },
+  {
+    "name": "union_map_arm",
+    "root": "UnionRoot",
+    "wire": "01010f020d1f020e1b0d0118030404000000010d0e040e0a0402010000000200000000000000ea0ce83094fde47c53a245082ca7b2c5ec105b36194ac93dfb674d1acf7b27210400000000000000",
+    "region": 72,
+    "input": "{\"value\":{\"entries\":{\"entries\":{\"4\":{\"values\":[1,2]}}}}}"
+  },
+  {
+    "name": "union_pointer",
+    "root": "UnionRoot",
+    "wire": "01010f02110102030c1101040e050e0a040201000000020000000000ea0ce83094fde47c8a49d9b507bb525bffffffffffffffffb5d173bbb485c0a5fb674d1acf7b27210500000000000000",
+    "region": 80,
+    "input": "{\"value\":{\"pointer\":{\"values\":[1,2]}}}"
+  },
+  {
+    "name": "union_blob",
+    "root": "UnionRoot",
+    "wire": "01010f02110102030c0601040301020300ea0ce83094fde47cca4891c29bb373c5ffffffffffffffffe44f1c4f47c02e2f0400000000000000",
+    "region": 72,
+    "input": "{\"value\":{\"blob\":\"AQID\"}}"
+  },
+  {
+    "name": "union_list",
+    "root": "UnionListRoot",
+    "wire": "01010e130f01020d0e010e0a040201000000020000000000fb674d1acf7b27219d480025763424620200000000000000",
+    "region": 64,
+    "input": "{\"values\":[{\"child\":{\"values\":[1,2]}}]}"
+  },
+  {
+    "name": "union_list_mixed",
+    "root": "UnionListRoot",
+    "wire": "01010e2a0f03022000030d0e010e0a0402010000000200000000040d11010e0d0d010a010e06040103000000000000fb674d1acf7b27210e0532421ad70f509d4800257634246241817469ad9a77bf0400000000000000",
+    "region": 136,
+    "input": "{\"values\":[{\"Empty\":null},{\"child\":{\"values\":[1,2]}},{\"list\":{\"values\":[{\"values\":[3]}]}}]}"
+  },
+  {
+    "name": "union_bounded",
+    "root": "BoundedUnionRoot",
+    "wire": "01010e130f01020d0e010e0a040201000000020000000000fb674d1acf7b27219d480025763424620200000000000000",
+    "region": 104,
+    "input": "{\"values\":[{\"child\":{\"values\":[1,2]}}]}"
+  },
+  {
+    "name": "union_nested",
+    "root": "NestedRoot",
+    "wire": "01010f020f11030d0e040e0a040201000000020000000000ea0ce83094fde47cb5cc700519c056e79d48002576342462fb674d1acf7b27210400000000000000",
+    "region": 56,
+    "input": "{\"value\":{\"arm\":{\"child\":{\"values\":[1,2]}}}}"
+  },
+  {
+    "name": "holder_closure",
+    "root": "Holder",
+    "wire": "01010d1f020e1b0d0118030401000000040d0e050e0a04020100000002000000000000061102070c26010823020e1f0d011c030402000000040d12050e0e0403030000000400000005000000000000000a0a53078bf0c5ef53a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27218a49d9b507bb525bffffffffffffffffb9f10c77f4fe663d0800000000000000",
+    "region": 144,
+    "input": "{\"nested\":{\"entries\":{\"1\":{\"values\":[1,2]}}},\"pointer\":{\"entries\":{\"2\":{\"values\":[3,4,5]}}}}"
+  },
+  {
+    "name": "list_fixed_width",
+    "root": "Leaf",
+    "wire": "01010e0e040301000000020000000300000000fb674d1acf7b27210100000000000000",
+    "region": 48,
+    "input": "{\"values\":[1,2,3]}"
+  },
+  {
+    "name": "map_wrong_kind",
+    "root": "MapRoot",
+    "wire": "01010e1b020118020401000000030d0e040e0a0402010000000200000000000053a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27210400000000000000",
+    "region": 32
+  },
+  {
+    "name": "map_count_byte_floor",
+    "root": "MapRoot",
+    "wire": "01010e1b0d6418020401000000030d0e040e0a0402010000000200000000000053a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27210400000000000000",
+    "region": -1
+  },
+  {
+    "name": "map_truncated_entry",
+    "root": "MapRoot",
+    "wire": "01010e1b0d0164020401000000030d0e040e0a0402010000000200000000000053a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27210400000000000000",
+    "region": 56
+  },
+  {
+    "name": "keyed_unknown_key",
+    "root": "KeyedRoot",
+    "wire": "010110120d017f0e010e0a040201000000020000000000fb674d1acf7b2721ec2202864cfc63af0200000000000000",
+    "region": 56
+  },
+  {
+    "name": "keyed_truncated_entry",
+    "root": "KeyedRoot",
+    "wire": "010110120d01027f010e0a040201000000020000000000fb674d1acf7b2721ec2202864cfc63af0200000000000000",
+    "region": 48
+  },
+  {
+    "name": "union_unknown_arm",
+    "root": "UnionRoot",
+    "wire": "01010f7f0d0e030e0a040201000000020000000000ea0ce83094fde47c9d48002576342462fb674d1acf7b27210300000000000000",
+    "region": 40
+  },
+  {
+    "name": "union_wrong_arm_kind",
+    "root": "UnionRoot",
+    "wire": "01010f02020e030e0a040201000000020000000000ea0ce83094fde47c9d48002576342462fb674d1acf7b27210300000000000000",
+    "region": 48
+  },
+  {
+    "name": "union_truncated_arm",
+    "root": "UnionRoot",
+    "wire": "01010f020d7f030e0a040201000000020000000000ea0ce83094fde47c9d48002576342462fb674d1acf7b27210300000000000000",
+    "region": 40
+  },
+  {
+    "name": "list_fixed_width_truncated",
+    "root": "Leaf",
+    "wire": "01010e0e040401000000020000000300000000fb674d1acf7b27210100000000000000",
+    "region": -1
+  },
+  {
+    "name": "map_wrong_form",
+    "root": "MapRoot",
+    "wire": "02010e1b0d0118020401000000030d0e040e0a0402010000000200000000000053a245082ca7b2c5ec105b36194ac93dea0ce83094fde47cfb674d1acf7b27210400000000000000",
+    "region": -1
+  },
+  {
+    "name": "bounded_table_overflow",
+    "root": "BoundedLeaf",
+    "wire": "01010e1c0d020e010e0a04020100000002000000000a010e060401030000000000fb674d1acf7b27210100000000000000",
+    "region": 56
+  }
+]

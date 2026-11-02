@@ -2090,3 +2090,13 @@ tables-elixir-void-union: toolchain-elixir
 		-count=1 -timeout=0 -run '^TestElixirVoidUnionNative$$' ./internal/codegen/elixirtable/
 
 test-elixir: tables-elixir-void-union
+
+
+# Framing-driven map, keyed and union extents use shared independent region pins.
+.PHONY: tables-elixir-region-closure
+tables-elixir-region-closure: toolchain-elixir
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		sh test/slowgate/proof tables-elixir-region-closure 'TestRegionClosureElixir' \
+		-count=1 -timeout=0 -run '^TestRegionClosureElixir$$' ./internal/codegen/elixirtable/
+
+test-elixir: tables-elixir-region-closure

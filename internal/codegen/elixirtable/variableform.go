@@ -243,71 +243,9 @@ func withoutArrayRoots(source string) string {
 	return source
 }
 
-// uncarriedRootNames names every table in the closure that reaches a map, a
-// union, or an enum-keyed array (docs/SPEC-TABLES.md §2.4, §2.6, §2.8, §11).
-// A map's generated entry is
-// uncarried on its own. The value type a map points at stays carried when no
-// field of that type is itself a map or a union: Item is a map's value and a
-// fixed table, and marking it uncarried would drop a root the wire still
-// carries. A holder is uncarried once a field of it names an uncarried table,
-// by value, by pointer or as an array element, so Army follows Squad. Names
-// are sorted.
-func uncarriedRootNames(u *ir.Unit) []string {
-	closure := ir.TableClosure(u)
-	poison := map[string]bool{}
-	changed := true
-	for changed {
-		changed = false
-		for name := range closure {
-			if poison[name] {
-				continue
-			}
-			st := u.Tables[name]
-			if st == nil {
-				continue
-			}
-			if reachesUncarried(st, poison) {
-				poison[name] = true
-				changed = true
-			}
-		}
-	}
-	names := make([]string, 0, len(poison))
-	for name := range poison {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// reachesUncarried reports a table the variable form must not walk
-// (docs/SPEC-TABLES.md §2.4, §2.6, §2.8). A union arm's payload is not a
-// field of the arm's table, so Point stays carried when Hit's arm names it.
-// An enum-keyed array is kind 16 (§3.2); this walker encodes an array as
-// kind 14, so a root that reaches one answers an error instead of a wrong
-// body (§11).
-func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
-	if st.IsMapEntry() && !st.IsTextListElem() {
-		return true
-	}
-	for _, f := range st.Fields {
-		if f.IsMap() || f.KeyEnum != "" {
-			return true
-		}
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch ref := f.Type.Ref.(type) {
-		case *ir.Union:
-			return true
-		case *ir.Struct:
-			if poison[ref.Name] {
-				return true
-			}
-		}
-	}
-	return false
-}
+// uncarriedRootNames is the compatibility roster for region measurement.
+// Maps, keyed arrays and union payloads now have framing-driven extent walks.
+func uncarriedRootNames(_ *ir.Unit) []string { return nil }
 
 var armKindPattern = regexp.MustCompile(`\bt: :([a-z_]+)`)
 
@@ -320,6 +258,8 @@ var armClauses = []struct {
 	kinds []string
 	text  string
 }{
+	{[]string{"union"}, "  defp arm_extent(%{t: :union} = arm, body, ids, at),\n"},
+	{[]string{"void", "table", "int", "float", "bool", "string", "wstring", "bytes", "enum", "pointer", "blob", "list", "keyed", "map"}, "  defp arm_extent(arm, body, ids, at),\n"},
 	{[]string{"void"}, "  defp arm_content(%{t: :void}, _v, _idx_map, ids, order), do: {<<>>, ids, order}\n"},
 	{[]string{"table"}, "  defp arm_content(%{t: :table} = a, v, idx_map, ids, order) do\n"},
 	{[]string{"int"}, "  defp arm_content(%{t: :int} = a, v, _idx_map, ids, order),\n"},
@@ -457,9 +397,10 @@ func withOnlyVoidArms(runtime string) string {
 // Elixir's type checker proves always raises; such a unit is emitted without
 // them.
 var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "arm_node_key",
-	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm"}
+	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm", "arm_extent", "union_elements_extent"}
 
 var unionClauses = []string{
+	"  defp field_extent(%{t: :union,",
 	"  defp collect_list_nodes(%{elem_kind: 15}",
 	"  defp emit_field(%{t: :union}",
 	"  defp emit_element(%{elem_kind: 15}",
@@ -475,15 +416,19 @@ var unionClauses = []string{
 
 const unionNodeBranch = "          :union ->\n            collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
 
+const unionExtentBranch = "          kind == 15 ->\n            union_elements_extent(field.elem, elems, count, ids, at)\n\n"
+
 // withoutUnions is the runtime for a unit with no union: unionFamilies and
 // unionClauses go, each with the comment directly above it, and so does the
 // node walk's union branch. Every name and clause must be found, so a
 // template change that renames one fails the emitter's tests.
 func withoutUnions(runtime string) string {
-	if strings.Count(runtime, unionNodeBranch) != 1 {
-		panic("elixirtable: the node walk's union branch not found exactly once")
+	for _, branch := range []string{unionNodeBranch, unionExtentBranch} {
+		if strings.Count(runtime, branch) != 1 {
+			panic("elixirtable: union walk branch not found exactly once: " + branch)
+		}
+		runtime = strings.Replace(runtime, branch, "", 1)
 	}
-	runtime = strings.Replace(runtime, unionNodeBranch, "", 1)
 	found := map[string]bool{}
 	runtime = dropTopLevel(runtime, func(head string) bool {
 		for _, name := range unionFamilies {
@@ -668,11 +613,7 @@ func replaceOnce(src, old, new string) string {
 // never matches, and every root of that unit stays carried.
 func uncarriedAttribute(names []string) string {
 	var b strings.Builder
-	b.WriteString("  # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md\n")
-	b.WriteString("  # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them\n")
-	b.WriteString("  # (§3, §3.2, §16) and the cook write lays them out (§7.2); the wire-fuzz\n")
-	b.WriteString("  # roster does not yet, so carried?/1 answers false for them there and the\n")
-	b.WriteString("  # roster sends it no mutant.\n")
+	b.WriteString("  # Maps, keyed arrays and union payloads participate in region measurement.\n")
 	var list strings.Builder
 	list.WriteString("[")
 	for _, name := range names {
@@ -1338,9 +1279,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],
     do: {leb_encode(Map.fetch!(idx_map, arm_node_key(t, a, v))), ids, order}
 
-  defp arm_node_key(:pointer, a, v), do: {a.type_id, node_identity(v)}
-  defp arm_node_key(:blob, _a, v), do: blob_site(v)
-
   defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do
     elements = pad_fixed(a, v || [])
     {body, _idx_map, ids, order} = save_list_elements(a, elements, idx_map, ids, order, [])
@@ -1349,6 +1287,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp arm_content(%{t: :union} = a, v, idx_map, ids, order),
     do: arm_header(a.elem, v, idx_map, ids, order)
+
+  defp arm_node_key(:pointer, a, v), do: {a.type_id, node_identity(v)}
+  defp arm_node_key(:blob, _a, v), do: blob_site(v)
 
   defp save_list_elements(_f, [], idx_map, ids, order, acc), do: {acc, idx_map, ids, order}
 
@@ -5269,6 +5210,48 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  defp field_extent(%{t: :map, elem: name}, payload, ids, at) do
+    with {_length, <<13, rest::binary>>} <- leb(payload),
+         {count, elems} <- leb(rest) do
+      if count > 0x7FFFFFFF or count > div(byte_size(elems), 2) do
+        :error
+      else
+        entry = Map.fetch!(@tables, name)
+        next = align_to(at, entry.align) + count * entry.size
+        elements_extent(entry, elems, count, ids, next)
+      end
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :keyed} = field, payload, ids, at) do
+    with {_length, <<kind, rest::binary>>} <- leb(payload),
+         true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),
+         {count, pairs} <- leb(rest) do
+      if kind == 13,
+        do: keyed_extent(field.item, pairs, count, ids, at),
+        else: {:ok, at}
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :union, elem: name}, payload, ids, at) do
+    un = Map.fetch!(@unions, name)
+
+    # Sizing follows the known arm's declared shape; the value reader diagnoses
+    # an incompatible arm kind separately, after reserving its region.
+    with {ref, <<_kind, rest::binary>>} when ref != 0 <- leb(payload),
+         id when id != :error <- resolve(ids, ref),
+         {:ok, arm_name} <- Map.fetch(un.by_id, id),
+         {length, body} when byte_size(body) >= length <- leb(rest) do
+      arm_extent(Map.fetch!(un.by_name, arm_name), binary_part(body, 0, length), ids, at)
+    else
+      _ -> {:ok, at}
+    end
+  end
+
   defp field_extent(%{t: :list} = field, payload, ids, at) do
     case leb(payload) do
       {_length, array} -> list_extent(field, array, ids, at)
@@ -5321,16 +5304,60 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+
+  defp arm_extent(%{t: :union} = arm, body, ids, at),
+    do: field_extent(arm, body, ids, at)
+
+  defp arm_extent(arm, body, ids, at),
+    do: field_extent(arm, leb_encode(byte_size(body)) <> body, ids, at)
+
+  # Keyed table slots are inline, but every framed value can hold extents.
+  # Unknown keys still reserve the storage declared by the complete framing.
+  defp keyed_extent(_field, _pairs, 0, _ids, at), do: {:ok, at}
+
+  defp keyed_extent(field, pairs, count, ids, at) do
+    with {_key, rest} <- leb(pairs),
+         {length, body} when byte_size(body) >= length <- leb(rest) do
+      value = binary_part(body, 0, length)
+      remaining = binary_part(body, length, byte_size(body) - length)
+
+      case field_extent(field, leb_encode(length) <> value, ids, at) do
+        {:ok, next} -> keyed_extent(field, remaining, count - 1, ids, next)
+        :error -> :error
+      end
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp union_elements_extent(_name, _elems, 0, _ids, at), do: {:ok, at}
+
+  defp union_elements_extent(name, elems, count, ids, at) do
+    case slice(elems, 15) do
+      {:ok, arm, rest} ->
+        case field_extent(%{t: :union, elem: name}, arm, ids, at) do
+          {:ok, next} -> union_elements_extent(name, rest, count - 1, ids, next)
+          :error -> :error
+        end
+
+      _ ->
+        {:ok, at}
+    end
+  end
+
   # a header whose element kind is not the declared one is a kind mismatch the
   # read answers as an empty list, so it places nothing (internal/tablewire
-  # extent.go): only a list DECLARED of tables descends into table elements.
+  # extent.go). Table and union payloads descend using the declared element type.
   defp list_extent(field, arr, ids, at) do
     with <<kind, count_rest::binary>> <- arr,
          true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),
          {count, elems} <- leb(count_rest) do
-      count = min(count, Map.get(field, :array_bound, count))
+      # The count's byte floor is the incoming element width, before any
+      # widening. Bounded arrays reserve no element extent of their own.
+      floor = if kind == 13, do: 2, else: max(kind_width(kind), 1)
+      list = field.array == :list
 
-      if count > 0x7FFFFFFF or count > byte_size(elems) do
+      if list and (count > 0x7FFFFFFF or count > div(byte_size(elems), floor)) do
         :error
       else
         at =
@@ -5342,8 +5369,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           kind == 13 ->
             elements_extent(Map.fetch!(@tables, field.elem), elems, count, ids, at)
 
+          kind == 15 ->
+            union_elements_extent(field.elem, elems, count, ids, at)
+
           kind == 12 and Map.get(field, :text_unbounded, false) ->
             text_elements_extent(elems, count, at)
+
 
           true ->
             {:ok, at}
