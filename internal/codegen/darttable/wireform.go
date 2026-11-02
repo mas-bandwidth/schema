@@ -760,7 +760,7 @@ final class TableWireWriter {
 }
 
 // _round is the region's alignment (§6.2, ir.TableRegionAlign).
-int _round(int n) => (n + ` + fmt.Sprintf("%d", ir.TableRegionAlign(g.unit)-1) + `) & -` + fmt.Sprintf("%d", ir.TableRegionAlign(g.unit)) + `;
+int _round(int n) => (n + `+fmt.Sprintf("%d", ir.TableRegionAlign(g.unit)-1)+`) & -`+fmt.Sprintf("%d", ir.TableRegionAlign(g.unit))+`;
 
 // _kindFloor is the minimum byte cost of one element of a counted array body,
 // the floor the count sanity check divides by (docs/SPEC-TABLES.md §6.2,
