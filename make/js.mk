@@ -634,7 +634,7 @@ test-js: tables-js-cook-write-rows
 # found by <F>Find). The rows' bytes themselves are tables-js-cook-write-rows.
 .PHONY: tables-js-cook-map
 tables-js-cook-map:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
 	@echo 'tables JS cook map: a Map built out of key order cooks the reference bytes, and a cooked map is found in place'
 
 test-js: tables-js-cook-map

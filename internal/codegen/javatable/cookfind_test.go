@@ -70,7 +70,6 @@ func runCookFind(t *testing.T, plant bool) (string, bool) {
 }
 
 func TestJavaCookMapFind(t *testing.T) {
-	slowtest.Gate(t, "the Java toolchain (javac and java)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	if out, ok := runCookFind(t, false); !ok || !strings.Contains(out, "find ok") {
@@ -79,7 +78,6 @@ func TestJavaCookMapFind(t *testing.T) {
 }
 
 func TestJavaCookMapFindNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Java toolchain (javac and java)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	if out, ok := runCookFind(t, true); ok {

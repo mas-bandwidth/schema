@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // docs/PORTING.md M19 on the JavaScript cook: a map or list holder is sixteen
@@ -78,6 +80,7 @@ func runNodeScript(t *testing.T, node, dir, script string) map[string]string {
 // the entries in the Map's own order reds here
 // (tables-js-cook-map-unsorted-negative-control).
 func TestCookMapWriterHoldsTheSortJavaScript(t *testing.T) {
+	slowtest.Gate(t, "node (it runs the generated module)")
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -170,6 +173,7 @@ for (const c of cases) {
 // The inner maps of loadouts are searched through the entry row's own Find,
 // so a search at depth is held too.
 func TestCookMapFindJavaScript(t *testing.T) {
+	slowtest.Gate(t, "node (it runs the generated module)")
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")

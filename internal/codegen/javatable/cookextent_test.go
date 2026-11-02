@@ -25,7 +25,6 @@ import (
 //     array is reserved (MCNodeExtentChildrenFirst.cfg);
 //   - unsorted_map: a map's entries laid in the value's order, not by key.
 func TestJavaCookExtentNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Java toolchain (javac and java)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	witnesses := []struct{ name, from, to string }{
@@ -107,7 +106,6 @@ func TestJavaCookExtentNegativeControl(t *testing.T) {
 // every depth before cooking and requires the same golden bytes in both
 // orders; the unsorted_map witness above is its control.
 func TestJavaCookMapWriterHoldsTheSort(t *testing.T) {
-	slowtest.Gate(t, "the Java toolchain (javac and java)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	javac, javaBin := javaTools(t)
