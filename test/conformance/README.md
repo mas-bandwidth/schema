@@ -350,33 +350,33 @@ because the contract is a COMMAND.
 
 ## The nightly
 
-`.github/workflows/nightly-conformance.yml` runs the corpus in BOTH
-DIRECTIONS every night at 05:41 UTC, on the fleet's runners and never on the
-host named space, and on `gh workflow run nightly-conformance.yml --ref
-<branch>`. Every port the registry discovers joins it with no edit there:
-the port list is `harness matrix --ports`, the registry without the reference.
+`.github/workflows/nightly-conformance.yml` checks cross-language compatibility
+every night at 05:41 UTC, on the fleet's runners and never on the host named
+space, and on `gh workflow run nightly-conformance.yml --ref <branch>`.
+Every registered port joins through `harness matrix --ports`.
 
-1. **Ports read what C++ writes.** `cpp-writes` builds the reference, has it
-   write the whole corpus (the type and table wires, the message form, the
-   block images, the cook and block pins, the fixed-form oracle in
-   `build/fixedform-corpus`), publishes it as the `cpp-corpus` artifact and
-   fails if it is not the committed one. Each `port (<lang>)` job lays that
-   corpus over its checkout, runs `harness run --only <lang> --claims` — every
-   answer byte-compared with C++'s canonical write, exactly as the per-commit
-   matrix does — then the leg's fixed-form gate, and publishes everything the
-   leg wrote as `port-<lang>-writes`.
-2. **C++ reads what ports write.** `cpp-reads-ports` hands each port's writes
-   to `harness cross-read --lang <lang> --writes <dir>`. On every surface
-   whose answer is a form the reference loads back — `wire` and `json-read`
-   (wire bytes, re-read by the reference's `wire`), `message` (re-read by its
-   `message`) and `json-write` (re-read by the reference-only `json-text`
-   surface: FromJson the port's text, ToJson it) — the port's bytes must
-   equal C++'s own write for the case, and the reference must accept them and
-   re-save them byte-identical. A refusal is rerun one case at a time, so it
-   is named by case. The other surfaces write answers the reference has no
-   reader for (a report, a verdict, a dump) or bytes it does not write
-   (`retain-save`, and `cook-write`, which `schema cook` writes), so they
-   have one direction.
+The current completion target is the original nine: C++, C, C#, Go, Rust,
+Java, JavaScript, Dart and Elixir. Required gaps in any of these remain open;
+results for other registered ports do not substitute for them.
+
+1. **C++ writes and validates one canonical corpus.** `cpp-writes` produces
+   the wire, text, message, block, cook and fixed-form corpus, checks it against
+   the committed pins, and runs `harness run --only cpp`. The reference reads
+   the corpus and its answers must match the expected bytes. The job publishes
+   the shared `cpp-corpus` and its own `reference-report` coverage artifact.
+2. **Every port reads that same corpus and matches its output.** Each
+   `port (<lang>)` job runs `harness run --only <lang> --claims` and its
+   fixed-form gate. Every writer's answer must equal the canonical bytes;
+   missing answers and mismatches fail, while named unsupported cases remain
+   visible. The job saves its writes and coverage as `port-<lang>-writes`.
+
+**Work is O(n) in languages, not O(n²).** If every writer produces the same
+bytes and every reader accepts those bytes, every writer's output is
+interoperable with every reader on the covered corpus. The reference need
+not read a separate identical copy from each writer. The `coverage` job
+records the reference and port results together; absence is not completion.
+The `harness cross-read` command remains available for individual diagnostics,
+but is not repeated per language in the nightly.
 
 **A CLAIMED CASE MAY NOT BE ABSENT; AN UNCLAIMED ONE IS COVERAGE.** A port
 claims a case when the case's unit uses at least one construct of the

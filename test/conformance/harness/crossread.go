@@ -1,38 +1,10 @@
-// `harness cross-read` — the second direction of the nightly
-// (test/conformance/README.md, "The nightly"; docs/SPEC-TABLES.md §3, §3.3,
-// §16).
-//
-// `harness run` is the first direction: every leg reads what C++ wrote and its
-// bytes are held to the C++ corpus. This is the other: the C++ reference reads
-// what a PORT wrote. For every case a leg answered on a surface that writes a
-// form C++ can load back, two things must hold:
-//
-//   - the port's bytes equal C++'s own canonical write for that case — the
-//     corpus's expectation, which the C++ leg is held to by `harness run`;
-//   - the C++ reference ACCEPTS the port's bytes and re-saves them
-//     byte-identical.
-//
-// The first alone would pass a port whose bytes happen to equal a golden C++
-// could not read under some other path; the second alone would pass a port
-// whose bytes C++ round-trips but does not write. Together they are the claim
-// the project exists to make: one value, one encoding, in every language.
-//
-// The surfaces, and how the reference re-reads each:
-//
-//	wire        the port's Save of the C++ wire    C++ `wire` over the port's file
-//	json-read   the port's Save of the C++ text    C++ `wire` over the port's file
-//	message     the port's SaveMessages            C++ `message` over the port's file
-//	json-write  the port's ToJson of the C++ wire  C++ `json-text`: FromJson, ToJson
-//
-// Every other surface writes an answer C++ has no reader for (a report, a
-// verdict, a dump) or bytes the reference does not write (retain-save's
-// retained records, cook-write's cooked files, which `schema cook` writes and
-// `harness run` holds them to), so it has no second direction.
-//
-// The reference is handed a SUBSTITUTED manifest, in the derived shape, whose
-// lines point at the port's files instead of the corpus's. Its answers are
-// compared here; when the reference refuses (exits nonzero) the surface is run
-// again one case at a time, so a refusal is named by case and not by surface.
+// `harness cross-read` diagnoses one saved set of language-driver answers.
+// It checks canonical byte equality and has the reference read the answers
+// back, localizing a refusal to its case. The nightly does not repeat this
+// per writer: `harness run --only cpp` validates the shared canonical corpus,
+// and every language's run checks its own answers against those same bytes.
+// Equality makes extra reference reads of identical copies redundant.
+// See test/conformance/README.md, "The nightly".
 package main
 
 import (

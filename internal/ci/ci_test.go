@@ -1111,7 +1111,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:go-test",
 		"ci-full.yml:pins",
 		"nightly-conformance.yml:coverage",
-		"nightly-conformance.yml:cpp-reads-ports",
 		"nightly-conformance.yml:cpp-writes",
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",

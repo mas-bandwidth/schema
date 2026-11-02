@@ -387,8 +387,8 @@ func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) 
 		"`+Nnc` ABSENT and not claimed (not yet carried; not red), `+Nr` the row's named writer refusal. " +
 		"`absent`: the leg does not run that surface. Policy: test/conformance/README.md, \"The nightly\".\n\n")
 	for _, dir := range []struct{ key, title string }{
-		{directionReadsCpp, "Ports read what C++ writes (and match its bytes)"},
-		{directionCppReads, "C++ reads what each port writes (accepts, re-saves byte-identical, equals C++'s own write)"},
+		{directionReadsCpp, "Languages read the canonical corpus and match its bytes"},
+		{directionCppReads, "Reference reread diagnostics (not repeated per language in the nightly)"},
 	} {
 		var langs []string
 		type key struct{ surface, class string }
