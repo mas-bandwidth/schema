@@ -1288,6 +1288,8 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 	}
 	fv.Count = 0
 	placed := 0
+	var spent int64
+	full := false
 	bound := int(f.ArrayBound)
 	if f.Array == ir.ArrayList {
 		bound = math.MaxInt32
@@ -1309,10 +1311,15 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		if f.Array == ir.ArrayList && placed == len(fv.Elems) {
+		if !full && f.Array == ir.ArrayList && placed == len(fv.Elems) {
 			fv.Elems = append(fv.Elems, in.m.elementZero(f))
 		}
+		before := placed
 		switch {
+		case full:
+			if !in.skipValue(depth + 1) {
+				return false
+			}
 		case placed >= bound:
 			in.report.Clamped++
 			if !in.skipValue(depth + 1) {
@@ -1344,6 +1351,13 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 				rec.Fields[0].Present = true
 			}
 			placed++
+		}
+		if placed > before && !in.m.KeepTextTotal(fv, placed-1, &spent, in.report) {
+			placed--
+			full = true
+			if f.Array == ir.ArrayList {
+				fv.Elems = fv.Elems[:placed]
+			}
 		}
 		c = in.peek()
 		if c == ',' {

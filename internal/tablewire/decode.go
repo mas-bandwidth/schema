@@ -1021,6 +1021,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			fv.Cell.Str = payload
 		} else {
+			var spent int64
 			for i := 0; i < keep; i++ {
 				if f.Array == ir.ArrayList {
 					fv.Elems = append(fv.Elems, r.m.ElementZero(f))
@@ -1028,12 +1029,14 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				if !sub.element(fv, i, int(ek)) {
 					break
 				}
-				decoded = i + 1
+				decoded = r.textTotal(fv, i+1, &spent)
+				if decoded != i+1 {
+					break
+				}
 			}
 			if f.Array == ir.ArrayList {
 				fv.Elems = fv.Elems[:decoded] // the prefix the body covered
 			}
-			decoded = r.textTotal(fv, decoded)
 		}
 		if counted {
 			// Entry reset initializes the unused tail. A replacement need only
@@ -1132,37 +1135,15 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 // element that would carry the sum past N and every element after it, and
 // counts `clamped` ONCE for the field, naming it. A count clamped against
 // `[..N]` above is counted apart. It returns the count the field keeps.
-func (r *wireReader) textTotal(fv *tabletext.Field, decoded int) int {
+func (r *wireReader) textTotal(fv *tabletext.Field, decoded int, spent *int64) int {
 	f := fv.Def
 	if f.TextTotal <= 0 || !f.IsTextList() {
 		return decoded
 	}
-	var sum int64
-	keep := decoded
-	for i := range decoded {
-		if rec := fv.Elems[i].Tab; rec != nil {
-			sum += int64(len(rec.Fields[0].Cell.Str))
-		}
-		if sum > f.TextTotal {
-			keep = i
-			break
-		}
-	}
-	if keep == decoded {
+	if r.m.KeepTextTotal(fv, decoded-1, spent, r.report) {
 		return decoded
 	}
-	r.report.Clamped++
-	if r.report.Reason == "" {
-		r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
-	}
-	if f.Array == ir.ArrayList {
-		fv.Elems = fv.Elems[:keep]
-	} else {
-		for i := keep; i < decoded; i++ {
-			fv.Elems[i] = r.m.ElementZero(f)
-		}
-	}
-	return keep
+	return decoded - 1
 }
 
 // textListElement reads one element of a PLAIN text list (docs/SPEC-TABLES.md

@@ -186,6 +186,9 @@ func (e *encoder) header(w *buf, id uint64, kind int) {
 }
 
 func encodeField(e *encoder, w *buf, inst *tabletext.Instance, fv *tabletext.Field) error {
+	if err := tabletext.ValidateTextTotal(fv); err != nil {
+		return err
+	}
 	f := fv.Def
 	id := ir.TableFieldWireId(f)
 	kind := ir.TableWireScalarKind(f)
