@@ -24,6 +24,14 @@ does not add an all-pairs matrix or ask the reference to read each writer.
 | Wire and retaining load | Build the existing all-roots driver. Run the shared differential `wire-fuzz` directly for plain and `--retain`, each at seeds 1, 2 and 3 with 100000 random mutants plus the complete enumerated pass. No `--finite-owed`, replay-only replacement, caller seed/count reduction or custom roster is accepted. |
 | Wire/retention controls | Execute the existing planted wire controls and retention controls. C, Go and Rust's existing retention overlays are reproduced with only the outer Go-suite timeout changed to zero; the exact intended test failure and diagnostic remain mandatory. |
 
+C# runs those six passes through its native region loader and retaining loader,
+then runs three additional plain mutable-builder passes with `--builder` at the
+same seeds and counts. The two profiles have different count-cap contracts.
+Each has its own mandatory phase names and strict summary; neither can stand
+in for the other. Fixed/message seeds are normatively outside these additional
+builder-only passes and remain covered by the six region passes. A builder
+pass never uses the region retention binding.
+
 The packet/table package pairs are:
 
 | Language | Packet package | Table package | Packet execution |

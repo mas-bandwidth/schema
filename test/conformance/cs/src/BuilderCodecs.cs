@@ -8,9 +8,23 @@ static partial class Program
         Find("widelist","Wide").PartialLoad=(bytes,report)=>
         {
             using var builder=new Widelistdemo.WideBuilder();
-            var inner=new Widelistdemo.TableReport(); Widelistdemo.Schema.WideLoadBuilder(builder,bytes,inner); Fill(report,Copy(inner));
+            var inner=new Widelistdemo.TableReport(); builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
             if(inner.Refused || inner.Malformed) { return new Widelistdemo.Wide(); }
             return Widelistdemo.Schema.TableWire.CopyRegion(Widelistdemo.Schema.WideTableType(),(IntPtr)builder.GetRoot(),true);
+        };
+        Find("featurewitnesses","Root").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Featurewitnesses.RootBuilder();
+            var inner=new Featurewitnesses.TableReport();
+            builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            return Featurewitnesses.Schema.TableWire.CopyRegion(Featurewitnesses.Schema.RootTableType(),(IntPtr)builder.GetRoot(),true);
+        };
+        Find("featurewitnesses","ArrayRoot").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Featurewitnesses.ArrayRootBuilder();
+            var inner=new Featurewitnesses.TableReport();
+            builderLoaded=builder.Load(bytes,inner); Fill(report,Copy(inner));
+            return Featurewitnesses.Schema.TableWire.CopyRegion(Featurewitnesses.Schema.ArrayRootTableType(),(IntPtr)builder.GetRoot(),true);
         };
         Find("listdemo","Unbounded").PartialLoad=(bytes,report)=>
         {
