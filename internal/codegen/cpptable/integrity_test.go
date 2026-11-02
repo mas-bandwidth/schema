@@ -613,6 +613,32 @@ int main()
             { printf( "short message batch\n" ); return 1; }
     }
 
+    {
+        uint8_t scratch[16] = { 0 };
+        if ( schema_integrity_seal( NULL, 1 ) != -1 || schema_integrity_seal( scratch, -1 ) != -1 || schema_integrity_seal( scratch, INT64_MAX ) != -1 || schema_integrity_seal( scratch, INT64_MAX - 3 ) != -1 )
+            { printf( "schema_integrity_seal boundary guards\n" ); return 1; }
+        if ( TableMessageBatchSeal( NULL, 1, 8 ) != -1 || TableMessageBatchSeal( scratch, 1, 3 ) != -1 || TableMessageBatchSeal( scratch, INT64_MAX - 2, INT64_MAX ) != -1 )
+            { printf( "TableMessageBatchSeal boundary guards\n" ); return 1; }
+        Ledger msg;
+        LedgerReset( msg );
+        for ( int64_t cap = -2; cap < 4; cap++ )
+        {
+            if ( LedgerSave( msg, scratch, cap ) != -1 )
+                { printf( "LedgerSave short capacity %lld\n", (long long) cap ); return 1; }
+            if ( LedgerSaveMessages( &msg, 1, scratch, cap, &report ) != -1 )
+                { printf( "LedgerSaveMessages short capacity %lld\n", (long long) cap ); return 1; }
+        }
+        Ledger out;
+        TableReport r;
+        if ( LedgerLoadTolerant( out, NULL, 8, &r ) || !r.malformed )
+            { printf( "LedgerLoadTolerant NULL buffer with positive length\n" ); return 1; }
+        Ledger out_batch[1];
+        int64_t got = 1;
+        r = TableReport();
+        if ( LedgerLoadMessages( out_batch, &got, vocab, NULL, 8, &r ) || got != 0 || !r.malformed )
+            { printf( "LedgerLoadMessages NULL buffer with positive length\n" ); return 1; }
+    }
+
     return 0;
 }
 `

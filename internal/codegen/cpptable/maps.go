@@ -1207,6 +1207,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 		typ, _ := g.cppFieldType(key.Type)
 		g.pf("            if ( field_kind != %d && TableKindWidens( field_kind, %d ) )\n            {\n", kind, kind)
 		g.pf("                out.widened = true;\n")
+		g.pf("                out.kind_bad = false; // this occurrence replaces an earlier key kind (§2.8, §3)\n")
 		g.pf("                out.found = true;\n")
 		if ir.TableKindSigned(kind) {
 			g.pf("                int64_t widened_v = 0;\n")
