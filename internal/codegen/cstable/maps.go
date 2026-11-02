@@ -141,9 +141,25 @@ const tableMapJsonSource = `
             if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
             else
             {
-                if (field.Kind == 17 && !field.IsArray && ValueShape(text, ref input) == 'z')
-                { if (!Literal(text, ref input, "null")) { return false; } }
-                else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                char shape = ValueShape(text, ref input);
+                if ((field.Optional || field.Kind == 17 && !field.IsArray) && shape == 'z')
+                {
+                    if (!Literal(text, ref input, "null")) { return false; }
+                    field.ResetField(entry);
+                    if (field.Optional) { field.SetPresent(entry, false); }
+                }
+                else
+                {
+                    // A key names a present optional value even when the
+                    // value's shape is wrong; the new entry keeps its default.
+                    if (field.Optional) { field.SetPresent(entry, true); }
+                    if (shape != Shape(field))
+                    {
+                        input.Report.KindMismatch++;
+                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    }
+                    else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                }
                 int at = 0;
                 while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
                 if (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) == 0)
