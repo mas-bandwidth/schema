@@ -665,10 +665,10 @@ func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
 		g.pf("    return 1;\n}\n")
 		extent, hasExtent := "NULL", 0
 		if g.hasCookExtent(st) {
-			extent = g.sym(st.Name, "cook_extent")
+			extent = g.sym(st.Name, "extent_pack")
 			hasExtent = 1
 		}
-		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s, %d, %d, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"), ir.CookNodeAlign(g.unit, st), hasExtent, g.sym(st.Name, "cook_body"), extent)
+		g.pf("static const TableNodeType %s = { UINT64_C(0x%016x), sizeof(%s), %s, %s, 0, %s, %s, %d, %d, %s, %s };\n\n", g.graphType(st.Name), ir.TableWireId(st.WireName()), st.Name, g.sym(st.Name, "node_save"), g.sym(st.Name, "graph_edges"), g.sym(st.Name, "extent"), g.sym(st.Name, "wire_storage"), ir.CookNodeAlign(g.unit, st), hasExtent, g.sym(st.Name, "body_pack"), extent)
 	}
 }
 
