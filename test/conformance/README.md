@@ -374,7 +374,16 @@ results for other registered ports do not substitute for them.
 bytes and every reader accepts those bytes, every writer's output is
 interoperable with every reader on the covered corpus. The reference need
 not read a separate identical copy from each writer. The `coverage` job
-records the reference and port results together; absence is not completion.
+records the reference and port results together. Its
+`coverage --require-original-nine` gate requires C++, C, C#, Go, Rust, Java,
+JavaScript, Dart and Elixir to cover every manifest-defined surface/class and
+case count. The reference rows are checked independently against that shape,
+so a missing reference row cannot shrink the denominator. Answered cases and
+the manifest's named required refusals count as complete; missing, failed or
+uncarried cases do not. Each of the eight ports must also record a passing
+fixed-form gate. The six expansion languages remain visible but are not part
+of this completion obligation. The table is printed and uploaded even when
+the gate fails; ordinary `coverage` remains an informational report.
 The `harness cross-read` command remains available for individual diagnostics,
 but is not repeated per language in the nightly.
 
@@ -389,11 +398,11 @@ registered as one. Under
 `--claims` a claimed case answered `<case>.absent`, on a surface the leg
 runs, fails the night by name (the reversed witness is
 `harness/claims_test.go`); a case the port does not claim, and a whole
-surface it does not run, fail nothing and are counted, and the `coverage`
-job publishes the per-port table of answered, failed, claimed-absent and
-not-carried cases per surface and class in every run's summary — Glenn,
-2026-10-25: a gap that does not fail the night is fine as long as it is
-seen. The harness is built with every `schema_leg_<lang>` tag there, because
+surface it does not run, remain informational in `run --claims`. The final
+original-nine completion gate is stricter: those gaps fail completion even
+when no individual feature was claimed. Expansion-language gaps remain
+visible in the per-port table of answered, failed, claimed-absent and
+not-carried cases per surface and class. The harness is built with every `schema_leg_<lang>` tag there, because
 a target behind a tag registers only under it, and a leg with no
 registration is refused rather than read as claiming nothing.
 

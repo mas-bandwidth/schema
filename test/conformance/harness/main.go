@@ -104,6 +104,8 @@ flags:
   --lang <lang>       the leg whose writes are re-read (cross-read only)
   --writes <dir>      that leg's answers, <surface>/<case> (cross-read only)
   --in <dir>          where the coverage rows are (coverage only)
+  --require-original-nine
+                      require complete original-nine coverage and fixed forms
   --ports             leave the reference leg out of the matrix (matrix only)
   --results <path>    write every case's verdict as JSON, the input of
                       "go run ./tools/matrix proof" (run only)
@@ -151,6 +153,7 @@ func main() {
 	lang := fs.String("lang", "", "the leg whose writes are re-read (cross-read only)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
 	in := fs.String("in", "", "where the coverage rows are (coverage only)")
+	requireNine := fs.Bool("require-original-nine", false, "require original-nine completion (coverage only)")
 	ports := fs.Bool("ports", false, "leave the reference leg out (matrix only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
@@ -169,11 +172,9 @@ func main() {
 		if *in == "" {
 			fatalf("coverage: --in names no directory")
 		}
-		rows, fixed, err := readCoverage(*in)
-		if err != nil {
+		if err := coverageReport(os.Stdout, *in, *manifest, *jsonDir, *reports, *requireNine); err != nil {
 			fatalf("%v", err)
 		}
-		coverageMarkdown(os.Stdout, rows, fixed)
 		return
 	}
 

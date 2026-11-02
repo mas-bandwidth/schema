@@ -11,8 +11,9 @@ name: Nightly conformance
 # builds, writes and validates the canonical corpus and verifies the committed
 # pins. `port (<lang>)` reads it, checks canonical output and claimed coverage,
 # and runs its fixed-form gate. `coverage` records C++ and every port's results.
-# Claimed absence fails; unimplemented coverage stays visible and does not
-# count as completed coverage. Per-language writes remain available as artifacts.
+# Final aggregation requires every original-nine surface/case and each port's
+# fixed form. Expansion languages remain visible without this completion
+# obligation. Per-language writes remain available as artifacts.
 #
 # THE FLEET'S RUNNERS, never hosted (standing rule, 2026-10-21), and never the
 # host named space, which is the game server and in no runner pool: every job
@@ -363,6 +364,7 @@ jobs:
         with:
           pattern: port-*-writes
           path: build/nightly/rows
+        continue-on-error: true  # missing artifacts are named by the completion gate
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: reference-report
@@ -372,9 +374,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/nightly/coverage build/nightly/rows
-          go run ./test/conformance/harness coverage --in build/nightly/rows > build/nightly/coverage/coverage.md
+          status=0
+          go run ./test/conformance/harness coverage --in build/nightly/rows --require-original-nine > build/nightly/coverage/coverage.md 2>&1 || status=$?
           cat build/nightly/coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
           cat build/nightly/coverage/coverage.md
+          exit "$status"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
