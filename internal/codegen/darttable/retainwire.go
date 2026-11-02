@@ -480,6 +480,8 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
 	g.pf("\tretain.reset();\n")
 	g.pf("\tfinal v = %s();\n", n)
+	g.pf("\tif (report.integrityMismatch) report.malformed = false;\n\treport.integrityMismatch = false;\n")
+	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
 	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
@@ -536,7 +538,11 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
-	g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	if st.Integrity != "" {
+		g.pf("\treturn tableIntegritySeal(w.buf);\n")
+	} else {
+		g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	}
 	g.pf("}\n\n")
 
 	g.pf("int %sWireMeasureRetain(%s v, TableRetain retain) {\n", d, n)

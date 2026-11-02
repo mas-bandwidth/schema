@@ -546,6 +546,7 @@ func (g *wireGen) emitConstants() {
 // table of the unit. It invents no contract of its own: the byte framing below
 // is §3's, read down to the card's closure.
 func (g *wireGen) emitRuntime() {
+	g.pf("%s", integrityRuntime(g.unit))
 	g.pf("%s", requiredWireRuntime)
 	g.pf("%s", `// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
@@ -558,6 +559,7 @@ final class TableWireReport {
   int clamped = 0;
   int duplicate = 0;
   bool malformed = false;
+  bool integrityMismatch = false;
   bool refused = false;
   bool _countRefused = false;
   int missingRequired = 0;
@@ -588,6 +590,7 @@ final class TableWireReport {
   // adding a malformed event. Earlier report events remain available.
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
+    if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
@@ -3052,7 +3055,11 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
-	g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	if st.Integrity != "" {
+		g.pf("\treturn tableIntegritySeal(w.buf);\n")
+	} else {
+		g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	}
 	g.pf("}\n\n")
 }
 
@@ -3065,13 +3072,15 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	fn := dartName(n) + "WireLoad"
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
+	g.pf("\treport ??= TableWireReport();\n\tif (report.integrityMismatch) report.malformed = false;\n\treport.integrityMismatch = false;\n")
+	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.path = [1];\n")
 	g.emitKnownTypes(st, "r", "v")
-	g.pf("\tif (report != null) r.report = report;\n")
+	g.pf("\tr.report = report;\n")
 	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
 	// tableOpen clears its NonFiniteFloat
 	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
@@ -3268,6 +3277,9 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	n := st.Name
 	fn := dartName(n) + "WireMeasure"
 	g.pf("int %s(Uint8List data) {\n", fn)
+	if st.Integrity != "" {
+		g.pf("\tif (data.isNotEmpty && data[0] == 1) {\n\t\tif (!tableIntegrityValid(data, data.length, 5)) return -1;\n\t\tdata = Uint8List.sublistView(data, 0, data.length - 4);\n\t}\n")
+	}
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	// The reference FileRegionMeasure reads the id table from the trailer
 	// (internal/tablewire/extent.go, decode.go trailer) and does NOT walk the

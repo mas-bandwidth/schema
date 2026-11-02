@@ -297,6 +297,7 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
+		g.pf("%s", integrityRuntime(g.unit))
 		// THE MESSAGE FORM'S ANNOUNCEMENT (§3.3) rides the runtime home beside
 		// the fixed runtime: the form is a fixed table's, so a unit that has a
 		// fixed root is exactly the unit whose announcement is emitted.
@@ -343,6 +344,9 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 
 // emitRoot is one table's whole fixed-form surface.
 func (g *fixedModule) emitRoot(st *ir.Struct) {
+	if st.Integrity != "" {
+		g.needHome("tableIntegrityValid", "tableIntegrityWrite")
+	}
 	w := fixedWalkRoot(st)
 	layout := fixedLayoutBytes(w.entries)
 	hash := ir.TableFixedLayoutHash(layout, st)
@@ -547,12 +551,16 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// the records to the end of it. A FILE ALWAYS CARRIES THE LAYOUT — a file is\n")
 	g.pf("/// read by somebody who was not there when it was written.\n")
 	g.pf("int %sFixedMeasure(int count) {\n", lower)
-	sum := fmt.Sprintf("  return %sFixedHeaderBytes + count * %sFixedRecordBytes;", lower, lower)
+	extra := ""
+	if st.Integrity != "" {
+		extra = " + 4"
+	}
+	sum := fmt.Sprintf("  return %sFixedHeaderBytes + count * %sFixedRecordBytes%s;", lower, lower, extra)
 	if len(sum) <= 80 {
 		g.pf("%s\n", sum)
 	} else {
 		g.pf("  return %sFixedHeaderBytes +\n", lower)
-		g.pf("      count * %sFixedRecordBytes;\n", lower)
+		g.pf("      count * %sFixedRecordBytes%s;\n", lower, extra)
 	}
 	g.pf("}\n\n")
 
@@ -604,7 +612,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.call("    ", "", lower+"FixedWriteBody",
 		[]string{"bytes", "view", "at + 8", "values[k]"}, ";")
 	g.pf("    at += %sFixedRecordBytes;\n", lower)
-	g.pf("  }\n  return need;\n}\n\n")
+	g.pf("  }\n")
+	if st.Integrity != "" {
+		g.pf("  tableIntegrityWrite(bytes, need - 4);\n")
+	}
+	g.pf("  return need;\n}\n\n")
 
 	g.pf("final %sFixedLoadView = TableFixedView();\n\n", lower)
 
@@ -643,6 +655,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      _ => TableFixedRefusal.newerForm,\n")
 	g.pf("    };\n")
 	g.pf("    return -1;\n  }\n")
+	if st.Integrity != "" {
+		g.pf("  if (!tableIntegrityValid(bytes, byteLength, 5)) {\n    report.malformed = true;\n    report.refused = TableFixedRefusal.integrityMismatch;\n    return -1;\n  }\n  byteLength -= 4;\n")
+	}
 	g.pf("  if (byteLength < TableFixedLimits.layoutAt) {\n")
 	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
 	g.pf("  // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
