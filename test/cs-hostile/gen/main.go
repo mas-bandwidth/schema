@@ -205,7 +205,7 @@ func generate(schemaBin, out string, u *unit) error {
 // line contains want (an [Obsolete] stub is a compile error to call, so it
 // does not count).
 func (u *unit) has(want string) bool {
-	for _, line := range strings.Split(u.source, "\n") {
+	for line := range strings.SplitSeq(u.source, "\n") {
 		if strings.Contains(line, want) && !strings.Contains(line, "Obsolete") {
 			return true
 		}

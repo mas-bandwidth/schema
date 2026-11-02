@@ -231,12 +231,12 @@ func TestOriginalNineCoverageWorkflowReportsBeforeFailure(t *testing.T) {
 		t.Fatal("nightly coverage command missing")
 	}
 	text = text[start+len("        run: |\n"):]
-	end := strings.Index(text, "      - uses:")
-	if end < 0 {
+	before, _, ok := strings.Cut(text, "      - uses:")
+	if !ok {
 		t.Fatal("nightly report upload missing")
 	}
 	var lines []string
-	for _, line := range strings.Split(text[:end], "\n") {
+	for line := range strings.SplitSeq(before, "\n") {
 		lines = append(lines, strings.TrimPrefix(line, "          "))
 	}
 	script := strings.Join(lines, "\n")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -222,7 +223,7 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 
 	const levels = 40
 	dlinks := []javaCycleLink{{0, "left", 1}, {0, "right", 2}}
-	for l := 0; l < levels-1; l++ {
+	for l := range levels - 1 {
 		a, b := 1+2*l, 2+2*l
 		dlinks = append(dlinks,
 			javaCycleLink{a, "left", a + 2},
@@ -272,14 +273,11 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 	}
 
 	for _, w := range witnesses {
-		w := w
 		t.Run(w.name, func(t *testing.T) {
 			t.Parallel()
 			javac, javaBin := javaTools(t)
 			cp := map[string][]byte{}
-			for k, v := range files {
-				cp[k] = v
-			}
+			maps.Copy(cp, files)
 			if w.file != "" {
 				src := string(cp[w.file])
 				if !strings.Contains(src, w.old) {

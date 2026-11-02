@@ -511,7 +511,7 @@ func TestDiamondChainLoadsLinearCPP(t *testing.T) {
 	count := 1 + 2*levels
 	var links []cycleLink
 	links = append(links, cycleLink{0, "left", 1}, cycleLink{0, "right", 2})
-	for l := 0; l < levels-1; l++ {
+	for l := range levels - 1 {
 		a, b := 1+2*l, 2+2*l
 		na, nb := a+2, b+2
 		links = append(links, cycleLink{a, "left", na}, cycleLink{a, "right", nb}, cycleLink{b, "left", na}, cycleLink{b, "right", nb})

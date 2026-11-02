@@ -162,7 +162,7 @@ table Root { head *Node
 		tc.edit(f)
 		check(tc.name, f, true)
 	}
-	for i := 0; i < len(valid); i++ {
+	for i := range valid {
 		check(fmt.Sprintf("truncate-%d", i), valid[:i], true)
 	}
 	noAttrib, _, err := CookSplitAttribution(valid)
@@ -181,7 +181,7 @@ table Root { head *Node
 		check(fmt.Sprintf("scalar-%x", bits), f, math.IsNaN(math.Float64frombits(bits)) || math.IsInf(math.Float64frombits(bits), 0))
 	}
 	rng := rand.New(rand.NewSource(20261102))
-	for i := 0; i < 400; i++ {
+	for i := range 400 {
 		f := bytes.Clone(valid)
 		switch i % 3 {
 		case 0:
@@ -268,7 +268,7 @@ table Root { head *Node
 		if err != nil {
 			t.Fatalf("accepted cook consumer %v: %v\n%s", flags, err, result)
 		}
-		for _, line := range strings.Split(string(result), "\n") {
+		for line := range strings.SplitSeq(string(result), "\n") {
 			if strings.Contains(line, "safe operation") || strings.Contains(line, "safe refusal") {
 				t.Logf("generated Go %v: %s", flags, strings.TrimSpace(line))
 			}

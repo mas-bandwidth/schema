@@ -239,7 +239,7 @@ func TestDiamondChainLoadsLinear(t *testing.T) {
 	m := cycleModel(t)
 	const levels = 40
 	links := []cycleLink{{0, "left", 1}, {0, "right", 2}}
-	for l := 0; l < levels-1; l++ {
+	for l := range levels - 1 {
 		a, b := 1+2*l, 2+2*l
 		links = append(links, cycleLink{a, "left", a + 2}, cycleLink{a, "right", b + 2}, cycleLink{b, "left", a + 2}, cycleLink{b, "right", b + 2})
 	}
