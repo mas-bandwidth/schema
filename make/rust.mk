@@ -1681,3 +1681,55 @@ conformance-negative-control-rust-framing: build/conformance-harness build/table
 	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/share/target/debug/conformance-rust \
 		$(RUST_FRAMING_CONTROL)/share/run node_diamond_chain
 test-rust: conformance-rust-framing conformance-negative-control-rust-framing
+
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) in the Rust leg:
+# TestDamageDiscardsTheWholeLoadRust reads damaged input through every public
+# load entry point (the variable wire's tolerant and retaining loads of a fixed
+# and a variable root, the fixed form, the message batch, the text read) and
+# requires no usable value. The two controls remove the discard from a COPY of
+# the emitter, reached through a Go build overlay, and the gate must go red on
+# exactly that entry point. Nothing tracked is written to.
+RUST_DISCARD_NC := build/rust-discard-nc
+.PHONY: tables-rust-discard tables-rust-discard-negative-control tables-rust-fixed-discard-negative-control
+tables-rust-discard:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadRust$$' -v
+
+tables-rust-discard-negative-control:
+	@rm -rf $(RUST_DISCARD_NC)/variable && mkdir -p $(RUST_DISCARD_NC)/variable
+	@sed -e 's|fmt.Fprintf(b, "    if damaged {\\n")|fmt.Fprintf(b, "    if false \&\& damaged { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+		internal/codegen/rusttable/variablecodec.go > $(RUST_DISCARD_NC)/variable/variablecodec.go.txt
+	@cmp -s internal/codegen/rusttable/variablecodec.go $(RUST_DISCARD_NC)/variable/variablecodec.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/$(RUST_DISCARD_NC)/variable/variablecodec.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/variable/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/variable/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/variable/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust discard is gone and the gate stayed green"; \
+		cat $(RUST_DISCARD_NC)/variable/log; exit 1; \
+	fi
+	@grep -q "root: load handed back a value on damage" $(RUST_DISCARD_NC)/variable/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_DISCARD_NC)/variable/log; exit 1; }
+	@grep -m1 "load handed back a value" $(RUST_DISCARD_NC)/variable/log
+	@echo "negative control: removing the Rust variable-wire discard turns the whole-load gate RED"
+
+tables-rust-fixed-discard-negative-control:
+	@rm -rf $(RUST_DISCARD_NC)/fixed && mkdir -p $(RUST_DISCARD_NC)/fixed
+	@sed -e 's|g.pf("    if damaged {\\n")|g.pf("    if false \&\& damaged { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+		internal/codegen/rusttable/fixedform.go > $(RUST_DISCARD_NC)/fixed/fixedform.go.txt
+	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_DISCARD_NC)/fixed/fixedform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust fixed discard sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_DISCARD_NC)/fixed/fixedform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/fixed/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/fixed/overlay.json \
+			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/fixed/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust fixed discard is gone and the gate stayed green"; \
+		cat $(RUST_DISCARD_NC)/fixed/log; exit 1; \
+	fi
+	@grep -q "fixed: a damaged load left a caller record" $(RUST_DISCARD_NC)/fixed/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_DISCARD_NC)/fixed/log; exit 1; }
+	@grep -m1 "fixed: a damaged load" $(RUST_DISCARD_NC)/fixed/log
+	@echo "negative control: removing the Rust fixed-form discard turns the whole-load gate RED"
+
+test-rust: tables-rust-discard
